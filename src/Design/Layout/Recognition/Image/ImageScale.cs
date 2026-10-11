@@ -5,8 +5,10 @@
 // Choose takes, in order:
 //   1. the placed bitmap's own rect, when the target is the layout it sits in;
 //   2. a scale the user stated — a number, two picked points and a distance with a unit, or a trace of stated Z0;
-//   3. chip land patterns agreeing at one scale, at least three pairs within 3 %;
-//   4. otherwise NO scale: a refusal for a write, a waiting state in the dialog.
+//   3. a board photo's four corners on a rectangle of stated size (IM-13) — stated too, but by the rectification: a
+//      statement made on the rectified picture is the user's later word and wins;
+//   4. chip land patterns agreeing at one scale, at least three pairs within 3 %;
+//   5. otherwise NO scale: a refusal for a write, a waiting state in the dialog.
 // The file's resolution metadata is listed and never chosen: a screenshot's 96 dpi describes a screen.
 
 using System.Globalization;
@@ -16,7 +18,7 @@ using CircuitRF.Design.Layout.Em;
 namespace CircuitRF.Design.Layout.Recognition.Image;
 
 /// <summary>Where a scale came from.</summary>
-public enum ImageScaleKind { Placement, Stated, TwoPoints, Impedance, Parts, Resolution }
+public enum ImageScaleKind { Placement, Stated, TwoPoints, Impedance, Parts, Resolution, Corners }
 
 /// <summary>A point in the picture, pixels (x right, y down, pixel centres at ½).</summary>
 public readonly record struct PixelPoint(double X, double Y);
@@ -61,6 +63,10 @@ public sealed record ImageScaleCandidate(ImageScaleKind Kind, double MetresPerPi
     /// <summary>Offered, never chosen (D6 (5)).</summary>
     public bool OfferedOnly => Kind == ImageScaleKind.Resolution;
 
+    /// <summary>A scale the user stated — a number, two points, an impedance, or a board photo's corners — rather than
+    /// one found in the picture.</summary>
+    public bool IsStatement => Kind is ImageScaleKind.Stated or ImageScaleKind.TwoPoints or ImageScaleKind.Impedance or ImageScaleKind.Corners;
+
     /// <summary>For a placement: the bitmap's rect per pixel along x and y, DBU — what lays the trace exactly on it.</summary>
     public (double X, double Y)? DbuPerPixel { get; init; }
 
@@ -91,6 +97,7 @@ public static class ImageScale
 
         if (input.Source.Placement is LayoutBitmapPlacement p && FromPlacement(p, raster.Width, raster.Height) is { } placed)
             list.Add(placed);
+        if (input.Photo?.Scale is { } corners) list.Add(corners);
 
         var st = input.Scale;
         switch (st.Kind)
@@ -129,6 +136,7 @@ public static class ImageScale
         if (targetIsPlacedLayout && candidates.FirstOrDefault(c => c.Kind == ImageScaleKind.Placement) is { } placed) return placed;
         if (candidates.FirstOrDefault(c => c.Kind is ImageScaleKind.Stated or ImageScaleKind.TwoPoints or ImageScaleKind.Impedance) is { } stated)
             return stated;
+        if (candidates.FirstOrDefault(c => c.Kind == ImageScaleKind.Corners) is { } corners) return corners;
         return candidates.Where(c => c.Kind == ImageScaleKind.Parts && c.Support >= MinPartsSupport)
                          .OrderByDescending(c => c.Support).FirstOrDefault();
     }

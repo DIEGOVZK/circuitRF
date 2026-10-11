@@ -120,6 +120,11 @@ public sealed record ImageTraceInput
 
     /// <summary>The DBU per micron of a new layout. A placed bitmap's layout uses its own.</summary>
     public int DbuPerMicron { get; init; } = LayoutUnits.DefaultDbuPerMicron;
+
+    /// <summary>A board photo read on its four corners (IM-13), set by <see cref="BoardPhoto.Apply"/> along with the
+    /// rectified <see cref="Source"/>: its classes replace the colour separation, its scale is offered as stated, and its
+    /// default map is R-im13-4's.</summary>
+    public BoardPhotoReading? Photo { get; internal init; }
 }
 
 /// <summary>One layer as traced.</summary>
@@ -224,6 +229,7 @@ public static partial class ImageTrace
             Layers = [.. prep.Layers.Select(l => new ImageTracedLayer(l.Name, l.Key, l.Role, l.Regions, []))],
         };
         ReportColours(prep, report);
+        if (input.Photo is { } photoRead) BoardPhoto.Report(photoRead, report);
         if (scaleRefusal is not null) return result with { Refusal = scaleRefusal };
         if (!anyCopper) return result with { Refusal = NoCopperRefusal };
 
@@ -260,8 +266,11 @@ public static partial class ImageTrace
     {
         var tech = input.Technology!;
         var o = input.Options;
-        var clusters = ColourClusters.Find(input.Source.Raster, Math.Max(1, o.MaxColours), new ColourClusterOptions { MergeDeltaE = o.MergeDeltaE });
-        var map = input.LayerMap is { Edited: true } edited ? edited.Rebind(clusters) : ImageLayerMap.Auto(clusters, tech);
+        var clusters = input.Photo?.Clusters
+                       ?? ColourClusters.Find(input.Source.Raster, Math.Max(1, o.MaxColours), new ColourClusterOptions { MergeDeltaE = o.MergeDeltaE });
+        var map = input.LayerMap is { Edited: true } edited ? edited.Rebind(clusters)
+                : input.Photo is { } photo ? photo.DefaultMap(tech)
+                : ImageLayerMap.Auto(clusters, tech);
         var contour = new ContourOptions
         {
             Simplify = o.SimplifyPx, Snap = o.Snap, SnapAngleDeg = o.SnapAngleDeg, Snap45 = o.Snap45, MinArea = 0,

@@ -969,7 +969,7 @@ clone.
 
 ### 13.7 What does not read (R-im12-7)
 
-- Hand-drawn schematics (not a goal), and photographs (IM-13).
+- Hand-drawn schematics (not a goal); photographs except a board's top side set square on its corners (§14).
 - Serif and script type; type that is bold, very small, or slanted or condensed at a small size (12 px caps).
 - Values printed far from their parts, other than on the line under their designator.
 - Dense layouts below ~4 px per trace width — widths read, loosely (the resolution line says how loosely).
@@ -977,3 +977,85 @@ clone.
 - Vector sources — PDF, SVG, EMF — which are the better source when one exists; they are not read (D18).
 - Vias drawn as hairline rings (circuitRF's own layout view) below ~10 µm/px.
 - A part on a short stub to a via in a picture with no mask (§13.5).
+
+## 14. IM-13 — photographs of boards
+
+Brief: `brief-img-13-board-photos.md`. Gates: `tests/Ui.Tests/Imaging/PerspectiveTests`, `BoardPhotoTraceTests` (the
+trace, and the dialog's corner tool driven headlessly), one case in `ImageKindTests`; the synthetic photo is
+`BoardPhotoPictures.cs` — a 60 × 40 mm board seen through a perspective WRITTEN OUT BY HAND (not solved by the code
+under test), lit 0.8 → 1.15 left to right with a warm cast, σ = 3 levels of noise, and two clipped highlights.
+
+**A photo is not traced as taken; it is turned into a picture the IM-3 trace already reads**, and the trace runs
+unchanged on it. `BoardPhoto.Read(photo, corners)` → `BoardPhotoReading`; `BoardPhoto.Apply(input, reading)` swaps
+the trace input's `Source` for the rectified picture and sets `ImageTraceInput.Photo`, whose clusters replace
+`ColourClusters.Find`, whose scale is a candidate (`ImageScaleKind.Corners`) and whose map is the default when the
+user has not edited one. The GUI (Board corners… in the scale combo) and the CLI (`--corners`) both call those two.
+
+### 14.1 Kind (R-im13-1) — `ImageKind.BoardEvidence`
+
+Taken only for a photographic picture (flat share < 0.6), before the line-work measurements, on a grid of at most
+160,000 samples:
+
+| Feature | Threshold | Gate photo | Noisy gradient (IM-2's None case) |
+|---|---|---|---|
+| mask-hue share — chroma ≥ 15, outside the copper hues (CIELAB 35°–105°), within ±30° of the dominant such hue | ≥ 0.2 | 0.43 | 0.18 |
+| largest connected region of it | ≥ 0.12 | 0.43 | 0.14 |
+| rectilinear edge share — the strongest tenth of the gradients (3 × 3-smoothed luminance), weight within ±8° of two directions ≥ 30° apart | ≥ 0.4 | 0.59 | 0.22 |
+
+All three must hold; the confidence is 0.55–0.75 by the narrowest margin, so a photo never reads as surely as a drawing.
+The smoothing is there because a coarse sensor grain otherwise crowds a board's edges out of the strongest tenth: the
+dialog figure's photo measured 0.34 without it. `DrawingKind.BoardPhoto` spells `photo`; `ImageKindResult.AsLayout()`
+keeps it as read wherever a layout is traced.
+
+### 14.2 Rectify (R-im13-2) — `Perspective.cs`
+
+DLT with Hartley normalisation and h₂₂ = 1 (safe once normalised: the centroid of a convex quad maps inside it),
+Gaussian elimination, least squares beyond four pairs. The corners must make a convex quad and go **clockwise on the
+picture** — anticlockwise would be a mirror image, which no camera takes, so it is a refusal naming the order rather
+than a silent flip. The output samples at the photo's FINEST spacing along any side (nothing on the near side is lost),
+extends over the photo as mapped within the rectangle grown by its own size each way, and is held to 4× the photo's
+pixels and 50 MP. Warp is bilinear at pixel centres in fixed bands. Measured: the gate board's four edges land
+within 0.16 px of the rectangle at 81.3 µm/px.
+
+### 14.3 Light (R-im13-3) — `WhiteBalance.cs`
+
+Grey world over the NEAR-GREY pixels only, in two passes (chroma < 20 as taken, then < 12 as corrected): a board is
+mostly mask, and grey world over every pixel bleaches the mask and turns copper pink. Clipped pixels are left out;
+gains are held to ×½…×2. The flat field is the luminance blurred (three box passes, radius ⅛ of the shorter side,
+normalised by the blurred inside-mask so the warp's empty corners do not darken the board) and divided out with ONE
+factor per pixel, so the hue is kept.
+
+### 14.4 Classes (R-im13-4) — `BoardPhoto.Classify`
+
+Six classes in FIXED colours (`BoardPhoto.Rgb`), so a map, preset or `--layer-map` written for one photo rebinds to the
+next exactly: off the board `#9e9e9e`, mask `#1f6b3a`, copper under the mask `#74c476`, exposed copper `#c87533`,
+silkscreen `#f5f5f5`, part body `#202020`. In order:
+
+1. **Highlights** — clipped blobs at least 2 px from their edge somewhere (a 0.2 mm legend stroke never is), grown by a
+   2.5 px bloom.
+2. **Mask hue** — the peak of the chromatic, non-copper hue histogram; its family (±30°, chroma ≥ 8) must hold 5 % of
+   the photo. **Copper under the mask** is the family's lighter half (Otsu on L) when the halves are ≥ 8 L apart.
+3. **The board** — the family opened (1.5 px: a stray mask-hued pixel on the bench, closed with the board, pulled a
+   star of bench into it, read as tin) and closed over 1.5 mm, holes filled, with the rectangle. Off it is off the board.
+4. **On it** — copper hue at chroma ≥ 15 is exposed copper; near grey below L 30 is a part body; near grey above L 70 is
+   tin where an opening at 0.35 mm keeps it and silkscreen where it does not; other near grey is tin; any other colour
+   reads as mask.
+5. **Clean-up** — copper narrower than 0.1 mm (≥ a 1 px opening) is the edge of something else and reads as mask: it
+   took the gate photo's top copper from 46 shapes to 1. Legend strokes are closed over 1.5 px.
+6. **Highlight fill** — a class that CONTINUES across the highlight (both ends of a ray pair through the pixel — across,
+   down, either diagonal — on it) wins, copper first; nearest-rim fill otherwise. Nearest-rim alone pinches a line under
+   a glint to a point, because the glint's middle is equidistant from the line and the mask beside it. What remains is
+   a ~2 px waist where the glint's bloom meets the line's own anti-aliased edge.
+
+The cluster set is built from the hard classes with each pixel mixed with the commonest other class among its eight
+neighbours (a box filter of the labels), which puts 0.5 coverage on the boundary and turns a staircase into a line.
+Part bodies at least 0.8 mm on both sides are counted as unread parts; pads under them are NOT inferred — the brief
+allows it only from a placement or BOM, which this phase does not wire in.
+
+### 14.5 The report and the provenance (R-im13-5)
+
+`ImagePhotoRectified` (the rectangle, and each corner's residual in µm — the distance from the rectangle's corner to
+the corner the rectified picture shows there, found by Förstner's sub-pixel corner iteration; `—` where no corner
+shows), `ImagePhotoHighlights`, `ImagePhotoUnreadParts`, and `ImagePhotoWidths` (widths are read, a Z0 from them is
+estimated). The kept picture and underlay are the RECTIFIED photo (it is what the copper lies on); the provenance's
+kind is `photo`, and its options name the photo as taken (`photo`: name and SHA-256) and the `corners`.

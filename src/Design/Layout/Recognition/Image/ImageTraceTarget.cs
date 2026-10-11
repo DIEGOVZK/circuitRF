@@ -227,13 +227,21 @@ public static partial class ImageTrace
     /// <paramref name="pictureRef"/> — the traced layout's, and IM-4's schematic's beside it.</summary>
     internal static ImageProvenance ProvenanceOf(ImageTraceInput input, ImageTraceResult result, string pictureRef, DateTime now)
     {
-        var kind = input.Kind ?? ImageKind.Classify(input.Source.Raster);
-        if (kind.Kind != DrawingKind.Layout) kind = kind.Force(DrawingKind.Layout);
+        var kind = input.Kind ?? input.Photo?.PhotoKind ?? ImageKind.Classify(input.Source.Raster);
+        // A rectified photo is a board photo whatever it was read as; anything else traced is a layout.
+        if (input.Photo is not null) { if (kind.Kind != DrawingKind.BoardPhoto) kind = kind.Force(DrawingKind.BoardPhoto); }
+        else kind = kind.AsLayout();
         var provenance = ImageProvenance.For(input.Source, kind, pictureRef, now);
         provenance.Scale = result.Scale!.Display;
         provenance.ScaleEvidence = result.Scale.Evidence;
         provenance.LayerMap = result.LayerMap!.ToProvenance();
         provenance.Options = input.Options.ToProvenance();
+        if (input.Photo is { } photo)
+        {
+            // The kept picture is the rectified one; the photo it was made from is named, with its hash, and the corners.
+            provenance.Options["photo"] = $"{photo.PhotoName} sha256:{photo.PhotoSha256}";
+            provenance.Options["corners"] = photo.Corners!.Spelling;
+        }
         return provenance;
     }
 }

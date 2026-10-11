@@ -22,6 +22,8 @@ public partial class ImageReadingPanel : UserControl
     {
         InitializeComponent();
         Canvas.ViewChanged += PlaceInline;
+        // A box asked for before the canvas has a size is clamped into its corner; it moves beside its point once it does.
+        Canvas.SizeChanged += (_, _) => PlaceInline();
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
     }
@@ -36,13 +38,16 @@ public partial class ImageReadingPanel : UserControl
 
     private void OnScaleChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(ImageScaleViewModel.PromptAt) or nameof(ImageScaleViewModel.AskingDistance)
-            or nameof(ImageScaleViewModel.AskingZ0))
+        if (e.PropertyName is nameof(ImageScaleViewModel.PromptAt))
+            PlaceInline();
+        else if (e.PropertyName is nameof(ImageScaleViewModel.AskingDistance) or nameof(ImageScaleViewModel.AskingZ0)
+                 or nameof(ImageScaleViewModel.AskingSize))
         {
             PlaceInline();
             // The box takes the keyboard as it appears, so the distance is typed straight after the second click.
             if (_vm?.Scale.AskingDistance == true) Dispatcher.UIThread.Post(() => DistanceInput.Focus());
             else if (_vm?.Scale.AskingZ0 == true) Dispatcher.UIThread.Post(() => { Z0Input.Focus(); Z0Input.SelectAll(); });
+            else if (_vm?.Scale.AskingSize == true) Dispatcher.UIThread.Post(() => SizeInput.Focus());
         }
     }
 
@@ -51,7 +56,7 @@ public partial class ImageReadingPanel : UserControl
     {
         if (_vm?.Scale.PromptAt is not { } p) return;
         var at = Canvas.ToView(p.X, p.Y);
-        foreach (var box in new Control[] { DistanceBox, Z0Box })
+        foreach (var box in new Control[] { DistanceBox, Z0Box, SizeBox })
         {
             double x = Math.Clamp(at.X + 12, 4, Math.Max(4, Canvas.Bounds.Width - 320));
             double y = Math.Clamp(at.Y + 12, 4, Math.Max(4, Canvas.Bounds.Height - 80));
@@ -63,6 +68,12 @@ public partial class ImageReadingPanel : UserControl
     private void OnDistanceKey(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter) { _vm?.Scale.ApplyDistanceCommand.Execute(null); e.Handled = true; }
+        else if (e.Key == Key.Escape) { _vm?.Scale.CancelToolCommand.Execute(null); e.Handled = true; }
+    }
+
+    private void OnSizeKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) { _vm?.Scale.ApplyCornersCommand.Execute(null); e.Handled = true; }
         else if (e.Key == Key.Escape) { _vm?.Scale.CancelToolCommand.Execute(null); e.Handled = true; }
     }
 

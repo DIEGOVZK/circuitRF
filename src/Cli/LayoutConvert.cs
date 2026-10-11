@@ -635,7 +635,7 @@ public static class LayoutConvert
                 var trace = ImageTrace.Trace(input!, RunHost.Control);
                 if (trace.Refusal is null && o.Picture.ScaleGate(verb, trace) is { } noScale)
                 {
-                    Report(trace, source, tech, o);
+                    Report(trace, source, input!.Source, tech, o);
                     return noScale;
                 }
             }
@@ -652,7 +652,7 @@ public static class LayoutConvert
 
             string name = ImageTraceTarget.DefaultCellName(source, staging);
             var run = ImageTrace.Run(input!, ImageTraceTarget.NewCell(staging, name), control: RunHost.Control);
-            Report(run.Result, source, tech, o);
+            Report(run.Result, source, input!.Source, tech, o);
             if (!run.Ok) return JsonRun.Fail(CliDiagnostics.PictureRefused(verb, run.Refusal ?? "The picture could not be traced."));
             foreach (string line in run.Report.Lines()) Console.Error.WriteLine($"note: {line}");
             if (scratch is null && techPath is not null && catalogId is not null) JsonRun.AddOutput("ctech", techPath);
@@ -677,14 +677,15 @@ public static class LayoutConvert
                 try { Directory.Delete(scratch, recursive: true); } catch { /* best effort */ }
         }
 
-        static void Report(ImageTraceResult trace, ImageSource source, Technology? tech, Options o)
+        // The overlay is drawn on the picture TRACED — a board photo's rectified picture (IM-13), else the picture itself.
+        static void Report(ImageTraceResult trace, ImageSource source, ImageSource traced, Technology? tech, Options o)
         {
             var kind = ImageKind.Classify(source.Raster);
             JsonRun.ConvertImage = new ConvertImageJson(PictureFlags.ImageJson(source, kind), PictureFlags.ScaleJson(trace),
                                                         PictureFlags.LayersJson(trace));
             if (o.Picture.LayerMap is null && trace.LayerMap is { } map)
                 Console.Error.WriteLine($"[circuitRF] layer map: --layer-map \"{PictureFlags.Spell(map)}\"");
-            o.Picture.WriteOverlay(verb, ImageOverlay.Build(trace, null, tech), source);
+            o.Picture.WriteOverlay(verb, ImageOverlay.Build(trace, null, tech), traced);
         }
     }
 

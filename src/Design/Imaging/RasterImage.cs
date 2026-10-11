@@ -79,6 +79,21 @@ public sealed class RasterImage
         return new RasterImage(bitmap.Width, bitmap.Height, rgba);
     }
 
+    /// <summary>The raster as PNG bytes — a picture made here (a rectified photo, IM-13) handed on as a picture. Decoding
+    /// them gives these pixels back exactly.</summary>
+    public byte[] EncodePng()
+    {
+        var info = new SKImageInfo(Width, Height, SKColorType.Rgba8888, SKAlphaType.Unpremul);
+        var handle = System.Runtime.InteropServices.GCHandle.Alloc(Rgba, System.Runtime.InteropServices.GCHandleType.Pinned);
+        try
+        {
+            using var image = SKImage.FromPixels(info, handle.AddrOfPinnedObject(), Width * 4);
+            using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+            return data.ToArray();
+        }
+        finally { handle.Free(); }
+    }
+
     /// <summary>Reads a picture from a file. A file that cannot be opened is reported as undecodable.</summary>
     public static RasterDecodeResult Load(string path)
     {

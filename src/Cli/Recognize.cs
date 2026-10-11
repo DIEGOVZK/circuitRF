@@ -407,6 +407,9 @@ internal static class Recognize
 
         var read = ImageKind.Classify(source.Raster);
         var kind = o.Picture.Kind is { } forced ? read.Force(forced) : read;
+        // Four corners say the picture is a photo of a board (IM-13), whatever it read as.
+        if (o.Picture.HasCorners && kind.Kind is DrawingKind.None or DrawingKind.Schematic && o.Picture.Kind is null)
+            kind = read.Force(DrawingKind.BoardPhoto);
         var image = PictureFlags.ImageJson(source, kind);
         Console.Error.WriteLine($"[circuitRF] reading {path} as a {kind.Name} picture");
         if (kind.Kind == DrawingKind.None)
@@ -517,7 +520,7 @@ internal static class Recognize
         {
             if (o.Picture.LayerMap is null && trace.LayerMap is { } map)
                 Console.Error.WriteLine($"[circuitRF] layer map: --layer-map \"{PictureFlags.Spell(map)}\"");
-            o.Picture.WriteOverlay(Verb, ImageOverlay.Build(trace, recognition, tech), source);
+            o.Picture.WriteOverlay(Verb, ImageOverlay.Build(trace, recognition, tech), traceInput!.Source);
         }
 
         // D6, headless: with no scale stated the trace is made only to say what evidence there is.

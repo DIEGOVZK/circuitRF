@@ -48,6 +48,16 @@ public sealed class ImageKindTests(ITestOutputHelper output)
         Assert.Equal("a photograph-like picture with no straight line work", r.Reason);
     }
 
+    /// <summary>R-im13-1: a photograph of a board — many colours and gradients, but one large mask-hued region with
+    /// rectilinear edges — reads as a board photo, less surely than a drawing reads.</summary>
+    [Fact]
+    public void APhotographOfABoard_ReadsBoardPhoto_WithLowerConfidence()
+    {
+        var r = Classify(BoardPhotoPictures.Photo());
+        Assert.Equal(DrawingKind.BoardPhoto, r.Kind);
+        Assert.InRange(r.Confidence, 0.5, 0.8);
+    }
+
     [Fact]
     public void AWhiteRaster_ReadsNone_Blank()
     {

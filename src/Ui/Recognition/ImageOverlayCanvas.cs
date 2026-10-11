@@ -6,7 +6,8 @@
 //
 // Gestures: wheel or pinch zooms about the pointer; right- or middle-drag, or Space held with a left-drag, pans; a
 // left-drag sets the scope rectangle; a left-click selects; a double-click fits the picture. With a tool armed a
-// left-click is the tool's.
+// left-click is the tool's; with Board corners… armed (IM-13) a left-drag on a handle moves it, and the overlay — read
+// on the rectified picture — is not drawn over the photo as taken.
 
 using System;
 using System.Collections.Generic;
@@ -53,6 +54,7 @@ public sealed class ImageOverlayCanvas : Control
     private ImageOverlayItem? _dragEnd;
     private bool _panning, _scoping, _spaceHeld;
     private PixelPoint? _hover;
+    private int _dragCorner = -1;
 
     public ImageOverlayCanvas()
     {
@@ -93,7 +95,9 @@ public sealed class ImageOverlayCanvas : Control
 
     private void OnVmChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ImageSourceViewModel.Source)) _fitted = false;
+        // A new picture, or a photo swapping between as taken and rectified: fit the one now shown.
+        if (e.PropertyName is nameof(ImageSourceViewModel.Source) or nameof(ImageSourceViewModel.Raster)
+            && !ReferenceEquals(_vm?.Raster, _rasterShown)) _fitted = false;
         if (e.PropertyName == nameof(ImageSourceViewModel.SelectedItem) && _vm?.SelectedItem is { } item) BringIntoView(item);
         InvalidateVisual();
     }
@@ -152,7 +156,7 @@ public sealed class ImageOverlayCanvas : Control
             using (context.PushOpacity(_vm.HasFailure ? 0.3 : 1.0))
                 context.DrawImage(_picture!, pictureRect);
 
-            if (!_vm.HasFailure) DrawOverlay(context, pictureRect);
+            if (!_vm.HasFailure && _vm.Scale.Tool != ImageMeasureTool.Corners) DrawOverlay(context, pictureRect);
         }
         context.DrawRectangle(new Pen(new ImmutableSolidColorBrush(Color.Parse("#808080")), 1),
                               new Rect(ToView(0, 0), ToView(raster.Width, raster.Height)));
@@ -308,6 +312,23 @@ public sealed class ImageOverlayCanvas : Control
             if (scale.PointB is { } pb) Mark(pb);
         }
         else if (scale.Tool == ImageMeasureTool.Impedance && scale.PointA is { } p) Mark(p);
+        else if (scale.Tool == ImageMeasureTool.Corners && scale.CornerPoints is { Count: 4 } corners)
+        {
+            var geometry = new StreamGeometry();
+            using (var g = geometry.Open())
+            {
+                g.BeginFigure(ToView(corners[0].X, corners[0].Y), true);
+                for (int k = 1; k < 4; k++) g.LineTo(ToView(corners[k].X, corners[k].Y));
+                g.EndFigure(true);
+            }
+            context.DrawGeometry(new ImmutableSolidColorBrush(Accent, 0.08), new Pen(pen.Brush, 1.5), geometry);
+            for (int k = 0; k < 4; k++)
+            {
+                var v = ToView(corners[k].X, corners[k].Y);
+                context.DrawEllipse(new ImmutableSolidColorBrush(Colors.White), pen, v, 6, 6);
+                context.DrawText(Text((k + 1).ToString(System.Globalization.CultureInfo.InvariantCulture), Accent, 1), new Point(v.X + 8, v.Y - 16));
+            }
+        }
 
         if (_scoping && _pressAt is { } from)
             context.DrawRectangle(new ImmutableSolidColorBrush(Accent, 0.08), new Pen(pen.Brush, 1, new ImmutableDashStyle([4, 3], 0)),
@@ -373,6 +394,21 @@ public sealed class ImageOverlayCanvas : Control
 
     // ── input ───────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The corner handle within reach of a control point, or −1.</summary>
+    private int CornerAt(Point at)
+    {
+        if (_vm?.Scale is not { Tool: ImageMeasureTool.Corners, CornerPoints: { Count: 4 } corners }) return -1;
+        int best = -1;
+        double reach = 10 * 10;
+        for (int k = 0; k < 4; k++)
+        {
+            var v = ToView(corners[k].X, corners[k].Y);
+            double d = (v.X - at.X) * (v.X - at.X) + (v.Y - at.Y) * (v.Y - at.Y);
+            if (d <= reach) { reach = d; best = k; }
+        }
+        return best;
+    }
+
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
@@ -432,6 +468,7 @@ public sealed class ImageOverlayCanvas : Control
                    || (point.Properties.IsLeftButtonPressed && _spaceHeld);
         _pressAt = point.Properties.IsLeftButtonPressed && !_panning ? point.Position : null;
         _scoping = false;
+        _dragCorner = _pressAt is { } press ? CornerAt(press) : -1;
         // A dangling wire end pressed on a schematic picture is dragged, not scoped: dropped on a pin it joins it (R-im10-8).
         _dragEnd = _pressAt is { } at && _vm is { IsSchematicPicture: true } vm0
             ? vm0.Overlay.HitTest(ToPicture(at).X, ToPicture(at).Y, 4 / _zoom, vm0.Shows) is { } hit
@@ -451,6 +488,11 @@ public sealed class ImageOverlayCanvas : Control
             _pan += p - _lastPointer;
             ViewChanged?.Invoke();
         }
+        else if (_dragCorner >= 0 && _vm is not null)
+        {
+            _vm.Scale.MoveCorner(_dragCorner, ToPicture(p));
+            ViewChanged?.Invoke();
+        }
         else if (_pressAt is { } from && _dragEnd is null && _vm is { Scale.Tool: ImageMeasureTool.None, CanvasPick: false, IsLayoutPicture: true }
                  && (Math.Abs(p.X - from.X) > 4 || Math.Abs(p.Y - from.Y) > 4))
             _scoping = true;
@@ -466,6 +508,7 @@ public sealed class ImageOverlayCanvas : Control
         if (_panning) { _panning = false; return; }
         if (_pressAt is not { } from || _vm is not { } vm) return;
         _pressAt = null;
+        if (_dragCorner >= 0) { _dragCorner = -1; return; }
         if (_dragEnd is { } end)
         {
             _dragEnd = null;

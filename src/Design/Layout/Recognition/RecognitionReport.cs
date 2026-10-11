@@ -238,6 +238,20 @@ public enum RecognitionFindingClass
     /// <summary>Where the traced layout went.</summary>
     ImageLayoutWritten,
 
+    // ── IM-13: a photograph of a board (R-im13-5) ─────────────────────────────────────────────────
+
+    /// <summary>The photo was put square on four corners: the rectangle, and the residual at each corner in µm.</summary>
+    ImagePhotoRectified,
+
+    /// <summary>Specular highlights filled from their neighbourhood before tracing.</summary>
+    ImagePhotoHighlights,
+
+    /// <summary>Part bodies covering their pads, reported rather than read.</summary>
+    ImagePhotoUnreadParts,
+
+    /// <summary>Photographed widths are not good enough for impedance. Said once.</summary>
+    ImagePhotoWidths,
+
     // ── IM-4: a layout picture made into a schematic ──────────────────────────────────────────────
 
     /// <summary>The stackup's reference plane is drawn nowhere in the picture and was implied (R-im4-3). Said once.</summary>

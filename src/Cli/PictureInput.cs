@@ -11,6 +11,10 @@
 // sentence, then the flags that state one — and an inference is taken only when asked for with --scale auto, and then
 // only on D6's own terms (at least ImageScale.MinPartsSupport parts agreeing), the refusal listing every candidate.
 //
+// A PHOTO OF A BOARD IS PUT SQUARE FIRST (IM-13): --corners names four corners and the rectangle's size, which IS the
+// scale — so it is refused beside any other scale flag, and beside --region, whose pixels are the photo's and not the
+// rectified picture the trace reads. BoardPhoto does the reading; this file only spells it.
+//
 // EVERY PICTURE COORDINATE IS IN PIXELS AND SAYS SO: --region takes `px` on each number, render --window's rule — a
 // bare number is a refusal, because on a layout the same flag takes lengths and the two must not be confused.
 
@@ -25,11 +29,15 @@ namespace CircuitRF.Cli;
 
 internal sealed class PictureFlags
 {
-    public enum ScaleMode { Unstated, Stated, Points, Auto }
+    public enum ScaleMode { Unstated, Stated, Points, Auto, Corners }
 
     public ScaleMode Mode = ScaleMode.Unstated;
     private double _metresPerPixel;
     private (double X0, double Y0, double X1, double Y1, string Distance) _points;
+    private BoardPhotoCorners? _corners;
+
+    /// <summary>--corners was given: the picture is a photo of a board, whatever IM-2 read it as.</summary>
+    public bool HasCorners => _corners is not null;
     public string? LayerMap, Preset, Overlay;
     public double? MinFeature, Simplify, SnapDeg, EdgeStroke;
     public bool? Snap45, Underlay;
@@ -63,9 +71,21 @@ internal sealed class PictureFlags
         if (i + 1 >= args.Length) return null;
         string v = args[i + 1];
         int? Bad(string expected) => JsonRun.Fail(CliDiagnostics.PictureBadValue(verb, a, v, expected));
+        // The corners state the scale; a second statement beside them is refused, never ordered.
+        if (a is "--scale" or "--dpi" or "--scale-points" && Mode == ScaleMode.Corners)
+            return Bad("nothing beside --corners, which states the scale already");
 
         switch (a)
         {
+            case "--corners":
+            {
+                if (Mode is not (ScaleMode.Unstated or ScaleMode.Corners)) return Bad("nothing beside another scale flag: the corners state the scale");
+                if (BoardPhotoCorners.Parse(v, out string? why) is not { } corners)
+                    return why is null or BoardPhotoCorners.Shape ? Bad(BoardPhotoCorners.Shape) : JsonRun.Fail(CliDiagnostics.PictureRefused(verb, why));
+                Mode = ScaleMode.Corners;
+                _corners = corners;
+                { LayoutFlags.Add(a); i++; return 0; }
+            }
             case "--overlay": Overlay = v; _common.Add(a); i++; return 0;
             case "--scale":
                 if (v.Equals("auto", StringComparison.OrdinalIgnoreCase)) { Mode = ScaleMode.Auto; LayoutFlags.Add(a); i++; return 0; }
@@ -227,6 +247,8 @@ internal sealed class PictureFlags
         if (Snap45 is { } s45) options = options with { Snap45 = s45 };
         if (Underlay is { } u) options = options with { KeepUnderlay = u };
 
+        if (_corners is not null && region is not null)
+            return (null, JsonRun.Fail(CliDiagnostics.PictureBadValue(verb, "--region", "", "nothing beside --corners: its pixels are the photo's, and the trace reads the rectified picture")));
         var scale = Mode switch
         {
             ScaleMode.Stated => ImageScaleStatement.Stated(_metresPerPixel / f),
@@ -234,12 +256,19 @@ internal sealed class PictureFlags
                                                               new PixelPoint(_points.X1 * f, _points.Y1 * f), _points.Distance),
             _ => ImageScaleStatement.Auto,
         };
-        return (new ImageTraceInput
+        var input = new ImageTraceInput
         {
             Source = source, Technology = tech, TechnologyPath = techPath, Scale = scale, LayerMap = map, Options = options,
-            Kind = kind is null ? null : kind.Kind == DrawingKind.Layout ? kind : kind.Force(DrawingKind.Layout),
+            Kind = kind is null ? null : kind.AsLayout(),
             Scope = region is { } r ? new PixelRect(r.Left * f, r.Top * f, r.Right * f, r.Bottom * f) : null,
-        }, null);
+        };
+        if (_corners is { } corners)
+        {
+            var photo = BoardPhoto.Read(source, corners.Scaled(f));
+            if (!photo.Ok) return (null, JsonRun.Fail(CliDiagnostics.PictureRefused(verb, photo.Refusal!)));
+            input = BoardPhoto.Apply(input, photo);
+        }
+        return (input, null);
     }
 
     /// <summary><c>#rrggbb=&lt;layer&gt;[+&lt;layer&gt;]|drill|outline|silk|background|ignore,…</c> as an edited map — the
@@ -304,7 +333,7 @@ internal sealed class PictureFlags
     /// </summary>
     public int? ScaleGate(string verb, ImageTraceResult trace)
     {
-        if (Mode is ScaleMode.Stated or ScaleMode.Points) return null;
+        if (Mode is ScaleMode.Stated or ScaleMode.Points or ScaleMode.Corners) return null;
         var chosen = trace.Scale;
         if (Mode == ScaleMode.Auto)
         {

@@ -3879,6 +3879,10 @@ namespaces but the entry points, their options and results, `ImageOverlay` and `
 ### 27.1 Flags
 
 `--scale <length>/px` (`25.4um/px`), `--dpi <n>`, `--scale-points x0,y0,x1,y1=<length>` (pixels), `--scale auto`;
+`--corners x,y;x,y;x,y;x,y=<w>x<h>` (IM-13: a photographed board's four corners in pixels, clockwise from its
+top-left, and the rectangle's size with units — the photo is read square by `BoardPhoto` and the size IS the scale, so
+it is refused beside any other scale flag and beside `--region`, whose pixels are the photo's; a picture IM-2 read as
+no drawing is read as a board photo when it is given);
 `--tech <id|path.ctech>` (absent: a new workspace's default technology, written into the target as a `.ctech` of its
 own — `convert`'s rule for every importer; an id is installed the same way, a path is referenced); `--layer-map
 "#rrggbb=<layer>[+<layer>]|drill|outline|silk|background|ignore,…"` (an edited map: each picture colour takes the

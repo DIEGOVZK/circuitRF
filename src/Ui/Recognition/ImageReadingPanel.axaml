@@ -170,6 +170,23 @@
                                            IsVisible="{Binding Scale.DistanceError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                             </StackPanel>
                         </Border>
+                        <!-- Board corners… (IM-13): the rectangle's size, typed with units, beside the bottom-right handle. -->
+                        <Border x:Name="SizeBox" Classes="pill" IsVisible="{Binding Scale.AskingSize}" Padding="8,6">
+                            <StackPanel Spacing="4">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="Size" FontSize="12" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="SizeInput" Text="{Binding Scale.SizeText}" Width="140"
+                                             PlaceholderText="50 mm × 30 mm" KeyDown="OnSizeKey"
+                                             Classes.invalid="{Binding Scale.SizeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    <Button Content="Set" Command="{Binding Scale.ApplyCornersCommand}"/>
+                                    <Button Classes="link" Content="Read as taken" Command="{Binding Scale.RemoveCornersCommand}"
+                                            IsVisible="{Binding Scale.HasCorners}"
+                                            ToolTip.Tip="Forget the corners and read the photo as it was taken."/>
+                                </StackPanel>
+                                <TextBlock Text="{Binding Scale.SizeError}" Classes="error" MaxWidth="320" TextWrapping="Wrap"
+                                           IsVisible="{Binding Scale.SizeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                            </StackPanel>
+                        </Border>
                         <Border x:Name="Z0Box" Classes="pill" IsVisible="{Binding Scale.AskingZ0}" Padding="8,6">
                             <StackPanel Spacing="4">
                                 <StackPanel Orientation="Horizontal" Spacing="6">

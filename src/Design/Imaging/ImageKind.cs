@@ -6,13 +6,17 @@
 // pieces in rows (text). Each threshold is a named constant here with its measured reason in
 // docs/design/image-to-circuit.md §5.2.
 //
+// A photograph is None — unless it is a photo of a BOARD (IM-13, R-im13-1): many colours and smooth gradients, AND large
+// regions in one mask-like hue, AND edges that run in two dominant directions. That reads BoardPhoto, with lower
+// confidence than a drawing ever gets, because three measurements are all a board photo is told apart by.
+//
 // The answer is a SUGGESTION. A caller may force Schematic or Layout (R-im2-3), and a forced read of a None picture is
 // not refused for its kind — only later, if nothing at all is recognised (D16).
 
 namespace CircuitRF.Design.Imaging;
 
-/// <summary>What a picture holds: a schematic, a layout, or no drawing at all.</summary>
-public enum DrawingKind { None, Schematic, Layout }
+/// <summary>What a picture holds: a schematic, a layout, a photograph of a board (IM-13), or no drawing at all.</summary>
+public enum DrawingKind { None, Schematic, Layout, BoardPhoto }
 
 /// <summary>One measured feature and which way it reads.</summary>
 /// <param name="Name">What was measured, in words (<c>filled share</c>, <c>one-width share</c>, …).</param>
@@ -38,8 +42,11 @@ public sealed record ImageKindResult(
         return this with { Kind = kind, Forced = true, Suggested = Suggested ?? Kind, Reason = null };
     }
 
-    /// <summary>The wire spelling: <c>schematic</c>, <c>layout</c> or <c>none</c>.</summary>
+    /// <summary>The wire spelling: <c>schematic</c>, <c>layout</c>, <c>photo</c> or <c>none</c>.</summary>
     public string Name => ImageKind.Name(Kind);
+
+    /// <summary>This reading as a picture to TRACE: a layout or a board photo as read, anything else forced to layout.</summary>
+    public ImageKindResult AsLayout() => Kind is DrawingKind.Layout or DrawingKind.BoardPhoto ? this : Force(DrawingKind.Layout);
 }
 
 public static class ImageKind
@@ -119,10 +126,33 @@ public static class ImageKind
     /// <summary>…and at most this share of the picture's height (or 14 px, whichever is more).</summary>
     public const double TextMaxHeightShare = 0.05;
 
+    // ── A board photo (IM-13, R-im13-1) ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>A mask-like hue: chroma at least this, and not a copper or gold hue (CIELAB 35°–105°).</summary>
+    public const double BoardMaskChroma = 15.0, BoardCopperHueMin = 35.0, BoardCopperHueMax = 105.0;
+
+    /// <summary>The pixels within ± this many degrees of the dominant mask-like hue are the mask.</summary>
+    public const double BoardMaskHueHalfWidth = 30.0;
+
+    /// <summary>The mask holds at least this share of the picture: a board fills most of a photo of it.</summary>
+    public const double BoardMaskShare = 0.2;
+
+    /// <summary>…and its largest connected region at least this share — one board, not scattered foliage.</summary>
+    public const double BoardRegionShare = 0.12;
+
+    /// <summary>The strongest edges run within ± <see cref="BoardEdgeHalfWidthDeg"/> of two directions this share of the
+    /// time. Edges in every direction (a noisy gradient, foliage) score about 0.18; a board seen at a moderate angle
+    /// scores above 0.5.</summary>
+    public const double BoardRectilinearShare = 0.4, BoardEdgeHalfWidthDeg = 8.0;
+
+    /// <summary>The board measurements are taken on a grid of at most this many samples.</summary>
+    public const int BoardSamples = 160_000;
+
     public static string Name(DrawingKind kind) => kind switch
     {
         DrawingKind.Schematic => "schematic",
         DrawingKind.Layout    => "layout",
+        DrawingKind.BoardPhoto => "photo",
         _                     => "none",
     };
 
@@ -166,6 +196,20 @@ public static class ImageKind
         {
             evidence.Add(new("ink share", Round(inkShare), "blank"));
             return None("a blank picture", 1.0, evidence);
+        }
+
+        if (photographic)
+        {
+            var (mask, region, rectilinear) = BoardEvidence(raster);
+            bool board = mask >= BoardMaskShare && region >= BoardRegionShare && rectilinear >= BoardRectilinearShare;
+            evidence.Add(new("mask-hue share", Round(mask), mask >= BoardMaskShare ? "board photo" : "neither"));
+            evidence.Add(new("largest mask region", Round(region), region >= BoardRegionShare ? "board photo" : "neither"));
+            evidence.Add(new("rectilinear edge share", Round(rectilinear), rectilinear >= BoardRectilinearShare ? "board photo" : "neither"));
+            if (board)
+            {
+                double margin = Math.Min(Math.Min(mask / BoardMaskShare, region / BoardRegionShare), rectilinear / BoardRectilinearShare) - 1;
+                return new ImageKindResult(DrawingKind.BoardPhoto, Round(0.55 + 0.2 * Math.Clamp(margin, 0, 1)), null, evidence);
+            }
         }
 
         // Filled share: ink deeper than a stroke of a drawing this size could be.
@@ -251,6 +295,112 @@ public static class ImageKind
 
         static bool Near(byte[] p, int a, int b) =>
             Math.Abs(p[a] - p[b]) <= FlatLevels && Math.Abs(p[a + 1] - p[b + 1]) <= FlatLevels && Math.Abs(p[a + 2] - p[b + 2]) <= FlatLevels;
+    }
+
+    /// <summary>
+    /// R-im13-1's three measurements on a sample grid: the share of the picture in the dominant mask-like hue, the share
+    /// in its largest connected region, and how much of the strongest edges' weight runs along two directions.
+    /// </summary>
+    internal static (double Mask, double Region, double Rectilinear) BoardEvidence(RasterImage img)
+    {
+        int step = Math.Max(1, (int)Math.Ceiling(Math.Sqrt((double)img.Width * img.Height / BoardSamples)));
+        int gw = img.Width / step, gh = img.Height / step;
+        if (gw < 3 || gh < 3) return (0, 0, 0);
+        var hue = new float[gw * gh];
+        var lum = new float[gw * gh];
+        var hist = new double[36];
+        var memo = new Dictionary<int, (float Hue, float Lum)>();
+        for (int y = 0; y < gh; y++)
+            for (int x = 0; x < gw; x++)
+            {
+                int rgb = img.Rgb(x * step + step / 2, y * step + step / 2);
+                if (!memo.TryGetValue(rgb, out var v))
+                {
+                    var lab = CieLab.FromRgb(rgb);
+                    double c = Math.Sqrt(lab.A * lab.A + lab.B * lab.B), h = Math.Atan2(lab.B, lab.A) * 180 / Math.PI;
+                    if (h < 0) h += 360;
+                    bool maskLike = c >= BoardMaskChroma && !(h >= BoardCopperHueMin && h <= BoardCopperHueMax);
+                    memo[rgb] = v = (maskLike ? (float)h : -1f, (float)lab.L);
+                }
+                int i = y * gw + x;
+                hue[i] = v.Hue;
+                lum[i] = v.Lum;
+                if (v.Hue >= 0) hist[Math.Min(35, (int)(v.Hue / 10))]++;
+            }
+
+        int peak = 0;
+        double best = -1;
+        for (int b = 0; b < 36; b++)
+        {
+            double s = hist[(b + 35) % 36] + hist[b] + hist[(b + 1) % 36];
+            if (s > best) { best = s; peak = b; }
+        }
+        double centre = peak * 10 + 5;
+        var maskImg = new BinaryImage(gw, gh);
+        long mask = 0;
+        for (int i = 0; i < hue.Length; i++)
+        {
+            if (hue[i] < 0) continue;
+            double d = Math.Abs(hue[i] - centre) % 360;
+            if ((d > 180 ? 360 - d : d) > BoardMaskHueHalfWidth) continue;
+            maskImg.Pixels[i] = 1;
+            mask++;
+        }
+        double total = (double)gw * gh;
+        int largest = mask == 0 ? 0 : Components.Label(maskImg).Components.Max(c => c.Area);
+
+        // Edge directions, mod 180°, weighted by strength, over the strongest tenth of the gradients — on the luminance
+        // smoothed 3 × 3 first, so a sensor's grain does not crowd a board's edges out of that tenth.
+        var smooth = new float[lum.Length];
+        for (int y = 0; y < gh; y++)
+            for (int x = 0; x < gw; x++)
+            {
+                float sum = 0;
+                int count = 0;
+                for (int dy = -1; dy <= 1; dy++)
+                    for (int dx = -1; dx <= 1; dx++)
+                    {
+                        int xx = x + dx, yy = y + dy;
+                        if ((uint)xx >= (uint)gw || (uint)yy >= (uint)gh) continue;
+                        sum += lum[yy * gw + xx];
+                        count++;
+                    }
+                smooth[y * gw + x] = sum / count;
+            }
+        lum = smooth;
+        var mags = new List<(double Mag, double Angle)>(hue.Length);
+        for (int y = 1; y < gh - 1; y++)
+            for (int x = 1; x < gw - 1; x++)
+            {
+                int i = y * gw + x;
+                double gx = lum[i + 1] - lum[i - 1], gy = lum[i + gw] - lum[i - gw];
+                double m = gx * gx + gy * gy;
+                if (m <= 0) continue;
+                double a = Math.Atan2(gy, gx) * 180 / Math.PI;
+                mags.Add((m, ((a % 180) + 180) % 180));
+            }
+        if (mags.Count < 16) return (mask / total, largest / total, 0);
+        var strong = mags.OrderByDescending(m => m.Mag).ThenBy(m => m.Angle).Take(Math.Max(16, mags.Count / 10)).ToList();
+        var dir = new double[90];   // 2° bins
+        double weight = 0;
+        foreach (var (m, a) in strong)
+        {
+            double wgt = Math.Sqrt(m);
+            dir[Math.Min(89, (int)(a / 2))] += wgt;
+            weight += wgt;
+        }
+        double Window(int centreBin)
+        {
+            double s = 0;
+            int half = (int)Math.Round(BoardEdgeHalfWidthDeg / 2);
+            for (int d = -half; d <= half; d++) s += dir[((centreBin + d) % 90 + 90) % 90];
+            return s;
+        }
+        int first = Enumerable.Range(0, 90).MaxBy(Window);
+        // The second direction at least 30° from the first (a rectangle seen at an angle is not square on the picture).
+        int second = Enumerable.Range(0, 90).Where(b => Math.Min(Math.Abs(b - first), 90 - Math.Abs(b - first)) >= 15).MaxBy(Window);
+        double both = Window(first) + Window(second);
+        return (mask / total, largest / total, weight > 0 ? Math.Min(1, both / weight) : 0);
     }
 
     /// <summary>The share of the ink in text-sized components that sit beside another of a like height on one row —

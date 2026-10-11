@@ -85,6 +85,37 @@ public static class DocImageRecognitionFixtures
         return Scene(vm);
     }
 
+    /// <summary>A photograph of a board, Board corners… armed: the four handles on the board's corners and its size typed
+    /// beside the last one (IM-13).</summary>
+    public static FigureScene BoardCorners()
+    {
+        var vm = Open(BoardPhoto(), makeSchematic: false, out _);
+        vm.Recognition.GetAwaiter().GetResult();
+        if (vm.ReadKind?.Kind != DrawingKind.BoardPhoto)
+            throw new InvalidOperationException($"The board photo was read as {vm.ReadKind?.Kind} "
+                + $"({string.Join("; ", vm.ReadKind?.Evidence.Select(e => $"{e.Name} {e.Value}") ?? [])}), so the figure would not show a board photo.");
+        vm.Scale.SelectedChoice = vm.Scale.Choices.First(c => c.Kind == ImageScaleChoiceKind.Corners);
+        for (int k = 0; k < 4; k++) vm.Scale.MoveCorner(k, PhotoCorners[k]);
+        vm.Scale.SizeText = "60 mm × 40 mm";
+        return Scene(vm);
+    }
+
+    /// <summary>The same photo read square on its corners: the rectified picture, its copper traced over it, the classes
+    /// mapped to layers on the right (IM-13).</summary>
+    public static FigureScene BoardPhotoRead()
+    {
+        var vm = Open(BoardPhoto(), makeSchematic: false, out _);
+        vm.Recognition.GetAwaiter().GetResult();
+        vm.Scale.SelectedChoice = vm.Scale.Choices.First(c => c.Kind == ImageScaleChoiceKind.Corners);
+        for (int k = 0; k < 4; k++) vm.Scale.MoveCorner(k, PhotoCorners[k]);
+        vm.Scale.SizeText = "60 mm × 40 mm";
+        vm.Scale.ApplyCornersCommand.Execute(null);
+        vm.Recognition.GetAwaiter().GetResult();
+        if (vm.Scale.ValueText == "—" || vm.HasFailure)
+            throw new InvalidOperationException($"The board photo did not read square ({vm.FailureText}{vm.Scale.Error}).");
+        return Scene(vm);
+    }
+
     /// <summary>A photograph-like picture: dimmed, one sentence, the two links.</summary>
     public static FigureScene NoDrawing()
     {
@@ -199,6 +230,60 @@ public static class DocImageRecognitionFixtures
                 c.DrawPoint(x, y, grain);
             }
     }, "photo.png");
+
+    // A 60 × 40 mm board seen at an angle: board mm → photo px through a fixed perspective.
+    private static readonly SKMatrix PhotoMatrix = new(12f, 1.5f, 120f, -0.8f, 11f, 90f, 0.004f, -0.002f, 1f);
+
+    private static readonly PixelPoint[] PhotoCorners =
+        [Corner(0, 0), Corner(60, 0), Corner(60, 40), Corner(0, 40)];
+
+    private static PixelPoint Corner(float x, float y)
+    {
+        var p = PhotoMatrix.MapPoint(x, y);
+        return new PixelPoint(p.X, p.Y);
+    }
+
+    /// <summary>A phone photo of a small board on a bench: green mask, a line under it with gold pads at its ends, a
+    /// legend box, one part — lit unevenly and warm, with grain and one glint on the line. The grain is a fixed sequence,
+    /// so every run draws the same pixels.</summary>
+    private static ImageSource BoardPhoto() => Png(900, 650, c =>
+    {
+        c.Clear(new SKColor(140, 135, 128));
+        c.Save();
+        c.SetMatrix(PhotoMatrix);
+        using (var mask = Fill(new SKColor(30, 95, 55))) c.DrawRect(0, 0, 60, 40, mask);
+        using (var under = Fill(new SKColor(70, 150, 85)))
+        {
+            c.DrawRect(8, 19.15f, 44, 1.7f, under);
+            c.DrawRect(30, 20, 1.7f, 12, under);
+        }
+        using (var gold = Fill(new SKColor(200, 160, 60)))
+        {
+            c.DrawRect(4, 18.5f, 5, 3, gold);
+            c.DrawRect(51, 18.5f, 5, 3, gold);
+            c.DrawRect(29.35f, 31, 3, 4, gold);
+        }
+        using (var silk = new SKPaint { Color = new SKColor(225, 225, 225), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 0.2f })
+            c.DrawRect(12, 26, 10, 6, silk);
+        using (var body = Fill(new SKColor(25, 25, 25))) c.DrawRect(30, 6, 3.2f, 1.6f, body);
+        c.Restore();
+
+        // Light falling off to the left, warm, and grain; then the glint.
+        using var light = SKShader.CreateLinearGradient(new SKPoint(0, 0), new SKPoint(900, 0),
+            [new SKColor(0, 0, 0, 60), new SKColor(255, 230, 200, 30)], SKShaderTileMode.Clamp);
+        using (var paint = new SKPaint { Shader = light }) c.DrawRect(0, 0, 900, 650, paint);
+        uint seed = 0x9E3779B9;
+        using var grain = new SKPaint { IsAntialias = false };
+        for (int y = 0; y < 650; y++)
+            for (int x = 0; x < 900; x++)
+            {
+                seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5;
+                grain.Color = (seed & 1) == 0 ? new SKColor(0, 0, 0, (byte)(seed % 14)) : new SKColor(255, 255, 255, (byte)(seed % 14));
+                c.DrawPoint(x, y, grain);
+            }
+        var glint = PhotoMatrix.MapPoint(42, 20);
+        using (var white = Fill(SKColors.White)) c.DrawCircle(glint.X, glint.Y, 12, white);
+    }, "bench-photo.jpg");
 
     private static SKPaint Fill(SKColor colour) => new() { Color = colour, IsAntialias = true, Style = SKPaintStyle.Fill };
 

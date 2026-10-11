@@ -127,6 +127,8 @@ public sealed class ImageRecognizeCliVerbTests(ITestOutputHelper output) : IDisp
             "ImageTrace", "ImageTraceInput", "ImageTraceOptions", "ImageTraceTarget", "ImageTraceResult", "ImageTraceRun",
             "ImageScaleStatement", "ImageScaleCandidate", "ImageScale", "PixelPoint", "PixelRect",
             "ImageLayerMap", "ImageLayerRow", "ImageLayerRole", "ImageTracePresets",
+            // IM-13's: a board photo put square on four corners.
+            "BoardPhoto", "BoardPhotoCorners", "BoardPhotoReading",
             // IM-4's.
             "ImageRecognition", "ImageRecognitionInput", "ImageRecognitionTarget", "ImageRecognitionRunOptions",
             "ImageRecognitionCircuit", "ImageRecognitionRun",
@@ -135,9 +137,9 @@ public sealed class ImageRecognizeCliVerbTests(ITestOutputHelper output) : IDisp
             "SchematicImageTarget", "SchematicImageRunOptions", "SchematicImageRun", "SchematicArrange", "CrossingRule",
             "ConnectionOverride", "PixelBox",
         ];
-        // Names these namespaces share with types elsewhere that src/Cli rightly uses (a component, a fit), and with an
-        // option's member (SchematicImageOptions.LineArt, set in an initializer).
-        string[] elsewhere = ["Component", "Components", "Fit", "LineArt"];
+        // Names these namespaces share with types elsewhere that src/Cli rightly uses (a component, a fit, a 3D view's
+        // Perspective projection), and with an option's member (SchematicImageOptions.LineArt, set in an initializer).
+        string[] elsewhere = ["Component", "Components", "Fit", "LineArt", "Perspective"];
         var declared = new[] { "Imaging", Path.Combine("Layout", "Recognition", "Image"), Path.Combine("Schematic", "Recognition") }
             .SelectMany(d => Directory.GetFiles(Path.Combine(repo, "src", "Design", d), "*.cs"))
             .SelectMany(f => Regex.Matches(File.ReadAllText(f),

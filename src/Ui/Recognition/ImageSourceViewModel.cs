@@ -49,7 +49,7 @@ public sealed record ImageTechnologyChoice(string Name, string Path)
 internal sealed record ImagePreviewDetail(
     ImageKindResult Kind, Technology? Technology, string? TechnologyPath, ImageTraceResult? Trace,
     RecognitionResult? Recognition, ImageOverlay Overlay, IReadOnlyList<ImageTracePreset> MatchingPresets,
-    SchematicImageResult? Schematic = null);
+    SchematicImageResult? Schematic = null, BoardPhotoReading? Photo = null);
 
 /// <summary>The dialog, on a picture source.</summary>
 public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
@@ -68,6 +68,9 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     private ImageLayerMap? _editedMap;
     private ImageTraceResult? _trace;
     private Technology? _technology;
+
+    /// <summary>The photo read square on the scale row's corners (IM-13), once read; null while the photo is read as taken.</summary>
+    private BoardPhotoReading? _photo;
     private string? _defaultName;
     private string? _declinedPreset;
     private bool _syncingSelection;
@@ -111,8 +114,18 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         _windowText = lineArt.Window.ToString(CultureInfo.InvariantCulture);
 
         Scale.Changed += ScheduleRecognition;
+        Scale.PictureSize = () => Source is { } s ? (s.Raster.Width, s.Raster.Height) : null;
+        Scale.CornersChanged += () =>
+        {
+            // Every pixel coordinate held so far is the other picture's.
+            _photo = null;
+            ScopeRect = null;
+            OnPropertyChanged(nameof(Raster));
+            ScheduleRecognition();
+        };
         Scale.PropertyChanged += (_, e) =>
         {
+            if (e.PropertyName == nameof(ImageScaleViewModel.Tool)) OnPropertyChanged(nameof(Raster));
             if (e.PropertyName is nameof(ImageScaleViewModel.NeedsScale) or nameof(ImageScaleViewModel.Tool)
                 or nameof(ImageScaleViewModel.ToolPrompt))
             {
@@ -141,7 +154,12 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
 
     public bool HasPicture => Source is not null;
     public bool IsEmpty => Source is null;
-    public RasterImage? Raster => Source?.Raster;
+    /// <summary>The picture the canvas shows and every click is made on: a board photo read square on its corners, the
+    /// photo as taken while its corners are being set (or when none are), else the picture.</summary>
+    public RasterImage? Raster =>
+        Scale.Tool != ImageMeasureTool.Corners && _photo is { Ok: true } p && ReferenceEquals(p.Corners, Scale.AppliedCorners)
+            ? p.Rectified!.Raster
+            : Source?.Raster;
 
     /// <summary>The file name, or <i>Pasted picture</i>.</summary>
     public string SourceName => Source is null ? ""
@@ -210,6 +228,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     {
         CancelRecognition();
         _trace = null;
+        _photo = null;
         _editedMap = null;
         _editedColours.Clear();
         _declinedPreset = null;
@@ -276,6 +295,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         {
             DrawingKind.Layout => "Auto (layout)",
             DrawingKind.Schematic => "Auto (schematic drawing)",
+            DrawingKind.BoardPhoto => "Auto (board photo)",
             _ => "Auto (no drawing)",
         };
 
@@ -372,7 +392,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     }
 
     /// <summary>The picture is read as a layout — the scale, the layers and the technology apply.</summary>
-    public bool IsLayoutPicture => HasPicture && EffectiveKind == DrawingKind.Layout;
+    public bool IsLayoutPicture => HasPicture && EffectiveKind is DrawingKind.Layout or DrawingKind.BoardPhoto;
 
     /// <summary>The picture is read as a schematic — the line-art options apply.</summary>
     public bool IsSchematicPicture => HasPicture && EffectiveKind == DrawingKind.Schematic;
@@ -782,19 +802,24 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         }
     }
 
-    /// <summary>The trace's input — the CLI's, field for field (D2).</summary>
-    public ImageTraceInput BuildTraceInput(Technology? technology, ImageKindResult? kind) => new()
+    /// <summary>The trace's input — the CLI's, field for field (D2). A board photo read square on its corners is traced
+    /// as the CLI's --corners traces it (BoardPhoto.Apply).</summary>
+    public ImageTraceInput BuildTraceInput(Technology? technology, ImageKindResult? kind)
     {
-        Source = Source!,
-        Technology = technology,
-        TechnologyPath = Technology?.Path,
-        Scale = Scale.Statement,
-        LayerMap = _editedMap,
-        Scope = ScopeRect,
-        Options = BuildTraceOptions(),
-        Kind = kind is null ? null : kind.Kind == DrawingKind.Layout ? kind : kind.Force(DrawingKind.Layout),
-        TargetIsPlacedLayout = IntoPlacedLayout,
-    };
+        var input = new ImageTraceInput
+        {
+            Source = Source!,
+            Technology = technology,
+            TechnologyPath = Technology?.Path,
+            Scale = Scale.Statement,
+            LayerMap = _editedMap,
+            Scope = ScopeRect,
+            Options = BuildTraceOptions(),
+            Kind = kind is null ? null : kind.AsLayout(),
+            TargetIsPlacedLayout = IntoPlacedLayout,
+        };
+        return _photo is { Ok: true } p && ReferenceEquals(p.Corners, Scale.AppliedCorners) ? BoardPhoto.Apply(input, p) : input;
+    }
 
     /// <summary>The recognition's input over the trace's — the CLI's, field for field.</summary>
     public ImageRecognitionInput BuildRecognitionInput(ImageTraceInput trace) => new()
@@ -827,6 +852,9 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         var probe = BuildTraceInput(null, null);
         var recognitionProbe = BuildRecognitionInput(probe);
         var schematicProbe = BuildSchematicInput(null, null);
+        // A board photo is read square once per set of corners, in the background with the rest of the reading.
+        var corners = Scale.AppliedCorners;
+        var photoRead = _photo is { } readBefore && ReferenceEquals(readBefore.Corners, corners) ? readBefore : null;
 
         return control =>
         {
@@ -845,7 +873,13 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             }
 
             var tech = cached ? cachedTech : techChoice is null ? null : _runner.LoadTechnology(techChoice.Path);
-            var input = probe with { Technology = tech, Kind = kind.Kind == DrawingKind.Layout ? kind : kind.Force(DrawingKind.Layout) };
+            var input = probe with { Technology = tech, Kind = kind.AsLayout() };
+            var photo = corners is null ? null : photoRead ?? BoardPhoto.Read(source, corners);
+            control.Token.ThrowIfCancellationRequested();
+            if (photo is { Ok: false })
+                return new RecognitionPreview(null, empty, photo.Refusal,
+                    new ImagePreviewDetail(read, tech, techChoice?.Path, null, null, ImageOverlay.Empty, [], Photo: photo));
+            if (photo is not null && input.Photo is null) input = BoardPhoto.Apply(input, photo);
             ImageTraceResult trace;
             RecognitionResult? recognition = null;
             RecognitionPreview preview;
@@ -864,7 +898,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             control.Token.ThrowIfCancellationRequested();
             var overlay = ImageOverlay.Build(trace, recognition, tech);
             var matching = trace.Clusters is { } clusters ? ImageTracePresets.Matching(clusters, presets) : [];
-            return preview with { Detail = new ImagePreviewDetail(read, tech, techChoice?.Path, trace, recognition, overlay, matching) };
+            return preview with { Detail = new ImagePreviewDetail(read, tech, techChoice?.Path, trace, recognition, overlay, matching, Photo: photo) };
         };
     }
 
@@ -901,6 +935,20 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             // Read as a schematic and found no circuit: perhaps it is a layout drawn in lines (R-im12-3).
             if (preview.Refusal is { } refused) { SetFailure(refused, offersKind: NothingToRead(refused)); Status = ""; }
             RefreshLearnState();
+            RefreshCreate();
+            return;
+        }
+
+        if (!ReferenceEquals(_photo, d.Photo))
+        {
+            _photo = d.Photo;
+            OnPropertyChanged(nameof(Raster));
+        }
+        if (d.Photo is { Ok: false } refusedPhoto)
+        {
+            Scale.Update(null, true, refusedPhoto.Refusal);
+            LayerRows.Clear();
+            Overlay = ImageOverlay.Empty;
             RefreshCreate();
             return;
         }

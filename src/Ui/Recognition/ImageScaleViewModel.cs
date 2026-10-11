@@ -4,6 +4,11 @@
 // other piece of evidence it found, one click from being chosen instead; with nothing usable the row asks, and Create
 // waits. A choice here is a STATEMENT handed to the trace (ImageScaleStatement), never a number this file computes: the
 // two-point distance is read by ImageScale.FromTwoPoints, the impedance by the trace through the technology.
+//
+// Board corners… (IM-13, R-im13-2) is the one tool that changes the PICTURE as well as the scale: four handles dragged
+// onto a photographed board's corners (or any rectangle of known size) and the rectangle's size typed with units. The
+// photo is then read square by BoardPhoto, so while the tool is armed the canvas shows the photo as taken, and once the
+// corners are set it shows the rectified picture every later click is made on.
 
 using System;
 using System.Collections.ObjectModel;
@@ -11,6 +16,8 @@ using System.Globalization;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System.Collections.Generic;
+using CircuitRF.Design.Imaging;
 using CircuitRF.Design.Layout.Recognition.Image;
 
 namespace CircuitRF.Ui.Recognition;
@@ -29,6 +36,9 @@ public enum ImageScaleChoiceKind
 
     /// <summary>Line impedance… — asks for a click on a trace.</summary>
     Impedance,
+
+    /// <summary>Board corners… — four handles on a photographed board and its size (IM-13).</summary>
+    Corners,
 }
 
 /// <summary>One row of the scale combo.</summary>
@@ -38,7 +48,7 @@ public sealed record ImageScaleChoice(string Label, ImageScaleChoiceKind Kind, I
 }
 
 /// <summary>The canvas tool the scale row has armed.</summary>
-public enum ImageMeasureTool { None, TwoPoints, Impedance }
+public enum ImageMeasureTool { None, TwoPoints, Impedance, Corners }
 
 public sealed partial class ImageScaleViewModel : ObservableObject
 {
@@ -85,6 +95,24 @@ public sealed partial class ImageScaleViewModel : ObservableObject
     [ObservableProperty] private string _z0Text = "50 Ω";
     [ObservableProperty] private string _z0Error = "";
 
+    /// <summary>The four handles while Board corners… is armed, picture pixels of the photo as taken, clockwise from the
+    /// top-left. Replaced whole on every drag, so the canvas redraws.</summary>
+    [ObservableProperty] private IReadOnlyList<PixelPoint>? _cornerPoints;
+    [ObservableProperty] private string _sizeText = "";
+    [ObservableProperty] private string _sizeError = "";
+
+    /// <summary>The corners the photo is read square on, or null — the photo is read as taken.</summary>
+    public BoardPhotoCorners? AppliedCorners { get; private set; }
+
+    /// <summary>Raised when the corners are set or removed — the dialog reads the photo again, square or as taken.</summary>
+    public event Action? CornersChanged;
+
+    /// <summary>The photo's size in pixels, for the handles' first places. Set by the dialog.</summary>
+    public Func<(int W, int H)?>? PictureSize { get; set; }
+
+    public bool AskingSize => Tool == ImageMeasureTool.Corners;
+    public bool HasCorners => AppliedCorners is not null;
+
     /// <summary>What the canvas says while a tool is armed.</summary>
     public string ToolPrompt => Tool switch
     {
@@ -93,19 +121,23 @@ public sealed partial class ImageScaleViewModel : ObservableObject
         ImageMeasureTool.TwoPoints => "Type the distance between the points.",
         ImageMeasureTool.Impedance when !AskingZ0 => "Click a trace whose impedance you know.",
         ImageMeasureTool.Impedance => "Type the trace's impedance.",
+        ImageMeasureTool.Corners => "Drag the handles onto the board's corners, clockwise from its top-left, and type its size.",
         _ => "",
     };
 
-    /// <summary>Where the inline box sits: the second point, or the trace clicked.</summary>
-    public PixelPoint? PromptAt => AskingDistance ? PointB : AskingZ0 ? PointA : null;
+    /// <summary>Where the inline box sits: the second point, the trace clicked, or the bottom-right handle.</summary>
+    public PixelPoint? PromptAt => AskingDistance ? PointB : AskingZ0 ? PointA
+        : Tool == ImageMeasureTool.Corners && CornerPoints is { Count: 4 } c ? c[2] : null;
 
     public bool HasTool => Tool != ImageMeasureTool.None;
 
     partial void OnToolChanged(ImageMeasureTool value)
     {
         OnPropertyChanged(nameof(HasTool));
+        OnPropertyChanged(nameof(AskingSize));
         RefreshPrompt();
     }
+    partial void OnCornerPointsChanged(IReadOnlyList<PixelPoint>? value) => RefreshPrompt();
     partial void OnPointAChanged(PixelPoint? value) => RefreshPrompt();
     partial void OnPointBChanged(PixelPoint? value) => RefreshPrompt();
     partial void OnAskingDistanceChanged(bool value) => RefreshPrompt();
@@ -129,6 +161,10 @@ public sealed partial class ImageScaleViewModel : ObservableObject
             case ImageScaleChoiceKind.Impedance:
                 _beforeTool = oldValue;
                 Arm(ImageMeasureTool.Impedance);
+                break;
+            case ImageScaleChoiceKind.Corners:
+                _beforeTool = oldValue;
+                ArmCorners();
                 break;
             case ImageScaleChoiceKind.Evidence when newValue.Candidate is { } c:
                 Disarm();
@@ -155,7 +191,70 @@ public sealed partial class ImageScaleViewModel : ObservableObject
     {
         Tool = ImageMeasureTool.None;
         AskingDistance = AskingZ0 = false;
-        DistanceError = Z0Error = "";
+        DistanceError = Z0Error = SizeError = "";
+    }
+
+    /// <summary>The handles where the corners were last set, else a tenth of the way in from the photo's corners.</summary>
+    private void ArmCorners()
+    {
+        Arm(ImageMeasureTool.Corners);
+        if (AppliedCorners is { } set)
+        {
+            CornerPoints = set.Points;
+            SizeText = $"{set.Width} × {set.Height}";
+            return;
+        }
+        var (w, h) = PictureSize?.Invoke() ?? (100, 100);
+        double mx = 0.1 * w, my = 0.1 * h;
+        CornerPoints = [new(mx, my), new(w - mx, my), new(w - mx, h - my), new(mx, h - my)];
+    }
+
+    /// <summary>A handle dragged on the canvas, picture pixels of the photo as taken.</summary>
+    public void MoveCorner(int index, PixelPoint to)
+    {
+        if (Tool != ImageMeasureTool.Corners || CornerPoints is not { Count: 4 } c || (uint)index >= 4) return;
+        var moved = c.ToArray();
+        moved[index] = to;
+        CornerPoints = moved;
+    }
+
+    /// <summary>The inline box's size, <c>50 mm × 30 mm</c>: each side needs a unit (D6), the corners must go clockwise
+    /// around a four-sided shape — both refused in place — and then the photo is read square on them.</summary>
+    [RelayCommand]
+    private void ApplyCorners()
+    {
+        if (CornerPoints is not { Count: 4 } points) return;
+        var sides = SizeText.Split(['x', 'X', '×'], StringSplitOptions.TrimEntries);
+        if (sides.Length != 2 || sides[0].Length == 0 || sides[1].Length == 0)
+        {
+            SizeError = $"'{SizeText.Trim()}' is not a size: give the width and the height, each with its unit (50 mm × 30 mm).";
+            return;
+        }
+        var corners = new BoardPhotoCorners(points, sides[0], sides[1]);
+        if (corners.SizeMetres(out string? why) is null) { SizeError = why ?? ""; return; }
+        if (!Perspective.IsConvexQuad([.. points.Select(p => (p.X, p.Y))]))
+        {
+            SizeError = "The handles do not make a four-sided shape: drag them in order around the rectangle, none crossing.";
+            return;
+        }
+        Disarm();
+        AppliedCorners = corners;
+        Statement = ImageScaleStatement.Auto;
+        Error = "";
+        OnPropertyChanged(nameof(HasCorners));
+        CornersChanged?.Invoke();
+    }
+
+    /// <summary>The photo read as taken again.</summary>
+    [RelayCommand]
+    private void RemoveCorners()
+    {
+        Disarm();
+        if (AppliedCorners is null) return;
+        AppliedCorners = null;
+        Statement = ImageScaleStatement.Auto;
+        OnPropertyChanged(nameof(HasCorners));
+        CornersChanged?.Invoke();
     }
 
     /// <summary>A click on the canvas while a tool is armed. False when no tool is armed (the click is the canvas's).</summary>
@@ -174,7 +273,7 @@ public sealed partial class ImageScaleViewModel : ObservableObject
                 PointA = p;
                 AskingZ0 = true;
                 return true;
-            case ImageMeasureTool.TwoPoints:
+            case ImageMeasureTool.TwoPoints or ImageMeasureTool.Corners:
                 return true;
             default:
                 return false;
@@ -234,6 +333,10 @@ public sealed partial class ImageScaleViewModel : ObservableObject
     {
         Disarm();
         Statement = ImageScaleStatement.Auto;
+        AppliedCorners = null;
+        CornerPoints = null;
+        SizeText = "";
+        OnPropertyChanged(nameof(HasCorners));
         Error = "";
         Update(null, false);
     }
@@ -254,8 +357,7 @@ public sealed partial class ImageScaleViewModel : ObservableObject
             {
                 foreach (var c in trace.ScaleCandidates)
                 {
-                    var choice = new ImageScaleChoice(Label(c), c.Kind is ImageScaleKind.Stated or ImageScaleKind.TwoPoints or ImageScaleKind.Impedance
-                        ? ImageScaleChoiceKind.Statement : ImageScaleChoiceKind.Evidence, c);
+                    var choice = new ImageScaleChoice(Label(c), c.IsStatement ? ImageScaleChoiceKind.Statement : ImageScaleChoiceKind.Evidence, c);
                     Choices.Add(choice);
                     if (trace.Scale is { } chosen && ReferenceEquals(chosen, c)) selected = choice;
                 }
@@ -263,8 +365,10 @@ public sealed partial class ImageScaleViewModel : ObservableObject
             }
             Choices.Add(new ImageScaleChoice("Two points…", ImageScaleChoiceKind.TwoPoints));
             Choices.Add(new ImageScaleChoice("Line impedance…", ImageScaleChoiceKind.Impedance));
-            if (Tool == ImageMeasureTool.TwoPoints) selected = Choices[^2];
-            else if (Tool == ImageMeasureTool.Impedance) selected = Choices[^1];
+            Choices.Add(new ImageScaleChoice("Board corners…", ImageScaleChoiceKind.Corners));
+            if (Tool == ImageMeasureTool.TwoPoints) selected = Choices[^3];
+            else if (Tool == ImageMeasureTool.Impedance) selected = Choices[^2];
+            else if (Tool == ImageMeasureTool.Corners) selected = Choices[^1];
             SelectedChoice = selected;
 
             ValueText = trace?.Scale?.Display ?? "—";
@@ -284,6 +388,7 @@ public sealed partial class ImageScaleViewModel : ObservableObject
             ? $"File resolution {m.Groups[1].Value} dpi" : $"File resolution ({c.Display})",
         ImageScaleKind.TwoPoints => $"Two points — {c.Display}",
         ImageScaleKind.Impedance => $"Line impedance — {c.Display}",
+        ImageScaleKind.Corners => $"Board corners — {c.Display}",
         _ => $"Stated — {c.Display}",
     };
 

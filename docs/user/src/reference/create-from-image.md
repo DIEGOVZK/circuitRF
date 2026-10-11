@@ -90,6 +90,9 @@ measured. **Schematic** and **Layout** override it; a picture Auto reads wrongly
 
 A sparse board of one trace width can look to Auto like a schematic drawing. If it does, choose **Layout**.
 
+A photograph of a board reads as **Auto (board photo)**, with a less certain dot than a drawing gets: it is read as a
+layout, and is best set square on its corners first &mdash; see [Photographs of boards](#photos).
+
 ## What to make of it {#make}
 
 **Make** is **Schematic** or **Layout**. A schematic picture makes a schematic only: draw the schematic first, then use
@@ -189,6 +192,7 @@ combo beside it lists every piece of evidence found:
 | **From parts** &mdash; chip land patterns that agree on one scale, at least three of them | Yes |
 | **Two points…** &mdash; click two points on the picture, then type the distance between them | You choose it |
 | **Line impedance…** &mdash; click a trace and type its Z0; the technology gives its width | You choose it |
+| **Board corners…** &mdash; drag four handles onto a photographed board's corners and type its size | You choose it |
 | **File resolution** &mdash; the dots per inch the file states | Never: a screenshot's resolution describes a screen |
 
 The distance needs its unit &mdash; `1.6 mm`, `62 mil`, `500 um`. A bare number is refused where you typed it: it could
@@ -198,6 +202,39 @@ be any of them. Beside the value, the resolution line says how finely the pictur
 With no usable evidence, the row is highlighted, the picture asks *Set the scale: Two points…*, and **Create** waits.
 
 {{ui: image-dialog-needs-scale}}
+
+## Photographs of boards {#photos}
+
+A phone photo of a board is taken at an angle, in uneven light, with most of the copper under the solder mask. Choose
+**Board corners…** in the Scale combo: four handles appear on the photo as taken. Drag them onto the board's corners,
+clockwise from its top-left &mdash; or onto any rectangle whose size you know, such as a part or a connector's outline
+&mdash; type its size beside the last handle (`50 mm × 30 mm`, each side with its unit), and press **Set**. The first
+handle to the second is the width.
+
+{{ui: image-dialog-board-corners}}
+
+The photo is then read square: the picture shows the rectified board, the rectangle's size is the scale, and the light
+is evened out across it. Its pixels are read as six classes, each a row under **Layers** in a fixed colour, so a preset
+saved from one board photo applies to the next:
+
+| Class | Read as, by default |
+|---|---|
+| Off the board | Background |
+| Mask | Background |
+| Copper under the mask &mdash; the mask's own colour, lighter | Top copper |
+| Exposed copper &mdash; gold, copper or tin | Top copper |
+| Silkscreen | Silkscreen |
+| A part's body | Ignore |
+
+Glare &mdash; a white glint &mdash; is filled from the surface around it, so a line running under it stays one line.
+A part's body hides its pads: each one is counted in the report and not read. The report also gives how far each
+corner of the rectangle lies from the corner the photo shows there, in µm; a large one means a handle is off its
+corner. **Read as taken**, beside the size, puts the photo back as it was.
+
+{{ui: image-dialog-board-photo}}
+
+Widths read from a photo are good enough to start a schematic from, not to trust for impedance: a line's Z0 from its
+photographed width is an estimate.
 
 ## Layers and presets {#layers}
 
@@ -251,7 +288,7 @@ checked or meshed. Clear **Keep the source picture under the result** to leave i
 | A layout drawn by a program &mdash; a board viewer, a layout editor, a die plot, a figure | **Good.** Flat colours and sharp edges trace to within half a pixel, and the circuit is then read from the copper exactly as from artwork. |
 | A schematic drawn by a program &mdash; a datasheet circuit, another tool's screenshot, a circuitRF picture | **Good wiring and symbols, most values.** Values read when the type is clean and regular; one that does not read becomes a variable to tune. |
 | A picture saved as a JPEG, turned slightly, or speckled | **Good**, a little less exactly: compression smudges colour edges by about a pixel. |
-| A photograph of a real board | **Poor**: perspective, glare and solder mask hide the copper. |
+| A photograph of a real board, set square on its corners | **Partial**: lines and pads come back, fine detail does not, and pads under parts are not read. |
 | A hand-drawn schematic | **Not a goal.** It may read if it is neat. |
 
 ## Getting a good picture {#good-picture}
@@ -303,7 +340,8 @@ disabled, and its tooltip is that sentence.
 ## What it does not read {#limits}
 
 - **Hand-drawn schematics** are not a goal; a neat one may read.
-- **Photographs** of boards and of printed pages.
+- **Photographs** of printed pages, of a board's underside aligned to its top, and X-ray pictures. A photograph of a
+  board's top reads its lines and pads only once set square on its corners.
 - **Serif and script type**, and type that is bold, very small or slanted at a small size. A value printed in such type
   becomes a variable or, rarely, reads wrong: check values against the picture.
 - **A value printed far from its part**, other than on the line under its designator, may be given to the part nearest

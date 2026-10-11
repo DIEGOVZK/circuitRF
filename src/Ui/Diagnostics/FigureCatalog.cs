@@ -867,6 +867,16 @@ public static class FigureCatalog
             "The Schematic from Image example's schematic picture, read: wires, symbols and words drawn over it, "
           + "the parts table filled, and the inductor whose value the picture leaves off selected — a variable to tune."),
 
+        new("image-dialog-board-corners", DocImageRecognitionFixtures.BoardCorners, 1320, 846,
+            WindowFrame.Titled("Create Layout from Image — bench-photo.jpg"),
+            "A phone photo of a board with Board corners… chosen: the four handles dragged onto the board's corners, "
+          + "clockwise from its top-left, and its size typed beside the last one."),
+
+        new("image-dialog-board-photo", DocImageRecognitionFixtures.BoardPhotoRead, 1320, 846,
+            WindowFrame.Titled("Create Layout from Image — bench-photo.jpg"),
+            "The same photo read square on its corners: the rectified picture with its copper traced over it — the line "
+          + "under the mask and its exposed pads both on the top copper — and the photo's classes mapped on the right."),
+
         new("image-dialog-no-drawing", DocImageRecognitionFixtures.NoDrawing, 1320, 846,
             WindowFrame.Titled("Create Schematic from Image — photo.png"),
             "A picture with no drawing in it: shown dimmed, with the one sentence that says why and the two "
