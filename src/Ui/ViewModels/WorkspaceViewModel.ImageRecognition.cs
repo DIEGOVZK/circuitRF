@@ -436,6 +436,14 @@ public partial class WorkspaceViewModel : IImageDialogHost
             p.ImageDialogAdvancedExpanded = vm.AdvancedExpanded ? true : null;
             AppPreferencesIo.Save(p);
         };
+        vm.Plots.Detailed = prefs.ImageDialogPlotTracesDetailed ?? false;
+        vm.Plots.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(PlotSessionViewModel.Detailed)) return;
+            var p = AppPreferencesIo.Load();
+            p.ImageDialogPlotTracesDetailed = vm.Plots.Detailed ? true : null;
+            AppPreferencesIo.Save(p);
+        };
 
         // Opened from a paste's line (R-imf9-4): the paste's own reading shown, not read again.
         if (source is not null && reading is not null) vm.SeedSchematic(source, reading);

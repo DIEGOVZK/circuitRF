@@ -189,6 +189,66 @@ public sealed partial class PlotTraceRowViewModel : ObservableObject
     private static string Fmt(double v) => v.ToString("0.####", CultureInfo.InvariantCulture);
 }
 
+/// <summary>One colour group of the traces table in Simple mode (R-ptu5-2): the pieces of one curve, assigned together.
+/// It holds no assignment of its own — an assignment is per piece, and the group shows what its pieces say.</summary>
+public sealed partial class PlotTraceGroupViewModel : ObservableObject
+{
+    private readonly Action<Action> _batch;
+
+    public PlotTraceGroupViewModel(IReadOnlyList<PlotTraceRowViewModel> members, string title, bool debris, Action<Action> batch)
+    {
+        Members = members;
+        Title = title;
+        Debris = debris;
+        _batch = batch;
+        foreach (var m in members)
+            m.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName is not (nameof(PlotTraceRowViewModel.EntryIndex) or nameof(PlotTraceRowViewModel.QuantityIndex))) return;
+                OnPropertyChanged(nameof(EntryIndex));
+                OnPropertyChanged(nameof(QuantityIndex));
+            };
+    }
+
+    /// <summary>The pieces, in x order.</summary>
+    public IReadOnlyList<PlotTraceRowViewModel> Members { get; }
+
+    public PlotTraceRowViewModel First => Members[0];
+
+    /// <summary><c>Red · 4 pieces · 2.3–2.6 GHz</c>.</summary>
+    public string Title { get; }
+
+    /// <summary>Shorter in total than the reader's own debris length: a legend sample or a glyph. Listed last, dimmed.</summary>
+    public bool Debris { get; }
+
+    public double RowOpacity => Debris ? 0.5 : 1;
+
+    public IBrush Swatch => First.Swatch;
+
+    /// <summary>The worst of its pieces: red while any is unassigned.</summary>
+    public IBrush Confidence => (Members.FirstOrDefault(m => m.Unassigned) ?? First).Confidence;
+
+    public string Names => string.Join(" + ", Members.Select(m => m.Name));
+
+    /// <summary>A chart trace is never grouped, so its one piece's frequency row is the group's.</summary>
+    public bool IsChart => Members.Count == 1 && First.IsChart;
+
+    /// <summary>The pieces' entry, or −1 (<i>mixed</i>) when they differ. Choosing one assigns every piece.</summary>
+    public int EntryIndex
+    {
+        get => Same(m => m.EntryIndex);
+        set { if (value >= 0 && value != EntryIndex) _batch(() => { foreach (var m in Members) m.EntryIndex = value; }); }
+    }
+
+    public int QuantityIndex
+    {
+        get => Same(m => m.QuantityIndex);
+        set { if (value >= 0 && value != QuantityIndex) _batch(() => { foreach (var m in Members) m.QuantityIndex = value; }); }
+    }
+
+    private int Same(Func<PlotTraceRowViewModel, int> f) => Members.Select(f).Distinct().Count() == 1 ? f(First) : -1;
+}
+
 /// <summary>One entry of the matrix grid (R-im14-12): where its data came from, and the rule that answers it.</summary>
 public sealed partial class PlotMatrixCellViewModel : ObservableObject
 {
@@ -279,6 +339,10 @@ public sealed partial class PlotSessionViewModel : ObservableObject
     public ObservableCollection<PlotPictureRowViewModel> Pictures { get; } = [];
     public ObservableCollection<PlotFrameRowViewModel> Frames { get; } = [];
     public ObservableCollection<PlotTraceRowViewModel> Traces { get; } = [];
+
+    /// <summary>The traces by colour (R-ptu5-2): what the table lists in Simple mode.</summary>
+    public ObservableCollection<PlotTraceGroupViewModel> Groups { get; } = [];
+
     public ObservableCollection<PlotMatrixCellViewModel> Matrix { get; } = [];
     public ObservableCollection<string> ReportLines { get; } = [];
 
@@ -290,6 +354,35 @@ public sealed partial class PlotSessionViewModel : ObservableObject
 
     /// <summary>The trace chosen in the table or on the canvas — one selection, shown on both (R-ptu3-1, R-ptu3-2).</summary>
     [ObservableProperty] private PlotTraceRowViewModel? _selectedTrace;
+
+    /// <summary>The selected trace's colour group — the row Simple mode shows selected (R-ptu5-4). Choosing a group selects
+    /// its first piece unless one of its pieces is selected already.</summary>
+    [ObservableProperty] private PlotTraceGroupViewModel? _selectedGroup;
+
+    /// <summary>The table lists one row per piece (Detailed) rather than one per colour group (Simple) — R-ptu5-3.</summary>
+    [ObservableProperty] private bool _detailed;
+
+    public bool Simple { get => !Detailed; set => Detailed = !value; }
+
+    partial void OnDetailedChanged(bool value) => OnPropertyChanged(nameof(Simple));
+
+    partial void OnSelectedTraceChanged(PlotTraceRowViewModel? value) => SelectedGroup = GroupOf(value);
+
+    partial void OnSelectedGroupChanged(PlotTraceGroupViewModel? value)
+    {
+        // Null is the list letting go while its rows are rebuilt; the trace selection is the one that is kept.
+        if (value is not null && (SelectedTrace is null || !value.Members.Contains(SelectedTrace))) SelectedTrace = value.First;
+    }
+
+    public PlotTraceGroupViewModel? GroupOf(PlotTraceRowViewModel? row) => row is null ? null : Groups.FirstOrDefault(g => g.Members.Contains(row));
+
+    /// <summary>The traces the canvas draws selected when <paramref name="name"/> is: its whole group in Simple mode.</summary>
+    public IReadOnlySet<string> Lit(string? name)
+    {
+        if (name is null) return new HashSet<string>();
+        if (!Detailed && GroupOf(TraceRow(name)) is { } g) return g.Members.Select(m => m.Name).ToHashSet(StringComparer.Ordinal);
+        return new HashSet<string>(StringComparer.Ordinal) { name };
+    }
 
     /// <summary>The row of the trace called <paramref name="name"/>, or null.</summary>
     public PlotTraceRowViewModel? TraceRow(string? name) =>
@@ -340,6 +433,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         AskingLabel = false;
         Frames.Clear();
         Traces.Clear();
+        Groups.Clear();
         Matrix.Clear();
         ReportLines.Clear();
         Add(source, notify: false);
@@ -576,7 +670,14 @@ public sealed partial class PlotSessionViewModel : ObservableObject
             var (start, stop) = _freq.GetValueOrDefault(t.Name, ("", ""));
             Traces.Add(new PlotTraceRowViewModel(t, session.Plots[t.Plot - 1], start, stop, OnTraceEdited));
         }
+        Groups.Clear();
+        foreach (var (members, debris) in PlotColourGroups.Group(session))
+        {
+            var rows = members.Select(m => TraceRow(m.Name)!).ToList();
+            Groups.Add(new PlotTraceGroupViewModel(rows, PlotColourGroups.Title(session, members), debris, Batch));
+        }
         SelectedTrace = TraceRow(chosen);
+        SelectedGroup = GroupOf(SelectedTrace);
 
         Matrix.Clear();
         foreach (var c in assembly.Matrix)
@@ -629,7 +730,31 @@ public sealed partial class PlotSessionViewModel : ObservableObject
             else _assign.Remove(row.Name);
         }
         _freq[row.Name] = (row.StartText, row.StopText);
+        if (_quiet > 0) _pending = true;
+        else Changed?.Invoke();
+    }
+
+    private int _quiet;
+    private bool _pending;
+
+    /// <summary>Several pieces assigned at once (a group's combo, R-ptu5-2): one re-read, not one a piece.</summary>
+    private void Batch(Action edit)
+    {
+        _quiet++;
+        try { edit(); }
+        finally { _quiet--; }
+        if (_quiet > 0 || !_pending) return;
+        _pending = false;
         Changed?.Invoke();
+    }
+
+    /// <summary>The Touchstone of a reading, every set of pieces assigned alike joined first (R-ptu5-1) — the dialog's one
+    /// way to the assembly. The joins lead the assembly's report.</summary>
+    public static TouchstoneAssemblyResult Assemble(PlotSession session, Func<PlotSession, TouchstoneAssemblyResult> build)
+    {
+        var (joined, lines) = TraceJoin.Session(session);
+        var result = build(joined);
+        return lines.Count == 0 ? result : result with { Report = [.. lines.Select(l => $"joined {l}"), .. result.Report] };
     }
 
     private void OnMatrixEdited(PlotMatrixCellViewModel cell)
@@ -696,6 +821,105 @@ internal static class PlotTraceLink
     /// <summary>The whole trace's item on <paramref name="overlay"/>, or null when it is not drawn there.</summary>
     public static ImageOverlayItem? ItemFor(ImageOverlay overlay, string? name) =>
         name is null ? null : overlay.Items.FirstOrDefault(i => i.Class == ImageOverlayClass.Trace && i.Id == ImageOverlay.TracePrefix + name);
+}
+
+/// <summary>The traces table's colour groups (R-ptu5-2). Per plot, longest piece first, each piece joins the first group of
+/// its colour (within the reader's own colour-merge ΔE) whose x coverage it overlaps by less than <see cref="Overlap"/> of
+/// its own span, else starts one — so two black curves over the same band stay two rows and the pieces of one red curve
+/// are one. A chart trace is a group of its own. Longest total first; a group shorter in total than the reader's debris
+/// length (<see cref="PlotTraces.MinTrackShare"/> of the axis) last.</summary>
+internal static class PlotColourGroups
+{
+    public const double Overlap = 0.05;
+
+    private static readonly double SameColour = new ColourClusterOptions().MergeDeltaE;
+
+    private sealed class Building(PlotTraceRead first, double lo, double hi)
+    {
+        public Lab Colour { get; } = CieLab.FromRgb(first.Curve.Rgb);
+        public List<PlotTraceRead> Members { get; } = [first];
+        public List<(double Lo, double Hi)> Cover { get; } = [(lo, hi)];
+    }
+
+    public static List<(List<PlotTraceRead> Members, bool Debris)> Group(PlotSession session)
+    {
+        var all = new List<(List<PlotTraceRead> Members, double Length, bool Debris)>();
+        foreach (var plot in session.Traces.GroupBy(t => t.Plot))
+        {
+            var groups = new List<Building>();
+            foreach (var t in plot.OrderByDescending(Length).ThenBy(t => t.Number))
+            {
+                var (lo, hi) = Span(t);
+                var lab = CieLab.FromRgb(t.Curve.Rgb);
+                var into = t.Parametric ? null : groups.FirstOrDefault(g =>
+                    !g.Members[0].Parametric && g.Colour.DeltaE(lab) <= SameColour && Covered(g.Cover, lo, hi) < Overlap * Math.Max(hi - lo, 1));
+                if (into is null) { groups.Add(new Building(t, lo, hi)); continue; }
+                into.Members.Add(t);
+                into.Cover.Add((lo, hi));
+            }
+            var frame = session.Plots[plot.Key - 1].Frame;
+            double axis = frame.Right > frame.Left ? frame.Right - frame.Left : 2 * frame.Radius;
+            foreach (var g in groups)
+            {
+                double length = g.Members.Sum(Length);
+                bool debris = length < PlotTraces.MinTrackShare * axis;
+                all.Add(([.. g.Members.OrderBy(m => Span(m).Lo).ThenBy(m => m.Number)], length, debris));
+            }
+        }
+        return [.. all.OrderBy(g => g.Debris).ThenByDescending(g => g.Length).Select(g => (g.Members, g.Debris))];
+    }
+
+    /// <summary><c>Red · 4 pieces · 2.3–2.6 GHz</c>, and the plot when the session has several.</summary>
+    public static string Title(PlotSession session, IReadOnlyList<PlotTraceRead> members)
+    {
+        string pieces = members.Count == 1 ? "1 piece" : $"{members.Count.ToString(CultureInfo.InvariantCulture)} pieces";
+        var xs = members.SelectMany(m => m.Samples).Select(s => s.X).Where(x => !double.IsNaN(x)).ToList();
+        var plot = session.Plots[members[0].Plot - 1];
+        string range = xs.Count == 0 ? "no frequency" : Range(xs.Min(), xs.Max(), plot.Rect is not { XIsFrequency: false });
+        string where = session.Plots.Count > 1 ? $" · plot {plot.Number.ToString(CultureInfo.InvariantCulture)}" : "";
+        return $"{Word(members[0].Curve.Rgb)} · {pieces} · {range}{where}";
+    }
+
+    private static string Range(double lo, double hi, bool hz)
+    {
+        static string F(double v) => v.ToString("0.###", CultureInfo.InvariantCulture);
+        if (!hz) return $"{F(lo)}–{F(hi)}";
+        var (div, unit) = hi >= 1e9 ? (1e9, "GHz") : hi >= 1e6 ? (1e6, "MHz") : hi >= 1e3 ? (1e3, "kHz") : (1, "Hz");
+        return $"{F(lo / div)}–{F(hi / div)} {unit}";
+    }
+
+    /// <summary>A colour's everyday name, from its Lab hue: what a legend would call it.</summary>
+    public static string Word(int rgb)
+    {
+        var lab = CieLab.FromRgb(rgb);
+        double chroma = Math.Sqrt(lab.A * lab.A + lab.B * lab.B);
+        if (chroma < 12) return lab.L < 25 ? "Black" : lab.L > 85 ? "White" : "Grey";
+        double h = Math.Atan2(lab.B, lab.A) * 180 / Math.PI;
+        if (h < 0) h += 360;
+        return h switch
+        {
+            < 45 or >= 345 => "Red",
+            < 85 => "Orange",
+            < 115 => "Yellow",
+            < 180 => "Green",
+            < 250 => "Cyan",
+            < 315 => "Blue",
+            _ => lab.L < 40 ? "Purple" : "Magenta",
+        };
+    }
+
+    private static double Length(PlotTraceRead t)
+    {
+        var (lo, hi) = Span(t);
+        return hi - lo;
+    }
+
+    /// <summary>The piece's x extent in pixels, along its drawn points.</summary>
+    private static (double Lo, double Hi) Span(PlotTraceRead t) =>
+        t.Curve.Points.Count == 0 ? (0, 0) : (t.Curve.Points.Min(p => p.X), t.Curve.Points.Max(p => p.X));
+
+    private static double Covered(List<(double Lo, double Hi)> cover, double lo, double hi) =>
+        cover.Sum(c => Math.Max(0, Math.Min(hi, c.Hi) - Math.Max(lo, c.Lo)));
 }
 
 /// <summary>A plot's calibration in words, as the matrix grid and the frames list show it.</summary>

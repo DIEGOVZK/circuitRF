@@ -39430,3 +39430,36 @@ report that the typed values had calibrated the axis.
 **R-ptu4-4 needed no change: clicks already win.** `RectAxes.Calibrate` builds the axis from the `AxisClicks` in place
 of the label fit whenever they are given, so an axis calibrated from misread labels is corrected by two clicked values.
 The labels stay in the report, marked unused. Gate: `tests/Ui.Tests/PlotRecognition/PlotAxisLabelClickTests.cs`.
+
+## Touchstone from Image, PTU-5: one row per colour, pieces assigned alike joined (2026-10-11)
+
+**The assembly took one piece per entry.** `TouchstoneAssembly.Entry` reads `mag[0]`/`phase[0]`/`chart[0]` only, and
+the grid is the COMMON range of every series. So a curve read in three pieces and assigned S21 three times did not drop
+two pieces quietly: the pieces' x ranges do not overlap, and the reading was refused with "the traces' frequency ranges
+do not overlap". `TraceJoin.Session` (the one new `src/Design` file; `TouchstoneAssembly.cs` is untouched) now joins
+every set of rectangular traces on one plot with the same entry and quantity before the assembly. Where two pieces
+overlap in x, the longer piece's points are kept. A gap between pieces is left to the assembly's interpolation. The
+joined trace keeps the longest piece's colour and assignment and the name of the first piece along x, so the grid line
+reads "starts at T101's first point". **Chart traces are never joined**: their x is frequency spread along the curve,
+which gives the pieces no order to put them in.
+
+**Only the dialog joins; the CLI does not.** The dialog and `recognize`'s plot path each call
+`TouchstoneAssembly.Build` themselves (`ImageSourceViewModel`'s preview and `src/Cli/Recognize.Plots.cs`), so there
+was no shared call site, and the brief said to leave the CLI unchanged in that case. A CLI user who assigns
+`--trace T37=S21:db --trace T39=S21:db` still gets the overlap refusal. Adding one `TraceJoin.Session` call there would
+close the gap. The dialog's call is `PlotSessionViewModel.Assemble`, and it puts `joined S21 db: T37 + T39 …` ahead of
+the assembly's own report lines.
+
+**Groups are Ui-side and hold no assignment.** `PlotColourGroups.Group` works per plot, longest piece first. A piece
+joins the first group whose colour is within `ColourClusterOptions.MergeDeltaE` (CIE76, the reader's own merge
+threshold) and whose x coverage it overlaps by less than 5 % of its own span. Otherwise it starts a new group. A group
+whose total length is under `PlotTraces.MinTrackShare` of the frame width is listed last and dimmed. The reader already
+drops any single piece that short, so in practice only a chart trace can hit this. A group's combos read and write its
+member rows (`-1` = mixed, shown by the ComboBox's `PlaceholderText`), so Simple ↔ Detailed loses nothing. A group edit
+is batched: the per-row `Changed` events are held and fire once, which gives one re-read instead of one per piece.
+`SelectedTrace` stays the single selection. `SelectedGroup` follows it, and choosing a group selects its first piece.
+The canvas lights `Plots.Lit(name)`: the whole group in Simple, the piece alone in Detailed. The mode is remembered as
+`image_dialog_plot_traces_detailed` in `preferences.json`, beside the Advanced expander's flag.
+
+Gates: `tests/Ui.Tests/PlotRecognition/TraceJoinTests.cs` and `PlotColourGroupTests.cs`. They cut the committed
+legend plot's curve into pieces themselves rather than wait on a reader that fragments.

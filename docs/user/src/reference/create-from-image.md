@@ -326,6 +326,14 @@ read as one from its labels.
 &mdash; taken from a legend entry in its colour, a label along it, the y axis's title or the plot's title, and the dot
 says how sure that is. A curve nothing names is **Unassigned**, and the Touchstone waits for you to say which entry it is.
 
+A curve is often read in pieces &mdash; it breaks where it crosses a grid line, a marker or another curve. **Simple**,
+at the right of the Traces heading, lists one row per curve colour, `Red · 4 pieces · 2.3–2.6 GHz`: choosing its entry
+and quantity assigns every piece. Two curves of one colour over the same frequencies stay two rows. A row too short to
+be a curve (a legend sample) is listed last, dimmed. **Detailed** lists every piece on its own row; an assignment made
+in either view stays in the other, and a Simple row whose pieces differ shows *mixed*. Pieces given the same entry and
+quantity are joined into one curve before the Touchstone is made, and the report names them:
+`joined S21 db: T37 + T39 + T42 + T50`.
+
 **Frequency along a Smith or polar trace.** A chart has no frequency axis. It comes from markers on the trace whose
 readouts show their frequency, or from a rectangular plot of the same entry in the session, matched point by point; with
 neither, the trace's **Start** and **Stop** are highlighted and wait for you. Between known frequencies they are spread

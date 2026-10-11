@@ -43,11 +43,67 @@
             <!-- ── Traces ─────────────────────────────────────────────────────────────────── -->
             <Border Classes="slot" Classes.wants="{Binding HighlightTraces}" Padding="0">
                 <StackPanel Spacing="4">
-                    <TextBlock Text="Traces" FontWeight="SemiBold" FontSize="12"/>
-                    <!-- A ListBox for the parts table's selected-row look (R-ptu3-1). It never scrolls itself — the column's
-                         ScrollViewer does, and the code-behind brings the selected row into it. -->
+                    <!-- Simple lists one row per colour group, Detailed one per piece the reader returned (R-ptu5-3). -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Traces" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Column="1" Classes="Toolbar" Orientation="Horizontal" Spacing="2">
+                            <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="tracesView"
+                                         Content="Simple" FontSize="12" IsChecked="{Binding Simple}"
+                                         ToolTip.Tip="One row per curve colour: the pieces of one curve are assigned together."/>
+                            <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="tracesView"
+                                         Content="Detailed" FontSize="12" IsChecked="{Binding Detailed}"
+                                         ToolTip.Tip="One row per piece the reading returned, each assigned on its own."/>
+                        </StackPanel>
+                    </Grid>
+                    <!-- Simple: one row per colour group (R-ptu5-2). Choosing in its combos assigns every piece. -->
+                    <ListBox x:Name="GroupsList" ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}"
+                             Background="Transparent" SelectionMode="Single" IsVisible="{Binding Simple}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate><StackPanel/></ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemContainerTheme>
+                            <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                <Setter Property="Padding" Value="4,2"/>
+                            </ControlTheme>
+                        </ListBox.ItemContainerTheme>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="rec:PlotTraceGroupViewModel">
+                                <StackPanel Spacing="2" Margin="0,0,0,4" Opacity="{Binding RowOpacity}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <Ellipse Width="8" Height="8" Fill="{Binding Confidence}" VerticalAlignment="Center"/>
+                                        <Rectangle Width="14" Height="14" Fill="{Binding Swatch}" Stroke="#808080" StrokeThickness="1"
+                                                   VerticalAlignment="Center" ToolTip.Tip="The colour the curve was read in."/>
+                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"
+                                                   ToolTip.Tip="{Binding Names}"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="30,0,0,0">
+                                        <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Entries}" SelectedIndex="{Binding EntryIndex}"
+                                                  MinWidth="104" PlaceholderText="mixed"
+                                                  ToolTip.Tip="Which entry of the matrix this curve is — every piece of it. Unassigned: the Touchstone waits for it."/>
+                                        <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Quantities}" SelectedIndex="{Binding QuantityIndex}"
+                                                  MinWidth="96" PlaceholderText="mixed"
+                                                  ToolTip.Tip="What the curve plots: dB, linear magnitude, phase, real or imaginary part, the complex value of a chart, VSWR, return or insertion loss."/>
+                                    </StackPanel>
+                                    <!-- A chart trace is a group of its own: its frequency row (R-im14-8 (3)). -->
+                                    <Border Classes="slot" Classes.wants="{Binding First.NeedsFrequency}" Margin="26,0,0,0" IsVisible="{Binding IsChart}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock Text="Start" FontSize="12" VerticalAlignment="Center"/>
+                                            <TextBox Text="{Binding First.StartText}" Width="84" PlaceholderText="1 GHz"
+                                                     ToolTip.Tip="The frequency at the trace's first point. Spread along the trace by the angle it sweeps about the chart's centre — exact for a uniform line."/>
+                                            <TextBlock Text="Stop" FontSize="12" VerticalAlignment="Center"/>
+                                            <TextBox Text="{Binding First.StopText}" Width="84" PlaceholderText="5 GHz"
+                                                     ToolTip.Tip="The frequency at the trace's last point. Markers on the trace combine with it."/>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <!-- Detailed. A ListBox for the parts table's selected-row look (R-ptu3-1). It never scrolls itself — the
+                         column's ScrollViewer does, and the code-behind brings the selected row into it. -->
                     <ListBox x:Name="TracesList" ItemsSource="{Binding Traces}" SelectedItem="{Binding SelectedTrace}"
-                             Background="Transparent" SelectionMode="Single"
+                             Background="Transparent" SelectionMode="Single" IsVisible="{Binding Detailed}"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate><StackPanel/></ItemsPanelTemplate>

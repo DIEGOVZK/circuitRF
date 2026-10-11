@@ -162,7 +162,12 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             Plots.AskLabel(null);   // the clicked label was on the picture no longer shown
             SelectTraceItem();
         };
-        Plots.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(PlotSessionViewModel.SelectedTrace)) OnTraceSelected(); };
+        Plots.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(PlotSessionViewModel.SelectedTrace)) OnTraceSelected();
+            // Simple lights the selected trace's whole group on the canvas, Detailed the piece alone (R-ptu5-4).
+            else if (e.PropertyName == nameof(PlotSessionViewModel.Detailed)) OnPropertyChanged(nameof(Plots));
+        };
 
         if (source is not null) Accept(source);
         EndConstruction(_defaultName ?? "", targetOwn: OwnTargetOffered);
@@ -1081,7 +1086,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             {
                 var session = _runner.ReadPlots(plotInputs, plotReading, control);
                 control.Token.ThrowIfCancellationRequested();
-                var assembly = _runner.AssemblePlots(session, plotAssembly);
+                var assembly = PlotSessionViewModel.Assemble(session, s => _runner.AssemblePlots(s, plotAssembly));
                 return new RecognitionPreview(null, empty, null, new PlotPreviewDetail(read, session, assembly));
             }
             if (kind.Kind == DrawingKind.None)

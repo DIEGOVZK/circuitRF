@@ -20,6 +20,7 @@ public partial class PlotTracesPanel : UserControl
         // A press anywhere on a row selects its trace — on its combos and text too, which handle the press themselves
         // (R-ptu3-2). Tunnelling, so it is heard before they take it.
         TracesList.AddHandler(PointerPressedEvent, OnRowPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+        GroupsList.AddHandler(PointerPressedEvent, OnRowPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -32,20 +33,29 @@ public partial class PlotTracesPanel : UserControl
 
     private void OnRowPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (_vm is not null && (e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext is PlotTraceRowViewModel row)
-            _vm.SelectedTrace = row;
+        if (_vm is null) return;
+        switch ((e.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext)
+        {
+            case PlotTraceRowViewModel row: _vm.SelectedTrace = row; break;
+            case PlotTraceGroupViewModel group: _vm.SelectedGroup = group; break;
+        }
     }
 
     private void OnVmChanged(object? sender, PropertyChangedEventArgs e)
     {
         // Posted: chosen on the canvas after a re-read, the row's container is not made yet.
-        if (e.PropertyName == nameof(PlotSessionViewModel.SelectedTrace)) Dispatcher.UIThread.Post(BringSelectedIntoView, DispatcherPriority.Loaded);
+        if (e.PropertyName is nameof(PlotSessionViewModel.SelectedTrace) or nameof(PlotSessionViewModel.Detailed))
+            Dispatcher.UIThread.Post(BringSelectedIntoView, DispatcherPriority.Loaded);
     }
 
     /// <summary>Scrolls the column just enough to show the selected row (R-ptu3-1).</summary>
     public void BringSelectedIntoView()
     {
-        if (_vm?.SelectedTrace is not { } row || TracesList.ContainerFromItem(row) is not { } item
+        if (_vm is null) return;
+        Control? item = _vm.Detailed
+            ? _vm.SelectedTrace is { } row ? TracesList.ContainerFromItem(row) : null
+            : _vm.SelectedGroup is { } group ? GroupsList.ContainerFromItem(group) : null;
+        if (item is null
             || Scroller.Content is not Visual content || item.TranslatePoint(default, content) is not { } at) return;
         double top = at.Y, bottom = at.Y + item.Bounds.Height;
         double view = Scroller.Viewport.Height, offset = Scroller.Offset.Y;

@@ -202,12 +202,12 @@ public sealed class ImageOverlayCanvas : Control
         }
 
         double px = 1 / _zoom;
-        string? selectedTrace = PlotTraceLink.TraceName(vm.SelectedItem);
+        var litTraces = vm.Plots.Lit(PlotTraceLink.TraceName(vm.SelectedItem));
         foreach (var item in overlay.Items)
         {
             if (item.Class == ImageOverlayClass.Trace)
             {
-                DrawTrace(context, item, selectedTrace is not null && PlotTraceLink.TraceName(item) == selectedTrace, px);
+                DrawTrace(context, item, PlotTraceLink.TraceName(item) is { } traceName && litTraces.Contains(traceName), px);
                 continue;
             }
             bool unknownShown = item.Unknown && vm.ShowUnknowns;

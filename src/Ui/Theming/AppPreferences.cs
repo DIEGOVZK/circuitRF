@@ -169,6 +169,12 @@ public sealed class AppPreferences
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? ImageDialogAdvancedExpanded { get; set; }
 
+    // brief-ptu-5 R-ptu5-3: whether the plot mode's traces table lists one row per piece (Detailed) rather than one per
+    // colour group. Remembered per user as the Advanced expander is; null is Simple.
+    [JsonPropertyName("image_dialog_plot_traces_detailed")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? ImageDialogPlotTracesDetailed { get; set; }
+
     // Designer report (round 15): whether a symbol's facing and its footprint's placement angle follow each other.
     // Null means ON, the behaviour until now: Update Layout from Schematic turns a footprint when its symbol was turned
     // since the last sync, and Create Schematic from Artwork draws a shunt part above or below its line by the side of
