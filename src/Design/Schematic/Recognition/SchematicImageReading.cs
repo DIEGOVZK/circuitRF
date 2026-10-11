@@ -693,6 +693,8 @@ public static class SchematicImageReading
         mask = Morphology.Despeckle(mask.Inverted(), speck).Inverted();
         // A stroke drawn hatched (R-imf5-3): its ticks closed into the stroke before the type and the regions are read.
         mask = Hatching.Close(mask, w, out int hatches);
+        // A pin drawn as a filled square on its lead: the lead it sits on.
+        mask = PinSquares.Flatten(mask, w, out _);
         var (ink, inkSamples) = PictureProfile.InkPen(raster, mask);
         return new Normalised(raster, mask, deskew, w, ink, ink > 0 ? inkSamples : samples, border, grid) { Hatches = hatches };
     }

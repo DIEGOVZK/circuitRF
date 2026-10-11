@@ -1171,7 +1171,7 @@ public static class SchematicImageEmit
         report.Add(RecognitionFindingClass.PictureEmitNotes, lineNotes.Count, string.Join(" ", lineNotes));
 
         // ── the drawing as drawn (D12) ──────────────────────────────────────────────────────────────
-        var frame = options.Frame ?? AutoFrame(read, protos, tb);
+        var frame = options.Frame ?? AutoFrame(read, protos, tb, unknownParts);
         var exact = Exact(read, protos, tb, frame, Find, G, netName);
         var nodeNets = new Dictionary<int, string>();
         for (int node = 0; node < graph.Nodes.Count; node++)
@@ -1389,12 +1389,16 @@ public static class SchematicImageEmit
     /// The frame the drawing is made at (R-im10-4). A picture showing a drawing grid — an editor's screenshot — is drawn
     /// one of its grid pitches to one schematic grid step, its grid lines on the schematic's; the symbols decide only when
     /// they say the picture's grid is a coarser or finer one than that. Without a grid, the frame is the one where the
-    /// median recognised pin span equals the symbols' own.
+    /// median recognised pin span equals the symbols' own. A part of no known kind is left out while any known one
+    /// stands: its 0 Ω stand-in is a resistor's span, and the mark it stands for (a pin square, a tick, a letter
+    /// touching a wire) is a fraction of one, so a few of them would draw the whole paste several times too large.
     /// </summary>
-    private static SchematicFrame AutoFrame(SchematicImageRead read, List<Proto> protos, TestBench tb)
+    private static SchematicFrame AutoFrame(SchematicImageRead read, List<Proto> protos, TestBench tb, IReadOnlyCollection<string> unknown)
     {
         var ratios = new List<double>();
-        foreach (var p in protos.Where(p => p.PicturePins.Count == 2 && p.Type != "Port"))
+        var spanned = protos.Where(p => p.PicturePins.Count == 2 && p.Type != "Port").ToList();
+        if (spanned.Any(p => !unknown.Contains(p.Name))) spanned = [.. spanned.Where(p => !unknown.Contains(p.Name))];
+        foreach (var p in spanned)
         {
             var inst = tb.Instances.First(i => i.InstanceName == p.Name);
             if (NetlistSchematic.PinOffsets(inst, SymbolRotation.R0, false) is not { Count: >= 2 } pins) continue;

@@ -19537,3 +19537,35 @@ that shorted two nets (IMF-3), the box region that grew past its outline (IMF-4)
   block at 2×), so one misreading turns "simulates with no edit" into "refused".
 - **Paste puts the variables block above the picture**, outside the picture's extent: a test that every pasted
   object lies on the picture must leave the `Var` symbol out.
+
+## Editor-screenshot schematics: pin squares, letters on wires, the paste's size (2026-10-11)
+
+A field screenshot from a commercial schematic editor (an LC ladder: three series coils, three shunt capacitors to
+ground, two port arrows, two copies of the circuit in one picture) read as noise. Diagnosed on the picture, not on the
+corpus:
+
+- **Pin squares.** Every pin carries a small filled square (≈ 2 × the wire's width). They are neither wire nor junction
+  dot, so each was a tiny region with two in-line attachments → a series `?n` 0 Ω part. `PinSquares.Flatten` (run in
+  `Normalise`, after `Hatching.Close`) redraws a square with exactly two opposite in-line lines as that line. Three-line
+  squares are LEFT (a T reads as a junction either way, and flattening them broke ~54 corpus facts — small round
+  junction dots binarise square at 2×). A filled triangle (arrowhead, diode) has an inscribed "square" too; the
+  two-pixel clearance frame (`Clear`, a tick's worth of stray pixels allowed) keeps those. The square's box comes from
+  the DEEPEST pixels, not the DT core, which runs out along the wires. The two halves are drawn as ONE band (the union):
+  a one-pixel jog cuts a lead's per-column long run in `TextRegions.LongRuns`.
+- **Letters touching a wire.** The editor's light type-name line ("C", "L") binarises touching the wire it sits under →
+  a region with two opposite attachments → a series 0 Ω part. `SymbolRegions.OneSided`, called from `Markers`: a region
+  under 0.6 s long whose ink is all on one side of the straight wire through it is the wire's.
+- **The paste's size.** `AutoFrame` scales by the median (symbol pin span ÷ picture pin span) over two-pin parts. The
+  stand-ins' picture span is a mark's (~13 px), so a handful of them drew the paste several times too large. Unknown
+  parts are now left out while any known part stands.
+
+**Not fixed, and why each is its own rule, not a tweak:**
+- A ground's three bars read as a WORD (≡) and the lead ending on it as a net label. A shape test for stacked, centred,
+  narrowing bars with a lead works on one crop and misfires on another — the bars are grouped into words in different
+  pieces depending on what the lead's long run removes, and a test loose enough to see the pieces fires on a designator
+  ("C1") beside a capacitor's plate. Tried and backed out.
+- A coil's polarity dot (a small open circle on the first turn) binarises nearly solid at this resolution, so a
+  hole-based rule never sees it; painting the dots out made the top row read as L1 C1 L2 C2 L3 C3. Needs a "filled
+  round blob touching a region at one place" rule.
+- The whole screenshot (two circuits, bold serif ZL / 50 Ω, ticks across leads) still reads wrong; results swing between
+  a 400 px and a 420 px crop of the same circuit.

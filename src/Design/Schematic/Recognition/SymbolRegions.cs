@@ -611,7 +611,16 @@ internal static class SymbolRegions
         var at = Attachments(regions, width, wires, w, o);
         for (int k = 0; k < regions.Count; k++)
         {
-            if (skip.Contains(k) || at[k].Count < 2 || Ring(regions[k], width, w, s) is not { } ring) continue;
+            if (skip.Contains(k) || at[k].Count < 2) continue;
+            if (Ring(regions[k], width, w, s) is not { } ring)
+            {
+                if (at[k].Count == 2 && OneSided(regions[k], width, at[k][0], at[k][1], w, s) is { } through)
+                {
+                    joins.Add(through);
+                    used.Add(k);
+                }
+                continue;
+            }
             double reach = o.Attach * w + w + 1;
             var on = at[k].Where(a => Math.Abs(WireGraph.Dist(new PointD(a.X, a.Y), ring.Centre) - ring.R) <= reach).ToList();
             if (on.Count != 2) continue;
@@ -623,6 +632,28 @@ internal static class SymbolRegions
             used.Add(k);
         }
         return (joins, used);
+    }
+
+    /// <summary>A small region standing off one side of a straight wire that runs through it — a type name or a pin
+    /// tick set against the wire, joined to it by a pixel or two — is no part: the wire's two halves are one, and the
+    /// ink is left aside. No two-pin symbol is drawn wholly on one side of its leads and under 0.6 s long; a coil drawn
+    /// that way is longer.</summary>
+    private static HopJoin? OneSided(RawRegion region, int width, SymbolAttachment p, SymbolAttachment q, double w, double s)
+    {
+        if (p.DirX * q.DirX + p.DirY * q.DirY > -0.95) return null;
+        var (a, b) = (new PointD(p.X, p.Y), new PointD(q.X, q.Y));
+        if (WireGraph.Dist(a, b) < 1 || Math.Abs(WireGraph.Local(a, new PointD(a.x + p.DirX, a.y + p.DirY), b).Perp) > w) return null;
+        double lo = double.MaxValue, hi = double.MinValue;
+        int left = 0, right = 0;
+        foreach (int i in region.Pixels)
+        {
+            var (along, perp) = WireGraph.Local(a, b, new PointD(i % width + 0.5, i / width + 0.5));
+            (lo, hi) = (Math.Min(lo, along), Math.Max(hi, along));
+            if (perp > w) right++;
+            else if (perp < -w) left++;
+        }
+        if (hi - lo > 0.6 * s || Math.Min(left, right) > 0.02 * region.Pixels.Count || Math.Max(left, right) == 0) return null;
+        return new HopJoin(a, b, new PointD((a.x + b.x) / 2, (a.y + b.y) / 2)) { Marker = true };
     }
 
     /// <summary>The region's largest piece as an open circle — its centre and the radius of its centre line — or null.</summary>
