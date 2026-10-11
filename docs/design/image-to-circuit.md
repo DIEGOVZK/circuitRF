@@ -1731,3 +1731,118 @@ Both readings are wrong in the same place; lifting a touching label off its symb
 Excluding every candidate inside a kept label fixed `typeset` and broke the L-network and the attenuator round trips,
 whose kept labels hold real wire.
 
+
+## 20. IMF-4 — regions that stop at parts; labels lifted off the symbols they touch
+
+IMF-3 left wire as wire; IMF-4 makes one symbol region one part. Four places change. `WireGraph.SymbolStrokes` decides
+which loops are outlines by their faces. A new step, `GlyphLift.Lift` (`GlyphLift.cs`), takes the type touching a
+symbol out of the residue before the regions are grown, and `TextRegions` keeps a word whose glyphs are cut by the line
+work it is written across. `SymbolRegions.Group` merges closest first under the new rules, closes regions on their
+outlines and envelope circles, and re-cuts a runaway. The reader drops the wire runs drawn inside an envelope circle.
+
+### 20.1 Outlines are faces no junction dot stands on (R-imf4-2) — `WireGraph.OutlineFaces`
+
+IM-7's cycle rule set aside every candidate on a cycle. On a datasheet an IC's GND pins are tied outside the box —
+pin 2 and pin 3 to one vertical wire with a dot — and that loop of stubs, the vertical and the box's side is a cycle:
+the stubs went into the box's region, which then reached 5 of its 8 pins. With the final rules (not the symbol scale's
+own measurement, which keeps IM-7's), the cycle edges are embedded in the plane, each vertex's edges in angular order,
+and the faces traced (next edge clockwise); a bounded face (positive area, y up) is an **outline** unless a junction dot
+stands on one of its vertices. Only an outline face's edges are strokes. The loop of pin stubs runs through the dot
+where the wires meet, so its stubs are wire and the box's side between the pins — which also bounds the box's own face
+— is the box's. A loop of wires read as wire is counted in the report. `PlateRules.Outlines` carries each outline's
+box and whether it is drawn across and down only (a box) or not (a triangle).
+
+### 20.2 Glyphs come off symbols first (R-imf4-4) — `GlyphLift.cs`, `TextRegions`
+
+Before regions are grown the residue is read for type. A **piece** is a residue component no larger than a glyph, or a
+component cut where it meets a symbol stroke:
+
+- a straight run longer than 1.5 h **and** 0.6 s is a symbol's stroke (a plate, a bar); without its runs a capital
+  touching a plate's end (`ladder-dashed`'s C₁) is a component of its own. Not shorter: an italic L's foot lying along a
+  coil's humps makes a 25 px run of its own and cut the coil in three;
+- otherwise its skeleton's **bridges**: at each skeleton node, the branches hanging off it by a bridge that no wire end
+  reaches, together, are a piece when some branch of that node is reached (the symbol) and they are glyph-sized. A
+  letter touching a coil at its corner hangs off it by two strokes, stem and foot, from one junction — one bridge
+  alone gave the stem without the foot.
+
+A piece any wire end reaches is never lifted (a terminal circle, a hop's half arc, a coil's end hump). A piece is a
+glyph when it is 0.7–2 h tall, at least 0.3 as wide as tall and a sixth to six tenths ink, and lies in a row with
+another glyph or a word's glyph — or carries a subscript, 0.25–0.8 its height, starting at its right side with its top
+in the base's lower part. Inside an orthogonal outline a glyph-height piece needs no row. Lifted glyphs are new
+`TextRegion`s (`Lifted`), numbered with the rest in reading order.
+
+**Two deviations, measured.** The upper bound is 2 h, not 1.4 h: on `ladder-dashed` every capital touches its symbol,
+so the profile measures h on the glyphs standing free — the subscripts — and the italic capitals stand 1.5–1.9 h. And
+a subscript may be 0.25 of its base, not 0.5: a subscript standing on a coil's hump is cut at its foot (L₂'s 2 keeps
+7 of its 15 px). A cut subscript is also wider than tall, so a subscript's shape allows 1.5:1.
+
+`typeset`'s C1 needed the same thing earlier, at the words: its italic `100pF` is written across both plates, and the
+F's stem between them joined the plates into a loop that IMF-3's cycle rule took for the whole right-hand mesh. In
+`TextRegions` a word's piece touching line work now joins the word when it is a **fragment** — no taller than 0.6 of
+the word, not long and thin — and touches only line work running *along* the line of text (a plate under the word); a
+curved plate or a hump touches its lead, which runs across the line, and stays. And a line of text sharing pieces with
+a word found first is read without them when they were only that word's symbol detail: `Cadj` took its capacitor's top
+plate as detail, and the `10µF` line below it, which shared those pieces, was skipped whole, so its `1` became a wire
+between the plates.
+
+### 20.3 One part per region (R-imf4-1, R-imf4-2, R-imf4-3) — `SymbolRegions.Group`
+
+Two pieces merge only when all hold: they face each other across a gap shorter than **both** 1 s and the larger one's
+extent along the faces (IM-7's rule kept as a ceiling — `low-res`'s `C` beside its v_out label, 0.6 s apart, merged
+under 1 s alone); no wire runs through the gap; no wire end arrives at either from the side facing the gap; their box
+is no larger than 4 s on its shorter side; and they would not have more than four wire ends unless both already have
+three. One inside the other still merges. Pairs are merged **closest first**: a capacitor's two plates join before
+either joins the part beside it, so the re-cut below falls between parts.
+
+A piece that is a closed outline (one of §20.1's filling most of its box — the pin-number boxes on an IC's side are
+the IC's) takes in every piece inside it and nothing outside. So does an **envelope circle**: ink running 85 % of the
+way round a circle 1–4 s across, with ink inside, found from a residue piece's box (as wide as the circle one way,
+against one side of it the other) or from a circle fitted through an arc of it — the leads crossing a circle cut its
+outline into arcs. Every residue piece inside the circle is the circle's, and the wire runs the reader took inside it
+(a straight stretch of the outline, the base bar, the collector's diagonal) are dropped and the wires read again:
+heavy-iec's transistor had five wire ends, three of them its own outline's flat sides. **Deviation:** the brief's
+circles are 3–8 s across; the symbol scale is a plate's length, and the corpus' circles are 1.6–2.8 of them.
+
+### 20.4 A runaway is re-cut (R-imf4-5)
+
+A region is a runaway when it has more than eight wire ends and no closed outline, holds more than one outline
+(touching outlines are one) or more than one plate pair (two plate lines, parallel, overlapping, 1 w–1.5 s apart), or
+— not in the brief — has two pairs of wire ends each arriving from opposite sides on one line, on parallel lines at
+least 1.5 s apart: two two-pin parts side by side, which no rule of R-imf4-1 separates (the regulator's variable
+resistor and Cadj, 1 s apart, two wire ends each). It is split on the graph of its pieces — an edge between two pieces
+facing each other within 1 s, weighted by the gap — removing the widest gap until no part is a runaway. A region no
+cut splits stays, and is named in the report as read as an S-parameter block.
+
+### 20.5 The report (R-imf4-6)
+
+Loops of wire through a junction dot; regions closed on boxes, triangles and circles; pieces merged; merges refused by
+rule (too far apart, a lead on the facing side, too large together, too many wire ends together, outside a closed
+outline); glyphs lifted; regions split and into how many; regions left as blocks. Words carry `Lifted` and `Place`
+(`InsideBox`, `AtPin` beside a triangle) for IMF-7 and IMF-8.
+
+### 20.6 The field numbers after IMF-4
+
+The committed style pictures (`ImageFieldTests.TheCommittedStylePictures_AreScored`), against §19.8's:
+
+| picture | kinds | gnd | topo | region | what moved |
+|---|---|---|---|---|---|
+| ds-ldo-1x / 2x | 0/2 → 2/2 | 3/3 | no → **yes** | 7 → 4 | the IC box has its four pins, CIN and COUT are their own |
+| ds-regulator-1x / 2x | 3/7 → 4/7, 2/7 → 5/7 | 4/4 | no | 5, 6 → 3 | one region per part at both scales |
+| ds-rf-amp-1x / 2x | 2/5 → 3/5, 3/5 → 4/5 | 3/4 | no | 5 → 8 | the IC box has its 8 pins (the largest region is now the IC's, rightly) |
+| ds-test-circuit-1x | 0/3 → 3/3 | 0/3 → 2/3 | no | 14 → 2 | |
+| heavy-iec | 0/8 → 6/8 | 5/6 → 6/6 | no | 23 → 3 | one region per part; the transistor's circle is one region of three wire ends |
+| ladder-dashed | 0/6 → 6/6 | — | no | 2 | every designator is a word |
+| typeset | 1/5 → 2/5 | 1/1 | no | 10 → 2 | `100pF` across C1 is a word, C1 two wire ends, the mesh is wire again |
+
+`block` fell from 1/1 to 0/1 on `ds-rf-amp` and `ds-gain-block-1x`, and neither is a loss. The scorer counts a block
+right when some Amp or SnP has as many nets as the answer's. The RF amplifier's 5-pin region happened to match; its
+8-pin box's nets differ from the answer's U1 while one of its grounds is unread (gnd 3/4, IMF-6). `ds-gain-block-1x`'s
+"block" was the bypass capacitor and the RF choke merged into one 3-pin region; its triangle is not closed at 1× (its
+top corner opens) and its sides are wire — IMF-5's.
+
+On the downloaded corpus the largest region falls everywhere: `picture-ds-g2` 184 → 16 wire ends, `picture-ds-f2`
+102 → 8, `picture-ds-a2` 17 → 4, `picture-ds-d2` 16 → 2, `picture-c` 20 → 3, `picture-e` 12 → 2, `picture-a` 16 → 4.
+
+**Seen, not fixed (IMF-3's).** A wire through two IEC resistor boxes on one line, its three runs of one length, reads
+as a dashed line at a large stated symbol scale: each run stops at a box side, which the dash rule takes for a wire
+crossing it. `SymbolRegionsMergeTests` draws its runs of different lengths for that reason.

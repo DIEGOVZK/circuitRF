@@ -6,6 +6,13 @@
 // joins a capacitor's two plates, a ground's bars and an inductor's separate humps into one region. Two pieces with a
 // wire in the gap between them are never merged: that gap is a lead, and the pieces are two parts.
 //
+// One region is one part (brief-imf-4-regions-and-touching-labels.md): with the symbol scale s known, the gap is also
+// under 1 s, no wire end arrives at either piece from the gap's side, the pair is no more than 4 s across its shorter
+// side and gets no more than four wire ends unless both halves already have three, and the closest pair merges first.
+// A closed outline or an envelope circle takes in what lies inside it and nothing beside it. A region that still runs
+// away — more than eight wire ends and no outline, two outlines, two capacitors, two two-pin parts side by side — is cut
+// at its widest gaps.
+//
 // A region's attachments are the wire ends stopping within Attach w of it, each with the direction its wire arrives
 // in. Three shapes of region are not symbols:
 //  * a HOP — two attachments, collinear and opposite, a few w apart, with another wire passing between them: the two
@@ -42,6 +49,31 @@ public sealed record SupplyMark(int Node, PixelBox Box, SupplyShape Shape, int? 
 
 /// <summary>A residue piece group before it is known what it is.</summary>
 internal sealed record RawRegion(PixelBox Box, List<int> Pixels);
+
+/// <summary>What the regions are grown in (R-imf4-1 … R-imf4-5): the symbol scale s, read pixels, the closed outlines
+/// the wire reading set aside, and the centres of its plate pairs (a capacitor each).</summary>
+internal sealed record RegionScales(double Symbol, IReadOnlyList<OutlineBox> Outlines, IReadOnlyList<PointD> PlatePairs)
+{
+    /// <summary>The envelope circles (R-imf4-3).</summary>
+    public IReadOnlyList<EnvelopeCircle> Circles { get; init; } = [];
+}
+
+/// <summary>A circle round a part (R-imf4-3), read pixels.</summary>
+internal sealed record EnvelopeCircle(double X, double Y, double R, PixelBox Box)
+{
+    /// <summary>The point lies on or inside it, within a pen of its outline.</summary>
+    public bool Holds(PointD p, double w) => WireGraph.Dist(p, new PointD(X, Y)) <= R + w;
+}
+
+/// <summary>Why two pieces were not merged (R-imf4-1, R-imf4-2).</summary>
+internal enum Refusal { None, Gap, Lead, Size, Pins, Outline }
+
+/// <summary>What the region growing did, for the report (R-imf4-6).</summary>
+internal sealed class RegionCounts
+{
+    public int Boxes, Triangles, Circles, Merged, RefusedGap, RefusedLead, RefusedSize, RefusedPins, RefusedOutline, Split, SplitInto,
+               Blocks, Glyphs;
+}
 
 internal sealed record AttachResult(List<SymbolRegion> Regions, List<PixelBox> Decorations, List<NetLabel> Labels,
                                     List<SupplyMark> Supplies, List<int> Dangling);
@@ -82,8 +114,11 @@ internal static class SymbolRegions
         return Morphology.Despeckle(r, Math.Max(4, (int)Math.Round(1.5 * w * w)));
     }
 
-    /// <summary>The residue's pieces, grown and merged into regions (R-im7-6).</summary>
-    public static List<RawRegion> Group(BinaryImage residue, WireGraph wires, double w, SchematicImageOptions o)
+    /// <summary>The residue's pieces, grown and merged into regions (R-im7-6, R-imf4-1 … R-imf4-5).</summary>
+    /// <param name="scales">The symbol scale and what the wire reading closed; null reads as IM-7 did (every rule off but
+    /// the facing gap and the wire in it).</param>
+    public static List<RawRegion> Group(BinaryImage residue, WireGraph wires, double w, SchematicImageOptions o,
+                                        RegionScales? scales = null, RegionCounts? counts = null)
     {
         int W = residue.Width;
         var grown = Morphology.Dilate(residue, o.Grow * w, o.MaxThreads);
@@ -93,56 +128,352 @@ internal static class SymbolRegions
         for (int k = 0; k < n; k++) pixels[k] = [];
         for (int i = 0; i < residue.Pixels.Length; i++)
             if (residue.Pixels[i] != 0) pixels[lab.Labels[i] - 1].Add(i);
-        var boxes = pixels.Select(p => p.Count == 0 ? default : BoxOf(p, W)).ToArray();
-        var alive = pixels.Select(p => p.Count > 0).ToArray();
+        var pieces = pixels.Where(p => p.Count > 0).Select(p => new RawRegion(BoxOf(p, W), p)).ToList();
+        n = pieces.Count;
+        var boxes = pieces.Select(p => p.Box).ToArray();
+        var alive = Enumerable.Repeat(true, n).ToArray();
+        var members = Enumerable.Range(0, n).Select(k => new List<int> { k }).ToArray();
+        counts ??= new RegionCounts();
 
-        bool changed = true;
-        while (changed)
+        // What each piece is before anything merges: its wire ends, whether it is a closed outline (R-imf4-2) or an
+        // envelope circle (R-imf4-3) — a region that takes in what lies inside it and nothing beside it.
+        var ends = Attachments(pieces, W, wires, w, o);
+        var pins0 = ends.Select(l => l.ToList()).ToArray();
+        var pins = ends.Select(l => l.Count).ToArray();
+        var at = pins.ToArray();
+        var closed = new PixelBox?[n];
+        if (scales is not null)
+            for (int k = 0; k < n; k++)
+            {
+                if (Outline(boxes[k], scales.Outlines, w) is { } ob)
+                {
+                    closed[k] = new PixelBox((int)Math.Floor(ob.X0), (int)Math.Floor(ob.Y0), (int)Math.Ceiling(ob.X1), (int)Math.Ceiling(ob.Y1));
+                    if (ob.Orthogonal) counts.Boxes++; else counts.Triangles++;
+                }
+                // Every piece inside an envelope circle is the circle's: its outline is often cut into arcs where its
+                // leads cross it.
+                else if (scales.Circles.FirstOrDefault(c => Inside(boxes[k], c.Box, 2 * w)) is { } circle) closed[k] = circle.Box;
+            }
+        if (scales is not null)
+            counts.Circles = scales.Circles.Count(c => closed.Any(b => b == c.Box));
+
+        // Merged closest first (R-imf4-1): a capacitor's two plates join before either joins the part beside it, so a
+        // runaway's cut (R-imf4-5) falls between parts, not through one.
+        var refused = new Dictionary<(int, int), Refusal>();
+        while (true)
         {
-            changed = false;
-            for (int i = 0; i < n && !changed; i++)
+            (int I, int J, double Gap) best = (-1, -1, double.MaxValue);
+            for (int i = 0; i < n; i++)
             {
                 if (!alive[i]) continue;
-                for (int j = i + 1; j < n && !changed; j++)
+                for (int j = i + 1; j < n; j++)
                 {
-                    if (!alive[j] || !Facing(boxes[i], boxes[j], wires)) continue;
-                    pixels[i].AddRange(pixels[j]);
-                    boxes[i] = boxes[i].Union(boxes[j]);
-                    alive[j] = false;
-                    changed = true;
+                    if (!alive[j]) continue;
+                    double? gap;
+                    if (scales is null) gap = Facing(boxes[i], boxes[j], wires) ? 0 : null;
+                    else
+                    {
+                        if (boxes[i].Distance(boxes[j]) >= scales.Symbol) continue;
+                        (gap, var why) = Merge(i, j);
+                        if (why != Refusal.None) refused[(i, j)] = why;
+                        else refused.Remove((i, j));
+                    }
+                    if (gap is { } g && g < best.Gap) best = (i, j, g);
+                    if (scales is null && gap is not null) break;
                 }
+                if (scales is null && best.I >= 0) break;
+            }
+            if (best.I < 0) break;
+            var (bi, bj, _) = best;
+            members[bi].AddRange(members[bj]);
+            boxes[bi] = boxes[bi].Union(boxes[bj]);
+            at[bi] += at[bj];
+            ends[bi].AddRange(ends[bj]);
+            closed[bi] ??= closed[bj];
+            alive[bj] = false;
+            counts.Merged++;
+        }
+        foreach (var ((i, j), why) in refused)
+        {
+            if (!alive[i] || !alive[j]) continue;
+            switch (why)
+            {
+                case Refusal.Gap: counts.RefusedGap++; break;
+                case Refusal.Lead: counts.RefusedLead++; break;
+                case Refusal.Size: counts.RefusedSize++; break;
+                case Refusal.Pins: counts.RefusedPins++; break;
+                case Refusal.Outline: counts.RefusedOutline++; break;
             }
         }
+
+        // Whether i and j are one part, and the gap between them; null and why when they are two (R-imf4-1, R-imf4-2).
+        (double? Gap, Refusal Why) Merge(int i, int j)
+        {
+            var (a, b) = (boxes[i], boxes[j]);
+            // A closed outline takes in what lies inside it, and nothing outside merges into it.
+            if (closed[i] is not null || closed[j] is not null)
+            {
+                if (closed[i] is { } oi && Inside(b, oi, w)) return (0, Refusal.None);
+                if (closed[j] is { } oj && Inside(a, oj, w)) return (0, Refusal.None);
+                return (null, FacingGap(a, b, wires) is not null ? Refusal.Outline : Refusal.None);
+            }
+            if (Inside(a, b, 0) || Inside(b, a, 0)) return (0, Refusal.None);
+            if (FacingGap(a, b, wires) is not { } face) return (null, Refusal.None);
+            // Shorter than a symbol scale, and still shorter than the larger one's extent along the faces, as IM-7 had it:
+            // a label beside a small part is no part of it.
+            if (face.Gap >= Math.Min(scales!.Symbol, face.Extent)) return (null, Refusal.Gap);
+            if (LeadFacing(ends[i], a, face.Side) || LeadFacing(ends[j], b, (-face.Side.X, -face.Side.Y))) return (null, Refusal.Lead);
+            var u = a.Union(b);
+            if (Math.Min(u.Width, u.Height) > MaxRegionScales * scales.Symbol) return (null, Refusal.Size);
+            if (at[i] + at[j] > MaxMergedPins && (at[i] < 3 || at[j] < 3)) return (null, Refusal.Pins);
+            return (face.Gap, Refusal.None);
+        }
+
         var r = new List<RawRegion>();
         for (int k = 0; k < n; k++)
-            if (alive[k]) r.Add(new RawRegion(boxes[k], [.. pixels[k].OrderBy(i => i)]));
+        {
+            if (!alive[k]) continue;
+            if (scales is null)
+            {
+                var all = members[k].SelectMany(m => pieces[m].Pixels).OrderBy(i => i).ToList();
+                r.Add(new RawRegion(boxes[k], all));
+                continue;
+            }
+            // A runaway region (R-imf4-5) is cut back along its weakest merges.
+            foreach (var part in Recut(members[k], counts))
+            {
+                var px = part.SelectMany(m => pieces[m].Pixels).OrderBy(i => i).ToList();
+                r.Add(new RawRegion(BoxOf(px, W), px));
+            }
+        }
         return [.. r.OrderBy(x => x.Box.Top).ThenBy(x => x.Box.Left)];
+
+        // The pieces of one region, split at the widest gaps between them until no part is a runaway: more than eight
+        // wire ends and no single closed outline, more than one outline or capacitor (a plate pair) inside it, or two
+        // two-pin parts side by side.
+        List<List<int>> Recut(List<int> region, RegionCounts c)
+        {
+            var edges = new List<(int A, int B, double Gap)>();
+            for (int x = 0; x < region.Count; x++)
+                for (int y = x + 1; y < region.Count; y++)
+                {
+                    var (a, b) = (pieces[region[x]].Box, pieces[region[y]].Box);
+                    if (Inside(a, b, w) || Inside(b, a, w)) edges.Add((region[x], region[y], 0));
+                    else if (FacingGap(a, b, wires) is { } f && f.Gap < scales!.Symbol) edges.Add((region[x], region[y], f.Gap));
+                }
+            edges = [.. edges.OrderBy(e => e.Gap)];
+            bool Runaway(List<int> part)
+            {
+                var box = part.Select(m => pieces[m].Box).Aggregate((p, q) => p.Union(q));
+                int ends = part.Sum(m => pins[m]);
+                bool closedHere = part.Any(m => closed[m] is not null);
+                int outlines = Clusters(scales!.Outlines.Where(ob => Inside(ob, box, w)).ToList(), w);
+                int pairs = scales.PlatePairs.Count(p => box.Distance(p.x, p.y) == 0);
+                return (ends > MaxRegionPins && !closedHere) || outlines > 1 || pairs > 1
+                       || (!closedHere && TwoAxes(part.SelectMany(m => pins0[m]).ToList(), scales.Symbol, w));
+            }
+            List<List<int>> Parts(List<(int A, int B, double Gap)> es)
+            {
+                var root = region.ToDictionary(m => m, m => m);
+                int F(int x) { while (root[x] != x) x = root[x] = root[root[x]]; return x; }
+                foreach (var e in es) root[F(e.A)] = F(e.B);
+                return [.. region.GroupBy(F).Select(g => g.ToList())];
+            }
+            if (!Runaway(region)) return [region];
+            var parts = Parts(edges);
+            while (edges.Count > 0 && parts.Any(Runaway))
+            {
+                edges.RemoveAt(edges.Count - 1);
+                parts = Parts(edges);
+            }
+            if (parts.Count > 1) { c.Split++; c.SplitInto += parts.Count; }
+            if (parts.Any(Runaway)) c.Blocks++;
+            return parts;
+        }
+    }
+
+    /// <summary>Two two-pin parts side by side (R-imf4-5): two pairs of wire ends, each pair arriving from opposite sides on
+    /// one line, on parallel lines at least 1.5 s apart. A transformer's two coils stand closer.</summary>
+    private static bool TwoAxes(List<SymbolAttachment> ends, double s, double w)
+    {
+        var axes = new List<(bool Vertical, double At, int A, int B)>();
+        for (int i = 0; i < ends.Count; i++)
+            for (int j = i + 1; j < ends.Count; j++)
+            {
+                var (a, b) = (ends[i], ends[j]);
+                if (a.DirX * b.DirX + a.DirY * b.DirY > -0.9) continue;
+                bool vertical = Math.Abs(a.DirY) >= Math.Abs(a.DirX);
+                double off = vertical ? Math.Abs(a.X - b.X) : Math.Abs(a.Y - b.Y);
+                if (off > 1.5 * w) continue;
+                axes.Add((vertical, vertical ? (a.X + b.X) / 2 : (a.Y + b.Y) / 2, i, j));
+            }
+        for (int i = 0; i < axes.Count; i++)
+            for (int j = i + 1; j < axes.Count; j++)
+            {
+                var (p, q) = (axes[i], axes[j]);
+                if (p.Vertical != q.Vertical || p.A == q.A || p.A == q.B || p.B == q.A || p.B == q.B) continue;
+                if (Math.Abs(p.At - q.At) >= 1.5 * s) return true;
+            }
+        return false;
+    }
+
+    /// <summary>How many outlines there are, counting outlines that touch as one — an IC's pin-number boxes on its
+    /// sides are its own.</summary>
+    private static int Clusters(List<OutlineBox> outlines, double w)
+    {
+        var root = Enumerable.Range(0, outlines.Count).ToArray();
+        int F(int x) { while (root[x] != x) x = root[x] = root[root[x]]; return x; }
+        for (int i = 0; i < outlines.Count; i++)
+            for (int j = i + 1; j < outlines.Count; j++)
+            {
+                var (a, b) = (outlines[i], outlines[j]);
+                if (a.X0 <= b.X1 + 2 * w && b.X0 <= a.X1 + 2 * w && a.Y0 <= b.Y1 + 2 * w && b.Y0 <= a.Y1 + 2 * w) root[F(i)] = F(j);
+            }
+        return Enumerable.Range(0, outlines.Count).Select(F).Distinct().Count();
+    }
+
+    /// <summary>The widest a region's box may be on its shorter side, in symbol scales (R-imf4-1).</summary>
+    private const double MaxRegionScales = 4;
+
+    /// <summary>A merge giving a region more wire ends than this is refused unless both halves have three or more.</summary>
+    private const int MaxMergedPins = 4;
+
+    /// <summary>A region with more wire ends than this is a runaway unless it is one closed box (R-imf4-5).</summary>
+    private const int MaxRegionPins = 8;
+
+    private static bool Inside(PixelBox i, PixelBox o, double tol) =>
+        i.Left >= o.Left - tol && i.Right <= o.Right + tol && i.Top >= o.Top - tol && i.Bottom <= o.Bottom + tol;
+
+    private static bool Inside(OutlineBox i, PixelBox o, double tol) =>
+        i.X0 >= o.Left - tol && i.X1 <= o.Right + 1 + tol && i.Y0 >= o.Top - tol && i.Y1 <= o.Bottom + 1 + tol;
+
+    /// <summary>The closed outline a piece is (R-imf4-2): one of the wire reading's outlines lying in the piece's box and
+    /// filling most of it — the piece's extent beyond it is only what is drawn on it (a pin-number box).</summary>
+    private static OutlineBox? Outline(PixelBox piece, IReadOnlyList<OutlineBox> outlines, double w)
+    {
+        foreach (var ob in outlines)
+        {
+            if (!Inside(ob, piece, 2 * w)) continue;
+            if (ob.X1 - ob.X0 < 0.6 * piece.Width || ob.Y1 - ob.Y0 < 0.6 * piece.Height) continue;
+            return ob;
+        }
+        return null;
+    }
+
+    /// <summary>The envelope circles of the residue (R-imf4-3): circles 1–4 s across round which the ink of
+    /// <paramref name="ink"/> runs (85 % of the way, within a pen), with ink inside — a transistor, a source with its
+    /// mark — found from a piece's box or from a circle fitted through an arc of one. A terminal's circle is smaller and
+    /// empty. Brief's 3–8 s, measured: the symbol scale is a plate's length, and the corpus' circles are 1.6–2.8 of
+    /// them.</summary>
+    public static List<EnvelopeCircle> Envelopes(BinaryImage residue, BinaryImage ink, double s, double w)
+    {
+        var r = new List<EnvelopeCircle>();
+        var lab = Components.Label(residue);
+        int W = residue.Width;
+        foreach (var c in lab.Components)
+        {
+            // The piece is the circle with what is drawn in it, or — where a short run of its outline was taken for wire —
+            // an arc of it: as wide as the circle across one way, and lying against one side of it the other.
+            var pb = new PixelBox(c.Left, c.Top, c.Right, c.Bottom);
+            var tries = new List<(double X, double Y, double D)>();
+            double d = Math.Max(pb.Width, pb.Height);
+            if (d >= MinEnvelopeScales * s && d <= MaxEnvelopeScales * s)
+            {
+                if (pb.Width >= pb.Height) tries.AddRange([(pb.CentreX, pb.Top + d / 2, d), (pb.CentreX, pb.Bottom + 1 - d / 2, d)]);
+                else tries.AddRange([(pb.Left + d / 2, pb.CentreY, d), (pb.Right + 1 - d / 2, pb.CentreY, d)]);
+            }
+            // Or an arc of it cut off where a lead crosses it: the circle through its ink.
+            if (Math.Max(pb.Width, pb.Height) >= 0.5 * MinEnvelopeScales * s && c.Area >= 4 * w)
+            {
+                var pts = new List<PointD>(c.Area);
+                for (int y = c.Top; y <= c.Bottom; y++)
+                    for (int x = c.Left; x <= c.Right; x++)
+                        if (lab.Labels[y * W + x] == c.Label) pts.Add(new PointD(x + 0.5, y + 0.5));
+                var fit = Fit.Circle(pts);
+                double fd = 2 * fit.R + w;
+                if (fit.Residual <= w && fd >= MinEnvelopeScales * s && fd <= MaxEnvelopeScales * s) tries.Add((fit.Cx, fit.Cy, fd));
+            }
+            foreach (var (cx, cy, cd) in tries)
+            {
+                if (r.Any(e => Math.Abs(e.X - cx) <= w && Math.Abs(e.Y - cy) <= w)) continue;
+                if (Round(ink, cx, cy, cd, w)) r.Add(new EnvelopeCircle(cx, cy, cd / 2,
+                    new PixelBox((int)Math.Round(cx - cd / 2), (int)Math.Round(cy - cd / 2), (int)Math.Round(cx + cd / 2) - 1, (int)Math.Round(cy + cd / 2) - 1)));
+            }
+        }
+        return r;
+    }
+
+    /// <summary>Ink runs round a circle of diameter <paramref name="d"/> at (cx, cy) — 85 % of the way round, within a pen —
+    /// with ink inside it.</summary>
+    private static bool Round(BinaryImage ink, double cx, double cy, double d, double w)
+    {
+        double rad = d / 2 - w / 2;
+        int on = 0, rays = 72;
+        for (int k = 0; k < rays; k++)
+        {
+            double t = 2 * Math.PI * k / rays, ux = Math.Cos(t), uy = Math.Sin(t);
+            for (double q = -w; q <= w; q += 0.5)
+                if (ink.At((int)Math.Floor(cx + (rad + q) * ux), (int)Math.Floor(cy + (rad + q) * uy))) { on++; break; }
+        }
+        if (on < 0.85 * rays) return false;
+        int inner = 0;
+        double r2 = 0.7 * rad * 0.7 * rad;
+        for (int y = (int)(cy - rad); y <= (int)(cy + rad); y++)
+            for (int x = (int)(cx - rad); x <= (int)(cx + rad); x++)
+                if (ink.At(x, y) && (x + 0.5 - cx) * (x + 0.5 - cx) + (y + 0.5 - cy) * (y + 0.5 - cy) < r2) inner++;
+        return inner >= w * w;
+    }
+
+    /// <summary>An envelope circle's diameter, in symbol scales.</summary>
+    private const double MinEnvelopeScales = 1, MaxEnvelopeScales = 4;
+
+    /// <summary>The side of a wire end's piece facing the gap: a wire arriving from that side (R-imf4-1) — +1 is right of or
+    /// below the piece, along the axis the two pieces face on.</summary>
+    private static bool LeadFacing(List<SymbolAttachment> ends, PixelBox box, (int X, int Y) side)
+    {
+        foreach (var e in ends)
+        {
+            // The wire arrives travelling against the side it comes from.
+            double dot = -(e.DirX * side.X + e.DirY * side.Y);
+            if (dot < 0.7) continue;
+            double rel = side.X != 0 ? (e.X - box.CentreX) * side.X : (e.Y - box.CentreY) * side.Y;
+            if (rel > 0) return true;
+        }
+        return false;
     }
 
     /// <summary>Two boxes facing each other across a gap shorter than the larger one's extent along the faces, with no
     /// wire in the gap — or one inside the other: an outline and what is drawn in it, the zig-zag in a termination's box
-    /// (IM-12), are one symbol.</summary>
+    /// (IM-12), are one symbol. IM-7's rule, kept for a reading with no symbol scale.</summary>
     private static bool Facing(PixelBox a, PixelBox b, WireGraph wires)
     {
-        static bool Inside(PixelBox i, PixelBox o) => i.Left >= o.Left && i.Right <= o.Right && i.Top >= o.Top && i.Bottom <= o.Bottom;
-        if (Inside(a, b) || Inside(b, a)) return true;
+        if (Inside(a, b, 0) || Inside(b, a, 0)) return true;
+        return FacingGap(a, b, wires) is { } f && f.Gap < f.Extent;
+    }
+
+    /// <summary>Two boxes facing each other, over half the smaller one's extent, across a gap no wire crosses: the gap, the
+    /// larger one's extent along the faces, and the side of <paramref name="a"/> that faces <paramref name="b"/>.</summary>
+    private static (double Gap, double Extent, (int X, int Y) Side)? FacingGap(PixelBox a, PixelBox b, WireGraph wires)
+    {
         int ox = Math.Min(a.Right, b.Right) - Math.Max(a.Left, b.Left) + 1;
         int oy = Math.Min(a.Bottom, b.Bottom) - Math.Max(a.Top, b.Top) + 1;
         if (ox >= 0.5 * Math.Min(a.Width, b.Width))
         {
             int gap = Math.Max(b.Top - a.Bottom - 1, a.Top - b.Bottom - 1);
-            if (gap < 0 || gap >= Math.Max(a.Width, b.Width)) return false;
+            if (gap < 0) return null;
             int top = Math.Min(a.Bottom, b.Bottom) + 1, bottom = Math.Max(a.Top, b.Top);
-            return !WireIn(Math.Max(a.Left, b.Left), top, Math.Min(a.Right, b.Right) + 1, bottom, wires);
+            if (WireIn(Math.Max(a.Left, b.Left), top, Math.Min(a.Right, b.Right) + 1, bottom, wires)) return null;
+            return (gap, Math.Max(a.Width, b.Width), (0, b.Top > a.Bottom ? 1 : -1));
         }
         if (oy >= 0.5 * Math.Min(a.Height, b.Height))
         {
             int gap = Math.Max(b.Left - a.Right - 1, a.Left - b.Right - 1);
-            if (gap < 0 || gap >= Math.Max(a.Height, b.Height)) return false;
+            if (gap < 0) return null;
             int left = Math.Min(a.Right, b.Right) + 1, right = Math.Max(a.Left, b.Left);
-            return !WireIn(left, Math.Max(a.Top, b.Top), right, Math.Min(a.Bottom, b.Bottom) + 1, wires);
+            if (WireIn(left, Math.Max(a.Top, b.Top), right, Math.Min(a.Bottom, b.Bottom) + 1, wires)) return null;
+            return (gap, Math.Max(a.Height, b.Height), (b.Left > a.Right ? 1 : -1, 0));
         }
-        return false;
+        return null;
     }
 
     /// <summary>Whether any wire crosses the rectangle [x0, x1] × [y0, y1] (pixel edges).</summary>

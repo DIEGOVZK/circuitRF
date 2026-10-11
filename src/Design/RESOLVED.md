@@ -19358,3 +19358,34 @@ curved-lines refusal (`StrokeMarks.cs`, `WireGraph.SymbolStrokes`/`Sides`). Desi
 - **A dimension arrow's shaft is often cut by its own label**, and its heads stop a pen or two short of the rails;
   each half is a one-headed arrow pointing into a wire across its tip, and that is enough to call it a dimension.
 - **Dashes at a datasheet's 1× are read as type** (a row of hyphens) and removed with the words; at 2× they are runs.
+
+## Regions that stop at parts; labels off their symbols (2026-10-11, brief-imf-4)
+
+One symbol region is one part: outlines are the faces of the candidate graph no junction dot stands on
+(`WireGraph.OutlineFaces`), type touching a symbol is lifted off the residue before regions grow (`GlyphLift.cs`) or
+kept with its word when cut by plates it is written across (`TextRegions`), regions merge closest first under the
+R-imf4-1 rules, close on outlines and envelope circles, and a runaway is re-cut (`SymbolRegions.Group`). Design note
+§20. Traps worth keeping:
+
+- **A cycle is not an outline when it runs through a junction dot.** Two IC pins tied outside the box make a loop with
+  the box's side; IM-7 took the whole loop as the box, and the box lost the pins. Faces, not cycles, decide.
+- **Merge closest first.** Greedy merging in index order joined one capacitor's top plate to the part beside it before
+  its own bottom plate, and the re-cut could then only split the capacitor.
+- **Count refusals once, at the end.** A refusal re-evaluated on every pass of the merge loop counted many times; only
+  pairs still apart when merging stops are reported.
+- **The new gap ceiling must not loosen the old one.** "Shorter than 1 s" alone merged a label 0.6 s from a small
+  capacitor that the extent rule had kept apart; the gap must be shorter than both.
+- **A letter touching a coil hangs off it by two strokes from one skeleton junction**, its stem and its foot. Taking
+  bridges one at a time gave the stem alone; the free branches of a junction are taken together.
+- **A run threshold of 1.5 h alone cuts coils.** An italic foot lying along hump tops is a 25 px run; a symbol's own
+  straight stroke is also at least 0.6 s.
+- **A line of text sharing pieces with an earlier word was skipped whole.** A capacitor's top plate kept as its name's
+  detail also sat in the band of the value below, which then never became a word, and its `1` read as a wire between
+  the plates. A line is now read without pieces that were only another word's symbol detail.
+- **A word's fragment touches only line work running along the line of text.** Without that, a curved plate touching
+  its lead (which runs across the line) joined the value beside it.
+- **An envelope circle's leads cut its outline into arcs**, so no piece spans the circle; a circle fitted through an
+  arc finds it, and every piece inside it belongs to it. The straight stretches of a heavy circle's outline are read as
+  wire — drop the wire runs lying inside the circle and read the wires again, or the transistor has five wire ends.
+- **Equal runs between boxes on one line read as dashes** (IMF-3's rule) at a large stated symbol scale — draw test
+  pictures with runs of different lengths.

@@ -67,6 +67,36 @@ internal static class StyleWires
             .Where(e => (e.A.X + e.B.X) / 2 is var mx && (e.A.Y + e.B.Y) / 2 is var my && mx >= x0 && mx <= x1 && my >= y0 && my <= y1)
             .Select(e => $"({e.A.X:0},{e.A.Y:0})-({e.B.X:0},{e.B.Y:0})").ToList();
 
+    /// <summary>The smallest symbol region whose box holds (x, y), in the 1× drawing's coordinates, within 3 px; null when
+    /// none does (IMF-4).</summary>
+    public static SymbolRegion? RegionAt(SchematicImageRead read, double scale, double x, double y) =>
+        read.Symbols.Select(r => (Region: r, Box: SourceBox(read, r.Box, scale)))
+            .Where(t => x >= t.Box.X0 - 3 && x <= t.Box.X1 + 3 && y >= t.Box.Y0 - 3 && y <= t.Box.Y1 + 3)
+            .OrderBy(t => (t.Box.X1 - t.Box.X0) * (t.Box.Y1 - t.Box.Y0)).Select(t => t.Region).FirstOrDefault();
+
+    /// <summary>A read box in the 1× drawing's coordinates.</summary>
+    public static (double X0, double Y0, double X1, double Y1) SourceBox(SchematicImageRead read, PixelBox b, double scale)
+    {
+        var (x0, y0) = read.ToSource(b.Left, b.Top);
+        var (x1, y1) = read.ToSource(b.Right + 1, b.Bottom + 1);
+        return (x0 / scale, y0 / scale, x1 / scale, y1 / scale);
+    }
+
+    /// <summary>Each named part is in a region of its own: every point lies in a region, no two in one (IMF-4).</summary>
+    public static Dictionary<string, SymbolRegion> OneRegionEach(SchematicImageRead read, double scale, params (string Part, double X, double Y)[] parts)
+    {
+        var found = new Dictionary<string, SymbolRegion>();
+        foreach (var (part, x, y) in parts)
+        {
+            var r = RegionAt(read, scale, x, y);
+            Assert.True(r is not null, $"{part}: no region at ({x}, {y})");
+            var other = found.FirstOrDefault(f => f.Value.Id == r!.Id);
+            Assert.True(other.Key is null, $"{part} and {other.Key} are one region");
+            found[part] = r!;
+        }
+        return found;
+    }
+
     /// <summary>A two-pin part's leads, either side of its body, are two nets: its plates are not wire.</summary>
     public static void TwoNets(SchematicImageRead read, double scale, (double X, double Y) one, (double X, double Y) other, string part)
     {
@@ -80,15 +110,14 @@ internal static class StyleWires
 public sealed partial class ImageDatasheetStyleTests(ITestOutputHelper output)
 {
     private const string RfAmp = "IMF-8 reads the 8-pin IC box (pin-number boxes, names inside) and the filled-dot RF connectors; " +
-                                 "it needs IMF-4's region stopping at the box and IMF-7's annotation phrases first";
-    private const string GainBlock = "IMF-8 reads the filled triangle as an Amp and the coax connectors as ports; it needs IMF-4's region, " +
-                                     "IMF-6's terminals and IMF-7's word designators (Cblock, Rbias, RFC) first";
+                                 "it needs IMF-7's annotation phrases first";
+    private const string GainBlock = "IMF-8 reads the filled triangle as an Amp and the coax connectors as ports; it needs the triangle " +
+                                     "closed at 1× (IMF-5), IMF-6's terminals and IMF-7's word designators (Cblock, Rbias, RFC) first";
     private const string Regulator = "IMF-8 reads the IC box with its pin names outside; it needs IMF-5's filled diodes and variable resistor " +
                                      "and IMF-7's bold labels first";
-    private const string Ldo = "IMF-8 reads the IC box with its pin names inside; it needs IMF-4's region stopping at the box and " +
-                               "IMF-6's named open-circle terminals first";
-    private const string TestCircuit = "IMF-8 reads the triangle as an Amp and the coax connectors as ports; it needs IMF-4's solid " +
-                                       "block box first";
+    private const string Ldo = "IMF-8 reads the IC box with its pin names inside; it needs IMF-6's named open-circle terminals first";
+    private const string TestCircuit = "IMF-8 reads the triangle as an Amp and the coax connectors as ports; it needs the solid " +
+                                       "block box read as one part (IMF-5) first";
 
     [Fact(Skip = RfAmp)] public void RfAmp_1x() => StyleScore.ReadsExactly(output, "ds-rf-amp-1x");
     [Fact(Skip = RfAmp)] public void RfAmp_2x() => StyleScore.ReadsExactly(output, "ds-rf-amp-2x");
@@ -243,14 +272,99 @@ public sealed partial class ImageWebStyleTests
     }
 }
 
+public sealed partial class ImageDatasheetStyleTests
+{
+    /// <summary>IMF-4, R-imf4-1, R-imf4-2: the LDO's IC box is a region bounded by its outline — its four wired pins (VIN,
+    /// EN, VOUT, GND) and nothing beside it; each capacitor is a region of its own.</summary>
+    [Theory]
+    [InlineData("ds-ldo-1x", 1)]
+    [InlineData("ds-ldo-2x", 2)]
+    public void Ldo_TheIcBox_HasItsFourPins_AndTheCapacitorsAreTheirOwn(string picture, int scale)
+    {
+        var read = StyleWires.Read(picture);
+        var parts = StyleWires.OneRegionEach(read, scale, ("U1", 260, 110), ("CIN", 120, 132), ("COUT", 400, 132));
+        Assert.Equal(4, parts["U1"].Attachments.Count);
+        Assert.Equal(2, parts["CIN"].Attachments.Count);
+        Assert.Equal(2, parts["COUT"].Attachments.Count);
+    }
+
+    /// <summary>IMF-4, R-imf4-2, R-imf4-5: the RF amplifier's IC box has its eight pins — the GND pins tied outside it are
+    /// wire, not outline — and C3, C4 and L1 beside the supply rail are three regions.</summary>
+    [Theory]
+    [InlineData("ds-rf-amp-1x", 1)]
+    [InlineData("ds-rf-amp-2x", 2)]
+    public void RfAmp_TheIcBox_HasItsEightPins_AndC3C4L1AreSeparate(string picture, int scale)
+    {
+        var read = StyleWires.Read(picture);
+        var parts = StyleWires.OneRegionEach(read, scale, ("U1", 300, 160), ("C3", 530, 75), ("C4", 560, 75), ("L1", 420, 80));
+        Assert.Equal(8, parts["U1"].Attachments.Count);
+        foreach (var c in new[] { "C3", "C4", "L1" }) Assert.Equal(2, parts[c].Attachments.Count);
+    }
+
+    /// <summary>IMF-4, R-imf4-1, R-imf4-5: the regulator reads one region per part — the variable resistor and Cadj
+    /// beside it are two — at both scales.</summary>
+    [Theory]
+    [InlineData("ds-regulator-1x", 1)]
+    [InlineData("ds-regulator-2x", 2)]
+    public void Regulator_OneRegionPerPart(string picture, int scale) =>
+        StyleWires.OneRegionEach(StyleWires.Read(picture), scale,
+            ("D1", 300, 40), ("U1", 300, 105), ("Ci", 110, 145), ("R1", 480, 157), ("D2", 560, 157), ("Co", 640, 145),
+            ("R2", 380, 252), ("Cadj", 420, 245));
+}
+
+public sealed partial class ImageWebStyleTests
+{
+    /// <summary>IMF-4, R-imf4-1, R-imf4-3, R-imf4-4: the heavy IEC stage reads one region per part — five resistors, three
+    /// capacitors, the transistor in its circle and the two sources — none with more than three wire ends.</summary>
+    [Fact]
+    public void HeavyIec_OneRegionPerPart_NoneWithMoreThanThreeEnds()
+    {
+        var read = StyleWires.Read("heavy-iec");
+        StyleWires.OneRegionEach(read, 1,
+            ("R1", 300, 210), ("R2", 300, 520), ("R3", 580, 130), ("R4", 580, 590), ("RL", 800, 320),
+            ("C1", 200, 360), ("C2", 690, 200), ("C3", 740, 590), ("Q1", 560, 360), ("vs", 100, 520), ("VCC", 960, 250));
+        Assert.All(read.Symbols, r => Assert.True(r.Attachments.Count <= 3, $"a region at {r.Box} has {r.Attachments.Count} wire ends"));
+    }
+
+    /// <summary>IMF-4, R-imf4-4: the ladder's designators touching their coils and plates are words, and no symbol region
+    /// holds them.</summary>
+    [Fact]
+    public void LadderDashed_TheDesignators_AreWords()
+    {
+        var read = StyleWires.Read("ladder-dashed");
+        foreach (var (name, x, y) in new[] { ("L1", 155.0, 64.0), ("L2", 355.0, 64.0), ("L3", 695.0, 64.0), ("C1", 305.0, 189.0), ("C2", 505.0, 189.0), ("C3", 845.0, 189.0) })
+        {
+            Assert.True(read.Words.Any(t => StyleWires.SourceBox(read, t.Box, 1) is var b && x >= b.X0 && x <= b.X1 && y >= b.Y0 && y <= b.Y1),
+                        $"{name} is no word");
+            Assert.True(read.Symbols.All(r => StyleWires.SourceBox(read, r.Box, 1) is var b && !(x >= b.X0 && x <= b.X1 && y >= b.Y0 && y <= b.Y1)),
+                        $"{name} is in a symbol's region");
+        }
+    }
+
+    /// <summary>IMF-4, R-imf4-4: typeset's R₃10kΩ touching its box is one word beside R3's two-pin region — and C1's italic
+    /// 100pF across its plates no longer shorts the right-hand mesh into one region.</summary>
+    [Fact]
+    public void Typeset_R3sValue_IsOneWord_BesideATwoPinRegion()
+    {
+        var read = StyleWires.Read("typeset");
+        var word = Assert.Single(read.Words, t => StyleWires.SourceBox(read, t.Box, 1) is var b && b.X0 >= 650 && b.X0 <= 656 && b.Y0 >= 195 && b.Y1 <= 225);
+        Assert.True(word.Glyphs.Count >= 5, $"R₃10kΩ read as {word.Glyphs.Count} glyphs");
+        var parts = StyleWires.OneRegionEach(read, 1, ("R3", 640, 210), ("C1", 540, 208));
+        Assert.Equal(2, parts["R3"].Attachments.Count);
+        Assert.Equal(2, parts["C1"].Attachments.Count);
+        var r3 = StyleWires.SourceBox(read, parts["R3"].Box, 1);
+        Assert.True(r3.X1 <= StyleWires.SourceBox(read, word.Box, 1).X0 + 1, "R3's region runs into its value");
+    }
+}
+
 public sealed partial class ImageWebStyleTests(ITestOutputHelper output)
 {
     private const string HeavyIec = "IMF-5 reads the transistor in its circle and the two source circles; it needs " +
-                                    "IMF-4's region, IMF-6's terminal dot and IMF-7's subscripts first";
+                                    "IMF-6's terminal dot and IMF-7's subscripts first";
     private const string Textbook = "IMF-6 makes the terminal pairs ports and the bottom rail ground; it needs IMF-7's " +
                                     "serif italic first";
-    private const string Ladder = "IMF-6 makes the terminal pairs ports and the bottom rail ground; it needs IMF-4's labels " +
-                                  "touching their symbols first";
+    private const string Ladder = "IMF-6 makes the terminal pairs ports and the bottom rail ground; it needs IMF-7 to read " +
+                                  "the italic designators first";
     private const string Typeset = "IMF-7 reads the serif italic designator-then-value runs; it needs IMF-5's ± source circle first";
     private const string BiasTee = "IMF-6 makes the names at a distance ports; it needs IMF-5's looped coil first";
     private const string LowRes = "IMF-6 makes the terminal pairs ports";

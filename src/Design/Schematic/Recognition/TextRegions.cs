@@ -35,7 +35,17 @@ public sealed record TextRegion(int Id, PixelBox Box, bool Vertical, IReadOnlyLi
 
     /// <summary>It stands on a wire, its baseline the wire (IM-12): a net label, never a part's designator or value.</summary>
     public bool OnWire { get; init; }
+
+    /// <summary>It was lifted off a symbol it touched (R-imf4-4): a designator or a value drawn against its part.</summary>
+    public bool Lifted { get; init; }
+
+    /// <summary>Where it stands against a closed outline (R-imf4-2): inside a box (a pin name, the part name), or beside a
+    /// triangle's lead (a pin number).</summary>
+    public TextPlace Place { get; init; }
 }
+
+/// <summary>Where a word stands against a closed outline (R-imf4-2).</summary>
+public enum TextPlace { Free, InsideBox, AtPin }
 
 /// <summary>A word-shaped group kept as part of a symbol because it touches line work.</summary>
 /// <param name="Contact">The longest contact, in w.</param>
@@ -68,6 +78,30 @@ internal static class TextRegions
         var kept = new List<KeptText>();
         var removed = new BinaryImage(width, height);
         var used = new HashSet<int>();                       // indices into cands
+        var detail = new HashSet<int>();                     // of them, kept as a word's symbol detail
+        var loose = new HashSet<int>();                      // of them, kept as symbol detail with no word beside them
+
+        // A piece of a word's line touching line work that is a glyph's, cut by it — not a stroke of it: no taller than
+        // 0.6 of the word, not long and thin, and touching only line work running along the line of text, as a
+        // capacitor's plates do when its value is written across them. A curved plate or a hump touches its lead, which
+        // runs across the line.
+        var alongRuns = new[] { LongRuns(mask, longRun, horizontal: true, vertical: false), LongRuns(mask, longRun, horizontal: false, vertical: true) };
+        bool Fragment(int k, double hw, bool vertical)
+        {
+            var c = cands[k];
+            double up = Across(c, vertical), along = Across(c, !vertical);
+            double a = Math.Min(up, along), b = Math.Max(up, along);
+            if (up > 0.6 * hw || (a < 0.3 * b && b > 0.5 * hw)) return false;
+            var runs = alongRuns[vertical ? 1 : 0];
+            foreach (int i in pixels[c.Label])
+            {
+                int x = i % width, y = i / width;
+                for (int dy = -1; dy <= 1; dy++)
+                    for (int dx = -1; dx <= 1; dx++)
+                        if ((dx | dy) != 0 && line.At(x + dx, y + dy) && !runs.At(x + dx, y + dy)) return false;
+            }
+            return true;
+        }
 
         foreach (bool vertical in new[] { false, true })
         {
@@ -91,7 +125,15 @@ internal static class TextRegions
                 bool split = false;
                 for (int gj = 0; gj < groups.Count && !split; gj++)
                     if (gj != gi && sets[gj].Count > sets[gi].Count && sets[gi].IsSubsetOf(sets[gj])) split = true;
-                if (split || g.Any(used.Contains)) continue;
+                if (split) continue;
+                // A line sharing pieces with a word already found is read without them when they were only kept as that
+                // word's symbol detail — a capacitor's top plate under its name, beside its value on the line below.
+                if (g.Any(used.Contains))
+                {
+                    if (!g.Where(used.Contains).All(detail.Contains)) continue;
+                    g = [.. g.Where(k => !used.Contains(k))];
+                    if (g.Count < 2) continue;
+                }
 
                 var across = g.Select(k => Across(cands[k], vertical)).OrderBy(v => v).ToList();
                 double h = across[across.Count / 2];
@@ -112,15 +154,31 @@ internal static class TextRegions
                     var touching = ordered.Where(k => Contact(pixels[cands[k].Label], line, width).Places > 0).ToHashSet();
                     var clear = ordered.Where(k => !touching.Contains(k)).ToList();
                     bool word = clear.Count(k => Across(cands[k], vertical) >= o.MinTextHeight * w) >= 2;
-                    var keptBox = word ? BoxOf(touching.Select(k => cands[k])) : box;
-                    var (kc, kp) = word ? Contact(touching.SelectMany(k => pixels[cands[k].Label]), line, width) : (contact, places);
-                    kept.Add(new KeptText(keptBox, kc / w, kp));
-                    if (!word) continue;
-                    ordered = clear;
-                    box = BoxOf(clear.Select(k => cands[k]));
+                    if (!word)
+                    {
+                        kept.Add(new KeptText(box, contact / w, places));
+                        loose.UnionWith(g);
+                        continue;
+                    }
+                    // A glyph of the word cut by the line work it touches is the word's (R-imf4-4): an italic pF written
+                    // across a capacitor's plates. A stroke of the line work is not.
+                    double hw = clear.Max(k => Across(cands[k], vertical));
+                    var joined = touching.Where(k => Fragment(k, hw, vertical)).ToHashSet();
+                    touching.ExceptWith(joined);
+                    detail.UnionWith(touching);
+                    if (touching.Count > 0)
+                    {
+                        var (kc, kp) = Contact(touching.SelectMany(k => pixels[cands[k].Label]), line, width);
+                        kept.Add(new KeptText(BoxOf(touching.Select(k => cands[k])), kc / w, kp));
+                    }
+                    ordered = [.. ordered.Where(k => !touching.Contains(k))];
+                    box = BoxOf(ordered.Select(k => cands[k]));
                 }
 
-                ordered = Grow(ordered, cands, used, vertical, k => Contact(pixels[cands[k].Label], line, width).Places == 0);
+                double wordHeight = ordered.Max(k => Across(cands[k], vertical));
+                ordered = Grow(ordered, cands, k => used.Contains(k) && !loose.Contains(k), vertical,
+                               k => Contact(pixels[cands[k].Label], line, width).Places == 0 || Fragment(k, wordHeight, vertical));
+                foreach (int k in ordered) { used.Add(k); loose.Remove(k); }
                 box = BoxOf(ordered.Select(k => cands[k]));
 
                 foreach (int k in ordered)
@@ -160,7 +218,7 @@ internal static class TextRegions
     /// 1.35 of it — within a letter gap along, no wider than 1.6 heights, and touching no line work. The word's height
     /// is its tallest glyph's. Reading order.
     /// </summary>
-    private static List<int> Grow(List<int> ordered, List<Component> cands, HashSet<int> used, bool vertical, Func<int, bool> clear)
+    private static List<int> Grow(List<int> ordered, List<Component> cands, Func<int, bool> taken, bool vertical, Func<int, bool> clear)
     {
         var word = ordered.ToList();
         double h = word.Max(k => Across(cands[k], vertical));   // the tallest glyph: marks and lower case are shorter
@@ -174,7 +232,7 @@ internal static class TextRegions
                 : (box.Left, box.Right + 1.0, box.Top, box.Bottom + 1.0);
             for (int k = 0; k < cands.Count; k++)
             {
-                if (used.Contains(k)) continue;
+                if (word.Contains(k) || taken(k)) continue;
                 var c = cands[k];
                 (double a0, double a1, double p0, double p1) = vertical
                     ? (c.Top, c.Bottom + 1.0, c.Left, c.Right + 1.0)
@@ -184,7 +242,6 @@ internal static class TextRegions
                 if (a0 > aHi + StrokeGlyphs.MaxLetterGap * h || a1 < aLo - StrokeGlyphs.MaxLetterGap * h) continue;
                 if (!clear(k)) continue;
                 word.Add(k);
-                used.Add(k);
                 grew = true;
             }
         }
@@ -201,11 +258,11 @@ internal static class TextRegions
     private static double Across(Component c, bool vertical) => vertical ? c.Right - c.Left + 1 : c.Bottom - c.Top + 1;
 
     /// <summary>Every pixel on a horizontal or vertical run of at least <paramref name="min"/> pixels.</summary>
-    internal static BinaryImage LongRuns(BinaryImage mask, int min)
+    internal static BinaryImage LongRuns(BinaryImage mask, int min, bool horizontal = true, bool vertical = true)
     {
         int w = mask.Width, h = mask.Height;
         var r = new BinaryImage(w, h);
-        for (int y = 0; y < h; y++)
+        for (int y = 0; y < h && horizontal; y++)
             for (int x = 0; x < w;)
             {
                 if (!mask[x, y]) { x++; continue; }
@@ -213,7 +270,7 @@ internal static class TextRegions
                 while (x < w && mask[x, y]) x++;
                 if (x - s >= min) for (int k = s; k < x; k++) r.Pixels[y * w + k] = 1;
             }
-        for (int x = 0; x < w; x++)
+        for (int x = 0; x < w && vertical; x++)
             for (int y = 0; y < h;)
             {
                 if (!mask[x, y]) { y++; continue; }

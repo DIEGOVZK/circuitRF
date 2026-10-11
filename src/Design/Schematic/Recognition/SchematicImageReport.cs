@@ -90,6 +90,33 @@ public sealed record SchematicImageReport
     public int SquareJunctions { get; init; }
     public int DiamondJunctions { get; init; }
 
+    // ── Regions that stop at parts (R-imf4-6) ───────────────────────────────────────────────────────────────────
+
+    /// <summary>Loops of wire read as wire because a junction dot stands on them, not as a symbol's outline.</summary>
+    public int WireLoops { get; init; }
+
+    /// <summary>Regions closed on their outlines — boxes, triangles — and envelope circles (R-imf4-2, R-imf4-3).</summary>
+    public int ClosedBoxes { get; init; }
+    public int ClosedTriangles { get; init; }
+    public int EnvelopeCircles { get; init; }
+
+    /// <summary>Pieces merged into one region, and merges refused by each rule of R-imf4-1 (and R-imf4-2's outline).</summary>
+    public int RegionsMerged { get; init; }
+    public int RefusedGap { get; init; }
+    public int RefusedLead { get; init; }
+    public int RefusedSize { get; init; }
+    public int RefusedPins { get; init; }
+    public int RefusedOutline { get; init; }
+
+    /// <summary>Glyphs lifted off the symbols they touch into the words (R-imf4-4).</summary>
+    public int GlyphsLifted { get; init; }
+
+    /// <summary>Runaway regions split (R-imf4-5), and how many regions they became; and those no cut could split, left as
+    /// S-parameter blocks.</summary>
+    public int RegionsSplit { get; init; }
+    public int RegionsSplitInto { get; init; }
+    public int Blocks { get; init; }
+
     public const string DashedWireNote = "A dashed line was read as a wire; it usually stands for repeated sections left out.";
 
     /// <summary>The report in words, one finding per line; a count of nothing is not a line.</summary>
@@ -133,7 +160,28 @@ public sealed record SchematicImageReport
         if (DashedAnnotations > 0) r.Add(Count(DashedAnnotations, "dashed line") + " removed as an annotation (a box or a boundary).");
         if (DashedWires > 0) r.Add(DashedWireNote);
         if (ZigzagChains > 0) r.Add(Count(ZigzagChains, "zig-zag") + " not counted as curved lines.");
+        if (WireLoops > 0) r.Add(Count(WireLoops, "loop") + " of wire through a junction dot read as wire, not an outline.");
         r.Add(Count(SymbolRegions, "symbol region") + ".");
+        if (ClosedBoxes + ClosedTriangles + EnvelopeCircles > 0)
+            r.Add("Regions closed on their outlines: " + string.Join(", ", new[]
+            {
+                ClosedBoxes > 0 ? Count(ClosedBoxes, "box", "boxes") : null,
+                ClosedTriangles > 0 ? Count(ClosedTriangles, "triangle") : null,
+                EnvelopeCircles > 0 ? Count(EnvelopeCircles, "circle") + " round a part" : null,
+            }.Where(x => x is not null)) + ".");
+        if (RegionsMerged > 0) r.Add(Count(RegionsMerged, "piece") + " merged into the region beside " + (RegionsMerged == 1 ? "it." : "them."));
+        var refused = new[]
+        {
+            (RefusedGap, "too far apart"), (RefusedLead, "a lead on the facing side"), (RefusedSize, "too large together"),
+            (RefusedPins, "too many wire ends together"), (RefusedOutline, "outside a closed outline"),
+        }.Where(t => t.Item1 > 0).ToList();
+        if (refused.Count > 0)
+            r.Add("Merges refused: " + string.Join(", ", refused.Select(t => $"{t.Item1} {t.Item2}")) + ".");
+        if (GlyphsLifted > 0) r.Add(Count(GlyphsLifted, "glyph") + " lifted off the symbols " + (GlyphsLifted == 1 ? "it touched" : "they touched") + " into the words.");
+        if (RegionsSplit > 0)
+            r.Add(RegionsSplit == 1 ? $"A region was split into {RegionsSplitInto}." : $"{RegionsSplit} regions were split into {RegionsSplitInto}.");
+        if (Blocks > 0)
+            r.Add(Count(Blocks, "region") + " with too many wire ends and no cut to split " + (Blocks == 1 ? "it, read" : "them, read") + " as an S-parameter block.");
         if (FillsKept > 0) r.Add($"{Count(FillsKept, "filled area")} kept as {(FillsKept == 1 ? "its symbol's fill" : "their symbols' fills")}, not ink.");
         if (DecorationsRemoved > 0) r.Add($"{Count(DecorationsRemoved, "decoration")} with no wire removed.");
         if (NetLabels > 0) r.Add(Count(NetLabels, "net label") + ".");
@@ -143,4 +191,6 @@ public sealed record SchematicImageReport
     }
 
     private static string Count(int n, string noun) => n.ToString(CultureInfo.InvariantCulture) + " " + noun + (n == 1 ? "" : "s");
+
+    private static string Count(int n, string one, string many) => n.ToString(CultureInfo.InvariantCulture) + " " + (n == 1 ? one : many);
 }

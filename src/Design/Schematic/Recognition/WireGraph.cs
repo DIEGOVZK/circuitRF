@@ -303,6 +303,53 @@ public sealed class WireGraph
         }
     }
 
+    /// <summary>The edges of <paramref name="cycle"/> bounding a face that is an outline (R-imf4-2). The faces are traced
+    /// on the cycle edges' plane embedding — at each vertex the next edge clockwise — and a bounded face (positive area,
+    /// y up) is an outline unless a junction dot stands on it: a symbol's outline is never drawn through a dot, a loop of
+    /// wires always meets at them.</summary>
+    private static List<int> OutlineFaces(Assembled c, List<int> cycle, int nv, int[] nodeOf, Func<int, int, int> V, PlateRules plates)
+    {
+        var rot = new List<(int Edge, double Angle)>[nv];
+        for (int v = 0; v < nv; v++) rot[v] = [];
+        foreach (int e in cycle)
+            foreach (int end in new[] { c.Edges[e].From, c.Edges[e].To })
+            {
+                var (dx, dy) = c.Away(e, end);
+                rot[V(end, e)].Add((e, Math.Atan2(-dy, dx)));
+            }
+        foreach (var r in rot) r.Sort((a, b) => a.Angle.CompareTo(b.Angle));
+        int Other(int v, int e) => V(c.Edges[e].From, e) == v ? V(c.Edges[e].To, e) : V(c.Edges[e].From, e);
+
+        var seen = new HashSet<(int V, int E)>();
+        var outline = new HashSet<int>();
+        foreach (int start in cycle)
+            foreach (int sv in new[] { V(c.Edges[start].From, start), V(c.Edges[start].To, start) })
+            {
+                if (seen.Contains((sv, start))) continue;
+                var face = new List<(int V, int E)>();
+                var (u, e) = (sv, start);
+                while (seen.Add((u, e)) && face.Count <= 4 * cycle.Count)
+                {
+                    face.Add((u, e));
+                    int v = Other(u, e);
+                    var r = rot[v];
+                    int i = r.FindIndex(x => x.Edge == e);
+                    if (i < 0 || r.Count < 2) break;
+                    (u, e) = (v, r[(i - 1 + r.Count) % r.Count].Edge);
+                }
+                double area = 0;
+                foreach (var (fv, fe) in face)
+                {
+                    var (p, q) = (c.Nodes[nodeOf[fv]].P, c.Nodes[nodeOf[Other(fv, fe)]].P);
+                    area += p.x * -q.y - q.x * -p.y;
+                }
+                if (area <= 0) continue;
+                if (face.Any(f => c.Nodes[nodeOf[f.V]].Dot)) { plates.MeshFaces++; continue; }
+                foreach (var (_, fe) in face) outline.Add(fe);
+            }
+        return [.. cycle.Where(outline.Contains)];
+    }
+
     private static PointD Far(WirePiece p, PointD end) => Dist(p.A, end) <= Dist(p.B, end) ? p.B : p.A;
 
     /// <summary>The indices of the wire candidates that are strokes of symbols — short lines with two bare ends, and
@@ -433,14 +480,22 @@ public sealed class WireGraph
             }
         }
         for (int v = 0; v < nv; v++) if (disc[v] < 0) Dfs(v, -1);
-        for (int e = 0; e < cne; e++)
-            if (!bridge[e] && c.Edges[e].From != c.Edges[e].To)
-                foreach (int s in c.Edges[e].Piece.Sources) reject.Add(s);
+        var cycle = Enumerable.Range(0, cne).Where(e => !bridge[e] && V(c.Edges[e].From, e) != V(c.Edges[e].To, e)).ToList();
+        // Which cycles are outlines (R-imf4-2): with the final rules, only the edges of a FACE no junction dot stands on.
+        // A box's pin leads joined outside it — two GND pins tied by one wire — close a face with the box's side, and that
+        // face runs through the dot where the wires meet: the leads are wire, the box's side is the box's.
+        if (plates is not null)
+        {
+            var nodeOf = new int[nv];
+            for (int n = 0; n < c.Nodes.Count; n++) nodeOf[n] = n;
+            foreach (var ((n, _), v) in vertexOf) nodeOf[v] = n;
+            cycle = OutlineFaces(c, cycle, nv, nodeOf, V, plates);
+        }
+        foreach (int e in cycle) foreach (int s in c.Edges[e].Piece.Sources) reject.Add(s);
 
         // Inside an outline: a candidate lying wholly within the box of a connected cycle is drawn in the symbol — a
         // termination's lead carried on through the top of its box to the zig-zag (IM-12). Its length inside depends on
         // the zoom; where the outline is crossed does not.
-        var cycle = Enumerable.Range(0, cne).Where(e => !bridge[e] && c.Edges[e].From != c.Edges[e].To).ToList();
         var outline = new Dictionary<int, int>();
         foreach (int e in cycle) { outline[c.Edges[e].From] = c.Edges[e].From; outline[c.Edges[e].To] = c.Edges[e].To; }
         int Root(int x) { while (outline[x] != x) x = outline[x] = outline[outline[x]]; return x; }
@@ -495,7 +550,16 @@ public sealed class WireGraph
                         ? ends.Max(p => p.x) - ends.Min(p => p.x) : ends.Max(p => p.y) - ends.Min(p => p.y));
                 }
             }
-        if (plates is not null) plates.Boxes = boxes.Count;
+        if (plates is not null)
+        {
+            plates.Boxes = boxes.Count;
+            foreach (var g in cycle.GroupBy(e => Root(c.Edges[e].From)))
+            {
+                var ps = g.SelectMany(e => new[] { c.Edges[e].Piece.A, c.Edges[e].Piece.B }).ToList();
+                plates.Outlines.Add(new OutlineBox(ps.Min(p => p.x), ps.Min(p => p.y), ps.Max(p => p.x), ps.Max(p => p.y),
+                                                   g.All(e => c.Edges[e].Piece.Orientation != WireOrientation.Diagonal)));
+            }
+        }
         double tol = w;
         bool In(PointD p, (double X0, double Y0, double X1, double Y1) b) =>
             p.x >= b.X0 - tol && p.x <= b.X1 + tol && p.y >= b.Y0 - tol && p.y <= b.Y1 + tol;
@@ -1199,6 +1263,10 @@ internal sealed record JunctionBlob(PointD Centre, double Radius);
 /// other at <paramref name="At"/> without connecting to it.</summary>
 internal sealed record HopJoin(PointD End1, PointD End2, PointD At);
 
+/// <summary>A closed outline's box, read pixels; <paramref name="Orthogonal"/>: drawn only across and down (a box, not a
+/// triangle or a diamond).</summary>
+internal sealed record OutlineBox(double X0, double Y0, double X1, double Y1, bool Orthogonal);
+
 /// <summary>A line with two bare ends, at most one lead and no crossing: a plate, or one of a pair (R-imf3-1).</summary>
 internal sealed record PlateLine(PointD A, PointD B, IReadOnlyList<int> Sources, bool Plate)
 {
@@ -1227,6 +1295,12 @@ internal sealed class PlateRules
     public IReadOnlyList<WirePiece> Sides { get; init; } = [];
 
     public int Plates, PlatePairs, CurvedPlates, Boxes;
+
+    /// <summary>Loops of wire candidates read as wire, not an outline: a junction dot stands on them (R-imf4-2).</summary>
+    public int MeshFaces;
+
+    /// <summary>The closed outlines set aside as symbols, read pixels (R-imf4-2).</summary>
+    internal readonly List<OutlineBox> Outlines = [];
 
     internal readonly List<PlateLine> Lines = [];
 }

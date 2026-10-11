@@ -7,7 +7,8 @@
 //           ─ the symbol scale s, from the plates, bars and small outlines the default tolerances set aside
 //           ─ annotation strokes (StrokeMarks, IMF-3): arrows, dashed lines, zig-zags; an annotation leaves the ink
 //           ─ wires (WireGraph): the skeleton's straight runs, symbol strokes set aside, nodes, dots, crossings
-//           ─ symbols (SymbolRegions): the residue, grown and merged; attachments; hops, supply marks, net labels
+//           ─ symbols (SymbolRegions): the residue, its envelope circles, the glyphs touching symbols lifted off it
+//             (GlyphLift, IMF-4), grown and merged one part to a region; attachments; hops, supply marks, net labels
 //
 // Nothing here names a component (IM-8) or reads a word (IM-9). Pure: it posts nothing and writes nothing. Every
 // tolerance is a number of pens w at the reference profile, scaled by its class's factor (SchematicImageOptions). The
@@ -113,6 +114,9 @@ public sealed record SchematicImageRead
     /// <summary>What else the wire reading set aside or found, for the report (R-imf3-7).</summary>
     internal StrokeCounts Strokes { get; init; } = new();
 
+    /// <summary>What the region growing closed, merged, refused and split, for the report (R-imf4-6).</summary>
+    internal RegionCounts Regions { get; init; } = new();
+
     public required SchematicImageReport Report { get; init; }
 
     /// <summary>Why nothing can be made of the picture, or null.</summary>
@@ -152,6 +156,7 @@ internal sealed record StrokeCounts
     public int RoundJunctions { get; init; }
     public int SquareJunctions { get; init; }
     public int DiamondJunctions { get; init; }
+    public int MeshFaces { get; init; }
 }
 
 public static class SchematicImageReading
@@ -338,7 +343,7 @@ public static class SchematicImageReading
             Strokes = new StrokeCounts
             {
                 Plates = plates.Plates, PlatePairs = plates.PlatePairs, CurvedPlates = plates.CurvedPlates, Boxes = plates.Boxes,
-                ZigzagChains = marks.ZigzagChains,
+                ZigzagChains = marks.ZigzagChains, MeshFaces = plates.MeshFaces,
             },
         };
         token.ThrowIfCancellationRequested();
@@ -358,16 +363,41 @@ public static class SchematicImageReading
 
         // ── Symbols (R-im7-6, R-im7-7) ──
         control?.BeginStage("Finding symbols");
-        var residue = SymbolRegions.Residue(wireMask, first, blobs, w);
         // A large fill (R-imf2-4) — wider than three symbol scales — is the region's fill, not its ink: its rim joins
         // the residue, so the region still stands where it is, and its inside does not.
         var (largeFills, inside) = LargeFills(fills, w, 3 * symbol.Px, o);
-        for (int i = 0; i < residue.Pixels.Length; i++) if (fills.Pixels[i] != 0 && inside.Pixels[i] == 0) residue.Pixels[i] = 1;
-        var raw = SymbolRegions.Group(residue, first, w, o);
+        BinaryImage ResidueOf(WireGraph g)
+        {
+            var res = SymbolRegions.Residue(wireMask, g, blobs, w);
+            for (int i = 0; i < res.Pixels.Length; i++) if (fills.Pixels[i] != 0 && inside.Pixels[i] == 0) res.Pixels[i] = 1;
+            return res;
+        }
+        var residue = ResidueOf(first);
+        // An envelope circle (R-imf4-3) holds its part: the short runs of its own outline and of what is drawn inside it,
+        // taken for wire where they run straight, are the circle's.
+        var circles = SymbolRegions.Envelopes(residue, inkMask, symbol.Px, w);
+        if (circles.Count > 0)
+        {
+            int before = wires.Count;
+            wires = [.. wires.Where(p => !circles.Any(c => c.Holds(p.A, w) && c.Holds(p.B, w)))];
+            if (wires.Count < before)
+            {
+                first = WireGraph.Build(wires, [], blobs, w, o, flips);
+                residue = ResidueOf(first);
+            }
+        }
+        // Glyphs come off the symbols they touch before regions are grown (R-imf4-4), and every word is placed against
+        // the closed outlines (R-imf4-2).
+        var regionCounts = new RegionCounts();
+        var lifted = GlyphLift.Lift(residue, first, words.Words, plates.Outlines, text.Px + 2 * thick, symbol.Px, w, o, out regionCounts.Glyphs);
+        var allWords = Place([.. words.Words, .. lifted], plates.Outlines, text.Px + 2 * thick);
+        read = read with { Words = allWords };
+        var scales = new RegionScales(symbol.Px, plates.Outlines, PlatePairs(plates.Lines, symbol.Px, w)) { Circles = circles };
+        var raw = SymbolRegions.Group(residue, first, w, o, scales, regionCounts);
         var (hops, hopRegions) = SymbolRegions.Hops(raw, mask.Width, first, w, o);
         var graph = hops.Count > 0 ? WireGraph.Build(wires, hops, blobs, w, o, flips) : first;
         var regions = raw.Where((_, j) => !hopRegions.Contains(j)).ToList();
-        var attached = SymbolRegions.Attach(regions, mask.Width, graph, words.Words, w, o);
+        var attached = SymbolRegions.Attach(regions, mask.Width, graph, allWords, w, o);
         for (int i = 0; i < attached.Regions.Count; i++)
         {
             var r = attached.Regions[i];
@@ -392,12 +422,61 @@ public static class SchematicImageReading
         }
         read = read with
         {
-            Wires = graph, Symbols = attached.Regions, Decorations = attached.Decorations, NetLabels = attached.Labels,
+            Wires = graph, Symbols = attached.Regions, Decorations = attached.Decorations, NetLabels = attached.Labels, Regions = regionCounts,
             SupplyMarks = attached.Supplies, Dangling = attached.Dangling,
             Strokes = read.Strokes with { RoundJunctions = round, SquareJunctions = square, DiamondJunctions = diamond },
         };
         read = read with { Report = Report(read) };
         return attached.Regions.Count == 0 ? read with { Refusal = SchematicImageReport.NoSymbolsRefusal } : read;
+    }
+
+    /// <summary>The words in reading order, numbered again, each placed against the closed outlines (R-imf4-2): inside an
+    /// orthogonal box, or within a text height of a triangle (an amplifier's pin numbers beside its leads).</summary>
+    private static List<TextRegion> Place(List<TextRegion> words, IReadOnlyList<OutlineBox> outlines, double h)
+    {
+        TextPlace At(TextRegion t)
+        {
+            if (t.Place != TextPlace.Free) return t.Place;
+            var b = t.Box;
+            foreach (var ob in outlines)
+            {
+                if (ob.Orthogonal && b.Left >= ob.X0 && b.Right <= ob.X1 && b.Top >= ob.Y0 && b.Bottom <= ob.Y1) return TextPlace.InsideBox;
+                if (!ob.Orthogonal && b.Left <= ob.X1 + h && b.Right >= ob.X0 - h && b.Top <= ob.Y1 + h && b.Bottom >= ob.Y0 - h
+                    && !(b.Left >= ob.X0 && b.Right <= ob.X1 && b.Top >= ob.Y0 && b.Bottom <= ob.Y1))
+                    return TextPlace.AtPin;
+            }
+            return TextPlace.Free;
+        }
+        return [.. words.OrderBy(t => t.Box.Top).ThenBy(t => t.Box.Left).Select((t, i) => t with { Id = i, Place = At(t) })];
+    }
+
+    /// <summary>The centres of the plate pairs among <paramref name="lines"/> (R-imf4-5): two plates side by side, parallel,
+    /// overlapping over half the shorter, no more than 1.5 s apart — a capacitor each. A plate is in one pair at most.</summary>
+    private static List<PointD> PlatePairs(IReadOnlyList<PlateLine> lines, double s, double w)
+    {
+        var plates = lines.Where(l => l.Plate).ToList();
+        var used = new HashSet<int>();
+        var r = new List<PointD>();
+        for (int i = 0; i < plates.Count; i++)
+            for (int j = i + 1; j < plates.Count && !used.Contains(i); j++)
+            {
+                if (used.Contains(j)) continue;
+                var (p, q) = (plates[i], plates[j]);
+                double lp = WireGraph.Dist(p.A, p.B), lq = WireGraph.Dist(q.A, q.B);
+                if (lp < 1 || lq < 1) continue;
+                double cos = Math.Abs(((p.B.x - p.A.x) * (q.B.x - q.A.x) + (p.B.y - p.A.y) * (q.B.y - q.A.y)) / (lp * lq));
+                if (cos < Math.Cos(10 * Math.PI / 180)) continue;
+                var (a0, d0) = WireGraph.Local(p.A, p.B, q.A);
+                var (a1, d1) = WireGraph.Local(p.A, p.B, q.B);
+                double across = Math.Abs((d0 + d1) / 2);
+                if (across < w || across > 1.5 * s) continue;
+                double overlap = Math.Min(lp, Math.Max(a0, a1)) - Math.Max(0, Math.Min(a0, a1));
+                if (overlap < 0.5 * Math.Min(lp, lq)) continue;
+                used.Add(i);
+                used.Add(j);
+                r.Add(new PointD((p.A.x + p.B.x + q.A.x + q.B.x) / 4, (p.A.y + p.B.y + q.A.y + q.B.y) / 4));
+            }
+        return r;
     }
 
     /// <summary>A picture binarised, straightened and cleaned.</summary>
@@ -490,6 +569,11 @@ public static class SchematicImageReading
         DashedWires = r.Annotations.Count(a => a.Kind == StrokeAnnotationKind.DashedWire),
         ZigzagChains = r.Strokes.ZigzagChains,
         RoundJunctions = r.Strokes.RoundJunctions, SquareJunctions = r.Strokes.SquareJunctions, DiamondJunctions = r.Strokes.DiamondJunctions,
+        WireLoops = r.Strokes.MeshFaces,
+        ClosedBoxes = r.Regions.Boxes, ClosedTriangles = r.Regions.Triangles, EnvelopeCircles = r.Regions.Circles,
+        RegionsMerged = r.Regions.Merged, RefusedGap = r.Regions.RefusedGap, RefusedLead = r.Regions.RefusedLead,
+        RefusedSize = r.Regions.RefusedSize, RefusedPins = r.Regions.RefusedPins, RefusedOutline = r.Regions.RefusedOutline,
+        GlyphsLifted = r.Regions.Glyphs, RegionsSplit = r.Regions.Split, RegionsSplitInto = r.Regions.SplitInto, Blocks = r.Regions.Blocks,
     };
 
     /// <summary>The filled areas of the drawing that are not junction dots — a filled rectangle, a diode's triangle,
