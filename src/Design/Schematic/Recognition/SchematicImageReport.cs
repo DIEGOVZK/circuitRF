@@ -15,6 +15,9 @@ public sealed record SchematicImageReport
     public const string NoSymbolsRefusal =
         "No symbols: this picture has wires but nothing drawn between them to read as a part.";
 
+    public const string CurvedLinesRefusal =
+        "No circuit: most of the lines in this picture curve or slant, as a chart's or a drawing's do; a schematic's wires run across and down.";
+
     /// <summary>The stroke width w, pixels.</summary>
     public double StrokeWidth { get; init; }
 

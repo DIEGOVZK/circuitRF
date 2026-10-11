@@ -177,7 +177,33 @@ public sealed class WireGraph
             }
         }
         Square(r, w, o, maxResidual);
+        Corners(r, w);
         return r;
+    }
+
+    /// <summary>A short run that is no wire candidate — curved, or a diagonal too short to be a wire — joining the end of
+    /// a horizontal candidate to the end of a vertical one — and to nothing else — is the corner between them, rounded: a box drawn with round
+    /// corners (circuitRF's own termination) otherwise reads as four loose sides, never the cycle that sets a symbol's
+    /// outline aside, and its sides are taken for wire (IM-12). It joins as a diagonal candidate, so a wire bend drawn
+    /// round stays one connected wire.</summary>
+    private static void Corners(List<WirePiece> pieces, double w)
+    {
+        double reach = 1.5 * w + 0.5;
+        bool EndsNear(WirePiece q, PointD p) => Dist(q.A, p) <= reach || Dist(q.B, p) <= reach;
+        // One candidate of that axis ends there, and only one: where a wire carries on past the point, the run is no
+        // corner of it — a hop's arc is cut in two by the wire it hops, and each half ends where that wire's two
+        // pieces do.
+        bool Meets(PointD end, WireOrientation axis) =>
+            pieces.Count(q => q.IsWire && q.Orientation == axis && EndsNear(q, end)) == 1;
+        var corners = pieces.Where(p => !p.IsWire && !p.RoundLoop && !p.FreeA && !p.FreeB && p.Length <= 3 * w
+                                         && ((Meets(p.A, WireOrientation.Horizontal) && Meets(p.B, WireOrientation.Vertical))
+                                             || (Meets(p.A, WireOrientation.Vertical) && Meets(p.B, WireOrientation.Horizontal))))
+                            .ToList();
+        foreach (var p in corners)
+        {
+            p.IsWire = true;
+            p.Orientation = WireOrientation.Diagonal;
+        }
     }
 
     /// <summary>Snaps a short straight run within 12° of an axis to it when BOTH its ends meet a run near the other
@@ -318,6 +344,29 @@ public sealed class WireGraph
         for (int e = 0; e < ne; e++)
             if (!bridge[e] && a.Edges[e].From != a.Edges[e].To)
                 foreach (int s in a.Edges[e].Piece.Sources) reject.Add(s);
+
+        // Inside an outline: a candidate lying wholly within the box of a connected cycle is drawn in the symbol — a
+        // termination's lead carried on through the top of its box to the zig-zag (IM-12). Its length inside depends on
+        // the zoom; where the outline is crossed does not.
+        var cycle = Enumerable.Range(0, ne).Where(e => !bridge[e] && a.Edges[e].From != a.Edges[e].To).ToList();
+        var outline = new Dictionary<int, int>();
+        foreach (int e in cycle) { outline[a.Edges[e].From] = a.Edges[e].From; outline[a.Edges[e].To] = a.Edges[e].To; }
+        int Root(int x) { while (outline[x] != x) x = outline[x] = outline[outline[x]]; return x; }
+        foreach (int e in cycle) outline[Root(a.Edges[e].From)] = Root(a.Edges[e].To);
+        var boxes = cycle.GroupBy(e => Root(a.Edges[e].From)).Select(g =>
+        {
+            var ps = g.SelectMany(e => new[] { a.Edges[e].Piece.A, a.Edges[e].Piece.B }).ToList();
+            return (X0: ps.Min(p => p.x), Y0: ps.Min(p => p.y), X1: ps.Max(p => p.x), Y1: ps.Max(p => p.y));
+        }).ToList();
+        double tol = w;
+        bool In(PointD p, (double X0, double Y0, double X1, double Y1) b) =>
+            p.x >= b.X0 - tol && p.x <= b.X1 + tol && p.y >= b.Y0 - tol && p.y <= b.Y1 + tol;
+        for (int e = 0; e < ne; e++)
+        {
+            var p = a.Edges[e].Piece;
+            if (p.Sources.Any(reject.Contains)) continue;
+            if (boxes.Any(b => In(p.A, b) && In(p.B, b))) foreach (int s in p.Sources) reject.Add(s);
+        }
         return reject;
     }
 

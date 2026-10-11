@@ -370,7 +370,12 @@ public static class SchematicImageEmit
             string name = Unique(RecognitionEmit.Identifier(p.Name ?? $"P{k + 1}", "P"), names);
             var proto = new Proto { Type = "Port", Name = name, Roots = [p.Root, G], Symbol = p.Symbol, PortNumber = k + 1 };
             proto.Parameters.Add(new ParameterAssignment("Num", (k + 1).ToString(CultureInfo.InvariantCulture)));
-            proto.Parameters.Add(new ParameterAssignment("Z", "50", "Ohm"));
+            // The impedance printed under the port's designator, when one was read (IM-12); else 50 Ω.
+            double? z = p.Symbol >= 0 && lab[p.Symbol]?.LineParameters is { } lp
+                ? lp.FirstOrDefault(q => q.Key is "Z" or "Z0")?.Si : null;
+            proto.Parameters.Add(z is { } zv
+                ? new ParameterAssignment("Z", RecognitionEmit.Split(PartsTable.ValueText(zv, PartKind.R, digits)).Number, "Ohm")
+                : new ParameterAssignment("Z", "50", "Ohm"));
             proto.PicturePins.Add((p.X, p.Y, p.DirX, p.DirY));
             protos.Add(proto);
             portInfo.Add((proto, p.Source, p.X, p.Y));

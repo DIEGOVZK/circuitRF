@@ -49,6 +49,11 @@ public sealed record ImageTraceOptions
     /// <summary>Colours closer than this ΔE are one colour (D7).</summary>
     public double MergeDeltaE { get; init; } = DefaultMergeDeltaE;
 
+    /// <summary>The picture outlines every shape with a line this many pixels wide, centred on its edge, so each traced
+    /// shape is pulled in by half of it; 0 when shapes are drawn as filled area alone. circuitRF's own layout view
+    /// outlines each shape 2 device pixels wide: a picture of it traced at 0 is a pixel fat all round (IM-12).</summary>
+    public double EdgeStrokePx { get; init; }
+
     public const double DefaultMergeDeltaE = 10.0;
 
     /// <summary>The provenance's options block. The merge distance is written only when it is not the default, so a
@@ -61,7 +66,7 @@ public sealed record ImageTraceOptions
         ["minFeature"] = MinFeaturePx2.ToString("0.###", CultureInfo.InvariantCulture) + " px2",
         ["colours"] = MaxColours.ToString(CultureInfo.InvariantCulture),
         ["underlay"] = KeepUnderlay ? "on" : "off",
-    }.WithMerge(MergeDeltaE);
+    }.WithMerge(MergeDeltaE).WithEdgeStroke(EdgeStrokePx);
 }
 
 internal static class ImageTraceOptionsProvenance
@@ -69,6 +74,13 @@ internal static class ImageTraceOptionsProvenance
     public static SortedDictionary<string, string> WithMerge(this SortedDictionary<string, string> d, double merge)
     {
         if (merge != ImageTraceOptions.DefaultMergeDeltaE) d["merge"] = merge.ToString("0.###", CultureInfo.InvariantCulture) + " dE";
+        return d;
+    }
+
+    /// <summary>The edge stroke, written only when there is one — a document traced without reads as it always has.</summary>
+    public static SortedDictionary<string, string> WithEdgeStroke(this SortedDictionary<string, string> d, double px)
+    {
+        if (px > 0) d["edgeStroke"] = px.ToString("0.###", CultureInfo.InvariantCulture) + " px";
         return d;
     }
 }
@@ -290,6 +302,7 @@ public static partial class ImageTrace
             var cov = Sum(byLayer[name]);
             coverage[name] = cov;
             var regions = Deblip(Despeckle(Contours.Trace(cov, contour), o.MinFeaturePx2, out int specks));
+            if (o.EdgeStrokePx > 0) regions = Inset(regions, o.EdgeStrokePx / 2, clusters.Width, clusters.Height);
             layers.Add(new PixelLayer(name, ImageLayerMap.KeyOf(tech, name), ImageLayerRole.Layer, regions, specks,
                                       o.Snap ? CountSnapped(regions, o.Snap45) : 0, [], 0));
         }
@@ -352,6 +365,45 @@ public static partial class ImageTrace
     /// within it, are one edge: both are moved onto their length-weighted common line (their outer ends sliding along
     /// the edges before and after, so those keep their directions) and the excursion is dropped.
     /// </summary>
+    /// <summary>Every region pulled in by <paramref name="d"/> pixels, square corners kept square: the outline a
+    /// picture draws on each edge taken back off (<see cref="ImageTraceOptions.EdgeStrokePx"/>) — except where a region
+    /// runs off the picture, whose edge cut the shape and drew no outline there: a line running off it keeps its
+    /// length. A region narrower than twice that is gone; one with a waist that narrow comes back in two.</summary>
+    internal static List<ContourRegion> Inset(List<ContourRegion> regions, double d, int width, int height)
+    {
+        var all = new PathsD();
+        foreach (var r in regions) all.AddRange(r.Paths);
+        var inset = Clipper.InflatePaths(all, -d, JoinType.Miter, EndType.Polygon, 4, 4);
+        var inner = new PathD { new(d, d), new(width - d, d), new(width - d, height - d), new(d, height - d) };
+        var frame = new PathD { new(-1, -1), new(width + 1, -1), new(width + 1, height + 1), new(-1, height + 1) };
+        var band = Clipper.Difference(new PathsD { frame }, new PathsD { inner }, FillRule.NonZero);
+        var border = Clipper.Intersect(all, band, FillRule.NonZero);
+        var tree = new PolyTreeD();
+        var c = new ClipperD(4);
+        c.AddSubject(inset);
+        // What lay within d of the edge comes back only where it meets the inset shape: a piece the inset lost
+        // altogether is not restored by the band alone.
+        c.AddSubject(Clipper.Intersect(border, Clipper.InflatePaths(inset, 2 * d + 1, JoinType.Miter, EndType.Polygon, 4, 4), FillRule.NonZero));
+        c.Execute(ClipType.Union, FillRule.NonZero, tree);
+        var result = new List<ContourRegion>();
+        void Walk(PolyPathD node)
+        {
+            for (int i = 0; i < node.Count; i++)
+            {
+                var outer = node[i];
+                var holes = new List<PathD>();
+                for (int j = 0; j < outer.Count; j++)
+                {
+                    holes.Add(outer[j].Polygon!);
+                    Walk(outer[j]);   // islands in the hole
+                }
+                result.Add(new ContourRegion(outer.Polygon!, holes));
+            }
+        }
+        Walk(tree);
+        return result;
+    }
+
     private static List<ContourRegion> Deblip(List<ContourRegion> regions) =>
         [.. regions.Select(r => r with { Outer = Deblip(r.Outer), Holes = [.. r.Holes.Select(Deblip).Where(h => h.Count >= 3)] })];
 

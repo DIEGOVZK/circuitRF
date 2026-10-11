@@ -173,6 +173,7 @@ public static class ColourClusters
             long key = (uint)rgb | (isEdge ? 1L << 24 : 0L);
             counts[key] = counts.TryGetValue(key, out int c) ? c + 1 : 1;
         }
+        if (counts.Count > MaxDistinctColours) counts = Pooled(counts);
         var keys = counts.Keys.ToArray();
         Array.Sort(keys);
         var s = new SampleSet
@@ -188,6 +189,34 @@ public static class ColourClusters
             s.Edge[i] = (keys[i] >> 24) != 0;
         }
         return s;
+    }
+
+    /// <summary>A picture sampling to more distinct colours than this is a photograph's, or noise (IM-12): its samples are
+    /// pooled into 32 levels a channel before clustering. A drawing — anti-aliased, JPEG'd — samples to a few thousand
+    /// at most and is clustered as sampled; a noisy photograph's hundred thousand made every k-means pass that many
+    /// times slower, seconds on a small picture, for clusters no finer than the pooling keeps.</summary>
+    public const int MaxDistinctColours = 8192;
+
+    /// <summary>Each sample key moved to its 5-bit-a-channel bucket's weighted mean colour, edge and flat kept apart.</summary>
+    private static Dictionary<long, int> Pooled(Dictionary<long, int> counts)
+    {
+        var buckets = new SortedDictionary<long, (double R, double G, double B, int N)>();
+        foreach (var (key, n) in counts)
+        {
+            int rgb = (int)(key & 0xFFFFFF);
+            int r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+            long bucket = ((long)(r >> 3) << 10 | (long)(g >> 3) << 5 | (long)(b >> 3)) | (key & (1L << 24));
+            var t = buckets.TryGetValue(bucket, out var v) ? v : default;
+            buckets[bucket] = (t.R + (double)r * n, t.G + (double)g * n, t.B + (double)b * n, t.N + n);
+        }
+        var pooled = new Dictionary<long, int>();
+        foreach (var (bucket, t) in buckets)
+        {
+            int rgb = Byte(t.R / t.N) << 16 | Byte(t.G / t.N) << 8 | Byte(t.B / t.N);
+            long key = (uint)rgb | (bucket & (1L << 24));
+            pooled[key] = pooled.TryGetValue(key, out int c) ? c + t.N : t.N;
+        }
+        return pooled;
     }
 
     private static long Gcd(long a, long b)

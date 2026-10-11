@@ -32,6 +32,9 @@ public sealed record TextRegion(int Id, PixelBox Box, bool Vertical, IReadOnlyLi
     /// <summary>The word's own stroke width, pixels — the mode of the shorter ink run through each skeleton pixel, as the
     /// picture's w is measured (brief-img-9: type too heavy for its size is not read). 0 when unmeasured.</summary>
     public double InkWidth { get; init; }
+
+    /// <summary>It stands on a wire, its baseline the wire (IM-12): a net label, never a part's designator or value.</summary>
+    public bool OnWire { get; init; }
 }
 
 /// <summary>A word-shaped group kept as part of a symbol because it touches line work.</summary>
@@ -100,7 +103,9 @@ internal static class TextRegions
 
                 var (contact, places) = Contact(ordered.SelectMany(k => pixels[cands[k].Label]), line, width);
                 foreach (int k in g) used.Add(k);
-                if (contact > o.TextContact * w || places >= 2)
+                bool onWire = !vertical && places >= 2
+                              && RestsOnLine(ordered.SelectMany(k => pixels[cands[k].Label]), box, line, rest, width);
+                if (!onWire && (contact > o.TextContact * w || places >= 2))
                 {
                     // The pieces touching line work may be a symbol's — a supply bar's two halves beside its name —
                     // and the rest still a word; it is one when two glyph-height pieces remain.
@@ -135,6 +140,7 @@ internal static class TextRegions
                 words.Add(new TextRegion(0, box, vertical, glyphs, Strokes(ink, box, width), splits)
                 {
                     InkWidth = SchematicImageReading.RunWidth(Crop(ink, box, width)),
+                    OnWire = onWire,
                 });
             }
         }
@@ -251,6 +257,45 @@ internal static class TextRegions
             longest = Math.Max(longest, Math.Max(x1 - x0 + 1, y1 - y0 + 1));
         }
         return (longest, places);
+    }
+
+    /// <summary>
+    /// A word written ON its wire — a net label whose baseline is the wire, as circuitRF draws one (IM-12): every pixel
+    /// touching line work lies in the bottom fifth of the word, the line runs on unbroken under the whole word, and the
+    /// paper below the line, as deep as the word is tall, is bare — a label stands on one side of its wire. The caller
+    /// also asks that it touch at two places or more: glyphs stand on their feet. A symbol's detail touching its line
+    /// work does not: a coil's humps stand on the ends of their leads, with nothing under them, and a diode's triangle
+    /// straddles its lead, half above and half below.
+    /// </summary>
+    private static bool RestsOnLine(IEnumerable<int> pixels, PixelBox box, BinaryImage line, BinaryImage rest, int width)
+    {
+        int floor = box.Bottom - Math.Max(1, box.Height / 5);
+        bool any = false;
+        foreach (int i in pixels)
+        {
+            int x = i % width, y = i / width;
+            bool t = false;
+            for (int dy = -1; dy <= 1 && !t; dy++)
+                for (int dx = -1; dx <= 1 && !t; dx++)
+                    if ((dx | dy) != 0 && line.At(x + dx, y + dy)) t = true;
+            if (!t) continue;
+            if (y < floor) return false;
+            any = true;
+        }
+        if (!any) return false;
+        int lineBottom = box.Bottom;
+        for (int x = box.Left; x <= box.Right; x++)
+        {
+            bool under = false;
+            for (int y = box.Bottom - 1; y <= box.Bottom + 2 && !under; y++) under = line.At(x, y);
+            if (!under) return false;
+            for (int y = box.Bottom + 1; line.At(x, y); y++) lineBottom = Math.Max(lineBottom, y);
+        }
+        int below = 0;
+        for (int y = lineBottom + 1; y <= lineBottom + box.Height; y++)
+            for (int x = box.Left; x <= box.Right; x++)
+                if (rest.At(x, y)) below++;
+        return below <= 0.02 * box.Width * box.Height;
     }
 
     /// <summary>A word's pixels on a canvas of its box and a pixel's margin.</summary>

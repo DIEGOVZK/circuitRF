@@ -102,7 +102,7 @@ internal static class Recognize
             "                 [--underlay on|off]\n" +
             "    layout:      --scale <len>/px | --dpi <n> | --scale-points x0,y0,x1,y1=<len> | --scale auto\n" +
             "                 [--layer-map \"#rrggbb=<layer>|drill|outline|silk|ignore,...\"] [--preset <name>]\n" +
-            "                 [--region x0,y0,x1,y1 in px] [--min-feature px2] [--simplify px] [--snap-deg d] [--snap45 on|off]\n" +
+            "                 [--region x0,y0,x1,y1 in px] [--min-feature px2] [--simplify px] [--edge-stroke px] [--snap-deg d] [--snap45 on|off]\n" +
             "    schematic:   [--crossings never|dot|always] [--arrange drawn|tidy] [--connect x,y] [--disconnect x,y]\n" +
             "                 [--threshold k]\n" +
             "  Writes nothing unless -o, --into, --parts-out or --overlay is given. Layout coordinates carry a unit\n" +

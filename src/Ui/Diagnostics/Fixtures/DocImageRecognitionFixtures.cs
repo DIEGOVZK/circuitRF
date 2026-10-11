@@ -64,6 +64,27 @@ public static class DocImageRecognitionFixtures
         return Scene(vm);
     }
 
+    /// <summary>The <c>Schematic from Image</c> example's schematic picture, read: wires, symbols and words over it, the
+    /// parts table filled, the inductor's missing value a variable (brief-img-12 R-im12-6).</summary>
+    public static FigureScene SchematicPicture()
+    {
+        string root = ExampleWorkspaces.ResolveRoot()
+            ?? throw new InvalidOperationException("No examples/ tree beside the generator or above it, so the schematic picture figure has nothing to read.");
+        string ws = Path.Combine(root, "Schematic from Image");
+        string tech = Directory.GetFiles(Path.Combine(ws, "tech"), "*.ctech").Single();
+        string presets = Path.Combine(Path.GetTempPath(), "crf-docgen-image-presets");
+        var source = ImageSource.FromFile(Path.Combine(ws, "pictures", "matching-network.png")).Source
+                     ?? throw new InvalidOperationException("The example's schematic picture could not be read.");
+        var vm = new ImageSourceViewModel(ws, [new ImageTechnologyChoice(Path.GetFileNameWithoutExtension(tech), tech)], 0,
+                                          source, makeSchematic: true, ImageRecognitionRunner.Instance, debounce: TimeSpan.Zero,
+                                          presetDirectory: presets);
+        vm.Recognition.GetAwaiter().GetResult();
+        if (vm.Rows.Count == 0)
+            throw new InvalidOperationException($"Reading the example's schematic picture produced no parts ({vm.FailureText}{vm.Status}).");
+        vm.SelectedRow = vm.Rows.FirstOrDefault(r => r.Refdes.StartsWith("L", StringComparison.Ordinal)) ?? vm.Rows[0];
+        return Scene(vm);
+    }
+
     /// <summary>A photograph-like picture: dimmed, one sentence, the two links.</summary>
     public static FigureScene NoDrawing()
     {

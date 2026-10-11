@@ -57,6 +57,15 @@ public sealed record SchematicImageOptions
     /// <summary>A word touching line work along more than this many w is kept as a symbol detail.</summary>
     public double TextContact { get; init; } = 2.0;
 
+    /// <summary>A drawing whose text stands taller than this many w is drawn in hairlines (circuitRF's own schematic,
+    /// a vector export at a high zoom): its line work is thickened before wires and symbols are read (IM-12). 0 never
+    /// thickens.</summary>
+    public double HairlineTextHeight { get; init; } = 8.0;
+
+    /// <summary>A hairline drawing is thickened until its text stands this many w tall — the weight every other
+    /// tolerance here was measured at.</summary>
+    public double TextHeightInStrokes { get; init; } = 5.0;
+
     // ── Wires (R-im7-4) ─────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>An orthogonal straight run shorter than this many w is not a wire.</summary>

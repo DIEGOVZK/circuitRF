@@ -23,7 +23,10 @@ keywords: image, picture, screenshot, PNG, JPEG, paste, trace, bitmap, scale, tw
 <li><a href="#advanced">Advanced</a></li>
 <li><a href="#underlay">The picture under the result</a></li>
 <li><a href="#reads">What reads well, and what does not</a></li>
+<li><a href="#good-picture">Getting a good picture</a></li>
 <li><a href="#failure">When nothing can be read</a></li>
+<li><a href="#troubleshooting">Troubleshooting by report line</a></li>
+<li><a href="#limits">What it does not read</a></li>
 </ol>
 </nav>
 
@@ -140,6 +143,8 @@ terminals, transmission lines and stubs, and diodes. A transistor, an amplifier 
 each of its wired pins becomes a port, so the circuit is the networks around the device as the device sees them. A
 two-pin symbol nothing matches is shown as **?** in the parts table and drawn as a capacitor until you say what it is.
 
+{{ui: image-dialog-schematic-picture}}
+
 **How wires are read.** A T-junction always connects. Where two wires cross, **Crossings connect** decides: *With a
 dot* (the default) connects a crossing only where a junction dot is drawn; *Never* and *Always* do what they say. A
 hop never connects. Wires with the same net label, or the same supply name, are one net. A wire end that reaches
@@ -150,7 +155,10 @@ reaches nothing onto a part's pin to connect it. Each correction is kept through
 corrections** forgets them all. Nothing else is edited on the picture &mdash; the schematic editor is where a drawing
 is fixed.
 
-**Values.** Designators, values, net names and port names are read; prose is not. A value that cannot be read becomes
+**Values.** Designators, values, net names and port names are read; prose is not. A value may be written alone
+(`10pF`, `4R7`, `2n2`) or with its parameter's name and spaces (`L = 5 nH`, `C = 0.5 pF`); a value printed on the line
+under a part's designator is that part's, wherever the label stands. A port's `Z = 75 Ohm` under its designator sets
+its impedance. A value that cannot be read becomes
 a global variable named after its part &mdash; `C1_C`, `L2_L` &mdash; with a tune entry, starting at a value that leaves
 the circuit as if the part were not there, so the schematic simulates at once and the Tuning panel lists what is
 missing. A transmission line takes its Z and E (or its length) from the text beside it, and each one not read is a
@@ -224,6 +232,7 @@ Collapsed until you open it, and it stays as you left it. Each change reads the 
 | **Snap within** | How near, in degrees, an edge must be to be snapped. |
 | **Colours, at most** | The most colours the picture is separated into. |
 | **Merge within ΔE** | Colours closer than this are one colour. |
+| **Edge stroke** | A picture that outlines each shape with a line drawn along its edge &mdash; a layout editor's screenshot, circuitRF's own layout among them, which draws that line 2 px wide &mdash; makes every shape that much fat. Type the line's width in pixels and it is taken back off. 0 for a picture of filled shapes alone. |
 | **Threshold**, **Window** | A schematic picture: how dark, against its neighbourhood of this many pixels, a pixel must be to be ink. |
 | **Keep the source picture under the result** | See [below](#underlay). |
 
@@ -239,20 +248,69 @@ checked or meshed. Clear **Keep the source picture under the result** to leave i
 
 | Picture | Expect |
 |---|---|
-| A layout drawn by a program &mdash; a board viewer, a layout editor, a die plot, a figure | Good: flat colours and sharp edges trace to within half a pixel. |
-| A picture large enough that the narrowest trace is several pixels wide | Good. A trace one or two pixels wide is read, but its width is uncertain &mdash; the resolution line says by how much. |
-| A picture with each layer in its own colour | Good. Translucent layers drawn over each other are read too. |
-| A schematic drawn by a program &mdash; a datasheet circuit, another tool's screenshot | Good wiring and symbols; values read when the text is clean and regular, and become variables when not. Bold or very small type is not read. |
-| A hand-drawn schematic | Not a goal: it may read if it is neat. |
-| A JPEG saved at low quality | Fair: its smudged edges and colours are read, less exactly. |
-| A photograph of a real board | Poor: perspective, glare and solder mask hide the copper. |
+| A layout drawn by a program &mdash; a board viewer, a layout editor, a die plot, a figure | **Good.** Flat colours and sharp edges trace to within half a pixel, and the circuit is then read from the copper exactly as from artwork. |
+| A schematic drawn by a program &mdash; a datasheet circuit, another tool's screenshot, a circuitRF picture | **Good wiring and symbols, most values.** Values read when the type is clean and regular; one that does not read becomes a variable to tune. |
+| A picture saved as a JPEG, turned slightly, or speckled | **Good**, a little less exactly: compression smudges colour edges by about a pixel. |
+| A photograph of a real board | **Poor**: perspective, glare and solder mask hide the copper. |
+| A hand-drawn schematic | **Not a goal.** It may read if it is neat. |
+
+## Getting a good picture {#good-picture}
+
+- **Crop to the circuit.** A title block, a page of notes or a second circuit beside the first is read too.
+- **PNG rather than JPEG**, and the original rather than a copy of a copy. A JPEG's smudged edges are read, less
+  exactly.
+- **Big enough.** Lines 2 pixels wide or more, and text at least 14 pixels tall to its capitals. Zoom in before taking a
+  screenshot rather than scaling the picture up afterwards: scaling adds no detail. A circuitRF schematic reads well
+  exported at 3× and above.
+- **One colour per layer** on a layout, distinct from the background and from each other; drill holes drawn as filled
+  circles.
+- **Something of known size** on a layout picture &mdash; a scale bar, a dimension, a part whose size you know, a line
+  of known impedance &mdash; so the scale can be set. A picture of ordinary chip parts often sets its own.
+- **If you have the original file** &mdash; the PDF, the SVG, the board's Gerber &mdash; it is the better source. A
+  board's files go to [Create Schematic from Artwork](artwork-to-schematic.html); a vector drawing, exported as a PNG at
+  a high resolution, reads better than a screenshot of it.
 
 ## When nothing can be read {#failure}
 
 A picture with no drawing in it is shown dimmed, with one sentence saying what was seen &mdash; *No drawing found: a
-photograph-like picture with no straight line work* &mdash; and two links, **Read it as a schematic** and **Read it as a
-layout**, for a picture you know better than that. A reading that finds nothing to make &mdash; no copper at the mapped
+photograph-like picture with no straight line work*, *a blank picture*, *a page of text* &mdash; and two links, **Read
+it as a schematic** and **Read it as a layout**, for a picture you know better than that. A picture of line work that
+holds no circuit &mdash; a chart, a drawing &mdash; is read as a schematic and refused the same way: *No circuit: most of
+the lines in this picture curve or slant*, with the one link that reads it as a layout. A reading that finds nothing to make &mdash; no copper at the mapped
 colours, no technology &mdash; is shown the same way, with the control that answers it highlighted. **Create** stays
 disabled, and its tooltip is that sentence.
 
 {{ui: image-dialog-no-drawing}}
+
+## Troubleshooting by report line {#troubleshooting}
+
+| The report says | What to do |
+|---|---|
+| *Set the scale: Two points…* | Click two points a known distance apart and type the distance with its unit, or choose **Line impedance…** and click a trace. |
+| *1 px = 40 µm; a 450 µm trace is read to ± 9 %* | The picture is coarse for its narrowest trace. Take it again zoomed in, or accept the uncertainty. |
+| *The picture draws no solder mask or paste, so land patterns were read from the copper itself* | Parts were found from pad-shaped copper. If the picture does show the mask, map that colour to your mask layer: parts are then found from its openings. |
+| *N designators on the silkscreen name no part* | The text was read but no land pattern was found under it. Check the overlay; add the part in the schematic afterwards. |
+| *N two-pin symbols matching no drawing, read as ?* | Set each one's kind in the parts table. Until you do it is drawn as a capacitor. |
+| *N values were not read and are global variables with a tune entry* | Type the values into the parts table, or keep them as variables and tune them. |
+| *No designator was read for N parts* | Their designators were generated; rename them in the parts table. |
+| *N words are in type too heavy for its size to read reliably* | Bold or small type. Take the picture larger; the parts are kept, their values become variables. |
+| *N dangling wire ends* | A wire stops short of a pin. Drag the amber end onto its pin on the picture. |
+| *N words named no part and no wire* | Text the reader could not place, often a note or a title. Nothing to do unless it was a value. |
+| *No port found: add Port components to simulate* | The picture shows no port symbol or port name. The schematic is made without its analysis; add ports and an S-parameter analysis. |
+| *No connected line work: this picture has no wires to read* | The picture holds words only, or its lines are too faint: crop to the circuit, or lower **Threshold** under Advanced. |
+| *No symbols: this picture has wires but nothing drawn between them to read as a part* | The picture may be a layout drawn in lines: read it as a layout. |
+
+## What it does not read {#limits}
+
+- **Hand-drawn schematics** are not a goal; a neat one may read.
+- **Photographs** of boards and of printed pages.
+- **Serif and script type**, and type that is bold, very small or slanted at a small size. A value printed in such type
+  becomes a variable or, rarely, reads wrong: check values against the picture.
+- **A value printed far from its part**, other than on the line under its designator, may be given to the part nearest
+  it.
+- **Dense layouts** where a trace is under about four pixels wide: widths are read, but loosely.
+- **The stackup.** A picture never states one; the technology you choose supplies it.
+- **Vector files** &mdash; PDF, SVG, EMF. Export the page as a PNG.
+- **Vias drawn as two thin rings**, as circuitRF's layout view draws them, below about 10 µm to a pixel; draw drill
+  holes as filled circles.
+- **A part on a short stub to a via, with no solder mask in the picture**, may not be found; a part in a line is.

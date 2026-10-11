@@ -31,7 +31,7 @@ internal sealed class PictureFlags
     private double _metresPerPixel;
     private (double X0, double Y0, double X1, double Y1, string Distance) _points;
     public string? LayerMap, Preset, Overlay;
-    public double? MinFeature, Simplify, SnapDeg;
+    public double? MinFeature, Simplify, SnapDeg, EdgeStroke;
     public bool? Snap45, Underlay;
 
     // A schematic picture's (recognize only).
@@ -100,6 +100,10 @@ internal sealed class PictureFlags
             case "--simplify":
                 if (Number(v) is not { } sp || sp < 0) return Bad("a tolerance in pixels, 0 or more");
                 Simplify = sp;
+                { LayoutFlags.Add(a); i++; return 0; }
+            case "--edge-stroke":
+                if (Number(v) is not { } es || es < 0) return Bad("a line width in pixels, 0 or more");
+                EdgeStroke = es;
                 { LayoutFlags.Add(a); i++; return 0; }
             case "--snap-deg":
                 if (Number(v) is not { } sd || sd is < 0 or > 45) return Bad("an angle in degrees, 0 (no snapping) to 45");
@@ -218,6 +222,7 @@ internal sealed class PictureFlags
         }
         if (MinFeature is { } mf) options = options with { MinFeaturePx2 = mf };
         if (Simplify is { } sp) options = options with { SimplifyPx = sp };
+        if (EdgeStroke is { } es) options = options with { EdgeStrokePx = es };
         if (SnapDeg is { } sd) options = options with { Snap = sd > 0, SnapAngleDeg = sd > 0 ? sd : options.SnapAngleDeg };
         if (Snap45 is { } s45) options = options with { Snap45 = s45 };
         if (Underlay is { } u) options = options with { KeepUnderlay = u };

@@ -104,6 +104,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         _snapAngleText = Num(o.SnapAngleDeg);
         _maxColoursText = o.MaxColours.ToString(CultureInfo.InvariantCulture);
         _mergeText = Num(o.MergeDeltaE);
+        _edgeStrokeText = Num(o.EdgeStrokePx);
         _keepUnderlay = o.KeepUnderlay;
         var lineArt = new LineArtOptions();
         _thresholdText = Num(lineArt.K);
@@ -563,6 +564,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     [ObservableProperty] private string _snapAngleText;
     [ObservableProperty] private string _maxColoursText;
     [ObservableProperty] private string _mergeText;
+    [ObservableProperty] private string _edgeStrokeText;
     [ObservableProperty] private bool _keepUnderlay;
 
     /// <summary>Schematic pictures (IM-10): the line-art threshold (Sauvola k) and its window.</summary>
@@ -576,6 +578,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     partial void OnSnapAngleTextChanged(string value) => ScheduleRecognition();
     partial void OnMaxColoursTextChanged(string value) => ScheduleRecognition();
     partial void OnMergeTextChanged(string value) => ScheduleRecognition();
+    partial void OnEdgeStrokeTextChanged(string value) => ScheduleRecognition();
     partial void OnKeepUnderlayChanged(bool value) => RefreshCreate();
     partial void OnThresholdTextChanged(string value) => ScheduleRecognition();
     partial void OnWindowTextChanged(string value) => ScheduleRecognition();
@@ -593,6 +596,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         if (!int.TryParse(MaxColoursText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int k) || k < 1 || k > 16)
             return "Colours needs a whole number from 1 to 16.";
         if (!TryNum(MergeText, out double d) || d < 0) return "Merge needs a colour distance (ΔE), zero or more.";
+        if (!TryNum(EdgeStrokeText, out double es) || es < 0) return "Edge stroke needs a line width in pixels, zero or more.";
         return null;
     }
 
@@ -609,6 +613,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             SnapAngleDeg = TryNum(SnapAngleText, out double a) && a >= 0 ? a : d.SnapAngleDeg,
             MaxColours = int.TryParse(MaxColoursText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int k) && k >= 1 ? k : d.MaxColours,
             MergeDeltaE = TryNum(MergeText, out double e) && e >= 0 ? e : d.MergeDeltaE,
+            EdgeStrokePx = TryNum(EdgeStrokeText, out double es) && es >= 0 ? es : d.EdgeStrokePx,
             KeepUnderlay = KeepUnderlay,
         };
     }
@@ -622,6 +627,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         SnapAngleText = Num(o.SnapAngleDeg);
         MaxColoursText = o.MaxColours.ToString(CultureInfo.InvariantCulture);
         MergeText = Num(o.MergeDeltaE);
+        EdgeStrokeText = Num(o.EdgeStrokePx);
     }
 
     // ── the canvas (R-im5-3) ─────────────────────────────────────────────────────────────────────────
@@ -743,7 +749,19 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         FailureOffersKind = offersKind;
         HighlightLayers = layers;
         HighlightTechnology = technology;
+        OnPropertyChanged(nameof(FailureOffersSchematic));
+        OnPropertyChanged(nameof(FailureOffersLayout));
     }
+
+    /// <summary>The override links: each reads the picture as a kind it is not being read as.</summary>
+    public bool FailureOffersSchematic => FailureOffersKind && EffectiveKind != DrawingKind.Schematic;
+
+    public bool FailureOffersLayout => FailureOffersKind && EffectiveKind != DrawingKind.Layout;
+
+    /// <summary>The schematic reader's refusals that mean nothing in the picture is a circuit's line work.</summary>
+    private static bool NothingToRead(string refusal) =>
+        refusal is SchematicImageReport.NoWiresRefusal or SchematicImageReport.NoSymbolsRefusal
+                or SchematicImageReport.CurvedLinesRefusal or SchematicImageEmit.NothingRecognisedRefusal;
 
     // ── the reading ─────────────────────────────────────────────────────────────────────────────────
 
@@ -880,7 +898,8 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             LayerRows.Clear();
             Overlay = d.Overlay;
             SelectedItem = SelectedRow is { } row ? Overlay.ItemForPart(row.BoardRefdes) : null;
-            if (preview.Refusal is { } refused) { SetFailure(refused); Status = ""; }
+            // Read as a schematic and found no circuit: perhaps it is a layout drawn in lines (R-im12-3).
+            if (preview.Refusal is { } refused) { SetFailure(refused, offersKind: NothingToRead(refused)); Status = ""; }
             RefreshLearnState();
             RefreshCreate();
             return;

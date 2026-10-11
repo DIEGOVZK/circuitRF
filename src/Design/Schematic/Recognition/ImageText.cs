@@ -50,42 +50,82 @@ public static class ImageText
         ArgumentNullException.ThrowIfNull(read);
         reader ??= new StrokeTextReader();
         var words = new List<ImageWord>();
-        foreach (var region in read.Words) words.AddRange(reader.Read(region, read.StrokeWidth));
+        double pen = read.TextStrokeWidth > 0 ? read.TextStrokeWidth : read.StrokeWidth;
+        foreach (var region in read.Words)
+            foreach (var word in reader.Read(region, pen))
+                // A word standing on its wire is that wire's name: read as anything else it is a misreading — circuitRF's
+                // italic "in" matches 1Ω — and would take a part's place in the assignment.
+                words.Add(region.OnWire && word.Reading is { Class: not WordClass.Name } ? word with { Reading = null } : word);
         words = JoinLineSets(words, read.Words);
         return [.. words.Select((w, i) => w with { Id = i })];
     }
 
     /// <summary>
-    /// A line set written across a comma and a space — <c>Z=50Ω, E=90°</c> — is two word regions, the space being
-    /// wider than a letter gap. Two line sets one after the other on one line, no further apart than their height, are
-    /// one set when together they still are (each key once).
+    /// Words one after the other on one line, each no further from the next than their height, that read together as
+    /// one value or one line set, holding no designator and at most one value: a line set written across a comma and a
+    /// space (<c>Z=50Ω, E=90°</c>), and a value written with spaces — <c>L = 5 nH</c>, <c>10 pF</c> — which the
+    /// spaces, wider than a letter gap, cut into words that each read as nothing (IM-12). The longest such run is
+    /// joined first; joined without the spaces, except line sets, which keep one.
     /// </summary>
     private static List<ImageWord> JoinLineSets(List<ImageWord> words, IReadOnlyList<TextRegion> regions)
     {
+        bool Vertical(ImageWord x) => regions.FirstOrDefault(r => r.Id == x.Region)?.Vertical ?? false;
+
+        // The word that follows a on its line, across a space, or -1.
+        int Next(int i)
+        {
+            ImageWord a = words[i];
+            bool vertical = Vertical(a);
+            int best = -1;
+            double bestLo = double.MaxValue;
+            for (int j = 0; j < words.Count; j++)
+            {
+                ImageWord b = words[j];
+                if (i == j || Vertical(b) != vertical) continue;
+                double h = vertical ? Math.Max(a.Box.Width, b.Box.Width) : Math.Max(a.Box.Height, b.Box.Height);
+                var (aLo, aHi, bLo, aP0, aP1, bP0, bP1) = vertical
+                    ? (a.Box.Top, a.Box.Bottom, b.Box.Top, a.Box.Left, a.Box.Right, b.Box.Left, b.Box.Right)
+                    : (a.Box.Left, a.Box.Right, b.Box.Left, a.Box.Top, a.Box.Bottom, b.Box.Top, b.Box.Bottom);
+                if (bLo <= aLo || bLo - aHi > h || bLo - aHi < 0) continue;
+                if (Math.Min(aP1, bP1) - Math.Max(aP0, bP0) < 0.5 * Math.Min(aP1 - aP0, bP1 - bP0)) continue;
+                if (bLo < bestLo) (best, bestLo) = (j, bLo);
+            }
+            return best;
+        }
+
         bool joined = true;
         while (joined)
         {
             joined = false;
-            for (int i = 0; i < words.Count && !joined; i++)
-                for (int j = 0; j < words.Count && !joined; j++)
+            var next = Enumerable.Range(0, words.Count).Select(Next).ToArray();
+            (List<int> Run, WordReading Reading, bool Sets)? found = null;
+            for (int i = 0; i < words.Count; i++)
+            {
+                var run = new List<int> { i };
+                while (next[run[^1]] is var k and >= 0 && !run.Contains(k) && run.Count < 8) run.Add(k);
+                for (int n = run.Count; n >= 2; n--)
                 {
-                    ImageWord a = words[i], b = words[j];
-                    if (i == j || a.Class != WordClass.LineParameters || b.Class != WordClass.LineParameters) continue;
-                    bool vertical = regions.FirstOrDefault(r => r.Id == a.Region)?.Vertical ?? false;
-                    if (vertical != (regions.FirstOrDefault(r => r.Id == b.Region)?.Vertical ?? false)) continue;
-                    double h = vertical ? Math.Max(a.Box.Width, b.Box.Width) : Math.Max(a.Box.Height, b.Box.Height);
-                    var (aLo, aHi, bLo, bHi, aP0, aP1, bP0, bP1) = vertical
-                        ? (a.Box.Top, a.Box.Bottom, b.Box.Top, b.Box.Bottom, a.Box.Left, a.Box.Right, b.Box.Left, b.Box.Right)
-                        : (a.Box.Left, a.Box.Right, b.Box.Left, b.Box.Right, a.Box.Top, a.Box.Bottom, b.Box.Top, b.Box.Bottom);
-                    if (bLo <= aLo || bLo - aHi > h || bLo - aHi < 0) continue;   // b follows a, across a space
-                    if (Math.Min(aP1, bP1) - Math.Max(aP0, bP0) < 0.5 * Math.Min(aP1 - aP0, bP1 - bP0)) continue;
-                    if (ValueGrammar.Parse(a.Reading!.Text + " " + b.Reading!.Text) is not { Class: WordClass.LineParameters } r) continue;
-                    int n = a.Glyphs.Count + b.Glyphs.Count;
-                    double d = n == 0 ? Math.Max(a.Distance, b.Distance) : (a.Distance * a.Glyphs.Count + b.Distance * b.Glyphs.Count) / n;
-                    words[i] = new ImageWord(0, a.Region, a.Box.Union(b.Box), r, a.Seen + " " + b.Seen, d, [.. a.Glyphs, .. b.Glyphs]);
-                    words.RemoveAt(j);
-                    joined = true;
+                    var part = run.Take(n).Select(k => words[k]).ToList();
+                    if (part.Any(x => x.Class == WordClass.Designator || x.Text.Length == 0)) continue;
+                    if (part.Count(x => x.Class == WordClass.Value) > 1) continue;
+                    bool sets = part.All(x => x.Class == WordClass.LineParameters);
+                    string text = string.Join(sets ? " " : "", part.Select(x => x.Text));
+                    if (ValueGrammar.Parse(text) is not { Class: WordClass.LineParameters or WordClass.Value } r) continue;
+                    if (found is null || n > found.Value.Run.Count) found = (run.Take(n).ToList(), r, sets);
+                    break;
                 }
+            }
+            if (found is not { } f) break;
+            var parts = f.Run.Select(k => words[k]).ToList();
+            int glyphs = parts.Sum(x => x.Glyphs.Count);
+            double d = glyphs == 0 ? parts.Max(x => x.Distance) : parts.Sum(x => x.Distance * x.Glyphs.Count) / glyphs;
+            var box = parts.Skip(1).Aggregate(parts[0].Box, (b, x) => b.Union(x.Box));
+            var joinedWord = new ImageWord(0, parts[0].Region, box, f.Reading, string.Join(f.Sets ? " " : "", parts.Select(x => x.Seen)), d,
+                                           [.. parts.SelectMany(x => x.Glyphs)]);
+            int at = f.Run.Min();
+            foreach (int k in f.Run.OrderByDescending(k => k)) words.RemoveAt(k);
+            words.Insert(Math.Min(at, words.Count), joinedWord);
+            joined = true;
         }
         return words;
     }

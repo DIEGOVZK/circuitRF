@@ -270,6 +270,9 @@ internal static class ToolCatalog
         new("preset",      "--preset",       OptKind.Str,    "A saved image-trace preset (map and options) by name."),
         new("minFeature",  "--min-feature",  OptKind.Number, "Specks smaller than this many square pixels are dropped."),
         new("simplify",    "--simplify",     OptKind.Number, "Outline simplification tolerance, pixels."),
+        new("edgeStroke",  "--edge-stroke",  OptKind.Number,
+            "The width, pixels, of a line the picture draws on every shape's edge, taken back off each traced shape; a "
+          + "circuitRF layout picture draws one 2 px wide."),
         new("snapDeg",     "--snap-deg",     OptKind.Number, "Edges within this many degrees of an axis (or 45) are snapped; 0 snaps none."),
         new("snap45",      "--snap45",       OptKind.Str,    "on or off: snap to 45 degrees as well as to the axes."),
     ];

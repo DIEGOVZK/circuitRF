@@ -1,0 +1,5 @@
+Port:P1  in   0  Num=1  Z=50 Ohm
+L:L1     in   mid  L=10 nH
+C:C1     mid  0  C=4.7 pF
+R:R1     mid  out  R=22 Ohm
+Port:P2  out  0  Num=2  Z=50 Ohm

@@ -110,6 +110,11 @@
       "Folder": "Artwork to Schematic",
       "Title": "Artwork to Schematic",
       "Summary": "A small board as a fabricator receives it \u2014 Gerber, drill, placement and BOM files \u2014 imported and turned into a schematic of lines, a bend, a tee and three parts in seconds. The BOM leaves one inductor out on purpose, so it arrives as a variable to tune against the design the board was drawn from."
+    },
+    {
+      "Folder": "Schematic from Image",
+      "Title": "Schematic from Image",
+      "Summary": "A picture of a schematic and a picture of its board, each made into a cell by Create Schematic from Image: the parts read from the pictures, drawn over them, and the values no picture states arriving as variables to tune."
     }
   ]
 }

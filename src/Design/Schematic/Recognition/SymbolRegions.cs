@@ -115,9 +115,12 @@ internal static class SymbolRegions
     }
 
     /// <summary>Two boxes facing each other across a gap shorter than the larger one's extent along the faces, with no
-    /// wire in the gap.</summary>
+    /// wire in the gap — or one inside the other: an outline and what is drawn in it, the zig-zag in a termination's box
+    /// (IM-12), are one symbol.</summary>
     private static bool Facing(PixelBox a, PixelBox b, WireGraph wires)
     {
+        static bool Inside(PixelBox i, PixelBox o) => i.Left >= o.Left && i.Right <= o.Right && i.Top >= o.Top && i.Bottom <= o.Bottom;
+        if (Inside(a, b) || Inside(b, a)) return true;
         int ox = Math.Min(a.Right, b.Right) - Math.Max(a.Left, b.Left) + 1;
         int oy = Math.Min(a.Bottom, b.Bottom) - Math.Max(a.Top, b.Top) + 1;
         if (ox >= 0.5 * Math.Min(a.Width, b.Width))

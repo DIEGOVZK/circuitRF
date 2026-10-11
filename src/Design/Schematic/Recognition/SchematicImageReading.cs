@@ -12,6 +12,7 @@
 
 using Clipper2Lib;
 using CircuitRF.Design.Imaging;
+using CircuitRF.Design.Layout.Recognition.Silkscreen;
 using CircuitRF.Engine;
 
 namespace CircuitRF.Design.Schematic.Recognition;
@@ -48,8 +49,14 @@ public readonly record struct PixelBox(int Left, int Top, int Right, int Bottom)
 /// what was seen.</summary>
 public sealed record SchematicImageRead
 {
-    /// <summary>The stroke width w, pixels.</summary>
+    /// <summary>The stroke width w, pixels — of the line work as read, thickened when the drawing is in hairlines.</summary>
     public double StrokeWidth { get; init; }
+
+    /// <summary>The picture's own stroke width before any thickening, pixels — what its words are read at.</summary>
+    public double TextStrokeWidth { get; init; }
+
+    /// <summary>How many pixels each side the line work was thickened by (0: drawn heavily enough as it was).</summary>
+    public double Thickened { get; init; }
 
     /// <summary>The turn applied to straighten the picture, degrees (0: none).</summary>
     public double DeskewDeg { get; init; }
@@ -147,18 +154,48 @@ public static class SchematicImageReading
         if (border is not null || grid > 0) w = RunWidth(mask);
         w = Math.Max(1.0, w);
 
+        // Specks (IM-12): a piece of ink, or a hole in it, smaller than a quarter of a stroke's square is noise — salt
+        // on a scan, a JPEG's ringing — never a full stop (about w²) or a junction dot (several w across). Left in, a
+        // speck beside a word is read as a glyph of it, and a hole in a stroke cuts a symbol's outline.
+        int speck = Math.Max(2, (int)Math.Ceiling(0.25 * w * w));
+        mask = Morphology.Despeckle(mask, speck);
+        mask = Morphology.Despeckle(mask.Inverted(), speck).Inverted();
+
+        // ── Hairlines (IM-12) ──
+        // Every tolerance below is in w, measured on drawings whose text stands 5–7 w tall. A drawing in hairlines —
+        // circuitRF's own schematic, whose 1 px pen draws 14 px text — has symbols and words three times that size in
+        // w: its inductor humps read as wire, its glyphs as symbols. Its words are found on the ink as drawn, at the
+        // drawing's own scale (a thickened glyph closes up, and a net label sitting on its wire would join it); then
+        // the line work alone is thickened to the weight the tolerances were measured at.
+        // The line work's own width decides, not w: on a drawing with more words than wire, w is the text's weight.
+        double inkW = w, thick = 0, textW = w;
+        if (o.HairlineTextHeight > 0 && TextHeight(mask, w) is var cap and > 0 && LineWidth(mask, w) is var lineW
+            && cap > o.HairlineTextHeight * lineW)
+        {
+            textW = cap / o.TextHeightInStrokes;
+            thick = Math.Max(0, (textW - lineW) / 2);
+        }
+
         var read = new SchematicImageRead
         {
-            StrokeWidth = w, DeskewDeg = deskew, SourceWidth = source.Width, SourceHeight = source.Height,
+            StrokeWidth = w, TextStrokeWidth = inkW, Thickened = thick, DeskewDeg = deskew, SourceWidth = source.Width, SourceHeight = source.Height,
             Width = raster.Width, Height = raster.Height, Border = border, GridDotsRemoved = grid,
             Report = new SchematicImageReport(),
         };
 
         // ── Words (R-im7-3) ──
         control?.BeginStage("Finding words");
-        var text = TextRegions.Find(mask, w, o);
+        var text = TextRegions.Find(mask, textW, o);
         var wireMask = mask.Clone();
         for (int i = 0; i < wireMask.Pixels.Length; i++) if (text.Removed.Pixels[i] != 0) wireMask.Pixels[i] = 0;
+        if (thick > 0)
+        {
+            // w is then the weight aimed at, not a measurement: a 2.6 px pen binarises to 2, 3 or 4 px by colour and
+            // phase, and a hexagon's side read 8.0 w at one zoom and 7.1 at the next — either side of a threshold.
+            wireMask = Morphology.Dilate(wireMask, thick, o.MaxThreads);
+            w = textW;
+            read = read with { StrokeWidth = w };
+        }
         read = read with { Words = text.Words, KeptText = text.Kept };
         token.ThrowIfCancellationRequested();
 
@@ -176,6 +213,12 @@ public static class SchematicImageReading
         token.ThrowIfCancellationRequested();
         if (wires.Count == 0)
             return read with { Report = Report(read), Refusal = SchematicImageReport.NoWiresRefusal };
+        // A chart's arcs, a drawing's curves: their skeleton is straight only in short slanting pieces. A machine-drawn
+        // schematic wires across and down; most of its line work, by length, slanting is no schematic (IM-12, a Smith
+        // chart). By length, because a coil's humps leave a few short slanting pieces among a schematic's long wires.
+        var slanting = wires.Where(p => p.Orientation == WireOrientation.Diagonal).ToList();
+        if (slanting.Count >= MinSlantingWires && slanting.Sum(p => p.Length) > 0.5 * wires.Sum(p => p.Length))
+            return read with { Report = Report(read), Refusal = SchematicImageReport.CurvedLinesRefusal };
         // The user's crossing corrections (R-im10-8), carried into the read picture's pixels.
         var flips = o.Overrides.Where(v => !v.IsJoin)
                                .Select(v => { var (x, y) = read.FromSource(v.X, v.Y); return (x, y, v.Kind == ConnectionOverrideKind.Connect); })
@@ -201,6 +244,10 @@ public static class SchematicImageReading
         read = read with { Report = Report(read) };
         return attached.Regions.Count == 0 ? read with { Refusal = SchematicImageReport.NoSymbolsRefusal } : read;
     }
+
+    /// <summary>A picture is refused as curved line work only with at least this many slanting wire pieces, and more
+    /// than half its wire length in them: a schematic may have a diagonal wire or two.</summary>
+    internal const int MinSlantingWires = 8;
 
     private static SchematicImageReport Report(SchematicImageRead r) => new()
     {
@@ -378,6 +425,40 @@ public static class SchematicImageReading
                 samples.Add(Math.Min(r - l + 1, b - t + 1));
             }
         return StrokeWidth.Mode(samples);
+    }
+
+    /// <summary>The width of the drawing's line work, pixels: <see cref="RunWidth"/> over the straight runs longer than
+    /// 40 w alone; w when there are none.</summary>
+    internal static double LineWidth(BinaryImage mask, double w)
+    {
+        var line = TextRegions.LongRuns(mask, (int)Math.Ceiling(40 * w) + 1);
+        double lw = line.Count() == 0 ? 0 : RunWidth(line);
+        return lw > 0 ? lw : w;
+    }
+
+    /// <summary>The height of the drawing's text, pixels: the median, over the typeset lines of three glyphs or more, of
+    /// each line's median glyph height — glyphs being what is left beside the straight runs longer than 40 w. 0 when
+    /// fewer than two such lines are found: a drawing with no words says nothing about its weight.</summary>
+    internal static double TextHeight(BinaryImage mask, double w)
+    {
+        var line = TextRegions.LongRuns(mask, (int)Math.Ceiling(40 * w) + 1);
+        var rest = mask.Clone();
+        for (int i = 0; i < rest.Pixels.Length; i++) if (line.Pixels[i] != 0) rest.Pixels[i] = 0;
+        var comps = Components.Label(rest).Components
+            .Where(c => c.Bottom - c.Top + 1 >= 3 * w && c.Bottom - c.Top + 1 <= 40 * w && c.Right - c.Left + 1 <= 40 * w)
+            .ToList();
+        var units = comps.Select(c =>
+        {
+            var u = new StrokeGlyphs.Unit();
+            u.Add(0, [c.Left, c.Top, c.Right + 1, c.Bottom + 1]);
+            return u;
+        }).ToList();
+        var lines = StrokeGlyphs.Groups(units, vertical: false, typeset: true)
+            .Where(g => g.Count >= 3)
+            .Select(g => g.Select(k => (double)(comps[k].Bottom - comps[k].Top + 1)).OrderBy(h => h).ElementAt(g.Count / 2))
+            .OrderBy(h => h)
+            .ToList();
+        return lines.Count < 2 ? 0 : lines[lines.Count / 2];
     }
 
     /// <summary>Removes a frame enclosing most of the drawing — the component reaching over 60 % of the picture each

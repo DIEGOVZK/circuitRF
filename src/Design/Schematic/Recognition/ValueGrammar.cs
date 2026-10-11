@@ -79,6 +79,7 @@ public static class ValueGrammar
         if (DesignatorShape.IsMatch(t)) return new WordReading(t, WordClass.Designator, IsPortWord: port);
         if (ReadValue(t) is { } v) return new WordReading(t, WordClass.Value, v);
         if (ReadLineParameters(t) is { } ps) return new WordReading(t, WordClass.LineParameters, Parameters: ps);
+        if (ReadNamedValue(t) is { } nv) return new WordReading(t, WordClass.Value, nv);
         if (NameShape.IsMatch(t)) return new WordReading(t, WordClass.Name, IsPortWord: port);
         return null;
     }
@@ -93,6 +94,23 @@ public static class ValueGrammar
         if (BomTablePaste.IsNotFittedMarker(text) && !text.Any(ch => ch is '-' or '–' or '—'))
             return new WordValue(0, [], NotFitted: true);
         return BomTablePaste.TryReadValueOfAnyKind(text, out double si, out var dims) ? new WordValue(si, dims, false) : null;
+    }
+
+    /// <summary>
+    /// A part's value written with its parameter's name — <c>R=17.4Ω</c>, <c>L=5nH</c>, <c>C=0.5pF</c>, as circuitRF and
+    /// many other tools print one (IM-12) — read as the value, in that parameter's dimension only. A length after
+    /// <c>L=</c> is a line's, and <see cref="ReadLineParameters"/> has it first.
+    /// </summary>
+    public static WordValue? ReadNamedValue(string text)
+    {
+        int eq = text.IndexOf('=');
+        if (eq != 1 || text.Length < 3) return null;
+        UnitDimension? dim = text[0] switch
+        {
+            'R' => UnitDimension.Resistance, 'L' => UnitDimension.Inductance, 'C' => UnitDimension.Capacitance, _ => null,
+        };
+        if (dim is not { } d || ReadValue(text[2..]) is not { NotFitted: false } v || !v.Fits(d)) return null;
+        return new WordValue(v.Si, [d], false);
     }
 
     // ── line parameters ─────────────────────────────────────────────────────────────────────────────────────────

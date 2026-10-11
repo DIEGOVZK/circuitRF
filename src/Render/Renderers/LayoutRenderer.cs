@@ -1358,7 +1358,7 @@ public static partial class LayoutRenderer
 
     /// <summary>Device-pixel target for the per-shape outline stroke — doubled from the plain
     /// Skia hairline (which is exactly 1 device pixel) per owner feedback, 2026-07-26.</summary>
-    private const double GeometryStrokeDevicePixels = 2.0;
+    internal const double GeometryStrokeDevicePixels = 2.0;
 
     /// <summary>
     /// On-screen WIDTH, in device pixels, at or under which a <see cref="PathShape"/> stops being drawn

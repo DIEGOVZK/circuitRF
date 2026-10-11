@@ -4,10 +4,12 @@
 // distance from each word's centre to its symbol's box, per cluster of words and symbols that can reach one another,
 // within three of the symbol's diagonals. It runs once per class, so a designator and a value can name one symbol:
 //   designators → every symbol but a ground;
-//   values      → resistors, inductors, capacitors and the unread two-pin kind; then the value's dimension is checked
-//                 against the symbol's — a value in henries assigned to a capacitor is a MISMATCH, reported and left
-//                 unattached, never applied;
-//   line sets   → transmission lines and stubs only.
+//   values      → resistors, inductors, capacitors and the unread two-pin kind; a value on the line under a part's
+//                 designator to that part (a label block, IM-12); then a value stating its unit first among
+//                 the symbols of its kind (IM-12), then every value left among the symbols left; the value's dimension
+//                 is checked against the symbol's — a value in henries assigned to a capacitor is a MISMATCH, reported
+//                 and left unattached, never applied;
+//   line sets   → transmission lines and stubs; and a Z=… on a line under a port's designator, to that port.
 // A designator that contradicts its symbol's kind (L3 on a capacitor's drawing) is kept, and the kind's confidence
 // drops one step: the parts table shows both and the person decides. Net and port names need no assignment — IM-7
 // already put each name word at the wire end it labels (NetLabel, SupplyMark).
@@ -96,13 +98,43 @@ public static class LabelAssociation
         var line = new ImageWord?[targets.Count];
         var mismatches = new List<KindMismatch>();
 
-        Assign(WordClass.Designator, k => k != ImageSymbolKind.Ground, (w, t) => designator[t] = w);
-        Assign(WordClass.Value, TakesValue, (w, t) =>
+        Assign(WordClass.Designator, t => targets[t].Kind != ImageSymbolKind.Ground, (w, t) => designator[t] = w);
+        void ApplyValue(ImageWord w, int t)
         {
             if (w.Reading!.Value!.Fits(Dimension(targets[t].Kind)) || targets[t].Kind == ImageSymbolKind.Unknown) value[t] = w;
             else mismatches.Add(new KindMismatch(w, targets[t].Symbol, targets[t].Kind));   // reported as that, not as unattached
-        });
-        Assign(WordClass.LineParameters, IsLine, (w, t) => line[t] = w);
+        }
+        // A value on the line under a designator, left-aligned with it, is that part's — a label block, as circuitRF and
+        // most tools print one (IM-12). Its kind must fit; the block may stand nearer another part's drawing than its own.
+        foreach (var vw in words.Where(w => w.Class == WordClass.Value && !used.Contains(w.Id)).ToList())
+            for (int t = 0; t < targets.Count; t++)
+            {
+                if (designator[t] is not { } dw || value[t] is not null || !TakesValue(targets[t].Kind)) continue;
+                if (!Under(vw, dw) || !(vw.Reading!.Value!.Fits(Dimension(targets[t].Kind)) || targets[t].Kind == ImageSymbolKind.Unknown)) continue;
+                value[t] = vw;
+                used.Add(vw.Id);
+                break;
+            }
+        // A value that states its unit goes first to the symbols it can be the value of: a tool that prints a part's
+        // label block beside the NEXT part's drawing (circuitRF's own, IM-12) puts C=1pF nearer a resistor than its
+        // capacitor. Then the rest, by distance alone — so a value with no part of its kind near is still a mismatch.
+        foreach (var dim in new[] { UnitDimension.Resistance, UnitDimension.Inductance, UnitDimension.Capacitance })
+            Assign(WordClass.Value,
+                   t => value[t] is null && (Dimension(targets[t].Kind) == dim || targets[t].Kind == ImageSymbolKind.Unknown),
+                   ApplyValue, w => w.Reading!.Value!.Dimensions is [var d] && d == dim);
+        Assign(WordClass.Value, t => value[t] is null && TakesValue(targets[t].Kind), ApplyValue);
+        Assign(WordClass.LineParameters, t => IsLine(targets[t].Kind), (w, t) => line[t] = w);
+        // A port's impedance, Z=…, on the line under its designator (a label block, IM-12).
+        foreach (var lw in words.Where(w => w.Class == WordClass.LineParameters && !used.Contains(w.Id)
+                                            && w.Reading!.Parameters!.All(p => p.Key is "Z" or "Z0")).ToList())
+            for (int t = 0; t < targets.Count; t++)
+            {
+                if (targets[t].Kind != ImageSymbolKind.Port || line[t] is not null || designator[t] is not { } dw) continue;
+                if (!Under(lw, dw)) continue;
+                line[t] = lw;
+                used.Add(lw.Id);
+                break;
+            }
 
         // Designators for the symbols without one (D10).
         var taken = designator.Where(d => d is not null).Select(d => d!.Reading!.Text).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -129,11 +161,11 @@ public static class LabelAssociation
         var unattached = words.Where(w => w.Class != WordClass.Unread && !used.Contains(w.Id)).ToList();
         return new ImageTextLabels(result, names, mismatches, unattached, ImageTextReport.Of(words, result, names, mismatches, unattached));
 
-        // One class's words to the targets that take it, by AS-10's assignment.
-        void Assign(WordClass cls, Func<ImageSymbolKind, bool> takes, Action<ImageWord, int> apply)
+        // One class's words to the targets that take them, by AS-10's assignment.
+        void Assign(WordClass cls, Func<int, bool> takes, Action<ImageWord, int> apply, Func<ImageWord, bool>? only = null)
         {
-            var ws = words.Where(w => w.Class == cls && !used.Contains(w.Id)).ToList();
-            var ts = Enumerable.Range(0, targets.Count).Where(t => takes(targets[t].Kind)).ToList();
+            var ws = words.Where(w => w.Class == cls && !used.Contains(w.Id) && (only is null || only(w))).ToList();
+            var ts = Enumerable.Range(0, targets.Count).Where(takes).ToList();
             if (ws.Count == 0 || ts.Count == 0) return;
             var claims = ws.Select(w => new PartClaim(PartEvidenceSource.Silkscreen,
                 (long)Math.Round(w.Box.CentreX * Sub), (long)Math.Round(w.Box.CentreY * Sub), w.Text, 0)).ToList();
@@ -146,6 +178,14 @@ public static class LabelAssociation
                 apply(ws[i], ts[assigned[i]]);
             }
         }
+    }
+
+    /// <summary>Word <paramref name="w"/> stands on one of the next two lines under <paramref name="d"/>, left-aligned
+    /// with it.</summary>
+    private static bool Under(ImageWord w, ImageWord d)
+    {
+        double h = d.Box.Height;
+        return Math.Abs(w.Box.Left - d.Box.Left) <= 0.5 * h && w.Box.Top > d.Box.Bottom && w.Box.Top - d.Box.Bottom <= 3.5 * h;
     }
 
     private static Bbox Box(PixelBox b) => new(b.Left * Sub, b.Top * Sub, (b.Right + 1) * Sub, (b.Bottom + 1) * Sub);

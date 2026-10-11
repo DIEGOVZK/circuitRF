@@ -16,6 +16,9 @@ TestResults/
 # Field boards for Create Schematic from Artwork (brief-artsch-3, -9): third-party artwork, never committed. Only the
 # folder's README.md is, which says what goes in each board folder.
 /testdata/artwork-boards/*/
+# Field pictures for Create from Image (brief-img-12): pictures users bring, never committed. Only the folder's
+# README.md is, which says what goes in each picture folder.
+/testdata/image-sources/*/
 
 # R-L5g-10 (brief-L5-followups-2.md §4): a workspace's .generated-cells/ folder is a pure, deletable,
 # rebuildable-from-the-layout PCell regeneration cache (GeneratedCellStore/LayoutView.PCellSnapshots) —

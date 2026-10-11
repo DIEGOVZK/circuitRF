@@ -1352,7 +1352,7 @@ public static class LayoutConvert
         Console.Error.WriteLine("       picture source (png, jpeg, bmp, gif, webp; --from image):  --scale <len>/px | --dpi <n> |");
         Console.Error.WriteLine("              --scale-points x0,y0,x1,y1=<len> | --scale auto   --tech <id|path.ctech>");
         Console.Error.WriteLine("              --layer-map \"#rrggbb=<layer>|drill|outline|silk|ignore,...\"  --preset <name>");
-        Console.Error.WriteLine("              --region x0,y0,x1,y1 (each with px)  --min-feature px2  --simplify px  --snap-deg d");
+        Console.Error.WriteLine("              --region x0,y0,x1,y1 (each with px)  --min-feature px2  --simplify px  --edge-stroke px  --snap-deg d");
         Console.Error.WriteLine("              --snap45 on|off  --underlay on|off  --overlay out.png");
         JsonRun.Note(CliDiagnostics.ConvertUsage());
         return 1;

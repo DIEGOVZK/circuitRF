@@ -3885,8 +3885,9 @@ own — `convert`'s rule for every importer; an id is installed the same way, a 
 nearest row within ΔE 8, a colour no row names is ignored), `--preset <name>` (a saved image-trace preset, its map and
 options; a flag beside it wins); with neither, IM-3's automatic map, **printed on stderr in `--layer-map`'s spelling**
 so the caller can pin it; `--region x0,y0,x1,y1` in pixels, **`px` on every number** (`render --window`'s rule — a bare
-number is `picture.args.px-required`); `--min-feature` (px²), `--simplify` (px), `--snap-deg` (0 snaps nothing),
-`--snap45 on|off`, `--underlay on|off`. Pixel numbers and lengths per pixel are the FILE's pixels, carried onto a
+number is `picture.args.px-required`); `--min-feature` (px²), `--simplify` (px), `--edge-stroke` (px: the width of a
+line the picture draws centred on every shape's edge, taken back off each traced shape — circuitRF's own layout view
+draws one 2 px wide), `--snap-deg` (0 snaps nothing), `--snap45 on|off`, `--underlay on|off`. Pixel numbers and lengths per pixel are the FILE's pixels, carried onto a
 reduced reading as the file's own dpi is. `--json` carries `result.convert`: `image`, `scale` and `layers`, the
 objects `recognize` reports.
 

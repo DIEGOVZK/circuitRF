@@ -846,3 +846,134 @@ named, like one the silkscreen named, can be renamed by X/Y. **Corrections** are
 `Overridden`); `--connect x,y:x2,y2` joins the dangling end nearest the first point to the pin nearest the second, in
 the emit. The dialog holds them like table edits and lays them over every re-run.
 
+
+## 13. IM-12 — acceptance, field pictures, the example, and what does not read
+
+Gates: `tests/Ui.Tests/ImageRecognition/` — `ImageRoundTripTests` (R-im12-1), `ImageForeignDrawingTests` (R-im12-2,
+over the committed pictures in `Fixtures/`, drawn once by `ForeignPictures.cs`), `ImageNothingHereTests` (R-im12-3),
+`ImageFieldTests` (R-im12-4, the git-ignored `testdata/image-sources/`, schema in its README). The example is
+`examples/Schematic from Image/`, built by `tests/Ui.Tests/Examples/SchematicFromImageExampleAuthoring.cs`.
+
+### 13.1 Round trips through circuitRF's own renderer (R-im12-1) — measured
+
+**Layout.** AS-9's round-trip board as imported from its Gerber set, drawn by `circuitrf render --detail full`, ONE
+copper layer to a picture (drawn together, one layer's per-shape outlines lie inside the other's fill and cut it), at
+10, 20 and 40 µm/px, traced back at that scale with every colour but the paper mapped to the layer:
+
+| µm/px | Top XOR / perimeter | Bottom XOR / perimeter |
+|---|---|---|
+| 10 | 0.03 px | 0.09 px |
+| 20 | 0.25 px | 0.09 px |
+| 40 | 0.23 px | 0.07 px |
+
+AS-9's two hand-drawn boards (the grounded coplanar line, the stripline) are not drawn: they add no shape the trace
+treats differently from the main board's lines, pads, bend, tee and plane, and the stripline's line lies under two
+pours, so only a picture of its inner layer alone would show it.
+
+That needed one thing the picture cannot say: **the layout view strokes every shape's edge with a line
+`LayoutRenderer.GeometryStrokeDevicePixels` (2 px) wide, centred on it**, so its picture's copper is a pixel fat all
+round, and read as drawn it was 1.24–1.30 px fat. `ImageTraceOptions.EdgeStrokePx` (CLI `--edge-stroke`, dialog
+Advanced ▸ Edge stroke) states that line's width and pulls every traced region in by half of it — except where the
+region runs off the picture, whose edge drew no outline (`ImageTrace.Inset`); without that exception a line running off
+the picture lost a pixel of length. The residue at 20 and 40 µm/px is the renderer's anti-aliasing, not the trace: an
+edge on a whole pixel is drawn with exactly 1.0 px of stroke outside it, an edge at a quarter pixel with ~1.46 px.
+
+At 40 µm/px the top copper alone (the plane implied by the stackup, as §7.2) is recognised and compared with the artwork
+route read from the same copper — like for like: the layout view draws a via as two hairline rings, which no colour
+clustering keeps below ~10 µm/px (a ring is all anti-aliased edge, and the small-distinct-colour step wants flat
+samples; a bright drill colour does not help), and draws no mask. The same elements by type, the same parts by case and
+connection, and **|ΔS| 0.019** over the board's own band (AS-9's 0.1–3 GHz) — 0.012 at 20 µm/px, 0.004 at 10, the
+pixel's share. Most of it is length: the lines come back 30–60 µm short at 40 µm/px (the anti-aliasing above, at pads).
+Over the recognition's default 0.1–6 GHz sweep the same picture gives 0.026.
+
+**Schematic.** The shipped `Optimization/LSectionMatch` and `LVS/Attenuator` drawn by `render` and read back: the same
+parts, values, ports (and port impedance) as their own extraction, compared as graphs. Zooms 3 to 5 read both exactly,
+but for one 5/6 tie at zoom 4 (IBM Plex's 5 sits 0.049 from its template and 0.048 from a 6); zoom 2.5 — about a 2 px
+pen — loses the wiring. The gate runs zooms 3 and 4.5. An attenuator's interface pins are no Port in its own netlist;
+on a picture they are port symbols, so its ports are counted against its pin symbols.
+
+### 13.2 What a circuitRF picture taught the schematic reader
+
+Before IM-12 the reader made nothing of circuitRF's own schematics. In the order the defects were found:
+
+- **Hairlines.** Every tolerance is in w, tuned on drawings whose text stands 5–7 w tall; circuitRF draws 14 px text
+  with a 1 px pen, so in w its symbols and words are three times the size — humps read as wire, glyphs as symbols, text
+  over the 12 w cap went unseen. When the text (median glyph height of typeset lines, `TextHeight`) stands more than
+  `HairlineTextHeight` (8) times the **line work's** width (`LineWidth`: the long straight runs only — a text-heavy
+  drawing's plain w is its type's weight), words are found on the ink as drawn at the drawing's scale, and then the line
+  work alone is dilated to `cap / TextHeightInStrokes` (5), and w is set to that target rather than re-measured (a
+  2.6 px pen binarises to 2, 3 or 4 px by colour and phase; a hexagon side read 8.0 w at one zoom and 7.1 at the next,
+  either side of the diagonal-wire threshold).
+- **A word on its wire** — circuitRF's italic net label stands on the wire — touched line work and was kept as a symbol
+  detail. A word touching only along its bottom fifth, at two places or more, with the line unbroken under it and bare
+  paper below the line is a word, marked `OnWire`, and read only as a name (its italic `in` matched `1Ω`). The bare-paper
+  test is what keeps half a diode's triangle, which straddles its lead, a symbol.
+- **Values written with their name and spaces** — `L = 5 nH`, `C = 0.5 pF`: `ValueGrammar.ReadNamedValue` reads
+  `R=`/`L=`/`C=` as a value in that dimension only (a length after `L=` stays a line set), and `ImageText` joins a run
+  of words on one line, gap ≤ their height, holding no designator and at most one value, when together they read as a
+  value or a line set — longest run first.
+- **Label blocks.** circuitRF prints a part's name, designator and value stacked beside it, and a small part's block can
+  stand nearer the next drawing than its own (the attenuator's `C = 1 pF` sits above R2). A value on the line under an
+  attached designator, left-aligned with it, is that part's (`LabelAssociation`); a value stating its unit then goes
+  first among the symbols of its kind; only then by distance. A `Z = …` under a port's designator sets the port's Z.
+- **The termination's box** — rounded corners, a zig-zag inside, the lead running through the top. A short non-wire run
+  joining a horizontal and a vertical candidate end — one of each axis there, so a hop's half-arc is not one — is the
+  corner between them (`WireGraph.Corners`); a candidate wholly inside a closed outline's box is symbol; a residue region
+  inside another's box is one region with it (`SymbolRegions.Facing`); and a template's lead stops where it crosses
+  another stroke (`SymbolTemplates.Crossing`), so the Term template's pins are where the picture's wires stop.
+- **Specks.** Ink pieces and holes smaller than a quarter of w² are removed after binarising: salt beside a word read as
+  glyphs (`10nH°°`), and white specks cut a ground triangle's outline.
+
+### 13.3 Pictures drawn another way (R-im12-2)
+
+The committed IEC schematic (boxes for R and L, a 4 px pen, designators in DejaVu Sans Oblique, values in the condensed
+faces) reads as its netlist as drawn, as a quality-60 JPEG, turned 1.5° and salted at 0.2 %. At half size (2 px pen,
+12 px caps) the circuit reads but values do not hold: `22R` read `77R` in the condensed face and `4.7pF` `+.7pF` in the
+oblique — the claim there is the circuit's shape, and §13.7 lists small slanted and condensed type. An unslanting step
+was tried and taken out: per-word lean from stems is noise on two-glyph words (an upright `22R` measured 10.9° from the
+R's leg, an oblique `C1` 0°).
+
+The dark-viewer layout (translucent red over blue over near-black, no outlines) traces within 0.04 px per unit of
+perimeter as a PNG, and within 0.48 px as a quality-60 JPEG, which keeps colour at half resolution (4:2:0): its edges
+are a pixel wide before anyone reads them, so that case is held to 1 px. A JPEG's fringe is its own colour cluster, and
+either reading of it is wrong by half a pixel — ignored, the red comes back thin; mapped to the red, fat. The automatic
+map gives copper by area (D7) and so puts the larger blue on top; the gate maps as a person does.
+
+### 13.4 Pictures with nothing in them (R-im12-3)
+
+A noisy gradient, a blank page and a page of text are IM-2's None, each with its sentence. A **Smith chart** classified
+as line work and came back as a 64-pin cut-out device wired by 59 diagonal "wires": its arcs are straight only in short
+slanting pieces. More than half of a picture's wire length in slanting pieces, eight or more of them, is now refused
+(`SchematicImageReport.CurvedLinesRefusal`), and the dialog offers **Read it as a layout** for it — each override link
+now shows only the kind the picture is not being read as.
+
+The noisy gradient took 7 s to classify (k-means for every k over ~100,000 distinct sampled colours); above
+`ColourClusters.MaxDistinctColours` (8,192) the samples are pooled to 5 bits a channel first — 1.5 s. And `convert` at
+10 µm/px spent minutes in `Skeleton.Thin`, which rescanned the whole picture on each of a filled plane's hundreds of
+passes; it now re-examines only pixels a deletion touched (same result, held against the full scan on random masks).
+
+### 13.5 The example (R-im12-5)
+
+`examples/Schematic from Image/`: a schematic picture and a board picture of one series C–L network, and the two cells
+Create Schematic from Image makes from them. The network is in series on purpose. Drawn first with the inductor shunt
+on a stub to a via, the board's inductor was not found from copper alone — the stub's end was read as an open line end,
+not a pad — and a line 2.4 mm long running off the picture was not an edge launch where a 3.6 mm one was. Both are
+observed, not explained; neither is the picture reader's (the traced copper is right), so they are left to the artwork
+recognition's own work.
+
+### 13.6 Field pictures (R-im12-4)
+
+`testdata/image-sources/<generic-name>/` holds a picture and its `expected.json` (picture, kind, scale and technology
+for a layout, parts, nets, kinds by type); nothing but the README is ever committed, and the theory skips on a fresh
+clone.
+
+### 13.7 What does not read (R-im12-7)
+
+- Hand-drawn schematics (not a goal), and photographs (IM-13).
+- Serif and script type; type that is bold, very small, or slanted or condensed at a small size (12 px caps).
+- Values printed far from their parts, other than on the line under their designator.
+- Dense layouts below ~4 px per trace width — widths read, loosely (the resolution line says how loosely).
+- The stackup, never stated by a picture (D8).
+- Vector sources — PDF, SVG, EMF — which are the better source when one exists; they are not read (D18).
+- Vias drawn as hairline rings (circuitRF's own layout view) below ~10 µm/px.
+- A part on a short stub to a via in a picture with no mask (§13.5).

@@ -137,8 +137,10 @@
                             <TextBlock Text="{Binding FailureText}" TextWrapping="Wrap" FontSize="13" TextAlignment="Center"/>
                             <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center"
                                         IsVisible="{Binding FailureOffersKind}">
-                                <Button Classes="link" Content="Read it as a schematic" Command="{Binding ReadAsSchematicCommand}"/>
-                                <Button Classes="link" Content="Read it as a layout" Command="{Binding ReadAsLayoutCommand}"/>
+                                <Button Classes="link" Content="Read it as a schematic" Command="{Binding ReadAsSchematicCommand}"
+                                        IsVisible="{Binding FailureOffersSchematic}"/>
+                                <Button Classes="link" Content="Read it as a layout" Command="{Binding ReadAsLayoutCommand}"
+                                        IsVisible="{Binding FailureOffersLayout}"/>
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -256,6 +258,9 @@
                             <TextBlock Grid.Row="2" Grid.Column="3" Text="Merge within ΔE"/>
                             <TextBox Grid.Row="2" Grid.Column="4" Text="{Binding MergeText}"
                                      ToolTip.Tip="Colours closer than this are one colour."/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Edge stroke, px"/>
+                            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding EdgeStrokeText}"
+                                     ToolTip.Tip="The width of a line the picture draws on every shape's edge, taken back off each traced shape. A circuitRF layout picture draws one 2 px wide."/>
                         </Grid>
                         <Grid Classes="advanced" ColumnDefinitions="Auto,Auto,16,Auto,Auto" RowDefinitions="Auto,Auto"
                               RowSpacing="6" ColumnSpacing="6" IsVisible="{Binding IsSchematicPicture}">

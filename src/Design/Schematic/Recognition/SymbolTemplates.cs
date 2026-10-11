@@ -357,12 +357,46 @@ public static class SymbolTemplates
             }
             var inner = (s[2 * j], s[2 * j + 1]);
             strokes[k] = s[(2 * j)..];
+            // A lead that crosses another stroke on its way in — a termination's lead through the top of its box —
+            // meets the body there: on a picture the outline is the symbol's edge, and what lies inside it is symbol.
+            if (Crossing(strokes, k, tx, ty, inner.Item1, inner.Item2) is { } c)
+            {
+                strokes[k] = [c.X, c.Y, .. strokes[k]];
+                inner = c;
+            }
             double lx = tx - inner.Item1, ly = ty - inner.Item2, l = Math.Sqrt(lx * lx + ly * ly);
             return (inner, l > 0 ? (lx / l, ly / l) : (0, 0));
         }
         double bx = strokes.SelectMany(Xs).Average(), by = strokes.SelectMany(Ys).Average();
         double ox = tx - bx, oy = ty - by, ol = Math.Sqrt(ox * ox + oy * oy);
         return ((tx, ty), ol > 0 ? (ox / ol, oy / ol) : (0, 0));
+    }
+
+    /// <summary>Where the lead from (<paramref name="ax"/>, <paramref name="ay"/>) to (<paramref name="bx"/>,
+    /// <paramref name="by"/>) first crosses a stroke other than stroke <paramref name="lead"/> strictly between its ends,
+    /// or null.</summary>
+    private static (double X, double Y)? Crossing(List<double[]> strokes, int lead, double ax, double ay, double bx, double by)
+    {
+        double best = double.MaxValue;
+        (double, double)? r = null;
+        double dx = bx - ax, dy = by - ay;
+        for (int k = 0; k < strokes.Count; k++)
+        {
+            if (k == lead) continue;
+            var s = strokes[k];
+            for (int i = 0; i + 3 < s.Length; i += 2)
+            {
+                double ex = s[i + 2] - s[i], ey = s[i + 3] - s[i + 1];
+                double den = dx * ey - dy * ex;
+                if (Math.Abs(den) < 1e-12) continue;
+                double t = ((s[i] - ax) * ey - (s[i + 1] - ay) * ex) / den;
+                double u = ((s[i] - ax) * dy - (s[i + 1] - ay) * dx) / den;
+                if (t <= 1e-6 || t >= 1 - 1e-6 || u < -1e-9 || u > 1 + 1e-9 || t >= best) continue;
+                best = t;
+                r = (ax + t * dx, ay + t * dy);
+            }
+        }
+        return r;
     }
 
     private static bool EndsAt(double[] s, double x, double y) =>

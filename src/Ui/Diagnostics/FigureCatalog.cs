@@ -862,6 +862,11 @@ public static class FigureCatalog
             "The same picture with no scale stated and none found in it: the scale row is highlighted, the "
           + "picture asks for two points, and Create waits. Advanced is open on the right."),
 
+        new("image-dialog-schematic-picture", DocImageRecognitionFixtures.SchematicPicture, 1320, 846,
+            WindowFrame.Titled("Create Schematic from Image — matching-network.png"),
+            "The Schematic from Image example's schematic picture, read: wires, symbols and words drawn over it, "
+          + "the parts table filled, and the inductor whose value the picture leaves off selected — a variable to tune."),
+
         new("image-dialog-no-drawing", DocImageRecognitionFixtures.NoDrawing, 1320, 846,
             WindowFrame.Titled("Create Schematic from Image — photo.png"),
             "A picture with no drawing in it: shown dimmed, with the one sentence that says why and the two "

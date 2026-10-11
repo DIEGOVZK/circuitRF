@@ -19216,3 +19216,32 @@ Found while making IM-7 … IM-9's reading into a circuit and a drawing (`docs/d
   off names the net `Vsupply<n>`. Not changed: the reach is IM-7's and a wider one would steal net labels.
 Gates: `SchematicImageRecognitionTests`, `NetlistSchematicHintsTests`, `SchematicImageOverridesTests`, and
 `PartsTableCsvTests`' pixel case.
+
+## Reading circuitRF's own pictures, and the acceptance of Create from Image (2026-10-10, brief-img-12)
+
+Found by drawing pictures with `circuitrf render` and reading them back (`docs/design/image-to-circuit.md` §13):
+- **`Skeleton.Thin` rescanned the whole picture every pass.** A filled plane takes hundreds of Zhang–Suen passes, so
+  `convert` on a 4 MP board picture ran for minutes. It now re-examines only the pixels a deletion touched since that
+  sub-iteration last looked; decisions are still taken on each sub-iteration's input, so the result is the full scan's
+  (held against the old code on random masks before the old code was removed).
+- **k-means over a photograph's colours** — every sample distinct — took 7 s on a 480×360 gradient; above 8,192
+  distinct sampled colours the samples are pooled to 5 bits a channel (`ColourClusters.MaxDistinctColours`).
+- **circuitRF's layout view outlines every shape with a 2 px line centred on its edge**
+  (`LayoutRenderer.GeometryStrokeDevicePixels`, now internal for the gate), so its pictures trace a pixel fat. The trace
+  takes a stated edge stroke back off (`ImageTraceOptions.EdgeStrokePx`, `--edge-stroke`, Advanced ▸ Edge stroke) —
+  but not where a shape runs off the picture, which cut it rather than outlined it. Skia then draws an edge between
+  pixels ~0.46 px further out than one on a pixel; that residue is what the 40 µm/px |ΔS| of 0.019 is mostly made of.
+- **Its vias are two hairline rings**, never a separable colour below ~10 µm/px whatever the drill layer's colour: a
+  ring is all anti-aliased edge and the small-distinct-colour step wants flat samples.
+- **Its schematics are hairline drawings** — 14 px text over a 1 px pen — three times the size in w the reader's
+  tolerances were tuned at. Such a drawing's words are found on the ink as drawn, then its line work alone is thickened
+  to a fifth of the text height, and w is that target, not a re-measurement (a 2.6 px pen binarises to 2–4 px by
+  colour and phase). The decision compares the text to the LONG RUNS' width: on a drawing with more words than wire,
+  the plain stroke width is the type's.
+- Eight more reader fixes for those pictures — a label standing on its wire, `L = 5 nH` written with spaces and its
+  name, label blocks standing nearer the next part, a box with round corners and a lead through it, a template lead
+  crossing its outline, a port's printed Z, specks, and a chart's curves taken for wire — are listed in §13.2 and §13.4.
+  Each is held by the existing IM-7 … IM-10 gates as well as IM-12's (88 of them, all green after each change).
+- **Two artwork-recognition behaviours seen, not explained** (§13.5): a shunt part on a short stub to a via was not
+  found from copper alone (the stub end read as an open end), and a 2.4 mm line running off a picture was not an edge
+  launch where a 3.6 mm one was. The traced copper was right in both; left to the artwork recognition.
