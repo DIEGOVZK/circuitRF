@@ -1,0 +1,4 @@
+Port:P1 in 0 Num=1 Z=50 Ohm
+R:R1 in out R=1 kOhm
+C:C1 out 0 C=1 uF
+Port:P2 out 0 Num=2 Z=50 Ohm

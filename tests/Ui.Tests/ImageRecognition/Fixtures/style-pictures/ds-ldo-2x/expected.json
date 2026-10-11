@@ -1,0 +1,26 @@
+{
+  "picture": "picture.png",
+  "kind": "schematic",
+  "answer": "answer.cnl",
+  "source": "datasheet",
+  "kinds": {
+    "C": 2
+  },
+  "ics": 1,
+  "ports": 2,
+  "grounds": 3,
+  "terminals": 2,
+  "names": [
+    "VIN",
+    "VOUT"
+  ],
+  "designators": [
+    "CIN",
+    "COUT"
+  ],
+  "values": {
+    "CIN": "1u",
+    "COUT": "1u"
+  },
+  "style": "hairline IC box with pin names inside, open-circle terminals VIN and VOUT, two capacitors beside the box, a value list beside the output; retina 2x"
+}

@@ -1,0 +1,8 @@
+C:Ci vin 0 C=0.1 uF
+SnP:U1 vin vout adj NumPorts=3
+Diode:D1 vout vin
+R:R1 vout adj R=240 Ohm
+Diode:D2 adj vout
+R:R2 adj 0 R=5 kOhm
+C:Cadj adj 0 C=10 uF
+C:Co vout 0 C=1 uF

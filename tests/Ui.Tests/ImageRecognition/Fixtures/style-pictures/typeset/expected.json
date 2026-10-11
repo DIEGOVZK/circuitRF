@@ -1,0 +1,29 @@
+{
+  "picture": "picture.png",
+  "kind": "schematic",
+  "answer": "answer.cnl",
+  "source": "web",
+  "kinds": {
+    "R": 3,
+    "L": 1,
+    "C": 1
+  },
+  "sources": 1,
+  "grounds": 1,
+  "designators": [
+    "R1",
+    "R2",
+    "R3",
+    "L1",
+    "C1",
+    "V1"
+  ],
+  "values": {
+    "R1": "2.2k",
+    "R2": "10k",
+    "R3": "10k",
+    "L1": "150n",
+    "C1": "100p"
+  },
+  "style": "a thin pen, IEC boxes, a coil, designator-then-value runs in a serif italic face, a \u00B1 source circle"
+}

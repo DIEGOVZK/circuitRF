@@ -218,13 +218,15 @@ internal static class ForeignPictures
     }
 }
 
-/// <summary>Runs only when CRF_IM12_FIXTURES is set; otherwise skipped, saying how.</summary>
+/// <summary>Runs only when CRF_IM12_FIXTURES (or the variable named) is set; otherwise skipped, saying how.</summary>
 public sealed class RegenerateFactAttribute : FactAttribute
 {
-    public RegenerateFactAttribute()
+    public RegenerateFactAttribute() : this("CRF_IM12_FIXTURES", "the committed foreign pictures") { }
+
+    public RegenerateFactAttribute(string variable, string what)
     {
-        if (Environment.GetEnvironmentVariable("CRF_IM12_FIXTURES") is not { Length: > 0 })
-            Skip = "Rewrites the committed foreign pictures; set CRF_IM12_FIXTURES=1 to run it.";
+        if (Environment.GetEnvironmentVariable(variable) is not { Length: > 0 })
+            Skip = $"Rewrites {what}; set {variable}=1 to run it.";
     }
 }
 

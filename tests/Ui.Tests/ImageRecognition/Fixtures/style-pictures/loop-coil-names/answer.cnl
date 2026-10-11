@@ -1,0 +1,5 @@
+Port:P1 rfdc 0 Num=1 Z=50 Ohm
+C:C1 rfdc rf C=100 pF
+L:L1 rfdc dc L=100 nH
+Port:P2 rf 0 Num=2 Z=50 Ohm
+Port:P3 dc 0 Num=3 Z=50 Ohm

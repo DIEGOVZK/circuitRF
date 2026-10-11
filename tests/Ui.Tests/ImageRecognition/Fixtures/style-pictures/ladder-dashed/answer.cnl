@@ -1,0 +1,8 @@
+Port:P1 n0 0 Num=1 Z=50 Ohm
+L:L1 n0 n1 L=1 nH
+C:C1 n1 0 C=1 pF
+L:L2 n1 n2 L=1 nH
+C:C2 n2 0 C=1 pF
+L:L3 n2 n3 L=1 nH
+C:C3 n3 0 C=1 pF
+Port:P2 n3 0 Num=2 Z=50 Ohm

@@ -1,0 +1,7 @@
+{
+  "picture": "picture.png",
+  "kind": "schematic",
+  "source": "web",
+  "refused": true,
+  "style": "shaded gradients and slanted cylinders: no circuit"
+}

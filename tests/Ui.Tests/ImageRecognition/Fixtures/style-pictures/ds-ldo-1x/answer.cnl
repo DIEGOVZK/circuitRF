@@ -1,0 +1,5 @@
+Port:P1 vin 0 Num=1 Z=50 Ohm
+C:CIN vin 0 C=1 uF
+SnP:U1 vin vin vout NumPorts=3
+C:COUT vout 0 C=1 uF
+Port:P2 vout 0 Num=2 Z=50 Ohm

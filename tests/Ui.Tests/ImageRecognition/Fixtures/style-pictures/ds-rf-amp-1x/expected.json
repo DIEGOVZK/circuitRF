@@ -1,0 +1,31 @@
+{
+  "picture": "picture.png",
+  "kind": "schematic",
+  "answer": "answer.cnl",
+  "source": "datasheet",
+  "kinds": {
+    "C": 4,
+    "L": 1
+  },
+  "ics": 1,
+  "ports": 2,
+  "grounds": 4,
+  "names": [
+    "VCC"
+  ],
+  "designators": [
+    "C1",
+    "C2",
+    "C3",
+    "C4",
+    "L1"
+  ],
+  "values": {
+    "C1": "100pF",
+    "C2": "100pF",
+    "C3": "1nF",
+    "C4": "10nF",
+    "L1": "22nH"
+  },
+  "style": "hairline pen, 8-pin IC box with pin-number boxes, pin names inside and a gradient fill, hairline plates with a wide gap, a coil, filled-dot RF connectors, a VCC supply arrow, two-line annotation phrases, a hop; screen 1x"
+}

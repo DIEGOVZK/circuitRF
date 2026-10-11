@@ -1,0 +1,17 @@
+{
+  "picture": "picture.png",
+  "kind": "schematic",
+  "answer": "answer.cnl",
+  "source": "web",
+  "kinds": {
+    "R": 1,
+    "C": 1
+  },
+  "ports": 2,
+  "terminals": 4,
+  "designators": [
+    "R",
+    "C"
+  ],
+  "style": "a thick zig-zag, thick plates, terminal-circle pairs joined by a bottom rail, voltage arrows between them, serif italic labels"
+}

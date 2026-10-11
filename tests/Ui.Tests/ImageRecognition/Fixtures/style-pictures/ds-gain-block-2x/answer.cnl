@@ -1,0 +1,8 @@
+Port:P1 rfin 0 Num=1 Z=50 Ohm
+C:Cblock1 rfin in C=1 nF
+Amp:U1 in 0 out 0
+C:Cblock2 out rfout C=1 nF
+Port:P2 rfout 0 Num=2 Z=50 Ohm
+L:RFC out bias L=220 nH
+C:Cbypass bias 0 C=100 nF
+R:Rbias bias vcc R=68 Ohm

@@ -1,0 +1,21 @@
+{
+  "picture": "picture.png",
+  "kind": "schematic",
+  "answer": "answer.cnl",
+  "source": "web",
+  "kinds": {
+    "L": 3,
+    "C": 3
+  },
+  "ports": 2,
+  "terminals": 4,
+  "designators": [
+    "L1",
+    "L2",
+    "L3",
+    "C1",
+    "C2",
+    "C3"
+  ],
+  "style": "coils, thick plates, designators touching their symbols, a dashed continuation in both rails, terminal-circle pairs, serif italic designators with subscripts"
+}

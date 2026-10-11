@@ -1,0 +1,6 @@
+Vdc:V1 vs 0 Vdc=12 V
+R:R1 vs a R=2.2 kOhm
+R:R2 a 0 R=10 kOhm
+L:L1 a b L=150 nH
+C:C1 b 0 C=100 pF
+R:R3 b 0 R=10 kOhm

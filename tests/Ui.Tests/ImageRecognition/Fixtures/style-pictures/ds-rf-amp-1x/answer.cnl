@@ -1,0 +1,8 @@
+Port:P1 rfin 0 Num=1 Z=50 Ohm
+C:C1 rfin in C=100 pF
+SnP:U1 in out vcc 0 NumPorts=3
+L:L1 vcc out L=22 nH
+C:C2 out rfout C=100 pF
+Port:P2 rfout 0 Num=2 Z=50 Ohm
+C:C3 vcc 0 C=1 nF
+C:C4 vcc 0 C=10 nF

@@ -1,0 +1,27 @@
+{
+  "picture": "picture.png",
+  "kind": "schematic",
+  "answer": "answer.cnl",
+  "source": "datasheet",
+  "kinds": {
+    "C": 2,
+    "L": 1
+  },
+  "amplifiers": 1,
+  "ports": 2,
+  "grounds": 3,
+  "names": [
+    "\u002B5V"
+  ],
+  "designators": [
+    "C1",
+    "C2",
+    "L1"
+  ],
+  "values": {
+    "C1": "10nF",
+    "C2": "10nF",
+    "L1": "1\u00B5H"
+  },
+  "style": "a dashed box around a fixture, a solid box around the device, coax connectors, an amplifier triangle with pin numbers, a supply arrow; screen 1x"
+}

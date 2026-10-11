@@ -1,0 +1,29 @@
+{
+  "picture": "picture.png",
+  "kind": "schematic",
+  "answer": "answer.cnl",
+  "source": "datasheet",
+  "kinds": {
+    "C": 3,
+    "L": 1,
+    "R": 1
+  },
+  "amplifiers": 1,
+  "ports": 2,
+  "grounds": 4,
+  "names": [
+    "Vcc"
+  ],
+  "designators": [
+    "Cblock",
+    "Cblock",
+    "Rbias",
+    "RFC",
+    "Cbypass"
+  ],
+  "values": {
+    "Rbias": "68\u03A9",
+    "RFC": "220nH"
+  },
+  "style": "blue text, a grey-filled amplifier triangle with pin numbers 3, 1 and 2,4, coax connectors with a centre dot and a ground, open-circle pin markers on the leads, a current arrow beside a wire, word designators, a parenthetical note; retina 2x"
+}

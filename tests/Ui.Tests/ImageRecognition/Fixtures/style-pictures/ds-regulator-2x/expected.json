@@ -1,0 +1,36 @@
+{
+  "picture": "picture.png",
+  "kind": "schematic",
+  "answer": "answer.cnl",
+  "source": "datasheet",
+  "kinds": {
+    "R": 2,
+    "C": 3,
+    "Diode": 2
+  },
+  "ics": 1,
+  "grounds": 4,
+  "names": [
+    "VIN",
+    "VOUT"
+  ],
+  "designators": [
+    "Ci",
+    "Co",
+    "Cadj",
+    "R1",
+    "R2",
+    "D1",
+    "D2"
+  ],
+  "values": {
+    "R1": "240",
+    "R2": "5k",
+    "Ci": "0.1u",
+    "Cadj": "10u",
+    "Co": "1u",
+    "D1": "1A/100V",
+    "D2": "1A/100V"
+  },
+  "style": "bold sans labels, curved-plate capacitors, filled diodes, a variable resistor, an IC box with pin names outside, a double-headed dimension arrow labelled Vref = 1.25 V, designator-over-value blocks; retina 2x"
+}

@@ -1258,3 +1258,126 @@ badly: heavy-pen IEC boxes and capacitor plates are taken for wire, labels besid
 with them, voltage arrows become wire, and a terminal circle is a port. That is the IM-7/IM-8 reader, not the drawing:
 the drawing faithfully draws a wrong reading. The gate is `ImageScreenshotPasteTests`.
 
+## 17. Pictures from datasheets and the web — the baseline (IMF-1)
+
+Paste reads every picture with one set of defaults, and pictures from datasheets and the web do not come back as usable
+schematic data (`brief-imf-0-overview.md` §1). Before any reader change, IMF-1 made the reading a number:
+`FieldScore` (`tests/Ui.Tests/ImageRecognition/FieldScore.cs`) reads a picture as Paste does — every option at its
+default, the kind forced to a schematic — and scores it against the picture's `expected.json`, one line per picture with
+the same columns for every one, printed to the test output so the TRX carries the table. Every later phase reports
+against this table.
+
+**The corpus.** Committed: seventeen pictures our own code draws (`Fixtures/DatasheetStylePictures.cs`,
+`Fixtures/WebStylePictures.cs`, written into `Fixtures/style-pictures/` by `CRF_IMF1_FIXTURES=1`), each a small circuit
+with its answer netlist — five datasheet application circuits at 1× and 2×, six textbook or web drawings, and one shaded
+illustration that is no circuit. The serif faces they need are a test asset (`Fixtures/fonts`), never shipped. Local
+only: the twenty-five field pictures under the git-ignored `testdata/image-sources/` — sixteen datasheet crops
+(`picture-ds-a1` … `picture-ds-h2`, 1 = screen 1×, 2 = Retina 2×) and nine web pictures (`picture-a` … `picture-i`).
+`ImageDatasheetStyleTests` and `ImageWebStyleTests` hold one fact per committed picture — the circuit exactly, every
+designator (overview §4) — each skipped with the phase that turns it on; `ImageFieldTests` prints both tables.
+
+**The columns.** `auto`: the kind the picture classifies as on its own (`!` when that is not what it is). `read`: the
+forced reading refused or read (`!` against `refused`). `kinds`: parts counted right by kind, of those drawn — an
+over-count costs as much as an under-count, and a symbol of no known kind (emitted as a stand-in C) counts as no part.
+`?`: symbols of no known kind. `topo`: the part–net graph isomorphic to the answer's (`NetlistShape.SameTopology` — kinds
+and connections, ground and ports included; names, values and port numbers not). `ports`, `gnd`, `term`: ports, ground
+symbols, terminal circles. `dev`: transistors, sources, amplifiers, ICs and transformers. `block`: the answer's amplifier
+or IC read as one part on as many nets. `desig`, `values`, `names`: words read and attached right, of those drawn.
+`region`: the most pins any one symbol region has. `ms`: the read, Debug build. `-`: not stated for that picture.
+
+### 17.1 The baseline (2026-10-11)
+
+Committed style pictures:
+
+```
+picture                  auto       read     kinds  ?   topo ports gnd   term  dev   block desig values names region     ms
+ds-gain-block-1x         schematic  refused  0/5    0   no   0/2   0/4   -     0/1   0/1   0/5   0/2    0/1   0         176
+ds-gain-block-2x         layout!    read     1/5    11  no   1/2   0/4   -     0/1   0/1   0/5   0/2    0/1   4         775
+ds-ldo-1x                schematic  read     0/2    1   no   2/2   3/3   2/2   0/1   1/1   0/2   0/2    0/2   7         149
+ds-ldo-2x                schematic  read     0/2    1   no   2/2   0/3   2/2   0/1   0/1   0/2   0/2    0/2   3         452
+ds-regulator-1x          schematic  read     0/7    5   no   -     4/4   -     0/1   1/1   0/7   0/7    0/2   5         241
+ds-regulator-2x          schematic  read     0/7    4   no   -     2/4   -     0/1   0/1   0/7   0/7    0/2   9         827
+ds-rf-amp-1x             schematic  read     1/5    2   no   0/2   4/4   -     0/1   0/1   2/5   1/5    0/1   45        733
+ds-rf-amp-2x             schematic  read     1/5    3   no   0/2   1/4   -     0/1   0/1   2/5   1/5    0/1   9         669
+ds-test-circuit-1x       schematic  read     1/3    3   no   0/2   1/3   -     0/1   0/1   2/3   2/3    0/1   7         205
+ds-test-circuit-2x       schematic  read     0/3    4   no   0/2   0/3   -     0/1   0/1   2/3   1/3    0/1   6         565
+heavy-iec                schematic  read     0/8    4   no   0/1   1/6   -     0/3   -     0/9   -      -     40        670
+illustration             layout!    read!    -      2   -    -     -     -     -     -     -     -      -     2         385
+ladder-dashed            schematic  read     0/6    4   no   0/2   -     4/4   -     -     0/6   -      -     6         294
+loop-coil-names          schematic  read     1/2    0   no   0/3   -     -     -     -     -     -      0/3   2         161
+low-res                  schematic  read     1/2    2   no   0/2   -     2/4   -     -     0/2   -      -     2          60
+textbook-zigzag          schematic  read     0/2    2   no   1/2   -     4/4   -     -     0/2   -      -     2         254
+typeset                  schematic  read     1/5    4   no   -     1/1   -     0/1   -     0/6   0/5    -     4         427
+```
+
+Field pictures (local, git-ignored; datasheet crops first):
+
+```
+picture                  auto       read     kinds  ?   topo ports gnd   term  dev   block desig values names region     ms
+picture-ds-a1            schematic  read     0/6    5   -    0/2   -     -     0/1   -     0/6   -      0/1   12       1010
+picture-ds-a2            schematic  read     0/6    4   -    0/2   -     -     0/1   -     1/6   -      0/1   20       1710
+picture-ds-b1            schematic  read     2/4    3   -    1/2   -     -     0/1   -     2/4   -      -     4         382
+picture-ds-b2            schematic  read     1/4    5   -    0/2   -     -     0/1   -     3/4   -      -     4         513
+picture-ds-c1            schematic  read     1/5    3   -    1/2   -     -     0/1   -     -     -      0/1   12        234
+picture-ds-c2            layout!    read     1/5    2   -    1/2   -     -     0/1   -     -     -      0/1   17        582
+picture-ds-d1            schematic  read     0/7    1   -    -     1/1   -     0/1   -     0/4   0/3    -     20        401
+picture-ds-d2            schematic  read     0/7    2   -    -     0/1   -     0/1   -     0/4   0/3    -     17        885
+picture-ds-e1            schematic  read     0/3    3   -    0/2   -     -     0/1   -     -     -      -     9         454
+picture-ds-e2            schematic  read     0/3    4   -    0/2   -     -     0/1   -     -     -      -     9         755
+picture-ds-f1            schematic  read     -      3   -    -     -     -     0/2   -     -     -      -     65        543
+picture-ds-f2            layout!    read     -      2   -    -     -     -     0/2   -     -     -      -     104      2472
+picture-ds-g1            schematic  read     -      1   -    -     -     -     0/4   -     -     -      -     270       821
+picture-ds-g2            layout!    read     -      2   -    -     -     -     0/4   -     -     -      -     128      3433
+picture-ds-h1            schematic  read     0/2    1   -    2/2   1/3   -     0/1   -     0/2   0/2    0/2   8         297
+picture-ds-h2            schematic  read     0/2    1   -    2/2   2/3   -     0/1   -     0/2   0/2    0/2   8         529
+picture-a                schematic  refused  0/8    0   -    -     0/4   0/6   -     -     -     -      -     0         172
+picture-b                schematic  read     1/4    1   -    -     -     -     -     -     0/2   -      -     2         463
+picture-c                schematic  read     0/8    2   -    -     -     -     0/3   -     0/8   -      -     32        475
+picture-d                schematic  read     0/2    8   -    -     1/1   -     -     -     -     -      0/2   3         722
+picture-e                schematic  read     0/5    17  -    -     -     -     -     -     -     -      -     5          54
+picture-f                schematic  read     0/6    8   -    -     -     4/4   -     -     -     -      -     4         222
+picture-g                layout!    read!    -      2   -    -     -     -     -     -     -     -      -     5         816
+picture-h                schematic  read     6/7    9   -    -     -     -     0/2   -     -     0/7    -     5         398
+picture-i                schematic  read     1/2    1   -    -     -     -     -     -     -     -      0/3   2         320
+```
+
+Both refusals are the curved-lines rule's: "most of the lines in this picture curve or slant".
+
+**No picture reads.** Not one committed picture has its topology; the best datasheet-style reading (`ds-ldo-1x`) finds
+its two ports and three grounds and still swallows both capacitors into the IC's region. On the field crops the passives
+by kind are 0 of 6 or 7 on every datasheet circuit but the gain block, and no IC or amplifier is one part. The committed
+pictures reproduce the field failures they were drawn for, which is what lets a fresh clone measure a fix.
+
+### 17.2 The causes, with the evidence (overview §2)
+
+Each sentence is from the scored lines above and the `recognize --overlay` pictures of the committed fixtures.
+
+- **F1 — one fixed unit (IMF-2).** A datasheet hairline measures `w` = 2 px at 1× and at 2× alike, so every tolerance in
+  `w` is half the drawing's size at 2×: `ds-rf-amp`'s IC region holds 45 pins at 1× and 9 at 2×, and `ds-ldo` reads all
+  three grounds at 1× and none at 2×.
+- **F2 — colour and fills (IMF-2).** The grey amplifier fill makes `ds-gain-block-2x` a layout on its own reading
+  (`recognize` then maps the fill to Top Copper and the blue type to silk, and stops for want of a scale), as are the
+  coloured crops `picture-ds-c2`, `-f2`, `-g2` and both illustrations.
+- **F3 — plates read as wire (IMF-3).** `ds-rf-amp-1x`'s C1, two hairline plates 8 px apart, is read as a diode; on
+  `heavy-iec` the 152 px plates and the IEC box sides become wire that joins one 40-pin region.
+- **F4 — annotation strokes read as wire (IMF-3).** `ds-test-circuit`'s dashed fixture box becomes a 7-pin block
+  (designated by the words inside it), and the dashed continuation of `ladder-dashed` joins its rails to a 6-pin block.
+- **F5 — zig-zags refuse a picture (IMF-3).** `picture-a` is refused by the curved-lines rule — and so is the committed
+  `ds-gain-block-1x`, whose coil, zig-zag and triangle are most of its line work at 1×.
+- **F6 — the region merge runs away (IMF-4).** The largest region holds 45 pins on `ds-rf-amp-1x`, 40 on `heavy-iec`, 65
+  on `picture-ds-f1` and 270 on `picture-ds-g1`, where the drawings' largest part has 8.
+- **F7 — labels touching symbols (IMF-4).** `ladder-dashed`'s designators touch their coils and plates, and the reading
+  finds no word at all on it: every one went into a symbol region.
+- **F8 — two-pin vocabulary (IMF-5).** `ds-regulator` reads none of its 7 passives and diodes at either resolution —
+  curved plates, filled diodes and the variable resistor are all `?` or block pins — and the looped coil of
+  `loop-coil-names` is not read.
+- **F9 — ports, terminals, rails, far names (IMF-6).** `textbook-zigzag`'s four terminal circles are read as terminals
+  and become three ports to ground, never two pairs on a rail; and the three names of `loop-coil-names`, set 4–6 text heights beyond their wire ends, name
+  nothing: 0 of 3 ports.
+- **F10 — type (IMF-7).** `ds-regulator-1x`'s bold labels are refused as "too heavy for its size" (16 of 23 words), the
+  serif italic of `typeset` gives 0 of 6 designators and 0 of 5 values, and `heavy-iec` finds 2 words among its 12 labels.
+- **F11 — datasheet conventions (IMF-8).** No IC or amplifier reads as one part on its own nets except `ds-ldo-1x`'s and
+  `ds-regulator-1x`'s boxes by accident of their pin counts; `ds-rf-amp`'s pin names inside the box read as `Cr`, `nf`,
+  `CrO`, and its two-line notes under the blocking capacitors as garbage words (`BiOCi`, `C1EOF`).
+- **F12 — one reading, whatever it is (IMF-9).** The shaded illustration and `picture-g` are read as 2- and 5-pin
+  circuits rather than refused: Paste forces the schematic kind and nothing asks whether the result is plausible.

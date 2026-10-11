@@ -1,0 +1,17 @@
+{
+  "picture": "picture.png",
+  "kind": "schematic",
+  "answer": "answer.cnl",
+  "source": "web",
+  "kinds": {
+    "R": 1,
+    "C": 1
+  },
+  "ports": 2,
+  "terminals": 4,
+  "designators": [
+    "R",
+    "C"
+  ],
+  "style": "textbook-zigzag at 360 px wide: a 1-2 px pen, 7 px caps, diamond junctions"
+}

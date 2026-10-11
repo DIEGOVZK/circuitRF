@@ -1,0 +1,17 @@
+{
+  "picture": "picture.png",
+  "kind": "schematic",
+  "answer": "answer.cnl",
+  "source": "web",
+  "kinds": {
+    "L": 1,
+    "C": 1
+  },
+  "ports": 3,
+  "names": [
+    "RF\u002BDC",
+    "DC",
+    "RF"
+  ],
+  "style": "a looped coil, a flat capacitor, sans names set 4-6 text heights beyond the open wire ends they name"
+}

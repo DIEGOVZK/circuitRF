@@ -1,0 +1,6 @@
+Port:P1 rfin 0 Num=1 Z=50 Ohm
+C:C1 rfin n1 C=10 nF
+L:L1 n1 vdd L=1 uH
+Amp:U1 n1 0 n2 0
+C:C2 n2 rfout C=10 nF
+Port:P2 rfout 0 Num=2 Z=50 Ohm
