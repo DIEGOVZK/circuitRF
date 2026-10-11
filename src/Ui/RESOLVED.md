@@ -39463,3 +39463,30 @@ The canvas lights `Plots.Lit(name)`: the whole group in Simple, the piece alone 
 
 Gates: `tests/Ui.Tests/PlotRecognition/TraceJoinTests.cs` and `PlotColourGroupTests.cs`. They cut the committed
 legend plot's curve into pieces themselves rather than wait on a reader that fragments.
+
+## Touchstone from Image, PTU-6: Read only here and Ignore here (2026-10-11)
+
+**R-ptu6-4 needed no reader change.** `PlotReading.Read` already passes `o.Hints[number]` to `PlotTraces.Find`, which
+clears each `Exclude` box before it reads anything. The dialog only had to fill `PlotReadingOptions.Hints`.
+`PlotSessionViewModel.ReadingOptions` now builds it from the ignore boxes, grouped by plot number. Nothing in
+`src/Design` changed. `TraceHints.Follow` is still left unwired, as the brief asked.
+
+**A crop swaps the picture in place, not through `Replace`.** `Replace` → `Accept` → `SetPrimary` empties the session.
+Cropping picture 1 of a three-picture session that way would throw away pictures 2 and 3. So
+`PlotSessionViewModel.ReplacePicture(index, …)` swaps only that row, keeps the given picture on it as `Original` (which
+is what Restore whole picture reads back), and forgets every choice held by plot or trace number, as `RemovePicture`
+does. It also drops `Session`/`Assembly`, because otherwise the `ShownChanged` handler would redraw the old picture's
+overlay over the crop. For picture 1 the view model also sets `Source`, since `Raster` reads the dialog's own source
+for index 0 rather than the row. The crop is named `<stem> (cropped).png`, not `<name> (cropped)`, so the name
+keeps a real extension for the PNG it was re-encoded as. The Touchstone's default name follows it:
+`plot (cropped).s2p`. Ignore boxes are cleared by `SetPrimary` (Replace), `RemovePicture` and `ReplacePicture`.
+
+**A box is assigned to the plot whose `Frame.Box` holds its centre**, and only plots on the shown picture count. A box
+dragged before the first reading has returned is refused with its own sentence, because there are no frames yet to
+place it in. A box smaller than 8 px a side counts as a slipped click and is refused. A plain click with a tool armed
+does nothing and leaves the tool armed. Release, or Escape, disarms it.
+
+**The gate's legend sample is sloped.** A level 80 × 5 px magenta bar inside `plot-plain.png`'s frame is never read as
+a trace (it reads as grid ink), so it proved nothing about the exclusion. A 2.5 px stroke across 90 × 30 px is read as
+a trace of its own, and it disappears once the box is drawn over it. Gate:
+`tests/Ui.Tests/PlotRecognition/PlotBoxToolTests.cs` (3 tests).

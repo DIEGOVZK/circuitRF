@@ -91,6 +91,9 @@ public partial class ImageReadingPanel : UserControl
     /// <summary>Zoom to Fit hands the keyboard back to the canvas, as the editors' button does, so F and Space work next.</summary>
     private void OnZoomToFit(object? sender, Avalonia.Interactivity.RoutedEventArgs e) { Canvas.Fit(); Canvas.Focus(); }
 
+    /// <summary>A box tool armed or disarmed: the canvas takes the keyboard back, so Escape cancels it.</summary>
+    private void OnBoxTool(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => Canvas.Focus();
+
     private void OnDistanceKey(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter) { _vm?.Scale.ApplyDistanceCommand.Execute(null); e.Handled = true; }

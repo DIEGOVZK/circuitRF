@@ -86,13 +86,23 @@
                 <Panel>
                     <rec:ImageOverlayCanvas x:Name="Canvas"/>
 
-                    <!-- Zoom to Fit, the editors' own button (as the Match Designer floats it), then the legend: each
-                         class toggled. -->
+                    <!-- Zoom to Fit, the editors' own button (as the Match Designer floats it), on a plot picture the two
+                         box tools (PTU-6), then the legend: each class toggled. -->
                     <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4">
                     <Button Click="OnZoomToFit" Padding="6,3" VerticalAlignment="Center"
                             ToolTip.Tip="Zoom to Fit  (F)">
                         <mi:MaterialIcon Kind="FitToPage" Width="16" Height="16"/>
                     </Button>
+                    <ToggleButton Click="OnBoxTool" Padding="6,3" VerticalAlignment="Center" IsVisible="{Binding IsPlotPicture}"
+                                  IsChecked="{Binding ReadOnlyHereArmed}"
+                                  ToolTip.Tip="Read only here: drag a box around one plot, and the picture is cropped to it and read as if only that part had been given.">
+                        <mi:MaterialIcon Kind="CropFree" Width="16" Height="16"/>
+                    </ToggleButton>
+                    <ToggleButton Click="OnBoxTool" Padding="6,3" VerticalAlignment="Center" IsVisible="{Binding IsPlotPicture}"
+                                  IsChecked="{Binding IgnoreHereArmed}"
+                                  ToolTip.Tip="Ignore here: drag a box over a legend or a note inside a plot, and nothing in it is read as a trace. Click a box and press Delete to remove it.">
+                        <mi:MaterialIcon Kind="SelectionRemove" Width="16" Height="16"/>
+                    </ToggleButton>
                     <Border Classes="pill" Margin="0,4" IsVisible="{Binding !HasFailure}">
                         <StackPanel Orientation="Horizontal">
                             <ToggleButton Classes="legend" IsChecked="{Binding ShowCopper}" IsVisible="{Binding IsLayoutPicture}" ToolTip.Tip="Traced copper, outlined in each layer's colour.">
@@ -161,6 +171,11 @@
                     <Button Content="Whole picture" Command="{Binding WholePictureCommand}" IsVisible="{Binding HasScope}"
                             HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="8"
                             ToolTip.Tip="Read the whole picture again, not only the rectangle dragged on it."/>
+
+                    <!-- Restore whole picture: undoes Read only here (PTU-6). -->
+                    <Button Content="Restore whole picture" Command="{Binding RestorePictureCommand}" IsVisible="{Binding CanRestorePicture}"
+                            HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="8"
+                            ToolTip.Tip="Read the picture as it was given, not only the box it was cropped to."/>
 
                     <!-- The measure tools' inline boxes, placed at the point clicked (R-im5-4). -->
                     <Canvas x:Name="Inline" IsHitTestVisible="True">

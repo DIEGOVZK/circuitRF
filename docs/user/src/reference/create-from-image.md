@@ -313,6 +313,13 @@ were not read or were outvoted, and each trace is drawn over its curve in its ow
 one colour that could not be told apart is amber. Under **Plots**, clear a plot's box to leave it out: it is drawn and
 not read.
 
+**A picture holding several plots, or a legend read as a trace,** is answered with a box dragged on the picture, using the
+two tools beside Zoom to Fit. **Read only here** crops the picture to the box and reads only that part; **Restore whole
+picture** brings the rest back. **Ignore here** reads nothing inside the box &mdash; a legend or a note drawn inside a
+plot &mdash; and the picture is read again. The box stays on the picture, hatched; click it and press **Delete** to
+remove it. A box outside every plot is refused. **Escape** cancels either tool. Cropping a picture forgets the
+assignments and axis values given on it, since its plots and traces are numbered again.
+
 **An axis whose labels did not read** waits. Click a tick label on the picture, read or not, and type what it says
 in the box beside it: a y value as a number in the axis's units (`-10`), an x value with its unit (`2.4 GHz`). A bare
 x number takes the unit the other x labels were read in, and is refused when none was read. Two labels on one axis

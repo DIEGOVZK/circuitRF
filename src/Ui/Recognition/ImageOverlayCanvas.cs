@@ -8,7 +8,9 @@
 // left-drag sets the scope rectangle; a left-click selects; a double-click, the Fit button or F fits the picture. A
 // picture stays fitted as the canvas changes size — the dialog opening, the window resized — until it is zoomed or panned. With a tool armed a
 // left-click is the tool's; with Board corners… armed (IM-13) a left-drag on a handle moves it, and the overlay — read
-// on the rectified picture — is not drawn over the photo as taken.
+// on the rectified picture — is not drawn over the photo as taken. On a plot picture with Read only here or Ignore here
+// armed (PTU-6) a left-drag is the tool's box, handed to the view model on release; an Ignore here box is drawn hatched,
+// selected by a click and removed by Delete.
 
 using System;
 using System.Collections.Generic;
@@ -26,6 +28,7 @@ using CircuitRF.Design.Imaging;
 using CircuitRF.Design.Layout.Recognition.Image;
 using PixelPoint = CircuitRF.Design.Layout.Recognition.Image.PixelPoint;
 using PixelRect = CircuitRF.Design.Layout.Recognition.Image.PixelRect;
+using PixelBox = CircuitRF.Design.Schematic.Recognition.PixelBox;
 
 namespace CircuitRF.Ui.Recognition;
 
@@ -265,6 +268,10 @@ public sealed class ImageOverlayCanvas : Control
                 DrawLabel(context, item, label, selected ? Accent : colour, px);
         }
 
+        if (vm.IsPlotPicture)
+            foreach (var b in vm.Plots.IgnoreBoxes)
+                if (b.Picture == vm.Plots.ShownPicture) DrawIgnoreBox(context, b.Box, Equals(b, vm.Plots.SelectedIgnoreBox), px);
+
         if (vm.ScopeRect is { } s)
             context.DrawRectangle(new Pen(new ImmutableSolidColorBrush(Accent), 1.5 * px, new ImmutableDashStyle([4, 3], 0)),
                                   new Rect(s.Left, s.Top, s.Right - s.Left, s.Bottom - s.Top));
@@ -284,6 +291,22 @@ public sealed class ImageOverlayCanvas : Control
         context.DrawGeometry(null, pen, GeometryOf(item));
         if (selected && !gap && item.Label is { Length: > 0 } label)
             DrawLabel(context, item, string.Join(" · ", label.Split(' ', StringSplitOptions.RemoveEmptyEntries)), Accent, px);
+    }
+
+    /// <summary>An Ignore here box (R-ptu6-3): hatched in the Ignored class's grey, the accent when selected.</summary>
+    private static void DrawIgnoreBox(DrawingContext context, PixelBox box, bool selected, double px)
+    {
+        var rect = new Rect(box.Left, box.Top, box.Width, box.Height);
+        var grey = Rgb(ImageOverlay.Colours.Ignored);
+        context.FillRectangle(new ImmutableSolidColorBrush(Colors.White, 0.35), rect);
+        using (context.PushClip(rect))
+        {
+            var hatch = new Pen(new ImmutableSolidColorBrush(grey, 0.67), 1.5 * px);
+            double step = 8 * px;
+            for (double d = -rect.Height; d < rect.Width; d += step)
+                context.DrawLine(hatch, new Point(rect.Left + d, rect.Bottom), new Point(rect.Left + d + rect.Height, rect.Top));
+        }
+        context.DrawRectangle(new Pen(new ImmutableSolidColorBrush(selected ? Accent : grey), (selected ? 2.5 : 1.25) * px), rect);
     }
 
     private static Color ColourOf(ImageOverlayItem item) => Rgb(ImageOverlay.ColourOf(item with { Unknown = false }));
@@ -492,7 +515,14 @@ public sealed class ImageOverlayCanvas : Control
         {
             _vm.Scale.CancelToolCommand.Execute(null);
             _vm.CancelPick();
+            _vm.BoxTool = PlotBoxTool.None;
             _scoping = false;
+            InvalidateVisual();
+            e.Handled = true;
+        }
+        else if (e.Key is Key.Delete or Key.Back && _vm?.Plots.SelectedIgnoreBox is { } box)
+        {
+            _vm.Plots.RemoveIgnoreBox(box);
             InvalidateVisual();
             e.Handled = true;
         }
@@ -546,7 +576,8 @@ public sealed class ImageOverlayCanvas : Control
             _vm.Scale.MoveCorner(_dragCorner, ToPicture(p));
             ViewChanged?.Invoke();
         }
-        else if (_pressAt is { } from && _dragEnd is null && _vm is { Scale.Tool: ImageMeasureTool.None, CanvasPick: false, IsLayoutPicture: true }
+        else if (_pressAt is { } from && _dragEnd is null
+                 && _vm is { BoxTool: not PlotBoxTool.None } or { Scale.Tool: ImageMeasureTool.None, CanvasPick: false, IsLayoutPicture: true }
                  && (Math.Abs(p.X - from.X) > 4 || Math.Abs(p.Y - from.Y) > 4))
             _scoping = true;
         _lastPointer = p;
@@ -573,6 +604,13 @@ public sealed class ImageOverlayCanvas : Control
             _scoping = false;
             var a = ToPicture(from);
             var b = ToPicture(p);
+            if (vm.BoxTool != PlotBoxTool.None)
+            {
+                // Read only here crops and Ignore here excludes (R-ptu6-2, R-ptu6-3); either way the tool is done.
+                vm.CommitBox(new PixelRect(a.X, a.Y, b.X, b.Y));
+                InvalidateVisual();
+                return;
+            }
             if (vm.Raster is { } r)
                 vm.ScopeRect = new PixelRect(Math.Clamp(Math.Min(a.X, b.X), 0, r.Width), Math.Clamp(Math.Min(a.Y, b.Y), 0, r.Height),
                                              Math.Clamp(Math.Max(a.X, b.X), 0, r.Width), Math.Clamp(Math.Max(a.Y, b.Y), 0, r.Height));
@@ -581,7 +619,14 @@ public sealed class ImageOverlayCanvas : Control
         }
 
         var at = ToPicture(p);
+        if (vm.BoxTool != PlotBoxTool.None) return;   // a click is not a box: the tool stays armed
         if (vm.CanvasPick) { vm.PickAt(at); return; }
+        if (vm.IsPlotPicture)
+        {
+            vm.Plots.SelectedIgnoreBox = vm.Plots.IgnoreBoxAt(at.X, at.Y);
+            InvalidateVisual();
+            if (vm.Plots.SelectedIgnoreBox is not null) { vm.SelectedItem = null; return; }
+        }
         if (vm.Scale.Click(at)) { ViewChanged?.Invoke(); InvalidateVisual(); return; }
         var picked = vm.Overlay.HitTest(at.X, at.Y, 4 / _zoom, vm.Shows);
         if (picked is { Class: ImageOverlayClass.Crossing }) { vm.ToggleCrossing(picked); return; }

@@ -10,7 +10,7 @@
 // picture dropped, pasted or added while the dialog is in plot mode joins the session rather than replacing it.
 //
 // THE USER'S CHOICES OUTLIVE A RE-READ: an assignment is held by trace name (T3, the CLI's selector), a fill or phase rule
-// by entry, an exclusion by plot number. A re-read rebuilds every row from what came back and lays the choices over it.
+// by entry, an exclusion and an Ignore here box by plot number. A re-read rebuilds every row from what came back and lays the choices over it.
 
 using System;
 using System.Collections.Generic;
@@ -37,6 +37,10 @@ public sealed partial class PlotPictureRowViewModel(ImageSource source, Action<P
     : ObservableObject
 {
     public ImageSource Source { get; } = source;
+
+    /// <summary>The picture as given, when this one is it cropped to a box (R-ptu6-2): what Restore whole picture brings
+    /// back. Null for a picture not cropped.</summary>
+    public ImageSource? Original { get; init; }
 
     [ObservableProperty] private int _number;
 
@@ -321,6 +325,10 @@ public sealed partial class PlotMatrixCellViewModel : ObservableObject
 }
 
 /// <summary>The plot mode's state, and the options it spells.</summary>
+/// <summary>A box drawn with Ignore here (R-ptu6-3): nothing in it is read as a trace on plot <paramref name="Plot"/>, which
+/// is on picture <paramref name="Picture"/> (0-based). Picture pixels.</summary>
+public sealed record PlotIgnoreBox(int Plot, int Picture, PixelBox Box);
+
 public sealed partial class PlotSessionViewModel : ObservableObject
 {
     private readonly Dictionary<string, PlotAssignment> _assign = new(StringComparer.Ordinal);
@@ -329,6 +337,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
     private readonly Dictionary<(int Plot, char Axis), string> _axis = [];
     private readonly Dictionary<(int I, int J), FillRule> _fill = [];
     private readonly Dictionary<(int I, int J), (int Index, string Delay)> _phase = [];
+    private readonly List<PlotIgnoreBox> _ignore = [];
 
     /// <summary>Raised when anything the reading or the file depends on changed: the dialog reads again.</summary>
     public event Action? Changed;
@@ -427,6 +436,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         _axis.Clear();
         _fill.Clear();
         _phase.Clear();
+        ForgetIgnoreBoxes();
         Session = null;
         Assembly = null;
         SelectedTrace = null;
@@ -464,7 +474,33 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         _freq.Clear();
         _excluded.Clear();
         _axis.Clear();
+        ForgetIgnoreBoxes();
         if (ShownPicture >= Pictures.Count) ShownPicture = Pictures.Count - 1;
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// A picture of the session swapped in place for another — cropped to a box, or restored (R-ptu6-2) — the others kept.
+    /// Its plots and traces are renumbered by the re-read, so every choice held by number is forgotten, as when a picture
+    /// is removed, and what was read on the old picture is dropped until the new one is read.
+    /// </summary>
+    public void ReplacePicture(int index, ImageSource source, ImageSource? original)
+    {
+        if (index < 0 || index >= Pictures.Count) return;
+        Pictures[index] = new PlotPictureRowViewModel(source, RemovePicture, p => ShownPicture = Pictures.IndexOf(p)) { Original = original };
+        Renumber();
+        _assign.Clear();
+        _freq.Clear();
+        _excluded.Clear();
+        _axis.Clear();
+        ForgetIgnoreBoxes();
+        Session = null;
+        Assembly = null;
+        SelectedTrace = null;
+        AskingLabel = false;
+        RefreshDerived();
+        if (ShownPicture == index) ShownChanged?.Invoke();
+        else ShownPicture = index;
         Changed?.Invoke();
     }
 
@@ -512,7 +548,58 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         SmithZ0 = Z0(),
         Frequencies = [.. _freq.Select(f => (f.Key, R: Range(f.Value.Start, f.Value.Stop))).Where(f => f.R is not null)
                                .Select(f => new PlotFrequencyOverride(f.Key, f.R!.Value.Start, f.R.Value.Stop))],
+        Hints = _ignore.GroupBy(b => b.Plot).ToDictionary(g => g.Key, g => new TraceHints([], [.. g.Select(b => b.Box)])),
     };
+
+    // ── Ignore here (R-ptu6-3) ───────────────────────────────────────────────────────────────────────
+
+    /// <summary>The boxes drawn with Ignore here, every picture's.</summary>
+    public IReadOnlyList<PlotIgnoreBox> IgnoreBoxes => _ignore;
+
+    /// <summary>The box clicked on the canvas: Delete removes it.</summary>
+    [ObservableProperty] private PlotIgnoreBox? _selectedIgnoreBox;
+
+    /// <summary>
+    /// A box drawn on the shown picture goes to the plot whose frame holds its centre, and the session is read again with
+    /// it excluded. A box outside every frame is refused in the status line.
+    /// </summary>
+    public bool Ignore(PixelBox box)
+    {
+        if (Session is not { } session)
+        {
+            StatusRaised?.Invoke("The picture is still being read: draw the box once its plots are found.");
+            return false;
+        }
+        var plot = session.Plots.FirstOrDefault(p => p.Picture == ShownPicture && p.Frame.Box.Distance(box.CentreX, box.CentreY) == 0);
+        if (plot is null)
+        {
+            StatusRaised?.Invoke("That box is outside every plot: draw it over a legend or a note inside a plot's frame.");
+            return false;
+        }
+        _ignore.Add(new PlotIgnoreBox(plot.Number, ShownPicture, box));
+        OnPropertyChanged(nameof(IgnoreBoxes));
+        Changed?.Invoke();
+        return true;
+    }
+
+    /// <summary>The topmost ignore box on the shown picture under a picture pixel, or null.</summary>
+    public PlotIgnoreBox? IgnoreBoxAt(double x, double y) =>
+        _ignore.LastOrDefault(b => b.Picture == ShownPicture && b.Box.Distance(x, y) == 0);
+
+    public void RemoveIgnoreBox(PlotIgnoreBox box)
+    {
+        if (!_ignore.Remove(box)) return;
+        if (Equals(SelectedIgnoreBox, box)) SelectedIgnoreBox = null;
+        OnPropertyChanged(nameof(IgnoreBoxes));
+        Changed?.Invoke();
+    }
+
+    private void ForgetIgnoreBoxes()
+    {
+        _ignore.Clear();
+        SelectedIgnoreBox = null;
+        OnPropertyChanged(nameof(IgnoreBoxes));
+    }
 
     public TouchstoneAssemblyOptions AssemblyOptions() => new()
     {

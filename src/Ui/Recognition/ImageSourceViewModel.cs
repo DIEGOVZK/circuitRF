@@ -46,6 +46,9 @@ using CircuitRF.Engine;
 
 namespace CircuitRF.Ui.Recognition;
 
+/// <summary>The canvas's box tools on a plot picture (PTU-6): Read only here crops, Ignore here excludes.</summary>
+public enum PlotBoxTool { None, ReadOnlyHere, IgnoreHere }
+
 /// <summary>A technology the picture dialog offers.</summary>
 public sealed record ImageTechnologyChoice(string Name, string Path)
 {
@@ -158,6 +161,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         Plots.ShownChanged += () =>
         {
             OnPropertyChanged(nameof(Raster));
+            OnPropertyChanged(nameof(CanRestorePicture));
             if (Plots.Session is { } session) Overlay = ImageOverlay.BuildPlot(session, Plots.ShownPicture);
             Plots.AskLabel(null);   // the clicked label was on the picture no longer shown
             SelectTraceItem();
@@ -328,6 +332,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         _ownTargetDefaulted = false;
         Overrides.Clear();
         Scale.Reset();
+        BoxTool = PlotBoxTool.None;
         Plots.SetPrimary(source);
         if (KindIndex != 0) KindIndex = 0;
         Source = source;
@@ -353,6 +358,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         OnPropertyChanged(nameof(SizeText));
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(OwnTargetOffered));
+        OnPropertyChanged(nameof(CanRestorePicture));
         RefreshMode();
     }
 
@@ -498,7 +504,9 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         OnPropertyChanged(nameof(CanvasSpan));
         OnPropertyChanged(nameof(OwnTargetOffered));
         OnPropertyChanged(nameof(ReplaceConfirmText));
+        OnPropertyChanged(nameof(CanRestorePicture));
         Scale.IsApplicable = IsLayoutPicture;
+        if (!IsPlotPicture) BoxTool = PlotBoxTool.None;
         if (TargetOwn && !OwnTargetOffered) TargetOwn = false;
         RefreshCreate();
     }
@@ -889,9 +897,103 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         Status = "";
     }
 
+    // ── Read only here / Ignore here (PTU-6) ────────────────────────────────────────────────────────
+
+    /// <summary>The box tool armed on a plot picture: the next drag on the canvas is its box.</summary>
+    [ObservableProperty] private PlotBoxTool _boxTool;
+
+    /// <summary>The toolbar's two toggles; arming one disarms the other.</summary>
+    public bool ReadOnlyHereArmed
+    {
+        get => BoxTool == PlotBoxTool.ReadOnlyHere;
+        set => BoxTool = value ? PlotBoxTool.ReadOnlyHere : BoxTool == PlotBoxTool.ReadOnlyHere ? PlotBoxTool.None : BoxTool;
+    }
+
+    public bool IgnoreHereArmed
+    {
+        get => BoxTool == PlotBoxTool.IgnoreHere;
+        set => BoxTool = value ? PlotBoxTool.IgnoreHere : BoxTool == PlotBoxTool.IgnoreHere ? PlotBoxTool.None : BoxTool;
+    }
+
+    partial void OnBoxToolChanged(PlotBoxTool value)
+    {
+        OnPropertyChanged(nameof(ReadOnlyHereArmed));
+        OnPropertyChanged(nameof(IgnoreHereArmed));
+        OnPropertyChanged(nameof(CanvasPrompt));
+    }
+
+    /// <summary>A box dragged with a box tool armed, in picture pixels: the tool acts on it and is disarmed (R-ptu6-1).</summary>
+    public bool CommitBox(PixelRect rect)
+    {
+        var tool = BoxTool;
+        BoxTool = PlotBoxTool.None;
+        if (tool == PlotBoxTool.None || !IsPlotPicture || Raster is not { } raster) return false;
+        int left = (int)Math.Floor(Math.Clamp(Math.Min(rect.Left, rect.Right), 0, raster.Width));
+        int top = (int)Math.Floor(Math.Clamp(Math.Min(rect.Top, rect.Bottom), 0, raster.Height));
+        int right = (int)Math.Ceiling(Math.Clamp(Math.Max(rect.Left, rect.Right), 0, raster.Width)) - 1;
+        int bottom = (int)Math.Ceiling(Math.Clamp(Math.Max(rect.Top, rect.Bottom), 0, raster.Height)) - 1;
+        if (right - left + 1 < MinBox || bottom - top + 1 < MinBox)
+        {
+            Status = "The box is too small: drag it across what it means.";
+            return false;
+        }
+        var box = new PixelBox(left, top, right, bottom);
+        return tool == PlotBoxTool.ReadOnlyHere ? CropTo(box) : Plots.Ignore(box);
+    }
+
+    /// <summary>The smallest box a tool takes, picture pixels a side — less is a click that slipped.</summary>
+    private const int MinBox = 8;
+
+    /// <summary>
+    /// Read only here (R-ptu6-2): the shown picture is cropped to the box and read in its place, as if only that part had
+    /// been given; the picture as given is kept on its row for Restore whole picture.
+    /// </summary>
+    private bool CropTo(PixelBox box)
+    {
+        int index = Plots.ShownPicture;
+        if (index < 0 || index >= Plots.Pictures.Count) return false;
+        var row = Plots.Pictures[index];
+        var raster = row.Source.Raster;
+        var rgba = new byte[box.Width * box.Height * 4];
+        for (int y = 0; y < box.Height; y++)
+            Buffer.BlockCopy(raster.Rgba, ((box.Top + y) * raster.Width + box.Left) * 4, rgba, y * box.Width * 4, box.Width * 4);
+        var original = row.Original ?? row.Source;
+        string name = Path.GetFileNameWithoutExtension(original.OriginalName) + " (cropped).png";
+        var read = ImageSource.FromBytes(new RasterImage(box.Width, box.Height, rgba).EncodePng(), name);
+        if (!read.Ok) { Status = read.Refusal ?? ""; return false; }
+        SetPlotPicture(index, read.Source!, original);
+        return true;
+    }
+
+    /// <summary>The shown picture was cropped to a box: Restore whole picture applies.</summary>
+    public bool CanRestorePicture =>
+        IsPlotPicture && Plots.ShownPicture >= 0 && Plots.ShownPicture < Plots.Pictures.Count && Plots.Pictures[Plots.ShownPicture].Original is not null;
+
+    /// <summary>Restore whole picture: the shown picture as it was given, read again.</summary>
+    [RelayCommand]
+    private void RestorePicture()
+    {
+        if (!CanRestorePicture) return;
+        int index = Plots.ShownPicture;
+        SetPlotPicture(index, Plots.Pictures[index].Original!, null);
+    }
+
+    /// <summary>A session picture swapped in place; picture 1 is the dialog's own source as well.</summary>
+    private void SetPlotPicture(int index, ImageSource source, ImageSource? original)
+    {
+        SelectedItem = null;
+        Plots.ReplacePicture(index, source, original);
+        Overlay = ImageOverlay.Empty;   // drawn for the picture replaced; the re-read draws the new one's
+        if (index == 0) Source = source;
+        OnPropertyChanged(nameof(Raster));
+        OnPropertyChanged(nameof(CanRestorePicture));
+    }
+
     /// <summary>The canvas's one prompt: a tool's instruction, else the scale it is waiting for.</summary>
     public string CanvasPrompt =>
-        Scale.Tool != ImageMeasureTool.None ? Scale.ToolPrompt
+        BoxTool == PlotBoxTool.ReadOnlyHere ? "Drag a box around the plot to read: the picture is cropped to it. Escape cancels."
+        : BoxTool == PlotBoxTool.IgnoreHere ? "Drag a box over what is not a trace — a legend, a note — inside a plot. Escape cancels."
+        : Scale.Tool != ImageMeasureTool.None ? Scale.ToolPrompt
         : IsLayoutPicture && Scale.NeedsScale && FailureText.Length == 0 ? ImageScaleViewModel.SetScalePrompt
         : "";
 
