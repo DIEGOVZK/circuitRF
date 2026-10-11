@@ -2241,7 +2241,7 @@ On the downloaded corpus (`ImageFieldTests`, 26 pass), designators and values re
 
 Scoped down by the owner mid-phase: the IC box, the amplifier triangle, coax connectors and pin markers are read; a
 drawing none of them fits falls back to what IM-8 always did (a multi-pin S-parameter block, a `?` part), which is the
-graceful failure. Not done: the System block templates (R-imf8-7), a `Vdc` on a supply arrow that states a voltage
+graceful failure. The System block symbols (R-imf8-7) followed afterwards, below. Not done: a `Vdc` on a supply arrow that states a voltage
 (R-imf8-5), a not-fitted part marked by a second colour (R-imf8-6; the `DNP`/`NC` word rule IM-10 already had stands),
 and a solid box drawn round a part read as a frame (the test circuit's DUT box).
 
@@ -2263,6 +2263,22 @@ and a solid box drawn round a part read as a frame (the test circuit's DUT box).
   that region's outline (a ring's flat run read as wire).
 - **Pin marker**: a round ring 2.5 w–0.8 s with two wire ends meeting it from opposite sides is joined through as a hop is
   (`HopJoin.Marker`), so the lead is one wire.
+
+- **Block symbols** (R-imf8-7), each the System component with default parameters, reported "set them"; a drawing none
+  fits stays the S-parameter block or `?` it was. Read by shape in `DatasheetSymbols`, before the IC box: a **filter** is
+  a box with two leads on opposite sides and one to three waves inside (a column holding two runs of ink is a strike;
+  top = highest frequency, so struck at the top is `Form=Lowpass`, at the bottom `Highpass`, both ends `Bandpass`; a
+  struck middle is a band-stop, reported and left at the default); a **coupler** a box with 3–4 leads and a straight
+  line across it joining two on opposite sides (input left or top, coupled = the other lead nearer the input; a third
+  lead missing leaves the isolated port open, reported); a **circulator** a ring with three leads and an arc inside clear
+  of its centre (a mixer's X crosses it and stays an SnP), ports numbered from the leftmost lead the way the arc's
+  heavier end turns. A **switch** is gathered in the reading (`SymbolRegions.Switches`, before the pin markers and the
+  arrow tails, both of which would otherwise take its parts): a slanting wire with each end on a small open ring, or one
+  end on a ring and the other free pointing at one, is the blade; the throws are the rings as far from the common contact
+  as the blade's, within 75°; `Throws` and `State` come from them. An **attenuator** (a two-pin box holding `dB`/`d8`,
+  `ATT`, `PAD`) and a **balun** (an IC box holding `BALUN` with one signal pin facing two, or a transformer with `BALUN`
+  beside it and one coil grounded at one end) are decided at emit, where the words are read. Gate:
+  `ImageDatasheetStyleTests.BlockSymbol_IsItsSystemComponent`, in memory at 1×.
 
 Committed fixtures after the phase: rf-amp 1× topology right (designators 4/5), the gain block's Amp and coax ports at
 both scales, LDO still exact; regulator, test circuit and gain block stay skipped with measured reasons in

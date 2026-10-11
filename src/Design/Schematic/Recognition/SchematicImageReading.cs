@@ -126,6 +126,9 @@ public sealed record SchematicImageRead
     /// <summary>The closed outlines the wire reading set aside — an IC's box among them (R-imf8-1).</summary>
     internal IReadOnlyList<OutlineBox> Outlines { get; init; } = [];
 
+    /// <summary>The switches drawn as contacts and a blade, each gathered into one region (R-imf8-7).</summary>
+    internal IReadOnlyList<SwitchDrawing> Switches { get; init; } = [];
+
     public required SchematicImageReport Report { get; init; }
 
     /// <summary>Why nothing can be made of the picture, or null.</summary>
@@ -404,8 +407,16 @@ public static class SchematicImageReading
         var scales = new RegionScales(symbol.Px, plates.Outlines, PlatePairs(plates.Lines, symbol.Px, w)) { Circles = circles };
         var raw = SymbolRegions.Group(residue, first, w, o, scales, regionCounts);
         var (hops, hopRegions) = SymbolRegions.Hops(raw, mask.Width, first, w, o);
+        // A switch drawn as contacts and a blade (R-imf8-7): its blade is no wire, and its contacts and blade one region —
+        // read before the pin markers, which a contact with its lead and its blade nearly in line would otherwise be.
+        var blades = new HashSet<WirePiece>();
+        var gathered = new HashSet<int>();
+        var switches = SymbolRegions.Switches(raw, mask.Width, wires, wireMask, w, symbol.Px, o, hopRegions, blades, gathered);
+        if (blades.Count > 0) wires = [.. wires.Where(p => !blades.Contains(p))];
+        hopRegions.UnionWith(gathered);
         // A pin marker on a lead (R-imf8-4) is the lead's: its two halves one wire, as a hop's are.
-        var (markers, markerRegions) = SymbolRegions.Markers(raw, mask.Width, first, w, symbol.Px, o, hopRegions);
+        var (markers, markerRegions) = SymbolRegions.Markers(raw, mask.Width, first, w, symbol.Px, o,
+                                                             [.. hopRegions, .. raw.Select((_, k) => k).Where(k => switches.Any(d => d.In(raw[k].Box)))]);
         hops.AddRange(markers);
         hopRegions.UnionWith(markerRegions);
         regionCounts.PinMarkers = markers.Count;
@@ -418,7 +429,7 @@ public static class SchematicImageReading
         // onto its rail (R-imf5-4): a stub from the dot to the part, so the wire is split there and the part has an end.
         var taps = Taps(wires, first, raw, blobs, mask.Width, o.Attach * w + w / 2 + 1, w);
         if (taps.Count > 0) wires = [.. wires, .. taps];
-        var graph = hops.Count > 0 || tails.Count > 0 || taps.Count > 0 ? WireGraph.Build(wires, hops, blobs, w, o, flips) : first;
+        var graph = hops.Count > 0 || tails.Count > 0 || taps.Count > 0 || blades.Count > 0 ? WireGraph.Build(wires, hops, blobs, w, o, flips) : first;
         var regions = raw.Where((_, j) => !hopRegions.Contains(j)).ToList();
         var attached = SymbolRegions.Attach(regions, mask.Width, graph, allWords, w, o);
         // A short wire whose two ends both stop on one region and nowhere else — a flat run of a ring's outline taken for
@@ -459,7 +470,7 @@ public static class SchematicImageReading
         read = read with
         {
             Wires = graph, Symbols = attached.Regions, Decorations = attached.Decorations, NetLabels = attached.Labels, Regions = regionCounts,
-            Outlines = plates.Outlines,
+            Outlines = plates.Outlines, Switches = switches,
             SupplyMarks = attached.Supplies, Dangling = attached.Dangling,
             Strokes = read.Strokes with { RoundJunctions = round, SquareJunctions = square, DiamondJunctions = diamond },
         };

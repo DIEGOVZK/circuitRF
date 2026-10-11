@@ -58,6 +58,11 @@ public sealed record RecognisedSymbol(
     /// <summary>A resistor crossed by an arrow: a variable resistor, whose value is one setting (R-imf5-3).</summary>
     public bool Variable { get; init; }
 
+    /// <summary>What a block symbol's drawing settles about its System component (R-imf8-7), by parameter name: a
+    /// filter's <c>Form</c> from its struck waves, a switch's <c>Throws</c> and <c>State</c> from its contacts and blade.
+    /// Every other parameter stays at its default.</summary>
+    public IReadOnlyDictionary<string, string> Settings { get; init; } = new Dictionary<string, string>();
+
     /// <summary>The kind as the overlay names it: <c>?</c> for <see cref="ImageSymbolKind.Unknown"/>; a transistor's or a
     /// source's variant after it (<c>Transistor NPN</c>, <c>Source AC</c>), a variable resistor so called.</summary>
     public string KindLabel => Kind switch
@@ -65,6 +70,7 @@ public sealed record RecognisedSymbol(
         ImageSymbolKind.Unknown => "?",
         ImageSymbolKind.Transistor or ImageSymbolKind.Source when Variant is { } v => $"{Kind} {v.ToUpperInvariant()}",
         ImageSymbolKind.Resistor when Variable => "Resistor (variable)",
+        ImageSymbolKind.Block when Variant is { } b => b,
         _ => Kind.ToString(),
     };
 }
@@ -91,10 +97,16 @@ public static class SchematicSymbols
         double w = read.StrokeWidth, s0 = read.SymbolScale > 0 ? read.SymbolScale : TemplateSymbolClassifier.FallbackSymbolInW * w;
         var symbols = read.Symbols.Select(r =>
         {
-            // What a datasheet draws round its part, read by how it is wired before any template (R-imf8-1 … R-imf8-3).
+            // What a datasheet draws round its part, read by how it is wired before any template (R-imf8-1 … R-imf8-3),
+            // and the block-diagram symbols drawn beside it (R-imf8-7) — a box with waves or a through line in it before
+            // the IC a box is otherwise.
+            if (read.Switches.FirstOrDefault(d => d.In(r.Box)) is { } drawing && DatasheetSymbols.Switch(r, drawing, w) is { } sw) return sw;
+            if (DatasheetSymbols.Filter(r, read.Outlines, w) is { } filter) return filter;
+            if (DatasheetSymbols.Coupler(r, read.Outlines, w) is { } coupler) return coupler;
             if (DatasheetSymbols.IcBox(r, read.Outlines, w) is { } ic) return ic;
             if (r.Attachments.Count >= 2 && DatasheetSymbols.Triangle(r, w, s0) is { } triangle
                 && DatasheetSymbols.Amplifier(r, triangle, w) is { } amp) return amp;
+            if (DatasheetSymbols.Circulator(r, w, s0) is { } circulator) return circulator;
             if (DatasheetSymbols.Coax(r, w, s0))
                 return new RecognisedSymbol(r, ImageSymbolKind.Port, SymbolDisposition.Recognised, null, default,
                                             [.. r.Attachments.Select((a, i) => Pin(i, (i + 1).ToString(CultureInfo.InvariantCulture), a))],
@@ -208,13 +220,18 @@ public sealed record SymbolReport
     /// <summary>Transistors and sources by their variant (R-imf5-6, R-imf5-7): <c>npn</c>, <c>ac</c> ….</summary>
     public IReadOnlyDictionary<string, int> Variants { get; init; } = new Dictionary<string, int>();
 
+    /// <summary>Block-diagram symbols by the System component they are (R-imf8-7).</summary>
+    public IReadOnlyDictionary<string, int> Blocks { get; init; } = new Dictionary<string, int>();
+
     public static SymbolReport Of(IReadOnlyList<RecognisedSymbol> symbols) => new()
     {
         Variable = symbols.Count(s => s.Variable),
         Variants = symbols.Where(s => s.Disposition == SymbolDisposition.Recognised && s.Kind is ImageSymbolKind.Transistor or ImageSymbolKind.Source
                                       && s.Variant is not null)
                           .GroupBy(s => s.Variant!).OrderBy(g => g.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count()),
-        ByKind = symbols.Where(s => s.Disposition == SymbolDisposition.Recognised).GroupBy(s => s.Kind)
+        Blocks = symbols.Where(s => s.Disposition == SymbolDisposition.Recognised && s.Kind == ImageSymbolKind.Block && s.Variant is not null)
+                        .GroupBy(s => s.Variant!).OrderBy(g => g.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count()),
+        ByKind = symbols.Where(s => s.Disposition == SymbolDisposition.Recognised && s.Kind != ImageSymbolKind.Block).GroupBy(s => s.Kind)
                         .OrderBy(g => g.Key).ToDictionary(g => g.Key, g => g.Count()),
         Unknown = symbols.Count(s => s.Disposition == SymbolDisposition.Unknown),
         CutOut = [.. symbols.Where(s => s.Disposition == SymbolDisposition.CutOut).Select(s => (s.Kind, s.Pins.Count))],
@@ -231,6 +248,8 @@ public sealed record SymbolReport
             r.Add("Symbols: " + string.Join(", ", ByKind.Select(kv => $"{kv.Value} {Noun(kv.Key)}")) + ".");
         if (Variants.Count > 0)
             r.Add("Transistors and sources: " + string.Join(", ", Variants.Select(kv => $"{kv.Value} {VariantNoun(kv.Key)}")) + ".");
+        if (Blocks.Count > 0)
+            r.Add("Block symbols: " + string.Join(", ", Blocks.Select(kv => $"{kv.Value} {kv.Key.ToLowerInvariant()}")) + ".");
         if (Variable > 0) r.Add($"{Count(Variable, "resistor")} crossed by an arrow: variable, {(Variable == 1 ? "its value" : "each value")} one setting.");
         if (Unknown > 0) r.Add($"{Count(Unknown, "two-pin symbol")} matching no drawing, read as ?.");
         foreach (var (kind, pins) in CutOut)

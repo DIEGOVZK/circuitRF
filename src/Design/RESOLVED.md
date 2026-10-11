@@ -19487,3 +19487,9 @@ Traps worth keeping:
   ≥ 0.6 of its own box and nothing else may stand inside the ring.
 - At 2× the rf-amp's hop where L1's lead crosses pin 8's wire reads as two stubs, so VCC is its own net there; the gain
   block's RFC coil comes apart at 2× and Cbypass reads as a supply bar at 1× (both IMF-5).
+- **System block symbols (R-imf8-7), added after the phase.** A switch blade is a slanting wire, so the contacts must be
+  gathered before `ArrowTails` (a blade with a free tip pointing into a ring IS an arrow tail's shape) and before the pin
+  markers (a blade nearly in line with the common lead reads as a marker). Blade length is up to ~3 symbol scales on
+  ordinary drawings, so the cap is 5 s, not 2.5. The filter's waves stay in the region's mask (no glyph lift takes them);
+  `GlyphLift` does take the words in a box, which is why the attenuator and balun are decided at emit, from the words.
+  A block's generated designator would otherwise be the unread two-pin part's `C`n; it takes its own prefix.

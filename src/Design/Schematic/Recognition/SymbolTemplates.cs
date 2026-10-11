@@ -58,6 +58,10 @@ public enum ImageSymbolKind
 
     /// <summary>A ferrite bead (R-imf5-4): a box marked BEAD, or a filled box on a supply line.</summary>
     Bead,
+
+    /// <summary>A block-diagram symbol (R-imf8-7): circuitRF's System component <see cref="RecognisedSymbol.Variant"/>
+    /// names — a filter box, a circulator, a switch, a coupler — its pins in that component's order.</summary>
+    Block,
 }
 
 /// <summary>The structure rule a template's match must also pass (R-im8-4).</summary>

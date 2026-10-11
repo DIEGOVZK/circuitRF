@@ -529,6 +529,76 @@ internal static class SymbolRegions
         return (hops, used);
     }
 
+    /// <summary>The switches drawn as contacts and a blade (R-imf8-7). A blade is a slanting wire with each end on a
+    /// contact — a small open circle (<see cref="Ring"/>) — or with one end on a contact and the other free, pointing at
+    /// one, and is at most five symbol scales long; the switch's other throws are the contacts standing as far from the common one as the blade's, within 75° of
+    /// it. Each switch's contacts and blade are gathered into one region, which takes the first contact's place in
+    /// <paramref name="regions"/>; the other contacts go into <paramref name="consumed"/> and the blades into
+    /// <paramref name="blades"/>, off the wires.</summary>
+    internal static List<SwitchDrawing> Switches(List<RawRegion> regions, int width, List<WirePiece> wires, BinaryImage wireMask,
+                                                double w, double s, SchematicImageOptions o, HashSet<int> skip,
+                                                HashSet<WirePiece> blades, HashSet<int> consumed)
+    {
+        var found = new List<SwitchDrawing>();
+        var rings = new Dictionary<int, (PointD Centre, double R)>();
+        for (int k = 0; k < regions.Count; k++)
+            if (!skip.Contains(k) && Ring(regions[k], width, w, s) is { } ring) rings[k] = ring;
+        if (rings.Count < 2) return found;
+        double reach = o.Attach * w + w / 2 + 1;
+        int Touching(PointD end, int except) =>
+            rings.Where(kv => kv.Key != except && !consumed.Contains(kv.Key) && WireGraph.Dist(end, kv.Value.Centre) <= kv.Value.R + reach)
+                 .Select(kv => kv.Key).DefaultIfEmpty(-1).MinBy(k => k < 0 ? double.MaxValue : WireGraph.Dist(end, rings[k].Centre));
+        var used = new HashSet<int>();
+        foreach (var blade in wires.Where(p => p.Orientation == WireOrientation.Diagonal && p.Length <= 5 * s))
+        {
+            int ja = Touching(blade.A, -1), jb = Touching(blade.B, ja), pivot = -1;
+            if (ja >= 0 && jb < 0 && blade.FreeB || ja < 0 && jb >= 0 && blade.FreeA)
+            {
+                // One end free: the blade turns on the contact it touches and points at the nearest other one.
+                var (on, free) = ja >= 0 ? (ja, blade.B) : (jb, blade.A);
+                double slack = Math.Max(3 * w, 0.4 * blade.Length);
+                int at = rings.Where(kv => kv.Key != on && WireGraph.Dist(free, kv.Value.Centre) <= kv.Value.R + slack)
+                              .Select(kv => kv.Key).DefaultIfEmpty(-1).MinBy(k => k < 0 ? double.MaxValue : WireGraph.Dist(free, rings[k].Centre));
+                if (at < 0) continue;
+                (ja, jb, pivot) = (on, at, 0);
+            }
+            else if (ja < 0 || jb < 0) continue;
+            if (used.Contains(ja) || used.Contains(jb) || blade.Length < 2 * Math.Max(rings[ja].R, rings[jb].R)) continue;
+            // The other throws: as far from the common contact as the blade's throw, on its side.
+            var group = new List<int> { ja, jb };
+            bool Throw(int j, int from, int to)
+            {
+                var (c, f, t) = (rings[j].Centre, rings[from].Centre, rings[to].Centre);
+                double dj = WireGraph.Dist(f, c), dt = WireGraph.Dist(f, t);
+                if (dj < 0.6 * dt || dj > 1.5 * dt) return false;
+                double cos = ((c.x - f.x) * (t.x - f.x) + (c.y - f.y) * (t.y - f.y)) / (dj * dt);
+                return cos >= Math.Cos(75 * Math.PI / 180);
+            }
+            foreach (int j in rings.Keys.Order())
+                if (!group.Contains(j) && !used.Contains(j) && (Throw(j, ja, jb) || pivot < 0 && Throw(j, jb, ja))) group.Add(j);
+            var pixels = new HashSet<int>(group.SelectMany(j => regions[j].Pixels));
+            // The blade's own ink, a pen either side of its line.
+            int half = (int)Math.Ceiling(w / 2 + 1);
+            for (double t = 0; t <= blade.Length; t += 0.5)
+            {
+                double x = blade.A.x + (blade.B.x - blade.A.x) * t / blade.Length, y = blade.A.y + (blade.B.y - blade.A.y) * t / blade.Length;
+                for (int dy = -half; dy <= half; dy++)
+                    for (int dx = -half; dx <= half; dx++)
+                    {
+                        int px = (int)Math.Floor(x) + dx, py = (int)Math.Floor(y) + dy;
+                        if (wireMask.At(px, py)) pixels.Add(py * width + px);
+                    }
+            }
+            int x0 = pixels.Min(i => i % width), x1 = pixels.Max(i => i % width), y0 = pixels.Min(i => i / width), y1 = pixels.Max(i => i / width);
+            regions[ja] = new RawRegion(new PixelBox(x0, y0, x1, y1), [.. pixels]);
+            foreach (int j in group) used.Add(j);
+            consumed.UnionWith(group.Skip(1));
+            blades.Add(blade);
+            found.Add(new SwitchDrawing([.. group.Select(j => rings[j])], blade.A, blade.B, pivot));
+        }
+        return found;
+    }
+
     /// <summary>The pin markers (R-imf8-4): an open circle on a lead, between a wire and a part's body — two wire ends
     /// meeting its ring from opposite sides, in line through its centre. The lead passes through it: its two halves are
     /// one wire, and the circle is no symbol. The ring is the region's largest piece, so a pin number standing on it is

@@ -415,13 +415,51 @@ public static class SchematicImageEmit
                 _ => r0 == r1 ? PartConnection.Bridged : PartConnection.Series,
             };
         }
+        // A block-diagram symbol (R-imf8-7): the System component it is and its pins in that component's order — the shape
+        // readers' own, or an attenuator or a balun by the word written in its box (a transformer's beside it).
+        IEnumerable<ImageWord> In(RecognisedSymbol s) => words.Where(t => s.Region.Box.Distance(t.Box.CentreX, t.Box.CentreY) == 0);
+        (string Block, IReadOnlyList<RecognisedPin> Pins)? BlockOf(RecognisedSymbol s)
+        {
+            if (s.Kind == ImageSymbolKind.Block && s.Variant is { } b) return (b, s.Pins);
+            if (s.Pins.Count == 2 && s.Disposition is SymbolDisposition.Recognised or SymbolDisposition.Unknown
+                && s.Kind is ImageSymbolKind.Resistor or ImageSymbolKind.Unknown or ImageSymbolKind.Inductor && In(s).Any(t => AttenWord.IsMatch(t.Text.Trim())))
+                return (DatasheetSymbols.AttenBlock, [.. s.Pins.OrderBy(p => Math.Round(p.X / (4 * w))).ThenBy(p => p.Y)]);
+            bool balun = s.Kind == ImageSymbolKind.Ic && s.Disposition == SymbolDisposition.CutOut && In(s).Any(IsBalun)
+                         || s.Kind == ImageSymbolKind.Transformer && s.Disposition == SymbolDisposition.Recognised && NearWords(s, words, s0).Any(IsBalun);
+            return balun && BalunPins(s) is { } pins ? (DatasheetSymbols.BalunBlock, pins) : null;
+        }
+        // A balun's unbalanced lead, then its balanced pair: a box's one signal pin on one side and two on the side facing
+        // it; a transformer's coil with one end on ground, then the other coil's two ends.
+        IReadOnlyList<RecognisedPin>? BalunPins(RecognisedSymbol s)
+        {
+            bool Signal(RecognisedPin p) => RootOf(p.Node) is var r and >= 0 && r != G;
+            if (s.Kind == ImageSymbolKind.Transformer)
+            {
+                var p = s.Pins;
+                foreach (var (a, b) in new[] { ((p[0], p[1]), (p[2], p[3])), ((p[2], p[3]), (p[0], p[1])) })
+                    if (Signal(a.Item1) != Signal(a.Item2) && Signal(b.Item1) && Signal(b.Item2))
+                        return [Signal(a.Item1) ? a.Item1 : a.Item2, b.Item1, b.Item2];
+                return null;
+            }
+            var box = s.Region.Box;
+            int Side(RecognisedPin q)
+            {
+                double nx = (q.X - box.CentreX) / Math.Max(1, box.Width / 2.0), ny = (q.Y - box.CentreY) / Math.Max(1, box.Height / 2.0);
+                return Math.Abs(nx) >= Math.Abs(ny) ? (nx < 0 ? 0 : 2) : (ny > 0 ? 1 : 3);
+            }
+            var sides = s.Pins.Where(Signal).GroupBy(Side).ToList();
+            if (sides.Count != 2 || sides.Single(g => g.Count() == 1) is not { } one || sides.FirstOrDefault(g => g.Count() == 2) is not { } two
+                || Math.Abs(one.Key - two.Key) != 2) return null;
+            return [one.Single(), .. two.OrderBy(q => q.Y).ThenBy(q => q.X)];
+        }
         var notesOf = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         var renamed = new List<(string Read, string Written)>();
         for (int i = 0; i < syms.Count; i++)
         {
             var s = syms[i];
             bool bead = IsBead(s);
-            PartKind? device = s.Disposition != SymbolDisposition.Recognised ? null : s.Kind switch
+            var block = BlockOf(s);
+            PartKind? device = block is not null ? PartKind.Block : s.Disposition != SymbolDisposition.Recognised ? null : s.Kind switch
             {
                 _ when bead => PartKind.Bead,
                 ImageSymbolKind.Diode when s.Pins.Count == 2 => PartKind.D,
@@ -440,6 +478,11 @@ public static class SchematicImageEmit
             string prefix = device switch
             {
                 PartKind.Bead => "FB", PartKind.I => "I", PartKind.V => "V", PartKind.K => "T",
+                PartKind.Block => block!.Value.Block switch
+                {
+                    DatasheetSymbols.FilterBlock => "FL", DatasheetSymbols.AttenBlock => "AT", DatasheetSymbols.SwitchBlock => "SW",
+                    DatasheetSymbols.BalunBlock => "T", _ => "U",
+                },
                 _ => LabelAssociation.Prefix(s.Kind) ?? "U",
             };
             // A part of no known kind, unnamed on the picture, is ?n (O3).
@@ -447,7 +490,7 @@ public static class SchematicImageEmit
             // A designator as read is made legal and unique (R-imf7-3, R-imf7-10): Ln-1 is Ln_1, a second Cblock Cblock_2.
             string? asRead = l is { Generated: false } ? l.Designator : null;
             string refdes = Unique(unknown && l is null or { Generated: true } ? $"?{++unknownCount}"
-                                   : l?.Designator is { } d ? ValueGrammar.LegalDesignator(d) : $"{prefix}{i + 1}", taken);
+                                   : l?.Designator is { } d && !(block is not null && l.Generated) ? ValueGrammar.LegalDesignator(d) : $"{prefix}{i + 1}", taken);
             if (asRead is not null && refdes != asRead) renamed.Add((asRead, refdes));
             var (x, y) = read.ToSource(s.Region.Box.CentreX, s.Region.Box.CentreY);
             var evidence = new Dictionary<PartField, PartEvidenceSource>
@@ -496,6 +539,11 @@ public static class SchematicImageEmit
                     Value = kv, PartNumber = PartNumberOf(l),
                     Evidence = kv is null ? evidence : new Dictionary<PartField, PartEvidenceSource>(evidence) { [PartField.Value] = PartEvidenceSource.Picture },
                 }, []);
+                continue;
+            }
+            if (block is { } bk)
+            {
+                Add(Row(refdes, PartKind.Block, bk.Pins, PartConnection.MultiPin) with { Variant = bk.Block }, bk.Pins);
                 continue;
             }
             if (device is { } dk)
@@ -797,6 +845,7 @@ public static class SchematicImageEmit
         }
         string Spell(double v) => RecognitionEmitOptions.Spell(v, digits);
         foreach (var row in parts.Rows.Where(r => r.Kind is PartKind.Q or PartKind.V or PartKind.I or PartKind.D or PartKind.Bead or PartKind.Amp
+                                                                 or PartKind.Block
                                                   && SymbolOf(r) >= 0))
         {
             int i = SymbolOf(row);
@@ -832,6 +881,18 @@ public static class SchematicImageEmit
                     deviceNotes.Add($"{name} is an amplifier triangle: an ideal Amp, its gain the global {id}_Gain — set it." +
                                     (fed.Count > 0 ? $" {Plural(fed.Count, "lead", "leads")} to its supply end at its body: the supply pin of an ideal amplifier carries no current." : ""));
                     rp = [rp[0], rp[1]];
+                    break;
+                }
+                case PartKind.Block:
+                {
+                    // R-imf8-7: the System component, each port's minus on ground, every parameter at its default but
+                    // what the drawing settles — a filter's form, a switch's throws and position.
+                    if (row.Variant is not { } type) continue;
+                    proto = new Proto { Type = type, Name = name, Roots = [.. roots.SelectMany(r => new[] { r, G })], Symbol = i };
+                    foreach (var key in new[] { "Form", "Throws", "State" })
+                        if (s.Settings.TryGetValue(key, out var v)) proto.Parameters.Add(new ParameterAssignment(key, v));
+                    deviceNotes.Add(BlockNote(name, type, s.Settings));
+                    rp = [.. rp.Where(p => !double.IsNaN(p.X))];
                     break;
                 }
                 case PartKind.Bead:
@@ -1147,6 +1208,40 @@ public static class SchematicImageEmit
                 proto.PinNodes.Add(p.Node);
             }
         }
+    }
+
+    // ── block-diagram symbols (R-imf8-7) ───────────────────────────────────────────────────────────
+
+    /// <summary>A word that marks a box an attenuator: <c>dB</c> with or without a number (an 8 is the B the matcher
+    /// confuses with it), <c>ATT</c>, <c>PAD</c>.</summary>
+    private static readonly System.Text.RegularExpressions.Regex AttenWord =
+        new(@"^(?:[-−]?\d+(?:\.\d+)?\s*)?d[B8]$|^(?:ATT|ATTN|ATTEN|PAD)$",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private static bool IsBalun(ImageWord t) => t.Text.Contains("BALUN", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>What the report says of a block symbol: which System component it is, what its drawing settled, and that
+    /// its parameters are the defaults.</summary>
+    private static string BlockNote(string name, string block, IReadOnlyDictionary<string, string> settings)
+    {
+        string what = block switch
+        {
+            DatasheetSymbols.FilterBlock => "a filter box" + (settings.TryGetValue("Form", out var f) ? f switch
+            {
+                "Lowpass" => " (low-pass)", "Highpass" => " (high-pass)", _ => " (band-pass)",
+            } : settings.ContainsKey(DatasheetSymbols.BandStop) ? " drawn as a band-stop, which the Filter has no form for: left band-pass" : ""),
+            DatasheetSymbols.AttenBlock => "an attenuator",
+            DatasheetSymbols.CirculatorBlock => "a circulator, " + (settings.ContainsKey(DatasheetSymbols.ArrowUnread)
+                ? "its arrow's direction not read: ports numbered clockwise — check them"
+                : "its ports numbered the way its arrow turns"),
+            DatasheetSymbols.SwitchBlock => settings.GetValueOrDefault("Throws") == "1"
+                ? $"a switch, {(settings.GetValueOrDefault("State") == "0" ? "open" : "closed")}"
+                : $"a switch with {settings.GetValueOrDefault("Throws")} throws, set to throw {settings.GetValueOrDefault("State")}",
+            DatasheetSymbols.CouplerBlock => "a coupler, its coupled port the arm's lead nearer the input" +
+                (settings.ContainsKey(DatasheetSymbols.IsolatedInside) ? "; its isolated port is not drawn and is left open — terminate it" : ""),
+            _ => "a balun",
+        };
+        return $"{name} is {what}: the System {block} with default parameters — set them.";
     }
 
     // ── words beside a part (IMF-5) ─────────────────────────────────────────────────────────────────
