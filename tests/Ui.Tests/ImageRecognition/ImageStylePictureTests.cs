@@ -109,12 +109,11 @@ internal static class StyleWires
 
 public sealed partial class ImageDatasheetStyleTests(ITestOutputHelper output)
 {
-    private const string RfAmp = "IMF-8 reads the 8-pin IC box (pin-number boxes, names inside); it needs IMF-7's annotation " +
-                                 "phrases first";
+    private const string RfAmp = "IMF-8 reads the 8-pin IC box (pin-number boxes, names inside)";
     private const string GainBlock = "IMF-8 reads the filled triangle as an Amp and the coax connectors as ports; it needs the triangle " +
-                                     "closed at 1× (IMF-5) and IMF-7's word designators (Cblock, Rbias, RFC) first";
-    private const string Regulator = "IMF-8 reads the IC box with its pin names outside; it needs IMF-7's bold labels first";
-    private const string Ldo = "IMF-8 reads the IC box with its pin names inside; it needs IMF-7 to read CIN and COUT (C1N) first";
+                                     "closed at 1× and the RFC coil and Cbypass read as parts (IMF-5) first. IMF-7 reads Cblock, " +
+                                     "RFC and Cbypass; Rbias is not read";
+    private const string Regulator = "IMF-8 reads the IC box with its pin names outside";
     private const string TestCircuit = "IMF-8 reads the triangle as an Amp and the coax connectors as ports; it needs the solid " +
                                        "block box read as one part (IMF-5) first";
 
@@ -124,8 +123,8 @@ public sealed partial class ImageDatasheetStyleTests(ITestOutputHelper output)
     [Fact(Skip = GainBlock)] public void GainBlock_2x() => StyleScore.ReadsExactly(output, "ds-gain-block-2x");
     [Fact(Skip = Regulator)] public void Regulator_1x() => StyleScore.ReadsExactly(output, "ds-regulator-1x");
     [Fact(Skip = Regulator)] public void Regulator_2x() => StyleScore.ReadsExactly(output, "ds-regulator-2x");
-    [Fact(Skip = Ldo)] public void Ldo_1x() => StyleScore.ReadsExactly(output, "ds-ldo-1x");
-    [Fact(Skip = Ldo)] public void Ldo_2x() => StyleScore.ReadsExactly(output, "ds-ldo-2x");
+    [Fact] public void Ldo_1x() => StyleScore.ReadsExactly(output, "ds-ldo-1x");
+    [Fact] public void Ldo_2x() => StyleScore.ReadsExactly(output, "ds-ldo-2x");
     [Fact(Skip = TestCircuit)] public void TestCircuit_1x() => StyleScore.ReadsExactly(output, "ds-test-circuit-1x");
     [Fact(Skip = TestCircuit)] public void TestCircuit_2x() => StyleScore.ReadsExactly(output, "ds-test-circuit-2x");
 
@@ -358,17 +357,15 @@ public sealed partial class ImageWebStyleTests
 
 public sealed partial class ImageWebStyleTests(ITestOutputHelper output)
 {
-    private const string HeavyIec = "IMF-7 reads the subscripted designators (R₁ … Q₁)";
-    private const string Textbook = "IMF-7 reads the serif italic labels: C's, tucked inside its plates' span, joins both, and the " +
-                                    "zig-zag and the capacitor are read as ?";
-    private const string Ladder = "IMF-7 reads the italic designators with subscripts";
-    private const string Typeset = "IMF-7 reads the serif italic designator-then-value runs";
-    private const string LowRes = "IMF-7 reads the 7 px serif italic designators";
+    private const string HeavyIec = "Measured short of IMF-7: 7 of the 9 subscripted designators — R₄'s subscript reads d (Rd) and " +
+                                    "Q₁ is not read";
+    private const string Ladder = "Measured short of IMF-7: L₁ and C₁ … C₃ — L₂ and L₃, lifted off their coils, come apart into pieces";
+    private const string LowRes = "Measured short of IMF-7: the 7 px serif italic R is refused as heavy and C is not read";
 
     [Fact(Skip = HeavyIec)] public void HeavyIecStage() => StyleScore.ReadsExactly(output, "heavy-iec");
-    [Fact(Skip = Textbook)] public void TextbookZigzag() => StyleScore.ReadsExactly(output, "textbook-zigzag");
+    [Fact] public void TextbookZigzag() => StyleScore.ReadsExactly(output, "textbook-zigzag");
     [Fact(Skip = Ladder)] public void LadderDashed() => StyleScore.ReadsExactly(output, "ladder-dashed");
-    [Fact(Skip = Typeset)] public void TypesetFigure() => StyleScore.ReadsExactly(output, "typeset");
+    [Fact] public void TypesetFigure() => StyleScore.ReadsExactly(output, "typeset");
     [Fact] public void LoopCoilNames() => StyleScore.ReadsExactly(output, "loop-coil-names");
     [Fact(Skip = LowRes)] public void LowResolution() => StyleScore.ReadsExactly(output, "low-res");
 
@@ -522,4 +519,80 @@ public sealed partial class ImageWebStyleTests
     [Fact]
     public void LadderDashed_TwoPorts() =>
         Assert.Equal(2, StylePorts.Of("ladder-dashed").Length);
+}
+
+public sealed partial class ImageDatasheetStyleTests
+{
+    /// <summary>IMF-7, R-imf7-1, R-imf7-3, R-imf7-4: the regulator's bold labels — the word designators Ci, Co and Cadj,
+    /// every value under its designator, the diodes' ratings. At 2× every one; at 1× (9 px caps) Ci's dot runs into its
+    /// stem and it reads C1, so C1's value is not Ci's.</summary>
+    [Theory]
+    [InlineData("ds-regulator-1x", 6)]
+    [InlineData("ds-regulator-2x", 7)]
+    public void Regulator_ReadsItsBoldDesignatorsAndValues(string picture, int right)
+    {
+        var score = StyleScore.Read(output, picture);
+        Assert.Equal(new Tally(right, 7), score.Designators);
+        Assert.Equal(new Tally(right, 7), score.Values);
+    }
+
+    /// <summary>IMF-7, R-imf7-2, R-imf7-3, R-imf7-4: the LDO's CIN and COUT (read C1N and CΩUT glyph by glyph) and their
+    /// values, written beside the drawing as CIN = 1µF, at both scales.</summary>
+    [Theory]
+    [InlineData("ds-ldo-1x")]
+    [InlineData("ds-ldo-2x")]
+    public void Ldo_ReadsCinAndCout_AndTheirValues(string picture)
+    {
+        var score = StyleScore.Read(output, picture);
+        Assert.Equal(new Tally(2, 2), score.Designators);
+        Assert.Equal(new Tally(2, 2), score.Values);
+    }
+
+    /// <summary>IMF-7, R-imf7-1, R-imf7-2: the RF amplifier's pin names inside its box read as written at 2×. (At 1× their
+    /// caps are 6 px and RFIN and RFOUT are not read.)</summary>
+    [Fact]
+    public void RfAmp_2x_ThePinNamesInsideTheBox_Read()
+    {
+        var r = StyleParts.Read("ds-rf-amp-2x");
+        var inside = r.Words.Where(w => r.Read!.Words.Single(t => t.Id == w.Region).Place == TextPlace.InsideBox
+                                        && w.Text.Length >= 2 && w.Text.All(char.IsLetter)).Select(w => w.Text).ToList();
+        Assert.Equal(["GND", "NC", "RFIN", "RFOUT", "VCC"], inside.Distinct().Order(StringComparer.Ordinal).ToArray());
+        Assert.Equal(4, inside.Count(t => t == "GND"));
+    }
+
+    /// <summary>IMF-7, R-imf7-5: the RF amplifier's two-line notes under its coupling capacitors are comments, each
+    /// attached to the capacitor above it — never a net name — at both scales.</summary>
+    [Theory]
+    [InlineData("ds-rf-amp-1x")]
+    [InlineData("ds-rf-amp-2x")]
+    public void RfAmp_TheNotes_AreComments_OnTheCouplingCapacitors(string picture)
+    {
+        var r = StyleParts.Read(picture);
+        var comments = r.Words.Where(w => w.Class == WordClass.Comment).ToList();
+        Assert.Equal(2, comments.Count);
+        var noted = r.Labels!.Symbols.Where(s => s.Comments.Count > 0).ToList();
+        Assert.Equal(2, noted.Count);
+        Assert.All(noted, s => Assert.Equal(ImageSymbolKind.Capacitor, s.Kind));
+        Assert.DoesNotContain(r.Labels.Names, n => comments.Contains(n.Word));
+    }
+}
+
+public sealed partial class ImageWebStyleTests
+{
+    /// <summary>IMF-7, R-imf7-7 … R-imf7-11: typeset's serif italic designator-then-value runs — every designator, four of
+    /// the five passive values (C1's 100pF, set across its plates, is not read) and V1's 12V on the source.</summary>
+    [Fact]
+    public void Typeset_ReadsEveryDesignator_FourValues_AndTheSourcesVolts()
+    {
+        var score = StyleScore.Read(output, "typeset");
+        Assert.Equal(new Tally(6, 6), score.Designators);
+        Assert.True(score.Values is { Right: >= 4 }, $"values {score.Values}");
+        var v1 = Assert.Single(StyleParts.Read("typeset").Circuit!.TestBench.Instances, i => i.Reference == "Vdc");
+        Assert.Equal("12", v1.Overrides.Single(o => o.Name == "Vdc").Expression);
+    }
+
+    /// <summary>IMF-7, R-imf7-10: the low-pass's single-letter italic designators R and C, each beside its symbol.</summary>
+    [Fact]
+    public void TextbookZigzag_ReadsRAndC() =>
+        Assert.Equal(new Tally(2, 2), StyleScore.Read(output, "textbook-zigzag").Designators);
 }

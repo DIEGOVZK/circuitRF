@@ -25,7 +25,8 @@ namespace CircuitRF.Design.Schematic.Recognition;
 internal static class GlyphLift
 {
     /// <summary>A glyph-sized piece of the residue: a whole component, or the part of one beyond a cut.</summary>
-    private sealed record Piece(List<int> Pixels, PixelBox Box, bool Inside);
+    /// <param name="Cut">The component it was cut from (a symbol stroke ran through it); −1 for a whole component.</param>
+    private sealed record Piece(List<int> Pixels, PixelBox Box, bool Inside, int Cut = -1);
 
     /// <summary>The words lifted off <paramref name="residue"/> — whose pixels are painted out of it — read pixels.</summary>
     /// <param name="h">The text height, read pixels.</param>
@@ -61,7 +62,7 @@ internal static class GlyphLift
             }
             if (IsOutline(box)) continue;
             foreach (var (p, b) in Cut(px[k], box, W, h, s, w, NearEnd))
-                if (!NearEnd(b)) pieces.Add(new Piece(p, b, InBox(b)));
+                if (!NearEnd(b)) pieces.Add(new Piece(p, b, InBox(b), k));
         }
         if (pieces.Count == 0) return [];
 
@@ -94,6 +95,28 @@ internal static class GlyphLift
             }
         }
 
+        // A lone letter cut off the symbol it touched (R-imf7-10): a textbook's C tucked against its plates, which the cut
+        // at the plates' runs leaves in pieces — so the pieces a quarter of h apart or less are tried together, as one
+        // glyph of the text height.
+        // Only pieces cut from one component are tried together: a scatter of separate small components — a hatched
+        // zig-zag's ticks — is no letter however its box reads.
+        var free = Enumerable.Range(0, n).Where(i => !accepted[i] && !pieces[i].Inside && pieces[i].Box.Height <= 1.5 * h
+                                                     && pieces[i].Cut >= 0).ToList();
+        var lone = new HashSet<int>();
+        var near = free.ToDictionary(i => i, i => i);
+        int R(int x) { while (near[x] != x) x = near[x] = near[near[x]]; return x; }
+        foreach (int i in free)
+            foreach (int j in free)
+                if (i < j && pieces[i].Cut == pieces[j].Cut && pieces[i].Box.Distance(pieces[j].Box) <= 0.25 * h) near[R(i)] = R(j);
+        foreach (var cluster in free.GroupBy(R).Select(g => g.ToList()))
+        {
+            var box = cluster.Select(i => pieces[i].Box).Aggregate((a, b) => a.Union(b));
+            if (box.Height < 0.7 * h || box.Height > 1.5 * h || box.Width > 1.2 * h) continue;
+            if (!TextRegions.LoneLetter([.. cluster.SelectMany(i => pieces[i].Pixels)], box, W)) continue;
+            foreach (int i in cluster) { accepted[i] = true; root[F(i)] = F(cluster[0]); }
+            lone.Add(cluster[0]);
+        }
+
         var lifted = new List<TextRegion>();
         foreach (var g in Enumerable.Range(0, n).Where(i => accepted[i]).GroupBy(F))
         {
@@ -102,9 +125,9 @@ internal static class GlyphLift
             var box = members.Select(i => pieces[i].Box).Aggregate((a, b) => a.Union(b));
             foreach (int i in ink) residue.Pixels[i] = 0;
             count += members.Count;
-            lifted.Add(new TextRegion(0, box, false, [.. members.Select(i => pieces[i].Box)], TextRegions.Strokes(ink, box, W), [])
+            bool letter = members.Any(i => lone.Contains(i));
+            lifted.Add(TextRegions.Region(ink, box, W, false, letter ? [box] : [.. members.Select(i => pieces[i].Box)], []) with
             {
-                InkWidth = SchematicImageReading.RunWidth(TextRegions.Crop(ink, box, W)),
                 Lifted = true,
                 Place = members.All(i => pieces[i].Inside) ? TextPlace.InsideBox : TextPlace.Free,
             });

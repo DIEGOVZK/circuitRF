@@ -391,6 +391,39 @@ public static class StrokeGlyphs
         }
 
         var groups = tall.GroupBy(Find).Select(g => g.ToList()).ToList();
+        // A typeset glyph's subscript (brief-imf-7 R-imf7-9): 0.25–0.85 of its height, starting at its right side (an
+        // italic base overhangs it by a little; two ticks of a hatched stroke overlap by more), its
+        // foot dropped below the glyph's and its top well below the glyph's — too tall to join as a short unit and too
+        // low to band with it as a tall one, so L₁ was no line and its L's stem was taken for wire. Level text only.
+        if (typeset && !vertical)
+        {
+            bool IsSub(int last, int j)
+            {
+                double hb = H(last);
+                return H(j) >= 0.25 * hb && H(j) <= 0.85 * hb
+                       && f[j].AMin >= f[last].AMax - 0.15 * hb && f[j].AMin <= f[last].AMax + 0.8 * hb
+                       && f[j].PMax >= f[last].PMax + 0.1 * hb && f[j].PMax <= f[last].PMax + 0.6 * hb
+                       && f[j].PMin >= f[last].PMin + 0.3 * hb;
+            }
+            foreach (var g in groups.ToList())
+            {
+                if (!groups.Contains(g)) continue;
+                int last = g.OrderBy(i => f[i].AMax).Last();
+                // A whole run in the subscript's place (v_out's out) joins a lone base glyph; else the one glyph there.
+                var run = g.Count == 1 ? groups.FirstOrDefault(o => o != g && o.Count > 1 && IsSub(last, o.OrderBy(i => f[i].AMin).First())
+                                                                   && o.All(i => f[i].PMax <= f[last].PMax + 0.6 * H(last))) : null;
+                if (run is not null)
+                {
+                    g.AddRange(run);
+                    groups.Remove(run);
+                    continue;
+                }
+                int sub = Enumerable.Range(0, units.Count).Where(j => !g.Contains(j) && !groups.Any(o => o.Count > 1 && o.Contains(j)))
+                    .Where(j => IsSub(last, j)).OrderBy(j => f[j].AMin).DefaultIfEmpty(-1).First();
+                if (sub >= 0) g.Add(sub);
+            }
+        }
+        groups = [.. groups.Select(g => g.Distinct().ToList())];
         var shortUnits = Enumerable.Range(0, units.Count).Where(i => !Tall(i)).OrderBy(i => f[i].AMin).ToList();
         var lines = new List<List<int>>();
         foreach (var g in groups)
@@ -513,9 +546,11 @@ public static class StrokeGlyphs
     /// </summary>
     /// <returns>The glyphs in reading order, each one's extent along the line (cap heights, from the word's start), the
     /// orientation read and the cap height, in the strokes' units.</returns>
+    /// <param name="height">The cap height to normalise to; null is the median height of the strokes' pieces. A glyph cut
+    /// into pieces (a lone letter cut off a symbol, brief-imf-7 R-imf7-10) is normalised to its whole box.</param>
     internal static (IReadOnlyList<GlyphReading> Glyphs, IReadOnlyList<(double Left, double Right)> Extents,
                      TextOrientation Orientation, double Height)?
-        ReadWord(IReadOnlyList<SilkStroke> strokes, GlyphTemplates templates, bool vertical)
+        ReadWord(IReadOnlyList<SilkStroke> strokes, GlyphTemplates templates, bool vertical, double? height = null)
     {
         var units = Units(strokes);
         if (units.Count == 0) return null;
@@ -523,19 +558,19 @@ public static class StrokeGlyphs
         var f = members.Select(i => units[i].Frame(vertical)).ToList();
         var heights = f.Select(x => x.PMax - x.PMin).Where(h => h > 0).OrderBy(h => h).ToList();
         if (heights.Count == 0) return null;
-        double height = heights[heights.Count / 2];
+        height ??= heights[heights.Count / 2];
 
         (List<GlyphReading> Glyphs, List<(double, double)> Extents, double Score, TextOrientation Orientation)? best = null;
         foreach (var (map, orientation) in Frames(vertical))
         {
             if (orientation.Mirrored || (!vertical && orientation.Rotation != 0)) continue;
-            var glyphs = Glyphs(strokes, units, members, map, height, out var extents);
+            var glyphs = Glyphs(strokes, units, members, map, height.Value, out var extents);
             if (glyphs.Count == 0) continue;
             var read = glyphs.Select(g => new GlyphReading(g, templates.Match(g))).ToList();
             double score = read.Sum(r => r.Best.Distance);
             if (best is null || score < best.Value.Score) best = (read, extents, score, orientation);
         }
-        return best is { } b ? (b.Glyphs, b.Extents, b.Orientation, height) : null;
+        return best is { } b ? (b.Glyphs, b.Extents, b.Orientation, height.Value) : null;
     }
 
     /// <summary>The members' strokes in one frame, split into glyphs along the line and normalised to it.</summary>

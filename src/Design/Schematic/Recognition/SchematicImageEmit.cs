@@ -400,6 +400,7 @@ public static class SchematicImageEmit
             };
         }
         var notesOf = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var renamed = new List<(string Read, string Written)>();
         for (int i = 0; i < syms.Count; i++)
         {
             var s = syms[i];
@@ -426,7 +427,11 @@ public static class SchematicImageEmit
             };
             // A part of no known kind, unnamed on the picture, is ?n (O3).
             bool unknown = zeroOhm && twoPin && s.Kind == ImageSymbolKind.Unknown;
-            string refdes = Unique(unknown && l is null or { Generated: true } ? $"?{++unknownCount}" : l?.Designator ?? $"{prefix}{i + 1}", taken);
+            // A designator as read is made legal and unique (R-imf7-3, R-imf7-10): Ln-1 is Ln_1, a second Cblock Cblock_2.
+            string? asRead = l is { Generated: false } ? l.Designator : null;
+            string refdes = Unique(unknown && l is null or { Generated: true } ? $"?{++unknownCount}"
+                                   : l?.Designator is { } d ? ValueGrammar.LegalDesignator(d) : $"{prefix}{i + 1}", taken);
+            if (asRead is not null && refdes != asRead) renamed.Add((asRead, refdes));
             var (x, y) = read.ToSource(s.Region.Box.CentreX, s.Region.Box.CentreY);
             var evidence = new Dictionary<PartField, PartEvidenceSource>
             {
@@ -434,6 +439,8 @@ public static class SchematicImageEmit
             };
             var notes = new List<string>();
             if (l is { Contradicts: true }) notes.Add($"{refdes} names a different kind than its symbol is drawn as");
+            if (asRead is not null && refdes != asRead) notes.Add($"read as '{asRead}'");
+            foreach (var c in l?.Comments ?? []) notes.Add($"'{c.Text}' is written beside it");
             List<PartTerminal> Terminals(IEnumerable<RecognisedPin> pins) => [.. pins.Select(p =>
             {
                 var (px, py) = read.ToSource(p.X, p.Y);
@@ -484,8 +491,13 @@ public static class SchematicImageEmit
                     PartKind.V => row with { Variant = s.Variant == "ac" ? "AC" : "DC" },
                     _ => row,
                 };
+                // A source's value: the word after or under its designator (V₁12V, R-imf7-11), else the nearest that is one —
+                // as read, or as its glyphs' bests spell it: a volt is no value of a passive's, so the grammar reads an
+                // italic 12V as 12U, 12 µ, whose V was the glyph's best.
+                double? ValueOf(ImageWord t) => SourceValue(t.Text, dk) ?? SourceValue(t.Seen, dk);
                 if (dk is PartKind.V or PartKind.I && row.TakesValue
-                    && NearWords(s, words, s0).Select(t => SourceValue(t.Text, dk)).FirstOrDefault(v => v is not null) is { } sv)
+                    && ((l?.ValueWord is { } vw ? ValueOf(vw) : null)
+                        ?? NearWords(s, words, s0).Select(ValueOf).FirstOrDefault(v => v is not null)) is { } sv)
                     row = row with { Value = sv, Evidence = new Dictionary<PartField, PartEvidenceSource>(row.Evidence) { [PartField.Value] = PartEvidenceSource.Picture } };
                 if (dk == PartKind.V && s.Pins.Count == 1) row = row with { Connection = PartConnection.Shunt };
                 Add(row, s.Pins);
@@ -535,6 +547,9 @@ public static class SchematicImageEmit
             }
             Add(made, pinsDrawn);
         }
+        if (renamed.Count > 0)
+            report.Add(RecognitionFindingClass.PictureEmitNotes, renamed.Count,
+                       "Designators written as the schematic takes them: " + string.Join(", ", renamed.Select(r => $"{r.Read} as {r.Written}")) + ".");
         var parts = new PartsTable([.. rows.OrderBy(r => r.Refdes, PartsTable.NaturalOrder)], RailRf.RailLengthFormat.Dbu, null) { Pixels = true };
         if (options.PartsCsvText is not null || options.PartsCsvPath is not null)
         {
@@ -1064,9 +1079,9 @@ public static class SchematicImageEmit
     private static IEnumerable<ImageWord> NearWords(RecognisedSymbol s, IReadOnlyList<ImageWord> words, double sScale) =>
         words.Select(t => (Word: t, Gap: s.Region.Box.Distance(t.Box))).Where(t => t.Gap <= sScale).OrderBy(t => t.Gap).Select(t => t.Word);
 
-    /// <summary>The part number printed under a part's designator, where the label association gave the part a word
-    /// that is no value of its own (a diode's <c>1N4002</c>, R-imf5-2).</summary>
-    private static string? PartNumberOf(SymbolLabels? l) => l?.ValueWord is { } v && v.Reading?.Value is null ? v.Text : null;
+    /// <summary>A device's part number: the word its designator's block or run gives it (a diode's <c>1N4002</c>,
+    /// R-imf5-2; <c>Q₁2N2222</c>, R-imf7-11), whatever it reads as — 1N4002 is also a value's spelling.</summary>
+    private static string? PartNumberOf(SymbolLabels? l) => l?.ValueWord is { } v && v.Reading is not null ? v.Text : null;
 
     private static readonly System.Text.RegularExpressions.Regex Frequency =
         new(@"^(\d+(?:\.\d*)?)\s*([kMG]?)Hz$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);

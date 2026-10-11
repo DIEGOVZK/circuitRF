@@ -40,6 +40,9 @@ public sealed record SymbolLabels(int Symbol, ImageSymbolKind Kind, string? Desi
 {
     public WordValue? Value => ValueWord?.Reading?.Value;
     public IReadOnlyList<LineParameter>? LineParameters => LineWord?.Reading?.Parameters;
+
+    /// <summary>The annotations nearest this part (R-imf7-5): a phrase, a parenthetical, a value list — for its notes.</summary>
+    public IReadOnlyList<ImageWord> Comments { get; init; } = [];
 }
 
 /// <summary>A net or port name at a wire end (R-im9-4).</summary>
@@ -84,15 +87,46 @@ public static class LabelAssociation
         var taken = words.Where(w => read.NetLabels.Any(l => l.Text == w.Region) || read.SupplyMarks.Any(m => m.Text == w.Region))
                          .Select(w => w.Id).ToHashSet();
         var far = PictureTerminals.Names(read, symbols, words, taken);
-        return Associate(targets, words, read.NetLabels, read.SupplyMarks, far);
+        return Associate(targets, words, read.NetLabels, read.SupplyMarks, far, PictureTerminals.TextHeight(read));
     }
+
+    /// <summary>
+    /// The symbols with a plain box's kind taken from the designator read beside it: a box read as a transmission line
+    /// whose designator says R (R₂, R3) is a resistor drawn the IEC way — the two drawings are the same box, and the
+    /// designator is the only thing that tells them apart (brief-imf-7, typeset). Null when no symbol changes.
+    /// </summary>
+    public static SchematicSymbolsRead? KindsByDesignator(SchematicSymbolsRead symbols, ImageTextLabels labels)
+    {
+        var list = symbols.Symbols.ToList();
+        bool changed = false;
+        foreach (var l in labels.Symbols)
+        {
+            var s = list[l.Symbol];
+            if (s.Kind != ImageSymbolKind.TransmissionLine || s.Pins.Count != 2 || l.Generated || l.Designator is not { } d) continue;
+            if (KindOfDesignator(d) != ImageSymbolKind.Resistor) continue;
+            list[l.Symbol] = s with { Kind = ImageSymbolKind.Resistor };
+            changed = true;
+        }
+        return changed ? symbols with { Symbols = list } : null;
+    }
+
+    /// <summary>A word reaches a part within this many text heights of its box (R-imf7-12): a label three caps from a
+    /// heavy pen's symbol is as near as one three caps from a hairline's. Ten: circuitRF's own drawing sets a part's
+    /// label block up to six text heights under it, and the assignment, not the reach, decides between neighbours.</summary>
+    public const double ReachInTextHeights = 10;
+
+    /// <summary>A word designator (R-imf7-3, R-imf7-10) names a part only this near, in text heights: it is a part's
+    /// only beside it.</summary>
+    public const double WordDesignatorReach = 3;
 
     /// <summary>Attaches <paramref name="words"/> to <paramref name="targets"/> and, through IM-7's net labels and
     /// supply marks, to wire ends; <paramref name="named"/> are names already placed — a terminal's, an open end's at a
     /// distance (IMF-6) — whose words nothing else takes.</summary>
+    /// <param name="h">The picture's text height, pixels: every reach is in it (R-imf7-12). 0 keeps AS-10's reach of
+    /// three of a symbol's diagonals.</param>
     public static ImageTextLabels Associate(IReadOnlyList<LabelTarget> targets, IReadOnlyList<ImageWord> words,
                                             IReadOnlyList<NetLabel>? labels = null, IReadOnlyList<SupplyMark>? supplies = null,
-                                            IReadOnlyList<NodeName>? named = null)
+                                            IReadOnlyList<NodeName>? named = null, double h = 0)
     {
         ArgumentNullException.ThrowIfNull(targets);
         ArgumentNullException.ThrowIfNull(words);
@@ -106,7 +140,7 @@ public static class LabelAssociation
             foreach (var w in words.Where(w => w.Region == region))
             {
                 string? snapped = PortWords.Snap([w]);
-                if (snapped is null && w.Reading is not { Class: WordClass.Name or WordClass.Designator }) continue;
+                if (snapped is null && (w.Reading is not { Class: WordClass.Name or WordClass.Designator } || w.Text.Length < 2)) continue;
                 string text = snapped ?? w.Reading!.Text;
                 names.Add(new NodeName(node, text, w, supply || w.Reading?.IsPortWord == true
                                                       || snapped is not null && !PortWords.IsSupply(snapped)));
@@ -127,30 +161,49 @@ public static class LabelAssociation
         var line = new ImageWord?[targets.Count];
         var mismatches = new List<KindMismatch>();
 
-        Assign(WordClass.Designator, t => targets[t].Kind != ImageSymbolKind.Ground, (w, t) => designator[t] = w);
+        Assign(WordClass.Designator, t => targets[t].Kind != ImageSymbolKind.Ground, (w, t) => designator[t] = Respelled(w, targets[t].Kind));
+        // Word designators (R-imf7-3, R-imf7-10): Cblock, RFC, a lone R — each only by a part of its kind beside it.
+        foreach (var kind in targets.Select(t => t.Kind).Distinct().ToList())
+            Assign(WordClass.Name, t => designator[t] is null && targets[t].Kind == kind, (w, t) => designator[t] = w,
+                   w => w.Reading!.Designates.Contains(kind), WordDesignatorReach);
+        // A value written with its part's designator (CIN = 1µF, R-imf7-4) is that part's, wherever it stands.
+        foreach (var vw in words.Where(w => w.For is not null && w.Class == WordClass.Value && !used.Contains(w.Id)).ToList())
+            for (int t = 0; t < targets.Count; t++)
+                if (designator[t] is { } dw && value[t] is null && string.Equals(PortWords.Normal(dw.Text), PortWords.Normal(vw.For!), StringComparison.Ordinal))
+                {
+                    value[t] = vw;
+                    used.Add(vw.Id);
+                    break;
+                }
         void ApplyValue(ImageWord w, int t)
         {
+            // A capacitance or an inductance of nothing is no value a part is drawn with: its glyphs spelled something
+            // else (a textbook's v_out reads 0Uf). A 0 Ω resistor is a jumper, and stays.
+            if (w.Reading!.Value is { NotFitted: false, Si: 0 } && targets[t].Kind is ImageSymbolKind.Capacitor or ImageSymbolKind.Inductor) return;
             if (w.Reading!.Value!.Fits(Dimension(targets[t].Kind)) || targets[t].Kind == ImageSymbolKind.Unknown) value[t] = w;
             else mismatches.Add(new KindMismatch(w, targets[t].Symbol, targets[t].Kind));   // reported as that, not as unattached
         }
-        // A value on the line under a designator, left-aligned with it, is that part's — a label block, as circuitRF and
-        // most tools print one (IM-12). Its kind must fit; the block may stand nearer another part's drawing than its own.
-        foreach (var vw in words.Where(w => w.Class == WordClass.Value && !used.Contains(w.Id)).ToList())
+        // A value on the line under a designator, left-aligned or centred with it, is that part's — a label block, as
+        // circuitRF, most tools and datasheets print one (IM-12, R-imf7-4) — and so is one right after it on its line (R₃10kΩ,
+        // R3 10kΩ: R-imf7-11). Its kind must fit; the block may stand nearer another part's drawing than its own.
+        foreach (var vw in words.Where(w => w.Class == WordClass.Value && w.For is null && !used.Contains(w.Id)).ToList())
             for (int t = 0; t < targets.Count; t++)
             {
                 if (designator[t] is not { } dw || value[t] is not null || !TakesValue(targets[t].Kind)) continue;
-                if (!Under(vw, dw) || !(vw.Reading!.Value!.Fits(Dimension(targets[t].Kind)) || targets[t].Kind == ImageSymbolKind.Unknown)) continue;
+                if (!(Under(vw, dw) || After(vw, dw)) || !(vw.Reading!.Value!.Fits(Dimension(targets[t].Kind)) || targets[t].Kind == ImageSymbolKind.Unknown)) continue;
                 value[t] = vw;
                 used.Add(vw.Id);
                 break;
             }
-        // A part number under a diode's or a transistor's designator — D1 over 1N4002 (R-imf5-2): its value word, which
-        // the parts table takes as the part's number.
-        foreach (var pw in words.Where(w => w.Class != WordClass.Designator && !used.Contains(w.Id)).ToList())
+        // A part number under a diode's, a transistor's or an IC's designator, or after it on its line — D1 over 1N4002
+        // (R-imf5-2), Q₁2N2222 (R-imf7-11): its value word, which the parts table takes as the part's number. A source's
+        // the same way (V₁12V): the emit reads its voltage from it.
+        foreach (var pw in words.Where(w => w.Class is not (WordClass.Designator or WordClass.Comment) && !used.Contains(w.Id)).ToList())
             for (int t = 0; t < targets.Count; t++)
             {
-                if (designator[t] is not { } dw || value[t] is not null || targets[t].Kind is not (ImageSymbolKind.Diode or ImageSymbolKind.Transistor)
-                    || !Under(pw, dw)) continue;
+                if (designator[t] is not { } dw || value[t] is not null
+                    || targets[t].Kind is not (ImageSymbolKind.Diode or ImageSymbolKind.Transistor or ImageSymbolKind.Ic or ImageSymbolKind.Source)
+                    || !(Under(pw, dw) || After(pw, dw))) continue;
                 value[t] = pw;
                 used.Add(pw.Id);
                 break;
@@ -176,6 +229,29 @@ public static class LabelAssociation
                 break;
             }
 
+        // Annotations (R-imf7-5): each to the nearest part within reach, for its notes.
+        var comments = new List<ImageWord>[targets.Count];
+        for (int t = 0; t < targets.Count; t++) comments[t] = [];
+        // A value written for a designator no part has (Vref = 1.25 V) is an annotation too.
+        var annotations = words.Where(w => w.Class == WordClass.Comment && !used.Contains(w.Id))
+            .Concat(words.Where(w => w.For is not null && !used.Contains(w.Id))
+                         .Select(w => w with { Reading = new WordReading($"{w.For} = {w.Text}", WordClass.Comment) }))
+            .ToList();
+        foreach (var cw in annotations)
+        {
+            int nearest = -1;
+            double best = h > 0 ? ReachInTextHeights * h : double.MaxValue;
+            for (int t = 0; t < targets.Count; t++)
+            {
+                if (targets[t].Kind == ImageSymbolKind.Ground) continue;
+                double d = targets[t].Box.Distance(cw.Box);
+                if (d < best) (nearest, best) = (t, d);
+            }
+            if (nearest < 0) continue;
+            comments[nearest].Add(cw);
+            used.Add(cw.Id);
+        }
+
         // Designators for the symbols without one (D10).
         var taken = designator.Where(d => d is not null).Select(d => d!.Reading!.Text).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var result = new List<SymbolLabels>(targets.Count);
@@ -195,22 +271,25 @@ public static class LabelAssociation
             bool contradicts = !generated && name is not null && KindOfDesignator(name) is { } k && Contradicts(k, target.Kind);
             var confidence = contradicts && target.Confidence > PartConfidence.Low ? target.Confidence - 1 : target.Confidence;
             result.Add(new SymbolLabels(target.Symbol, target.Kind, name, generated, designator[t], value[t], line[t],
-                                        contradicts, confidence));
+                                        contradicts, confidence) { Comments = comments[t] });
         }
 
-        var unattached = words.Where(w => w.Class != WordClass.Unread && !used.Contains(w.Id)).ToList();
+        var unattached = words.Where(w => w.Class is not (WordClass.Unread or WordClass.Comment) && !used.Contains(w.Id)).ToList();
         return new ImageTextLabels(result, names, mismatches, unattached, ImageTextReport.Of(words, result, names, mismatches, unattached));
 
-        // One class's words to the targets that take them, by AS-10's assignment.
-        void Assign(WordClass cls, Func<int, bool> takes, Action<ImageWord, int> apply, Func<ImageWord, bool>? only = null)
+        // One class's words to the targets that take them, by AS-10's assignment; within the reach in text heights when
+        // the picture's h is known (R-imf7-12), else within AS-10's three diagonals.
+        void Assign(WordClass cls, Func<int, bool> takes, Action<ImageWord, int> apply, Func<ImageWord, bool>? only = null,
+                    double reach = ReachInTextHeights)
         {
-            var ws = words.Where(w => w.Class == cls && !used.Contains(w.Id) && (only is null || only(w))).ToList();
+            var ws = words.Where(w => w.Class == cls && w.For is null && !used.Contains(w.Id) && (only is null || only(w))).ToList();
             var ts = Enumerable.Range(0, targets.Count).Where(takes).ToList();
             if (ws.Count == 0 || ts.Count == 0) return;
+            long reachSub = h > 0 ? (long)Math.Round(reach * h * Sub) : 0;
             var claims = ws.Select(w => new PartClaim(PartEvidenceSource.Silkscreen,
-                (long)Math.Round(w.Box.CentreX * Sub), (long)Math.Round(w.Box.CentreY * Sub), w.Text, 0)).ToList();
+                (long)Math.Round(w.Box.CentreX * Sub), (long)Math.Round(w.Box.CentreY * Sub), w.Text, reachSub)).ToList();
             var candidates = ts.Select(t => new RefdesCandidate(Box(targets[t].Box))).ToList();
-            var assigned = RefdesAssociation.Assign(claims, candidates);
+            var assigned = RefdesAssociation.Assign(claims, candidates, bodyReach: h <= 0);
             for (int i = 0; i < ws.Count; i++)
             {
                 if (assigned[i] < 0) continue;
@@ -221,11 +300,45 @@ public static class LabelAssociation
     }
 
     /// <summary>Word <paramref name="w"/> stands on one of the next two lines under <paramref name="d"/>, left-aligned
-    /// with it.</summary>
+    /// with it — or on the next line, 0.3–1.2 of its height under it, centred on it (a datasheet's block, R-imf7-4).</summary>
     private static bool Under(ImageWord w, ImageWord d)
     {
         double h = d.Box.Height;
-        return Math.Abs(w.Box.Left - d.Box.Left) <= 0.5 * h && w.Box.Top > d.Box.Bottom && w.Box.Top - d.Box.Bottom <= 3.5 * h;
+        if (w.Box.Top <= d.Box.Bottom) return false;
+        double gap = w.Box.Top - d.Box.Bottom;
+        return Math.Abs(w.Box.Left - d.Box.Left) <= 0.5 * h && gap <= 3.5 * h
+               || Math.Abs(w.Box.CentreX - d.Box.CentreX) <= 0.5 * h && gap <= 1.2 * h;
+    }
+
+    /// <summary>Word <paramref name="w"/> follows <paramref name="d"/> on its line — the run R₃10kΩ cut at its subscript,
+    /// or R3 10kΩ a space apart (R-imf7-11): its left within a text height of the designator's right, the two lines
+    /// overlapping by half the shorter.</summary>
+    private static bool After(ImageWord w, ImageWord d)
+    {
+        double h = d.Box.Height;
+        double gap = w.Box.Left - d.Box.Right;
+        double overlap = Math.Min(w.Box.Bottom, d.Box.Bottom) - Math.Max(w.Box.Top, d.Box.Top);
+        return gap >= -1 && gap <= h && overlap >= 0.5 * Math.Min(w.Box.Height, d.Box.Height);
+    }
+
+    /// <summary>
+    /// A designator assigned to a part whose kind its prefix contradicts, or names no kind, read once more as the part's
+    /// prefix where its first glyph was read as a character the matcher confuses with it (R-imf7-2): a bold D1 beside a
+    /// diode read as Q1 or O1, a serif italic R₂ beside a resistor read as B2. The word as read when no such reading is
+    /// near.
+    /// </summary>
+    private static ImageWord Respelled(ImageWord w, ImageSymbolKind kind)
+    {
+        // A plain box read as a line is drawn the IEC resistor's way too, so its designator may be an R's.
+        string? prefix = kind == ImageSymbolKind.TransmissionLine ? "R" : Prefix(kind);
+        if (prefix is not { Length: 1 } || w.Text.Length == 0 || w.Text[0] == prefix[0]) return w;
+        if (KindOfDesignator(w.Text) is { } named && !Contradicts(named, kind)) return w;
+        if (w.Glyphs.Count != w.Text.Length || w.Text.TakeWhile(char.IsAsciiLetter).Count() != 1) return w;
+        var g = w.Glyphs[0];
+        if (!KnownWords.Confused(g.Best.Char, prefix[0])
+            || !g.Ranked.Any(m => m.Char == prefix[0] && m.Distance <= StrokeTextReader.MaxGlyphDistance)) return w;
+        string text = prefix + w.Text[1..];
+        return ValueGrammar.Parse(text) is { Class: WordClass.Designator } r ? w with { Reading = r } : w;
     }
 
     private static Bbox Box(PixelBox b) => new(b.Left * Sub, b.Top * Sub, (b.Right + 1) * Sub, (b.Bottom + 1) * Sub);
@@ -309,6 +422,11 @@ public sealed record ImageTextReport
     /// <summary>Designators generated for symbols none was read for.</summary>
     public IReadOnlyList<string> Generated { get; init; } = [];
 
+    /// <summary>Annotations read — phrases, parentheticals, value lists (R-imf7-5) — and of them, those attached to a
+    /// part as a note.</summary>
+    public int Comments { get; init; }
+    public int CommentsAttached { get; init; }
+
     public static ImageTextReport Of(IReadOnlyList<ImageWord> words, IReadOnlyList<SymbolLabels> symbols,
                                      IReadOnlyList<NodeName> names, IReadOnlyList<KindMismatch> mismatches,
                                      IReadOnlyList<ImageWord> unattached) => new()
@@ -324,6 +442,8 @@ public sealed record ImageTextReport
         Contradictions = [.. symbols.Where(s => s.Contradicts).Select(s => s.Designator!)],
         Unattached = unattached.Count,
         Generated = [.. symbols.Where(s => s.Generated).Select(s => s.Designator!)],
+        Comments = words.Count(w => w.Class == WordClass.Comment),
+        CommentsAttached = symbols.Sum(s => s.Comments.Count),
     };
 
     /// <summary>The report in words, one finding per line; a count of nothing is not a line.</summary>
@@ -342,6 +462,8 @@ public sealed record ImageTextReport
             r.Add($"'{m.Word.Text}' is not a {Noun(m.Kind)}'s value; it was left unattached.");
         foreach (var c in Contradictions)
             r.Add($"{c} names a different kind than its symbol is drawn as; both are shown.");
+        if (Comments > 0)
+            r.Add($"{Count(Comments, "annotation")} read; {CommentsAttached} attached to the nearest part as a note, never a net name.");
         if (Unattached > 0) r.Add($"{Count(Unattached, "word")} named no part and no wire.");
         if (Generated.Count > 0)
             r.Add($"No designator was read for {Count(Generated.Count, "part")}: named {string.Join(", ", Generated.Take(12))}" +

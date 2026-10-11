@@ -27,7 +27,9 @@ public static class RefdesAssociation
     /// <see cref="ReachInBodyDiagonals"/> of the candidate's body diagonals, and within the claim's own
     /// <see cref="PartClaim.ReachDbu"/> where that is positive.
     /// </summary>
-    public static int[] Assign(IReadOnlyList<PartClaim> claims, IReadOnlyList<RefdesCandidate> candidates)
+    /// <param name="bodyReach">Limit a claim to <see cref="ReachInBodyDiagonals"/> of each candidate's diagonals; false
+    /// leaves the claim's own reach alone — a schematic picture's words reach in text heights (brief-imf-7 R-imf7-12).</param>
+    public static int[] Assign(IReadOnlyList<PartClaim> claims, IReadOnlyList<RefdesCandidate> candidates, bool bodyReach = true)
     {
         ArgumentNullException.ThrowIfNull(claims);
         ArgumentNullException.ThrowIfNull(candidates);
@@ -39,7 +41,7 @@ public static class RefdesAssociation
             for (int p = 0; p < candidates.Count; p++)
             {
                 double d = Distance(claims[c].X, claims[c].Y, candidates[p].Body);
-                double limit = ReachInBodyDiagonals * candidates[p].Diagonal;
+                double limit = bodyReach ? ReachInBodyDiagonals * candidates[p].Diagonal : double.MaxValue;
                 if (claims[c].ReachDbu > 0) limit = Math.Min(limit, claims[c].ReachDbu);
                 if (d <= limit) reach.Add((c, p, d));
             }

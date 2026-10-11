@@ -375,6 +375,11 @@ public static class SchematicImageRecognition
         control?.BeginStage("Reading words");
         var words = ImageText.Read(read, input.TextReader);
         var labels = LabelAssociation.Associate(read, symbols, words);
+        if (LabelAssociation.KindsByDesignator(symbols, labels) is { } rekinded)
+        {
+            symbols = rekinded;
+            labels = LabelAssociation.Associate(read, symbols, words);
+        }
         foreach (var line in labels.Report.Lines()) report.Add(RecognitionFindingClass.PictureWords, 1, line);
         (control?.Token ?? CancellationToken.None).ThrowIfCancellationRequested();
 

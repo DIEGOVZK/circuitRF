@@ -42,6 +42,13 @@ public sealed record TextRegion(int Id, PixelBox Box, bool Vertical, IReadOnlyLi
     /// <summary>Where it stands against a closed outline (R-imf4-2): inside a box (a pin name, the part name), or beside a
     /// triangle's lead (a pin number).</summary>
     public TextPlace Place { get; init; }
+
+    /// <summary>How far its ink was eroded, a side, pixels, before its skeleton was taken — bold type thinned to a regular
+    /// weight (R-imf7-1); 0 when it was not.</summary>
+    public double Thinned { get; init; }
+
+    /// <summary>The slant its style was sheared upright from before it was read, degrees (R-imf7-7); 0 when it was not.</summary>
+    public double Slant { get; init; }
 }
 
 /// <summary>Where a word stands against a closed outline (R-imf4-2).</summary>
@@ -195,12 +202,23 @@ internal static class TextRegions
                     splits.Add(new TextRegionSplit(sb, idx));
                 }
                 var ink = ordered.SelectMany(k => pixels[cands[k].Label]).ToList();
-                words.Add(new TextRegion(0, box, vertical, glyphs, Strokes(ink, box, width), splits)
-                {
-                    InkWidth = SchematicImageReading.RunWidth(Crop(ink, box, width)),
-                    OnWire = onWire,
-                });
+                words.Add(Region(ink, box, width, vertical, glyphs, splits) with { OnWire = onWire });
             }
+        }
+
+        // A lone letter (R-imf7-10): one glyph touching nothing, of a word's height, that reads plainly as a designator's
+        // prefix — a textbook's R beside its zig-zag. Taken before the wires are traced, which would take its stem.
+        for (int k = 0; k < cands.Count; k++)
+        {
+            var c = cands[k];
+            if (used.Contains(k) || loose.Contains(k)) continue;
+            double ch = c.Bottom - c.Top + 1;
+            if (ch < o.MinTextHeight * w * 1.5 || ch > maxH) continue;
+            var px = pixels[c.Label];
+            if (Contact(px, line, width).Places > 0 || !Clear(mask, lab.Labels, c, (int)Math.Ceiling(ch / 3)) || !LoneLetter(px, Box(c), width)) continue;
+            used.Add(k);
+            foreach (int i in px) removed.Pixels[i] = 1;
+            words.Add(Region(px, Box(c), width, false, [Box(c)], []));
         }
 
         // Reading order: top to bottom, then left to right.
@@ -364,11 +382,138 @@ internal static class TextRegions
         return crop;
     }
 
+    /// <summary>No ink but <paramref name="c"/>'s own within <paramref name="margin"/> pixels of its box: a lone letter
+    /// stands apart — a hatched stroke's ticks stand a pixel or two from the next.</summary>
+    private static bool Clear(BinaryImage mask, int[] labels, Component c, int margin)
+    {
+        for (int y = c.Top - margin; y <= c.Bottom + margin; y++)
+            for (int x = c.Left - margin; x <= c.Right + margin; x++)
+                if (mask.At(x, y) && labels[y * mask.Width + x] != c.Label) return false;
+        return true;
+    }
+
+    /// <summary>The letters a lone glyph may be a word as: the prefixes a single letter designates (R-imf7-10).</summary>
+    private const string LoneLetters = "RCLQDV";
+
+    /// <summary>
+    /// Whether <paramref name="pixels"/> are one glyph that reads plainly as one of <see cref="LoneLetters"/>, in any face:
+    /// no farther than 0.06 cap heights from it, and every character nearer than half again as far one drawn alike.
+    /// Glyph-shaped first — no narrower than 0.3 of its height, a sixth to six tenths of its box ink — so a plate, a dot
+    /// or a filled arrowhead is not asked.
+    /// </summary>
+    internal static bool LoneLetter(List<int> pixels, PixelBox box, int width)
+    {
+        double aspect = Math.Min(box.Width, box.Height) / (double)Math.Max(box.Width, box.Height);
+        double fill = pixels.Count / (double)(box.Width * box.Height);
+        if (aspect < 0.3 || fill < 0.15 || fill > 0.6) return false;
+        var strokes = Strokes(pixels, box, width).Where(p => p.Count >= 2).Select(p =>
+        {
+            var xy = new double[2 * p.Count];
+            for (int i = 0; i < p.Count; i++) (xy[2 * i], xy[2 * i + 1]) = (p[i].x, -p[i].y);
+            return new SilkStroke(xy, 1);
+        }).ToList();
+        if (strokes.Count == 0) return false;
+        if (StrokeTextReader.OneGlyph(strokes, GlyphTemplates.Typeset) is not { } g) return false;
+        if (!LoneLetters.Contains(char.ToUpperInvariant(g.Best.Char)) || g.Best.Distance > 0.06) return false;
+        return !g.Ranked.Skip(1).Any(m => char.ToUpperInvariant(m.Char) != char.ToUpperInvariant(g.Best.Char)
+                                          && !KnownWords.Confused(g.Best.Char, m.Char) && m.Distance < 1.5 * g.Best.Distance
+                                          && !char.IsLetter(m.Char));
+    }
+
+    /// <summary>The weight a word is thinned to before it is skeletonised (R-imf7-1): its stroke width over its cap
+    /// height, as a regular face sets it.</summary>
+    internal const double RegularWeight = 0.15;
+
+    /// <summary>
+    /// The word of <paramref name="pixels"/>, its skeleton taken. A word heavier than a regular face (bold, R-imf7-1) is
+    /// thinned first: its ink eroded by (weight − <see cref="RegularWeight"/>)·h/2 a side, h its cap height, so a bold
+    /// stem thins to a regular one before thinning finds its centre line — a bold stem's skeleton otherwise grows
+    /// spurs at its corners and drifts at its junctions, and an N's diagonal collapsed. Its measured
+    /// <see cref="TextRegion.InkWidth"/> is kept, and <see cref="TextRegion.Thinned"/> says by how much.
+    /// </summary>
+    internal static TextRegion Region(List<int> pixels, PixelBox box, int width, bool vertical, IReadOnlyList<PixelBox> glyphs,
+                                      IReadOnlyList<TextRegionSplit> splits)
+    {
+        var crop = Crop(pixels, box, width);
+        double ink = SchematicImageReading.RunWidth(crop);
+        var region = new TextRegion(0, box, vertical, glyphs, [], splits) { InkWidth = ink };
+        double h = CapHeight(region), weight = h > 0 ? ink / h : 0;
+        if (weight > StrokeTextReader.MaxWeight)
+            // Thinned by as much as leaves no crumb: a hairline join eroded through would read as two glyphs. Three
+            // tries, then as drawn.
+            foreach (double f in new[] { 1, 0.75, 0.5 })
+                if (ErodedStrokes(crop, f * (weight - RegularWeight) * h / 2, box, h) is { } thin)
+                    return region with { Strokes = thin, Thinned = f * (weight - RegularWeight) * h / 2 };
+        return region with { Strokes = Strokes(crop, box) };
+    }
+
+    /// <summary>A word's cap height, pixels: the median height (across the line) of its glyphs at least half as tall as
+    /// the tallest, so an <c>=</c>'s bars and a full stop do not count.</summary>
+    internal static double CapHeight(TextRegion region)
+    {
+        if (region.Glyphs.Count == 0) return 0;
+        var heights = region.Glyphs.Select(g => region.Vertical ? g.Width : g.Height).ToList();
+        int tallest = heights.Max();
+        var full = heights.Where(h => 2 * h >= tallest).Order().ToList();
+        return full[full.Count / 2];
+    }
+
+    /// <summary>How many times finer a word is eroded than it is drawn: a 3 px bold stem thinned by a pixel at its own
+    /// resolution falls apart on every curve and diagonal.</summary>
+    private const int ErodeScale = 4;
+
+    /// <summary>
+    /// The skeleton of <paramref name="crop"/> eroded by <paramref name="by"/> pixels a side, as polylines in the crop's
+    /// pixels: eroded and thinned <see cref="ErodeScale"/> times finer (nearest-neighbour), every pixel whose centre lies
+    /// within <paramref name="by"/> of the ink's edge removed (the exact distance transform). A piece eroded away entirely
+    /// — a full stop, an <c>=</c> bar — keeps its deepest pixels. Null when the erosion cuts a crumb off a piece.
+    /// </summary>
+    private static List<PathD>? ErodedStrokes(BinaryImage crop, double by, PixelBox box, double cap)
+    {
+        int k = ErodeScale, w = crop.Width * k, h = crop.Height * k;
+        var fine = new BinaryImage(w, h);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+                if (crop[x / k, y / k]) fine.Pixels[y * w + x] = 1;
+        var d2 = DistanceTransform.SquaredToBackground(fine, 1);
+        double limit = by * k + 0.5;
+        long cut = (long)Math.Ceiling(limit * limit);
+        var eroded = fine.Clone();
+        for (int i = 0; i < d2.Length; i++) if (fine.Pixels[i] != 0 && d2[i] < cut) eroded.Pixels[i] = 0;
+
+        var lab = Components.Label(fine);
+        var survived = new HashSet<int>();
+        for (int i = 0; i < eroded.Pixels.Length; i++) if (eroded.Pixels[i] != 0) survived.Add(lab.Labels[i]);
+        var deepest = new Dictionary<int, long>();
+        for (int i = 0; i < d2.Length; i++)
+            if (lab.Labels[i] > 0 && !survived.Contains(lab.Labels[i]))
+                deepest[lab.Labels[i]] = Math.Max(deepest.GetValueOrDefault(lab.Labels[i]), d2[i]);
+        for (int i = 0; i < d2.Length; i++)
+            if (lab.Labels[i] > 0 && deepest.TryGetValue(lab.Labels[i], out long d) && d2[i] >= d) eroded.Pixels[i] = 1;
+        // A split into glyph-tall pieces parts two glyphs whose ink touched (a bold A and the slash beside it) and stands;
+        // one that leaves a crumb has eroded through a hairline join inside a glyph.
+        var after = Components.Label(eroded).Components;
+        if (after.Count > lab.Components.Count && after.Any(c => c.Bottom - c.Top + 1 < 0.4 * cap * k)) return null;
+
+        int ox = box.Left - 1, oy = box.Top - 1;
+        var g = SkeletonGraph.Build(eroded, new SkeletonGraphOptions { MaxThreads = 1 });
+        var r = new List<PathD>(g.Edges.Count);
+        foreach (var e in g.Edges)
+        {
+            var p = new PathD(e.Polyline.Count);
+            foreach (var v in e.Polyline) p.Add(new PointD((v.x + 0.5) / k - 0.5 + ox, (v.y + 0.5) / k - 0.5 + oy));
+            r.Add(p);
+        }
+        return r;
+    }
+
     /// <summary>The skeleton of a word's pixels, as polylines in picture pixels.</summary>
-    internal static List<PathD> Strokes(IEnumerable<int> pixels, PixelBox box, int width)
+    internal static List<PathD> Strokes(IEnumerable<int> pixels, PixelBox box, int width) => Strokes(Crop(pixels, box, width), box);
+
+    /// <summary>The skeleton of a word's crop (<see cref="Crop"/>), as polylines in picture pixels.</summary>
+    private static List<PathD> Strokes(BinaryImage crop, PixelBox box)
     {
         int ox = box.Left - 1, oy = box.Top - 1;
-        var crop = Crop(pixels, box, width);
         var g = SkeletonGraph.Build(crop, new SkeletonGraphOptions { MaxThreads = 1 });
         var r = new List<PathD>(g.Edges.Count);
         foreach (var e in g.Edges)
@@ -380,3 +525,4 @@ internal static class TextRegions
         return r;
     }
 }
+

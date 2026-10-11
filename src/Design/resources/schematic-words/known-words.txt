@@ -1,0 +1,59 @@
+# The words a schematic picture's labels are known to say — brief-imf-7-typography.md R-imf7-2.
+#
+# A word the reader finds here ranks above any other name, and wins over a reading that differs from it only by
+# glyphs the matcher confuses (I and 1, O and 0, S and 5, B and 8, G, Q, O and D): V1N reads VIN, QNO reads GND.
+# Matched without regard to case, spaces, hyphens or underscores. One word per line; adding a word is adding a line.
+
+# Pin and net names datasheets write.
+VIN
+VOUT
+VCC
+VDD
+VEE
+VSS
+VEN
+EN
+GND
+AGND
+PGND
+NC
+IN
+OUT
+RFIN
+RFOUT
+RF In
+RF Out
+RF-IN
+RF-OUT
+PWDN
+PD
+ADJ
+FB
+SW
+BIAS
+Vs
+Vd
+VREF
+SENSE
+
+# Not fitted.
+DNP
+NF
+OPEN
+
+# Word designators (R-imf7-3), as datasheets write them.
+CIN
+COUT
+CADJ
+CBYP
+CBYPASS
+CBLOCK
+CDEC
+RBIAS
+RFB
+RLOAD
+RL
+LDRAIN
+LBIAS
+RFC
+BEAD

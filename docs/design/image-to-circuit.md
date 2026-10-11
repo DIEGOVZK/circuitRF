@@ -2054,3 +2054,185 @@ On the downloaded corpus: `picture-ds-c1`, `-h1`, `-h2` ports 1 → 2, the expec
 switch's `ON` end, not `VIN`, whose word is read joined to its small circle — IMF-7), `picture-ds-e1`/`-e2` 0 → 1 of 2
 (the supply dot, unnamed; the coax ports are IMF-8's), `picture-i` 0 → its 3 named ports, `picture-b` and `picture-f`
 3 → 2 with their rails grounded.
+
+## 23. IMF-7 — words in the type datasheets and textbooks use
+
+IMF-6 found where a circuit is driven; IMF-7 reads what its labels say. The reader is still §11's stroke-glyph matcher,
+in-house (O4): what changed is what it is shown, what it is matched against and what a reading may be.
+
+### 23.1 Bold, thinned rather than refused (R-imf7-1)
+
+A word heavier than a regular face (its stroke width over its cap height above `TextRegions.RegularWeight` = 0.15) is
+**eroded by (weight − 0.15)·h/2 a side before it is skeletonised** (`TextRegions`), so a bold stem thins to a regular
+one and a `=` reopens. The erosion is done four times finer than the picture (`ErodeScale`, nearest-neighbour, the exact
+distance transform): a 3 px bold stem thinned by a pixel at its own resolution fell apart on every curve and diagonal. An
+erosion that cuts a crumb off a piece (a hairline join eroded through) is retried lighter, three times, then the word is
+read as drawn. `TextRegion.Thinned` says by how much. The refusal stays only above `MaxBoldWeight` = 0.30 after
+thinning — where the survey shows thinning cannot recover the glyphs (Bold at 9 px caps, 3 px stems).
+
+A thinned word is **also read against the faces** (§23.8) and the better reading kept: its centre line keeps the bold
+face's wide `D` and open `4`, nearer the complex faces than the simplex font — at 2× the regulator's `D1` read `Ω1` and
+`240Ω` read `2d0Ω` against the stroke font alone.
+
+The survey (scratch harness, not a gate): each word drawn alone on a 500 × 140 picture with a wire above it, read by
+`ImageText.Read`. The twelve words of §11.5 plus `VIN`, `GND`, `RFOUT`, `1.0 µF`, `240 Ω`, `1N4002` — eighteen.
+
+| face | caps | right | wrong | unread | wrong / unread |
+|---|---|---|---|---|---|
+| DejaVu Sans | 9 | 17 | 1 | 0 | `1kΩ` → `1K1` |
+| DejaVu Sans | 14 | 18 | 0 | 0 | |
+| DejaVu Sans | 24 | 17 | 1 | 0 | `1kΩ` → nothing |
+| DejaVu Sans Bold | 9 | 3 | 0 | 15 | 14 refused as heavy (0.33), `θ=45°` |
+| DejaVu Sans Bold | 14 | 14 | 1 | 3 | `1kΩ`; unread `L=3.2mm W=0.3mm`, `RFIN`, `DNP` |
+| DejaVu Sans Bold | 24 | 11 | 4 | 3 | `1kΩ` → `t1t`, `4R7` → `D R7`, `1.0 µF` → `1.0 UF`, the line set; unread `l0pF`, `0.5 pF`, `θ=45°` |
+| Plex Sans | 9 | 11 | 6 | 1 | `IN` → `1n`, `RFIN` → `RMn`, `VIN` → `VfN`, `RFOUT` → `RFOU1`, `4R7` → `aR7`, `1kΩ` → `1k1` |
+| Plex Sans | 14 | 18 | 0 | 0 | |
+| Plex Sans | 24 | 16 | 1 | 1 | `l0pF` → `t0pF`; unread the line set |
+| Plex Sans Bold | 9 | 7 | 5 | 6 | `l0pF`, `1kΩ`, `2n2`, `C12`, `RFOUT` wrong; `IN`, `VIN` refused as heavy |
+| Plex Sans Bold | 14 | 14 | 3 | 1 | `2n2` → `Zl12`, `RFIN` → `9F 1m`, `VIN` → `V1m`; unread `1N4002` |
+| Plex Sans Bold | 24 | 15 | 1 | 2 | `l0pF` → `0 F`; unread the line set, `θ=45°` |
+
+Against §11.5 (every Bold word refused, 0 of 12 read): Bold at 14 and 24 px caps now reads 54 of 72, at a cost of 9
+wrong readings — the wrong ones are where §11.5's were (`IN`/`RFIN`/`VIN` in Plex Bold, `1kΩ` everywhere). Words in a
+picture are read with their neighbours, which a lone survey word does not have: on the style pictures a bold `VIN` is
+held right by the known-word list (§23.2) and a bold designator by the part beside it.
+
+### 23.2 The datasheet vocabulary (R-imf7-2)
+
+`KnownWords` and its list (`resources/schematic-words/known-words.txt`, one word per line: pin and net names, the
+not-fitted markers, the word designators) rank a known word above any other name (`WordReading.IsKnownWord`, rank 1 with
+the port words). A known word **wins over the reading the glyphs gave** when it differs from it only where a glyph was
+read as a character the matcher confuses with the word's (`KnownWords.Confusions`: `I 1 L l /`, `O 0 D Q G Ω o`,
+`S 5 s`, `B 8 R`, `U V u v`, `Z 2`, and the small bowls `a e s o`), each such glyph still within
+`MaxGlyphDistance` of it, at most half the word's glyphs so confused, the rest within `PortWords`' margin — `V1N` is
+`VIN`, `QNO` is `GND`, a bold `ΩUT` is `OUT`. Over a word that has a reading, only confusion stands in for a glyph's
+best: a clean `RF` is no `NF`. A word with no reading at all is searched once more with each glyph also offering its
+confusions (a bold `1AI10OV` is `1A/100V`). Matching ignores case, spaces, hyphens and underscores; a snapped word
+keeps each glyph's own case (`Cadj` stays `Cadj`).
+
+**A glyph with a dot standing clear above its stem is an `i` or a `j`, never a digit** (`StrokeTextReader.Dotted`; a
+normalised glyph's y runs up): the regulator's `Ci` read `C1` at 2×, the designator rule letting a digit stand after a
+known prefix. At 1× (9 px caps, read at 3×) the dot is fused into the stem and `Ci` still reads `C1`.
+
+### 23.3 Word designators (R-imf7-3, R-imf7-10)
+
+`ValueGrammar.WordDesignates` gives the kinds a word may designate: a lone prefix letter (`R C L Q D V`), a prefix and
+a letter or an n-expression (`Ra`, `RL`, `Cn`, `Ln-1`), a prefix and letters (`Cblock`, `Rbias`, `CIN`, `Ci`, `CADJ`,
+`Ldrain`), an inductor's function word (`RFC`, `BEAD`, `FB`). A port or supply name is none (`RF`, `RFIN`, `LO`,
+`Vcc`), and a capital prefix is required — a textbook's `v` is a quantity. Such a word is a designator **only for a part
+of a matching kind within `LabelAssociation.WordDesignatorReach` = 3 text heights**, after every ordinary designator is
+placed. The designator written is the word made legal (`LegalDesignator`: `Ln-1` → `Ln_1`) and unique (`_2`, `_3`),
+noted on the part ("read as …") and listed once in the report; the parts table keeps the word as read.
+
+A designator assigned to a part whose kind its prefix contradicts is read once more with its first glyph as the part's
+prefix, when that glyph's best is confused with it (`LabelAssociation.Respelled`): a bold `D1` read `Q1` or `O1` beside a
+diode, a serif italic `R₂` read `B2` beside a resistor. **Not in the brief:** a plain box read as a transmission line
+whose designator says R is a resistor (`LabelAssociation.KindsByDesignator`, then the labels are associated again) —
+typeset's IEC boxes are the same drawing as a TLIN's, and the designator is the only thing that tells them apart.
+
+A lone letter cut off the symbol it touched — a textbook's `C` tucked against its plates — is tried as one glyph of the
+text height from the pieces a quarter of h apart, cut from one component only (a hatched zig-zag's ticks are separate
+components, and once read as a letter). A lone letter touching nothing (`R` beside its zig-zag) is taken before the
+wires are traced, when it reads plainly as a prefix in any face: within 0.06 cap heights, every other character half
+again as far, and glyph-shaped (≥ 0.3 as wide as tall, a sixth to six tenths of its box inked).
+
+### 23.4 µ, Ω, the value block, ratings and value lists (R-imf7-4)
+
+Two value variants (`hershey-value-variants.txt`): a sans `µ` (the simplex `u` with its left stem carried down — the
+simplex µ is the Greek letter's italic shape, and a small bold sans µ read nearer a `p`), and a sans `/` (1.2 cap heights
+at 17°; against the simplex one a rating's slash read `I`). The **label block** is read on datasheet layouts: a value on
+the next line, left-aligned within ½ h or centred within ½ h, 0.3–1.2 h under (3.5 h left-aligned), or one right after it
+on its line (`LabelAssociation.Under`/`After`). A value written **with its designator** (`CIN = 1µF`, beside the drawing)
+is that part's wherever it stands (`ImageWord.For`); one for a designator no part has (`Vref = 1.25 V`) is an
+annotation. A **rating** (`1A/100V`) is a `PartNumber` word: under or after a diode's, transistor's, IC's or source's
+designator it is the part's number. **A value list** (`1.2V/1.8V/2.5V…`, three or more) and a parenthetical are
+comments. A capacitance or inductance of exactly 0 is no part's value (a textbook's `v_out` read `0Uf`).
+
+### 23.5 Annotation phrases (R-imf7-5)
+
+Words of one line, or two lines stacked, that together parse as no designator, value, known word or single name are
+joined into one `Comment` (`ImageText.JoinPhrases`). A comment goes to the nearest part within 10 h (never a ground) and
+is written into its notes ("'…' is written beside it") — never a net name. The report counts them and how many were
+attached. The rf-amp's two `DC Blocking Capacitor` notes are comments on C1 and C2 at both scales; their text reads
+poorly (`DC B1acking E8Q8C1ZOF`) — a comment is kept as read, and nothing is built from it.
+
+### 23.6 Serif feet (R-imf7-6)
+
+`StrokeTextReader.TrimSerifs` removes every terminal branch no longer than 0.15 h leaving its stroke at more than 45°,
+and carries a stem on to where its feet reached. A schematic's words are read both ways and the better kept. **Measured
+on IMF-1's serif pictures, mean glyph distance with the trim / without:** typeset 0.0385 / 0.0386, textbook-zigzag
+0.0580 / 0.0580, heavy-iec 0.0446 / 0.0446, ladder-dashed 0.2708 / 0.2708 — no reading changes. The faces (§23.8) already
+drop their feet, so a trimmed skeleton and an untrimmed one land on the same template; the trim stays for the
+bracketed serifs the corpus does not yet hold, and costs one more match per schematic word.
+
+### 23.7 Slant per style (R-imf7-7)
+
+`ImageText.Upright` groups the words into styles (cap heights within 1.3 of each other and weights within 0.05,
+chained), measures each word's lean as the shear from −10° to 30° under which its glyphs' skeletons are narrowest, and
+takes the style's glyph-weighted median and spread (1.4826 × the median deviation). A style of at least six glyphs
+leaning 8–20° with a spread under 4° is sheared upright about each word's baseline. An italic word is read three ways —
+in the stroke font as drawn, and in the faces sheared and as drawn — and the best kept: a subscript's digit leans less
+than its style and reads worse sheared. An upright picture is untouched (no style on the datasheet pictures qualifies).
+
+### 23.8 The serif and italic faces (R-imf7-8)
+
+`resources/stroke-font/hershey-roman-complex.txt` and `hershey-italic-complex.txt` — the public-domain stroke drawings
+of the same distribution as the simplex font, their licence in `LICENSE-hershey.txt` — load as further **variants** of
+each character (`GlyphTemplates.Typeset`), in the simplex frame, so a glyph's match is its best over every face and a
+word may mix them. The complex faces draw a thick stem as two or three strokes a unit apart and a serif as a short bar;
+a picture's skeleton has one centre line, so a stroke within 1.5 units of a longer one is dropped, and a level bar of at
+most 9.5 units on the cap line, x-height or baseline that meets another stroke (a foot). `λ` and `π` are not offered:
+no grammar reads either, and offered they took a bold `=` (`Z=50Ω` read `Zπ50Ω`).
+
+**The faces are offered to an italic style's words and to thinned bold words only.** Offered to every word they turned a
+sans `F` into a serif `f` — the rf-amp's `RF In` port became `Rf In` — and doubled the reading time; neither a plot's
+tick labels nor the silkscreen reader ever sees them (`GlyphTemplates.Text` and the silkscreen sets are unchanged, so
+AS-10's gates hold as they were).
+
+### 23.9 Subscripts and designator-then-value runs (R-imf7-9, R-imf7-11)
+
+`StrokeGlyphs` joins a subscript to the glyph before it in a typeset word (0.25–0.85 of its height, starting at its right
+side, its foot 0.1–0.6 of its height below the glyph's, its top well below); a whole run in the subscript's place
+(`v_out`'s `out`) joins a lone base glyph. `StrokeTextReader.ReadSubscripted` reads the base and the subscript as two
+runs, the subscript in the value class, and joins them: `R` + `1` → `R1`, `L` + `n−1` → `Ln-1`; what follows the
+subscript's end on the base line is read as a value or, for a `Q`/`D`/`U`, a part number (`R₃10kΩ`, `Q₁2N2222`). A source
+takes its value from the word after or under its designator (`V₁12V`) **as read or as its glyphs' bests spell it**: a
+volt is no passive's value, so the beam reads an italic `12V` as `12U` (12 µ), whose `V` was the glyph's best.
+
+### 23.10 Distances in h (R-imf7-12)
+
+Every association reach in `LabelAssociation` is in the picture's text height when it is known
+(`ReachInTextHeights` = 10, the reach circuitRF's own drawing needs for a label block six heights under its part — the
+assignment, not the reach, decides between neighbours); word designators 3 h. With no h, AS-10's three diagonals.
+
+### 23.11 The style pictures after IMF-7
+
+| picture | desig | values | what moved |
+|---|---|---|---|
+| ds-regulator-2x | **7/7** | **7/7** | bold read; `Ci`, `Co`, `Cadj` word designators; diodes' ratings |
+| ds-regulator-1x | 6/7 | 6/7 | as 2×, but `Ci` reads `C1` (its dot fused into its stem) |
+| ds-ldo-1x / 2x | **2/2** | **2/2** | `CIN`, `COUT` and `CIN = 1µF`; **reads exactly** |
+| ds-rf-amp-2x | 4/5 | 3/5 | pin names `VCC RFIN RFOUT GND NC` inside the box; the notes are comments; C4 reads `Cn`, C2's `100pF` loses a glyph |
+| ds-rf-amp-1x | 4/5 | 3/5 | the notes are comments; `RFIN`/`RFOUT` (6 px caps) not read |
+| typeset | **6/6** | 4/5 + V1 | every designator, `V₁12V` applied; C1's `100pF`, set across its plates, reads `10116r`; **reads exactly** |
+| textbook-zigzag | **2/2** | — | the lone `R` and the tucked `C`; **reads exactly** |
+| heavy-iec | 7/9 | — | `R₄` reads `Rd`, `Q₁` unread |
+| ladder-dashed | 4/6 | — | `L₂`, `L₃` lifted off their coils come apart into pieces |
+| low-res | 0/2 | — | the 7 px serif italic `R` refused as heavy, `C` unread |
+
+Turned on: `Ldo_1x`, `Ldo_2x`, `TypesetFigure`, `TextbookZigzag`; and the IMF-7 facts in
+`ImageDatasheetStyleTests`/`ImageWebStyleTests`. The skips left say what was measured short.
+
+**Measured short, in the DejaVu Serif Italic test face** (`ImageTextTests`, skipped stating what is read): `C_n` reads
+`C9` (the italic n subscript nearer a 9), `v_out` reads `UOUZ` (an italic v reads U, and no grammar says which),
+`R₃10kΩ` reads `R3` then `1Ω` (the italic k and 0 touch and are lost), `Q₁2N2222` reads `Q`, `2N2222` (the subscript is
+not found under the Q's tail). The style picture's own `R₃10kΩ`, in its face, reads.
+
+Gate: `ImageTextTests`, the two style classes, and the image/glyph regression set — `ImageAcceptance`, `Imaging`,
+`Recognition` (with `StrokeGlyphTests` and the AS-10 silkscreen gates), `StrokeTextRoundTrip`, the recognise CLI verb
+and the MCP image tool, 386 tests.
+
+On the downloaded corpus (`ImageFieldTests`, 26 pass), designators and values read where the picture states them:
+`ds-a1`/`-a2` 5/6, `ds-b1` 2/4 and `-b2` 3/4, `ds-d1` 2/4 (values 1/3) and `-d2` 4/4 (3/3), `ds-h1` 2/2 (0/2) and `-h2` 1/2
+(1/2), `picture-c` 5/8, `picture-b` 1/2, `picture-h` values 2/7. Reading time is over O8's 10 s on `ds-g1` (18 s) and
+`ds-g2` (12 s); where that time goes is not measured here (IMF-9's speed target).

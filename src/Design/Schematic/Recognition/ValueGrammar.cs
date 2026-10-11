@@ -24,6 +24,14 @@ public enum WordClass
     Value,
     LineParameters,
     Name,
+
+    /// <summary>A part number or a rating — <c>1N4002</c> read otherwise as a value, <c>1A/100V</c> (brief-imf-7
+    /// R-imf7-11): a diode's, a transistor's or an IC's, kept in the parts table's PartNumber column.</summary>
+    PartNumber,
+
+    /// <summary>An annotation: a phrase that is no designator, value or name — <c>DC Blocking Capacitor</c>,
+    /// <c>(Optional)</c>, a value list (R-imf7-4, R-imf7-5). Attached to the nearest part as a note, never a net name.</summary>
+    Comment,
 }
 
 /// <summary>A value: the number in base SI and every dimension it could be.</summary>
@@ -45,17 +53,28 @@ public sealed record LineParameter(string Key, double Si, UnitDimension Dimensio
 public sealed record WordReading(string Text, WordClass Class, WordValue? Value = null,
                                  IReadOnlyList<LineParameter>? Parameters = null, bool IsPortWord = false)
 {
+    /// <summary>A word of <see cref="KnownWords"/>' list (R-imf7-2).</summary>
+    public bool IsKnownWord { get; init; }
+
+    /// <summary>The kinds of symbol this name may designate — a word designator (<c>Cblock</c>, <c>RFC</c>, R-imf7-3) or
+    /// the designator a textbook writes (<c>R</c>, <c>RL</c>, <c>Ln-1</c>, R-imf7-10) — taken only by a symbol of one
+    /// of them standing beside it (LabelAssociation); empty for any other word.</summary>
+    public IReadOnlyList<ImageSymbolKind> Designates { get; init; } = [];
+
     /// <summary>How sure a class is, best first, for choosing among a word's readings within the margin: a designator,
-    /// then a port word, a value, a line set, and any other name last — a name is what nearly any letters spell, so it
-    /// is the reading of last resort.</summary>
+    /// then a port word or a known word, a value, a line set, a part number, and any other name last — a name is what
+    /// nearly any letters spell, so it is the reading of last resort; a comment is what a line says when none of its
+    /// words is anything else.</summary>
     public int Rank => Class switch
     {
         WordClass.Designator => 0,
-        WordClass.Name when IsPortWord => 1,
+        WordClass.Name when IsPortWord || IsKnownWord => 1,
         WordClass.Value => 2,
         WordClass.LineParameters => 3,
-        WordClass.Name => 4,
-        _ => 5,
+        WordClass.PartNumber => 4,
+        WordClass.Name => 5,
+        WordClass.Comment => 6,
+        _ => 7,
     };
 }
 
@@ -69,8 +88,18 @@ public static class ValueGrammar
                                                   RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
     private static readonly Regex Number = new(@"^[+-]?(\d+(\.\d*)?|\.\d+)$", RegexOptions.CultureInvariant);
 
-    /// <summary>The word's one reading under the grammar, or null: a designator, a value, a line set or a name, in
-    /// that order where a string is more than one.</summary>
+    /// <summary>A part's rating as datasheets print it under a diode: a value and its unit, a slash, another
+    /// (<c>1A/100V</c>, <c>0.5W/50V</c>). Three or more is a value list, a comment (R-imf7-4).</summary>
+    private static readonly Regex RatingShape = new(@"^\d+(\.\d+)?[mkuµ]?(A|V|W|Ω|Hz)/\d+(\.\d+)?[mkuµ]?(A|V|W|Ω|Hz)$", RegexOptions.CultureInvariant);
+
+    /// <summary>A value list (<c>1.2V/1.8V/2.5V</c>): three or more numbers with units, slash-separated.</summary>
+    private static readonly Regex ValueListShape = new(@"^\d+(\.\d+)?[A-Za-zΩµ]{0,2}(/\d+(\.\d+)?[A-Za-zΩµ]{0,2}){2,}[/.…]*$", RegexOptions.CultureInvariant);
+
+    /// <summary>A parenthetical: a note in brackets — <c>(optional)</c>, <c>(approx 50MHz)</c>.</summary>
+    private static readonly Regex ParentheticalShape = new(@"^\(.*\)$", RegexOptions.CultureInvariant);
+
+    /// <summary>The word's one reading under the grammar, or null: a designator, a value, a line set, a part rating, a
+    /// name, or a comment (a parenthetical, a value list), in that order where a string is more than one.</summary>
     public static WordReading? Parse(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
@@ -80,9 +109,60 @@ public static class ValueGrammar
         if (ReadValue(t) is { } v) return new WordReading(t, WordClass.Value, v);
         if (ReadLineParameters(t) is { } ps) return new WordReading(t, WordClass.LineParameters, Parameters: ps);
         if (ReadNamedValue(t) is { } nv) return new WordReading(t, WordClass.Value, nv);
-        if (NameShape.IsMatch(t)) return new WordReading(t, WordClass.Name, IsPortWord: port);
+        if (RatingShape.IsMatch(t)) return new WordReading(t, WordClass.PartNumber);
+        if (NameShape.IsMatch(t))
+            return new WordReading(t, WordClass.Name, IsPortWord: port)
+            {
+                IsKnownWord = KnownWords.IsKnown(t), Designates = WordDesignates(t),
+            };
+        if (t.Length == 1 && WordDesignates(t) is { Count: > 0 } one) return new WordReading(t, WordClass.Name) { Designates = one };
+        if (ValueListShape.IsMatch(t) || ParentheticalShape.IsMatch(t) && t.Length >= 4) return new WordReading(t, WordClass.Comment);
         return null;
     }
+
+    // ── word designators (R-imf7-3, R-imf7-10) ───────────────────────────────────────────────────────────────────
+
+    /// <summary>The prefix letter a designator of each kind starts with, where a single letter says it.</summary>
+    private static readonly (char Prefix, ImageSymbolKind Kind)[] Prefixes =
+    [
+        ('R', ImageSymbolKind.Resistor), ('C', ImageSymbolKind.Capacitor), ('L', ImageSymbolKind.Inductor),
+        ('Q', ImageSymbolKind.Transistor), ('D', ImageSymbolKind.Diode), ('V', ImageSymbolKind.Source),
+    ];
+
+    /// <summary>The function abbreviations an inductor is designated by: an RF choke, a ferrite bead.</summary>
+    private static readonly string[] InductorWords = ["RFC", "BEAD", "FB"];
+
+    /// <summary>
+    /// The kinds <paramref name="text"/> may designate as a word (brief-imf-7 R-imf7-3, R-imf7-10): a lone prefix letter
+    /// (<c>R</c>, <c>C</c>, <c>L</c>, <c>Q</c>, <c>D</c>, <c>V</c>); a prefix and a letter or an n-expression subscript
+    /// (<c>Ra</c>, <c>RL</c>, <c>Cn</c>, <c>Ln-1</c>); a prefix and letters as datasheets write them (<c>Cblock</c>,
+    /// <c>Rbias</c>, <c>CIN</c>, <c>COUT</c>, <c>Ci</c>, <c>CADJ</c>, <c>Ldrain</c>); an inductor's function
+    /// abbreviation (<c>RFC</c>, <c>BEAD</c>, <c>FB</c>). A port's or a supply's name is none of these (<c>RF</c>,
+    /// <c>RFIN</c>, <c>LO</c>, <c>Vcc</c> name nets), and a capital prefix is required — a textbook's lower-case
+    /// <c>v</c> is a quantity. Empty for anything else: an ordinary name.
+    /// </summary>
+    public static IReadOnlyList<ImageSymbolKind> WordDesignates(string text)
+    {
+        string t = text.Trim();
+        if (t.Length == 0) return [];
+        string upper = t.ToUpperInvariant();
+        if (InductorWords.Contains(upper)) return [ImageSymbolKind.Inductor];
+        if (PortWords.Normal(t) is var n && (PortShape.IsMatch(t) || PortWords.IsInput(n) || PortWords.IsOutput(n)
+                                            || n is "RF" or "DC" or "LO" or "IF" or "ANT" or "RFDC" or "GND" or "NC")) return [];
+        int k = Array.FindIndex(Prefixes, p => p.Prefix == t[0]);
+        if (k < 0) return [];
+        if (Prefixes[k].Kind == ImageSymbolKind.Source && PortWords.IsSupply(t) && t.Length > 1) return [];
+        string rest = t[1..];
+        bool ok = rest.Length == 0
+                  || Regex.IsMatch(rest, "^[A-Za-z]{1,10}$", RegexOptions.CultureInvariant)
+                  || Regex.IsMatch(rest, @"^[A-Za-z][+-][0-9]$", RegexOptions.CultureInvariant);
+        return ok ? [Prefixes[k].Kind] : [];
+    }
+
+    /// <summary>A designator as a schematic may write it: <paramref name="read"/> with every character no instance name
+    /// takes made an underscore (<c>Ln-1</c> → <c>Ln_1</c>, R-imf7-10).</summary>
+    public static string LegalDesignator(string read) =>
+        new([.. read.Trim().Select(c => char.IsAsciiLetterOrDigit(c) || c == '_' ? c : '_')]);
 
     /// <summary>Whether a designator's letters are a prefix designators are known to be written with (AS-10's list).</summary>
     public static bool KnownPrefix(string designator) =>

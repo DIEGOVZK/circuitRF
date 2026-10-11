@@ -94,6 +94,18 @@
                       LogicalName="CircuitRF.Design.SilkscreenGlyphs.hershey-value-variants.txt" />
   </ItemGroup>
 
+  <!-- brief-imf-7 R-imf7-8: the serif face and its italic, from the same distribution as the stroke font — variants a
+       schematic picture's words are matched against, never drawn and never read by the silkscreen reader. The word
+       list (R-imf7-2) is the names datasheets write, one per line. -->
+  <ItemGroup>
+    <EmbeddedResource Include="resources\stroke-font\hershey-roman-complex.txt"
+                      LogicalName="CircuitRF.Design.StrokeFont.hershey-roman-complex.txt" />
+    <EmbeddedResource Include="resources\stroke-font\hershey-italic-complex.txt"
+                      LogicalName="CircuitRF.Design.StrokeFont.hershey-italic-complex.txt" />
+    <EmbeddedResource Include="resources\schematic-words\known-words.txt"
+                      LogicalName="CircuitRF.Design.SchematicWords.known-words.txt" />
+  </ItemGroup>
+
   <!-- brief-img-8 R-im8-2: the drawings other conventions use for a schematic symbol, one stroke file each, read by
        SymbolTemplates under the prefix below. Adding a drawing is adding a file: the glob takes it. -->
   <ItemGroup>

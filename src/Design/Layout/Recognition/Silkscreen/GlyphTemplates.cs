@@ -8,6 +8,12 @@
 //   - TAUGHT: glyphs a user corrected in the parts table and asked to learn, kept in the per-user state directory
 //     (silkscreen-glyphs/taught.json) and used on every later run. Nothing is written to a workspace.
 //
+// And FACES (brief-imf-7-typography.md R-imf7-8): the serif and italic sets of the same distribution, offered as further
+// variants of every character by Typeset alone — the words of a schematic picture's italic style. Text and the
+// silkscreen sets never hold them, so neither a plot's tick labels, a board's designators nor an upright picture's words
+// can read differently for their being there (offered to every word, they turned a sans F into an italic f and doubled
+// the reading time).
+//
 // And two CLASSES (brief-img-9-text-and-values.md R-im9-2). DESIGNATOR glyphs are all the silkscreen reader ever
 // consults — BuiltIn and ForUser hold nothing else, so AS-10's measured behaviour cannot move. VALUE glyphs — the
 // font's lower case and . / = ° µ Ω ( ) , plus a θ built from its strokes — are added only by ForText, which reads a
@@ -82,11 +88,21 @@ public sealed class GlyphTemplates
 
     private static readonly Lazy<GlyphTemplates> TextSet = new(() => BuiltIn.With(LoadValueGlyphs()));
 
-    /// <summary>The built-in designator AND value glyphs — what a schematic picture's words are read against.</summary>
+    /// <summary>The built-in designator AND value glyphs, in the stroke font alone — what a plot's words are read against.</summary>
     public static GlyphTemplates Text => TextSet.Value;
 
     /// <summary><see cref="Text"/> and everything this user has taught, of both classes.</summary>
     public static GlyphTemplates ForUserText() => Text.With(ReadTaught(UserStateDirectory.SubDir(TaughtFolder)));
+
+    private static readonly Lazy<GlyphTemplates> TypesetSet = new(() => Text.With(LoadFaces()));
+
+    /// <summary><see cref="Text"/> and the serif and italic faces' glyphs as further variants of each character
+    /// (brief-imf-7 R-imf7-8) — what a schematic picture's italic style is read against (ImageText). A glyph's match is
+    /// its best over every face (<see cref="Match"/> keeps each character's nearest template), so a word may mix them.</summary>
+    public static GlyphTemplates Typeset => TypesetSet.Value;
+
+    /// <summary><see cref="Typeset"/> and everything this user has taught, of both classes.</summary>
+    public static GlyphTemplates ForUserTypeset() => Typeset.With(ReadTaught(UserStateDirectory.SubDir(TaughtFolder)));
 
     /// <summary>This set with <paramref name="more"/> added.</summary>
     public GlyphTemplates With(IEnumerable<GlyphTemplate> more)
@@ -166,6 +182,109 @@ public sealed class GlyphTemplates
             templates.Add(new GlyphTemplate((char)g.CodePoint, Normalised(g.Strokes), ValueVariantSource, GlyphClass.Value));
         return templates;
     }
+
+    /// <summary>The faces (R-imf7-8): each character a designator glyph where a designator writes it and a value glyph
+    /// otherwise, as the stroke font's own are classed. Every face is drawn in the stroke font's frame — cap line −12,
+    /// baseline 9 — so a glyph is normalised the same whichever face drew it.</summary>
+    private static IEnumerable<GlyphTemplate> LoadFaces()
+    {
+        foreach (var (resource, source, upright) in Faces)
+            foreach (var g in StrokeFont.ReadGlyphs(resource))
+            {
+                char ch = (char)g.CodePoint;
+                // λ and π are drawn in the file but no grammar reads either, and offered they took a bold = (Z=50Ω read
+                // Zπ50Ω): a character that can only be a misreading is not a template.
+                if (NotOffered.Contains(ch)) continue;
+                var cls = DesignatorCharacters.Contains(ch) ? GlyphClass.Designator : GlyphClass.Value;
+                var strokes = CentreLines(g.Strokes);
+                yield return new GlyphTemplate(ch, Normalised(strokes), source, cls);
+                if (upright) yield return new GlyphTemplate(ch, Normalised(Upright(strokes)), source + "-upright", cls);
+            }
+    }
+
+    private const string NotOffered = "λπ";
+
+    /// <summary>The italic face's lean, degrees: its I's stem runs 6 units right over the 21 of its cap height.</summary>
+    private const double ItalicLean = 15.9;
+
+    /// <summary>
+    /// An italic glyph set upright — sheared back by the face's lean about the baseline. A schematic picture's italic style
+    /// is sheared upright before it is read (ImageText, R-imf7-7); its letterforms stay italic (a flagged 1, a curled t),
+    /// and these are what they are matched against.
+    /// </summary>
+    private static IReadOnlyList<double[]> Upright(IReadOnlyList<double[]> strokes)
+    {
+        double k = Math.Tan(ItalicLean * Math.PI / 180);
+        return [.. strokes.Select(st =>
+        {
+            var n = (double[])st.Clone();
+            for (int i = 0; i + 1 < n.Length; i += 2) n[i] -= (FontBaseline - n[i + 1]) * k;
+            return n;
+        })];
+    }
+
+    /// <summary>
+    /// A face glyph as a picture's skeleton draws it. The complex faces draw a thick stem as two or three strokes a unit
+    /// apart and a serif as a short bar across a stem's end; a typeset word's skeleton has one centre line, and its
+    /// serif spurs are trimmed before it is matched (ImageText, R-imf7-6). Kept as drawn, both cost a template more
+    /// than its letterform gains it — measured on DejaVu Serif, the faces fitted worse than the simplex font did. So
+    /// a stroke lying within 1.5 font units of a longer one is dropped, and so is a level bar no longer than 9.5 units
+    /// (0.45 of the cap height) on the cap line, the x-height or the baseline that meets another stroke — a foot.
+    /// </summary>
+    private static IReadOnlyList<double[]> CentreLines(IReadOnlyList<double[]> strokes)
+    {
+        if (strokes.Count < 2) return strokes;
+        var order = Enumerable.Range(0, strokes.Count).OrderByDescending(i => Length(strokes[i])).ToList();
+        var kept = new List<double[]>();
+        foreach (int i in order)
+        {
+            var st = strokes[i];
+            if (kept.Count > 0 && Along(st, 1).All(p => kept.Any(k => Near(k, p.X, p.Y, 1.5)))) continue;
+            kept.Add(st);
+        }
+        bool Foot(double[] st)
+        {
+            if (st.Length != 4 || Math.Abs(st[1] - st[3]) > 0.5 || Math.Abs(st[0] - st[2]) > 9.5) return false;
+            if (!new[] { -12.0, -5.0, 9.0 }.Any(y => Math.Abs(st[1] - y) <= 0.5)) return false;
+            return kept.Any(k => !ReferenceEquals(k, st) && Along(st, 1).Any(p => Near(k, p.X, p.Y, 1.5)));
+        }
+        var result = kept.Where(st => !Foot(st)).ToList();
+        return result.Count > 0 ? [.. strokes.Where(result.Contains)] : strokes;
+    }
+
+    private static double Length(double[] st)
+    {
+        double l = 0;
+        for (int i = 2; i + 1 < st.Length; i += 2) l += Math.Sqrt(Math.Pow(st[i] - st[i - 2], 2) + Math.Pow(st[i + 1] - st[i - 1], 2));
+        return l;
+    }
+
+    /// <summary>Points every <paramref name="step"/> units along a stroke, its ends included.</summary>
+    private static IEnumerable<(double X, double Y)> Along(double[] st, double step)
+    {
+        if (st.Length < 4) { if (st.Length >= 2) yield return (st[0], st[1]); yield break; }
+        for (int i = 0; i + 3 < st.Length; i += 2)
+        {
+            double dx = st[i + 2] - st[i], dy = st[i + 3] - st[i + 1], len = Math.Sqrt(dx * dx + dy * dy);
+            int n = Math.Max(1, (int)Math.Ceiling(len / step));
+            for (int k = 0; k < n; k++) yield return (st[i] + dx * k / n, st[i + 1] + dy * k / n);
+        }
+        yield return (st[^2], st[^1]);
+    }
+
+    private static bool Near(double[] st, double x, double y, double reach)
+    {
+        if (st.Length < 4) return st.Length >= 2 && Math.Pow(st[0] - x, 2) + Math.Pow(st[1] - y, 2) <= reach * reach;
+        for (int i = 0; i + 3 < st.Length; i += 2)
+            if (Glyph.SegmentDistance2(x, y, st[i], st[i + 1], st[i + 2], st[i + 3]) <= reach * reach) return true;
+        return false;
+    }
+
+    private static readonly (string Resource, string Source, bool Upright)[] Faces =
+    [
+        ("CircuitRF.Design.StrokeFont.hershey-roman-complex.txt", "hershey-roman-complex", false),
+        ("CircuitRF.Design.StrokeFont.hershey-italic-complex.txt", "hershey-italic-complex", false),
+    ];
 
     private static IEnumerable<double> Xs(double[] s) { for (int i = 0; i < s.Length; i += 2) yield return s[i]; }
 

@@ -235,8 +235,11 @@ internal sealed record FieldScore
     /// <summary>A value is right when it reads as the same number, or — a part number — as the same text.</summary>
     private static bool SameValue(string want, ImageWord word)
     {
-        if (ValueGrammar.ReadValue(want) is { } w && word.Reading?.Value is { } g)
-            return Math.Abs(w.Si - g.Si) <= 1e-6 * Math.Abs(w.Si);
+        // A bare number (a resistor's 240) is a value in its part's base unit, which the grammar reads only with one.
+        double? si = ValueGrammar.ReadValue(want)?.Si
+                     ?? (double.TryParse(want, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double n) ? n : null);
+        if (si is { } w && word.Reading?.Value is { } g)
+            return Math.Abs(w - g.Si) <= 1e-6 * Math.Abs(w);
         return string.Equals(want.Replace(" ", ""), word.Text.Replace(" ", ""), StringComparison.OrdinalIgnoreCase);
     }
 }

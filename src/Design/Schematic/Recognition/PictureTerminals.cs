@@ -102,7 +102,8 @@ public static class PictureTerminals
             var line = Line(word);
             if (line.Count > 1 && PortWords.Snap(line) is { } whole) return (whole, line);
             if (PortWords.Snap([word]) is { } one) return (one, [word]);
-            return word.Reading is { Class: WordClass.Name } r ? (r.Text, [word]) : null;
+            // A part's word designator (Cblock, a lone R) is no port's name (R-imf7-3, R-imf7-10).
+            return word.Reading is { Class: WordClass.Name, Designates.Count: 0 } r && r.Text.Length >= 2 ? (r.Text, [word]) : null;
         }
 
         var claims = new List<(double Gap, NodeName Name)>();

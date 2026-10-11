@@ -24,6 +24,9 @@ What the files hold:
     character (U+0020 to U+007E), and four glyphs beyond it — the Omega (Hershey 550) and the mu
     (Hershey 638, standing for the micro sign) of the simplex Greek set, the simplex degree mark
     (Hershey 718), and the plus-minus of the simplex mathematical symbols.
+  - hershey-roman-complex.txt and hershey-italic-complex.txt: the Roman Complex (serif) and Italic Complex
+    sets of the distribution for the letters, digits and - _ + . / = ( ) , and, in the Roman Complex file,
+    the Complex Greek set's Omega, mu, lambda and pi and the mathematical set's plus-minus.
   - ../silkscreen-glyphs/hershey-variants.txt: three further glyphs (two 1s and a 3) assembled from the
     strokes of the Hershey Roman Simplex glyphs and the Hershey serif Roman face, covered by this
     licence in the same way.
@@ -35,3 +38,6 @@ How circuitRF uses them:
     supplies the matching templates Create Schematic from Artwork reads stroked silkscreen
     designators against.
   - hershey-variants.txt holds matching templates only: nothing is drawn with those three glyphs.
+  - hershey-roman-complex.txt and hershey-italic-complex.txt are matching templates only, for reading the
+    words of a pasted schematic picture set in a serif or italic face: nothing is drawn with them, and the
+    silkscreen reader never consults them.

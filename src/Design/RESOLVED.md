@@ -19444,3 +19444,32 @@ no known kind as a 0 Ω `?n` (owner decision O3). Design note §22. Traps worth 
   terminal first.
 - **`VIN` starts with V.** The emit's supply-name rule (a `V…` word names a supply) took every input and output name
   for a supply; it now excludes the port vocabulary's inputs and outputs (`PortWords.IsSupply`).
+
+## Words in the type datasheets and textbooks use (2026-10-11, brief-imf-7)
+
+Bold thinned instead of refused, a known-word list, word and single-letter designators, the serif and italic stroke
+faces, subscripts and designator-then-value runs, annotations as comments. Design note §23 (the bold survey is §23.1).
+Traps worth keeping:
+
+- **The faces cannot be offered to every word.** Read against the serif and italic complex faces, a sans `F` matched
+  the serif `f` best — the rf-amp's `RF In` port came out `Rf In` — and every word took twice as long. They are offered
+  to an italic style's words and to bold words that were thinned, and nothing else; the silkscreen sets never hold them.
+- **…but a thinned bold word needs them.** Restricting the faces to italic styles alone lost the 2× regulator's `D1`
+  (read `Ω1` against the simplex font's wide Ω variant) and its `240Ω` (`2d0Ω`): a thinned bold centre line is nearer the
+  complex faces' letterforms than the simplex font's.
+- **A dangling `else` after a `foreach` binds to the `if` inside it.** `if (a) foreach (…) if (b) x; else y;` attached
+  the `else` to the inner `if`, so the bold branch never ran and the change looked like it measured nothing. Braces.
+- **A normalised glyph's y runs UP.** Pixel boxes run down; `Glyph.Strokes` are font-normalised with the cap line
+  positive. The first dot-over-stem test looked for the dot at the lowest y and found none.
+- **A tittle is evidence the matcher throws away.** A designator's digit may stand where a letter fits better after a
+  known prefix (AS-10's rule for a silkscreen `l`/`1`), so `Ci` read `C1` though its `i` matched best. A stem with a dot
+  clear above it is never a digit. At 1× the dot fuses into the stem and the evidence is gone.
+- **A source's volt is not a value.** The value grammar reads R, L and C units, so an italic `12V` had no reading and
+  the beam settled on `12U` (12 µ, dimensionless) — while each glyph's best spelled `12V`. The source's value is taken
+  from the word as read or as its glyphs' bests spell it.
+- **The scorer compared a bare number as a string.** An answer's `240` (a resistor's ohms) failed against `240Ω`
+  because `ReadValue` reads a number only with a unit; `FieldScore.SameValue` takes a bare number in the part's base
+  unit.
+- **The serif-foot trim changes nothing measurable on the corpus** (mean glyph distance 0.0385 vs 0.0386 on typeset,
+  identical elsewhere): the complex faces' templates already have their feet dropped. Kept for bracketed serifs the
+  corpus does not hold; it costs one more match per schematic word.
