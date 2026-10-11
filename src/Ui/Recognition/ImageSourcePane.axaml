@@ -14,12 +14,12 @@
                 <Image x:Name="Thumbnail" Stretch="Uniform"/>
             </Border>
             <StackPanel Margin="0,0,10,0" VerticalAlignment="Center" MinWidth="140" MaxWidth="260">
-                <TextBlock Text="{Binding SourceName}" FontWeight="SemiBold" FontSize="12" TextTrimming="CharacterEllipsis"
-                           ToolTip.Tip="{Binding SourceName}"/>
-                <TextBlock Text="{Binding SizeText}" FontSize="11" Opacity="0.7"/>
+                <SelectableTextBlock Text="{Binding SourceName}" FontWeight="SemiBold" FontSize="12" TextTrimming="CharacterEllipsis"
+                                     ToolTip.Tip="{Binding SourceName}"/>
+                <SelectableTextBlock Text="{Binding SizeText}" FontSize="11" Opacity="0.7"/>
             </StackPanel>
             <Button Content="Replace…" Command="{Binding BrowseCommand}" Margin="0,0,6,0"
-                    ToolTip.Tip="Read another picture instead. Dropping one on the dialog does the same."/>
+                    ToolTip.Tip="Read another picture instead of this one."/>
             <Button Content="Paste" Command="{Binding PasteCommand}" Margin="0,0,24,0"
                     ToolTip.Tip="Read the picture on the clipboard instead (Cmd/Ctrl+V)."/>
 
@@ -104,14 +104,14 @@
             <TextBlock Classes="label" Text="Scale" Margin="0,0,6,0"/>
             <Border Classes="slot" Classes.wants="{Binding Scale.NeedsScale}">
                 <StackPanel Classes="row" Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="{Binding Scale.ValueText}" FontWeight="SemiBold" FontSize="12" MinWidth="70"
-                               VerticalAlignment="Center" ToolTip.Tip="How long one pixel of the picture is."/>
+                    <SelectableTextBlock Text="{Binding Scale.ValueText}" FontWeight="SemiBold" FontSize="12" MinWidth="70"
+                                         VerticalAlignment="Center" ToolTip.Tip="How long one pixel of the picture is."/>
                     <ComboBox ItemsSource="{Binding Scale.Choices}" SelectedItem="{Binding Scale.SelectedChoice}" MinWidth="250"
                               PlaceholderText="Choose the evidence…"
                               ToolTip.Tip="What the scale is taken from. Two points…: click two points and type the distance between them. Line impedance…: click a trace and type its Z0."/>
-                    <TextBlock Text="{Binding Scale.ResolutionLine}" FontSize="11" Opacity="0.75" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding Scale.Error}" Classes="error" MaxWidth="420"
-                               IsVisible="{Binding Scale.Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <SelectableTextBlock Text="{Binding Scale.ResolutionLine}" FontSize="11" Opacity="0.75" VerticalAlignment="Center"/>
+                    <SelectableTextBlock Text="{Binding Scale.Error}" Classes="error" MaxWidth="420"
+                                         IsVisible="{Binding Scale.Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                 </StackPanel>
             </Border>
         </WrapPanel>

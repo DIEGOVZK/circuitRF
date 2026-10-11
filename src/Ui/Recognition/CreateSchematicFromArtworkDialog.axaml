@@ -58,7 +58,7 @@
                                           PlaceholderText="Choose…"
                                           ToolTip.Tip="The file does not say which point of each part its coordinates are; it is not guessed."/>
                             </StackPanel>
-                            <TextBlock Text="{Binding CompanionError}" Classes="error"/>
+                            <SelectableTextBlock Text="{Binding CompanionError}" Classes="error"/>
                         </WrapPanel>
                     </StackPanel>
                 </DataTemplate>
@@ -89,10 +89,10 @@
         <!-- ── Status, progress, and an offer ────────────────────────────────────────────── -->
         <StackPanel Grid.Row="5" Classes="row" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
             <ProgressBar IsIndeterminate="True" Width="90" Height="6" MinWidth="0" IsVisible="{Binding IsRecognising}"/>
-            <TextBlock Text="{Binding ProgressText}" FontSize="11" Opacity="0.8" IsVisible="{Binding IsRecognising}"/>
-            <TextBlock Text="{Binding Status}" FontSize="12" TextWrapping="Wrap" MaxWidth="980"/>
+            <SelectableTextBlock Text="{Binding ProgressText}" FontSize="11" Opacity="0.8" IsVisible="{Binding IsRecognising}"/>
+            <SelectableTextBlock Text="{Binding Status}" FontSize="12" TextWrapping="Wrap" MaxWidth="980"/>
             <StackPanel Classes="row" Orientation="Horizontal" Spacing="4" IsVisible="{Binding HasOffer}">
-                <TextBlock Text="{Binding OfferText}" FontSize="12"/>
+                <SelectableTextBlock Text="{Binding OfferText}" FontSize="12"/>
                 <Button Classes="link" Content="Apply" Command="{Binding AcceptOfferCommand}" FontSize="12"/>
                 <Button Classes="link" Content="Dismiss" Command="{Binding DeclineOfferCommand}" FontSize="12"/>
             </StackPanel>

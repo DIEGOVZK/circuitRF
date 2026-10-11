@@ -47,7 +47,7 @@
             <ComboBox ItemsSource="{x:Static rec:RecognitionSessionViewModel.GroundOptions}"
                       SelectedIndex="{Binding GroundIndex}" MinWidth="130" Margin="0,0,6,0"
                       ToolTip.Tip="Auto reads the largest copper on the stackup's reference conductor as ground. Pick on layout: click the copper that is ground."/>
-            <TextBlock Text="{Binding GroundPointText}" FontSize="11" Margin="0,0,6,0"/>
+            <SelectableTextBlock Text="{Binding GroundPointText}" FontSize="11" Margin="0,0,6,0"/>
             <Button Content="Pick…" Command="{Binding PickGroundCommand}" Margin="0,0,16,0"
                     ToolTip.Tip="Click the ground copper. Escape cancels."/>
 

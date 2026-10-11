@@ -54,7 +54,7 @@
             <Setter Property="MinHeight" Value="30"/>
             <Setter Property="Padding" Value="8,0"/>
         </Style>
-        <Style Selector="Grid.layers > TextBlock">
+        <Style Selector="Grid.layers > TextBlock, Grid.layers > SelectableTextBlock">
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="FontSize" Value="12"/>
         </Style>
@@ -140,7 +140,8 @@
                     <Border Classes="pill" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="600" Padding="14,10"
                             IsVisible="{Binding HasFailure}">
                         <StackPanel Spacing="8">
-                            <TextBlock Text="{Binding FailureText}" TextWrapping="Wrap" FontSize="13" TextAlignment="Center"/>
+                            <SelectableTextBlock Text="{Binding FailureText}" TextWrapping="Wrap" FontSize="13" TextAlignment="Center"
+                                                 HorizontalAlignment="Center"/>
                             <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center"
                                         IsVisible="{Binding FailureOffersKind}">
                                 <Button Classes="link" Content="Read it as a schematic" Command="{Binding ReadAsSchematicCommand}"
@@ -172,8 +173,8 @@
                                              Classes.invalid="{Binding Scale.DistanceError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                     <Button Content="Set" Command="{Binding Scale.ApplyDistanceCommand}"/>
                                 </StackPanel>
-                                <TextBlock Text="{Binding Scale.DistanceError}" Classes="error" MaxWidth="300"
-                                           IsVisible="{Binding Scale.DistanceError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                <SelectableTextBlock Text="{Binding Scale.DistanceError}" Classes="error" MaxWidth="300"
+                                                     IsVisible="{Binding Scale.DistanceError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                             </StackPanel>
                         </Border>
                         <!-- Board corners… (IM-13): the rectangle's size, typed with units, beside the bottom-right handle. -->
@@ -189,8 +190,8 @@
                                             IsVisible="{Binding Scale.HasCorners}"
                                             ToolTip.Tip="Forget the corners and read the photo as it was taken."/>
                                 </StackPanel>
-                                <TextBlock Text="{Binding Scale.SizeError}" Classes="error" MaxWidth="320" TextWrapping="Wrap"
-                                           IsVisible="{Binding Scale.SizeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                <SelectableTextBlock Text="{Binding Scale.SizeError}" Classes="error" MaxWidth="320" TextWrapping="Wrap"
+                                                     IsVisible="{Binding Scale.SizeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                             </StackPanel>
                         </Border>
                         <Border x:Name="Z0Box" Classes="pill" IsVisible="{Binding Scale.AskingZ0}" Padding="8,6">
@@ -201,8 +202,8 @@
                                              Classes.invalid="{Binding Scale.Z0Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                     <Button Content="Set" Command="{Binding Scale.ApplyZ0Command}"/>
                                 </StackPanel>
-                                <TextBlock Text="{Binding Scale.Z0Error}" Classes="error" MaxWidth="300"
-                                           IsVisible="{Binding Scale.Z0Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                <SelectableTextBlock Text="{Binding Scale.Z0Error}" Classes="error" MaxWidth="300"
+                                                     IsVisible="{Binding Scale.Z0Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                             </StackPanel>
                         </Border>
                     </Canvas>
@@ -243,7 +244,7 @@
                                           PointerEntered="OnLayerEnter" PointerExited="OnLayerExit" ToolTip.Tip="{Binding Tip}">
                                         <Border Grid.Column="0" Width="16" Height="16" CornerRadius="2" Background="{Binding Swatch}"
                                                 BorderBrush="#80808080" BorderThickness="1" VerticalAlignment="Center"/>
-                                        <TextBlock Grid.Column="1" Text="{Binding ShareText}" Opacity="0.75" HorizontalAlignment="Right" Margin="0,0,8,0"/>
+                                        <SelectableTextBlock Grid.Column="1" Text="{Binding ShareText}" Opacity="0.75" HorizontalAlignment="Right" Margin="0,0,8,0"/>
                                         <ComboBox Grid.Column="2" ItemsSource="{Binding Options}" SelectedItem="{Binding LayerText}"
                                                   HorizontalAlignment="Stretch" Height="26" MinHeight="0" FontSize="12" Padding="6,0,0,0"
                                                   VerticalContentAlignment="Center"/>
@@ -257,9 +258,10 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Advanced (R-im5-7): collapsed, remembered per user. -->
+                <!-- Advanced (R-im5-7): collapsed, remembered per user. Layout and schematic options only, so not in plot mode,
+                     where the plot panel below has the whole column (R-ptu1-1). -->
                 <Expander Grid.Row="1" Classes="compact" Header="Advanced" IsExpanded="{Binding AdvancedExpanded}"
-                          HorizontalAlignment="Stretch" IsVisible="{Binding HasPicture}">
+                          HorizontalAlignment="Stretch" IsVisible="{Binding IsDrawingPicture}">
                     <StackPanel Spacing="8">
                         <Grid Classes="advanced" ColumnDefinitions="Auto,Auto,16,Auto,Auto" RowDefinitions="Auto,Auto,Auto,Auto"
                               RowSpacing="6" ColumnSpacing="6" IsVisible="{Binding IsLayoutPicture}">

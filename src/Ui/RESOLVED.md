@@ -39345,3 +39345,24 @@ drag-follow path (`SchematicViewModel`), both now covered by `IProbeDragKeepsBot
   touch exactly the stationary taps the plain follow touched, else the plain follow stands.
 - **A pin on a wire's CORNER is neither an endpoint nor a segment interior**, so `BuildTapStubs` saw no tap and the
   pin left with neither a follow nor a stub. Interior vertices now count as taps; the stub grows from the corner.
+
+## Touchstone from Image, PTU-1: the plot column, Replace…, copyable read-outs (2026-10-11)
+
+**Advanced was drawn over the plot panel.** The right column's plot `ContentControl` spans all four rows, and the
+Advanced expander in row 1 was visible on `HasPicture`, plot mode included, so its header sat on the Plots heading. It
+is bound to `IsDrawingPicture` now; nothing in it applies to a Touchstone. The panel's own `ScrollViewer` clips, so no
+`ClipToBounds` was needed — the after render shows nothing outside the column.
+
+**Replace… added.** It was `BrowseCommand` → `LoadFile` → `Take`, and `Take` joins a plot session (R-im14-13 — right
+for a drop or a paste). Browse now reads the file and calls `Replace`, which is `Accept` plus, in plot mode,
+`KindIndex = 3` — exactly what `ReadPlot` does on a fresh dialog. No `PlotSessionViewModel.Clear()` was added:
+`Accept` already calls `SetPrimary`, which is that clear. Make survives because `Accept`'s kind reset changes
+`MakeIndex` under `_refreshingMode`, leaving `_wantedMake` alone.
+
+**Read-outs that stayed `TextBlock`, on purpose.** The parts table's cells (Refdes, Connection, Case, part number, X,
+Y) sit in a `ListBox` whose row selection drives the canvas; `SelectableTextBlock.OnPointerPressed` handles the press,
+so converting them would stop a click on those cells selecting the row — the trap recorded above for the rail tool. The
+report strip's anchor lines carry their own `PointerPressed` (they show the anchor), and would lose it the same way.
+`TextBlock.error` did not reach a `SelectableTextBlock` (type selectors match exactly), so it is
+`TextBlock.error, SelectableTextBlock.error` in `RecognitionDialogStyles.axaml`; likewise `Grid.layers > …` for the
+layer rows' share. Gate: `tests/Ui.Tests/PlotRecognition/ImageSourceReplaceTests.cs`.

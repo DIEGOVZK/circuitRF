@@ -12,7 +12,9 @@
         <Setter Property="FontSize" Value="12"/>
         <Setter Property="Opacity" Value="0.8"/>
     </Style>
-    <Style Selector="TextBlock.error">
+    <!-- A refusal is copied out as often as it is read (R-ptu1-3): most are SelectableTextBlocks, which a TextBlock
+         selector does not reach. -->
+    <Style Selector="TextBlock.error, SelectableTextBlock.error">
         <Setter Property="Foreground" Value="#C8463A"/>
         <Setter Property="FontSize" Value="11"/>
         <Setter Property="VerticalAlignment" Value="Center"/>

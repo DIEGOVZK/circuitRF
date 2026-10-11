@@ -15,7 +15,7 @@
                      ToolTip.Tip="{Binding NewCellTip}"/>
         <TextBox Text="{Binding NewCellName}" Width="220" IsEnabled="{Binding TargetNewCell}"
                  Classes.invalid="{Binding NameError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-        <TextBlock Text="{Binding NameError}" Classes="error" MaxWidth="360"/>
+        <SelectableTextBlock Text="{Binding NameError}" Classes="error" MaxWidth="360"/>
         <RadioButton Content="{Binding OwnTargetLabel}" IsChecked="{Binding TargetOwn}"
                      IsVisible="{Binding OwnTargetOffered}"
                      ToolTip.Tip="{Binding OwnTargetTip}"/>

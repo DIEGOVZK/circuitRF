@@ -22,7 +22,7 @@
                                         <CheckBox IsChecked="{Binding Include}" Content="{Binding Title}"
                                                   ToolTip.Tip="Read this plot. Left out, it is drawn on the canvas and not read."/>
                                     </StackPanel>
-                                    <TextBlock Text="{Binding Calibration}" FontSize="11" Opacity="0.75" Margin="28,0,0,0"/>
+                                    <SelectableTextBlock Text="{Binding Calibration}" FontSize="11" Opacity="0.75" Margin="28,0,0,0"/>
                                     <StackPanel Orientation="Horizontal" Spacing="6" Margin="28,0,0,0" IsVisible="{Binding NeedsX}">
                                         <TextBlock Text="x axis" FontSize="12" VerticalAlignment="Center" Width="44"/>
                                         <TextBox Text="{Binding XAxisText}" Width="220" PlaceholderText="120px=1GHz,900px=5GHz"
@@ -58,11 +58,11 @@
                                         <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Quantities}" SelectedIndex="{Binding QuantityIndex}"
                                                   MinWidth="96" ToolTip.Tip="What the trace plots: dB, linear magnitude, phase, real or imaginary part, the complex value of a chart, VSWR, return or insertion loss."/>
                                     </StackPanel>
-                                    <TextBlock FontSize="11" Opacity="0.75" Margin="30,0,0,0" TextWrapping="Wrap">
+                                    <SelectableTextBlock FontSize="11" Opacity="0.75" Margin="30,0,0,0" TextWrapping="Wrap">
                                         <Run Text="{Binding RangeText}"/><Run Text=" · "/><Run Text="{Binding Points}"/><Run Text=" points · "/><Run Text="{Binding ResolutionText}"/><Run Text=" per pixel · plot "/><Run Text="{Binding Plot}"/>
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding FrequencyEvidence}" FontSize="11" Opacity="0.75" Margin="30,0,0,0"
-                                               IsVisible="{Binding IsChart}"/>
+                                    </SelectableTextBlock>
+                                    <SelectableTextBlock Text="{Binding FrequencyEvidence}" FontSize="11" Opacity="0.75" Margin="30,0,0,0"
+                                                         IsVisible="{Binding IsChart}"/>
                                     <!-- The frequency row of a chart trace (R-im14-8 (3)): never pre-filled. -->
                                     <Border Classes="slot" Classes.wants="{Binding NeedsFrequency}" Margin="26,0,0,0" IsVisible="{Binding IsChart}">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
@@ -90,8 +90,8 @@
                             <DataTemplate DataType="rec:PlotMatrixCellViewModel">
                                 <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,3">
                                     <TextBlock Text="{Binding Entry}" FontWeight="SemiBold" FontSize="12" Width="30" VerticalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Source}" FontSize="12" Width="130" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                               ToolTip.Tip="{Binding Rule}"/>
+                                    <SelectableTextBlock Text="{Binding Source}" FontSize="12" Width="130" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                         ToolTip.Tip="{Binding Rule}"/>
                                     <ComboBox ItemsSource="{Binding Choices}" SelectedIndex="{Binding SelectedIndex}" MinWidth="150"
                                               IsVisible="{Binding HasChoices}"
                                               ToolTip.Tip="{Binding Rule}"/>
@@ -122,12 +122,12 @@
             </Border>
 
             <!-- ── What the Touchstone waits for, and the report ──────────────────────────── -->
-            <TextBlock Text="{Binding Refusal}" Classes="error" TextWrapping="Wrap"
-                       IsVisible="{Binding Refusal, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            <SelectableTextBlock Text="{Binding Refusal}" Classes="error" TextWrapping="Wrap"
+                                 IsVisible="{Binding Refusal, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
             <ItemsControl ItemsSource="{Binding ReportLines}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="x:String">
-                        <TextBlock Text="{Binding}" FontSize="11" Opacity="0.8" TextWrapping="Wrap" Margin="0,0,0,2"/>
+                        <SelectableTextBlock Text="{Binding}" FontSize="11" Opacity="0.8" TextWrapping="Wrap" Margin="0,0,0,2"/>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>

@@ -18,7 +18,7 @@
                                               Click="OnExpandClick"
                                               Content="▸" Padding="3,0" MinHeight="0" FontSize="10"/>
                             </Panel>
-                            <TextBlock Text="{Binding Text}" FontSize="11" TextWrapping="Wrap" MaxWidth="1240"/>
+                            <SelectableTextBlock Text="{Binding Text}" FontSize="11" TextWrapping="Wrap" MaxWidth="1240"/>
                         </StackPanel>
                         <ItemsControl ItemsSource="{Binding Anchors}" IsVisible="{Binding IsExpanded}" Margin="22,0,0,2">
                             <ItemsControl.ItemTemplate>

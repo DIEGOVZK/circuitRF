@@ -199,10 +199,15 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     public Func<Task<string?>>? PickPictureAsync { get; set; }
     public Func<Task<ImageSourceResult?>>? PastePictureAsync { get; set; }
 
+    /// <summary>Browse… / Replace…: the picture picked is read INSTEAD of the one shown — in plot mode too, where a drop or
+    /// a paste joins the session (R-ptu1-2).</summary>
     [RelayCommand]
     private async Task Browse()
     {
-        if (PickPictureAsync is { } pick && await pick() is { Length: > 0 } path) LoadFile(path);
+        if (PickPictureAsync is not { } pick || await pick() is not { Length: > 0 } path) return;
+        var read = ImageSource.FromFile(path);
+        if (!read.Ok) { Status = read.Refusal ?? ""; return; }
+        Replace(read.Source!);
     }
 
     [RelayCommand]
@@ -252,6 +257,17 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     {
         if (IsPlotPicture) { Plots.Add(source); return; }
         Accept(source);
+    }
+
+    /// <summary>
+    /// A picture read in place of the one shown (R-ptu1-2). In plot mode the session is cleared and the picture becomes
+    /// its picture 1 — the state the dialog opens in on it, Make kept — rather than joining it as <see cref="Take"/> does.
+    /// </summary>
+    public void Replace(ImageSource source)
+    {
+        bool plot = IsPlotPicture;
+        Accept(source);   // Plots.SetPrimary: the session emptied, this picture its first
+        if (plot) KindIndex = 3;   // Make comes back with the kind: Accept's reset leaves the wanted one alone
     }
 
     /// <summary>Add picture… (plot mode): another picture into the same session.</summary>

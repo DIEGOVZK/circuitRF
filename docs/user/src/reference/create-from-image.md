@@ -303,6 +303,7 @@ against frequency, a Smith chart, a polar chart &mdash; is read as **Plot**, and
 **Several pictures make one file.** A datasheet's S21 and S11 are often separate figures: **Add picture…** under
 **Pictures**, or drop or paste another, adds it to the same session; **✕** takes one out. Plots and traces are
 numbered across all of them &mdash; plot 1 is the first picture's first plot, and traces are T1, T2 and so on.
+**Replace…** starts over: the session's pictures are set aside and the one chosen is read as picture 1.
 
 **On the picture**, each plot is boxed and numbered, its tick labels green where the axis used them and amber where they
 were not read or were outvoted, and each trace is drawn over its curve in its own colour and labelled with what it was read as
