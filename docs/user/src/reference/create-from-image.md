@@ -137,7 +137,7 @@ highlight its part on the picture.
 | Drag | On a layout picture, read only the rectangle dragged; **Whole picture** reads all of it again. |
 | Click a crossing | On a schematic picture, connect or disconnect it. |
 | Drag a wire end | On a schematic picture, drop a wire end that reaches nothing onto a pin to connect it. |
-| Double-click | Fit the picture. |
+| Double-click, **F** or the Zoom to Fit button | Fit the picture. It opens fitted and stays fitted as the dialog is resized, until it is zoomed or panned. |
 | Escape | Put down a measuring tool. |
 
 ## Schematic pictures {#schematic}
@@ -251,7 +251,7 @@ against frequency, a Smith chart, a polar chart &mdash; is read as **Plot**, and
 
 | Where | Row |
 |---|---|
-| **Edit** menu | **Paste Image as Touchstone…** &mdash; the clipboard's picture, enabled whenever a workspace is open and the clipboard holds a picture. |
+| **File** menu | **Import ▸ Image ▸ As Touchstone…** &mdash; a picture browsed to. The dialog's **Paste** reads the clipboard's. |
 | **Tools** menu | **Digitise Plot…** &mdash; the dialog, empty, in plot mode. |
 | Right-click a picture file in the **Project** panel | **Create Touchstone from Plot…** |
 

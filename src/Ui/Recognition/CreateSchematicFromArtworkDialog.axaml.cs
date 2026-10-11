@@ -51,6 +51,7 @@ public partial class CreateSchematicFromArtworkDialog : Window
                 AddHandler(DragDrop.DragOverEvent, OnDragOver);
                 AddHandler(DragDrop.DropEvent, OnDrop);
                 AddHandler(KeyDownEvent, OnPasteKey, RoutingStrategies.Tunnel);
+                AddHandler(KeyDownEvent, OnFitKey, RoutingStrategies.Tunnel);
                 break;
         }
         Closed += (_, _) => vm.Close();
@@ -114,6 +115,16 @@ public partial class CreateSchematicFromArtworkDialog : Window
         if (e.Key != Key.V || (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) == 0) return;
         if (FocusManager?.GetFocusedElement() is TextBox) return;
         if (_vm is ImageSourceViewModel image) image.PasteCommand.Execute(null);
+        e.Handled = true;
+    }
+
+    /// <summary>F fits the picture to the canvas — unless a text box has the keyboard, where it types an F.</summary>
+    private void OnFitKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.F || e.KeyModifiers != KeyModifiers.None) return;
+        if (FocusManager?.GetFocusedElement() is TextBox) return;
+        if (_vm is not ImageSourceViewModel { HasPicture: true } image) return;
+        image.FitPictureCommand.Execute(null);
         e.Handled = true;
     }
 

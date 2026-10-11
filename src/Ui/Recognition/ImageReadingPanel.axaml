@@ -86,9 +86,14 @@
                 <Panel>
                     <rec:ImageOverlayCanvas x:Name="Canvas"/>
 
-                    <!-- Legend: each class toggled. -->
-                    <Border Classes="pill" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8"
-                            IsVisible="{Binding !HasFailure}">
+                    <!-- Zoom to Fit, the editors' own button (as the Match Designer floats it), then the legend: each
+                         class toggled. -->
+                    <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4">
+                    <Button Click="OnZoomToFit" Padding="6,3" VerticalAlignment="Center"
+                            ToolTip.Tip="Zoom to Fit  (F)">
+                        <mi:MaterialIcon Kind="FitToPage" Width="16" Height="16"/>
+                    </Button>
+                    <Border Classes="pill" Margin="0,4" IsVisible="{Binding !HasFailure}">
                         <StackPanel Orientation="Horizontal">
                             <ToggleButton Classes="legend" IsChecked="{Binding ShowCopper}" IsVisible="{Binding IsLayoutPicture}" ToolTip.Tip="Traced copper, outlined in each layer's colour.">
                                 <StackPanel Orientation="Horizontal" Spacing="4"><Rectangle Width="10" Height="10" Fill="#B87333" VerticalAlignment="Center"/><TextBlock Text="Copper"/></StackPanel>
@@ -119,6 +124,7 @@
                             </ToggleButton>
                         </StackPanel>
                     </Border>
+                    </StackPanel>
 
                     <!-- The one prompt: a tool's instruction, or the scale the reading is waiting for. -->
                     <Border Classes="pill" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="8,8,8,12"

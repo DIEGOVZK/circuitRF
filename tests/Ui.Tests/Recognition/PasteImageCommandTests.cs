@@ -56,8 +56,8 @@ public sealed class PasteImageCommandTests : IDisposable
         try { Directory.Delete(_ws, true); } catch { /* best effort */ }
     }
 
-    private bool Enabled => _vm.PasteImageAsTouchstoneCommand.CanExecute(null);
-    private bool Disabled => !_vm.PasteImageAsTouchstoneCommand.CanExecute(null);
+    private bool Enabled => _vm.PasteImage.Available;
+    private bool Disabled => !_vm.PasteImage.Available;
 
     [Fact]
     public async Task AsSchematicAndAsLayout_FollowTheDocumentInFocus()
@@ -112,7 +112,7 @@ public sealed class PasteImageCommandTests : IDisposable
 
         await _vm.RefreshPasteImage();   // the window activated
         await _vm.RefreshPasteImage();   // the Edit menu opened
-        _ = _vm.PasteImageAsTouchstoneCommand.CanExecute(null);
+        _ = _vm.PasteImageAsSchematicCommand.CanExecute(null);
 
         Assert.Equal(2, _clipboard.Peeks);
         Assert.True(Enabled);

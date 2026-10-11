@@ -265,7 +265,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     }
 
     /// <summary>
-    /// A plot picture handed in from outside (Edit ▸ Paste Image as Touchstone…, a tree row): read as a plot with Make
+    /// A plot picture handed in from outside (File ▸ Import ▸ Image ▸ As Touchstone…, a tree row): read as a plot with Make
     /// Touchstone — or, when the dialog is already reading plots, added to the session (R-im14-13).
     /// </summary>
     public void ReadPlot(ImageSource source, bool csv = false)
@@ -790,6 +790,12 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
 
     [RelayCommand]
     private void WholePicture() => ScopeRect = null;
+
+    /// <summary>Asks the canvas to fit the whole picture — the Fit button and the F key.</summary>
+    public event Action? FitRequested;
+
+    [RelayCommand]
+    private void FitPicture() => FitRequested?.Invoke();
 
     /// <summary>The canvas is waiting for a ground click (Ground ▸ Pick on layout).</summary>
     [ObservableProperty] private bool _canvasPick;

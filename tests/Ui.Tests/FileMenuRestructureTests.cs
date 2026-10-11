@@ -340,7 +340,9 @@ public class FileMenuRestructureTests
             // cell: a connector body's parts land in the .c3d being edited, so it is disabled with no 3D editor active.
             // "GDSII (gdstk)" and "OASIS (gdstk)" (brief-oasis-gdstk.md §7a) sit under circuitRF's own GDSII
             // entry: the same kind of file through a second reader, which stays opt-in.
-            "Data", "GDSII", "GDSII (gdstk)", "OASIS (gdstk)", "DXF", "Board", "Gerber", "STEP", "Component", "PDK", "Model or Subcircuit", "Technology", "Into Open Technology",
+            // "Image" (its one child, As Touchstone…) sits beside "Data": a picture of a datasheet's S-parameter plot,
+            // digitised into a Touchstone file, is data arriving another way.
+            "Data", "Image", "GDSII", "GDSII (gdstk)", "OASIS (gdstk)", "DXF", "Board", "Gerber", "STEP", "Component", "PDK", "Model or Subcircuit", "Technology", "Into Open Technology",
             "Wirebond Table", "Wirebond Wires", "Wirebond as Cell",
         ];
 

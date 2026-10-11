@@ -104,6 +104,13 @@
                             <NativeMenuItem.Menu>
                                 <NativeMenu>
                                     <NativeMenuItem Header="Data…" Command="{Binding ImportDataCommand}"         CommandParameter="{Binding $parent[Window]}"/>
+                                    <NativeMenuItem Header="Image">
+                                        <NativeMenuItem.Menu>
+                                            <NativeMenu>
+                                                <NativeMenuItem Header="As Touchstone…" Command="{Binding ImportImageAsTouchstoneCommand}" CommandParameter="{Binding $parent[Window]}" ToolTip="Digitise a picture of an S-parameter plot into a Touchstone file. Requires an open workspace."/>
+                                            </NativeMenu>
+                                        </NativeMenuItem.Menu>
+                                    </NativeMenuItem>
                                     <NativeMenuItem Header="GDSII…" Command="{Binding ImportGdsiiLibraryCommand}" CommandParameter="{Binding $parent[Window]}"/>
                                     <!-- brief-oasis-gdstk.md §7a: the second GDSII route and OASIS, through the gdstk worker; disabled with the reason when this build has none. -->
                                     <NativeMenuItem Header="GDSII (gdstk)…" ToolTip="{Binding GdstkImportGdsiiTip}" Command="{Binding ImportGdsiiGdstkCommand}" CommandParameter="{Binding $parent[Window]}"/>
@@ -165,7 +172,6 @@
                         <NativeMenuItem Header="Paste"      Command="{Binding PasteCommand}"/>
                         <NativeMenuItem Header="Paste Image as Schematic" Command="{Binding PasteImageAsSchematicCommand}" ToolTip="Read the picture on the clipboard as a schematic and paste it, selected, into the schematic in focus, with the picture under it. Enabled when a schematic is in focus and the clipboard holds a picture. Design > Create > Schematic from Image has the options."/>
                         <NativeMenuItem Header="Paste Image as Layout"    Command="{Binding PasteImageAsLayoutCommand}" ToolTip="Trace the picture on the clipboard and paste the shapes, selected, into the layout in focus, with the picture under them. Enabled when a layout is in focus and the clipboard holds a picture. Design > Create > Layout from Image has the options."/>
-                        <NativeMenuItem Header="Paste Image as Touchstone…" Command="{Binding PasteImageAsTouchstoneCommand}" ToolTip="Digitise the S-parameter plot on the clipboard into a Touchstone file. Enabled when the clipboard holds a picture."/>
                     </NativeMenu>
                 </NativeMenuItem.Menu>
             </NativeMenuItem>
@@ -894,6 +900,14 @@
                     <MenuItem Header="_Data…"
                               Command="{Binding ImportDataCommand}"
                               CommandParameter="{Binding $parent[Window]}"/>
+                    <MenuItem Header="_Image">
+                        <MenuItem Header="As _Touchstone…"
+                                  Command="{Binding ImportImageAsTouchstoneCommand}"
+                                  CommandParameter="{Binding $parent[Window]}"
+                                  ToolTip.Tip="Digitise a picture of an S-parameter plot into a Touchstone file. Requires an open workspace.">
+                            <MenuItem.Icon><mi:MaterialIcon Kind="ChartBellCurve" Width="16" Height="16"/></MenuItem.Icon>
+                        </MenuItem>
+                    </MenuItem>
                     <MenuItem Header="_GDSII…"
                               Command="{Binding ImportGdsiiLibraryCommand}"
                               CommandParameter="{Binding $parent[Window]}"/>
@@ -1080,12 +1094,6 @@
                           Command="{Binding PasteImageAsLayoutCommand}"
                           ToolTip.Tip="Trace the picture on the clipboard and paste the shapes, selected, into the layout in focus, with the picture under them. Enabled when a layout is in focus and the clipboard holds a picture. Design > Create > Layout from Image has the options.">
                     <MenuItem.Icon><mi:MaterialIcon Kind="ImageEditOutline" Width="16" Height="16"/></MenuItem.Icon>
-                </MenuItem>
-                <!-- brief-img-14 R-im14-13: the same clipboard rule as the two above. -->
-                <MenuItem Header="Paste Image as _Touchstone…"
-                          Command="{Binding PasteImageAsTouchstoneCommand}"
-                          ToolTip.Tip="Digitise the S-parameter plot on the clipboard into a Touchstone file. Enabled when the clipboard holds a picture.">
-                    <MenuItem.Icon><mi:MaterialIcon Kind="ChartBellCurve" Width="16" Height="16"/></MenuItem.Icon>
                 </MenuItem>
             </MenuItem>
 

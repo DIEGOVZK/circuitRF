@@ -5,7 +5,8 @@
 // measure tools hand their clicks to ImageScaleViewModel, which states them to the trace.
 //
 // Gestures: wheel or pinch zooms about the pointer; right- or middle-drag, or Space held with a left-drag, pans; a
-// left-drag sets the scope rectangle; a left-click selects; a double-click fits the picture. With a tool armed a
+// left-drag sets the scope rectangle; a left-click selects; a double-click, the Fit button or F fits the picture. A
+// picture stays fitted as the canvas changes size — the dialog opening, the window resized — until it is zoomed or panned. With a tool armed a
 // left-click is the tool's; with Board corners… armed (IM-13) a left-drag on a handle moves it, and the overlay — read
 // on the rectified picture — is not drawn over the photo as taken.
 
@@ -47,7 +48,7 @@ public sealed class ImageOverlayCanvas : Control
 
     private double _zoom = 1;
     private Vector _pan;
-    private bool _fitted;
+    private bool _autoFit = true;
 
     private Point? _pressAt;
     private Point _lastPointer;
@@ -82,22 +83,30 @@ public sealed class ImageOverlayCanvas : Control
         {
             _vm.PropertyChanged -= OnVmChanged;
             _vm.Scale.PropertyChanged -= OnVmChanged;
+            _vm.FitRequested -= Fit;
         }
         _vm = DataContext as ImageSourceViewModel;
         if (_vm is not null)
         {
             _vm.PropertyChanged += OnVmChanged;
             _vm.Scale.PropertyChanged += OnVmChanged;
+            _vm.FitRequested += Fit;
         }
-        _fitted = false;
+        _autoFit = true;
+        InvalidateArrange();
         InvalidateVisual();
     }
 
     private void OnVmChanged(object? sender, PropertyChangedEventArgs e)
     {
         // A new picture, or a photo swapping between as taken and rectified: fit the one now shown.
+        // The raster usually arrives after the canvas was arranged, so arrange again to fit it.
         if (e.PropertyName is nameof(ImageSourceViewModel.Source) or nameof(ImageSourceViewModel.Raster)
-            && !ReferenceEquals(_vm?.Raster, _rasterShown)) _fitted = false;
+            && !ReferenceEquals(_vm?.Raster, _rasterShown))
+        {
+            _autoFit = true;
+            InvalidateArrange();
+        }
         if (e.PropertyName == nameof(ImageSourceViewModel.SelectedItem) && _vm?.SelectedItem is { } item) BringIntoView(item);
         InvalidateVisual();
     }
@@ -105,12 +114,16 @@ public sealed class ImageOverlayCanvas : Control
     protected override Size ArrangeOverride(Size finalSize)
     {
         var size = base.ArrangeOverride(finalSize);
-        if (!_fitted) Fit(size);
+        if (_autoFit) Fit(size);
         return size;
     }
 
-    /// <summary>The whole picture in the control, with a margin.</summary>
-    public void Fit() => Fit(Bounds.Size);
+    /// <summary>The whole picture in the control, with a margin — and kept so as the control resizes.</summary>
+    public void Fit()
+    {
+        _autoFit = true;
+        Fit(Bounds.Size);
+    }
 
     private void Fit(Size size)
     {
@@ -119,7 +132,6 @@ public sealed class ImageOverlayCanvas : Control
         const double margin = 16, top = 44, bottom = 44;
         _zoom = Math.Max(1e-3, Math.Min((size.Width - 2 * margin) / r.Width, (size.Height - top - bottom) / r.Height));
         _pan = new Vector((size.Width - r.Width * _zoom) / 2, top + (size.Height - top - bottom - r.Height * _zoom) / 2);
-        _fitted = true;
         ViewChanged?.Invoke();
         InvalidateVisual();
     }
@@ -135,6 +147,7 @@ public sealed class ImageOverlayCanvas : Control
         if (br.X - tl.X > view.Width || tl.X < view.Left || br.X > view.Right) dx = view.Center.X - (tl.X + br.X) / 2;
         if (br.Y - tl.Y > view.Height || tl.Y < view.Top || br.Y > view.Bottom) dy = view.Center.Y - (tl.Y + br.Y) / 2;
         if (dx == 0 && dy == 0) return;
+        _autoFit = false;
         _pan += new Vector(dx, dy);
         ViewChanged?.Invoke();
     }
@@ -439,6 +452,7 @@ public sealed class ImageOverlayCanvas : Control
     {
         double z = Math.Clamp(_zoom * factor, 0.01, 64);
         factor = z / _zoom;
+        _autoFit = false;
         _pan = new Vector(at.X - (at.X - _pan.X) * factor, at.Y - (at.Y - _pan.Y) * factor);
         _zoom = z;
         ViewChanged?.Invoke();
@@ -498,6 +512,7 @@ public sealed class ImageOverlayCanvas : Control
         _hover = ToPicture(p);
         if (_panning)
         {
+            _autoFit = false;
             _pan += p - _lastPointer;
             ViewChanged?.Invoke();
         }

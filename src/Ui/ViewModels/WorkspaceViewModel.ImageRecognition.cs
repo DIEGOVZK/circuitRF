@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
 using CircuitRF.Design.Imaging;
@@ -193,14 +194,26 @@ public partial class WorkspaceViewModel : IImageDialogHost
         if (!inView) doc.RequestZoomToFit();
     }
 
-    /// <summary>Edit ▸ Paste Image as Touchstone… (brief-img-14 R-im14-13): IM-6's clipboard rule, a plot read.</summary>
-    [RelayCommand(CanExecute = nameof(CanPasteImage))]
-    private async Task PasteImageAsTouchstone(Window? owner)
+    /// <summary>File ▸ Import ▸ Image ▸ As Touchstone…: a picture of an S-parameter plot, browsed to, read in the picture
+    /// dialog's plot mode. The dialog's own Paste reads the clipboard's.</summary>
+    [RelayCommand(CanExecute = nameof(IsWorkspaceOpenForImage))]
+    private async Task ImportImageAsTouchstone(Window? owner)
     {
-        var read = await PasteImage.ReadAsync();
-        if (read is null) Messages.Error("Paste Image as Touchstone: the clipboard holds no picture.");
-        else if (!read.Ok) Messages.Error($"Paste Image as Touchstone: {read.Refusal}");
-        else ShowPlotDialog(read.Source, csv: false, owner);
+        if (ResolveOwner(owner) is not { } window) return;
+        var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import Image as Touchstone",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Pictures") { Patterns = [.. RasterImage.Extensions.Select(e => "*" + e)] },
+                new FilePickerFileType("All Files") { Patterns = ["*.*"] },
+            ],
+        });
+        if (files.FirstOrDefault()?.TryGetLocalPath() is not { } path) return;
+        var read = ImageSource.FromFile(path);
+        if (read.Ok) ShowPlotDialog(read.Source, csv: false, window);
+        else Messages.Error($"Import Image as Touchstone: {read.Refusal}");
     }
 
     /// <summary>Tools ▸ Digitise Plot… (R-im14-13): the dialog, empty, in plot mode.</summary>
@@ -232,7 +245,7 @@ public partial class WorkspaceViewModel : IImageDialogHost
         CreateLayoutFromImageCommand.NotifyCanExecuteChanged();
         PasteImageAsSchematicCommand.NotifyCanExecuteChanged();
         PasteImageAsLayoutCommand.NotifyCanExecuteChanged();
-        PasteImageAsTouchstoneCommand.NotifyCanExecuteChanged();
+        ImportImageAsTouchstoneCommand.NotifyCanExecuteChanged();
         DigitisePlotCommand.NotifyCanExecuteChanged();
     }
 
