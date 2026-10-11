@@ -33,6 +33,8 @@ using CircuitRF.Design.Imaging;
 using CircuitRF.Design.Layout;
 using CircuitRF.Design.Layout.Recognition;
 using CircuitRF.Design.Layout.Recognition.Image;
+using CircuitRF.Design.Layout.Recognition.Silkscreen;
+using CircuitRF.Design.Schematic.Recognition;
 using CircuitRF.Engine;
 
 namespace CircuitRF.Ui.Recognition;
@@ -46,16 +48,14 @@ public sealed record ImageTechnologyChoice(string Name, string Path)
 /// <summary>What one picture reading returned, for the source to draw.</summary>
 internal sealed record ImagePreviewDetail(
     ImageKindResult Kind, Technology? Technology, string? TechnologyPath, ImageTraceResult? Trace,
-    RecognitionResult? Recognition, ImageOverlay Overlay, IReadOnlyList<ImageTracePreset> MatchingPresets);
+    RecognitionResult? Recognition, ImageOverlay Overlay, IReadOnlyList<ImageTracePreset> MatchingPresets,
+    SchematicImageResult? Schematic = null);
 
 /// <summary>The dialog, on a picture source.</summary>
 public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
 {
     /// <summary>R-im5-2's empty-state line.</summary>
     public const string DropPrompt = "Drop a picture here, paste it (Cmd/Ctrl+V), or Browse…";
-
-    /// <summary>A schematic picture is read in IM-10; until then the kind is selectable and says so.</summary>
-    public const string SchematicNotYet = "Reading schematic pictures is not available yet: read it as a layout, or wait for a later version.";
 
     /// <summary>D3's one line: a schematic picture does not make a layout directly.</summary>
     public const string MakeLayoutFromSchematicTip = "Create the schematic, then use Update Layout from Schematic";
@@ -126,6 +126,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             Status = "Click the ground copper on the picture. Escape cancels.";
         };
         Presets = new ObservableCollection<string>(LoadPresets().Select(p => p.Name));
+        Overrides.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasOverrides));
 
         if (source is not null) Accept(source);
         EndConstruction(_defaultName ?? "", targetOwn: OwnTargetOffered);
@@ -216,6 +217,9 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         SelectedItem = null;
         LayerRows.Clear();
         ScopeRect = null;
+        _schematic = null;
+        _ownTargetDefaulted = false;
+        Overrides.Clear();
         Scale.Reset();
         if (KindIndex != 0) KindIndex = 0;
         Source = source;
@@ -351,10 +355,13 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         OnPropertyChanged(nameof(MakeLayoutTip));
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(OptionsApply));
+        OnPropertyChanged(nameof(ArtworkOptionsApply));
+        OnPropertyChanged(nameof(PictureOptionsApply));
         OnPropertyChanged(nameof(PartsApply));
         OnPropertyChanged(nameof(IsLayoutPicture));
         OnPropertyChanged(nameof(IsSchematicPicture));
         OnPropertyChanged(nameof(HasSideColumn));
+        OnPropertyChanged(nameof(ShowsLineLegend));
         OnPropertyChanged(nameof(CanvasSpan));
         OnPropertyChanged(nameof(OwnTargetOffered));
         OnPropertyChanged(nameof(ReplaceConfirmText));
@@ -375,8 +382,16 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
 
     public int CanvasSpan => HasSideColumn ? 1 : 3;
 
-    public override bool OptionsApply => IsLayoutPicture && MakeSchematic;
-    public override bool PartsApply => IsLayoutPicture && MakeSchematic;
+    /// <summary>The legend's Lines toggle: a layout picture made into a schematic has lines; nothing else does.</summary>
+    public bool ShowsLineLegend => IsLayoutPicture && MakeSchematic;
+
+    /// <summary>Corrections are held on the picture (R-im10-8).</summary>
+    public bool HasOverrides => Overrides.Count > 0;
+
+    public override bool OptionsApply => (IsLayoutPicture && MakeSchematic) || IsSchematicPicture;
+    public override bool ArtworkOptionsApply => IsLayoutPicture;
+    public override bool PictureOptionsApply => IsSchematicPicture;
+    public override bool PartsApply => (IsLayoutPicture && MakeSchematic) || IsSchematicPicture;
     public override bool ShowPlacementColumns => false;
 
     public override string Title =>
@@ -384,22 +399,30 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
 
     // ── target (D14) ─────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The layout a placed picture sits in, over the picture — when a layout is made of it.</summary>
-    public override bool OwnTargetOffered => Source?.Placement is LayoutBitmapPlacement && MakeLayout;
-    public override string OwnTargetLabel => "This layout, over the picture";
-    public override string OwnTargetTip => "Trace into the layout the picture sits in, over the picture, as one undo step.";
-    public override string NewCellTip => MakeSchematic
+    /// <summary>The document a placed picture sits in, over the picture (D14): its layout when a layout is made of a
+    /// layout picture, its schematic when a schematic picture is read.</summary>
+    public override bool OwnTargetOffered =>
+        (Source?.Placement is LayoutBitmapPlacement && MakeLayout) || (Source?.Placement is SchematicBitmapPlacement && IsSchematicPicture);
+    public override string OwnTargetLabel => IsSchematicPicture ? "This schematic, over the picture" : "This layout, over the picture";
+    public override string OwnTargetTip => IsSchematicPicture
+        ? "Draw the circuit into the schematic the picture sits in, over the picture, as one undo step."
+        : "Trace into the layout the picture sits in, over the picture, as one undo step.";
+    public override string NewCellTip => IsSchematicPicture
+        ? "A new cell holding the schematic read from the picture, with the picture under it."
+        : MakeSchematic
         ? "A new cell holding the traced layout and the schematic recognised from it, each with the picture under it."
         : "A new cell holding the traced layout, with the picture under it.";
 
-    public override string ReplaceConfirmText => MakeSchematic
+    public override string ReplaceConfirmText => MakeSchematic && !IsSchematicPicture
         ? $"Replaces {NewCellName.Trim()}'s layout and schematic; a checkpoint is taken first."
+        : IsSchematicPicture ? $"Replaces {NewCellName.Trim()}'s schematic; a checkpoint is taken first."
         : $"Replaces {NewCellName.Trim()}'s layout; a checkpoint is taken first.";
 
     protected override string NewCellDir(string name) => Path.Combine(_workspaceDir, name);
 
     protected override bool IsReplaceable(string cellDir) =>
-        MakeSchematic ? ImageRecognitionTarget.IsReplaceable(cellDir) : ImageTraceTarget.IsReplaceable(cellDir);
+        IsSchematicPicture ? SchematicImageTarget.IsReplaceable(cellDir)
+        : MakeSchematic ? ImageRecognitionTarget.IsReplaceable(cellDir) : ImageTraceTarget.IsReplaceable(cellDir);
 
     protected override string NotReplaceableText(string name) =>
         $"A cell named '{name}' already exists and was not created from a picture; choose another name.";
@@ -546,10 +569,6 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     [ObservableProperty] private string _thresholdText;
     [ObservableProperty] private string _windowText;
 
-    /// <summary>Schematic pictures (IM-7, D11): where a four-way crossing connects.</summary>
-    public static IReadOnlyList<string> CrossingOptions { get; } = ["Never", "With a dot", "Always"];
-    [ObservableProperty] private int _crossingIndex = 1;
-
     partial void OnSimplifyTextChanged(string value) => ScheduleRecognition();
     partial void OnMinFeatureTextChanged(string value) => ScheduleRecognition();
     partial void OnSnapChanged(bool value) => ScheduleRecognition();
@@ -560,7 +579,6 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     partial void OnKeepUnderlayChanged(bool value) => RefreshCreate();
     partial void OnThresholdTextChanged(string value) => ScheduleRecognition();
     partial void OnWindowTextChanged(string value) => ScheduleRecognition();
-    partial void OnCrossingIndexChanged(int value) => ScheduleRecognition();
 
     private static bool TryNum(string text, out double v) =>
         double.TryParse(text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out v) && double.IsFinite(v);
@@ -618,10 +636,14 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     [ObservableProperty] private bool _showLines = true;
     [ObservableProperty] private bool _showPorts = true;
     [ObservableProperty] private bool _showUnknowns = true;
+    [ObservableProperty] private bool _showWires = true;
+    [ObservableProperty] private bool _showText = true;
 
     /// <summary>Whether the legend shows a class.</summary>
     public bool Shows(ImageOverlayClass c) => c switch
     {
+        ImageOverlayClass.Wire or ImageOverlayClass.Crossing => ShowWires,
+        ImageOverlayClass.Text => ShowText,
         ImageOverlayClass.Copper => ShowCopper,
         ImageOverlayClass.Drill => ShowDrills,
         ImageOverlayClass.Ignored => ShowIgnored,
@@ -734,7 +756,8 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             if (!HasPicture) return DropPrompt;
             if (FailureText.Length > 0) return FailureText;
             if (EffectiveKind is null) return "Reading the picture…";
-            if (EffectiveKind == DrawingKind.Schematic) return MakeLayout ? MakeLayoutFromSchematicTip : SchematicNotYet;
+            if (EffectiveKind == DrawingKind.Schematic)
+                return MakeLayout ? MakeLayoutFromSchematicTip : _schematic is null ? "Reading the picture…" : base.CreateBlocked;
             if (Scale.Error.Length > 0) return Scale.Error;
             if (Scale.NeedsScale) return ImageScaleViewModel.SetScalePrompt;
             return base.CreateBlocked;
@@ -785,6 +808,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         // background once both are known.
         var probe = BuildTraceInput(null, null);
         var recognitionProbe = BuildRecognitionInput(probe);
+        var schematicProbe = BuildSchematicInput(null, null);
 
         return control =>
         {
@@ -794,7 +818,13 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             if (kind.Kind == DrawingKind.None)
                 return new RecognitionPreview(null, empty, null, new ImagePreviewDetail(read, null, null, null, null, ImageOverlay.Empty, []));
             if (kind.Kind == DrawingKind.Schematic)
-                return new RecognitionPreview(null, empty, null, new ImagePreviewDetail(read, null, null, null, null, ImageOverlay.Empty, []));
+            {
+                var lineTech = cached ? cachedTech : techChoice is null ? null : _runner.LoadTechnology(techChoice.Path);
+                var picture = _runner.ReadSchematic(schematicProbe with { Kind = kind, Technology = lineTech }, emit, control);
+                control.Token.ThrowIfCancellationRequested();
+                return new RecognitionPreview(picture.Parts, picture.Report, picture.Refusal,
+                    new ImagePreviewDetail(read, lineTech, techChoice?.Path, null, null, ImageOverlay.BuildSchematic(picture), [], picture));
+            }
 
             var tech = cached ? cachedTech : techChoice is null ? null : _runner.LoadTechnology(techChoice.Path);
             var input = probe with { Technology = tech, Kind = kind.Kind == DrawingKind.Layout ? kind : kind.Force(DrawingKind.Layout) };
@@ -842,10 +872,16 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         }
         if (kind == DrawingKind.Schematic)
         {
-            Overlay = ImageOverlay.Empty;
+            _schematic = d.Schematic;
+            // Started on a placed schematic picture, the default target is the schematic it sits in, over it (D14) —
+            // decided once the picture reads as a schematic, and once per picture, so the user's own choice stands.
+            if (!_ownTargetDefaulted && OwnTargetOffered) { _ownTargetDefaulted = true; TargetOwn = true; }
             Scale.Update(null, false);
             LayerRows.Clear();
-            Status = SchematicNotYet;
+            Overlay = d.Overlay;
+            SelectedItem = SelectedRow is { } row ? Overlay.ItemForPart(row.BoardRefdes) : null;
+            if (preview.Refusal is { } refused) { SetFailure(refused); Status = ""; }
+            RefreshLearnState();
             RefreshCreate();
             return;
         }
@@ -903,6 +939,9 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         string name = NewCellName.Trim();
         Technology? Tech() => cachedTech ?? (techChoice is null ? null : _runner.LoadTechnology(techChoice.Path));
 
+        if (IsSchematicPicture) return BeginSchematicCreate(Tech, name);
+
+
         if (MakeLayout)
         {
             var target = IntoPlacedLayout ? ImageTraceTarget.IntoLayout
@@ -924,5 +963,141 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
                                              schematicTarget, options, null);
             return new CreateOutcome(run.Refusal, run.Report, () => SchematicCreated?.Invoke(run));
         }, "The schematic could not be created");
+    }
+
+    // ── a schematic picture (brief-img-10 R-im10-6 … R-im10-9) ─────────────────────────────────────────
+
+    /// <summary>The last reading of a schematic picture, or null.</summary>
+    private SchematicImageResult? _schematic;
+    private bool _ownTargetDefaulted;
+
+    /// <summary>The user's corrections — a crossing flipped, a dangling end joined to a pin — held like table edits and
+    /// laid over every re-run (R-im10-8); the CLI's <c>--connect</c>/<c>--disconnect</c>, point for point.</summary>
+    public ObservableCollection<ConnectionOverride> Overrides { get; } = [];
+
+    /// <summary>Set by the window's host: the open schematic a placed picture sits in, by its path — what Create draws
+    /// over the picture into (D14).</summary>
+    public Func<string, SchematicEditModel?>? OpenSchematic { get; set; }
+
+    /// <summary>Raised on the UI thread when a cell with the picture's schematic was written.</summary>
+    public event Action<SchematicImageRun>? SchematicPictureCreated;
+
+    /// <summary>Raised on the UI thread with the drawing to add over a placed picture, as one undo step.</summary>
+    public event Action<SchematicImageEdit, SchematicBitmapPlacement>? SchematicPictureDrawn;
+
+    private bool IntoPlacedSchematic => TargetOwn && OwnTargetOffered && IsSchematicPicture && Source?.Placement is SchematicBitmapPlacement;
+
+    /// <summary>A crossing clicked on the canvas: it reads the other way from now on, through every re-run.</summary>
+    public void ToggleCrossing(ImageOverlayItem item)
+    {
+        if (item.Class != ImageOverlayClass.Crossing || item.Circle is not { } c || _schematic?.Read is not { } read) return;
+        if (!int.TryParse(item.Id[ImageOverlay.CrossingPrefix.Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out int id)
+            || read.Wires.Crossings.FirstOrDefault(x => x.Id == id) is not { } crossing) return;
+        for (int i = Overrides.Count - 1; i >= 0; i--)
+            if (!Overrides[i].IsJoin && Math.Abs(Overrides[i].X - c.X) <= 3 && Math.Abs(Overrides[i].Y - c.Y) <= 3) Overrides.RemoveAt(i);
+        Overrides.Add(ConnectionOverride.Crossing(Math.Round(c.X, 2), Math.Round(c.Y, 2), connect: !crossing.Connected));
+        Status = crossing.Connected ? "That crossing is not connected now." : "That crossing is connected now.";
+        ScheduleRecognition();
+    }
+
+    /// <summary>A dangling end dragged on the canvas to <paramref name="to"/>: joined to the nearest pin there.</summary>
+    public void JoinEnd(ImageOverlayItem end, PixelPoint to)
+    {
+        if (!end.Id.StartsWith(ImageOverlay.EndPrefix, StringComparison.Ordinal) || end.Circle is not { } from
+            || _schematic is not { Read: { } read, Symbols: { } symbols }) return;
+        var pins = symbols.Symbols.SelectMany(sym => sym.Pins).Select(p => read.ToSource(p.X, p.Y)).ToList();
+        double reach = Math.Max(12, 6 * read.StrokeWidth);
+        var near = pins.Where(p => Math.Abs(p.X - to.X) <= reach && Math.Abs(p.Y - to.Y) <= reach)
+                       .OrderBy(p => (p.X - to.X) * (p.X - to.X) + (p.Y - to.Y) * (p.Y - to.Y)).ToList();
+        if (near.Count == 0) { Status = "Drop a wire end on a part's pin to connect it."; return; }
+        Overrides.Add(ConnectionOverride.Join(Math.Round(from.X, 2), Math.Round(from.Y, 2), Math.Round(near[0].X, 2), Math.Round(near[0].Y, 2)));
+        Status = "The wire end is joined to that pin.";
+        ScheduleRecognition();
+    }
+
+    /// <summary>Forgets every correction.</summary>
+    [RelayCommand]
+    private void ClearOverrides()
+    {
+        if (Overrides.Count == 0) return;
+        Overrides.Clear();
+        ScheduleRecognition();
+    }
+
+    /// <summary>The schematic picture's input — the CLI's, field for field (D2): the reading's options with the
+    /// corrections, the edited table, Arrange, the underlay setting.</summary>
+    public SchematicImageInput BuildSchematicInput(Technology? technology, ImageKindResult? kind)
+    {
+        var d = new LineArtOptions();
+        var lineArt = d with
+        {
+            K = TryNum(ThresholdText, out double k) && k > 0 ? k : d.K,
+            Window = int.TryParse(WindowText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int w) && w >= 3 ? w : d.Window,
+        };
+        return new SchematicImageInput
+        {
+            Source = Source!,
+            Kind = kind,
+            Options = new SchematicImageOptions
+            {
+                LineArt = lineArt,
+                Crossings = CrossingIndex switch { 0 => CrossingRule.Never, 2 => CrossingRule.Always, _ => CrossingRule.WithDot },
+                Overrides = [.. Overrides],
+            },
+            Technology = technology,
+            TechnologyPath = Technology?.Path,
+            PartsCsvText = PartsCsvText,
+            Arrange = ArrangeIndex == 1 ? SchematicArrange.Tidy : SchematicArrange.AsDrawn,
+            KeepUnderlay = KeepUnderlay,
+        };
+    }
+
+    private CreateJob BeginSchematicCreate(Func<Technology?> tech, string name)
+    {
+        var emit = BuildEmit();
+        var kind = ReadKind is { } k ? ForcedKind(k) : null;
+        var input = BuildSchematicInput(null, kind);
+        if (IntoPlacedSchematic && Source!.Placement is SchematicBitmapPlacement placed)
+        {
+            // A snapshot of the open schematic, taken here on the UI thread: the background only reads its names.
+            var open = OpenSchematic?.Invoke(placed.Document);
+            var snapshot = open is null ? new SchematicEditModel() : SchematicPersistence.Deserialize(SchematicPersistence.Serialize(open)).model;
+            return new CreateJob("Drawing over the picture…", () =>
+            {
+                var edit = _runner.IntoSchematic(input with { Technology = tech() }, snapshot, placed, emit, null);
+                return new CreateOutcome(edit.Refusal, edit.Report, () => SchematicPictureDrawn?.Invoke(edit, placed));
+            }, "The schematic could not be drawn");
+        }
+        var target = IsReplace ? SchematicImageTarget.Replace(NewCellDir(name)) : SchematicImageTarget.NewCell(_workspaceDir, name);
+        return new CreateJob($"Writing {name}…", () =>
+        {
+            var run = _runner.SchematicRun(input with { Technology = tech() }, target, new SchematicImageRunOptions { Emit = emit }, null);
+            return new CreateOutcome(run.Refusal, run.Report, () => SchematicPictureCreated?.Invoke(run));
+        }, "The schematic could not be created");
+    }
+
+    // ── Learn These Glyphs, for a picture's rows (R-im10-9) ─────────────────────────────────────────────
+
+    private ImageWord? DesignatorWordOf(PartsTableRowViewModel row) =>
+        IsSchematicPicture && _schematic is { Circuit: { } circuit, Labels: { } labels }
+        && circuit.SymbolOfRow.TryGetValue(row.BoardRefdes, out int symbol)
+            ? labels.Symbols.FirstOrDefault(l => l.Symbol == symbol)?.DesignatorWord
+            : null;
+
+    protected override bool CanTeach(PartsTableRowViewModel row) =>
+        IsSchematicPicture ? DesignatorWordOf(row) is { } word && ImageText.Lesson(word, row.RefdesText.Trim()) is not null
+                           : base.CanTeach(row);
+
+    protected override (int Added, IReadOnlyList<char> Chars)? Teach(PartsTableRowViewModel row, string directory)
+    {
+        if (!IsSchematicPicture) return base.Teach(row, directory);
+        if (DesignatorWordOf(row) is not { } word || ImageText.Lesson(word, row.RefdesText.Trim()) is not { } lesson) return null;
+        return (GlyphTemplates.Learn(directory, lesson), [.. lesson.Select(l => l.Char)]);
+    }
+
+    private void RefreshLearnState()
+    {
+        LearnGlyphsCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(CanLearn));
     }
 }

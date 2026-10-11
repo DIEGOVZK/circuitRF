@@ -92,5 +92,11 @@ public sealed record SchematicImageOptions
     /// <summary>A word within this many w of a dangling end, in line with its wire, is the wire's net label.</summary>
     public double LabelGap { get; init; } = 2.0;
 
+    // ── Corrections (R-im10-8) ──────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The user's corrections, in the source picture's pixels: a crossing set connected or not here; a dangling
+    /// end joined to a pin in the circuit (IM-10's emit).</summary>
+    public IReadOnlyList<ConnectionOverride> Overrides { get; init; } = [];
+
     public int MaxThreads { get; init; }
 }

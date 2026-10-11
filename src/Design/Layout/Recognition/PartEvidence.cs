@@ -26,6 +26,10 @@ public enum PartEvidenceSource
     /// <summary>A designator read off the silkscreen (AS-10).</summary>
     Silkscreen,
 
+    /// <summary>Read off a schematic picture (brief-img-10): its drawing named the kind, its words the designator and the
+    /// value.</summary>
+    Picture,
+
     /// <summary>The designator's own letters (<c>R</c>, <c>C</c>, <c>FB</c>, …) — kind only.</summary>
     Refdes,
 
@@ -83,6 +87,7 @@ public static class PartEvidenceText
         PartEvidenceSource.Bom => "bom",
         PartEvidenceSource.LandPattern => "land",
         PartEvidenceSource.Silkscreen => "silk",
+        PartEvidenceSource.Picture => "picture",
         PartEvidenceSource.Refdes => "refdes",
         PartEvidenceSource.Generated => "generated",
         PartEvidenceSource.Library => "library",

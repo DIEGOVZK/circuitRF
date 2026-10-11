@@ -35,6 +35,8 @@ public sealed class ImageOverlayCanvas : Control
     private static readonly Color LineColour = Color.Parse("#00897B");
     private static readonly Color PortColour = Color.Parse("#C62828");
     private static readonly Color DrillColour = Color.Parse("#37474F");
+    private static readonly Color WireColour = Color.Parse("#1565C0");
+    private static readonly Color TextColour = Color.Parse("#5D4037");
 
     private ImageSourceViewModel? _vm;
     private RasterImage? _rasterShown;
@@ -51,6 +53,7 @@ public sealed class ImageOverlayCanvas : Control
 
     private Point? _pressAt;
     private Point _lastPointer;
+    private ImageOverlayItem? _dragEnd;
     private bool _panning, _scoping, _spaceHeld;
     private PixelPoint? _hover;
 
@@ -198,6 +201,18 @@ public sealed class ImageOverlayCanvas : Control
                 case ImageOverlayClass.Port when item.Circle is { } c:
                     DrawPort(context, c, item.Label, selected ? Accent : PortColour, px);
                     break;
+                case ImageOverlayClass.Wire when item.Circle is { } c:
+                    // A junction dot filled; a dangling end a ring — the handle that is dragged onto a pin.
+                    bool dot = item.Id.StartsWith("dot:", StringComparison.Ordinal);
+                    context.DrawEllipse(dot ? new ImmutableSolidColorBrush(colour) : new ImmutableSolidColorBrush(Colors.White, 0.6), pen,
+                                        new Point(c.X, c.Y), c.R, c.R);
+                    break;
+                case ImageOverlayClass.Crossing when item.Circle is { } c:
+                    // Read as connected: a filled disc; not connected: a ring with a gap — what a click flips.
+                    var ring = new Pen(new ImmutableSolidColorBrush(selected ? Accent : colour), 2 * px);
+                    context.DrawEllipse(item.Rgb == 0x2E9D4A ? new ImmutableSolidColorBrush(colour, 0.35) : null, ring, new Point(c.X, c.Y), c.R, c.R);
+                    if (selected && item.Label is { } l) DrawLabel(context, item, l, Accent, px);
+                    break;
                 default:
                     var g = GeometryOf(item);
                     // A halo under the outline: copper is outlined in its layer's colour, which is very often the
@@ -210,7 +225,7 @@ public sealed class ImageOverlayCanvas : Control
                     context.DrawGeometry(fill, pen, g);
                     break;
             }
-            if (item.Label is { Length: > 0 } label && item.Class is ImageOverlayClass.Part or ImageOverlayClass.Line)
+            if (item.Label is { Length: > 0 } label && item.Class is ImageOverlayClass.Part or ImageOverlayClass.Line or ImageOverlayClass.Text)
                 DrawLabel(context, item, label, selected ? Accent : colour, px);
         }
 
@@ -227,6 +242,9 @@ public sealed class ImageOverlayCanvas : Control
         ImageOverlayClass.Part => PartColour,
         ImageOverlayClass.Line => LineColour,
         ImageOverlayClass.Port => PortColour,
+        ImageOverlayClass.Wire => WireColour,
+        ImageOverlayClass.Text => TextColour,
+        ImageOverlayClass.Crossing when item.Rgb is { } rgb => Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb),
         _ => Amber,
     };
 
@@ -309,6 +327,8 @@ public sealed class ImageOverlayCanvas : Control
         if (_scoping && _pressAt is { } from)
             context.DrawRectangle(new ImmutableSolidColorBrush(Accent, 0.08), new Pen(pen.Brush, 1, new ImmutableDashStyle([4, 3], 0)),
                                   new Rect(from, _lastPointer).Normalize());
+        if (_dragEnd is { Circle: { } c } && _pressAt is not null)
+            context.DrawLine(new Pen(pen.Brush, 1.5, new ImmutableDashStyle([5, 3], 0)), ToView(c.X, c.Y), _lastPointer);
     }
 
     // ── bitmaps ─────────────────────────────────────────────────────────────────────────────────────
@@ -427,6 +447,11 @@ public sealed class ImageOverlayCanvas : Control
                    || (point.Properties.IsLeftButtonPressed && _spaceHeld);
         _pressAt = point.Properties.IsLeftButtonPressed && !_panning ? point.Position : null;
         _scoping = false;
+        // A dangling wire end pressed on a schematic picture is dragged, not scoped: dropped on a pin it joins it (R-im10-8).
+        _dragEnd = _pressAt is { } at && _vm is { IsSchematicPicture: true } vm0
+            ? vm0.Overlay.HitTest(ToPicture(at).X, ToPicture(at).Y, 4 / _zoom, vm0.Shows) is { } hit
+              && hit.Id.StartsWith(ImageOverlay.EndPrefix, StringComparison.Ordinal) ? hit : null
+            : null;
         e.Pointer.Capture(this);
         e.Handled = true;
     }
@@ -441,7 +466,7 @@ public sealed class ImageOverlayCanvas : Control
             _pan += p - _lastPointer;
             ViewChanged?.Invoke();
         }
-        else if (_pressAt is { } from && _vm is { Scale.Tool: ImageMeasureTool.None, CanvasPick: false }
+        else if (_pressAt is { } from && _dragEnd is null && _vm is { Scale.Tool: ImageMeasureTool.None, CanvasPick: false, IsLayoutPicture: true }
                  && (Math.Abs(p.X - from.X) > 4 || Math.Abs(p.Y - from.Y) > 4))
             _scoping = true;
         _lastPointer = p;
@@ -456,6 +481,11 @@ public sealed class ImageOverlayCanvas : Control
         if (_panning) { _panning = false; return; }
         if (_pressAt is not { } from || _vm is not { } vm) return;
         _pressAt = null;
+        if (_dragEnd is { } end)
+        {
+            _dragEnd = null;
+            if (Math.Abs(p.X - from.X) > 4 || Math.Abs(p.Y - from.Y) > 4) { vm.JoinEnd(end, ToPicture(p)); InvalidateVisual(); return; }
+        }
 
         if (_scoping)
         {
@@ -472,6 +502,8 @@ public sealed class ImageOverlayCanvas : Control
         var at = ToPicture(p);
         if (vm.CanvasPick) { vm.PickAt(at); return; }
         if (vm.Scale.Click(at)) { ViewChanged?.Invoke(); InvalidateVisual(); return; }
-        vm.SelectedItem = vm.Overlay.HitTest(at.X, at.Y, 4 / _zoom, vm.Shows);
+        var picked = vm.Overlay.HitTest(at.X, at.Y, 4 / _zoom, vm.Shows);
+        if (picked is { Class: ImageOverlayClass.Crossing }) { vm.ToggleCrossing(picked); return; }
+        vm.SelectedItem = picked;
     }
 }

@@ -45,6 +45,22 @@ public sealed class PartsTableCsvTests
         Assert.Equal(text, PartsTableCsv.Write(read.Table!));
     }
 
+    /// <summary>brief-img-10 R-im10-7: a picture's table states its pixels on the coordinate columns and round-trips; it
+    /// is refused over artwork and an artwork's over a picture; an artwork table writes the header it always did.</summary>
+    [Fact]
+    public void APixelTableRoundTrips_IsRefusedOverArtwork_AndAnArtworkTableIsUnchanged()
+    {
+        var artwork = Recognised();
+        var picture = artwork with { Pixels = true };
+        string pixels = PartsTableCsv.Write(picture), lengths = PartsTableCsv.Write(artwork);
+
+        Assert.StartsWith(string.Join(",", PartsTableCsv.Columns) + "\n", lengths);
+        Assert.Contains(",X (px),Y (px),", pixels.Split('\n')[0]);
+        Assert.Equal(pixels, PartsTableCsv.Write(PartsTableCsv.Read(pixels, picture).Table!));
+        Assert.NotNull(PartsTableCsv.Read(pixels, artwork).Refusal);
+        Assert.NotNull(PartsTableCsv.Read(lengths, picture).Refusal);
+    }
+
     /// <summary>AS-10 R-as10-5: a row at a generated part's X and Y renames it, and the kind and the variable follow the
     /// new designator; a designator the board itself states (here the placement file's) is never renamed.</summary>
     [Fact]

@@ -54,7 +54,7 @@ public static class PartsTableCsv
     {
         ArgumentNullException.ThrowIfNull(table);
         var sb = new StringBuilder();
-        sb.Append(string.Join(",", Columns)).Append('\n');
+        sb.Append(string.Join(",", Columns.Select(c => Header(table, c)))).Append('\n');
         foreach (var row in table.Rows.OrderBy(r => r.Refdes, PartsTable.NaturalOrder))
             sb.Append(string.Join(",", Columns.Select(c => Escape(Cell(table, row, c))))).Append('\n');
         return sb.ToString();
@@ -63,6 +63,14 @@ public static class PartsTableCsv
     /// <summary>Writes the table to <paramref name="path"/>, UTF-8 without a byte order mark.</summary>
     public static void WriteFile(string path, PartsTable table) =>
         File.WriteAllText(path, Write(table), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+    /// <summary>The unit a picture's coordinate columns state in their header (R-im10-7): <c>X (px)</c>. A layout's
+    /// write none, so every artwork table is the bytes it always was.</summary>
+    public const string PixelUnit = " (px)";
+
+    /// <summary>A column's header as <paramref name="table"/> writes it.</summary>
+    public static string Header(PartsTable table, string column) =>
+        table.Pixels && column is "X" or "Y" ? column + PixelUnit : column;
 
     /// <summary>One cell as the table writes it.</summary>
     public static string Cell(PartsTable table, PartRow row, string column) => column switch
@@ -76,8 +84,8 @@ public static class PartsTableCsv
         "Model" => row.Model.ToString(),
         "ModelFile" => row.ModelFile ?? "",
         "PartNumber" => row.PartNumber ?? "",
-        "X" => table.Format.Length(row.X),
-        "Y" => table.Format.Length(row.Y),
+        "X" => table.Pixels ? row.X.ToString(System.Globalization.CultureInfo.InvariantCulture) : table.Format.Length(row.X),
+        "Y" => table.Pixels ? row.Y.ToString(System.Globalization.CultureInfo.InvariantCulture) : table.Format.Length(row.Y),
         "Evidence" => PartEvidenceText.Format(row.Evidence),
         "Confidence" => PartsTable.ConfidenceText(row.Confidence),
         "Notes" => string.Join("; ", row.Notes),
@@ -115,10 +123,19 @@ public static class PartsTableCsv
         // ── the header: every column known, none twice, Refdes present ────────────────────────────
         var header = parsed.Rows[0].Fields.Select(f => f.Trim()).ToList();
         var at = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        bool? pixels = null;
         for (int i = 0; i < header.Count; i++)
         {
             if (header[i].Length == 0 && i == header.Count - 1) continue;   // a trailing separator
-            string? known = Columns.FirstOrDefault(c => string.Equals(c, header[i], StringComparison.OrdinalIgnoreCase));
+            // A coordinate column states its unit only when it is a picture's (R-im10-7).
+            string name = header[i];
+            if (name.EndsWith(PixelUnit, StringComparison.OrdinalIgnoreCase) && name[..^PixelUnit.Length] is "X" or "Y" or "x" or "y")
+            {
+                name = name[..^PixelUnit.Length];
+                pixels = true;
+            }
+            else if (name is "X" or "Y" or "x" or "y") pixels ??= false;
+            string? known = Columns.FirstOrDefault(c => string.Equals(c, name, StringComparison.OrdinalIgnoreCase));
             if (known is null)
                 return new PartsCsvReading(null, [], [],
                     $"The parts table has a column '{header[i]}' that is not one of its columns ({string.Join(", ", Columns)}). " +
@@ -128,6 +145,10 @@ public static class PartsTableCsv
         }
         if (!at.ContainsKey("Refdes"))
             return new PartsCsvReading(null, [], [], "The parts table has no Refdes column, so no row can be matched to a part.");
+        if (pixels is { } px && px != recognised.Pixels)
+            return new PartsCsvReading(null, [], [], px
+                ? "The parts table's X and Y are a picture's pixels, so it is a schematic picture's table and cannot be laid over artwork."
+                : "The parts table's X and Y are lengths on a layout, so it is an artwork's table and cannot be laid over a picture.");
 
         var notes = new List<string>();
         var notOnBoard = new List<string>();
@@ -174,7 +195,7 @@ public static class PartsTableCsv
     {
         if (x is not { Length: > 0 } || y is not { Length: > 0 }) return null;
         return rows.FirstOrDefault(r =>
-            r.Evidence.TryGetValue(PartField.Refdes, out var src) && src is PartEvidenceSource.Silkscreen or PartEvidenceSource.Generated
+            r.Evidence.TryGetValue(PartField.Refdes, out var src) && src is PartEvidenceSource.Silkscreen or PartEvidenceSource.Picture or PartEvidenceSource.Generated
             && !seen.Contains(r.Refdes)
             && string.Equals(Cell(table, r, "X"), x, StringComparison.OrdinalIgnoreCase)
             && string.Equals(Cell(table, r, "Y"), y, StringComparison.OrdinalIgnoreCase));

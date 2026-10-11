@@ -1,6 +1,7 @@
-<!-- The recognition's options (brief-artsch-8 R-as8-2; brief-img-5 R-im5-1): ground, vias, coplanar lines, the sweep
-     and the digits — the CLI's flags, one control each. Shown wherever a schematic is recognised: from artwork, and
-     from a layout picture. -->
+<!-- The recognition's options (brief-artsch-8 R-as8-2; brief-img-5 R-im5-1; brief-img-10 R-im10-9): ground, vias,
+     coplanar lines — or, for a schematic picture, Arrange and the crossing rule — the sweep and the digits: the CLI's
+     flags, one control each. Shown wherever a schematic is recognised: from artwork, from a layout picture and from a
+     schematic picture. -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:rec="using:CircuitRF.Ui.Recognition"
@@ -22,7 +23,19 @@
     </UserControl.Resources>
 
     <StackPanel Spacing="8">
-        <WrapPanel Classes="row" Orientation="Horizontal">
+        <!-- A schematic picture (brief-img-10 R-im10-9): how the drawing is arranged, and where crossings connect. -->
+        <WrapPanel Classes="row" Orientation="Horizontal" IsVisible="{Binding PictureOptionsApply}">
+            <TextBlock Classes="label" Text="Arrange" Width="70" Margin="0,0,10,0"/>
+            <ComboBox ItemsSource="{x:Static rec:RecognitionSessionViewModel.ArrangeOptions}"
+                      SelectedIndex="{Binding ArrangeIndex}" MinWidth="130" Margin="0,0,16,0"
+                      ToolTip.Tip="As drawn: each part where the picture has it, each wire along its route, the picture under it. Tidy: the automatic arrangement, without the picture."/>
+            <TextBlock Classes="label" Text="Crossings connect" Margin="0,0,6,0"/>
+            <ComboBox ItemsSource="{x:Static rec:RecognitionSessionViewModel.CrossingOptions}"
+                      SelectedIndex="{Binding CrossingIndex}" MinWidth="120"
+                      ToolTip.Tip="Where two wires cross: never connected, connected where there is a dot, or always connected. Click a crossing on the picture to set that one."/>
+        </WrapPanel>
+
+        <WrapPanel Classes="row" Orientation="Horizontal" IsVisible="{Binding ArtworkOptionsApply}">
             <TextBlock Classes="label" Text="Ground" Width="70" Margin="0,0,10,0"/>
             <ComboBox ItemsSource="{x:Static rec:RecognitionSessionViewModel.GroundOptions}"
                       SelectedIndex="{Binding GroundIndex}" MinWidth="130" Margin="0,0,6,0"

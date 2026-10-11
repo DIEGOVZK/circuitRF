@@ -2,7 +2,8 @@
 //
 // Each call is the function the CLI calls and no other: the kind (ImageKind.Classify), the read-only trace a layout is
 // previewed from (ImageTrace.Trace), the read-only reading a schematic is previewed from (ImageRecognition.Circuit), and
-// the two writes (ImageTrace.Run, ImageRecognition.Run). An interface only so a test can RECORD what the dialog hands
+// the two writes (ImageTrace.Run, ImageRecognition.Run) — and for a schematic picture, its reading, its write and its
+// drawing over a placed bitmap (SchematicImageRecognition.Circuit, Run, IntoSchematic). An interface only so a test can RECORD what the dialog hands
 // across; nothing here decides anything.
 
 using CircuitRF.Design.Imaging;
@@ -10,6 +11,8 @@ using CircuitRF.Design.Layout;
 using CircuitRF.Design.Layout.Recognition;
 using CircuitRF.Design.Layout.Recognition.Image;
 using CircuitRF.Design.Layout.Recognition.Silkscreen;
+using CircuitRF.Design.Schematic;
+using CircuitRF.Design.Schematic.Recognition;
 using CircuitRF.Engine;
 
 namespace CircuitRF.Ui.Recognition;
@@ -35,6 +38,16 @@ public interface IImageRecognitionRunner
     /// <summary>Make Schematic, from a layout picture.</summary>
     ImageRecognitionRun RecognitionRun(ImageRecognitionInput input, ImageRecognitionTarget target, ImageRecognitionRunOptions options,
                                        RunControl? control);
+
+    /// <summary>A schematic picture read and emitted, writing nothing — its preview (IM-10).</summary>
+    SchematicImageResult ReadSchematic(SchematicImageInput input, RecognitionEmitOptions emit, RunControl? control);
+
+    /// <summary>A schematic picture made into a new cell's schematic (IM-10).</summary>
+    SchematicImageRun SchematicRun(SchematicImageInput input, SchematicImageTarget target, SchematicImageRunOptions options, RunControl? control);
+
+    /// <summary>A schematic picture's drawing, made over the placed bitmap it is (IM-10, D14).</summary>
+    SchematicImageEdit IntoSchematic(SchematicImageInput input, SchematicEditModel into, SchematicBitmapPlacement placed,
+                                     RecognitionEmitOptions emit, RunControl? control);
 }
 
 /// <summary>The real one: the entry points, unchanged.</summary>
@@ -59,4 +72,15 @@ public sealed class ImageRecognitionRunner : IImageRecognitionRunner
     public ImageRecognitionRun RecognitionRun(ImageRecognitionInput input, ImageRecognitionTarget target,
                                               ImageRecognitionRunOptions options, RunControl? control) =>
         ImageRecognition.Run(input, target, options, control);
+
+    public SchematicImageResult ReadSchematic(SchematicImageInput input, RecognitionEmitOptions emit, RunControl? control) =>
+        SchematicImageRecognition.Circuit(input, emit, control);
+
+    public SchematicImageRun SchematicRun(SchematicImageInput input, SchematicImageTarget target, SchematicImageRunOptions options,
+                                          RunControl? control) =>
+        SchematicImageRecognition.Run(input, target, options, control);
+
+    public SchematicImageEdit IntoSchematic(SchematicImageInput input, SchematicEditModel into, SchematicBitmapPlacement placed,
+                                            RecognitionEmitOptions emit, RunControl? control) =>
+        SchematicImageRecognition.IntoSchematic(input, into, placed, emit, control);
 }

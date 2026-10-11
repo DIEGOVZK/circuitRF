@@ -32,7 +32,7 @@ public sealed partial class PartsTableRowViewModel : ObservableObject
         Row = row;
         ModelOptions = ["Ideal", .. modelFiles, BrowseModel];
         CanRename = row.RenamedFrom is not null
-                    || (row.Evidence.TryGetValue(PartField.Refdes, out var source) && source is PartEvidenceSource.Silkscreen or PartEvidenceSource.Generated);
+                    || (row.Evidence.TryGetValue(PartField.Refdes, out var source) && source is PartEvidenceSource.Silkscreen or PartEvidenceSource.Picture or PartEvidenceSource.Generated);
         _refreshing = true;
         RefdesText = row.Refdes;
         KindText = PartsTable.KindText(row.Kind);

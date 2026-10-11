@@ -211,6 +211,27 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
     /// made from it.</summary>
     public virtual bool OptionsApply => true;
 
+    /// <summary>Whether the artwork recognition's own options (ground, vias, coplanar lines) apply: not to a schematic
+    /// picture, which has no copper.</summary>
+    public virtual bool ArtworkOptionsApply => true;
+
+    /// <summary>Whether a schematic picture's options apply — Arrange and the crossing rule (brief-img-10 R-im10-9).</summary>
+    public virtual bool PictureOptionsApply => false;
+
+    /// <summary>Arrange (D12): the picture's own arrangement, or the automatic one — the CLI's <c>--arrange</c>.</summary>
+    public static IReadOnlyList<string> ArrangeOptions { get; } = ["As drawn", "Tidy"];
+    [ObservableProperty] private int _arrangeIndex;
+
+    /// <summary>Schematic pictures (IM-7, D11): where a four-way crossing connects.</summary>
+    public static IReadOnlyList<string> CrossingOptions { get; } = ["Never", "With a dot", "Always"];
+    [ObservableProperty] private int _crossingIndex = 1;
+
+    partial void OnArrangeIndexChanged(int value) => OnPictureOptionChanged(rereads: false);
+    partial void OnCrossingIndexChanged(int value) => OnPictureOptionChanged(rereads: true);
+
+    /// <summary>A schematic picture's option changed; the crossing rule changes the reading, Arrange only the drawing.</summary>
+    protected virtual void OnPictureOptionChanged(bool rereads) { if (rereads) ScheduleRecognition(); }
+
     [ObservableProperty] private int _groundIndex;
     [ObservableProperty] private (long X, long Y)? _groundPoint;
     [ObservableProperty] private int _viaIndex;
@@ -288,12 +309,12 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
     protected string? OptionsBlocked()
     {
         if (!OptionsApply) return null;
-        if (GroundIndex == 1 && GroundPoint is null) return "Click the ground copper on the layout (Pick…), or set Ground to Auto.";
+        if (ArtworkOptionsApply && GroundIndex == 1 && GroundPoint is null) return "Click the ground copper on the layout (Pick…), or set Ground to Auto.";
         if (RecognitionSweep.Parse(StartText) is null) return "Start needs a frequency with its unit (100 MHz).";
         if (RecognitionSweep.Parse(StopText) is null) return "Stop needs a frequency with its unit (6 GHz).";
         if (!int.TryParse(PointsText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) || n < 2)
             return "Points needs a whole number, at least 2.";
-        if (CoplanarIndex == 0 && !(double.TryParse(CoplanarFactorText, NumberStyles.Float, CultureInfo.InvariantCulture, out double k) && k > 0))
+        if (ArtworkOptionsApply && CoplanarIndex == 0 && !(double.TryParse(CoplanarFactorText, NumberStyles.Float, CultureInfo.InvariantCulture, out double k) && k > 0))
             return "The coplanar factor needs a positive number of substrate heights.";
         return null;
     }
@@ -422,7 +443,16 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
 
     // ── Learn these glyphs (brief-artsch-10 R-as10-5) ─────────────────────────────────────────────
 
-    private bool CanLearnGlyphs() => SelectedRow is { } row && SilkscreenText.Lesson(row.Corrected) is not null;
+    private bool CanLearnGlyphs() => SelectedRow is { } row && CanTeach(row);
+
+    /// <summary>Whether <paramref name="row"/>'s corrected designator teaches anything: a silkscreen's glyphs here, a
+    /// picture's in the picture source.</summary>
+    protected virtual bool CanTeach(PartsTableRowViewModel row) => SilkscreenText.Lesson(row.Corrected) is not null;
+
+    /// <summary>Teaches <paramref name="row"/>'s glyphs into <paramref name="directory"/>: how many were new, and the
+    /// characters taught; null when there is nothing to teach.</summary>
+    protected virtual (int Added, IReadOnlyList<char> Chars)? Teach(PartsTableRowViewModel row, string directory) =>
+        SilkscreenText.Lesson(row.Corrected) is { } lesson ? (GlyphTemplates.Learn(directory, lesson), [.. lesson.Select(l => l.Char)]) : null;
 
     /// <summary>Whether Learn These Glyphs is offered: the selected part's designator came from the silkscreen and has
     /// been corrected.</summary>
@@ -442,13 +472,14 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanLearnGlyphs))]
     private void LearnGlyphs()
     {
-        if (SelectedRow is not { } row || SilkscreenText.Lesson(row.Corrected) is not { } lesson) return;
+        if (SelectedRow is not { } row) return;
         try
         {
-            int added = GlyphTemplates.Learn(AppDataRoot.SubDir(GlyphTemplates.TaughtFolder), lesson);
+            if (Teach(row, AppDataRoot.SubDir(GlyphTemplates.TaughtFolder)) is not { } taught) return;
+            var (added, chars) = taught;
             Status = added == 0
                 ? $"Those glyphs were already learned."
-                : $"Learned {string.Join(", ", lesson.Select(l => $"'{l.Char}'"))} from {row.RefdesText.Trim()}; recognising again.";
+                : $"Learned {string.Join(", ", chars.Select(c => $"'{c}'"))} from {row.RefdesText.Trim()}; recognising again.";
             ScheduleRecognition();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -485,7 +516,7 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
         {
             if (_edits.Count == 0) return null;
             string[] columns = ["Refdes", "Kind", "Value", "Model", "ModelFile", "X", "Y"];
-            var sb = new StringBuilder(string.Join(",", columns)).Append('\n');
+            var sb = new StringBuilder(string.Join(",", columns.Select(c => PartsTableCsv.Header(_table, c)))).Append('\n');
             foreach (var (key, cells) in _edits.OrderBy(e => e.Key, PartsTable.NaturalOrder))
             {
                 var row = _table.Rows.FirstOrDefault(r => string.Equals(r.BoardRefdes, key, StringComparison.OrdinalIgnoreCase));
@@ -675,7 +706,8 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
 
     /// <summary>An anchor as the layout displays coordinates.</summary>
     public static string AnchorText(PartsTable table, RecognitionAnchor a) =>
-        $"({table.Format.Length(a.X)}, {table.Format.Length(a.Y)})" + (a.Layer is { } l ? $" on {l.Layer}/{l.Datatype}" : "");
+        table.Pixels ? $"({a.X}, {a.Y}) px"
+        : $"({table.Format.Length(a.X)}, {table.Format.Length(a.Y)})" + (a.Layer is { } l ? $" on {l.Layer}/{l.Datatype}" : "");
 
     private static IReadOnlyList<string> ModelFiles(string? root) =>
         root is null ? [] : [.. new PartModelResolver(root).TwoPortFiles().Select(f =>

@@ -16,7 +16,30 @@ namespace CircuitRF.Design.Schematic;
 public sealed record NetlistSchematicResult(
     SchematicEditModel?   Schematic,
     IReadOnlyList<string> Refusals,
-    IReadOnlyList<string> Notes);
+    IReadOnlyList<string> Notes)
+{
+    /// <summary>Instances an exact hint was given for and could not be drawn at — their pins would land on another
+    /// instance's — and which were placed automatically instead (brief-img-10 R-im10-4).</summary>
+    public IReadOnlyList<string> PlacementFallbacks { get; init; } = [];
+}
+
+/// <summary>Where one instance is drawn, exactly: its origin in schematic units (snapped to the grid by the drawing)
+/// and its orientation.</summary>
+public readonly record struct ExactInstance(double X, double Y, SymbolRotation Rotation, bool MirrorX);
+
+/// <summary>
+/// A drawing given rather than arranged (brief-img-10 R-im10-4, overview D12): each hinted instance at its position and
+/// orientation, and each hinted net along its own orthogonal routes, in schematic units. A net with routes is wired with
+/// them, each pin they do not reach re-joined with at most one dog-leg; anything not hinted is arranged as before.
+/// </summary>
+public sealed record ExactPlacement
+{
+    public IReadOnlyDictionary<string, ExactInstance> Instances { get; init; } = new Dictionary<string, ExactInstance>();
+
+    /// <summary>Per net, by the name the netlist gives it, its wire runs — each a polyline.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyList<(double X, double Y)>>> Routes { get; init; } =
+        new Dictionary<string, IReadOnlyList<IReadOnlyList<(double X, double Y)>>>();
+}
 
 /// <summary>
 /// A drawn schematic from a netlist (brief-agent-authoring-overview.md AA-6): every instance placed
@@ -158,9 +181,12 @@ public static class NetlistSchematic
     /// before, byte for byte.</param>
     /// <param name="artworkSides">With hints: whether a hanger is drawn on the side of the line its artwork is on.
     /// False keeps the artwork's ORDER along the line and draws every hanger below it.</param>
+    /// <param name="exact">The drawing as a picture drew it (brief-img-10 R-im10-4): each hinted instance where it says,
+    /// unless its pins would land on another's — then that one alone is arranged automatically and named in
+    /// <see cref="NetlistSchematicResult.PlacementFallbacks"/>. Null draws exactly as before, byte for byte.</param>
     public static NetlistSchematicResult Build(Library lib, TestBench tb, string? schematicDirectory = null,
                                                IReadOnlyDictionary<string, (long X, long Y)>? hints = null,
-                                               bool artworkSides = true)
+                                               bool artworkSides = true, ExactPlacement? exact = null)
     {
         ArgumentNullException.ThrowIfNull(lib);
         ArgumentNullException.ThrowIfNull(tb);
@@ -187,9 +213,11 @@ public static class NetlistSchematic
         var model = new SchematicEditModel();
         foreach (var it in items) model.Components.Add(it.Comp);
 
-        var placed = Place(items, notes, hints, artworkSides);
+        var fallbacks = new List<string>();
+        var placed = Place(items, notes, hints, artworkSides, exact, fallbacks);
         var grounds = PlaceGrounds(model, placed);
-        Wire(model, placed, grounds, notes);
+        if (exact is null) Wire(model, placed, grounds, notes);
+        else WireExact(model, placed, grounds, exact, notes);
         PlaceDirectives(model, tb);
 
         foreach (var a in tb.Analyses) model.Analyses.Add(a);
@@ -210,8 +238,25 @@ public static class NetlistSchematic
                 $"{tb.RawDirectives.Count} directive(s) the netlist reader stores verbatim are not carried: "
               + string.Join("; ", tb.RawDirectives.Select(r => $"{r.Kind} {r.RawLine}".Trim())) + ".");
 
-        return new NetlistSchematicResult(model, refusals, notes);
+        return new NetlistSchematicResult(model, refusals, notes) { PlacementFallbacks = fallbacks };
     }
+
+    /// <summary>
+    /// The pins <paramref name="inst"/> is drawn with — each one's offset from the component origin under
+    /// <paramref name="rotation"/> and <paramref name="mirrorX"/>, and the net on it — or null when the line cannot be
+    /// drawn. What an exact hint is fitted against (brief-img-10 R-im10-4), so the fit and the drawing use one symbol.
+    /// </summary>
+    public static IReadOnlyList<(double X, double Y, string Net)>? PinOffsets(Instance inst, SymbolRotation rotation, bool mirrorX)
+    {
+        ArgumentNullException.ThrowIfNull(inst);
+        if (MapInstance(inst, null, out _) is not { } it) return null;
+        it.Comp.Rotation = rotation;
+        it.Comp.MirrorX = mirrorX;
+        return [.. Enumerable.Range(0, it.Local.Length).Select(k => { var (x, y) = it.Offset(k); return (x, y, it.Nets[k]); })];
+    }
+
+    /// <summary>The schematic grid every drawn point is snapped to.</summary>
+    public const double Grid = P;
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Netlist line → component
@@ -404,15 +449,19 @@ public static class NetlistSchematic
     /// else then Ts onto.
     /// </summary>
     private static List<Item> Place(List<Item> items, List<string> notes,
-                                    IReadOnlyDictionary<string, (long X, long Y)>? hints = null, bool artworkSides = true)
+                                    IReadOnlyDictionary<string, (long X, long Y)>? hints = null, bool artworkSides = true,
+                                    ExactPlacement? exact = null, List<string>? fallbacks = null)
     {
         var order = new List<Item>();
         if (items.Count == 0) return order;
 
         var withPins = items.Where(i => i.Local.Length > 0).ToList();
 
+        // ── As a picture drew it (R-im10-4): the hinted ones where they are, the rest arranged below ──
+        if (exact is not null) PlaceExact(withPins, exact, order, fallbacks ?? []);
+
         // ── The signal path ──────────────────────────────────────────────────
-        var (path, start, end) = FindPath(withPins);
+        var (path, start, end) = exact is not null ? (new List<Step>(), (Item?)null, (Item?)null) : FindPath(withPins);
 
         var pathNets = new List<string>();
         var junction = new Dictionary<string, double>(StringComparer.Ordinal);   // net → main-line x
@@ -732,6 +781,52 @@ public static class NetlistSchematic
 
     /// <summary>A hanging element: its signal pin uppermost at (x, <paramref name="drop"/>) — or, drawn
     /// <paramref name="up"/>, lowermost at (x, −<paramref name="drop"/>), standing above the line.</summary>
+    /// <summary>
+    /// R-im10-4: every item with an exact hint at its snapped position and orientation, in netlist order — unless one
+    /// of its pins would land on another's pin of a different net, inside another's glyph, or its glyph over another's
+    /// pin. Such an item is left for the automatic arrangement, and named.
+    /// </summary>
+    private static void PlaceExact(List<Item> withPins, ExactPlacement exact, List<Item> order, List<string> fallbacks)
+    {
+        var pins = new Dictionary<(long, long), string>();
+        var glyphs = new List<(double L, double T, double R, double B)>();
+        foreach (var it in withPins)
+        {
+            if (!exact.Instances.TryGetValue(it.Comp.InstanceName, out var e)) continue;
+            it.Comp.Rotation = e.Rotation;
+            it.Comp.MirrorX = e.MirrorX;
+            it.Comp.X = Snap(e.X);
+            it.Comp.Y = Snap(e.Y);
+            BoxOf(it);
+            var own = Enumerable.Range(0, it.Local.Length).Select(k => (Key: Key(it.Pin(k)), Net: it.Nets[k], At: it.Pin(k))).ToList();
+            var glyph = Inner(it);
+            bool clash = own.Any(p => pins.TryGetValue(p.Key, out var n) && n != p.Net)
+                      || glyphs.Any(g => g.L < glyph.R && glyph.L < g.R && g.T < glyph.B && glyph.T < g.B)
+                      || own.Any(p => glyphs.Any(g => Inside(g, p.At)))
+                      || pins.Keys.Any(k => Inside(glyph, (k.Item1 * P, k.Item2 * P)));
+            if (clash)
+            {
+                it.Comp.Rotation = SymbolRotation.R0;
+                it.Comp.MirrorX = false;
+                it.Comp.X = it.Comp.Y = 0;
+                BoxOf(it);
+                fallbacks.Add(it.Comp.InstanceName);
+                continue;
+            }
+            foreach (var p in own) pins.TryAdd(p.Key, p.Net);
+            glyphs.Add(glyph);
+            it.Placed = true;
+            order.Add(it);
+        }
+
+        // The glyph's box a quarter cell inside its edge: two symbols drawn touching are not on top of each other.
+        static (double L, double T, double R, double B) Inner(Item it) =>
+            (it.Comp.X + it.Box.MinX + P / 4, it.Comp.Y + it.Box.MinY + P / 4,
+             it.Comp.X + it.Box.MaxX - P / 4, it.Comp.Y + it.Box.MaxY - P / 4);
+        static bool Inside((double L, double T, double R, double B) g, (double X, double Y) p) =>
+            p.X > g.L && p.X < g.R && p.Y > g.T && p.Y < g.B;
+    }
+
     private static void PlaceHanger(Item it, string net, double x, double drop, bool up = false)
     {
         int top = Array.IndexOf(it.Nets, net);
@@ -1044,6 +1139,118 @@ public static class NetlistSchematic
             var term = placed.SelectMany(i => Enumerable.Range(0, i.Nets.Length).Where(k => i.Nets[k] == net).Select(k => i.Pin(k))).First();
             model.NetLabels.Add(new EditableNetLabel { X = term.X, Y = term.Y, Name = net });
         }
+    }
+
+    /// <summary>
+    /// R-im10-4: each net with routes wired along them — snapped, made orthogonal, and every pin they miss re-joined
+    /// with at most one dog-leg, leaving along the pin's lead. A net whose wiring would touch another net's wire or pin
+    /// (snapping can bring two runs together) is joined by a net label on each pin instead, which is a real connection;
+    /// so is a net with no route. Each separate group of a net's wires carries the net's name, because a picture joins
+    /// two runs by giving them one name.
+    /// </summary>
+    private static void WireExact(SchematicEditModel model, List<Item> placed, List<Item> grounds, ExactPlacement exact,
+                                  List<string> notes)
+    {
+        bool IsGround(string n) => n == Ground || n.StartsWith(Ground + "#", StringComparison.Ordinal);
+        var pinsOf = new Dictionary<string, List<((double X, double Y) At, (int X, int Y) Out)>>(StringComparer.Ordinal);
+        var allPins = new List<((double X, double Y) At, string Net)>();
+        foreach (var it in placed.Concat(grounds))
+            for (int k = 0; k < it.Local.Length; k++)
+            {
+                allPins.Add((it.Pin(k), it.Nets[k]));
+                if (IsGround(it.Nets[k]) || it.Comp.Symbol == SymbolKind.Ground) continue;
+                if (!pinsOf.TryGetValue(it.Nets[k], out var l)) pinsOf[it.Nets[k]] = l = [];
+                l.Add((it.Pin(k), Outward(it, k)));
+            }
+
+        var drawn = new Dictionary<string, List<List<(double X, double Y)>>>(StringComparer.Ordinal);
+        var byLabel = new List<string>();
+        foreach (var (net, pins) in pinsOf.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+        {
+            var runs = new List<List<(double X, double Y)>>();
+            if (exact.Routes.TryGetValue(net, out var given))
+                foreach (var run in given)
+                    if (Orthogonal(run.Select(p => (Snap(p.X), Snap(p.Y)))) is { Count: >= 2 } pts) runs.Add(pts);
+            if (runs.Count == 0) { byLabel.Add(net); continue; }
+
+            var vertices = runs.SelectMany(r => r).Distinct().ToList();
+            foreach (var (at, (ox, _)) in pins)
+            {
+                if (runs.Any(r => OnPolyline(r, at))) continue;
+                var v = vertices.MinBy(q => Math.Abs(q.X - at.X) + Math.Abs(q.Y - at.Y));
+                var bend = ox != 0 ? (v.X, at.Y) : (at.X, v.Y);
+                if (Orthogonal([at, bend, v]) is { Count: >= 2 } leg) runs.Add(leg);
+            }
+            drawn[net] = runs;
+        }
+
+        // A net whose wiring touches anything of another net is labelled instead.
+        var conflicted = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (net, runs) in drawn)
+        {
+            foreach (var (other, otherRuns) in drawn)
+            {
+                if (other == net) continue;
+                if (runs.Any(r => r.Any(v => otherRuns.Any(o => OnPolyline(o, v))))) { conflicted.Add(net); conflicted.Add(other); }
+            }
+            foreach (var (at, pinNet) in allPins)
+                if (pinNet != net && runs.Any(r => OnPolyline(r, at))) conflicted.Add(net);
+        }
+        foreach (var net in conflicted) { drawn.Remove(net); byLabel.Add(net); }
+
+        foreach (var (net, runs) in drawn.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+        {
+            var wires = runs.Select(r => { var w = new EditableWire(); w.Points.AddRange(r); return w; }).ToList();
+            model.Wires.AddRange(wires);
+
+            // One label per separate group of this net's wires, on a stretch no other net's wire passes through.
+            var parent = Enumerable.Range(0, wires.Count).ToArray();
+            int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
+            for (int i = 0; i < runs.Count; i++)
+                for (int j = 0; j < runs.Count; j++)
+                    if (i != j && runs[i].Any(v => OnPolyline(runs[j], v))) parent[Find(i)] = Find(j);
+            var segs = drawn.Where(kv => kv.Key != net)
+                            .SelectMany(kv => kv.Value.SelectMany(r => r.Zip(r.Skip(1), (a, b) => (kv.Key, a.X, a.Y, b.X, b.Y))))
+                            .ToList();
+            foreach (var group in Enumerable.Range(0, wires.Count).GroupBy(Find).OrderBy(g => g.Key))
+            {
+                var mine = new Dictionary<string, List<EditableWire>>(StringComparer.Ordinal) { [net] = [.. group.Select(i => wires[i])] };
+                var label = new EditableNetLabel { Name = net };
+                if (LabelPoint(net, mine, segs, []) is { } at) label.AnchorToWire(at.Wire, at.X, at.Y);
+                else { label.X = runs[group.First()][0].X; label.Y = runs[group.First()][0].Y; }
+                model.NetLabels.Add(label);
+            }
+        }
+
+        foreach (var net in byLabel.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
+            foreach (var (at, _) in pinsOf[net])
+                model.NetLabels.Add(new EditableNetLabel { X = at.X, Y = at.Y, Name = net });
+        var unrouted = byLabel.Where(n => pinsOf[n].Count > 1).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        if (unrouted.Count > 0)
+            notes.Add(
+                $"{unrouted.Count} net(s) could not be wired as the picture draws them and are joined by net label "
+              + $"instead: {string.Join(", ", unrouted)}. The circuit is the one the picture states; the drawing is what suffered.");
+    }
+
+    /// <summary>A run made orthogonal: repeated points dropped, a diagonal step turned into an L.</summary>
+    private static List<(double X, double Y)> Orthogonal(IEnumerable<(double X, double Y)> points)
+    {
+        var r = new List<(double X, double Y)>();
+        foreach (var p in points)
+        {
+            if (r.Count > 0 && r[^1] == p) continue;
+            if (r.Count > 0 && r[^1].X != p.X && r[^1].Y != p.Y) r.Add((p.X, r[^1].Y));
+            r.Add(p);
+        }
+        // Collinear middle vertices are kept: a T from another run may land on one.
+        return r;
+    }
+
+    private static bool OnPolyline(List<(double X, double Y)> run, (double X, double Y) p)
+    {
+        for (int i = 0; i + 1 < run.Count; i++)
+            if (SchematicGeometry.PointOnSegment(p.X, p.Y, run[i].X, run[i].Y, run[i + 1].X, run[i + 1].Y, 1.0)) return true;
+        return run.Count == 1 && run[0] == p;
     }
 
     private static (EditableWire Wire, double X, double Y)? LabelPoint(

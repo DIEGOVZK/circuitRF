@@ -564,6 +564,12 @@ straight orthogonal run longer than 3 w. Two shapes are therefore set aside as s
   read as diagonals they were no wire candidates, the box's cycle stayed open, and its other sides went to the wire
   graph as wire. A circle's flat bottom leans as little but never meets a square corner, which is why the rule asks
   for both ends — snapping every run that rises less than a pixel turned a terminal circle's bottom into a wire.
+- **A small round loop's runs** (IM-10). A terminal circle of radius 4 w at an integer centre rounds its bottom onto
+  the grid as a LEVEL run of 3 w — a wire candidate by length, on neither rule above (its ends are not bare, and its
+  cycle is closed by curved, non-candidate runs). It gave the circle three attachments, and the terminal was cut out as
+  a three-pin device. A run cut from a skeleton edge that closes on its own node, no longer than a 12 w circle and
+  simplifying to six vertices or more, is never a wire: no wire is part of a loop, and the size and roundness limits
+  keep a box's straight sides as the candidate cycle that sets the box aside.
 
 Ends cluster into nodes within 1.5 w, or within one junction dot (a filled blob 2–6 w across, found as a component of
 distance-transform peaks); an end on another wire's interior splits it (a T). A degree-2 node with two collinear wires is
@@ -767,3 +773,76 @@ width is whole pixels, so at a 14 px cap the steps are 0.14 / 0.21 / 0.29 — Pl
 0.21 and are read; that is where the remaining wrong readings are (SemiBold `0.6 pF`, `1H`; Medium at 24 px `Z=60Ω`;
 Condensed at 24 px `fN` for `IN`), and the next thing to look at if a field picture shows it. The same survey caught
 `Z=5GΩ`: an impedance is now refused past a kΩ.
+
+## 12. IM-10 — a schematic picture made into a schematic
+
+`SchematicImageRecognition.Circuit` (no write: the CLI's read-only default and the dialog's preview), `.Run` (a cell)
+and `.IntoSchematic` (the drawing a placed bitmap's schematic takes, D14) — `src/Design/Schematic/Recognition/`. All
+three read the picture through IM-7, IM-8 and IM-9 and hand the reading to `SchematicImageEmit.Build`, which makes ONE
+`TestBench`; the drawing is `NetlistSchematic.Build`'s, never a second writer.
+
+### 12.1 The circuit (R-im10-2, R-im10-3) — `SchematicImageEmit.cs`
+
+**Nets** are the wire graph's (crossings per D11 and the user's corrections), joined by equal names (net labels and
+supply names, case-insensitively), a ground symbol's net made 0, and a dangling end the user dragged onto a pin joined to
+it. A supply net is named by its word, else `Vsupply<n>`, and is listed as having no source.
+
+**Parts go through the parts table** — R, L, C and `?` rows, and cut-out devices as `MultiPin` rows — so an edited CSV
+is laid over a picture's rows by exactly the artwork's overlay rules (rename by X/Y, kind, value, model). The emit then
+reads the rows, not the symbols: a `?` is a C (AS D10), an unread value a global variable `<Refdes>_<Param>` at the
+row's transparent start with AS's tune range (`RecognitionEmit.TuneEntry`, now shared). A row is `Shunt` when one pin
+is on ground, `Series` on two signal nets, `Bridged` on one, `Shorted` on ground both — measured, as on a board.
+
+**Lines**: a TLIN from its line set — Z and E at F (F written, 1 GHz when unread), or, when the set gives a length, the
+physical form with L and an εeff: the technology's (Hammerstad–Jensen for a Z microstrip on the dielectric under its
+top conductor), else a variable. Every unread Z, E or εeff is a variable with a tune entry, as a part's value is. A
+short stub is a TLIN to ground, an open stub a TLIN to a net of its own. A diode is the built-in Diode.
+
+**Ports, D13 in priority**: port symbols (a read designator names one; a port word on its net names it otherwise); then
+port words naming a net no symbol ports; only with neither, dangling ends within 4 w of the drawing's left and right
+extremes, left first, top to bottom. The drawing's own ports are numbered by the numbers their names carry when every
+one carries a distinct one, else left to right; a cut-out device's wired pins follow, device by device. No port: no
+analysis, and the report line. With ports, AS D15's SP1.
+
+A picture refuses only when nothing at all — part, port or line — was recognised (D16), or an edited table is refused.
+
+### 12.2 The drawing as drawn (R-im10-4, D12) — `NetlistSchematic.Build(…, exact:)`
+
+`ExactPlacement` gives each instance an origin and an orientation and each net its routes. **No hint, no change**: with
+`exact` null `Build` runs exactly as before, which `NetlistSchematicHintsTests` holds with a hash taken from the code
+before the parameter existed. With hints, `PlaceExact` puts each hinted instance at its snapped origin, in netlist
+order, unless one of its pins lands on another's pin of a different net, inside another's glyph (a quarter cell in from
+its box), or its glyph over another's pin — then that one alone goes to the automatic "everything else" rows below the
+drawing and is named in `PlacementFallbacks`. `WireExact` snaps each run, makes it orthogonal (a diagonal step becomes
+an L) and re-joins each pin the runs miss with at most one dog-leg leaving along the pin's lead. **A net whose wiring
+would touch another net's wire or pin is labelled at its pins instead** — snapping can bring two runs onto one grid
+line, and a label is a real connection where a touching wire is a short. Every separate group of a net's wires carries
+the net's name, because a picture joins two runs by giving them one.
+
+**The frame**: source pixels × k, with k the median over two-pin instances of the symbol's own pin span over the
+picture's (the fallback 100 / 4 w). **The fit** tries all eight orientations against `NetlistSchematic.PinOffsets` — the
+pins the drawing will use, so the fit and the drawing cannot disagree — least squares over the pins seen; a one-pin
+symbol (a port, a cut-out pin, a stub) is turned so its lead points back along the wire it is on. **A not-connected
+crossing's two straight halves are ONE run** in the drawing: as two runs both would end on the crossing point, and four
+wire ends at one point are connected in a schematic, whatever the picture said.
+
+### 12.3 Targets, underlay, provenance (R-im10-5, R-im10-6, R-im10-10)
+
+A new cell, or a replace of a cell whose schematic carries an `ImageSource` block of kind schematic (a checkpoint
+first). The picture is kept with `ImageKeep`; **As drawn** lays it under the drawing at the frame, locked at 35 %;
+**Tidy** does not, and says why. `IntoSchematic` frames the drawing on the placed bitmap's rect, adds no underlay, gives
+a variable or a net name the schematic already has a suffix (and reports it), and drops the analysis when the schematic
+already has one; the GUI adds the result through `SchematicPasteCommand`, `PlaceNetLabelCommand` (a label a paste
+would drop, at a pin), `SetTuningSetupCommand` and `AddAnalysisCommand`, chained into one `CommandBatch`. The provenance
+records the reading options that are not defaults, Arrange, and the corrections as the CLI spells them.
+
+### 12.4 The parts table and the corrections (R-im10-7, R-im10-8)
+
+A picture's table has `Pixels` set: X and Y are integers in source pixels, and only then does the header state a unit —
+`X (px)`, `Y (px)` — so every artwork CSV is the bytes it was. A CSV states its kind by that header: a pixel table over
+artwork, or a length table over a picture, is a refusal. `PartEvidenceSource.Picture` is what a picture read; a row it
+named, like one the silkscreen named, can be renamed by X/Y. **Corrections** are `ConnectionOverride`s in source pixels:
+`--disconnect x,y` and `--connect x,y` set the crossing within 2 w of the point (`WireGraph.Build`, which marks it
+`Overridden`); `--connect x,y:x2,y2` joins the dangling end nearest the first point to the pin nearest the second, in
+the emit. The dialog holds them like table edits and lays them over every re-run.
+

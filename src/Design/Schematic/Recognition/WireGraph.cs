@@ -64,6 +64,9 @@ public sealed record WireCrossing(int Id, double X, double Y, int? Node, bool Do
     IReadOnlyList<int> Segments)
 {
     public bool Connected => Reading == CrossingReading.Connected;
+
+    /// <summary>The reading is the user's correction (R-im10-8), not the crossing rule's.</summary>
+    public bool Overridden { get; init; }
 }
 
 /// <summary>The wires read off a schematic picture (R-im7-4, R-im7-5).</summary>
@@ -133,6 +136,10 @@ public sealed class WireGraph
             if (chain.Count < 2) continue;
             var idx = Polylines.SimplifyOpen(chain, 1.0);
             var poly = idx.Select(k => chain[k]).ToList();
+            // A small ROUND loop — a terminal's circle, closed on the one node its wire meets — is a symbol: a flat run
+            // of its pixels (a circle's bottom, rounded onto the grid) is never a wire. Kept to round loops no longer
+            // than a 12 w circle, so a box's straight sides still make the candidate cycle that sets it aside.
+            bool roundLoop = e.From == e.To && chain.Count <= Math.PI * 2 * o.MaxDot * w && poly.Count >= 6;
             int start = 0;
             for (int v = 1; v < poly.Count; v++)
             {
@@ -162,8 +169,9 @@ public sealed class WireGraph
                               : off90 <= snap ? WireOrientation.Vertical : WireOrientation.Diagonal;
                 if (p.Orientation == WireOrientation.Horizontal) { p.A = new PointD(p.A.x, fit.Cy); p.B = new PointD(p.B.x, fit.Cy); }
                 if (p.Orientation == WireOrientation.Vertical) { p.A = new PointD(fit.Cx, p.A.y); p.B = new PointD(fit.Cx, p.B.y); }
-                p.IsWire = fit.Residual <= maxResidual &&
+                p.IsWire = !roundLoop && fit.Residual <= maxResidual &&
                            (p.Orientation == WireOrientation.Diagonal ? p.Length > o.MinDiagonalLength * w : p.Length >= o.MinWireLength * w);
+                p.RoundLoop = roundLoop;
                 p.Sources.Add(r.Count);
                 r.Add(p);
             }
@@ -189,7 +197,7 @@ public sealed class WireGraph
         var snap = new List<(WirePiece P, int Axis)>();
         foreach (var p in pieces)
         {
-            if (p.Orientation != WireOrientation.Diagonal || p.Residual > maxResidual || p.Length > o.MaxSymbolStroke * w) continue;
+            if (p.RoundLoop || p.Orientation != WireOrientation.Diagonal || p.Residual > maxResidual || p.Length > o.MaxSymbolStroke * w) continue;
             int axis = Near(p);
             if (axis < 0) continue;
             bool Corner(PointD end) =>
@@ -314,9 +322,20 @@ public sealed class WireGraph
     }
 
     /// <summary>The graph of <paramref name="wires"/>, with each hop's two halves joined across the wire it hops.</summary>
+    /// <param name="flips">The user's crossing corrections (R-im10-8), in these pixels: the crossing or hop within
+    /// 2 w of each point reads as it says, whatever the rule.</param>
     internal static WireGraph Build(IReadOnlyList<WirePiece> wires, IReadOnlyList<HopJoin> hops,
-                                    IReadOnlyList<JunctionBlob> blobs, double w, SchematicImageOptions o)
+                                    IReadOnlyList<JunctionBlob> blobs, double w, SchematicImageOptions o,
+                                    IReadOnlyList<(double X, double Y, bool Connect)>? flips = null)
     {
+        double reach = Math.Max(2 * w, 4);
+        bool? Flip(PointD p)
+        {
+            foreach (var f in flips ?? [])
+                if (Math.Abs(f.X - p.x) <= reach && Math.Abs(f.Y - p.y) <= reach) return f.Connect;
+            return null;
+        }
+
         var a = Assemble(wires, hops, blobs, w, o, dissolve: true);
         if (a.Edges.Count == 0) return Empty;
 
@@ -387,8 +406,10 @@ public sealed class WireGraph
                     CrossingRule.Always => CrossingReading.Connected,
                     _ => dot ? CrossingReading.Connected : CrossingReading.NotConnected,
                 };
+                bool? flip = straight ? Flip(a.Nodes[n].P) : null;
+                if (flip is { } connect) reading = connect ? CrossingReading.Connected : CrossingReading.NotConnected;
                 crossings.Add(new WireCrossing(0, a.Nodes[n].P.x, a.Nodes[n].P.y, nodeId[n], dot, reading,
-                    [.. at.Select(e => segId[e]).OrderBy(s => s)]));
+                    [.. at.Select(e => segId[e]).OrderBy(s => s)]) { Overridden = flip is not null });
                 if (reading == CrossingReading.NotConnected)
                 {
                     foreach (var (x, y) in pairs) Union(segId[x], segId[y]);
@@ -400,7 +421,10 @@ public sealed class WireGraph
         foreach (var hop in a.Hops)
         {
             var through = segments.Where(s => DistToSegment(hop.At, s.A, s.B) <= Math.Max(w, 1.5)).Select(s => s.Id).ToList();
-            crossings.Add(new WireCrossing(0, hop.At.x, hop.At.y, null, false, CrossingReading.Hop, through));
+            bool joined = Flip(hop.At) == true;
+            if (joined) foreach (int t in through.Skip(1)) Union(through[0], t);
+            crossings.Add(new WireCrossing(0, hop.At.x, hop.At.y, null, false, joined ? CrossingReading.Connected : CrossingReading.Hop,
+                                           through) { Overridden = joined });
         }
         crossings = crossings.Select((c, i) => c with { Id = i }).ToList();
 
@@ -758,6 +782,9 @@ internal sealed class WirePiece
 
     public WireOrientation Orientation;
     public bool IsWire;
+
+    /// <summary>Cut from a small round loop of the skeleton — a terminal's circle — and so never a wire.</summary>
+    public bool RoundLoop;
 
     /// <summary>The runs it was made from (indices into the first list of pieces).</summary>
     public List<int> Sources = [];

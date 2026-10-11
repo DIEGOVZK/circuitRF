@@ -16,11 +16,13 @@ using CircuitRF.Design.Imaging;
 using CircuitRF.Design.Layout;
 using CircuitRF.Design.Layout.Recognition;
 using CircuitRF.Design.Layout.Recognition.Image;
+using CircuitRF.Design.Schematic.Recognition;
 
 namespace CircuitRF.Ui.Recognition;
 
-/// <summary>The overlay's classes, each toggled from the legend.</summary>
-public enum ImageOverlayClass { Copper, Drill, Ignored, Part, Line, Port, Unknown }
+/// <summary>The overlay's classes, each toggled from the legend. A schematic picture's are its wires (junction dots and
+/// dangling ends among them), its symbols (as parts), its ports, its words and its crossings (IM-10).</summary>
+public enum ImageOverlayClass { Copper, Drill, Ignored, Part, Line, Port, Unknown, Wire, Text, Crossing }
 
 /// <summary>A rectangle in the picture, pixels.</summary>
 public readonly record struct PixelBounds(double Left, double Top, double Right, double Bottom)
@@ -62,14 +64,18 @@ public sealed record ImageOverlayItem(
 public sealed class ImageOverlay
 {
     private ImageOverlay(IReadOnlyList<ImageOverlayItem> items, ColourClusterSet? clusters, IReadOnlyList<int> ignored,
-                         IReadOnlyList<int> unmapped, PixelFrame? frame)
+                         IReadOnlyList<int> unmapped, PixelFrame? frame, bool pixelAnchors = false)
     {
         Items = items;
         Clusters = clusters;
         IgnoredClusters = ignored;
         UnmappedClusters = unmapped;
         Frame = frame;
+        PixelAnchors = pixelAnchors;
     }
+
+    /// <summary>The report's anchors are the picture's own pixels — a schematic picture's — rather than DBU.</summary>
+    public bool PixelAnchors { get; }
 
     public static ImageOverlay Empty { get; } = new([], null, [], [], null);
 
@@ -101,9 +107,15 @@ public sealed class ImageOverlay
         {
             if (!shown(item.Class) && !(item.Unknown && shown(ImageOverlayClass.Unknown))) continue;
             if (!item.Bounds.Inflate(tolerancePx).Contains(x, y)) continue;
-            int rank = item.Class switch { ImageOverlayClass.Part or ImageOverlayClass.Port => 0, ImageOverlayClass.Line or ImageOverlayClass.Drill => 1, _ => 2 };
+            int rank = item.Class switch
+            {
+                ImageOverlayClass.Crossing => 0,
+                ImageOverlayClass.Part or ImageOverlayClass.Port => 1,
+                ImageOverlayClass.Line or ImageOverlayClass.Drill or ImageOverlayClass.Text => 2,
+                _ => 3,
+            };
             double area = rank * 1e12 + Math.Max(1, item.Bounds.Width * item.Bounds.Height);
-            if (item.Class == ImageOverlayClass.Line && DistanceToPaths(item, x, y) > tolerancePx) continue;
+            if (item.Class is ImageOverlayClass.Line or ImageOverlayClass.Wire && item.Circle is null && DistanceToPaths(item, x, y) > tolerancePx) continue;
             if (area < bestArea) { bestArea = area; best = item; }
         }
         return best;
@@ -112,8 +124,8 @@ public sealed class ImageOverlay
     /// <summary>The item a report anchor points at: the nearest part, port or line within a few pixels, else null.</summary>
     public ImageOverlayItem? ItemForAnchor(RecognitionAnchor anchor)
     {
-        if (Frame is not { } f) return null;
-        var (x, y) = f.ToPixel(anchor.X, anchor.Y);
+        if (ToPixel(anchor.X, anchor.Y) is not { } at) return null;
+        var (x, y) = at;
         return Items.Where(i => i.Class is ImageOverlayClass.Part or ImageOverlayClass.Port or ImageOverlayClass.Line or ImageOverlayClass.Drill)
                     .Select(i => (Item: i, D: i.Bounds.Contains(x, y) ? 0 : DistanceToBounds(i.Bounds, x, y)))
                     .Where(t => t.D <= 6)
@@ -122,7 +134,7 @@ public sealed class ImageOverlay
     }
 
     /// <summary>A DBU point in pixels, or null without a scale.</summary>
-    public (double X, double Y)? ToPixel(long x, long y) => Frame is { } f ? f.ToPixel(x, y) : null;
+    public (double X, double Y)? ToPixel(long x, long y) => PixelAnchors ? (x, y) : Frame is { } f ? f.ToPixel(x, y) : null;
 
     private static double DistanceToBounds(PixelBounds b, double x, double y)
     {
@@ -226,4 +238,94 @@ public sealed class ImageOverlay
     }
 
     private static IReadOnlyList<(double X, double Y)> Points(Clipper2Lib.PathD path) => [.. path.Select(p => (p.x, p.y))];
+
+    // ── a schematic picture (brief-img-10 R-im10-9) ─────────────────────────────────────────────────
+
+    /// <summary>The id prefixes of the items a user corrects (R-im10-8): a crossing is clicked, a dangling end dragged.</summary>
+    public const string CrossingPrefix = "crossing:", EndPrefix = "end:";
+
+    /// <summary>
+    /// The overlay of a schematic picture's reading (R-im5-3's schematic classes), in the SOURCE picture's pixels: the
+    /// wires, junction dots and crossings — each crossing drawn as it was read, so a click can flip it — every symbol
+    /// boxed with its kind and orientation, the ports, every word boxed with what was read, and in amber whatever was not
+    /// read: a dangling wire end, a `?` part, an unread value, an unread word.
+    /// </summary>
+    public static ImageOverlay BuildSchematic(SchematicImageResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (result.Read is not { } read) return Empty;
+        var items = new List<ImageOverlayItem>();
+        (double X, double Y) S(double x, double y) => read.ToSource(x, y);
+        IReadOnlyList<(double X, double Y)> Box(PixelBox b, double pad = 0) =>
+            [S(b.Left - pad, b.Top - pad), S(b.Right + 1 + pad, b.Top - pad), S(b.Right + 1 + pad, b.Bottom + 1 + pad), S(b.Left - pad, b.Bottom + 1 + pad)];
+        var graph = read.Wires;
+
+        foreach (var seg in graph.Segments)
+        {
+            var path = new List<(double X, double Y)> { S(seg.A.x, seg.A.y), S(seg.B.x, seg.B.y) };
+            items.Add(new ImageOverlayItem($"wire:{seg.Id}", ImageOverlayClass.Wire, [path], false, null, null, false, null,
+                                           PixelBounds.Of(path).Inflate(1)));
+        }
+        foreach (var node in graph.Nodes.Where(n => n.Dot))
+        {
+            var (x, y) = S(node.X, node.Y);
+            double r = Math.Max(2, read.StrokeWidth * 1.5);
+            items.Add(new ImageOverlayItem($"dot:{node.Id}", ImageOverlayClass.Wire, [], true, null, null, false, null,
+                                           new PixelBounds(x - r, y - r, x + r, y + r), (x, y, r)));
+        }
+        foreach (var end in read.Dangling)
+        {
+            var (x, y) = S(graph.Nodes[end].X, graph.Nodes[end].Y);
+            double r = Math.Max(3, read.StrokeWidth * 2);
+            items.Add(new ImageOverlayItem($"{EndPrefix}{end}", ImageOverlayClass.Wire, [], true, null, null, true, null,
+                                           new PixelBounds(x - r, y - r, x + r, y + r), (x, y, r)));
+        }
+        foreach (var c in graph.Crossings)
+        {
+            var (x, y) = S(c.X, c.Y);
+            double r = Math.Max(5, read.StrokeWidth * 3);
+            string label = c.Reading switch
+            {
+                CrossingReading.Connected => "connected",
+                CrossingReading.Hop => "hop",
+                _ => "not connected",
+            } + (c.Overridden ? " (yours)" : "");
+            items.Add(new ImageOverlayItem($"{CrossingPrefix}{c.Id}", ImageOverlayClass.Crossing, [], true, label,
+                                           c.Connected ? 0x2E9D4A : 0x707070, false, null, new PixelBounds(x - r, y - r, x + r, y + r), (x, y, r)));
+        }
+
+        // Symbols, as parts: the parts-table row's designator where there is one, so a row and its box name each other.
+        var rowOf = result.Circuit?.SymbolOfRow.ToDictionary(kv => kv.Value, kv => kv.Key) ?? [];
+        var rows = result.Parts;
+        var labels = result.Labels?.Symbols.ToDictionary(l => l.Symbol) ?? [];
+        var syms = result.Symbols?.Symbols ?? [];
+        for (int i = 0; i < syms.Count; i++)
+        {
+            var s = syms[i];
+            if (s.Kind == ImageSymbolKind.Port) continue;
+            var box = Box(s.Region.Box, 2);
+            string? key = rowOf.TryGetValue(i, out var k) ? k : null;
+            var row = key is null ? null : rows.Rows.FirstOrDefault(r => string.Equals(r.BoardRefdes, key, StringComparison.OrdinalIgnoreCase));
+            string name = row?.Refdes ?? (labels.TryGetValue(i, out var l) ? l.Designator : null) ?? "";
+            string label = $"{name} {s.KindLabel}{(s.Template is null ? "" : " " + s.Orientation)}".Trim();
+            bool unknown = s.Disposition is SymbolDisposition.Unknown or SymbolDisposition.UnreadTerminal
+                           || (row is not null && row.IsModelled && row.TakesValue && row.Value is null && row.Model != PartModelKind.SnP);
+            items.Add(new ImageOverlayItem($"part:{key ?? "symbol" + i}", ImageOverlayClass.Part, [box], true, label, null, unknown, key,
+                                           PixelBounds.Of(box)));
+        }
+        foreach (var p in result.Circuit?.Ports ?? [])
+        {
+            const double r = 7;
+            items.Add(new ImageOverlayItem($"port:{p.Number}", ImageOverlayClass.Port, [], true,
+                                           $"P{p.Number.ToString(CultureInfo.InvariantCulture)}", null, false, null,
+                                           new PixelBounds(p.X - r, p.Y - r, p.X + r, p.Y + r), (p.X, p.Y, r)));
+        }
+        foreach (var w in result.Words)
+        {
+            var box = Box(w.Box, 1);
+            items.Add(new ImageOverlayItem($"text:{w.Id}", ImageOverlayClass.Text, [box], true,
+                                           w.Class == WordClass.Unread ? null : w.Text, null, w.Class == WordClass.Unread, null, PixelBounds.Of(box)));
+        }
+        return new ImageOverlay(items, null, [], [], null, pixelAnchors: true);
+    }
 }

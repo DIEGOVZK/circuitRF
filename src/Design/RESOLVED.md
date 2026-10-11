@@ -19199,3 +19199,20 @@ broke five of its assumptions, each found by IM-9's gate words (`docs/design/ima
 - **Heavy type is refused, not misread:** a word whose own stroke width exceeds 0.22 of its cap height is unread and
   counted as too heavy (`StrokeTextReader.MaxWeight`). Medium/SemiBold weights at 0.21 still slip through with
   occasional wrong readings — §11.5 lists them.
+
+## A schematic picture made into a schematic (2026-10-10, brief-img-10)
+
+Found while making IM-7 … IM-9's reading into a circuit and a drawing (`docs/design/image-to-circuit.md` §12):
+- **A terminal circle was cut out as a three-pin device.** A radius-4 w circle at an integer centre rounds its bottom
+  onto the grid as a level 3 w run, which is a wire candidate by length and on neither symbol-stroke rule; the circle
+  got three attachments. Only the right-hand terminal of a symmetric drawing did it — the rounding is not symmetric. A
+  run of a small, round skeleton loop is now never a wire (`WireGraph.Pieces`, `RoundLoop`).
+- **A crossing that does not connect, drawn as the picture draws it, connected.** Each net's halves ended on the
+  crossing point, and four wire ends at one point are one net in a schematic. The emit makes a not-connected crossing's
+  two straight halves one run, so the two nets cross at interior points and meet nowhere.
+- **Snapped wiring can short two nets** — two runs a few pixels apart land on one grid line. `NetlistSchematic`'s exact
+  wiring labels such a net at its pins instead of wiring it: a label is a real connection, a touching wire a short.
+- **A supply word more than 3 w off its bar is not the supply's** (IM-7's reach); a picture that sets it further
+  off names the net `Vsupply<n>`. Not changed: the reach is IM-7's and a wider one would steal net labels.
+Gates: `SchematicImageRecognitionTests`, `NetlistSchematicHintsTests`, `SchematicImageOverridesTests`, and
+`PartsTableCsvTests`' pixel case.

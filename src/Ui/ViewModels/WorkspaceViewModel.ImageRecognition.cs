@@ -149,6 +149,19 @@ public partial class WorkspaceViewModel : IImageDialogHost
             ReportImageSchematic(run);
             dialog.Close();
         };
+        vm.SchematicPictureCreated += run =>
+        {
+            _factory.ProjectTreeTool?.Refresh();
+            PostImageReport(run.Report, "Create Schematic from Image", run.SchematicPath);
+            if (run.SchematicPath is { } schematic) OpenOrActivateSchematic(Path.GetFullPath(schematic));
+            dialog.Close();
+        };
+        vm.SchematicPictureDrawn += (edit, placed) =>
+        {
+            DrawImageSchematic(edit, placed);
+            dialog.Close();
+        };
+        vm.OpenSchematic = path => _openDocsByPath.ContainsKey(Path.GetFullPath(path)) ? GetOrCreateSession(Path.GetFullPath(path)).EditModel : null;
         dialog.Closed += (_, _) => _imageDialog = null;
         _imageDialog = dialog;
         if (ResolveOwner(owner) is { } window) dialog.Show(window);
@@ -219,6 +232,19 @@ public partial class WorkspaceViewModel : IImageDialogHost
         _factory.ProjectTreeTool?.Refresh();
         PostImageReport(run.Report, "Create Schematic from Image", run.SchematicPath);
         if (run.SchematicPath is { } schematic) OpenOrActivateSchematic(Path.GetFullPath(schematic));
+    }
+
+    /// <summary>
+    /// A schematic picture drawn over the placed bitmap it is (brief-img-10 R-im10-6, D14): the schematic it sits in comes
+    /// forward, the drawing is added through the editor's own commands as ONE undo step, and what was added is selected.
+    /// </summary>
+    private void DrawImageSchematic(CircuitRF.Design.Schematic.Recognition.SchematicImageEdit edit, SchematicBitmapPlacement placed)
+    {
+        string csch = Path.GetFullPath(placed.Document);
+        OpenOrActivateSchematic(csch);
+        var schematicVm = GetOrCreateSession(csch);
+        if (SchematicImageEditCommand.For(schematicVm, edit) is { } command) schematicVm.Execute(command);
+        PostImageReport(edit.Report, "Create Schematic from Image", null);
     }
 
     private void PostImageReport(RecognitionReport report, string command, string? written)

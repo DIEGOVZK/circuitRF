@@ -184,6 +184,10 @@ public sealed record PartsTable(IReadOnlyList<PartRow> Rows, RailRf.RailLengthFo
 {
     public static PartsTable Empty { get; } = new([], RailRf.RailLengthFormat.Dbu, null);
 
+    /// <summary>X and Y are a picture's PIXELS, not the layout's DBU — the rows of a schematic picture
+    /// (brief-img-10 R-im10-7). <see cref="Format"/> is then not read.</summary>
+    public bool Pixels { get; init; }
+
     /// <summary>The row with this designator, or null.</summary>
     public PartRow? Row(string refdes) =>
         Rows.FirstOrDefault(r => string.Equals(r.Refdes, refdes, StringComparison.OrdinalIgnoreCase));

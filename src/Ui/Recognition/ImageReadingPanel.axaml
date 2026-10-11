@@ -90,23 +90,29 @@
                     <Border Classes="pill" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="8"
                             IsVisible="{Binding !HasFailure}">
                         <StackPanel Orientation="Horizontal">
-                            <ToggleButton Classes="legend" IsChecked="{Binding ShowCopper}" ToolTip.Tip="Traced copper, outlined in each layer's colour.">
+                            <ToggleButton Classes="legend" IsChecked="{Binding ShowCopper}" IsVisible="{Binding IsLayoutPicture}" ToolTip.Tip="Traced copper, outlined in each layer's colour.">
                                 <StackPanel Orientation="Horizontal" Spacing="4"><Rectangle Width="10" Height="10" Fill="#B87333" VerticalAlignment="Center"/><TextBlock Text="Copper"/></StackPanel>
                             </ToggleButton>
-                            <ToggleButton Classes="legend" IsChecked="{Binding ShowDrills}" ToolTip.Tip="Drill holes, as the circles read.">
+                            <ToggleButton Classes="legend" IsChecked="{Binding ShowDrills}" IsVisible="{Binding IsLayoutPicture}" ToolTip.Tip="Drill holes, as the circles read.">
                                 <StackPanel Orientation="Horizontal" Spacing="4"><Ellipse Width="10" Height="10" Stroke="#37474F" StrokeThickness="1.5" VerticalAlignment="Center"/><TextBlock Text="Drills"/></StackPanel>
+                            </ToggleButton>
+                            <ToggleButton Classes="legend" IsChecked="{Binding ShowWires}" IsVisible="{Binding IsSchematicPicture}" ToolTip.Tip="Wires, junction dots and crossings — click a crossing to connect or disconnect it; drag a dangling end onto a pin to connect it.">
+                                <StackPanel Orientation="Horizontal" Spacing="4"><Rectangle Width="10" Height="2" Fill="#1565C0" VerticalAlignment="Center"/><TextBlock Text="Wires"/></StackPanel>
                             </ToggleButton>
                             <ToggleButton Classes="legend" IsChecked="{Binding ShowParts}" IsVisible="{Binding PartsApply}" ToolTip.Tip="Recognised parts, boxed with their designators.">
                                 <StackPanel Orientation="Horizontal" Spacing="4"><Rectangle Width="10" Height="10" Stroke="#7B1FA2" StrokeThickness="1.5" VerticalAlignment="Center"/><TextBlock Text="Parts"/></StackPanel>
                             </ToggleButton>
-                            <ToggleButton Classes="legend" IsChecked="{Binding ShowLines}" IsVisible="{Binding PartsApply}" ToolTip.Tip="Lines, as their centre lines, labelled with their component.">
+                            <ToggleButton Classes="legend" IsChecked="{Binding ShowLines}" IsVisible="{Binding ShowsLineLegend}" ToolTip.Tip="Lines, as their centre lines, labelled with their component.">
                                 <StackPanel Orientation="Horizontal" Spacing="4"><Rectangle Width="10" Height="2" Fill="#00897B" VerticalAlignment="Center"/><TextBlock Text="Lines"/></StackPanel>
                             </ToggleButton>
                             <ToggleButton Classes="legend" IsChecked="{Binding ShowPorts}" IsVisible="{Binding PartsApply}" ToolTip.Tip="Ports.">
                                 <StackPanel Orientation="Horizontal" Spacing="4"><Ellipse Width="10" Height="10" Stroke="#C62828" StrokeThickness="1.5" VerticalAlignment="Center"/><TextBlock Text="Ports"/></StackPanel>
                             </ToggleButton>
-                            <ToggleButton Classes="legend" IsChecked="{Binding ShowIgnored}" ToolTip.Tip="Colours read as Ignore, hatched.">
+                            <ToggleButton Classes="legend" IsChecked="{Binding ShowIgnored}" IsVisible="{Binding IsLayoutPicture}" ToolTip.Tip="Colours read as Ignore, hatched.">
                                 <StackPanel Orientation="Horizontal" Spacing="4"><Rectangle Width="10" Height="10" Fill="#707070" Opacity="0.6" VerticalAlignment="Center"/><TextBlock Text="Ignored"/></StackPanel>
+                            </ToggleButton>
+                            <ToggleButton Classes="legend" IsChecked="{Binding ShowText}" IsVisible="{Binding IsSchematicPicture}" ToolTip.Tip="Words, boxed with what was read.">
+                                <StackPanel Orientation="Horizontal" Spacing="4"><Rectangle Width="10" Height="10" Stroke="#5D4037" StrokeThickness="1.5" VerticalAlignment="Center"/><TextBlock Text="Text"/></StackPanel>
                             </ToggleButton>
                             <ToggleButton Classes="legend" IsChecked="{Binding ShowUnknowns}" ToolTip.Tip="Whatever was not read: an unread value, a part of unknown kind, a colour mapped to no layer.">
                                 <StackPanel Orientation="Horizontal" Spacing="4"><Rectangle Width="10" Height="10" Fill="#E0A010" VerticalAlignment="Center"/><TextBlock Text="Unknown"/></StackPanel>
@@ -136,6 +142,11 @@
                             </StackPanel>
                         </StackPanel>
                     </Border>
+
+                    <!-- The corrections made on the picture (R-im10-8), forgotten in one click. -->
+                    <Button Classes="link" Content="Clear corrections" Command="{Binding ClearOverridesCommand}" IsVisible="{Binding HasOverrides}"
+                            HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="8"
+                            ToolTip.Tip="Forget every crossing set and wire end joined on the picture, and read it again."/>
 
                     <!-- Whole picture: clears a dragged scope. -->
                     <Button Content="Whole picture" Command="{Binding WholePictureCommand}" IsVisible="{Binding HasScope}"
@@ -254,10 +265,6 @@
                             <TextBlock Grid.Row="0" Grid.Column="3" Text="Window, px"/>
                             <TextBox Grid.Row="0" Grid.Column="4" Text="{Binding WindowText}"
                                      ToolTip.Tip="The neighbourhood the threshold is judged over, pixels."/>
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Crossings connect"/>
-                            <ComboBox Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="4" MinWidth="120"
-                                      ItemsSource="{x:Static rec:ImageSourceViewModel.CrossingOptions}" SelectedIndex="{Binding CrossingIndex}"
-                                      ToolTip.Tip="Where two wires cross: never connected, connected where there is a dot, or always connected."/>
                         </Grid>
                         <CheckBox Content="Keep the source picture under the result" IsChecked="{Binding KeepUnderlay}"
                                   ToolTip.Tip="The written layout and schematic carry the picture behind them, locked and faded, so each shape lies on what it was read from."/>

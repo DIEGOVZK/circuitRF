@@ -8,6 +8,8 @@ using CircuitRF.Design.Imaging;
 using CircuitRF.Design.Layout;
 using CircuitRF.Design.Layout.Recognition;
 using CircuitRF.Design.Layout.Recognition.Image;
+using CircuitRF.Design.Schematic;
+using CircuitRF.Design.Schematic.Recognition;
 using CircuitRF.Engine;
 using CircuitRF.Ui.Recognition;
 using CircuitRF.Ui.Tests.Imaging;
@@ -57,6 +59,21 @@ internal sealed class RecordingImageRunner(DrawingKind kind) : IImageRecognition
         RecognitionRuns.Add((input, target, options));
         throw new NotSupportedException();
     }
+
+    /// <summary>Every schematic-picture reading handed across, in order.</summary>
+    public List<SchematicImageInput> SchematicReads { get; } = [];
+
+    public SchematicImageResult ReadSchematic(SchematicImageInput input, RecognitionEmitOptions emit, RunControl? control)
+    {
+        lock (SchematicReads) SchematicReads.Add(input);
+        return SchematicImageRecognition.Circuit(input, emit, control);
+    }
+
+    public SchematicImageRun SchematicRun(SchematicImageInput input, SchematicImageTarget target, SchematicImageRunOptions options,
+                                          RunControl? control) => throw new NotSupportedException();
+
+    public SchematicImageEdit IntoSchematic(SchematicImageInput input, SchematicEditModel into, SchematicBitmapPlacement placed,
+                                            RecognitionEmitOptions emit, RunControl? control) => throw new NotSupportedException();
 }
 
 internal static class ImageDialog

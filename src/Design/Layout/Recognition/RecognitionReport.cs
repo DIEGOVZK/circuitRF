@@ -251,6 +251,47 @@ public enum RecognitionFindingClass
 
     /// <summary>The picture's silkscreen strokes are too thin to read; nothing was read from them.</summary>
     ImageSilkscreenTooThin,
+
+    // ── IM-10: a schematic picture made into a schematic (R-im10-10) ───────────────────────────────
+
+    /// <summary>What the line work read (IM-7): one finding per line of its report.</summary>
+    PictureLineWork,
+
+    /// <summary>What the symbols were named (IM-8).</summary>
+    PictureSymbols,
+
+    /// <summary>What the words said (IM-9).</summary>
+    PictureWords,
+
+    /// <summary>The nets made, and what joined them.</summary>
+    PictureNets,
+
+    /// <summary>The ports found, and how.</summary>
+    PicturePorts,
+
+    /// <summary>No port: the schematic is written without its S-parameter analysis (D13).</summary>
+    PictureNoPort,
+
+    /// <summary>Supply nets with no source, left as named nets.</summary>
+    PictureSupplyNets,
+
+    /// <summary>Unknown values made global variables with tune entries.</summary>
+    PictureVariables,
+
+    /// <summary>Variables renamed because the schematic drawn into already has them.</summary>
+    PictureVariablesRenamed,
+
+    /// <summary>Instances drawn beside the picture rather than on it.</summary>
+    PicturePlacementFallbacks,
+
+    /// <summary>The user's crossing and wire-end corrections.</summary>
+    PictureOverrides,
+
+    /// <summary>What the emit could not write, or wrote differently.</summary>
+    PictureEmitNotes,
+
+    /// <summary>Why the picture is not under the drawing.</summary>
+    PictureUnderlay,
 }
 
 /// <summary>A place a finding is about, DBU, with the drawing layer when one is known.</summary>

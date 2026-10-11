@@ -100,6 +100,15 @@ public sealed record SchematicImageRead
         double rx = x - Width / 2.0, ry = y - Height / 2.0;
         return (rx * c + ry * s + SourceWidth / 2.0, -rx * s + ry * c + SourceHeight / 2.0);
     }
+
+    /// <summary>A point of the source picture in the read picture's pixels — the inverse of <see cref="ToSource"/>.</summary>
+    public (double X, double Y) FromSource(double x, double y)
+    {
+        if (DeskewDeg == 0) return (x, y);
+        double phi = DeskewDeg * Math.PI / 180, c = Math.Cos(phi), s = Math.Sin(phi);
+        double qx = x - SourceWidth / 2.0, qy = y - SourceHeight / 2.0;
+        return (qx * c - qy * s + Width / 2.0, qx * s + qy * c + Height / 2.0);
+    }
 }
 
 public static class SchematicImageReading
@@ -167,7 +176,11 @@ public static class SchematicImageReading
         token.ThrowIfCancellationRequested();
         if (wires.Count == 0)
             return read with { Report = Report(read), Refusal = SchematicImageReport.NoWiresRefusal };
-        var first = WireGraph.Build(wires, [], blobs, w, o);
+        // The user's crossing corrections (R-im10-8), carried into the read picture's pixels.
+        var flips = o.Overrides.Where(v => !v.IsJoin)
+                               .Select(v => { var (x, y) = read.FromSource(v.X, v.Y); return (x, y, v.Kind == ConnectionOverrideKind.Connect); })
+                               .ToList();
+        var first = WireGraph.Build(wires, [], blobs, w, o, flips);
 
         // ── Symbols (R-im7-6, R-im7-7) ──
         control?.BeginStage("Finding symbols");
@@ -175,7 +188,7 @@ public static class SchematicImageReading
         for (int i = 0; i < residue.Pixels.Length; i++) if (fills.Pixels[i] != 0) residue.Pixels[i] = 1;
         var raw = SymbolRegions.Group(residue, first, w, o);
         var (hops, hopRegions) = SymbolRegions.Hops(raw, mask.Width, first, w, o);
-        var graph = hops.Count > 0 ? WireGraph.Build(wires, hops, blobs, w, o) : first;
+        var graph = hops.Count > 0 ? WireGraph.Build(wires, hops, blobs, w, o, flips) : first;
         var regions = raw.Where((_, k) => !hopRegions.Contains(k)).ToList();
         var attached = SymbolRegions.Attach(regions, mask.Width, graph, text.Words, w, o);
         token.ThrowIfCancellationRequested();

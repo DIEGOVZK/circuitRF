@@ -364,22 +364,7 @@ public static class RecognitionEmit
         if (variables.Count > 0)
         {
             tb.Tuning = new TuningSetup();
-            foreach (var (name, value, kind, _) in variables)
-            {
-                // ×0.1 … ×10 of the start; a transparent start of zero-ish (series R 0 Ω, series L 0.1 nH) is
-                // 0 … 10 Ω / 0 … 1 nH instead, so the range still holds a value that does something.
-                var (lo, hi) = (kind, value) switch
-                {
-                    (PartKind.R, <= 0) => (0.0, 10.0),
-                    (PartKind.L, <= 0.1e-9 * 1.000001) => (0.0, 1e-9),
-                    _ => (0.1 * value, 10 * value),
-                };
-                tb.Tuning.Variables.Add(new TunableEntry
-                {
-                    Key = name, Tune = true, Opt = false,
-                    Min = PartsTable.ValueText(lo, kind, digits), Max = PartsTable.ValueText(hi, kind, digits),
-                });
-            }
+            foreach (var (name, value, kind, _) in variables) tb.Tuning.Variables.Add(TuneEntry(name, value, kind, digits));
         }
 
         var sweep = options.Sweep ?? input.EmSetup?.Frequency ?? RecognitionEmitOptions.DefaultSweep;
@@ -389,6 +374,24 @@ public static class RecognitionEmit
     }
 
     private const string Ground = "0";
+
+    /// <summary>The tune entry an unknown value's variable gets (D10): ×0.1 … ×10 of its start; a transparent start of
+    /// zero-ish (series R 0 Ω, series L 0.1 nH) is 0 … 10 Ω / 0 … 1 nH instead, so the range still holds a value that
+    /// does something.</summary>
+    internal static TunableEntry TuneEntry(string name, double value, PartKind kind, int digits)
+    {
+        var (lo, hi) = (kind, value) switch
+        {
+            (PartKind.R, <= 0) => (0.0, 10.0),
+            (PartKind.L, <= 0.1e-9 * 1.000001) => (0.0, 1e-9),
+            _ => (0.1 * value, 10 * value),
+        };
+        return new TunableEntry
+        {
+            Key = name, Tune = true, Opt = false,
+            Min = PartsTable.ValueText(lo, kind, digits), Max = PartsTable.ValueText(hi, kind, digits),
+        };
+    }
 
     /// <summary>
     /// Elements in the order a walk from port 1 meets them, and nodes likewise: breadth first over the nets,
@@ -540,7 +543,7 @@ public static class RecognitionEmit
     }
 
     /// <summary><c>100 pF</c> → (<c>100</c>, <c>pF</c>).</summary>
-    private static (string Number, string? Unit) Split(string valueText)
+    internal static (string Number, string? Unit) Split(string valueText)
     {
         int sp = valueText.LastIndexOf(' ');
         return sp < 0 ? (valueText, null) : (valueText[..sp], valueText[(sp + 1)..]);

@@ -35,7 +35,9 @@ public static class ImageEntryPoints
     public const string TraceIntoLayoutHeader = "Trace Image into This Layout…";
 
     public const string CreateSchematicTip =
-        "Read a picture of a layout and write it as a schematic of native components in a new cell, reviewed first in a parts table.";
+        "Read a picture of a schematic or a layout and write it as a schematic of native components in a new cell, reviewed first in a parts table.";
+    public const string DrawSchematicHereTip =
+        "Read this picture and draw it as a schematic over the picture, in this schematic, as one undo step — or, for a picture of a layout, in a new cell.";
     public const string CreateLayoutTip =
         "Trace a picture of a layout into the copper, vias and outline of a new layout cell.";
     public const string TraceIntoLayoutTip =
@@ -60,13 +62,15 @@ public static class ImageEntryPoints
     }
 
     /// <summary>
-    /// A schematic bitmap's rows: <i>Create Schematic from Image…</i> and <i>Create Layout from Image…</i>, each a new
-    /// cell. A schematic has no physical scale, so <i>As placed</i> is not offered. None when the picture does not
+    /// A schematic bitmap's rows: <i>Create Schematic from Image…</i> — over the picture in this schematic when the
+    /// picture is a schematic (D14, brief-img-10 R-im10-6), a new cell otherwise — and <i>Create Layout from Image…</i>, a
+    /// new cell. A schematic has no physical scale, so <i>As placed</i> is not offered. None when the picture does not
     /// resolve.
     /// </summary>
     public static IReadOnlyList<ImageContextRow> SchematicBitmapRows(string? cschPath, EditableBitmap bitmap) =>
         !Resolves(cschPath, bitmap.ImagePath) ? []
-            : [new(CreateSchematicHeader, CreateSchematicTip, true, false), new(CreateLayoutHeader, CreateLayoutTip, false, false)];
+            : [cschPath is null ? new(CreateSchematicHeader, CreateSchematicTip, true, false) : new(CreateSchematicHeader, DrawSchematicHereTip, true, true),
+               new(CreateLayoutHeader, CreateLayoutTip, false, false)];
 
     /// <summary>
     /// The picture a placed bitmap shows, as the dialog reads it: placed in its document when there is one, else the
