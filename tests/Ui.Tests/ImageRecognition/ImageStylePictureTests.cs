@@ -113,8 +113,8 @@ public sealed partial class ImageDatasheetStyleTests(ITestOutputHelper output)
                                  "touching its plate, is not read";
     private const string GainBlock = "Measured short after IMF-8: the triangle is an Amp and the coax connectors ports, but Cbypass " +
                                      "reads as a supply bar at 1× and the RFC coil comes apart at 2× (IMF-5); Rbias is not read";
-    private const string Regulator = "Measured short after IMF-8: the IC is a 3-port SnP, but the answer draws VIN and VOUT as net " +
-                                     "names where IMF-6 reads names beyond open ends as ports";
+    private const string Regulator = "Measured short after IMF-10: the circuit reads exactly, but Ci reads as C1 at 1× — the " +
+                                     "dotted stem of its i fused at the screen pen (IMF-7)";
     private const string TestCircuit = "Measured short after IMF-8: the solid DUT box drawn round the triangle is read as one part " +
                                        "with it, so no Amp — a box framing a part is not read as a frame";
 
@@ -123,7 +123,7 @@ public sealed partial class ImageDatasheetStyleTests(ITestOutputHelper output)
     [Fact(Skip = GainBlock)] public void GainBlock_1x() => StyleScore.ReadsExactly(output, "ds-gain-block-1x");
     [Fact(Skip = GainBlock)] public void GainBlock_2x() => StyleScore.ReadsExactly(output, "ds-gain-block-2x");
     [Fact(Skip = Regulator)] public void Regulator_1x() => StyleScore.ReadsExactly(output, "ds-regulator-1x");
-    [Fact(Skip = Regulator)] public void Regulator_2x() => StyleScore.ReadsExactly(output, "ds-regulator-2x");
+    [Fact] public void Regulator_2x() => StyleScore.ReadsExactly(output, "ds-regulator-2x");
     [Fact] public void Ldo_1x() => StyleScore.ReadsExactly(output, "ds-ldo-1x");
     [Fact] public void Ldo_2x() => StyleScore.ReadsExactly(output, "ds-ldo-2x");
     [Fact(Skip = TestCircuit)] public void TestCircuit_1x() => StyleScore.ReadsExactly(output, "ds-test-circuit-1x");
@@ -371,7 +371,7 @@ public sealed partial class ImageWebStyleTests(ITestOutputHelper output)
     [Fact(Skip = LowRes)] public void LowResolution() => StyleScore.ReadsExactly(output, "low-res");
 
     /// <summary>Paste refuses it in one sentence saying it is not a schematic (IMF-9 — ImageNothingHereTests holds that);
-    /// read here with its kind forced, as FieldScore reads every picture, it is scored.</summary>
+    /// scored here so the table carries its line.</summary>
     [Fact]
     public void Illustration_ReadsWithoutThrowing() => StyleScore.Read(output, "illustration");
 }

@@ -145,11 +145,17 @@ highlight its part on the picture.
 A picture of a schematic is read as its wires, its symbols and its words, and drawn as a schematic of native
 components.
 
-**What is recognised.** Resistors, inductors and capacitors in both the US and the IEC drawings, grounds, ports and
-terminals, transmission lines and stubs, and diodes. A transistor, an amplifier triangle or a box with three or more
-pins is an **S-parameter block** (SnP) with one port per wired pin and a grounded pin as its reference &mdash; an S2P
-drawn as a box with pins 1, 2 and Ref reads as an S2P &mdash; ready for its Touchstone file. A two-pin symbol nothing
-matches is shown as **?** in the parts table and drawn as a capacitor until you say what it is.
+**What is recognised.** Resistors, inductors and capacitors in both the US and the IEC drawings &mdash; variable
+resistors, looped coils and curved plates among them &mdash; diodes, transformers, grounds, ports and terminals
+(terminal circles, filled dots, coax connectors), transmission lines and stubs. A transistor in its circle is
+circuitRF's own **BJT** or **FET**; an AC source circle is a **P1Tone**, and a DC source, a battery or a **+** supply
+circle a **Vdc**. An amplifier triangle is the System **Amp**, and filter, attenuator, circulator, switch, coupler and
+balun symbols are their System components, each on default parameters. An IC box, and any other box with three or
+more pins, is an **S-parameter block** (SnP) with one port per signal pin, in the order of the pin numbers printed
+beside them, and its ground pins as its reference &mdash; an S2P drawn as a box with pins 1, 2 and Ref reads as an
+S2P &mdash; ready for its Touchstone file. A two-pin symbol nothing matches is shown as **?** in the parts table and
+drawn as a 0&nbsp;&Omega; part named **?1**, **?2**, &hellip;, so the circuit stays as drawn until you say what it is.
+Current arrows, dimension arrows, dashed boxes and dashed continuation lines are notes on the drawing, never wires.
 
 {{ui: image-dialog-schematic-picture}}
 
@@ -196,6 +202,37 @@ anything on the picture is not tried, and a large picture is read once. Stating 
 
 **Making a layout of it.** A schematic picture makes a schematic only. To get a layout, create the schematic, then use
 **Update Layout from Schematic**.
+
+## Pasting a circuit from a datasheet or a textbook {#pasting}
+
+**Edit ▸ Paste Image as Schematic** reads a screenshot with no questions asked, so it is worth knowing what it
+reads well and what it leaves for you.
+
+**What pastes well.** An application or test circuit cropped from a datasheet, at screen resolution or on a Retina
+display, and a textbook or web schematic drawn by a program. Hairline pens, coloured text and filled amplifier
+triangles, an IC box with its pin numbers and pin names, coax connectors, small circles marking pins on the leads,
+bold labels, serif italic designators with subscripts (`R₁`, `C_ADJ`), zig-zag resistors and named open wire ends
+are all read.
+
+**What to expect to fix.** The paste selects these and names them in its one line in **Messages**; **Correct…**
+opens the dialog on the same reading.
+
+- **An IC's Touchstone file.** An IC box is an S-parameter block with no file; set its **File** before simulating, or
+  the run stops at it.
+- **An amplifier's gain.** The **Amp** stands on 20 dB, a global variable with a tune entry; set the part's real gain.
+- **A value the picture did not print**, or printed where it could not be read, is a global variable with a tune entry.
+- **A part of no known kind** is a 0&nbsp;&Omega; part named **?n**: set its kind in the dialog's parts table, or replace
+  it in the schematic.
+- **A supply** &mdash; an arrow or a terminal named `VCC`, `+5 V`, `Vs` &mdash; is a named net with no source; add a
+  **Vdc** if the analysis needs the bias.
+
+**What does not read yet.** A coil drawn in a hairline pen can come apart into several **?** parts, and two
+capacitors drawn side by side can read as one. An IC box divided by small pin-number boxes can read as several blocks.
+A solid box drawn round a part or a module &mdash; a test fixture, a bias tee, a frame round the device under
+test &mdash; is read as one block with what it holds. A transistor drawn without its circle, and a hatched or dotted
+zig-zag, are not read. A part marked not fitted only by its colour is pasted like any other. An op-amp circuit or a
+dense evaluation board pastes its parts, but most of their connections need redrawing. A complex picture takes up to
+about twenty seconds to read; **Esc** cancels it and nothing is pasted.
 
 ## Scale {#scale}
 
@@ -371,7 +408,8 @@ checked or meshed. Clear **Keep the source picture under the result** to leave i
 | Picture | Expect |
 |---|---|
 | A layout drawn by a program &mdash; a board viewer, a layout editor, a die plot, a figure | **Good.** Flat colours and sharp edges trace to within half a pixel, and the circuit is then read from the copper exactly as from artwork. |
-| A schematic drawn by a program &mdash; a datasheet circuit, another tool's screenshot, a circuitRF picture | **Good wiring and symbols, most values.** Values read when the type is clean and regular; one that does not read becomes a variable to tune. |
+| A schematic drawn by a program &mdash; another tool's screenshot, a circuitRF picture | **Good wiring and symbols, most values.** Values read when the type is clean and regular; one that does not read becomes a variable to tune. |
+| A circuit from a datasheet or a textbook | **Partial.** Most of the passives read, and often the ports and the amplifier or IC; expect to fix some parts and some wiring &mdash; see [Pasting a circuit from a datasheet or a textbook](#pasting). |
 | A picture saved as a JPEG, turned slightly, or speckled | **Good**, a little less exactly: compression smudges colour edges by about a pixel. |
 | A photograph of a real board, set square on its corners | **Partial**: lines and pads come back, fine detail does not, and pads under parts are not read. |
 | A hand-drawn schematic | **Not a goal.** It may read if it is neat. |
@@ -415,7 +453,7 @@ disabled, and its tooltip is that sentence.
 | *1 px = 40 µm; a 450 µm trace is read to ± 9 %* | The picture is coarse for its narrowest trace. Take it again zoomed in, or accept the uncertainty. |
 | *The picture draws no solder mask or paste, so land patterns were read from the copper itself* | Parts were found from pad-shaped copper. If the picture does show the mask, map that colour to your mask layer: parts are then found from its openings. |
 | *N designators on the silkscreen name no part* | The text was read but no land pattern was found under it. Check the overlay; add the part in the schematic afterwards. |
-| *N two-pin symbols matching no drawing, read as ?* | Set each one's kind in the parts table. Until you do it is drawn as a capacitor. |
+| *N two-pin symbols matching no drawing, read as ?* | Set each one's kind in the parts table. Until you do it is a 0&nbsp;&Omega; part named **?n**. |
 | *N values were not read and are global variables with a tune entry* | Type the values into the parts table, or keep them as variables and tune them. |
 | *No designator was read for N parts* | Their designators were generated; rename them in the parts table. |
 | *N words are in type too heavy for its size to read reliably* | Bold or small type. Take the picture larger; the parts are kept, their values become variables. |
@@ -430,8 +468,9 @@ disabled, and its tooltip is that sentence.
 - **Hand-drawn schematics** are not a goal; a neat one may read.
 - **Photographs** of printed pages, of a board's underside aligned to its top, and X-ray pictures. A photograph of a
   board's top reads its lines and pads only once set square on its corners.
-- **Serif and script type**, and type that is bold, very small or slanted at a small size. A value printed in such type
-  becomes a variable or, rarely, reads wrong: check values against the picture.
+- **Script type**, and type that is very small or slanted at a small size. A value printed in such type becomes a
+  variable or, rarely, reads wrong: check values against the picture.
+- **Some datasheet drawings** &mdash; see [Pasting a circuit from a datasheet or a textbook](#pasting).
 - **A value printed far from its part**, other than on the line under its designator, may be given to the part nearest
   it.
 - **Dense layouts** where a trace is under about four pixels wide: widths are read, but loosely.

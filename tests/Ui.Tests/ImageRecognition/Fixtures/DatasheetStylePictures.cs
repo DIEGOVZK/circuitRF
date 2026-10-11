@@ -279,6 +279,7 @@ internal static class DatasheetStylePictures
     // ── ds-regulator: an adjustable regulator's typical application, bold labels ──────────────────────────────────
 
     private const string RegulatorCnl = """
+        Port:P1 vin 0 Num=1 Z=50 Ohm
         C:Ci vin 0 C=0.1 uF
         SnP:U1 vin vout adj NumPorts=3
         Diode:D1 vout vin
@@ -287,12 +288,13 @@ internal static class DatasheetStylePictures
         R:R2 adj 0 R=5 kOhm
         C:Cadj adj 0 C=10 uF
         C:Co vout 0 C=1 uF
+        Port:P2 vout 0 Num=2 Z=50 Ohm
         """;
 
     private static readonly Dictionary<string, object> Regulator = new()
     {
         ["kinds"] = new Dictionary<string, int> { ["R"] = 2, ["C"] = 3, ["Diode"] = 2 },
-        ["ics"] = 1, ["grounds"] = 4,
+        ["ics"] = 1, ["ports"] = 2, ["grounds"] = 4,
         ["names"] = new[] { "VIN", "VOUT" },
         ["designators"] = new[] { "Ci", "Co", "Cadj", "R1", "R2", "D1", "D2" },
         ["values"] = new Dictionary<string, string>

@@ -25,7 +25,11 @@ internal sealed class FakePictureClipboard : IPictureClipboard
         return Task.FromResult(Contents);
     }
 
-    public Task<ImageSourceResult?> ReadAsync() => Task.FromResult<ImageSourceResult?>(null);
+    /// <summary>A picture file copied in a file manager: what <see cref="ReadAsync"/> reads; none when null.</summary>
+    public string? PictureFile { get; set; }
+
+    public Task<ImageSourceResult?> ReadAsync() =>
+        Task.FromResult(PictureFile is null ? null : (ImageSourceResult?)ImageSource.FromFile(PictureFile));
 }
 
 /// <summary>The two IM-6 classes that build a <see cref="WorkspaceViewModel"/>, which builds Avalonia menu items:

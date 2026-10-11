@@ -88,7 +88,8 @@ internal sealed record FieldScore
     public string? Refusal { get; init; }
     public bool? RefusedExpected { get; init; }
 
-    /// <summary>The kind the picture classifies as on its own; the reading itself is forced to a schematic, as Paste is.</summary>
+    /// <summary>The kind the picture classifies as on its own; the reading itself is Paste's, which reads it as a schematic
+    /// unless it is no drawing at all.</summary>
     public DrawingKind Auto { get; init; }
     public string ExpectedKind { get; init; } = "schematic";
     public double Seconds { get; init; }
@@ -110,13 +111,16 @@ internal sealed record FieldScore
     public Tally? Names { get; init; }
     /// <summary>The most pins any one symbol region has.</summary>
     public int LargestRegion { get; init; }
+    /// <summary>The reading the reader kept (IMF-9) and its plausibility; null when no reading scored one.</summary>
+    public string? Reading { get; init; }
+    public double? Plausibility { get; init; }
 
     /// <summary>Everything the committed fixtures promise (overview §4): the circuit exactly, every designator.</summary>
     public bool Exact => !Refused && Topology == true && Kinds is not { Full: false } && Ports is not { Full: false }
                          && Grounds is not { Full: false } && Blocks is not { Full: false } && Designators is not { Full: false };
 
     public const string Header =
-        "picture                  auto       read     kinds  ?   topo ports gnd   term  dev   block desig values names region     ms";
+        "picture                  auto       read     kinds  ?   topo ports gnd   term  dev   block desig values names region     ms  reading    plaus";
 
     public string Line()
     {
@@ -126,12 +130,13 @@ internal sealed record FieldScore
         string line = string.Create(CultureInfo.InvariantCulture,
             $"{Picture,-24} {auto,-10} {read,-8} {T(Kinds),-6} {Unknown,-3} {(Topology is { } t ? t ? "yes" : "no" : "-"),-4} " +
             $"{T(Ports),-5} {T(Grounds),-5} {T(Terminals),-5} {T(Devices),-5} {T(Blocks),-5} {T(Designators),-5} " +
-            $"{T(Values),-6} {T(Names),-5} {LargestRegion,-6} {Seconds * 1000,6:F0}");
+            $"{T(Values),-6} {T(Names),-5} {LargestRegion,-6} {Seconds * 1000,6:F0}  {Reading ?? "-",-10} {(Plausibility is { } p ? p.ToString("0.00", CultureInfo.InvariantCulture) : "-")}");
         return Refusal is null ? line : $"{line}  — {Refusal}";
     }
 
     /// <summary>Reads the picture in <paramref name="folder"/> as Paste does — every option at its default, the kind
-    /// forced to a schematic — and scores it against its expected.json.</summary>
+    /// left to the reader, which reads a layout-looking picture as a schematic and refuses one that is no drawing
+    /// (IMF-9) — and scores it against its expected.json.</summary>
     public static FieldScore Read(string folder, string name)
     {
         var expected = FieldExpected.Load(folder);
@@ -140,7 +145,7 @@ internal sealed record FieldScore
             return new FieldScore { Picture = name, Refused = true, Refusal = source.Refusal, RefusedExpected = expected.Refused, ExpectedKind = expected.Kind };
         var kind = ImageKind.Classify(source.Source!.Raster);
         var clock = Stopwatch.StartNew();
-        var read = SchematicImageRecognition.Circuit(new SchematicImageInput { Source = source.Source!, Kind = kind.Force(DrawingKind.Schematic) });
+        var read = SchematicImageRecognition.Circuit(new SchematicImageInput { Source = source.Source! });
         clock.Stop();
         return Of(read, expected) with { Picture = name, Auto = kind.Kind, Seconds = clock.Elapsed.TotalSeconds };
     }
@@ -214,6 +219,8 @@ internal sealed record FieldScore
             Values = values,
             Names = names,
             LargestRegion = symbols.Count > 0 ? symbols.Max(s => s.Pins.Count) : 0,
+            Reading = read.Plausibility is not null ? read.ReadingName : null,
+            Plausibility = read.Plausibility?.Score,
         };
     }
 

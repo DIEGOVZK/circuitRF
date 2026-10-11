@@ -2,13 +2,17 @@
 // the git-ignored testdata/image-sources/ (testdata/image-sources/README.md holds the schema). On a fresh clone the theory
 // skips with the reason.
 //
-// brief-imf-1-corpus-and-scorer.md R-imf1-5: a schematic picture is SCORED, not held — FieldScore's line is printed,
-// so the TRX carries the table, and the picture fails only on what IMF-10 promises (overview §4); until then, only on
-// an exception. A `refused` that does not match is marked `!` in the line: the illustration is read today, Paste
-// forcing the schematic kind, and is refused only once IMF-9 can say it is not a schematic. A layout picture keeps
-// IM-12's counts. The committed style pictures' table is printed beside it.
+// brief-imf-1-corpus-and-scorer.md R-imf1-5: a schematic picture is SCORED — FieldScore's line is printed, so the TRX
+// carries the table (design note §26) — and HELD only on what overview §4 promises for it (brief-imf-10 R-imf10-2): a
+// datasheet picture its passives by kind, its topology, its ports and its IC or amplifier as one part; a web picture its
+// kinds and topology; every picture no region with more pins than its largest drawn part; the shaded illustration
+// refused. Most pictures do not reach the promise (§26 names each miss's cause), so each is held where its reading
+// stands — a count right no lower, a topology read stays read — and a reader change that loses ground fails on the
+// machine that has the pictures, while a fresh clone skips. A layout picture keeps IM-12's counts. The committed style
+// pictures' table is printed beside it.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -51,6 +55,7 @@ public sealed class ImageFieldTests(ITestOutputHelper output)
             var score = FieldScore.Read(dir, picture);
             output.WriteLine(FieldScore.Header);
             output.WriteLine(score.Line());
+            if (Holds.TryGetValue(picture, out var held)) Hold(picture, held, score);
             return;
         }
 
@@ -81,6 +86,62 @@ public sealed class ImageFieldTests(ITestOutputHelper output)
             foreach (var k in kinds.EnumerateObject())
                 Assert.True(k.Value.GetInt32() == tb.Instances.Count(i => i.Reference == k.Name),
                             $"{picture}: {k.Name} × {tb.Instances.Count(i => i.Reference == k.Name)}, expected {k.Value.GetInt32()}");
+    }
+
+    /// <summary>What a field picture is held to: at least this many right of its kinds, ports and blocks, its topology
+    /// when it is read, no region over <see cref="Region"/> pins — or refused as no schematic.</summary>
+    private sealed record Held(int Kinds = 0, bool Topology = false, int Ports = 0, int Blocks = 0, int Region = int.MaxValue,
+                               bool Refused = false);
+
+    /// <summary>
+    /// R-imf10-2, measured 2026-10-11. Region is the largest drawn part's pin count, except on web a, d and h — where a
+    /// two-pin part's pieces merge into a 4-pin block, a miss held where it stands. ds-g is the stress picture: scored,
+    /// held only on its regions.
+    /// </summary>
+    private static readonly Dictionary<string, Held> Holds = new(StringComparer.Ordinal)
+    {
+        ["picture-ds-a1"] = new(Kinds: 3, Blocks: 1, Region: 8),
+        ["picture-ds-a2"] = new(Kinds: 3, Blocks: 1, Region: 8),
+        ["picture-ds-b1"] = new(Kinds: 2, Ports: 1, Blocks: 1, Region: 4),
+        ["picture-ds-b2"] = new(Kinds: 2, Region: 4),
+        ["picture-ds-c1"] = new(Kinds: 3, Ports: 2, Blocks: 1, Region: 4),
+        ["picture-ds-c2"] = new(Kinds: 3, Ports: 2, Blocks: 1, Region: 4),
+        ["picture-ds-d1"] = new(Kinds: 6, Ports: 2, Blocks: 1, Region: 3),
+        ["picture-ds-d2"] = new(Kinds: 6, Ports: 1, Region: 3),
+        ["picture-ds-e1"] = new(Region: 4),
+        ["picture-ds-e2"] = new(Region: 4),
+        ["picture-ds-f1"] = new(Kinds: 5, Ports: 1, Blocks: 1, Region: 8),
+        ["picture-ds-f2"] = new(Kinds: 11, Blocks: 1, Region: 8),
+        ["picture-ds-g1"] = new(Region: 16),
+        ["picture-ds-g2"] = new(Region: 16),
+        ["picture-ds-h1"] = new(Kinds: 2, Ports: 2, Region: 4),
+        ["picture-ds-h2"] = new(Kinds: 2, Ports: 2, Region: 4),
+        ["picture-a"] = new(Kinds: 3, Region: 4),
+        ["picture-b"] = new(Kinds: 3, Topology: true, Region: 2),
+        ["picture-c"] = new(Kinds: 7, Region: 3),
+        ["picture-d"] = new(Region: 4),
+        ["picture-e"] = new(Kinds: 4, Region: 2),
+        ["picture-f"] = new(Kinds: 6, Region: 2),
+        ["picture-g"] = new(Refused: true),
+        ["picture-h"] = new(Kinds: 6, Region: 4),
+        ["picture-i"] = new(Kinds: 1, Region: 2),
+    };
+
+    private static void Hold(string picture, Held held, FieldScore score)
+    {
+        string line = score.Line();
+        if (held.Refused)
+        {
+            Assert.True(score.Refused, $"{picture}: no schematic, but read — {line}");
+            Assert.StartsWith("This picture does not look like a schematic", score.Refusal);
+            return;
+        }
+        Assert.False(score.Refused, $"{picture}: refused — {line}");
+        Assert.True((score.Kinds?.Right ?? 0) >= held.Kinds, $"{picture}: kinds lost ground — {line}");
+        Assert.True(!held.Topology || score.Topology == true, $"{picture}: topology lost — {line}");
+        Assert.True((score.Ports?.Right ?? 0) >= held.Ports, $"{picture}: ports lost ground — {line}");
+        Assert.True((score.Blocks?.Right ?? 0) >= held.Blocks, $"{picture}: its IC or amplifier lost — {line}");
+        Assert.True(score.LargestRegion <= held.Region, $"{picture}: a region of {score.LargestRegion} pins — {line}");
     }
 
     /// <summary>The committed style pictures' scores, one line each — the same table, for the pictures every clone has.</summary>

@@ -972,8 +972,14 @@ clone.
 ### 13.7 What does not read (R-im12-7)
 
 - Hand-drawn schematics (not a goal); photographs except a board's top side set square on its corners (§14).
-- Serif and script type; type that is bold, very small, or slanted or condensed at a small size (12 px caps).
+- Script type; type very small, or slanted or condensed at a small size (12 px caps). Bold sans and serif or serif
+  italic type read since IMF-7 (§23), a subscript included.
 - Values printed far from their parts, other than on the line under their designator.
+- On schematic pictures from datasheets and the web (§26): a coil in a hairline pen, which can come apart into several
+  `?` parts; two capacitors drawn side by side, read as one part; an IC box divided by pin-number boxes, read as
+  several blocks; a solid box drawn round a part or a module (a fixture, a bias tee, a DUT frame), read as one block
+  with what it holds; a transistor drawn without its circle; a hatched or dotted zig-zag; a not-fitted part marked only
+  by its colour; an op-amp or a dense evaluation board, whose parts read but whose connections largely do not.
 - Dense layouts below ~4 px per trace width — widths read, loosely (the resolution line says how loosely).
 - The stackup, never stated by a picture (D8).
 - Vector sources — PDF, SVG, EMF — which are the better source when one exists; they are not read (D18).
@@ -2420,3 +2426,142 @@ again). Paste Image as Layout has the same row, Esc and cancel.
 Gates: `ReadingPlausibilityTests`, `ReadCancellationTests`, `ImageNothingHereTests` (illustration added; the kind check
 alone, zero readings), `PasteOutcomeTests`, `PasteCancelTests`, and `ImageDatasheetStyleTests`/`ImageWebStyleTests`
 through Auto.
+
+## 26. IMF-10 — the field numbers against the overview's §4
+
+The last phase measures; it changes no reader behaviour. Three things changed in the measuring itself:
+
+- **The scorer reads as Paste reads.** `FieldScore.Read` forced every picture's kind to a schematic, which also forced a
+  picture the kind check calls *none* past it — so the table read the shaded illustration and `picture-g` that Paste
+  refuses. It now hands the reader no kind, as Paste does: a layout-looking picture is still read as a schematic, one
+  that is no drawing is refused, and the floor applies. Two columns were added: `reading`, the candidate kept (§25.2),
+  and `plaus`, its plausibility.
+- **The field pictures have answers.** Each local datasheet circuit but the stress picture `ds-g`, and each web
+  schematic, now carries an `answer.cnl` beside its `expected.json` (git-ignored with the pictures), so `topo` is
+  scored on them too. The answers follow the committed fixtures' conventions: a terminal, a coax connector or a name
+  beyond an open wire end is a port to ground, unless the name is a supply's (`PortWords.IsSupply`); an IC is an SnP on
+  its signal pins with ground its reference; an amplifier triangle is `Amp in 0 out 0`. `ds-d`'s `kinds` said `D`,
+  which the netlist never writes (`Diode`), so its diodes could not be counted; and `ds-c` gained its designators,
+  `ds-d` and `ds-f` their ports.
+- **One committed answer was the defect.** `ds-regulator` drew VIN and VOUT as names beyond open wire ends, which IMF-6
+  reads as ports — as `loop-coil-names`' answer already says — while its answer had no port. With the two ports added,
+  `ds-regulator-2x` reads exactly and its fact is turned on; 1× is short one designator.
+
+`ImageFieldTests` holds each field picture where its reading stands against what §4 promises it (R-imf10-2): kinds,
+ports and the amplifier or IC no fewer right, a topology read stays read, no region over the largest drawn part's pins
+(the reading's own on web a, d and h, which miss it), `picture-g` refused. `PasteDatasheetEndToEndTests` (R-imf10-3)
+pastes the gain block at the view model into an open schematic holding a part: nothing asked, one line, the Amp
+between two ports, nothing joined to what was there, the picture under it, and the document run as Simulate runs it —
+S21 = 20.00 dB at 1 GHz at 1×. At 2× the same paste does not simulate (below), and that case is skipped with the
+reason.
+
+### 26.1 The tables (2026-10-11, Debug build)
+
+Committed style pictures:
+
+```
+picture                  auto       read     kinds  ?   topo ports gnd   term  dev   block desig values names region     ms  reading    plaus
+ds-gain-block-1x         schematic  read     4/5    0   no   2/2   4/4   -     1/1   1/1   3/5   1/2    1/1   3        1734  measured   0.96
+ds-gain-block-2x         schematic  read     4/5    7   no   2/2   4/4   -     1/1   1/1   2/5   0/2    1/1   3        2507  measured   0.72
+ds-ldo-1x                schematic  read     2/2    0   yes  2/2   3/3   2/2   1/1   1/1   2/2   2/2    2/2   4        1198  measured   0.98
+ds-ldo-2x                schematic  read     2/2    0   yes  2/2   3/3   2/2   1/1   1/1   2/2   2/2    2/2   4         696  measured   0.98
+ds-regulator-1x          schematic  read     7/7    0   yes  2/2   4/4   -     1/1   1/1   6/7   6/7    2/2   3        4787  measured   1.00
+ds-regulator-2x          schematic  read     7/7    0   yes  2/2   4/4   -     1/1   1/1   7/7   7/7    2/2   3        3685  measured   1.00
+ds-rf-amp-1x             schematic  read     5/5    1   yes  2/2   4/4   -     1/1   1/1   4/5   3/5    0/1   8        3518  measured   0.91
+ds-rf-amp-2x             schematic  read     5/5    3   no   2/2   4/4   -     1/1   1/1   4/5   3/5    0/1   8        3184  measured   0.85
+ds-test-circuit-1x       schematic  read     3/3    2   no   2/2   2/3   -     0/1   0/1   3/3   3/3    0/1   2        1968  measured   0.83
+ds-test-circuit-2x       schematic  read     3/3    2   no   2/2   2/3   -     0/1   0/1   3/3   3/3    0/1   2        1082  measured   0.85
+heavy-iec                schematic  read     8/8    0   yes  1/1   6/6   -     3/3   -     7/9   -      -     3        3457  measured   0.99
+illustration             none!      refused  -      0   -    -     -     -     -     -     -     -      -     0         170  -          -
+ladder-dashed            schematic  read     6/6    0   yes  2/2   -     4/4   -     -     4/6   -      -     2         955  measured   0.97
+loop-coil-names          schematic  read     2/2    0   yes  3/3   -     -     -     -     -     -      3/3   2         323  measured   0.89
+low-res                  schematic  read     2/2    0   yes  2/2   -     4/4   -     -     1/2   -      -     2        3256  enlarged   0.95
+textbook-zigzag          schematic  read     2/2    0   yes  2/2   -     4/4   -     -     2/2   -      -     2        1901  measured   1.00
+typeset                  schematic  read     5/5    0   yes  -     1/1   -     1/1   -     6/6   4/5    -     2        4534  measured   1.00
+```
+
+Field pictures (local, git-ignored; datasheet crops first):
+
+```
+picture                  auto       read     kinds  ?   topo ports gnd   term  dev   block desig values names region     ms  reading    plaus
+picture-ds-a1            schematic  read     3/6    6   no   0/2   -     -     1/1   1/1   5/6   -      0/1   5        5108  measured   0.68
+picture-ds-a2            schematic  read     3/6    8   no   0/2   -     -     0/1   1/1   5/6   -      0/1   4        2754  measured   0.70
+picture-ds-b1            schematic  read     2/4    3   no   1/2   -     -     1/1   1/1   2/4   -      -     3        2040  measured   0.67
+picture-ds-b2            schematic  read     2/4    3   no   0/2   -     -     0/1   0/1   3/4   -      -     3        1419  measured   0.68
+picture-ds-c1            schematic  read     3/5    3   no   2/2   -     -     1/1   1/1   1/5   -      0/1   4         768  measured   0.70
+picture-ds-c2            schematic  read     3/5    4   no   2/2   -     -     0/1   1/1   3/5   -      0/1   4        1041  measured   0.76
+picture-ds-d1            schematic  read     6/7    1   no   2/2   1/1   -     1/1   1/1   2/4   1/3    -     3        5923  measured   0.92
+picture-ds-d2            schematic  read     6/7    0   no   1/2   0/1   -     0/1   0/1   4/4   3/3    -     2        6516  measured   0.93
+picture-ds-e1            schematic  read     0/3    1   no   0/2   -     -     0/1   0/1   -     -      -     2        2417  measured   0.60
+picture-ds-e2            schematic  read     0/3    3   no   0/2   -     -     0/1   0/1   -     -      -     4        1514  measured   0.54
+picture-ds-f1            schematic  read     5/18   28  no   1/1   -     -     0/2   1/2   -     -      -     4        9137  measured   0.43
+picture-ds-f2            schematic  read     11/18  29  no   0/1   -     -     1/2   1/2   -     -      -     4        7438  measured   0.52
+picture-ds-g1            schematic  read     -      25  -    -     -     -     1/4   -     -     -      -     16      19110  measured   0.71
+picture-ds-g2            schematic  read     -      42  -    -     -     -     1/4   -     -     -      -     16      12900  measured   0.70
+picture-ds-h1            schematic  read     2/2    0   no   2/2   3/3   -     1/1   0/1   2/2   0/2    1/2   4        2104  measured   0.97
+picture-ds-h2            schematic  read     2/2    0   no   2/2   2/3   -     1/1   0/1   1/2   1/2    1/2   4        1287  measured   0.96
+picture-a                schematic  read     3/8    14  no   -     4/4   6/6   -     -     -     -      -     4        1138  measured   0.66
+picture-b                schematic  read     3/4    1   yes  -     -     -     -     -     1/2   -      -     2        1023  measured   0.89
+picture-c                schematic  read     7/8    3   no   -     -     -     3/3   -     5/8   -      -     3        1388  measured   0.84
+picture-d                schematic  read     0/2    9   no   -     0/1   -     -     -     -     -      0/2   4        1225  measured   0.41
+picture-e                schematic  read     4/5    0   no   -     -     -     -     -     -     -      -     2        3145  enlarged   0.97
+picture-f                schematic  read     6/6    1   no   -     -     4/4   -     -     -     -      -     2        1874  measured   0.94
+picture-g                none!      refused  -      0   -    -     -     -     -     -     -     -      -     0         235  -          -
+picture-h                schematic  read     6/7    9   no   -     -     -     1/2   -     -     2/7    -     4        1209  measured   0.64
+picture-i                schematic  read     1/2    1   no   -     -     -     -     -     -     -      3/3   2         556  measured   0.57
+```
+
+### 26.2 Against §4, target by target
+
+- **Committed fixtures read exactly — 6 of 16 met** (`ds-ldo` both, `ds-regulator-2x`, `textbook-zigzag`, `typeset`,
+  `loop-coil-names`). The ten misses, each from its skip reason in `ImageStylePictureTests.cs`: `ds-gain-block` — at 1×
+  `Cbypass` reads as a supply bar, so the bias node is ground; at 2× the RFC coil comes apart into five `?` parts and
+  the junction it meets reads as a 3-port SnP. `ds-regulator-1x` — `Ci` reads `C1`, its i's dot fused at the screen
+  pen. `ds-rf-amp` — `C3`'s designator, touching its plate, is not read; at 2× also the hop where L1's lead crosses the
+  IC's VCC lead reads as a `?` part, which puts the VCC pin on a net of its own. `ds-test-circuit` — the solid DUT box
+  drawn round the triangle is read as one part with it, so no Amp. `heavy-iec` — R₄'s subscript reads `d`, Q₁ is not
+  read. `ladder-dashed` — L₂ and L₃, lifted off their coils, come apart. `low-res` — the 7 px serif italic R is refused
+  as heavy.
+- **Every coloured datasheet picture classified as a schematic — met.** All sixteen crops `auto` = schematic.
+- **At least 5 of the 7 datasheet circuits at both scales with every R, L, C, D by kind, the topology, the RF ports and
+  the amplifier or IC as one part — 0 of 7.** The nearest are `ds-h` (kinds and ports right, IC wrong) and `ds-d1`
+  (6 of 7 kinds, ports and IC right). By circuit:
+  - `ds-a` (RF amplifier): the IC box is divided by its pin-number boxes into several blocks (one read as a coupler);
+    the hairline RF choke comes apart into five pieces; the side-by-side C3/C4 pair is one region; the filled-dot RF
+    connectors are `?`, so no port.
+  - `ds-b` (gain block): at 2× the triangle's region takes C1 in and is no Amp, and C3 with its ground is read as a
+    word; the coax connectors are `?` at 2× (one of two at 1×).
+  - `ds-c` (gain block): the RFC coil and the Rbias zig-zag beside its junction dot are `?`; at 2× the pin markers
+    above and below the triangle stay in its region and it is no Amp. Ports right at both.
+  - `ds-d` (regulator): at 1× D2 is not read and the terminal names misread (V_I as `U1`), the IC right; at 2× words
+    misread as net names join the rails — the ground under the return rail reads as the word `I11` and names it, V_O
+    reads `VD` — so every part lands between the same two nets.
+  - `ds-e` (test circuit): each solid module box (the blocking capacitor's, the bias tee's) is one block with what it
+    holds, the triangle inside the dashed DUT frame is read as annotation, the coax connectors are `?` — IMF-8's
+    unmet frame rule.
+  - `ds-f` (op-amp, stress-like): 28–29 regions of no known kind; the op-amp's feedback and output network do not read.
+  - `ds-h` (LDO): the `VEN` pin's wire, which ends at the switch drawing, is kept as an IC port; the switch's `ON`
+    is taken for a port name; `VIN` reads `V1N` and its terminal is no port; the GND pin's ground reads as a word.
+- **Three quarters of datasheet designators read right — 28 of 42 (67 %).** Met on a1, a2, b2, d2, h1; not on b1
+  (2/4), c1 (1/5), c2 (3/5), d1 (2/4), h2 (1/2). `ds-c`'s word designators touching their symbols, with parenthetical
+  notes beside them, are most of the loss.
+- **Every value on ds-d read — 3/3 at 2×, 1/3 at 1×.**
+- **Web: `picture-g` refused in one sentence — met** ("This picture does not look like a schematic: a shaded
+  illustration…", by the kind check alone). **6 of 8 with kinds and topology — 1 of 8** (`b`, whose zig-zag is `?` but
+  emitted 0 Ω in its place). `a`: the heavy serif zig-zags come apart at their corners (14 `?`). `c`: the transistor in
+  its circle reads as a FET, three wire pieces as `?`, and the source's return is not ground. `d`: the hatched zig-zag
+  is `?`, and C with its ground is one 4-pin block. `e`: C₁ under R_S is not read. `f`: kinds right, but the dashed
+  continuation between L₄ and L_n−1 reads as a `?` part joining them. `h`: the transistor reads as a 4-pin block, the
+  coil in pieces. `i`: the looped coil is `?`. Half the designators: not met where stated (`c` 5/8, `b` 1/2).
+- **No region with more pins than the drawn part — met on every datasheet picture and committed fixture; missed on
+  web `a`, `d`, `h`** (4-pin regions where a two-pin part's pieces or a transistor and its neighbour merged).
+- **Paste time — not met** (§25.3): 0.3–6.5 s for the simple pictures in Debug, 7–19 s for `ds-f` and `ds-g`. The
+  reader itself costs 2–3.5 s a megapixel in Debug; Auto adds no reading a simple picture's pixel budget does not allow.
+  Esc cancels at any point (`PasteCancelTests`).
+- **No regression — met:** the image gates below are green.
+
+**What it adds up to.** The series moved the datasheet crops from no passive read by kind to half or more of them on
+every circuit but `ds-e` and `ds-f`, no runaway region, colour classified, and the amplifier or IC one part on four of
+the seven circuits at 1× — but not to pasted circuits that simulate as drawn. The misses cluster in four places, each a reader phase of its own: hairline
+coils that come apart; boxes drawn round parts (module and DUT frames, pin-number boxes); words read as net names
+that join nets; and coax and filled-dot connectors. The user page says so (`create-from-image.md` §pasting).

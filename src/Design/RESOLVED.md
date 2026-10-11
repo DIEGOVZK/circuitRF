@@ -19511,3 +19511,29 @@ Traps worth keeping:
   loses to the correct reading) but never takes an otherwise-read drawing under the floor.
 - **A cancelled read now RETURNS cancelled** (`SchematicImageResult.Cancelled`) instead of throwing; the CLI rethrows
   so `recognize` still exits 130, and the dialog's own token check after the read still drops the preview.
+
+## IMF-10 — acceptance on the field pictures (2026-10-11)
+
+The series' own measuring, and what it found. Design note §26 holds the tables and each miss's cause. The four traps the
+brief names were recorded by the phases that met them: a fill making a schematic a layout (IMF-2), the dimension arrow
+that shorted two nets (IMF-3), the box region that grew past its outline (IMF-4), bold type read wrong unless thinned
+(IMF-7). New here:
+
+- **The scorer did not read as Paste reads.** `FieldScore` forced every picture to the schematic kind, and forcing
+  overrides *none* as well as *layout* — so the table read the shaded illustrations that Paste refuses, and the
+  plausibility floor never applied. A measurement of "what Paste does" has to call the reader exactly as Paste does:
+  no kind handed in.
+- **A committed answer can be the defect.** `ds-regulator`'s answer had no ports for VIN and VOUT, names written
+  beyond open wire ends — which IMF-6 reads as ports and `loop-coil-names`' answer already draws as ports. The reader
+  was right; with the answer corrected, `ds-regulator-2x` reads exactly. Check an answer against the series' own
+  conventions before calling a reading short.
+- **`expected.json` kinds are NETLIST references.** `ds-d` said `"D": 2`; the netlist writes `Diode`, so its diodes
+  were counted as none and the column read 5/7 however well they read.
+- **A misread word is the costliest misreading on a datasheet**, because wires with the same name are one net: on
+  `ds-d2` a ground symbol read as the word `I11` named the return rail and V_O read `VD`, and every part landed between
+  the same two nets — a reading with all seven parts right by kind and nothing right about how they connect.
+- **A pasted circuit with any SnP does not simulate**: an S-parameter block with no Touchstone file stops the run. A
+  real IC needs its file anyway (the user page says so), but a misread junction becomes a 3-port SnP too (the gain
+  block at 2×), so one misreading turns "simulates with no edit" into "refused".
+- **Paste puts the variables block above the picture**, outside the picture's extent: a test that every pasted
+  object lies on the picture must leave the `Var` symbol out.

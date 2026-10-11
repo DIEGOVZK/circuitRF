@@ -9,6 +9,7 @@
     "Diode": 2
   },
   "ics": 1,
+  "ports": 2,
   "grounds": 4,
   "names": [
     "VIN",
