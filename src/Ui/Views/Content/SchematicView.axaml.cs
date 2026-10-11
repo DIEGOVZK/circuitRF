@@ -342,6 +342,9 @@ public partial class SchematicView : UserControl
                 break;
             case Key.W:
                 vm.SetWireTool();
+                // W on an already-armed wire tool changes no property, so nothing else would re-send
+                // the cross to the OS if it had been lost.
+                SchematicCanvasCtrl.ReassertCursor();
                 SchematicCanvasCtrl.InvalidateVisual();
                 e.Handled = true;
                 break;

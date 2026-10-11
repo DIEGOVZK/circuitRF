@@ -1567,7 +1567,7 @@ public sealed class RailBoardViewTests(ITestOutputHelper output)
     /// Installed once per process and never uninstalled, because nothing else in this assembly asks
     /// for a cursor.
     /// </remarks>
-    private static class CursorFactoryShim
+    internal static class CursorFactoryShim
     {
         private static bool _installed;
 

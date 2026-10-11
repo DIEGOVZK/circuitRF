@@ -132,34 +132,58 @@ public sealed class SchematicCanvas : Control
     /// bug the layout canvas already shipped once with Space-to-pan.</summary>
     private bool _altHeld;
 
-    private void UpdateCursor()
+    private void UpdateCursor() => ApplyCursor(DesiredCursor(), reassert: false);
+
+    private StandardCursorType DesiredCursor()
     {
-        if (_isLeftPanning || _isPanning)
-        {
-            Cursor = new Cursor(StandardCursorType.Hand);
-            return;
-        }
+        if (_isLeftPanning || _isPanning) return StandardCursorType.Hand;
 
         // R-dup-1: Alt says the drag will leave the original where it is and take a copy. Shown while
         // the duplicate is actually armed, and also on a bare Alt with something selected, so the
         // gesture announces itself BEFORE the press rather than only once the ghost appears.
         if (_editContext is { ActiveTool: SchematicViewModel.Tool.Select } vm
             && (vm.DuplicateDragArmed || (_altHeld && vm.HasDuplicableSelection)))
-        {
-            Cursor = new Cursor(StandardCursorType.DragCopy);
-            return;
-        }
+            return StandardCursorType.DragCopy;
 
-        Cursor = _editContext?.ActiveTool switch
+        return _editContext?.ActiveTool switch
         {
-            SchematicViewModel.Tool.Pan        => new Cursor(StandardCursorType.Hand),
-            SchematicViewModel.Tool.Wire       => new Cursor(StandardCursorType.Cross),
-            SchematicViewModel.Tool.Place      => new Cursor(StandardCursorType.Cross),
-            SchematicViewModel.Tool.ZoomBox    => new Cursor(StandardCursorType.Cross),
-            SchematicViewModel.Tool.MoveLabels => new Cursor(StandardCursorType.SizeAll),
-            _                                  => Cursor.Default,
+            SchematicViewModel.Tool.Pan        => StandardCursorType.Hand,
+            SchematicViewModel.Tool.Wire       => StandardCursorType.Cross,
+            SchematicViewModel.Tool.Place      => StandardCursorType.Cross,
+            SchematicViewModel.Tool.ZoomBox    => StandardCursorType.Cross,
+            SchematicViewModel.Tool.MoveLabels => StandardCursorType.SizeAll,
+            _                                  => StandardCursorType.Arrow,
         };
     }
+
+    // Two instances per cursor type, alternated by a re-assert: Avalonia hands a cursor to the
+    // platform only when the pointer-over element changes or its Cursor PROPERTY changes, so
+    // re-assigning an equal cursor needs a different instance to reach the OS at all.
+    private readonly Dictionary<StandardCursorType, (Cursor A, Cursor B)> _cursors = new();
+    private StandardCursorType? _appliedCursorType;
+    private bool _appliedCursorIsB;
+
+    /// <summary>
+    /// Sets the canvas cursor. <paramref name="reassert"/> pushes it to the platform again even when
+    /// the type has not changed — the macOS native cursor is process-global, and AppKit resets it to
+    /// the arrow on its own (cursor-rect rebuilds after a window or layout change), which Avalonia
+    /// does not observe. Field report: the wire tool stayed armed after a wire ended on a pin, but
+    /// the cross had become an arrow and stayed one while the mouse moved over the canvas, and
+    /// pressing W again changed nothing because the tool was already Wire.
+    /// </summary>
+    internal void ApplyCursor(StandardCursorType type, bool reassert)
+    {
+        if (!reassert && _appliedCursorType == type) return;
+        if (!_cursors.TryGetValue(type, out var pair))
+            _cursors[type] = pair = (new Cursor(type), new Cursor(type));
+        _appliedCursorIsB = _appliedCursorType == type && !_appliedCursorIsB;
+        _appliedCursorType = type;
+        Cursor = _appliedCursorIsB ? pair.B : pair.A;
+    }
+
+    /// <summary>Re-sends the current tool's cursor to the platform — what a pointer move over the
+    /// canvas and a re-press of the armed tool's key do.</summary>
+    internal void ReassertCursor() => ApplyCursor(DesiredCursor(), reassert: true);
 
     private void SyncFromVm()
     {
@@ -644,6 +668,10 @@ public sealed class SchematicCanvas : Control
             RaiseViewportChanged();
             return;
         }
+
+        // macOS only: AppKit can put the arrow back behind Avalonia's back (see ApplyCursor), and a
+        // move is the moment the user is looking at the pointer.
+        if (OperatingSystem.IsMacOS()) ReassertCursor();
 
         bool leftDown = e.GetCurrentPoint(this).Properties.IsLeftButtonPressed;
         if (_editContext is not null)

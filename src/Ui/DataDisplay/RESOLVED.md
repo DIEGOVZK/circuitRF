@@ -2493,3 +2493,17 @@ trace resolved to a scalar and `ScalarOnNonTableInvalid` fired. `FirstPlottableC
 cube with `DefaultXAxis < 0` alongside rank 0 when scalars are not allowed, using the same rule the
 slice builder uses so the two cannot disagree. Gate:
 `AutoCreateDataDisplaySinglePlotTests.DcOperatingPointRun_AutoCreate_IsTable_AndTraceIsValid`.
+
+## A label-pinned trace kept reading a renamed probe's slot (2026-10-10)
+
+Reported: a Table trace on `DC1.I["IP1"]` kept showing a current after the IProbe was renamed to
+IDC and the design re-run; only deleting and re-adding the trace showed it invalid. The parser
+turns `"IP1"` into an INDEX once and stores the label beside it (`AxisSlice.Label`), and every
+later resolve read the index alone. A rename keeps the cube's shape, so
+`ReseedSliceIfCubeShapeChanged` (correctly) left the slice alone and index 0 read IDC under the
+old name. A reorder of probes had the same defect, quietly showing the wrong probe.
+**Fix:** `TraceResolve.TryRebindLabelledPins`, run on every resolve before any read: a pinned entry
+with a label is re-pointed at that label's index on the current cube, and a label the cube no
+longer has ends as the parser's own `No label 'IP1' in axis 'branch'.` with `<invalid>`. Integer
+pins (`I[0]`) carry no label and still mean a position. Being in `src/Render`, it covers
+`render --data` too. Test `LabelledPinRerunTests`.

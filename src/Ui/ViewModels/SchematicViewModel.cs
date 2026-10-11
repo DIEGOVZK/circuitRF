@@ -2094,9 +2094,98 @@ public sealed partial class SchematicViewModel : ObservableObject
         }
         if (!sMoved && !eMoved) return null;
 
-        return SimplifyWirePoints(
+        var routed = SimplifyWirePoints(
             WireGeometry.FollowEndpoints(orig, sMoved, nsx, nsy, eMoved, nex, ney,
                                          (a, b) => StationaryTapBetween(a, b, wireId, portMoves)));
+        return AvoidOtherMovedPins(orig, routed, sMoved, eMoved, portMoves, wireId);
+    }
+
+    /// <summary>
+    /// <paramref name="routed"/>, unless it runs through the NEW place of a moving pin that never
+    /// touched this wire — then the moved end's tail is re-routed round it.
+    ///
+    /// <para>The follow keeps the user's leg and grows its elbow at the pin's OLD place, which is
+    /// exactly where a part's other pin lands when the part slides along its own pin axis: an IProbe
+    /// one step left puts nm where np was, and np's wire turned its corner on nm — the probe shorted,
+    /// in silence (field report, 2026-10-10). A candidate is taken only if it clears every such pin
+    /// and touches exactly the stationary taps the plain follow touched, so it neither drops a T nor
+    /// makes a new one; when none qualifies the plain follow stands.</para>
+    /// </summary>
+    private IReadOnlyList<(double X, double Y)> AvoidOtherMovedPins(
+        IReadOnlyList<(double X, double Y)> orig, IReadOnlyList<(double X, double Y)> routed,
+        bool sMoved, bool eMoved,
+        List<(double Ox, double Oy, double Nx, double Ny)> portMoves, string? wireId)
+    {
+        const double tol = SchematicEditModel.ConnectTolerance;
+        var foreign = portMoves.Where(m => !OnPolyline(orig, m.Ox, m.Oy))
+                               .Select(m => (X: m.Nx, Y: m.Ny)).ToList();
+        if (foreign.Count == 0) return routed;
+        bool Blocked(IReadOnlyList<(double X, double Y)> pts) => foreign.Exists(f => OnPolyline(pts, f.X, f.Y));
+        if (!Blocked(routed)) return routed;
+
+        // Stationary taps as StationaryTapBetween reads them: not this wire's own vertices, and not a
+        // point a moving pin started on.
+        var taps = (_dragStationaryTaps ?? [])
+            .Where(t => t.WireId is null || t.WireId != wireId)
+            .Where(t => !portMoves.Exists(m => SchematicGeometry.CoincidentPoints(t.X, t.Y, m.Ox, m.Oy, tol)))
+            .ToList();
+        var tapsOnRouted = taps.Where(t => OnPolyline(routed, t.X, t.Y)).ToHashSet();
+        bool SameTaps(IReadOnlyList<(double X, double Y)> pts)
+            => taps.TrueForAll(t => OnPolyline(pts, t.X, t.Y) == tapsOnRouted.Contains(t));
+
+        var current = routed;
+        foreach (bool atStart in new[] { true, false })
+        {
+            if (!(atStart ? sMoved : eMoved) || !Blocked(current)) continue;
+            foreach (var cand in EndReroutes(orig, current, atStart))
+                if (!Blocked(cand) && SameTaps(cand)) { current = cand; break; }
+        }
+        return Blocked(current) ? routed : current;
+
+        static bool OnPolyline(IReadOnlyList<(double X, double Y)> pts, double x, double y)
+        {
+            for (int i = 0; i < pts.Count - 1; i++)
+                if (SchematicGeometry.PointOnSegment(x, y, pts[i].X, pts[i].Y, pts[i + 1].X, pts[i + 1].Y, tol))
+                    return true;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Other shapes for the moved end's tail of <paramref name="current"/>: from the last vertex the
+    /// user drew (the anchor) to the new end, the two L's and the two Z's. Everything before the
+    /// anchor is kept as it is.
+    /// </summary>
+    private IEnumerable<IReadOnlyList<(double X, double Y)>> EndReroutes(
+        IReadOnlyList<(double X, double Y)> orig, IReadOnlyList<(double X, double Y)> current, bool atStart)
+    {
+        const double tol = SchematicEditModel.ConnectTolerance;
+        var pts = atStart ? current.Reverse().ToList() : current.ToList();
+        var oldEnd = atStart ? orig[0] : orig[^1];
+        int k = 0;
+        for (int i = pts.Count - 2; i > 0; i--)
+        {
+            var q = pts[i];
+            if (SchematicGeometry.CoincidentPoints(q.X, q.Y, oldEnd.X, oldEnd.Y, tol)) continue;
+            if (orig.Any(o => SchematicGeometry.CoincidentPoints(q.X, q.Y, o.X, o.Y, tol))) { k = i; break; }
+        }
+        var a = pts[k];
+        var n = pts[^1];
+        double mx = EditModel.SnapToGrid((a.X + n.X) / 2), my = EditModel.SnapToGrid((a.Y + n.Y) / 2);
+        var tails = new List<(double X, double Y)[]>
+        {
+            new[] { a, (n.X, a.Y), n },
+            new[] { a, (a.X, n.Y), n },
+        };
+        if (Math.Abs(mx - a.X) > tol && Math.Abs(mx - n.X) > tol) tails.Add([a, (mx, a.Y), (mx, n.Y), n]);
+        if (Math.Abs(my - a.Y) > tol && Math.Abs(my - n.Y) > tol) tails.Add([a, (a.X, my), (n.X, my), n]);
+
+        foreach (var tail in tails)
+        {
+            var full = pts.Take(k).Concat(tail).ToList();
+            if (atStart) full.Reverse();
+            yield return SimplifyWirePoints(full);
+        }
     }
 
     /// <summary>
@@ -2178,10 +2267,15 @@ public sealed partial class SchematicViewModel : ObservableObject
 
         foreach (var (ox, oy, nx, ny) in portMoves)
         {
+            // A tap is a pin on a segment's interior OR on a corner: a corner is neither an
+            // endpoint (so nothing follows it) nor any segment's interior, and a pin that left one
+            // used to be left open with no stub (field report, 2026-10-10).
             bool tapped = false;
             for (int si = 0; si < orig.Count - 1 && !tapped; si++)
                 tapped = SchematicGeometry.PointOnSegmentInterior(
                     ox, oy, orig[si].X, orig[si].Y, orig[si + 1].X, orig[si + 1].Y, tol);
+            for (int vi = 1; vi < orig.Count - 1 && !tapped; vi++)
+                tapped = SchematicGeometry.CoincidentPoints(ox, oy, orig[vi].X, orig[vi].Y, tol);
             if (!tapped) continue;                       // this pin was not tapping this wire
 
             bool stillOn = false;

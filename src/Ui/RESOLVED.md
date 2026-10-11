@@ -39331,3 +39331,17 @@ whether paste is enabled is `Recognition/PasteImageAvailability`, over an `IPict
   rows at all.
 - Two of the gate classes build a `WorkspaceViewModel`, which builds `MenuItem`s, and that type's static
   registration is not thread-safe (see the StackupDeleteKeyTests note): they share one xUnit collection.
+
+## A two-pin part dragged along its own pin axis shorted itself, or left a pin open (2026-10-10)
+
+Field report: an IProbe in series between two wires, dragged one step left, came off its wire. Two holes in the
+drag-follow path (`SchematicViewModel`), both now covered by `IProbeDragKeepsBothPinsTests`
+(`Suite=SchematicConnectivity`):
+
+- **The follow turns its corner at the pin's OLD place**, and that is exactly where the part's other pin lands when
+  the part slides along its pin axis. np's wire elbowed through nm — the probe shorted with nothing on screen to say
+  so. `AvoidOtherMovedPins` re-routes the moved end's tail (two L's, two Z's from the last vertex the user drew) when
+  the plain follow runs through a moving pin that never touched the wire; a candidate must clear every such pin and
+  touch exactly the stationary taps the plain follow touched, else the plain follow stands.
+- **A pin on a wire's CORNER is neither an endpoint nor a segment interior**, so `BuildTapStubs` saw no tap and the
+  pin left with neither a follow nor a stub. Interior vertices now count as taps; the stub grows from the corner.

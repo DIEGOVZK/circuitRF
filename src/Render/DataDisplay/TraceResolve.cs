@@ -354,6 +354,37 @@ public static class TraceResolve
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Re-points every pinned slice entry that carries a LABEL at that label's index on
+    /// <paramref name="cube"/>, writing a new <see cref="Trace.Slice"/> only when an index moved.
+    /// False, with the parser's own wording, when the cube's axis no longer has the label. An entry
+    /// with no label, or on an axis without labels, keeps its index — an integer pin means a position.
+    /// </summary>
+    private static bool TryRebindLabelledPins(Trace t, DataCube cube, out string error)
+    {
+        error = "";
+        if (t.Slice is not { } slice) return true;
+        AxisSlice[]? rebound = null;
+        for (int i = 0; i < slice.Length; i++)
+        {
+            var s = slice[i];
+            if (s.Role != AxisRole.PinToIndex || s.Label.Length == 0) continue;
+            var axis = cube.Axes.FirstOrDefault(a => a.Name == s.AxisName);
+            if (axis?.Labels is not { Length: > 0 } labels) continue;
+            int idx = Array.IndexOf(labels, s.Label);
+            if (idx < 0)
+            {
+                error = $"No label '{s.Label}' in axis '{s.AxisName}'.";
+                return false;
+            }
+            if (idx == s.Index) continue;
+            rebound ??= (AxisSlice[])slice.Clone();
+            rebound[i] = s with { Index = idx };
+        }
+        if (rebound is not null) t.Slice = rebound;
+        return true;
+    }
+
     private static void SetCubeDataFromCore(Trace t, DataSet? ds, PlotType plotType, FreqUnit freqUnit,
                                             DataSet? xDs, ResolveProbe probe)
     {
@@ -521,6 +552,22 @@ public static class TraceResolve
         // From here down, `cube` is what the indexer will read. Record it now so the crash note
         // describes the object the gather saw rather than re-deriving one from the DataSet later.
         probe.Cube = cube;
+
+        // A pin authored by LABEL (`I["IP1"]`, or a picker pick on a node/branch axis) names a probe or
+        // a net, not a position — but the slice carries the index the label had when it was parsed. A
+        // re-run that renames the probe keeps the cube's shape, so nothing re-parses the spec, and the
+        // stale index went on reading whatever now sits there under the old name. Re-bind every
+        // labelled pin against THIS cube; a label it no longer has is the same "<invalid>" a freshly
+        // typed spec reports.
+        if (!TryRebindLabelledPins(t, cube, out string labelErr))
+        {
+            t.ExpressionError = labelErr;
+            t.InvalidSpecText = t.Expression ?? t.CubeName;
+            t.Points.Clear();
+            t.FamilyCurves.Clear();
+            return;
+        }
+        slice = t.Slice!;
 
         // ANT-7 §2 — the cube's own VALUE unit, which is what a pattern plot's radial numbers are in.
         // Stamped here rather than passed through SetCubeData beside the AXIS unit, because it is a
