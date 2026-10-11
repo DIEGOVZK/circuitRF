@@ -554,6 +554,13 @@
                                                   ToolTip.Tip="Trace this picture of a layout into the copper, vias and outline of a new layout cell.">
                                             <MenuItem.Icon><mi:MaterialIcon Kind="ImageEditOutline" Width="14" Height="14"/></MenuItem.Icon>
                                         </MenuItem>
+                                        <!-- brief-img-14 R-im14-13: a picture of an S-parameter plot made into a Touchstone. -->
+                                        <MenuItem Header="Create Touchstone from Plot…"
+                                                  Command="{Binding CreateTouchstoneFromPlotCommand}"
+                                                  IsVisible="{Binding IsImageFile}"
+                                                  ToolTip.Tip="Digitise this picture of an S-parameter plot — rectangular or Smith — into a Touchstone file, every missing phase and entry stated in the matrix grid.">
+                                            <MenuItem.Icon><mi:MaterialIcon Kind="ChartBellCurve" Width="14" Height="14"/></MenuItem.Icon>
+                                        </MenuItem>
                                         <MenuItem Header="Remove Reference"
                                                   Command="{Binding RemoveKnownFileCommand}"
                                                   IsVisible="{Binding IsKnownFile}">

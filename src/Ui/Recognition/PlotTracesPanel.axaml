@@ -1,0 +1,136 @@
+<!-- The plot mode's right column (brief-img-14-sparameter-plots-to-touchstone.md R-im14-12): the plots read, the traces
+     table, the matrix grid where every missing-data rule is seen together, the frequency rows of the chart traces, and
+     the output grid. Values only; each control says what it does in its tooltip. The highlighted slot is the one
+     control the Touchstone is waiting for. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:rec="using:CircuitRF.Ui.Recognition"
+             x:Class="CircuitRF.Ui.Recognition.PlotTracesPanel"
+             x:DataType="rec:PlotSessionViewModel">
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="10" Margin="0,0,6,0">
+
+            <!-- ── Plots: each read or left out, its calibration, its typed axes ──────────── -->
+            <Border Classes="slot" Classes.wants="{Binding HighlightFrames}" Padding="0">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Plots" FontWeight="SemiBold" FontSize="12"/>
+                    <ItemsControl ItemsSource="{Binding Frames}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="rec:PlotFrameRowViewModel">
+                                <StackPanel Spacing="2" Margin="0,0,0,4">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <CheckBox IsChecked="{Binding Include}" Content="{Binding Title}"
+                                                  ToolTip.Tip="Read this plot. Left out, it is drawn on the canvas and not read."/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Calibration}" FontSize="11" Opacity="0.75" Margin="28,0,0,0"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="28,0,0,0" IsVisible="{Binding NeedsX}">
+                                        <TextBlock Text="x axis" FontSize="12" VerticalAlignment="Center" Width="44"/>
+                                        <TextBox Text="{Binding XAxisText}" Width="220" PlaceholderText="120px=1GHz,900px=5GHz"
+                                                 ToolTip.Tip="Two pixel positions along the x axis and the values there, with units — what the labels would have said."/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="28,0,0,0" IsVisible="{Binding NeedsY}">
+                                        <TextBlock Text="y axis" FontSize="12" VerticalAlignment="Center" Width="44"/>
+                                        <TextBox Text="{Binding YAxisText}" Width="220" PlaceholderText="80px=0,560px=-40"
+                                                 ToolTip.Tip="Two pixel positions along the y axis and the values there, in the axis's own units."/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- ── Traces ─────────────────────────────────────────────────────────────────── -->
+            <Border Classes="slot" Classes.wants="{Binding HighlightTraces}" Padding="0">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Traces" FontWeight="SemiBold" FontSize="12"/>
+                    <ItemsControl ItemsSource="{Binding Traces}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="rec:PlotTraceRowViewModel">
+                                <StackPanel Spacing="2" Margin="0,0,0,6">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <Ellipse Width="8" Height="8" Fill="{Binding Confidence}" VerticalAlignment="Center"
+                                                 ToolTip.Tip="{Binding Evidence}"/>
+                                        <Rectangle Width="16" Height="3" Fill="{Binding Swatch}" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" Width="26"/>
+                                        <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Entries}" SelectedIndex="{Binding EntryIndex}"
+                                                  MinWidth="104" ToolTip.Tip="Which entry of the matrix this trace is. Unassigned: the Touchstone waits for it."/>
+                                        <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Quantities}" SelectedIndex="{Binding QuantityIndex}"
+                                                  MinWidth="96" ToolTip.Tip="What the trace plots: dB, linear magnitude, phase, real or imaginary part, the complex value of a chart, VSWR, return or insertion loss."/>
+                                    </StackPanel>
+                                    <TextBlock FontSize="11" Opacity="0.75" Margin="30,0,0,0" TextWrapping="Wrap">
+                                        <Run Text="{Binding RangeText}"/><Run Text=" · "/><Run Text="{Binding Points}"/><Run Text=" points · "/><Run Text="{Binding ResolutionText}"/><Run Text=" per pixel · plot "/><Run Text="{Binding Plot}"/>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding FrequencyEvidence}" FontSize="11" Opacity="0.75" Margin="30,0,0,0"
+                                               IsVisible="{Binding IsChart}"/>
+                                    <!-- The frequency row of a chart trace (R-im14-8 (3)): never pre-filled. -->
+                                    <Border Classes="slot" Classes.wants="{Binding NeedsFrequency}" Margin="26,0,0,0" IsVisible="{Binding IsChart}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock Text="Start" FontSize="12" VerticalAlignment="Center"/>
+                                            <TextBox Text="{Binding StartText}" Width="84" PlaceholderText="1 GHz"
+                                                     ToolTip.Tip="The frequency at the trace's first point. Spread along the trace by the angle it sweeps about the chart's centre — exact for a uniform line."/>
+                                            <TextBlock Text="Stop" FontSize="12" VerticalAlignment="Center"/>
+                                            <TextBox Text="{Binding StopText}" Width="84" PlaceholderText="5 GHz"
+                                                     ToolTip.Tip="The frequency at the trace's last point. Markers on the trace combine with it."/>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- ── The matrix grid: where every entry came from ──────────────────────────── -->
+            <Border Classes="slot" Classes.wants="{Binding HighlightMatrix}" Padding="0" IsVisible="{Binding HasMatrix}">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Matrix" FontWeight="SemiBold" FontSize="12"/>
+                    <ItemsControl ItemsSource="{Binding Matrix}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="rec:PlotMatrixCellViewModel">
+                                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,3">
+                                    <TextBlock Text="{Binding Entry}" FontWeight="SemiBold" FontSize="12" Width="30" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Source}" FontSize="12" Width="130" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                               ToolTip.Tip="{Binding Rule}"/>
+                                    <ComboBox ItemsSource="{Binding Choices}" SelectedIndex="{Binding SelectedIndex}" MinWidth="150"
+                                              IsVisible="{Binding HasChoices}"
+                                              ToolTip.Tip="{Binding Rule}"/>
+                                    <TextBox Text="{Binding DelayText}" Width="80" PlaceholderText="250 ps" IsVisible="{Binding AsksDelay}"
+                                             ToolTip.Tip="The delay the linear phase is given."/>
+                                    <TextBlock Text="estimated" FontSize="11" Opacity="0.75" VerticalAlignment="Center" IsVisible="{Binding Estimated}"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- ── The output grid and format ─────────────────────────────────────────────── -->
+            <Border Classes="slot" Classes.wants="{Binding HighlightGrid}" Padding="0">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Output" FontWeight="SemiBold" FontSize="12"/>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBox Text="{Binding GridStartText}" Width="78" PlaceholderText="start"
+                                 ToolTip.Tip="The grid's start, with its unit. Empty: the traces' common range, at the densest trace's resolution, rounded to a 1-2-5 step."/>
+                        <TextBox Text="{Binding GridStopText}" Width="78" PlaceholderText="stop" ToolTip.Tip="The grid's stop, with its unit."/>
+                        <TextBox Text="{Binding GridPointsText}" Width="58" PlaceholderText="points" ToolTip.Tip="The number of points."/>
+                        <CheckBox Content="log" IsChecked="{Binding GridLog}" ToolTip.Tip="Points spaced logarithmically."/>
+                        <ComboBox ItemsSource="{x:Static rec:PlotSessionViewModel.Formats}" SelectedIndex="{Binding FormatIndex}" MinWidth="72"
+                                  ToolTip.Tip="How the Touchstone writes each entry: dB and angle, magnitude and angle, or real and imaginary."/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- ── What the Touchstone waits for, and the report ──────────────────────────── -->
+            <TextBlock Text="{Binding Refusal}" Classes="error" TextWrapping="Wrap"
+                       IsVisible="{Binding Refusal, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            <ItemsControl ItemsSource="{Binding ReportLines}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <TextBlock Text="{Binding}" FontSize="11" Opacity="0.8" TextWrapping="Wrap" Margin="0,0,0,2"/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

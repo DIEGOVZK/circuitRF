@@ -18,8 +18,9 @@ using CircuitRF.Design.Schematic.Recognition;
 namespace CircuitRF.Design.Imaging;
 
 /// <summary>The overlay's classes, each toggled from the legend. A schematic picture's are its wires (junction dots and
-/// dangling ends among them), its symbols (as parts), its ports, its words and its crossings (IM-10).</summary>
-public enum ImageOverlayClass { Copper, Drill, Ignored, Part, Line, Port, Unknown, Wire, Text, Crossing }
+/// dangling ends among them), its symbols (as parts), its ports, its words and its crossings (IM-10). A plot picture's
+/// are its frames, its traces, its markers and its words (IM-14).</summary>
+public enum ImageOverlayClass { Copper, Drill, Ignored, Part, Line, Port, Unknown, Wire, Text, Crossing, Plot, Trace, Marker }
 
 /// <summary>A rectangle in the picture, pixels.</summary>
 public readonly record struct PixelBounds(double Left, double Top, double Right, double Bottom)

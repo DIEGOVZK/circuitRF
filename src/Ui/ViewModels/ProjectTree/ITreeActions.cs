@@ -80,6 +80,10 @@ public interface ITreeActions
     /// </summary>
     void CreateFromImageFile(ProjectTreeNodeViewModel node, bool makeSchematic);
 
+    /// <summary>Create Touchstone from Plot… on a picture file (brief-img-14 R-im14-13): the dialog opens reading it as a
+    /// plot, Make Touchstone.</summary>
+    void CreateTouchstoneFromImageFile(ProjectTreeNodeViewModel node) { }
+
     /// <summary>
     /// Build a NEW cell around one SPICE <c>.model</c> card in this file — the native circuitRF
     /// component carrying the card's parameters, its pins already wired, and an editable copy of

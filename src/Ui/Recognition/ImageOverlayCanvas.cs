@@ -208,6 +208,17 @@ public sealed class ImageOverlayCanvas : Control
                     context.DrawEllipse(dot ? new ImmutableSolidColorBrush(colour) : new ImmutableSolidColorBrush(Colors.White, 0.6), pen,
                                         new Point(c.X, c.Y), c.R, c.R);
                     break;
+                case ImageOverlayClass.Plot when item.Circle is { } c:
+                    // A chart's frame (IM-14): its outer circle.
+                    context.DrawEllipse(null, pen, new Point(c.X, c.Y), c.R, c.R);
+                    break;
+                case ImageOverlayClass.Marker when item.Circle is { } c:
+                    context.DrawEllipse(new ImmutableSolidColorBrush(Colors.White, 0.6), pen, new Point(c.X, c.Y), c.R * px * 1.2, c.R * px * 1.2);
+                    break;
+                case ImageOverlayClass.Trace when item.Id.StartsWith(ImageOverlay.GapPrefix, StringComparison.Ordinal):
+                    // A bridged gap: dashed, so what was interpolated is told from what was read.
+                    context.DrawGeometry(null, new Pen(pen.Brush, pen.Thickness, new ImmutableDashStyle([3, 3], 0)), GeometryOf(item));
+                    break;
                 case ImageOverlayClass.Crossing when item.Circle is { } c:
                     // Read as connected: a filled disc; not connected: a ring with a gap — what a click flips.
                     var ring = new Pen(new ImmutableSolidColorBrush(selected ? Accent : colour), 2 * px);
@@ -226,7 +237,9 @@ public sealed class ImageOverlayCanvas : Control
                     context.DrawGeometry(fill, pen, g);
                     break;
             }
-            if (item.Label is { Length: > 0 } label && item.Class is ImageOverlayClass.Part or ImageOverlayClass.Line or ImageOverlayClass.Text)
+            if (item.Label is { Length: > 0 } label
+                && item.Class is ImageOverlayClass.Part or ImageOverlayClass.Line or ImageOverlayClass.Text
+                              or ImageOverlayClass.Plot or ImageOverlayClass.Trace or ImageOverlayClass.Marker)
                 DrawLabel(context, item, label, selected ? Accent : colour, px);
         }
 

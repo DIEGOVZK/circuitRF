@@ -1,0 +1,68 @@
+// The raw digitised traces as CSV — brief-img-14-sparameter-plots-to-touchstone.md R-im14-11.
+//
+// ANY PLOT DIGITISES. The CSV is what was read off the picture and nothing more: one row per sample, in the plot's own
+// units, never resampled, never filled. A plot of temperature against time digitises as readily as a dB(S21) plot — it
+// just makes no Touchstone — so nothing here asks whether a trace is assigned, whether a chart trace has a frequency,
+// or whether the x axis is frequency at all.
+//
+// ONE LONG TABLE, not one column pair per trace: traces do not share x values (each is sampled at its own pixel
+// columns), so a wide table would be mostly empty cells. A rectangular trace fills x and y; a chart trace fills re and
+// im, and x when its frequency is known. `exact` marks a sample that came from a marker's readout rather than pixels.
+
+using System.Globalization;
+using System.Text;
+
+namespace CircuitRF.Design.Imaging.Plots;
+
+public static class PlotCsv
+{
+    /// <summary>The columns, in order.</summary>
+    public static readonly IReadOnlyList<string> Columns = ["trace", "plot", "assignment", "x", "x_unit", "y", "y_unit", "re", "im", "exact"];
+
+    /// <summary>The session's traces as CSV text, <c>\n</c> line ends. Pure.</summary>
+    public static string Write(PlotSession session)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        var sb = new StringBuilder();
+        foreach (var p in session.Pictures)
+            sb.Append("# picture ").Append(p.Index + 1).Append(": ").Append(p.Name.Replace('\n', ' ')).Append(" sha256 ").Append(p.Sha256).Append('\n');
+        sb.Append(string.Join(",", Columns)).Append('\n');
+        foreach (var t in session.Traces)
+        {
+            var plot = session.Plots[t.Plot - 1];
+            double xScale = 1;
+            string xUnit = "";
+            if (plot.Rect is { } r)
+            {
+                if (r.XIsFrequency) (xScale, xUnit) = (r.XUnit, FrequencyUnit(r.XUnit));
+            }
+            else if (t.Frequency is not null) (xScale, xUnit) = (1e9, "GHz");
+            string assignment = t.Assignment.ToString();
+            foreach (var s in t.Samples)
+            {
+                sb.Append(t.Name).Append(',').Append(t.Plot.ToString(CultureInfo.InvariantCulture)).Append(',').Append(assignment).Append(',');
+                sb.Append(double.IsNaN(s.X) ? "" : Num(s.X / xScale)).Append(',').Append(double.IsNaN(s.X) ? "" : xUnit).Append(',');
+                if (t.Parametric)
+                    sb.Append(",,").Append(Num(s.Value.Real)).Append(',').Append(Num(s.Value.Imaginary));
+                else
+                    sb.Append(Num(s.Y)).Append(',').Append(t.ResolutionUnit).Append(",,");
+                sb.Append(',').Append(s.Exact ? '1' : '0').Append('\n');
+            }
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>Writes <see cref="Write"/>'s text to <paramref name="path"/>, atomically.</summary>
+    public static void WriteFile(string path, PlotSession session) => Cells.AtomicFile.WriteAllText(path, Write(session));
+
+    private static string FrequencyUnit(double multiplier) => multiplier switch
+    {
+        >= 1e12 => "THz",
+        >= 1e9 => "GHz",
+        >= 1e6 => "MHz",
+        >= 1e3 => "kHz",
+        _ => "Hz",
+    };
+
+    private static string Num(double v) => v.ToString("G9", CultureInfo.InvariantCulture);
+}

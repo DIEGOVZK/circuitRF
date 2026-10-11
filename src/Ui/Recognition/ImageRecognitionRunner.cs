@@ -3,10 +3,12 @@
 // Each call is the function the CLI calls and no other: the kind (ImageKind.Classify), the read-only trace a layout is
 // previewed from (ImageTrace.Trace), the read-only reading a schematic is previewed from (ImageRecognition.Circuit), and
 // the two writes (ImageTrace.Run, ImageRecognition.Run) — and for a schematic picture, its reading, its write and its
-// drawing over a placed bitmap (SchematicImageRecognition.Circuit, Run, IntoSchematic). An interface only so a test can RECORD what the dialog hands
-// across; nothing here decides anything.
+// drawing over a placed bitmap (SchematicImageRecognition.Circuit, Run, IntoSchematic); for plot pictures (IM-14), the
+// session's reading and its file (PlotReading.Read, TouchstoneAssembly.Build). An interface only so a test can RECORD
+// what the dialog hands across; nothing here decides anything.
 
 using CircuitRF.Design.Imaging;
+using CircuitRF.Design.Imaging.Plots;
 using CircuitRF.Design.Layout;
 using CircuitRF.Design.Layout.Recognition;
 using CircuitRF.Design.Layout.Recognition.Image;
@@ -48,6 +50,14 @@ public interface IImageRecognitionRunner
     /// <summary>A schematic picture's drawing, made over the placed bitmap it is (IM-10, D14).</summary>
     SchematicImageEdit IntoSchematic(SchematicImageInput input, SchematicEditModel into, SchematicBitmapPlacement placed,
                                      RecognitionEmitOptions emit, RunControl? control);
+
+    /// <summary>Plot pictures read into one session (IM-14) — the plot mode's preview.</summary>
+    PlotSession ReadPlots(IReadOnlyList<PlotPictureInput> pictures, PlotReadingOptions options, RunControl? control) =>
+        PlotReading.Read(pictures, options, control);
+
+    /// <summary>The Touchstone a session's traces describe, writing nothing (IM-14).</summary>
+    TouchstoneAssemblyResult AssemblePlots(PlotSession session, TouchstoneAssemblyOptions options) =>
+        TouchstoneAssembly.Build(session, options);
 }
 
 /// <summary>The real one: the entry points, unchanged.</summary>

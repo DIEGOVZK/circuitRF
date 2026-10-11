@@ -33,7 +33,7 @@ using RfCore.Export;
 
 namespace CircuitRF.Cli;
 
-internal static class Recognize
+internal static partial class Recognize
 {
     private const string Verb = "recognize";
 
@@ -41,6 +41,9 @@ internal static class Recognize
     {
         public string? Path, Cell, Output, Into, PartsOut, Parts, Bom, Placement, Region, Ground, GroundAt, Tech;
         public readonly PictureFlags Picture = new();
+        /// <summary>The pictures after the first (brief-img-14 R-im14-14): several pictures are one plot session.</summary>
+        public readonly List<string> Pictures = [];
+        public readonly PlotFlags Plot = new();
         public bool Replace;
         public PlacementOrigin? PlacementOrigin;
         public LayoutUnit? PlacementUnit;
@@ -62,6 +65,15 @@ internal static class Recognize
         if (!File.Exists(o.Path) && !Directory.Exists(o.Path))
             return JsonRun.Fail(CliDiagnostics.RecognizePathNotFound(o.Path));
 
+        if (o.Pictures.Count > 0)
+        {
+            try { return RecognisePictures(o); }
+            catch (OperationCanceledException)
+            {
+                JsonRun.Report(CliDiagnostics.RecognizeCancelled());
+                return 130;
+            }
+        }
         if (DocumentKinds.Classify(o.Path) == DocumentKind.Picture)
         {
             try { return RecognisePicture(o); }
@@ -73,6 +85,10 @@ internal static class Recognize
         }
         if ((o.Picture.All.FirstOrDefault() ?? (o.Tech is null ? null : "--tech")) is { } pictureFlag)
             return JsonRun.Fail(CliDiagnostics.PictureFlagWrongKind(Verb, pictureFlag, "a picture", "a layout"));
+        if (o.Plot.Given.FirstOrDefault() is { } plotFlag)
+            return JsonRun.Fail(CliDiagnostics.PictureFlagWrongKind(Verb, plotFlag, "a plot picture", "a layout"));
+        if (o.Output is { } cnlOut && !cnlOut.EndsWith(".cnl", StringComparison.OrdinalIgnoreCase))
+            return JsonRun.Fail(CliDiagnostics.RecognizeOutputNotCnl(cnlOut));
 
         var (clay, refusal) = ResolveLayout(o);
         if (refusal is { } no) return no;
@@ -91,7 +107,7 @@ internal static class Recognize
     private static int Usage()
     {
         Console.Error.WriteLine(
-            "Usage: circuitrf recognize <file.clay | cell folder | workspace --cell N | picture>\n" +
+            "Usage: circuitrf recognize <file.clay | cell folder | workspace --cell N | picture | plot picture...>\n" +
             "                 [-o circuit.cnl] [--into new:<name> | --into artwork] [--replace]\n" +
             "                 [--parts-out parts.csv] [--parts parts.csv] [--bom file] [--placement file]\n" +
             "                 [--placement-origin symbol|body|pin1] [--placement-unit mm|mil|in]\n" +
@@ -105,6 +121,11 @@ internal static class Recognize
             "                 [--region x0,y0,x1,y1 in px] [--min-feature px2] [--simplify px] [--edge-stroke px] [--snap-deg d] [--snap45 on|off]\n" +
             "    schematic:   [--crossings never|dot|always] [--arrange drawn|tidy] [--connect x,y] [--disconnect x,y]\n" +
             "                 [--threshold k]\n" +
+            "    plot:        [-o part.s2p] [--csv traces.csv] [--picture more.png] [--plot n,n] [--keep-sources on|off]\n" +
+            "                 [--x-axis <px>=<value>,<px>=<value>[@plot]] [--y-axis ...] [--x-log] [--y-log]\n" +
+            "                 [--trace <T3|#rrggbb|dashed>[@plot]=S21:db] [--smith-z0 50Ohm] [--freq <trace>=<start>..<stop>]\n" +
+            "                 [--phase S21=min|zero|delay:<t>] [--fill S12=S21,S22=zero] [--grid <start>..<stop>/<n>[log]]\n" +
+            "                 [--prefer S11=chart|rect|T3] [--format db|ma|ri]\n" +
             "  Writes nothing unless -o, --into, --parts-out or --overlay is given. Layout coordinates carry a unit\n" +
             "  (um, mm, mil); picture coordinates are pixels and say so (px).");
         return 1;
@@ -116,6 +137,11 @@ internal static class Recognize
     {
         for (int i = 0; i < args.Length; i++)
         {
+            if (o.Plot.Take(Verb, args, ref i) is { } plotTook)
+            {
+                if (plotTook != 0) return plotTook;
+                continue;
+            }
             if (o.Picture.Take(Verb, args, ref i, schematic: true) is { } took)
             {
                 if (took != 0) return took;
@@ -141,6 +167,7 @@ internal static class Recognize
                 case "--ground"          when hasValue: o.Ground    = args[++i]; continue;
                 case "--ground-at"       when hasValue: o.GroundAt  = args[++i]; continue;
                 case "--tech"            when hasValue: o.Tech      = args[++i]; continue;
+                case "--picture"         when hasValue: o.Pictures.Add(args[++i]); continue;
 
                 case "--placement-origin" when hasValue:
                     o.PlacementOrigin = args[++i].ToLowerInvariant() switch
@@ -211,13 +238,15 @@ internal static class Recognize
 
                 default:
                     if (a.StartsWith('-')) { JsonRun.Report(CliDiagnostics.RecognizeUnknownOption(a)); return Usage(); }
-                    if (o.Path is not null) { JsonRun.Report(CliDiagnostics.RecognizeMultiplePaths()); return Usage(); }
+                    // A second path is a second picture of a plot session (R-im14-14); RecognisePictures checks it is one.
+                    if (o.Path is not null) { o.Pictures.Add(a); continue; }
                     o.Path = a;
                     continue;
             }
         }
 
-        if (o.Output is { } output && !output.EndsWith(".cnl", StringComparison.OrdinalIgnoreCase))
+        // -o is a .cnl, or a Touchstone for plot pictures; which one the input takes is decided once its kind is known.
+        if (o.Output is { } output && !output.EndsWith(".cnl", StringComparison.OrdinalIgnoreCase) && !IsTouchstone(output))
             return JsonRun.Fail(CliDiagnostics.RecognizeOutputNotCnl(output));
         return null;
     }
@@ -410,6 +439,11 @@ internal static class Recognize
         // Four corners say the picture is a photo of a board (IM-13), whatever it read as.
         if (o.Picture.HasCorners && kind.Kind is DrawingKind.None or DrawingKind.Schematic && o.Picture.Kind is null)
             kind = read.Force(DrawingKind.BoardPhoto);
+        if (kind.Kind == DrawingKind.Plot) return RecognisePlots(o, [(path, source, kind)]);
+        if (o.Plot.Given.FirstOrDefault() is { } plotFlag)
+            return JsonRun.Fail(CliDiagnostics.PictureFlagWrongKind(Verb, plotFlag, "a plot picture", $"a {kind.Name} picture"));
+        if (o.Output is { } cnlOut && !cnlOut.EndsWith(".cnl", StringComparison.OrdinalIgnoreCase))
+            return JsonRun.Fail(CliDiagnostics.RecognizeOutputNotCnl(cnlOut));
         var image = PictureFlags.ImageJson(source, kind);
         Console.Error.WriteLine($"[circuitRF] reading {path} as a {kind.Name} picture");
         if (kind.Kind == DrawingKind.None)
@@ -447,6 +481,34 @@ internal static class Recognize
         return schematic
             ? RecogniseSchematicPicture(o, path, source, kind, image, tech, techPath, emit)
             : RecogniseLayoutPicture(o, path, source, kind, image, tech!, techPath, emit);
+    }
+
+    /// <summary>Several pictures (brief-img-14 R-im14-14): every one must be a picture, and all are read as plots into one
+    /// session — no other kind of picture takes several. One that reads as another kind is read as a plot and says so.</summary>
+    private static int RecognisePictures(Options o)
+    {
+        if (o.Picture.Kind is { } forced && forced != DrawingKind.Plot)
+            return JsonRun.Fail(CliDiagnostics.RecognizeSeveralPictures($"--image-kind {ImageKind.Name(forced)} reads one picture at a time"));
+        if (o.Cell is not null) return JsonRun.Fail(CliDiagnostics.RecognizeBadValue("--cell", o.Cell, "a cell name, and only with a workspace path"));
+        // A layout with a second path is still one layout at a time.
+        if (DocumentKinds.Classify(o.Path!) != DocumentKind.Picture) { JsonRun.Report(CliDiagnostics.RecognizeMultiplePaths()); return Usage(); }
+        var pictures = new List<(string Path, ImageSource Source, ImageKindResult Kind)>();
+        foreach (string given in new[] { o.Path! }.Concat(o.Pictures))
+        {
+            if (!File.Exists(given)) return JsonRun.Fail(CliDiagnostics.RecognizePathNotFound(given));
+            string path = Path.GetFullPath(given);
+            if (DocumentKinds.Classify(path) != DocumentKind.Picture)
+                return JsonRun.Fail(CliDiagnostics.RecognizeSeveralPictures($"'{given}' is not a picture"));
+            var decoded = ImageSource.FromFile(path);
+            if (decoded.Source is not { } source) return JsonRun.Fail(CliDiagnostics.PictureUnreadable(Verb, path, decoded.Refusal ?? "not a picture"));
+            var read = ImageKind.Classify(source.Raster);
+            var kind = read.Kind == DrawingKind.Plot ? read : read.Force(DrawingKind.Plot);
+            if (read.Kind != DrawingKind.Plot)
+                Console.Error.WriteLine($"[circuitRF] {given} reads as {(read.Kind == DrawingKind.None ? "no drawing" : $"a {read.Name} picture")}; "
+                                        + "several pictures are read as plots");
+            pictures.Add((path, source, kind));
+        }
+        return RecognisePlots(o, pictures);
     }
 
     /// <summary>The layout-only flags of the artwork recognition — a schematic picture has no copper to read them on.</summary>

@@ -19245,3 +19245,47 @@ Found by drawing pictures with `circuitrf render` and reading them back (`docs/d
 - **Two artwork-recognition behaviours seen, not explained** (§13.5): a shunt part on a short stub to a via was not
   found from copper alone (the stub end read as an open end), and a 2.4 mm line running off a picture was not an edge
   launch where a 3.6 mm one was. The traced copper was right in both; left to the artwork recognition.
+
+## Plots to Touchstone: what reading plot pictures found (2026-10-10, brief-img-14)
+
+`docs/design/image-to-circuit.md` §15; gates in `tests/Ui.Tests/PlotRecognition/`.
+- **`ChartFrequency` flipped a matched trace's anchors twice.** `Matched` handed its anchors back already in forward
+  order and the caller reversed them again when the match ran against the trace's own order, which put the anchors at
+  the wrong end of the trace. `Matched` now returns anchors in the trace's own sample order, as a
+  marker's are, and everything is turned forward in one place.
+- **A fill copied a fill.** With S11 drawn only as a zero fill, S22 = S11 copied that zero and the header said
+  "symmetric". A fill now copies only an entry that was DRAWN (`drawn`, taken before any fill), and refuses when there is
+  none.
+- **Crossings swapped two curves of one colour.** A dashed track in one of its gaps predicts beside the other curve, and
+  took the other's run there as a shared crossing — dragging itself onto that curve. A track now shares a run only when
+  it predicts INSIDE it, and a shared point is never moved more than a pen from where the track predicts.
+- **A tick stub read as a minus.** With the frame line taken out, a tick is a short dash beside its label, grouped
+  with it as a trailing minus (`-25 -`) that no number grammar takes. `PlotText.IsTick` sets aside a thin stub at right
+  angles to a found line with one end on it; a label's own minus is a label's width from the axis, never on it.
+- **A 1 px grid line on a pixel boundary vanishes.** It renders as two rows of half its ink, and a light grey grid at
+  half strength falls under `PlotInk.InkLevels`. Plotting software draws a 1 px line on a pixel's centre, so the
+  generator's grid does too (`ForeignPlots.Crisp`); a picture drawn the other way loses its grid and reads its plot from
+  ticks alone.
+- **Labels in hertz.** A log axis labelled `1e8 … 1e10` was multiplied by the GHz default. Labels running past 1e5
+  (`RectAxes.HertzLabels`) are hertz already — no RF plot is labelled to 100,000 GHz — and the report says so.
+- **The swept angle is exact only for a uniform line.** On the band-pass's S11 a typed range alone put |ΔS11| at 0.6
+  near the resonance; three markers and a matched dB(S11) bring it to 0.030. A |Γ| match places frequency only as well
+  as the rectangular plot's pixel resolves |Γ|, over how fast |Γ| moves there, so the round-trip gate's bound carries
+  that term rather than a looser number.
+- **The dialog's axis fallback is typed, not clicked.** The brief's "two clicks and two typed values" is the **x axis** /
+  **y axis** row taking `120px=1GHz,900px=5GHz` — the spelling `--x-axis` takes — so the dialog, the CLI and the MCP
+  tool share one grammar; the canvas does not take axis clicks.
+- **A JPEG line is a body with a darker core inside it,** two colour clusters; traced apart, the core is a hole that cut
+  every column's run in two, and the halves were followed as five parallel tracks. Clusters within 64 levels a channel
+  are now traced as one coverage, and a curve within a pen of a longer one for 80 % of its length is merged into it.
+  The JPEG-60 fixture's worst error went from 0.26 dB to 0.054 dB.
+- **A frame-coloured curve lost every frame line,** the light grid included, so a black curve running level with a grid
+  line was cut along it (1.8 px off on the two-black fixture). It now loses only the lines of its own colour. It still
+  loses the rows a same-coloured AXIS takes, and reads high or low within a pen of one.
+- **Minimum phase was cut off at 32× the band,** and the Hilbert integral's missing tail came back as a phase error
+  growing linearly with frequency — 4.5° at 90 % of the band on a two-pole low-pass. The grid is now the bilinear map of
+  the whole axis, f = f_top·tan(θ/2), which keeps minimum phase and its value exactly: 0.7°. What is left is the end-slope
+  guess (Q = 0.5: 4.4°; a band stopping at 5/3·f0: 8.4°).
+- **Smaller ones:** a phase-only entry crashed `DefaultFill` (now refused, naming the magnitude it lacks); a chart's
+  title `S11` reads `Stt` at 18 px and is now an entry; a chart trace's `--trace` names a complex value whatever
+  quantity it gives; the unassigned refusal suggests `T1=S11` for a chart.

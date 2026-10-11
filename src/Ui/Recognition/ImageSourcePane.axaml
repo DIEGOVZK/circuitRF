@@ -36,13 +36,16 @@
                 <RadioButton Classes="seg" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="kind"
                              Content="Schematic" IsChecked="{Binding IsSchematicKind}"
                              ToolTip.Tip="Read the picture as a schematic drawing, whatever it looks like."/>
-                <RadioButton Classes="seg last" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="kind"
+                <RadioButton Classes="seg" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="kind"
                              Content="Layout" IsChecked="{Binding IsLayoutKind}"
                              ToolTip.Tip="Read the picture as a layout: coloured copper, pads and holes."/>
+                <RadioButton Classes="seg last" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="kind"
+                             Content="Plot" IsChecked="{Binding IsPlotKind}"
+                             ToolTip.Tip="Read the picture as a plot: a rectangular plot against frequency, a Smith chart or a polar chart, digitised trace by trace."/>
             </StackPanel>
 
             <TextBlock Classes="label" Text="Make" Margin="0,0,8,0"/>
-            <StackPanel Orientation="Horizontal">
+            <StackPanel Orientation="Horizontal" IsVisible="{Binding IsDrawingPicture}">
                 <RadioButton Classes="seg first" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="make"
                              Content="Schematic" IsChecked="{Binding IsMakeSchematic}"
                              ToolTip.Tip="A new cell with the schematic recognised from the picture."/>
@@ -50,6 +53,43 @@
                              Content="Layout" IsChecked="{Binding IsMakeLayout}" IsEnabled="{Binding MakeLayoutEnabled}"
                              ToolTip.Tip="{Binding MakeLayoutTip}" ToolTip.ShowOnDisabled="True"/>
             </StackPanel>
+            <StackPanel Orientation="Horizontal" IsVisible="{Binding IsPlotPicture}">
+                <RadioButton Classes="seg first" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="makeplot"
+                             Content="Touchstone" IsChecked="{Binding IsMakeTouchstone}"
+                             ToolTip.Tip="A Touchstone file of every entry the traces describe, each missing phase and entry filled by the rule the matrix grid shows."/>
+                <RadioButton Classes="seg last" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="makeplot"
+                             Content="CSV" IsChecked="{Binding IsMakeCsv}"
+                             ToolTip.Tip="The raw digitised traces, in each plot's own units, never resampled. Any plot digitises, S-parameters or not."/>
+            </StackPanel>
+        </WrapPanel>
+
+        <!-- ── A plot session's pictures (brief-img-14 R-im14-12) ────────────────────────── -->
+        <WrapPanel Classes="row" Orientation="Horizontal" IsVisible="{Binding IsPlotPicture}">
+            <TextBlock Classes="label" Text="Pictures" Width="70" Margin="0,0,6,0"/>
+            <ItemsControl ItemsSource="{Binding Plots.Pictures}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate DataType="rec:PlotPictureRowViewModel">
+                        <StackPanel Orientation="Horizontal" Spacing="2" Margin="0,0,10,0">
+                            <Button Classes="link" Content="{Binding Label}" Command="{Binding ShowCommand}"
+                                    ToolTip.Tip="Show this picture on the canvas."/>
+                            <Button Classes="link" Content="✕" Command="{Binding RemoveCommand}" IsVisible="{Binding Removable}"
+                                    ToolTip.Tip="Take this picture out of the session."/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Content="Add picture…" Command="{Binding AddPictureCommand}" Margin="0,0,18,0"
+                    ToolTip.Tip="Another picture into the same session — an S11 chart beside the S21 plot make one file. Dropping or pasting one does the same."/>
+            <TextBlock Classes="label" Text="Smith Z0" Margin="0,0,6,0" IsVisible="{Binding Plots.HasSmith}"/>
+            <TextBox Text="{Binding Plots.SmithZ0Text}" Width="80" PlaceholderText="50 Ω" Margin="0,0,18,0"
+                     IsVisible="{Binding Plots.HasSmith}"
+                     ToolTip.Tip="A Smith chart's reference impedance. The chart's own Z0 = word when one is read, else 50 Ω — said in the report."/>
+            <CheckBox Content="Keep the source pictures beside the file" IsChecked="{Binding Plots.KeepSources}"
+                      IsVisible="{Binding MakeTouchstone}"
+                      ToolTip.Tip="Each picture is copied beside the Touchstone as &lt;name&gt;.source.png, so the file can be checked against what it was read from."/>
         </WrapPanel>
 
         <!-- ── Technology · Scale (a layout picture) ─────────────────────────────────────── -->

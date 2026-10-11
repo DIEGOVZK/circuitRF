@@ -3781,6 +3781,30 @@ internal static class CliDiagnostics
         "recognize.output.not-cnl", DiagnosticSeverity.Error,
         "recognize: -o writes the circuit as a .cnl, and '{path}' is not one.", ("path", path));
 
+    /// <summary>brief-img-14 R-im14-14: plot pictures write a Touchstone, never a circuit.</summary>
+    public static Diagnostic RecognizeOutputNotTouchstone(string path) => Diagnostic.Create(
+        "recognize.output.not-touchstone", DiagnosticSeverity.Error,
+        "recognize: plot pictures make a Touchstone file, and '{path}' is not one (.s1p … .s4p); --csv writes the digitised traces.",
+        ("path", path));
+
+    /// <summary>The reading makes a different port count from the one -o names.</summary>
+    public static Diagnostic RecognizeOutputPorts(string path, int ports, string extension) => Diagnostic.Create(
+        "recognize.output.ports", DiagnosticSeverity.Error,
+        "recognize: the traces make a {ports}-port file, written as {extension}, and -o names '{path}'. Nothing was written.",
+        ("path", path), ("ports", ports.ToString(System.Globalization.CultureInfo.InvariantCulture)), ("extension", extension));
+
+    /// <summary>brief-img-14 R-im14-9: the Touchstone waits for something only the caller can answer — the sentence,
+    /// then the flag that answers it.</summary>
+    public static Diagnostic RecognizePlotRefused(string why, string flag) => Diagnostic.Create(
+        "recognize.plot.refused", DiagnosticSeverity.Error,
+        "recognize: no Touchstone yet: {why}. {flag} answers it. Nothing was written but the overlay and the CSV asked for.",
+        ("why", why), ("flag", flag));
+
+    /// <summary>brief-img-14 R-im14-14: several paths are a plot session, and only pictures make one.</summary>
+    public static Diagnostic RecognizeSeveralPictures(string why) => Diagnostic.Create(
+        "recognize.args.several-pictures", DiagnosticSeverity.Error,
+        "recognize: several paths are plot pictures read into one session, and {why}.", ("why", why));
+
     public static Diagnostic RecognizeOutputFailed(string path, string why) => Diagnostic.Create(
         "recognize.output.write-failed", DiagnosticSeverity.Error,
         "recognize: '{path}' was not written: {why}", ("path", path), ("why", why));

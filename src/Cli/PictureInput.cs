@@ -145,7 +145,7 @@ internal sealed class PictureFlags
         switch (a)
         {
             case "--image-kind":
-                if (!ImageKind.TryParseOverride(v, out var kind)) return Bad("auto, schematic or layout");
+                if (!ImageKind.TryParseOverride(v, out var kind)) return Bad("auto, schematic, layout or plot");
                 Kind = kind;
                 _common.Add(a);
                 i++;
@@ -386,11 +386,15 @@ internal sealed class PictureFlags
 
     /// <summary>Writes <paramref name="overlay"/> over the picture to <c>--overlay</c>, when given — whether or not the
     /// run goes on to be refused, because a refused reading is when it is most useful. A failed write is a warning:
-    /// the run's own answer does not depend on it.</summary>
-    public void WriteOverlay(string verb, ImageOverlay overlay, ImageSource source)
+    /// the run's own answer does not depend on it. Of <paramref name="pictures"/> pictures (a plot session), picture 1's
+    /// overlay is the path given and picture n's is <c>&lt;stem&gt;-n.png</c> beside it.</summary>
+    public void WriteOverlay(string verb, ImageOverlay overlay, ImageSource source, int picture = 1, int pictures = 1)
     {
         if (Overlay is not { } target) return;
         string path = System.IO.Path.GetFullPath(target);
+        if (pictures > 1 && picture > 1)
+            path = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(path)!,
+                $"{System.IO.Path.GetFileNameWithoutExtension(path)}-{picture.ToString(CultureInfo.InvariantCulture)}{System.IO.Path.GetExtension(path)}");
         try
         {
             overlay.WritePng(path, source.Raster);

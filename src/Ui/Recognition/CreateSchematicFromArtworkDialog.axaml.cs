@@ -47,6 +47,7 @@ public partial class CreateSchematicFromArtworkDialog : Window
                     Patterns = [.. RasterImage.Extensions.Select(e => "*" + e)],
                 });
                 image.PastePictureAsync = ReadClipboardPicture;
+                image.SavePlotFileAsync = PickPlotOutput;
                 AddHandler(DragDrop.DragOverEvent, OnDragOver);
                 AddHandler(DragDrop.DropEvent, OnDrop);
                 AddHandler(KeyDownEvent, OnPasteKey, RoutingStrategies.Tunnel);
@@ -76,6 +77,23 @@ public partial class CreateSchematicFromArtworkDialog : Window
             SuggestedFileName = "parts.csv",
             DefaultExtension = "csv",
             FileTypeChoices = [new FilePickerFileType("CSV") { Patterns = ["*.csv"] }],
+        });
+        return file?.TryGetLocalPath();
+    }
+
+    /// <summary>Create, for a plot (brief-img-14 R-im14-12): where the Touchstone or the CSV goes — the workspace folder,
+    /// named after the first picture, by default.</summary>
+    private async Task<string?> PickPlotOutput(string suggested, string folder)
+    {
+        string ext = Path.GetExtension(suggested).TrimStart('.');
+        var start = await StorageProvider.TryGetFolderFromPathAsync(folder);
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = _vm?.Title,
+            SuggestedFileName = suggested,
+            SuggestedStartLocation = start,
+            DefaultExtension = ext,
+            FileTypeChoices = [new FilePickerFileType(ext == "csv" ? "CSV" : "Touchstone") { Patterns = [$"*.{ext}"] }],
         });
         return file?.TryGetLocalPath();
     }

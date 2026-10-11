@@ -66,7 +66,7 @@
         </ContentControl>
 
         <!-- ── Target (D4, D14) ──────────────────────────────────────────────────────────── -->
-        <rec:RecognitionTargetRow Grid.Row="1" Margin="0,8,0,0" IsVisible="{Binding HasSource}"/>
+        <rec:RecognitionTargetRow Grid.Row="1" Margin="0,8,0,0" IsVisible="{Binding TargetApplies}"/>
 
         <!-- ── Options ───────────────────────────────────────────────────────────────────── -->
         <rec:RecognitionOptionsRow Grid.Row="2" Margin="0,8,0,0" IsVisible="{Binding OptionsApply}"/>
@@ -111,20 +111,31 @@
                     ToolTip.Tip="Remember the selected part's silkscreen glyphs as the characters its corrected designator says they are."/>
             <Button Grid.Column="4" Content="Cancel" Click="OnCancelClick" Margin="0,0,6,0" MinWidth="80"/>
             <Panel Grid.Column="5">
-                <Button Content="Create" Command="{Binding CreateCommand}" MinWidth="90" Classes="accent"
-                        IsVisible="{Binding !IsReplace}"
-                        ToolTip.Tip="{Binding CreateTip}" ToolTip.ShowOnDisabled="True"/>
-                <Button Content="Replace" MinWidth="90" IsVisible="{Binding IsReplace}"
-                        ToolTip.Tip="{Binding CreateTip}" ToolTip.ShowOnDisabled="True">
-                    <Button.Flyout>
-                        <Flyout Placement="TopEdgeAlignedRight">
-                            <StackPanel Spacing="8" MaxWidth="320">
-                                <TextBlock Text="{Binding ReplaceConfirmText}" TextWrapping="Wrap"/>
-                                <Button Content="Replace" Command="{Binding CreateCommand}" HorizontalAlignment="Right"/>
-                            </StackPanel>
-                        </Flyout>
-                    </Button.Flyout>
-                </Button>
+                <Panel IsVisible="{Binding CreatesCell}">
+                    <Button Content="Create" Command="{Binding CreateCommand}" MinWidth="90" Classes="accent"
+                            IsVisible="{Binding !IsReplace}"
+                            ToolTip.Tip="{Binding CreateTip}" ToolTip.ShowOnDisabled="True"/>
+                    <Button Content="Replace" MinWidth="90" IsVisible="{Binding IsReplace}"
+                            ToolTip.Tip="{Binding CreateTip}" ToolTip.ShowOnDisabled="True">
+                        <Button.Flyout>
+                            <Flyout Placement="TopEdgeAlignedRight">
+                                <StackPanel Spacing="8" MaxWidth="320">
+                                    <TextBlock Text="{Binding ReplaceConfirmText}" TextWrapping="Wrap"/>
+                                    <Button Content="Replace" Command="{Binding CreateCommand}" HorizontalAlignment="Right"/>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </Panel>
+                <!-- A plot makes a file, not a cell: Create… asks where (brief-img-14 R-im14-12). -->
+                <ContentControl Content="{Binding}" IsVisible="{Binding !CreatesCell}">
+                    <ContentControl.DataTemplates>
+                        <DataTemplate DataType="rec:ImageSourceViewModel">
+                            <Button Content="Create…" Command="{Binding CreatePlotCommand}" MinWidth="90" Classes="accent"
+                                    ToolTip.Tip="{Binding CreateTip}" ToolTip.ShowOnDisabled="True"/>
+                        </DataTemplate>
+                    </ContentControl.DataTemplates>
+                </ContentControl>
             </Panel>
         </Grid>
     </Grid>

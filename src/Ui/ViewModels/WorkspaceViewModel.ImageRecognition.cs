@@ -73,6 +73,39 @@ public partial class WorkspaceViewModel : IImageDialogHost
     [RelayCommand(CanExecute = nameof(CanPasteImage))]
     private Task PasteImageAsLayout(Window? owner) => PasteImageAs(makeSchematic: false, owner);
 
+    /// <summary>Edit ▸ Paste Image as Touchstone… (brief-img-14 R-im14-13): IM-6's clipboard rule, a plot read.</summary>
+    [RelayCommand(CanExecute = nameof(CanPasteImage))]
+    private async Task PasteImageAsTouchstone(Window? owner)
+    {
+        var read = await PasteImage.ReadAsync();
+        if (read is null) Messages.Error("Paste Image as Touchstone: the clipboard holds no picture.");
+        else if (!read.Ok) Messages.Error($"Paste Image as Touchstone: {read.Refusal}");
+        else ShowPlotDialog(read.Source, csv: false, owner);
+    }
+
+    /// <summary>Tools ▸ Digitise Plot… (R-im14-13): the dialog, empty, in plot mode.</summary>
+    [RelayCommand(CanExecute = nameof(IsWorkspaceOpenForImage))]
+    private void DigitisePlot(Window? owner) => ShowPlotDialog(null, csv: true, owner);
+
+    public void CreateTouchstoneFromImageFile(ProjectTreeNodeViewModel node)
+    {
+        var read = ImageSource.FromFile(node.AbsolutePath);
+        if (read.Ok) ShowPlotDialog(read.Source, csv: false, null);
+        else Messages.Error($"Create Touchstone from Plot: {read.Refusal}");
+    }
+
+    /// <summary>The picture dialog in plot mode — reading <paramref name="source"/> as a plot (added to the session when
+    /// the dialog is already reading plots), or empty.</summary>
+    public void ShowPlotDialog(ImageSource? source, bool csv, Window? owner)
+    {
+        bool wasOpen = _imageDialog is not null;
+        if (!wasOpen) ShowImageDialog(null, makeSchematic: false, owner);
+        if (_imageDialog?.DataContext is not ImageSourceViewModel vm) return;
+        if (source is not null) vm.ReadPlot(source, csv);
+        else if (!wasOpen) vm.StartPlotMode(csv);
+        _imageDialog.Activate();
+    }
+
     private async Task PasteImageAs(bool makeSchematic, Window? owner)
     {
         string command = makeSchematic ? "Paste Image as Schematic" : "Paste Image as Layout";
@@ -88,6 +121,8 @@ public partial class WorkspaceViewModel : IImageDialogHost
         CreateLayoutFromImageCommand.NotifyCanExecuteChanged();
         PasteImageAsSchematicCommand.NotifyCanExecuteChanged();
         PasteImageAsLayoutCommand.NotifyCanExecuteChanged();
+        PasteImageAsTouchstoneCommand.NotifyCanExecuteChanged();
+        DigitisePlotCommand.NotifyCanExecuteChanged();
     }
 
     // ── a placed picture (R-im6-3) and the Project Tree (R-im6-4) ────────────────────────────────────
@@ -159,6 +194,17 @@ public partial class WorkspaceViewModel : IImageDialogHost
         vm.SchematicPictureDrawn += (edit, placed) =>
         {
             DrawImageSchematic(edit, placed);
+            dialog.Close();
+        };
+        vm.TouchstoneCreated += (path, assembly, kept, session) =>
+        {
+            ReportTouchstone(path, assembly, kept, session);
+            dialog.Close();
+        };
+        vm.PlotCsvCreated += path =>
+        {
+            Messages.Post(MessageLevel.Success, $"Digitise Plot: wrote {Path.GetFileName(path)}", path);
+            _factory.ProjectTreeTool?.Refresh();
             dialog.Close();
         };
         vm.OpenSchematic = path => _openDocsByPath.ContainsKey(Path.GetFullPath(path)) ? GetOrCreateSession(Path.GetFullPath(path)).EditModel : null;
@@ -245,6 +291,62 @@ public partial class WorkspaceViewModel : IImageDialogHost
         var schematicVm = GetOrCreateSession(csch);
         if (SchematicImageEditCommand.For(schematicVm, edit) is { } command) schematicVm.Execute(command);
         PostImageReport(edit.Report, "Create Schematic from Image", null);
+    }
+
+    /// <summary>
+    /// After Create, for a plot (brief-img-14 R-im14-11): the report and the health check's verdict to Messages, the file
+    /// a known data source, and a Data Display opened on it with the plot types the pictures showed — so the result is
+    /// compared with its source at a glance.
+    /// </summary>
+    private void ReportTouchstone(string path, CircuitRF.Design.Imaging.Plots.TouchstoneAssemblyResult assembly,
+                                  IReadOnlyList<KeptPicture> kept, CircuitRF.Design.Imaging.Plots.PlotSession session)
+    {
+        const string command = "Create Touchstone from Plot";
+        Messages.Post(MessageLevel.Success, $"{command}: wrote {Path.GetFileName(path)}", path);
+        foreach (string line in assembly.Report) Messages.Post(MessageLevel.Info, $"{command}: {line}", path);
+        foreach (var k in kept.Where(k => !k.Reused)) Messages.Post(MessageLevel.Info, $"{command}: kept {k.Ref} beside it", k.FullPath);
+        AddKnownFile(path);
+        _factory.ProjectTreeTool?.Refresh();
+        var types = session.Plots.Where(p => !p.Excluded)
+                           .Select(p => p.Type switch
+                           {
+                               CircuitRF.Design.Imaging.Plots.PlotType.Smith => PlotType.Smith,
+                               CircuitRF.Design.Imaging.Plots.PlotType.Polar => PlotType.Polar,
+                               _ => PlotType.Rect,
+                           })
+                           .Distinct().ToList();
+        _ = OpenTouchstoneDisplayAsync(path, types.Count == 0 ? [PlotType.Rect] : types);
+    }
+
+    private async Task OpenTouchstoneDisplayAsync(string snp, IReadOnlyList<PlotType> types)
+    {
+        try
+        {
+            var vm = new CircuitRF.Ui.DataDisplay.DataDisplayDocumentViewModel();
+            var doc = new CircuitRF.Ui.DataDisplay.DataDisplayDocument(Path.GetFileNameWithoutExtension(snp), vm);
+            _scratchDataDisplays.Add(doc);
+            vm.Window.SetOpenFileAsNewDisplayAction(OpenDataDisplayFromFileAsync);
+            vm.Window.GetResultsRootAction = GetResultsRoot;
+            WireDataDisplayLibraryEvents(vm);
+            WireDataDisplayTreeDirty(doc);
+            _factory.OpenDocument(doc);
+            var lib = vm.Window.DataSourceLibrary;
+            lib.RefreshAvailableDataSources();
+            await lib.SelectDataSourceAsync(lib.AvailableDataSources.FirstOrDefault(s =>
+                string.Equals(s.AbsolutePath, Path.GetFullPath(snp), StringComparison.OrdinalIgnoreCase))?.LogicalId
+                ?? Path.GetFileName(snp));
+            if (vm.Window.DataDisplay is not { } display) return;
+            for (int i = 0; i < types.Count; i++)
+            {
+                var container = i == 0 && display.Plots.FirstOrDefault() is { } first ? first : display.AddPlot(types[i]);
+                if (container.Inspector.PlotType != types[i]) container.Inspector.PlotType = types[i];
+                if (container.Inspector.AddTraceCommand.CanExecute(null)) container.Inspector.AddTraceCommand.Execute(null);
+            }
+        }
+        catch (Exception ex)
+        {
+            Messages.Warning($"Create Touchstone from Plot: the file was written, but no Data Display could be opened on it: {ex.Message}", snp);
+        }
     }
 
     private void PostImageReport(RecognitionReport report, string command, string? written)

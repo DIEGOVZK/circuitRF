@@ -3866,6 +3866,56 @@ a crossing, or write the `.cnl` itself. The server's instructions carry a *Pictu
 `tests/Ui.Tests/Cli/ImageRecognizeCliVerbTests.cs` (the `.cnl` byte for byte against both entry points in process,
 the blank refusal, the overlay on a refused read, and the R-im11-6 source scan) and `McpImageToolTests`.
 
+### 26.9 Plot pictures (brief-img-14)
+
+A picture IM-2 reads as a **plot** (or `--image-kind plot`) — a rectangular plot against frequency, a Smith chart or a
+polar chart — is digitised, not recognised, and several pictures are **one session**: `recognize s21.png s11.png -o
+part.s2p` (on the protocol, `path` plus `pictures`). The reading is `PlotReading.Read`, the file
+`TouchstoneAssembly.Build` and `WriteFile`, the CSV `PlotCsv`, the overlay `ImageOverlay.BuildPlot` — what Create
+Touchstone from Plot calls; `src/Cli/Recognize.Plots.cs` and `PlotFlags.cs` are flags, refusals and the projection, and
+`PlotCliVerbTests` scans `src/Cli` for any other type of `CircuitRF.Design.Imaging.Plots`. Plots and traces are
+numbered across the session (plot 1 is the first picture's first plot; T1, T2 …), so a flag names one the same way
+whichever picture holds it. The method is `image-to-circuit.md` §15.
+
+Flags (`@<n>` names a plot; none means plot 1):
+
+| Flag | Takes |
+|---|---|
+| `--plot 1,3` | read only these plots; the rest are drawn on the overlay, not read |
+| `--x-axis` / `--y-axis "<px>=<value>,<px>=<value>[@n]"` | an axis whose labels did not read: two pixel positions along it and their values, with units on frequency (`120px=1GHz,900px=5GHz`) |
+| `--x-log`, `--y-log` | the axis is logarithmic (otherwise the better fit is taken) |
+| `--trace "<T3 / #rrggbb / solid / dashed / dotted>[@n]=S21:db"` | an assignment: quantities `db`, `mag`, `phase`, `rad`, `re`, `im`, `complex`, `vswr`, `rl`, `il`, or `=ignore`; a chart's trace is complex whatever is named |
+| `--smith-z0 50Ohm` | a Smith chart's reference (the chart's `Z0 =` word, else 50 Ω, stated) |
+| `--freq T4=1GHz..5GHz` | a chart trace's start and stop; combines with its markers |
+| `--phase S21=min`, `=zero`, `=delay:250ps` | a magnitude with no phase (minimum phase, an estimate, by default) |
+| `--fill S12=S21,S22=S11` (`zero`, `default`, `unassigned`) | an entry nobody plotted |
+| `--prefer S11=chart` (`rect`, `T3`) | which of two traces of one entry is written |
+| `--grid 1GHz..5GHz/81[log]` | the Touchstone's grid (default: the traces' common range at the densest trace's resolution, a 1-2-5 step) |
+| `--format db`, `ma`, `ri` | the Touchstone's format (DB) |
+| `--csv out.csv` | the raw digitised traces in each plot's own units — never resampled, and **never waits** |
+| `--keep-sources on`, `off` | the source pictures beside the Touchstone as `<name>.source.png`, `.source-2.png` … (on) |
+| `--overlay out.png` | each picture with what was read drawn over it; picture n's beside it as `out-n.png` |
+
+`-o` must be a Touchstone (`recognize.output.not-touchstone`) whose extension is the port count the traces make
+(`recognize.output.ports` — nothing is written). The file is refused while a trace is unassigned, a chart trace has no
+frequency, an axis is uncalibrated, an entry is drawn only as a phase, or a fill copies an entry that is not plotted:
+`recognize.plot.refused`, exit 1, with the sentence and **the flag that answers it** — an unassigned trace's names its
+colour and plot (`--trace "T1=S21:db"`), a chart trace's `--freq T1=<start>..<stop>`. The overlay and the CSV are
+written whatever the Touchstone's fate, and a call that asked only for `--csv` is not refused for a Touchstone it did
+not ask for. Several paths that are not all pictures are `recognize.args.several-pictures`; a layout, schematic or
+artwork flag on a plot is `picture.args.wrong-kind`. With no `-o` nothing is written but what was asked; stdout is the
+reading (a line per plot and trace), the report and the matrix — where every entry came from. `--json` carries
+`result.recognize.plots`: the pictures (name, SHA-256), the plots (type, calibrations with residuals and every tick
+label), the traces (assignment, evidence, points, resolution, range, frequency source and direction), the markers, the
+matrix map, the grid, the paths written, the refusal and the health line.
+
+Over the protocol every flag is a field (`pictures`, `plot`, `xAxis`, `yAxis`, `xLog`, `yLog`, `trace`, `smithZ0`,
+`freq`, `phase`, `fill`, `prefer`, `grid`, `format`, `csv`, `keepSources`) and the overlay comes back as image content,
+so an agent can check every reading by eye and answer an unassigned trace with `trace`. Gate:
+`tests/Ui.Tests/PlotRecognition/PlotCliVerbTests.cs` — two pictures to `-o x.s2p` as a process, byte for byte the
+in-process assembly's but the time line TouchstoneIO writes; a Smith trace with no frequency exits 1 naming `--freq`;
+the source scan.
+
 ## 27. A picture as `convert`'s source — the image reader, the scale, the overlay
 
 **brief-img-11.** `convert board.png -o <target>` (or `--from image`; a picture is also recognised by its content)

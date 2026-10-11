@@ -151,6 +151,21 @@ public static class ImageText
     }
 }
 
+/// <summary>What a word may say, for <see cref="StrokeTextReader"/>.</summary>
+/// <param name="Parse">The word's one reading, or null when it says nothing the grammar knows.</param>
+/// <param name="Allowed">The characters a glyph may be read as; null is every template character.</param>
+/// <param name="AnySpacing">Any reading may hold a space. A schematic's may only when it is a value or a line set
+/// (<c>0.5 pF</c>, <c>Z=50Ω, E=90°</c>); a plot's axis title is words (<c>Return Loss (dB)</c>).</param>
+/// <param name="MaxWeight">The heaviest type read, stroke width over cap height; null is
+/// <see cref="StrokeTextReader.MaxWeight"/>. A plot's marker names are set bold, and the marker grammar is narrow enough
+/// to read them.</param>
+public sealed record WordGrammar(Func<string, WordReading?> Parse, Func<char, bool>? Allowed = null, bool AnySpacing = false,
+                                 double? MaxWeight = null)
+{
+    /// <summary>A schematic picture's words: <see cref="ValueGrammar.Parse"/>.</summary>
+    public static WordGrammar Schematic { get; } = new(ValueGrammar.Parse);
+}
+
 /// <summary>The in-house reader: AS-10's glyph matcher under the grammar (this file's header).</summary>
 public sealed class StrokeTextReader : IImageTextReader
 {
@@ -193,16 +208,23 @@ public sealed class StrokeTextReader : IImageTextReader
     private const int Beam = 512;
 
     private GlyphTemplates? _templates;
+    private readonly WordGrammar _grammar;
 
     /// <param name="templates">The glyphs; null is the user's (built-in designator and value glyphs, plus taught).</param>
-    public StrokeTextReader(GlyphTemplates? templates = null) => _templates = templates;
+    /// <param name="grammar">What a word may say; null is a schematic's (<see cref="ValueGrammar"/>). A plot's tick
+    /// labels and titles are read under their own (brief-img-14 R-im14-3).</param>
+    public StrokeTextReader(GlyphTemplates? templates = null, WordGrammar? grammar = null)
+    {
+        _templates = templates;
+        _grammar = grammar ?? WordGrammar.Schematic;
+    }
 
     public IReadOnlyList<ImageWord> Read(TextRegion region, double strokeWidth)
     {
         ArgumentNullException.ThrowIfNull(region);
         _templates ??= GlyphTemplates.ForUserText();
         double pen = Math.Max(1, strokeWidth);
-        if (Weight(region) > MaxWeight)
+        if (Weight(region) > (_grammar.MaxWeight ?? MaxWeight))
             return [Unread(region.Box, region.Id, "", double.PositiveInfinity, []) with { TooHeavy = true }];
 
         // The skeleton in y-up coordinates, as a pen's strokes are, each kink at a free end trimmed (an end another
@@ -231,12 +253,12 @@ public sealed class StrokeTextReader : IImageTextReader
             0 => (x, y) => x, 180 => (x, y) => -x, 90 => (x, y) => y, _ => (x, y) => -y,
         };
         double start = strokes.SelectMany(s => Points(s.Xy)).Min(p => along(p.X, p.Y));
-        var asSeen = Words(region, word, along, start);
+        var asSeen = Words(region, word, along, start, _grammar);
         var (cutStrokes, cutWord) = CutTouching(strokes, word, along, start, region.Vertical, pen);
         if (cutWord.Glyphs.Count == word.Glyphs.Count) return asSeen;
         // A cut stands where it reads more of the line — a typeset W cut in two is a t and a V, which say nothing — or as
         // much of it, nearer the templates: "kΩ" uncut is an m, poorly, and "1m" is grammatical.
-        var cut = Words(region, cutWord, along, cutStrokes.SelectMany(s => Points(s.Xy)).Min(p => along(p.X, p.Y)));
+        var cut = Words(region, cutWord, along, cutStrokes.SelectMany(s => Points(s.Xy)).Min(p => along(p.X, p.Y)), _grammar);
         int unreadCut = cut.Count(w => w.Reading is null), unreadSeen = asSeen.Count(w => w.Reading is null);
         return unreadCut < unreadSeen || (unreadCut == unreadSeen && Fit(cut) < Fit(asSeen)) ? cut : asSeen;
 
@@ -247,7 +269,7 @@ public sealed class StrokeTextReader : IImageTextReader
     /// <summary>The words of a read line: whole when it reads whole, else token by token.</summary>
     private static IReadOnlyList<ImageWord> Words(TextRegion region, (IReadOnlyList<GlyphReading> Glyphs,
         IReadOnlyList<(double Left, double Right)> Extents, TextOrientation Orientation, double Height) word,
-        Func<double, double, double> along, double start)
+        Func<double, double, double> along, double start, WordGrammar grammar)
     {
         // Tokens: runs of glyphs with no space between them.
         var tokens = new List<(int From, int To)>();
@@ -260,12 +282,12 @@ public sealed class StrokeTextReader : IImageTextReader
             }
 
         // The whole line first, with its spaces; then word by word.
-        if (Decode(word.Glyphs, tokens) is { } whole)
+        if (Decode(word.Glyphs, tokens, grammar) is { } whole)
             return [Word(region, word, tokens[0].From, tokens[^1].To, whole.Reading, whole.Distance, along, start)];
         var result = new List<ImageWord>(tokens.Count);
         foreach (var t in tokens)
         {
-            var one = Decode(word.Glyphs, [t]);
+            var one = Decode(word.Glyphs, [t], grammar);
             result.Add(Word(region, word, t.From, t.To, one?.Reading, one?.Distance ?? Mean(word.Glyphs, t), along, start));
         }
         return result;
@@ -455,34 +477,41 @@ public sealed class StrokeTextReader : IImageTextReader
     /// glyph offers the characters within AS-10's runner-up margin of its best; the combinations are parsed, and the
     /// best-ranked one wins, then the one nearest its templates.
     /// </summary>
-    internal static (WordReading Reading, double Distance)? Decode(IReadOnlyList<GlyphReading> glyphs, IReadOnlyList<(int From, int To)> tokens)
+    internal static (WordReading Reading, double Distance)? Decode(IReadOnlyList<GlyphReading> glyphs, IReadOnlyList<(int From, int To)> tokens,
+                                                                  WordGrammar? grammar = null)
     {
+        grammar ??= WordGrammar.Schematic;
         var all = tokens.SelectMany(t => Enumerable.Range(t.From, t.To - t.From)).ToList();
         if (all.Count == 0) return null;
-        if (all.Any(i => glyphs[i].Best.Distance > MaxGlyphDistance)) return null;
-        if (all.Average(i => glyphs[i].Best.Distance) > MaxWordDistance) return null;
+        // Under a grammar with an alphabet, a glyph's best is its best IN the alphabet: a tick label's 6 that matched an
+        // "a" a little better is still a 6, and the grammar has nothing else to offer it.
+        var ranked = all.ToDictionary(i => i, i => grammar.Allowed is { } allowed
+            ? (IReadOnlyList<GlyphMatch>)[.. glyphs[i].Ranked.Where(m => allowed(m.Char))]
+            : glyphs[i].Ranked);
+        if (all.Any(i => ranked[i].Count == 0 || ranked[i][0].Distance > MaxGlyphDistance)) return null;
+        if (all.Average(i => ranked[i][0].Distance) > MaxWordDistance) return null;
 
         var spaceBefore = tokens.Skip(1).Select(t => t.From).ToHashSet();
         bool spaced = tokens.Count > 1;   // only a line set, or a value with its unit apart (0.5 pF), has a space
         var beam = new List<(string Text, double Score, bool[] Coerced)> { ("", 0, []) };
         foreach (int i in all)
         {
-            var g = glyphs[i];
-            double reach = Math.Max(g.Best.Distance / (1 - StrokeGlyphs.MinMargin), g.Best.Distance + MinReach) + 1e-9;
-            var options = g.Ranked.Where(m => m.Distance <= reach).Take(MaxAlternatives).ToList();
+            var g = ranked[i];
+            double reach = Math.Max(g[0].Distance / (1 - StrokeGlyphs.MinMargin), g[0].Distance + MinReach) + 1e-9;
+            var options = g.Where(m => m.Distance <= reach).Take(MaxAlternatives).ToList();
             string sep = spaceBefore.Contains(i) ? " " : "";
             var next = new List<(string, double, bool[])>(beam.Count * options.Count);
             foreach (var (text, score, coerced) in beam)
                 foreach (var m in options)
-                    next.Add((text + sep + m.Char, score + m.Distance, [.. coerced, m.Distance > g.Best.Distance + 1e-9]));
+                    next.Add((text + sep + m.Char, score + m.Distance, [.. coerced, m.Distance > g[0].Distance + 1e-9]));
             beam = [.. next.OrderBy(b => b.Item2).Take(Beam)];
         }
 
         (WordReading Reading, double Score, bool Known)? best = null;
         foreach (var (text, score, coerced) in beam)
         {
-            if (ValueGrammar.Parse(text) is not { } r || !DesignatorRule(r, coerced)) continue;
-            if (spaced && r.Class is not (WordClass.LineParameters or WordClass.Value)) continue;
+            if (grammar.Parse(text) is not { } r || !DesignatorRule(r, coerced)) continue;
+            if (spaced && !grammar.AnySpacing && r.Class is not (WordClass.LineParameters or WordClass.Value)) continue;
             bool known = r.Class == WordClass.Designator && ValueGrammar.KnownPrefix(r.Text);
             if (best is not { } b || r.Rank < b.Reading.Rank
                 || (r.Rank == b.Reading.Rank && (known && !b.Known || known == b.Known && score < b.Score)))

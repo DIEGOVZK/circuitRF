@@ -482,7 +482,10 @@ internal sealed class McpServer
         });
 
         if (ToolCatalog.AttachmentAsked(arguments) || overlay) Attach(content, document);
-        if (scratchOverlay is not null) try { File.Delete(scratchOverlay); } catch (IOException) { /* best effort */ }
+        if (scratchOverlay is not null)
+            // A plot session of several pictures writes one overlay a picture: <stem>.png, <stem>-2.png … (brief-img-14).
+            foreach (string f in Directory.GetFiles(Path.GetDirectoryName(scratchOverlay)!, Path.GetFileNameWithoutExtension(scratchOverlay) + "*.png"))
+                try { File.Delete(f); } catch (IOException) { /* best effort */ }
 
         var result = new JsonObject
         {

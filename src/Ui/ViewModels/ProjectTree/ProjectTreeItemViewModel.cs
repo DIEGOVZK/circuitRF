@@ -531,6 +531,7 @@ public sealed class ProjectTreeNodeViewModel : ObservableObject
     public IAsyncRelayCommand CopyToWorkspaceAsCellCommand { get; }
     public IRelayCommand CreateSchematicFromImageCommand { get; }
     public IRelayCommand CreateLayoutFromImageCommand { get; }
+    public IRelayCommand CreateTouchstoneFromPlotCommand { get; }
     /// <summary>Builds a cell from a SPICE <c>.model</c> card in this file (Known File nodes only).</summary>
     public IAsyncRelayCommand CreateCellFromModelCardCommand { get; }
 
@@ -839,6 +840,10 @@ public sealed class ProjectTreeNodeViewModel : ObservableObject
 
         CreateLayoutFromImageCommand = new RelayCommand(
             () => _actions?.CreateFromImageFile(this, makeSchematic: false),
+            () => _actions is not null && IsImageFile);
+
+        CreateTouchstoneFromPlotCommand = new RelayCommand(
+            () => _actions?.CreateTouchstoneFromImageFile(this),
             () => _actions is not null && IsImageFile);
 
         CreateCellFromModelCardCommand = new AsyncRelayCommand(

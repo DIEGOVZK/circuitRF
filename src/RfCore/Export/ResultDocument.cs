@@ -1498,7 +1498,138 @@ namespace RfCore.Export
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         IReadOnlyList<ImageWordJson>?                      Words = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        IReadOnlyList<ImageCrossingJson>?                  Crossings = null);
+        IReadOnlyList<ImageCrossingJson>?                  Crossings = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        RecognizePlotsJson?                                Plots = null);
+
+    /// <summary>
+    /// What <c>recognize</c> read off plot pictures (brief-img-14 R-im14-14): every picture of the session, every plot's
+    /// frame and calibration, every trace with its assignment, evidence and resolution, the markers, and the matrix map
+    /// — where each entry of the Touchstone came from. A projection of <c>PlotReading.Read</c> and
+    /// <c>TouchstoneAssembly.Build</c>, the functions the dialog calls.
+    /// </summary>
+    /// <param name="Ports">The Touchstone's port count; 0 when nothing is assigned.</param>
+    /// <param name="Grid">The output grid in <c>--grid</c>'s spelling, or null when refused.</param>
+    /// <param name="Touchstone">The file written under <c>-o</c>, or null.</param>
+    /// <param name="Csv">The CSV written under <c>--csv</c>, or null.</param>
+    /// <param name="Kept">The source pictures kept beside the Touchstone.</param>
+    /// <param name="Refusal">Why no Touchstone could be made, and the flag that answers it; null when it could.</param>
+    /// <param name="Health">The health check's verdict on the file, one line.</param>
+    public sealed record RecognizePlotsJson(
+        IReadOnlyList<PlotPictureJson>    Pictures,
+        IReadOnlyList<PlotFrameJson>      Plots,
+        IReadOnlyList<PlotTraceJson>      Traces,
+        IReadOnlyList<PlotMarkerJson>     Markers,
+        int                               Ports,
+        IReadOnlyList<PlotMatrixCellJson> Matrix,
+        string?                           Grid,
+        string?                           Touchstone,
+        string?                           Csv,
+        IReadOnlyList<string>             Kept,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        PlotRefusalJson?                  Refusal,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?                           Health);
+
+    /// <param name="Index">0-based, in the order the pictures were given.</param>
+    /// <param name="Plots">The session numbers of its plots.</param>
+    public sealed record PlotPictureJson(int Index, string Name, string Sha256, int Width, int Height, IReadOnlyList<int> Plots);
+
+    /// <summary>One plot: its frame in the picture's pixels, and its calibration.</summary>
+    /// <param name="Type"><c>rectangular</c>, <c>smith</c> or <c>polar</c>.</param>
+    /// <param name="Circle">A chart's centre and radius, pixels: <c>[cx, cy, r]</c>.</param>
+    public sealed record PlotFrameJson(
+        int           Number,
+        int           Picture,
+        string        Type,
+        bool          Excluded,
+        bool          Calibrated,
+        PixelBoxJson  Box,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        double[]?     Circle,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        PlotAxisJson? X,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        PlotAxisJson? Y,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?       XTitle,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?       YTitle,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?       Title,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?       XUnit,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        double?       Z0,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        bool?         Z0Stated,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        bool?         Admittance);
+
+    /// <summary>One rectangular axis: its fit (null when uncalibrated) and every tick label read for it.</summary>
+    /// <param name="Scale"><c>linear</c> or <c>log</c>; null while the axis waits for two clicks.</param>
+    public sealed record PlotAxisJson(
+        string?                    Scale,
+        int                        Used,
+        int                        Rejected,
+        double?                    ResidualPx,
+        bool                       Manual,
+        IReadOnlyList<PlotTickJson> Labels);
+
+    /// <param name="Pixel">Where on the axis the label's tick is, pixels.</param>
+    /// <param name="Used">The fit kept it; false for a misread label it rejected.</param>
+    public sealed record PlotTickJson(string Text, double Pixel, double Value, bool Used);
+
+    /// <summary>One trace.</summary>
+    /// <param name="Assignment"><c>S21:db</c>, <c>unassigned</c> or <c>ignore</c> — <c>--trace</c>'s spelling.</param>
+    /// <param name="Resolution">One pixel, in <paramref name="ResolutionUnit"/>.</param>
+    /// <param name="Start">The first sample's x (hertz on a frequency axis, or a chart trace's frequency), or null.</param>
+    /// <param name="FrequencySource">A chart trace's frequency evidence (<c>markers</c>, <c>matched to T3</c>,
+    /// <c>typed range</c>); null for a rectangular trace or one still waiting.</param>
+    public sealed record PlotTraceJson(
+        string  Name,
+        int     Plot,
+        string  Colour,
+        string  Style,
+        string  Assignment,
+        bool    Assigned,
+        string  Evidence,
+        int     Points,
+        double  Resolution,
+        string  ResolutionUnit,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        double? Start,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        double? Stop,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string? FrequencySource,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string? Direction,
+        int     Gaps,
+        int     Bridged,
+        int     Ambiguous);
+
+    /// <param name="Trace">The trace it sits on (<c>T3</c>), or null.</param>
+    public sealed record PlotMarkerJson(
+        string  Name,
+        int     Plot,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string? Trace,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        double? FrequencyHz,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        double? X,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        double? Y,
+        string  Readout);
+
+    /// <summary>One entry of the matrix map: where it came from and by which rule.</summary>
+    /// <param name="Source"><c>T2 (plot 1)</c>, <c>= S21</c>, <c>zero</c>, <c>unassigned</c>.</param>
+    public sealed record PlotMatrixCellJson(string Entry, string Source, string Rule, string Phase, bool Plotted, bool Estimated);
+
+    /// <param name="Kind"><c>axis</c>, <c>unassigned</c>, <c>frequency</c>, <c>fill</c>, <c>range</c>, <c>empty</c>.</param>
+    /// <param name="Flag">The flag that answers it.</param>
+    public sealed record PlotRefusalJson(string Kind, string Sentence, string Flag);
 
     /// <summary>One class of the recognition's report: how many, its sentence, and the places it is about (DBU).</summary>
     public sealed record RecognizeFindingJson(

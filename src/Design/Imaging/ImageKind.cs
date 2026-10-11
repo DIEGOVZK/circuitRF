@@ -6,6 +6,11 @@
 // pieces in rows (text). Each threshold is a named constant here with its measured reason in
 // docs/design/image-to-circuit.md §5.2.
 //
+// A PLOT (IM-14, R-im14-1) is told by its frame before anything else is weighed: a rectangular plot's axes with their
+// grid or ticks, a Smith chart's tangent circles, a polar chart's rings (PlotKind.Detect). It is checked BEFORE the
+// schematic-against-layout vote because a plot's grid is one-width straight line work — exactly what a schematic's
+// wires measure as.
+//
 // A photograph is None — unless it is a photo of a BOARD (IM-13, R-im13-1): many colours and smooth gradients, AND large
 // regions in one mask-like hue, AND edges that run in two dominant directions. That reads BoardPhoto, with lower
 // confidence than a drawing ever gets, because three measurements are all a board photo is told apart by.
@@ -15,8 +20,9 @@
 
 namespace CircuitRF.Design.Imaging;
 
-/// <summary>What a picture holds: a schematic, a layout, a photograph of a board (IM-13), or no drawing at all.</summary>
-public enum DrawingKind { None, Schematic, Layout, BoardPhoto }
+/// <summary>What a picture holds: a schematic, a layout, a photograph of a board (IM-13), a plot (IM-14), or no drawing
+/// at all.</summary>
+public enum DrawingKind { None, Schematic, Layout, BoardPhoto, Plot }
 
 /// <summary>One measured feature and which way it reads.</summary>
 /// <param name="Name">What was measured, in words (<c>filled share</c>, <c>one-width share</c>, …).</param>
@@ -42,7 +48,7 @@ public sealed record ImageKindResult(
         return this with { Kind = kind, Forced = true, Suggested = Suggested ?? Kind, Reason = null };
     }
 
-    /// <summary>The wire spelling: <c>schematic</c>, <c>layout</c>, <c>photo</c> or <c>none</c>.</summary>
+    /// <summary>The wire spelling: <c>schematic</c>, <c>layout</c>, <c>photo</c>, <c>plot</c> or <c>none</c>.</summary>
     public string Name => ImageKind.Name(Kind);
 
     /// <summary>This reading as a picture to TRACE: a layout or a board photo as read, anything else forced to layout.</summary>
@@ -153,10 +159,12 @@ public static class ImageKind
         DrawingKind.Schematic => "schematic",
         DrawingKind.Layout    => "layout",
         DrawingKind.BoardPhoto => "photo",
+        DrawingKind.Plot      => "plot",
         _                     => "none",
     };
 
-    /// <summary>Parses <c>schematic</c>, <c>layout</c> or <c>auto</c> (null) — the spelling <c>--image-kind</c> takes.</summary>
+    /// <summary>Parses <c>schematic</c>, <c>layout</c>, <c>plot</c> or <c>auto</c> (null) — the spelling <c>--image-kind</c>
+    /// takes.</summary>
     public static bool TryParseOverride(string text, out DrawingKind? kind)
     {
         kind = null;
@@ -165,6 +173,7 @@ public static class ImageKind
             case "auto":      return true;
             case "schematic": kind = DrawingKind.Schematic; return true;
             case "layout":    kind = DrawingKind.Layout; return true;
+            case "plot":      kind = DrawingKind.Plot; return true;
             default:          return false;
         }
     }
@@ -211,6 +220,16 @@ public static class ImageKind
                 return new ImageKindResult(DrawingKind.BoardPhoto, Round(0.55 + 0.2 * Math.Clamp(margin, 0, 1)), null, evidence);
             }
         }
+
+        // A plot, before the schematic-against-layout vote (R-im14-1): a plot's grid would otherwise read as wires.
+        if (flat >= PhotographFlatShareFloor && Plots.PlotKind.Detect(raster) is { Count: > 0 } plots)
+        {
+            double share = plots.Max(f => f.Box.Width * (double)f.Box.Height) / ((double)w * h);
+            evidence.Add(new("plot frames", plots.Count, "plot"));
+            evidence.Add(new("largest plot share", Round(share), "plot"));
+            return new ImageKindResult(DrawingKind.Plot, Round(0.6 + 0.35 * Math.Clamp((share - Plots.PlotKind.MinFrameShare) / 0.3, 0, 1)), null, evidence);
+        }
+        evidence.Add(new("plot frames", 0, "neither"));
 
         // Filled share: ink deeper than a stroke of a drawing this size could be.
         var dt = DistanceTransform.Compute(ink);

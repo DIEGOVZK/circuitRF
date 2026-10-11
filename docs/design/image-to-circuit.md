@@ -1059,3 +1059,157 @@ the corner the rectified picture shows there, found by Förstner's sub-pixel cor
 shows), `ImagePhotoHighlights`, `ImagePhotoUnreadParts`, and `ImagePhotoWidths` (widths are read, a Z0 from them is
 estimated). The kept picture and underlay are the RECTIFIED photo (it is what the copper lies on); the provenance's
 kind is `photo`, and its options name the photo as taken (`photo`: name and SHA-256) and the `corners`.
+
+## 15. IM-14 — plots to Touchstone
+
+Brief: `brief-img-14-sparameter-plots-to-touchstone.md`. Code: `src/Design/Imaging/Plots/`. Gates:
+`tests/Ui.Tests/PlotRecognition/` — `PlotRoundTripTests`, `PlotForeignDrawingTests`, `RectAxesTests`, `SmithFrameTests`,
+`PlotFrequencyTests`, `TouchstoneAssemblyTests`, `MinimumPhaseTests`, `PlotCliVerbTests` — and one case in
+`ImageKindTests`. Pictures drawn by circuitRF's own plotter come from `PlotPictureSet` (the `sparam`, `plot` and
+`render` verbs run in process); pictures drawn another way are the committed PNGs `ForeignPlots.cs` writes
+(`CRF_IM12_FIXTURES=1`, `ForeignPlotsGenerator`), every one drawn from the band-pass in that file so a test has its
+answer.
+
+**A picture of a plot is digitised, not recognised.** A datasheet that shows S-parameter plots and ships no file is the
+typical source. A plot is the most tractable picture there is — straight axes, periodic grids, numeric labels,
+distinct colours — so the reading is a measurement with a stated resolution per trace, and what a picture cannot hold
+(phase beside a magnitude, frequency along a Smith trace, the entries never plotted) is a stated rule one click from
+being changed, recorded in the file it produced.
+
+### 15.1 One session, the entry points (R-im14-2, R-im14-15)
+
+`PlotReading.Read(pictures, options)` → `PlotSession`; `TouchstoneAssembly.Build(session, options)` → the matrix, its
+header, the report and the health check; `TouchstoneAssembly.WriteFile` writes it and keeps the sources; `PlotCsv` the
+raw traces; `ImageOverlay.BuildPlot` the overlay. The dialog, `recognize` and the MCP tool call those and nothing else —
+`PlotCliVerbTests` scans `src/Cli` for any other type of the namespace. Every picture handed in is read into one
+session: plots are numbered across it (plot 1 is the first picture's first plot) and so are traces (T1, T2 …), and
+every flag, row and report line names them that way.
+
+### 15.2 Kind and frames (R-im14-1, R-im14-4) — `PlotKind`, `PlotFrame`, `SmithFrame`, `PolarFrame`
+
+`ImageKind.Classify` asks `PlotKind.Detect` **before** the schematic-against-layout vote, because a plot's grid is
+one-width straight line work — what a schematic's wires measure as. A rectangular plot is two long perpendicular ink
+runs meeting at a corner with periodic ticks or grid lines; a Smith chart an outer circle holding circles tangent at
+one point of it (right: impedance; left: admittance; both: Z-Y, read as Z); a polar chart rings about the centre and
+radial lines. A Smith chart needs no other calibration: centre, radius and orientation, checked against at least two
+constant-r circles, map any pixel to Γ. An admittance chart is the impedance chart turned half a turn and its curves are
+drawn at the same Γ, so one `GammaAt` serves both (`SmithFrameTests`: the same pixel reads the same Γ on both
+fixtures). The reference impedance is a `Z0 =` word when one reads, else 50 Ω, said in the report and in the header
+(`Z0 50 ohm (assumed)`).
+
+### 15.3 Axes (R-im14-3) — `RectAxes`
+
+Tick labels are read by IM-9's stroke reader under a numeric grammar (`PlotText`): signed decimals, exponents,
+multiplier suffixes and a unit on the label or in the axis title. A tick stub on a frame line is not a minus: with the
+line taken out it is a short dash beside the label, and grouped with it read as `-25 -`. Labels are paired with their
+ticks and fitted by consensus — every pair of labels proposes a line (linear, and logarithmic), the one most labels
+agree with within 2.5 px wins, two agreeing out of many prove nothing (at least half must) — then least squares on the
+inliers; a misread label is rejected, counted, and cannot bend the axis. The residual is reported in pixels. The
+frequency unit is a typed one, else a label's own suffix, else the x title's (`Frequency (GHz)`, read at a small size
+as `freq fCHz1`: a G comes back as C, O, Q or 6), else hertz when the labels run past 1e5 (`1e8 … 1e10` — no RF plot is
+labelled to 100,000 GHz), else GHz, stated. Fewer than two labels and the axis waits: the dialog's **x axis** / **y
+axis** rows take two pixel positions and their values as typed text (`120px=1GHz,900px=5GHz`), the spelling
+`--x-axis` / `--y-axis` take — they stand for the two clicks the brief describes.
+
+### 15.4 Traces (R-im14-5) — `PlotTraces`
+
+The plotting area's colours are clustered (IM-1); the background, the grid (a cluster lying mostly on the frame's lines
+or, for a chart, on the usual constant-r/x circles — an uncoloured one only, since a coloured trace may lie exactly on a
+grid circle), text and faint clusters are set aside, and words, the legend box and excluded rectangles are cleared
+inside what is left. A trace in a frame line's own colour loses **those** lines — a black curve on a black frame's axes
+— never the light grid, which it would otherwise be cut along wherever it runs level with a grid line.
+
+A rectangular trace is a function of x: each column's coverage is cut into runs, a run's coverage-weighted centre is y
+to a fraction of a pixel, and runs are linked into tracks predicting from their recent slope. Two tracks sharing a run
+are crossing; when the runs part each takes the run its frozen slope points at, and a parting where both pairings fit
+about equally is ambiguous and drawn amber. A track shares a run only when it predicts inside it — a dashed track in a
+dash gap predicts beside the other curve, and taking its run there swaps the two at the crossing. Gaps up to 2 % of the
+axis are bridged and counted, longer ones left open. A chart's trace is the coverage skeletonised and walked end to
+end, turning least at every junction, and the walks whose ends meet are joined.
+
+**A JPEG line is one line.** Compression leaves a blurred line as a body cluster with a darker core cluster inside it;
+traced apart, the core is a hole that cuts every column's run in two and the halves are followed as parallel tracks a
+pen apart. So clusters within 64 levels per channel of each other are traced as one coverage, and a curve lying within
+a pen of a longer one for 80 % of its length is that curve read twice and is merged into it (`MergeAlongside`). The
+JPEG-60 fixture went from five tracks to one, its worst error from 0.26 dB to 0.054 dB.
+
+### 15.5 What each trace is (R-im14-6, R-im14-7) — `PlotQuantity`, `PlotMarkers`
+
+Evidence, strongest first: the legend entry in its colour (its line style decides between two of one colour); a word
+in its colour near the curve, or naming an entry and lying along it; the y-axis title; the plot's title — for a chart,
+the word just above it, the one naming an entry when several stand there. The entry grammar reads the stroke reader's
+spellings: a bracket is any stroke it is read as (`Sf2 1)`), a Z inside an entry is a 2, and a 1 is t, l, I or | — a
+title's `S11` at 18 px reads `Stt` (and, as a number, `511`). A chart's trace is complex by its chart whatever quantity an assignment names. A marker readout (`m1 freq=2.400GHz
+dB(S(2,1))=-0.512`) is an exact point: it replaces the pixel reading within one pixel of it.
+
+### 15.6 Frequency along a chart trace (R-im14-8)
+
+Strongest first: markers with frequency readouts (two or more); a rectangular magnitude trace of the same entry, matched
+by |Γ| in order (monotone dynamic time warping in both directions, the cheaper wins; anchors only where |S| moves a tenth
+of its range over a tenth of the band); a typed start and stop. Markers set the direction, and a matched trace that
+agrees adds anchors between and beyond them. Between anchors frequency is spread **in proportion to the angle swept
+about the chart's centre**, which is exact for a uniform line and an approximation otherwise; outside the outermost
+anchors the trace is cut, never extrapolated. Direction is clockwise (Foster) unless markers or the match say
+otherwise; the header says which rule set it. With neither markers nor a matching trace the trace waits for a typed
+range (`PlotFrequencyTests`).
+
+**What the swept angle costs.** On the uniform line the three gates draw (25 Ω, a quarter wave at 1 GHz), two markers
+place every point within |ΔΓ| 0.0044 of the line at its own frequency. On the band-pass's S11, the swept angle alone
+put |ΔS11| at 0.6 near the resonance; with three markers and the log-frequency dB(S11) matched, 0.030. A |Γ| match
+places frequency only as well as the rectangular plot's pixel resolves |Γ|, over how fast |Γ| moves there — poorly
+just past a resonance, where |S11| turns — so `PlotRoundTripTests` puts that term in the bound.
+
+### 15.7 The file (R-im14-9, R-im14-11) — `TouchstoneAssembly`
+
+Ports are the largest assigned index, up to four. The grid is the overlap of every trace's range at the densest trace's
+pixel resolution, rounded to a 1-2-5 step, never extrapolated; the report names the traces that bounded it. Resampling
+is per quantity: dB linearly in dB, phase unwrapped then linear, Γ in the complex plane, in log f on a log axis.
+Magnitude and phase of one entry combine; a chart and a rectangular trace of one entry are cross-checked and the larger
+difference reported, the chart written by default for a reflection (`--prefer`). An entry drawn only as a phase, or
+only one of re/im, has nothing to put it on and refuses (`magnitude`).
+
+Missing phase: minimum phase (default, *estimated*), zero, or a linear phase from a typed delay. Missing entries for a
+two-port: S12 = S21 when |S21| ≤ 0 dB throughout, else zero (an amplifier's isolation is not plotted); S22 = S11
+(symmetric). Three- and four-ports default to zero. **A fill copies a DRAWN entry, never another fill** — with neither
+S11 nor S22 drawn, S22 is not "= S11" of a zero given a moment before. The file is refused only while a trace is
+unassigned, a chart trace has no frequency, an axis is uncalibrated, or a fill names an entry that is not plotted; each
+refusal carries the flag and the dialog control that answers it. Version 1.1, DB by default, the header recording each
+picture's name and SHA-256, every calibration's residual, every trace's assignment, evidence, resolution and frequency
+rule, every fill and phase rule, the grid, and the health check (passivity, reciprocity, causality).
+
+### 15.8 Minimum phase (R-im14-10) — `MinimumPhase`
+
+The cepstral Hilbert transform of ln|S|, on **the bilinear map of the whole axis**: f = f_top·tan(θ/2) for θ in
+[0, π], so the band is the first half of the DFT circle and everything above it, out to infinity, the second. The
+bilinear map takes a minimum-phase response to a minimum-phase one with the same phase at corresponding frequencies,
+so the discrete answer is the continuous one with no tail left out. Below the band the first value is held to DC; above
+it the magnitude continues at its own end slope on log-log axes (clamped to ±120 dB/decade), never rising above where
+it ended. The report states the middle 80 % of the band as trustworthy.
+
+Measured on a two-pole low-pass (f0 = 3 GHz, Q = 0.7, band 0.1–10 GHz): 0.7° worst over the middle 80 %. The
+remaining error is the end-slope guess — the slope over the band's top tenth is not yet the asymptote's: Q = 0.5 gives
+4.4°, and a band stopping at 5/3·f0 gives 8.4°. A datasheet that shows the phase plot should have it digitised.
+
+### 15.9 Measured (`PlotRoundTripTests`, `PlotForeignDrawingTests`)
+
+Every comparison is bounded by the reading's own resolution: 1.5 × (the trace's y resolution + what the curve moves
+through within its pixel column and half a pen either side). The second term is why a notch's tip is read high — a
+2.5 px stroke spreads the steep walls over the tip's columns — and is part of the bound rather than an error.
+
+| Picture | Worst, as a share of its bound |
+|---|---|
+| circuitRF dB(S21), 1–5 GHz (±0.02 dB per pixel) | 0.53 |
+| circuitRF four pictures → `.s2p`: S21 from dB + phase / S11 from the Smith chart matched to log dB(S11) | 0.30 (\|ΔS21\| 0.0063) / 0.81 (\|ΔS11\| 0.030) |
+| circuitRF Smith S11, three markers | \|ΔΓ\| 0.0046 against the locus |
+| dark background / log axis labelled `1e9` / legend inside | 0.38 / 0.45 / 0.39 |
+| two black traces, solid and dashed, crossing | 0.34 (no swap) |
+| admittance Smith chart | \|ΔΓ\| 0.0048 |
+| JPEG at quality 60 | 0.33, one trace |
+
+A black curve within a pen of a black frame line still loses the rows the frame line takes, and its centre there is
+read off what is left: `PlotForeignDrawingTests` leaves those columns out of the two-black comparison.
+
+### 15.10 What is not done
+
+Click-to-follow and drag-to-exclude (R-im14-5) exist in the reader (`TraceHints`) but neither the dialog nor the CLI
+sets them yet. Polar charts are read but no gate draws one.

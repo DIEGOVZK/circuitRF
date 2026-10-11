@@ -26,6 +26,14 @@ public sealed class ImageKindTests(ITestOutputHelper output)
     public void ThinOrthogonalStrokes_ReadSchematic() =>
         Assert.Equal(DrawingKind.Schematic, Classify(Pictures.Schematic()).Kind);
 
+    /// <summary>R-im14-1: a plot's grid and a Smith chart's circles are a plot, not wires — Plot is asked first.</summary>
+    [Theory]
+    [InlineData("plot-two-black.png")]
+    [InlineData("smith-y.png")]
+    public void APlotPicture_ReadsPlot(string name) =>
+        Assert.Equal(DrawingKind.Plot, Classify(ImageSource.FromFile(
+            FixturePaths.Require(System.IO.Path.Combine(PlotRecognition.ForeignPlots.Folder, name))).Source!.Raster).Kind);
+
     [Fact]
     public void NoisyColourGradient_ReadsNone_AsAPhotograph()
     {

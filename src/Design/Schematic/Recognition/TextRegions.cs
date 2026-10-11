@@ -299,7 +299,7 @@ internal static class TextRegions
     }
 
     /// <summary>A word's pixels on a canvas of its box and a pixel's margin.</summary>
-    private static BinaryImage Crop(IEnumerable<int> pixels, PixelBox box, int width)
+    internal static BinaryImage Crop(IEnumerable<int> pixels, PixelBox box, int width)
     {
         int ox = box.Left - 1, oy = box.Top - 1;
         var crop = new BinaryImage(box.Width + 2, box.Height + 2);
@@ -308,7 +308,7 @@ internal static class TextRegions
     }
 
     /// <summary>The skeleton of a word's pixels, as polylines in picture pixels.</summary>
-    private static List<PathD> Strokes(IEnumerable<int> pixels, PixelBox box, int width)
+    internal static List<PathD> Strokes(IEnumerable<int> pixels, PixelBox box, int width)
     {
         int ox = box.Left - 1, oy = box.Top - 1;
         var crop = Crop(pixels, box, width);

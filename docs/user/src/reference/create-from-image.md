@@ -4,7 +4,7 @@ slug: reference/create-from-image.html
 doc-kind: Reference Guide
 breadcrumb: Docs > Reference > Create from Image
 lede: Drop a picture of a schematic or a layout and get its circuit as a schematic, or a layout's copper as a layout — what was read drawn over the picture, and every guess one click from being corrected.
-keywords: image, picture, screenshot, PNG, JPEG, paste, trace, bitmap, scale, two points, line impedance, layers, colours, preset, underlay, schematic from image, layout from image, recognise, recognize, schematic picture, datasheet, crossing, junction dot, as drawn, tidy
+keywords: image, picture, screenshot, plot, digitise, digitize, Touchstone from plot, Smith chart, datasheet plot, minimum phase, PNG, JPEG, paste, trace, bitmap, scale, two points, line impedance, layers, colours, preset, underlay, schematic from image, layout from image, recognise, recognize, schematic picture, datasheet, crossing, junction dot, as drawn, tidy
 ---
 
 <nav class="toc">
@@ -18,6 +18,7 @@ keywords: image, picture, screenshot, PNG, JPEG, paste, trace, bitmap, scale, tw
 <li><a href="#canvas">The picture, and what was read</a></li>
 <li><a href="#schematic">Schematic pictures</a></li>
 <li><a href="#scale">Scale</a></li>
+<li><a href="#plots">Plots</a></li>
 <li><a href="#layers">Layers and presets</a></li>
 <li><a href="#technology">Technology</a></li>
 <li><a href="#advanced">Advanced</a></li>
@@ -44,6 +45,8 @@ use. **Create from Image** reads it:
 - **Create Schematic from Image**, on a picture of a **layout**, traces it the same way and then reads the circuit out of
   the traced copper with [Create Schematic from Artwork](artwork-to-schematic.html) &mdash; the same recognition, the
   same parts table, the same report. The new cell holds both: the traced layout and the schematic recognised from it.
+- **Create Touchstone from Plot**, on pictures of S-parameter **plots** &mdash; dB and phase against frequency, a Smith
+  chart &mdash; digitises their curves into a Touchstone file &mdash; see [Plots](#plots).
 
 Like reading artwork, it is a best attempt that you then check. Everything it guessed is shown on the picture and
 said in the report.
@@ -86,7 +89,8 @@ with the picture itself taking the left two-thirds. **Replace…** and **Paste**
 **It is** says what the picture was read as. **Auto** decides from the picture &mdash; how much of it is ink, whether
 the ink is filled or stroked, how many colours it has, whether its lines run straight &mdash; and its label says what
 it decided, with a dot for how sure it is: green sure, amber fairly sure, red a guess. Hover over it to see what it
-measured. **Schematic** and **Layout** override it; a picture Auto reads wrongly is read your way after one click.
+measured. **Schematic**, **Layout** and **Plot** override it; a picture Auto reads wrongly is read your way after one
+click.
 
 A sparse board of one trace width can look to Auto like a schematic drawing. If it does, choose **Layout**.
 
@@ -236,6 +240,74 @@ corner. **Read as taken**, beside the size, puts the photo back as it was.
 Widths read from a photo are good enough to start a schematic from, not to trust for impedance: a line's Z0 from its
 photographed width is an estimate.
 
+## Plots {#plots}
+
+A datasheet often shows a part's S-parameters as plots and ships no file. A picture of a plot &mdash; dB or phase
+against frequency, a Smith chart, a polar chart &mdash; is read as **Plot**, and **Make** is **Touchstone** or **CSV**.
+
+| Where | Row |
+|---|---|
+| **Edit** menu | **Paste Image as Touchstone…** &mdash; the clipboard's picture, with the same enablement as the other paste rows. |
+| **Tools** menu | **Digitise Plot…** &mdash; the dialog, empty, in plot mode. |
+| Right-click a picture file in the **Project** panel | **Create Touchstone from Plot…** |
+
+**Several pictures make one file.** A datasheet's S21 and S11 are often separate figures: **Add picture…** under
+**Pictures**, or drop or paste another, adds it to the same session; **✕** takes one out. Plots and traces are
+numbered across all of them &mdash; plot 1 is the first picture's first plot, and traces are T1, T2 and so on.
+
+**On the picture**, each plot is boxed and numbered, its tick labels green where the axis used them and amber where they
+were not read or were outvoted, and each trace is drawn over its curve in its own colour and labelled with what it was read as
+(`S21 dB`). Markers are ringed, a gap bridged over a label or another curve is dashed, and a crossing of two curves of
+one colour that could not be told apart is amber. Under **Plots**, clear a plot's box to leave it out: it is drawn and
+not read.
+
+**An axis whose labels did not read** waits, and its plot's **x axis** or **y axis** row takes two positions along
+it, in pixels, with the values there: `120px=1GHz,900px=5GHz`. A logarithmic axis is read as one from its labels.
+
+**Traces.** Each row is one curve: its colour, its range, its points and its resolution per pixel. **Entry** and
+**quantity** say what it is &mdash; S21 in dB, S11 as phase, a chart's complex value, VSWR, return loss and so on
+&mdash; taken from a legend entry in its colour, a label along it, the y axis's title or the plot's title, and the dot
+says how sure that is. A curve nothing names is **Unassigned**, and the Touchstone waits for you to say which entry it is.
+
+**Frequency along a Smith or polar trace.** A chart has no frequency axis. It comes from markers on the trace whose
+readouts show their frequency, or from a rectangular plot of the same entry in the session, matched point by point; with
+neither, the trace's **Start** and **Stop** are highlighted and wait for you. Between known frequencies they are spread
+along the curve by the angle it sweeps round the chart's centre &mdash; exact for a plain line, an approximation for
+anything that resonates &mdash; so a chart with three or four markers reads far better than one with none. Frequency
+runs clockwise round the chart unless the markers say otherwise. **Smith Z0** is the chart's own `Z0 =` when one is
+printed, else 50 Ω, said in the report.
+
+**Matrix.** A Touchstone needs every entry, and a datasheet rarely plots them all. The grid shows each entry of the
+file and where it comes from &mdash; *plot 2*, *= S21*, *zero*, *min phase* &mdash; and each is a menu:
+
+| Not plotted | Filled with, unless you choose otherwise |
+|---|---|
+| S12 | S21, when S21 stays at or below 0 dB throughout (a passive part is reciprocal); zero when it rises above (an amplifier's isolation) |
+| S22 | S11 |
+| A three- or four-port's entries | zero |
+| The phase of an entry plotted only as a magnitude | **Minimum phase**, *estimated*; or zero, or a linear phase from a delay you type |
+
+**Minimum phase** works the phase out from the magnitude curve. It is a fair estimate for a filter or a matching network
+and a poor one for anything with a delay in it, and it is least sure near the ends of the plotted band: the report
+gives the middle 80 % of the band as the part to trust. **If the datasheet also plots the phase, add that picture
+too** &mdash; a phase read from a picture is always better than one estimated.
+
+**Output.** The grid is the frequency range every trace covers, at the finest trace's resolution, rounded to a tidy
+step; type a start, stop and number of points to change it, and **log** for logarithmic spacing. The Touchstone is
+written in dB and angle unless you choose magnitude and angle or real and imaginary. **Create…** asks where to save it;
+its header records each picture's name, how every trace was read and every fill and phase rule. With **Keep the source
+pictures beside the file**, each picture is copied beside it as `<name>.source.png`. The new file opens in the Data
+Display, and its passivity, reciprocity and causality check goes to Messages.
+
+**CSV** writes the curves exactly as read, in each plot's own units, and never waits: any plot digitises, S-parameters
+or not &mdash; a temperature against time comes out just as well.
+
+| Reads well | Reads less well |
+|---|---|
+| A rectangular plot with labelled ticks and distinctly coloured curves | Two curves of one colour that run together for a stretch |
+| A Smith chart whose markers show their frequencies | A Smith chart with no markers and no rectangular plot of the same entry |
+| A legend, or each curve labelled | A JPEG, read a little less exactly |
+
 ## Layers and presets {#layers}
 
 A picture's colours are its only layer information. **Layers** lists each colour with its share of the picture and
@@ -312,7 +384,7 @@ checked or meshed. Clear **Keep the source picture under the result** to leave i
 A picture with no drawing in it is shown dimmed, with one sentence saying what was seen &mdash; *No drawing found: a
 photograph-like picture with no straight line work*, *a blank picture*, *a page of text* &mdash; and two links, **Read
 it as a schematic** and **Read it as a layout**, for a picture you know better than that. A picture of line work that
-holds no circuit &mdash; a chart, a drawing &mdash; is read as a schematic and refused the same way: *No circuit: most of
+holds no circuit &mdash; a block diagram, a drawing &mdash; is read as a schematic and refused the same way: *No circuit: most of
 the lines in this picture curve or slant*, with the one link that reads it as a layout. A reading that finds nothing to make &mdash; no copper at the mapped
 colours, no technology &mdash; is shown the same way, with the control that answers it highlighted. **Create** stays
 disabled, and its tooltip is that sentence.

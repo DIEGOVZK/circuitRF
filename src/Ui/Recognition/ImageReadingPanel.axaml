@@ -294,6 +294,16 @@
                 </Expander>
 
                 <rec:PartsTablePanel Grid.Row="3" IsVisible="{Binding PartsApply}"/>
+
+                <!-- A plot picture (brief-img-14 R-im14-12): the plots, the traces table, the matrix grid, the output. -->
+                <ContentControl Grid.Row="0" Grid.RowSpan="4" Content="{Binding Plots}" IsVisible="{Binding IsPlotPicture}"
+                                HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+                    <ContentControl.DataTemplates>
+                        <DataTemplate DataType="rec:PlotSessionViewModel">
+                            <rec:PlotTracesPanel/>
+                        </DataTemplate>
+                    </ContentControl.DataTemplates>
+                </ContentControl>
             </Grid>
         </Grid>
     </Panel>

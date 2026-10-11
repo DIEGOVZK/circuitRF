@@ -1,0 +1,110 @@
+// A plot picture's overlay — brief-img-14-sparameter-plots-to-touchstone.md R-im14-12, R-im14-14.
+//
+// Built only from the session's reading of one picture: each plot's frame (its axes box, or its chart's circle) labelled
+// with its number; every tick label the reader read, green where the axis fit kept it and amber where it was rejected or
+// unread; each trace drawn over its curve in its own colour and labelled with its assignment (amber while unassigned);
+// bridged gaps dashed; ambiguous crossings amber; markers at the points they mark. The dialog's canvas and the CLI's
+// --overlay picture draw these same items.
+
+using System.Globalization;
+using CircuitRF.Design.Imaging.Plots;
+
+namespace CircuitRF.Design.Imaging;
+
+public sealed partial class ImageOverlay
+{
+    /// <summary>The id prefix of a bridged gap's dashed segment.</summary>
+    public const string GapPrefix = "gap:";
+
+    /// <summary>The id prefix of a trace — <c>trace:T3</c> — so the traces table and the canvas name each other.</summary>
+    public const string TracePrefix = "trace:";
+
+    /// <summary>What was read on picture <paramref name="picture"/> of <paramref name="session"/>.</summary>
+    public static ImageOverlay BuildPlot(PlotSession session, int picture)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        var items = new List<ImageOverlayItem>();
+        IReadOnlyList<(double X, double Y)> Box(double l, double t, double r, double b) => [(l, t), (r, t), (r, b), (l, b)];
+
+        foreach (var p in session.Plots.Where(p => p.Picture == picture))
+        {
+            var f = p.Frame;
+            string label = $"plot {p.Number.ToString(CultureInfo.InvariantCulture)}{(p.Excluded ? " (excluded)" : "")}";
+            if (f.IsChart)
+                items.Add(new ImageOverlayItem($"plot:{p.Number}", ImageOverlayClass.Plot, [], true, label, null, p.Excluded, null,
+                                               new PixelBounds(f.Cx - f.Radius, f.Cy - f.Radius, f.Cx + f.Radius, f.Cy + f.Radius), (f.Cx, f.Cy, f.Radius)));
+            else
+            {
+                var box = Box(f.Left, f.Top, f.Right, f.Bottom);
+                items.Add(new ImageOverlayItem($"plot:{p.Number}", ImageOverlayClass.Plot, [box], true, label, null, p.Excluded || !p.Calibrated, null,
+                                               PixelBounds.Of(box)));
+            }
+            if (p.Rect is { } r)
+                foreach (var (l, k) in r.XLabels.Select((l, k) => (l, k)).Concat(r.YLabels.Select((l, k) => (l, k + 1000))))
+                {
+                    var b = Box(l.Box.Left - 1, l.Box.Top - 1, l.Box.Right + 2, l.Box.Bottom + 2);
+                    items.Add(new ImageOverlayItem($"tick:{p.Number}:{k}", ImageOverlayClass.Text, [b], true, l.Text,
+                                                   l.Used ? Colours.Connected : null, !l.Used, null, PixelBounds.Of(b)));
+                }
+        }
+
+        // Words on the picture that were not read (a tick label the reader could not make out, a title): amber.
+        if (session.Words.TryGetValue(picture, out var words))
+            foreach (var w in words.Where(w => !w.Read))
+            {
+                var b = Box(w.Box.Left - 1, w.Box.Top - 1, w.Box.Right + 2, w.Box.Bottom + 2);
+                items.Add(new ImageOverlayItem($"text:{w.Id}", ImageOverlayClass.Text, [b], true, null, null, true, null, PixelBounds.Of(b)));
+            }
+
+        var plotsHere = session.Plots.Where(p => p.Picture == picture).Select(p => p.Number).ToHashSet();
+        foreach (var t in session.Traces.Where(t => plotsHere.Contains(t.Plot)))
+        {
+            var pts = t.Curve.Points;
+            if (pts.Count == 0) continue;
+            // Split at the gaps left open; draw each bridged gap dashed.
+            var runs = new List<List<(double X, double Y)>> { new() };
+            for (int i = 0; i < pts.Count; i++)
+            {
+                if (i > 0 && !t.Parametric && pts[i].X - pts[i - 1].X > 1.5)
+                {
+                    bool open = t.Curve.Gaps.Any(g => Math.Abs(g.From - pts[i - 1].X) < 0.5);
+                    if (!open)
+                        items.Add(new ImageOverlayItem($"{GapPrefix}{t.Name}:{i}", ImageOverlayClass.Trace, [[pts[i - 1], pts[i]]], false, null,
+                                                       t.Curve.Rgb, false, null, PixelBounds.Of([pts[i - 1], pts[i]]).Inflate(1)));
+                    runs.Add([]);
+                }
+                runs[^1].Add(pts[i]);
+            }
+            string what = t.Assignment.Ignored ? "ignored" : t.Assignment.Assigned
+                ? $"{t.Assignment.Entry} {Spoken(t.Assignment.Quantity)}" : "unassigned";
+            items.Add(new ImageOverlayItem($"{TracePrefix}{t.Name}", ImageOverlayClass.Trace, [.. runs.Where(r => r.Count > 0)], false,
+                                           $"{t.Name} {what}", t.Curve.Rgb, !t.Assignment.Assigned && !t.Assignment.Ignored, t.Name,
+                                           PixelBounds.Of(pts).Inflate(2)));
+            foreach (var (x, y) in t.Curve.Ambiguous)
+                items.Add(new ImageOverlayItem($"ambiguous:{t.Name}:{x.ToString("0", CultureInfo.InvariantCulture)}", ImageOverlayClass.Crossing, [],
+                                               true, "ambiguous crossing", Colours.Amber, true, null, new PixelBounds(x - 6, y - 6, x + 6, y + 6), (x, y, 6)));
+        }
+        foreach (var m in session.Markers.Where(m => plotsHere.Contains(m.Plot) && m.Placed))
+        {
+            string label = m.Name + (m.FrequencyHz is { } f ? " " + AssemblyGrid.Hz(f) : "");
+            items.Add(new ImageOverlayItem($"marker:{m.Plot}:{m.Name}:{m.X.ToString("0", CultureInfo.InvariantCulture)}", ImageOverlayClass.Marker, [], true,
+                                           label, null, m.FrequencyHz is null, null, new PixelBounds(m.X - 5, m.Y - 5, m.X + 5, m.Y + 5), (m.X, m.Y, 5)));
+        }
+        return new ImageOverlay(items, null, [], [], null, pixelAnchors: true);
+    }
+
+    /// <summary>A quantity as the overlay labels it: <c>dB</c>, <c>phase</c>, <c>|S|</c>, <c>Γ</c>.</summary>
+    public static string Spoken(PlotQuantityKind k) => k switch
+    {
+        PlotQuantityKind.Db => "dB",
+        PlotQuantityKind.Magnitude => "|S|",
+        PlotQuantityKind.PhaseDeg or PlotQuantityKind.PhaseRad => "phase",
+        PlotQuantityKind.Real => "Re",
+        PlotQuantityKind.Imag => "Im",
+        PlotQuantityKind.Complex => "complex",
+        PlotQuantityKind.Vswr => "VSWR",
+        PlotQuantityKind.ReturnLoss => "RL",
+        PlotQuantityKind.InsertionLoss => "IL",
+        _ => "?",
+    };
+}

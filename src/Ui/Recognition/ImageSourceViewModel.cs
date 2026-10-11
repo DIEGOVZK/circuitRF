@@ -12,6 +12,12 @@
 // ImageLayerMap, the targets), and both surfaces hand them to the same functions through IImageRecognitionRunner. The
 // overlay is rebuilt only from what a reading returned; the canvas draws it and never reads the picture itself.
 //
+// ── A PLOT PICTURE (IM-14) ───────────────────────────────────────────────────────────────────────────
+//
+// It is gains Plot and Make gains Touchstone and CSV. The plot mode's rows are PlotSessionViewModel's; what is here is the
+// switch into it, the canvas on whichever of the session's pictures is shown, and Create — which asks where to write,
+// because a Touchstone is a file beside the workspace's cells rather than a cell of its own.
+//
 // ── FAILURE IS SHOWN ON THE PICTURE (D16) ────────────────────────────────────────────────────────────
 //
 // A picture with no drawing in it, or a reading refused after it was made, is never a message box: the canvas shows the
@@ -30,6 +36,7 @@ using Avalonia.Media.Immutable;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CircuitRF.Design.Imaging;
+using CircuitRF.Design.Imaging.Plots;
 using CircuitRF.Design.Layout;
 using CircuitRF.Design.Layout.Recognition;
 using CircuitRF.Design.Layout.Recognition.Image;
@@ -46,6 +53,9 @@ public sealed record ImageTechnologyChoice(string Name, string Path)
 }
 
 /// <summary>What one picture reading returned, for the source to draw.</summary>
+/// <summary>What one reading of plot pictures returned (IM-14).</summary>
+internal sealed record PlotPreviewDetail(ImageKindResult Kind, PlotSession Session, TouchstoneAssemblyResult Assembly);
+
 internal sealed record ImagePreviewDetail(
     ImageKindResult Kind, Technology? Technology, string? TechnologyPath, ImageTraceResult? Trace,
     RecognitionResult? Recognition, ImageOverlay Overlay, IReadOnlyList<ImageTracePreset> MatchingPresets,
@@ -141,6 +151,14 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         };
         Presets = new ObservableCollection<string>(LoadPresets().Select(p => p.Name));
         Overrides.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasOverrides));
+        Plots.Changed += ScheduleRecognition;
+        // Create… (a plot's) is enabled by what enables Create: re-read whenever its tooltip is.
+        PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CreateTip)) CreatePlotCommand.NotifyCanExecuteChanged(); };
+        Plots.ShownChanged += () =>
+        {
+            OnPropertyChanged(nameof(Raster));
+            if (Plots.Session is { } session) Overlay = ImageOverlay.BuildPlot(session, Plots.ShownPicture);
+        };
 
         if (source is not null) Accept(source);
         EndConstruction(_defaultName ?? "", targetOwn: OwnTargetOffered);
@@ -152,12 +170,16 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
 
     [ObservableProperty] private ImageSource? _source;
 
+    /// <summary>The plot mode's session (IM-14): every picture of it, the traces table, the matrix grid.</summary>
+    public PlotSessionViewModel Plots { get; } = new();
+
     public bool HasPicture => Source is not null;
     public bool IsEmpty => Source is null;
     /// <summary>The picture the canvas shows and every click is made on: a board photo read square on its corners, the
     /// photo as taken while its corners are being set (or when none are), else the picture.</summary>
     public RasterImage? Raster =>
-        Scale.Tool != ImageMeasureTool.Corners && _photo is { Ok: true } p && ReferenceEquals(p.Corners, Scale.AppliedCorners)
+        IsPlotPicture && Plots.ShownPicture > 0 && Plots.ShownPicture < Plots.Pictures.Count ? Plots.Pictures[Plots.ShownPicture].Source.Raster
+        : Scale.Tool != ImageMeasureTool.Corners && _photo is { Ok: true } p && ReferenceEquals(p.Corners, Scale.AppliedCorners)
             ? p.Rectified!.Raster
             : Source?.Raster;
 
@@ -190,7 +212,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         var read = await paste();
         if (read is null) Status = "The clipboard holds no picture.";
         else if (!read.Ok) Status = read.Refusal ?? "";
-        else Accept(read.Source!);
+        else Take(read.Source!);
     }
 
     /// <summary>A dropped or browsed file. A file that is not a picture is refused in the status line with IM-1's
@@ -199,7 +221,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     {
         var read = ImageSource.FromFile(path);
         if (!read.Ok) { Status = read.Refusal ?? ""; return false; }
-        Accept(read.Source!);
+        Take(read.Source!);
         return true;
     }
 
@@ -208,7 +230,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     {
         var read = ImageSource.FromBytes(bytes, name);
         if (!read.Ok) { Status = read.Refusal ?? ""; return false; }
-        Accept(read.Source!);
+        Take(read.Source!);
         return true;
     }
 
@@ -222,6 +244,44 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         MakeIndex = makeSchematic ? 0 : 1;
         Accept(source);
         TargetOwn = OwnTargetOffered;
+    }
+
+    /// <summary>A dropped, pasted or added picture: in plot mode it joins the session (R-im14-13), else it is read in place
+    /// of the picture shown.</summary>
+    private void Take(ImageSource source)
+    {
+        if (IsPlotPicture) { Plots.Add(source); return; }
+        Accept(source);
+    }
+
+    /// <summary>Add picture… (plot mode): another picture into the same session.</summary>
+    [RelayCommand]
+    private async Task AddPicture()
+    {
+        if (PickPictureAsync is not { } pick || await pick() is not { Length: > 0 } path) return;
+        var read = ImageSource.FromFile(path);
+        if (!read.Ok) { Status = read.Refusal ?? ""; return; }
+        Plots.Add(read.Source!);
+    }
+
+    /// <summary>
+    /// A plot picture handed in from outside (Edit ▸ Paste Image as Touchstone…, a tree row): read as a plot with Make
+    /// Touchstone — or, when the dialog is already reading plots, added to the session (R-im14-13).
+    /// </summary>
+    public void ReadPlot(ImageSource source, bool csv = false)
+    {
+        if (IsPlotPicture && HasPicture) { Plots.Add(source); return; }
+        MakeIndex = csv ? 3 : 2;
+        Accept(source);
+        KindIndex = 3;
+    }
+
+    /// <summary>Tools ▸ Digitise Plot…: the dialog empty, in plot mode, making a CSV.</summary>
+    public void StartPlotMode(bool csv)
+    {
+        _wantedMake = csv ? 3 : 2;
+        KindIndex = 3;
+        MakeIndex = _wantedMake;
     }
 
     private void Accept(ImageSource source)
@@ -241,6 +301,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         _ownTargetDefaulted = false;
         Overrides.Clear();
         Scale.Reset();
+        Plots.SetPrimary(source);
         if (KindIndex != 0) KindIndex = 0;
         Source = source;
 
@@ -257,6 +318,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     partial void OnSourceChanged(ImageSource? value)
     {
         OnPropertyChanged(nameof(HasSource));
+        OnPropertyChanged(nameof(TargetApplies));
         OnPropertyChanged(nameof(HasPicture));
         OnPropertyChanged(nameof(IsEmpty));
         OnPropertyChanged(nameof(Raster));
@@ -269,23 +331,26 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
 
     // ── It is / Make (R-im5-2, D3) ───────────────────────────────────────────────────────────────────
 
-    /// <summary>0 Auto, 1 Schematic, 2 Layout.</summary>
+    /// <summary>0 Auto, 1 Schematic, 2 Layout, 3 Plot.</summary>
     [ObservableProperty] private int _kindIndex;
 
     /// <summary>What the picture was read as (IM-2), or null before the first reading.</summary>
     [ObservableProperty] private ImageKindResult? _readKind;
 
-    /// <summary>0 Schematic, 1 Layout.</summary>
+    /// <summary>0 Schematic, 1 Layout, 2 Touchstone, 3 CSV (the last two for a plot picture only).</summary>
     [ObservableProperty] private int _makeIndex;
 
     public bool MakeSchematic => MakeIndex == 0;
     public bool MakeLayout => MakeIndex == 1;
+    public bool MakeTouchstone => MakeIndex == 2;
+    public bool MakeCsv => MakeIndex == 3;
 
     /// <summary>The kind the dialog reads the picture as: the user's, else what was read; null while unread.</summary>
     public DrawingKind? EffectiveKind => KindIndex switch
     {
         1 => DrawingKind.Schematic,
         2 => DrawingKind.Layout,
+        3 => DrawingKind.Plot,
         _ => ReadKind?.Kind,
     };
 
@@ -296,6 +361,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             DrawingKind.Layout => "Auto (layout)",
             DrawingKind.Schematic => "Auto (schematic drawing)",
             DrawingKind.BoardPhoto => "Auto (board photo)",
+            DrawingKind.Plot => "Auto (plot)",
             _ => "Auto (no drawing)",
         };
 
@@ -322,14 +388,18 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     public bool IsAutoKind { get => KindIndex == 0; set { if (value) KindIndex = 0; } }
     public bool IsSchematicKind { get => KindIndex == 1; set { if (value) KindIndex = 1; } }
     public bool IsLayoutKind { get => KindIndex == 2; set { if (value) KindIndex = 2; } }
+    public bool IsPlotKind { get => KindIndex == 3; set { if (value) KindIndex = 3; } }
     public bool IsMakeSchematic { get => MakeIndex == 0; set { if (value) MakeIndex = 0; } }
     public bool IsMakeLayout { get => MakeIndex == 1; set { if (value) MakeIndex = 1; } }
+    public bool IsMakeTouchstone { get => MakeIndex == 2; set { if (value) MakeIndex = 2; } }
+    public bool IsMakeCsv { get => MakeIndex == 3; set { if (value) MakeIndex = 3; } }
 
     partial void OnKindIndexChanged(int value)
     {
         OnPropertyChanged(nameof(IsAutoKind));
         OnPropertyChanged(nameof(IsSchematicKind));
         OnPropertyChanged(nameof(IsLayoutKind));
+        OnPropertyChanged(nameof(IsPlotKind));
         RefreshMode();
         ScheduleRecognition();
     }
@@ -348,6 +418,8 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         if (!_refreshingMode) _wantedMake = value;
         OnPropertyChanged(nameof(IsMakeSchematic));
         OnPropertyChanged(nameof(IsMakeLayout));
+        OnPropertyChanged(nameof(IsMakeTouchstone));
+        OnPropertyChanged(nameof(IsMakeCsv));
         RefreshMode();
         RefreshTarget();
         ScheduleRecognition();
@@ -362,7 +434,13 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     {
         // A schematic picture makes a schematic: Layout is disabled, so it is not left chosen — but what the user (or the
         // command) asked to make comes back as soon as the picture is read as a layout again.
-        int make = EffectiveKind == DrawingKind.Schematic ? 0 : _wantedMake;
+        // A plot picture makes a Touchstone or a CSV and nothing else; any other picture never does.
+        int make = EffectiveKind switch
+        {
+            DrawingKind.Schematic => 0,
+            DrawingKind.Plot => _wantedMake >= 2 ? _wantedMake : 2,
+            _ => _wantedMake >= 2 ? 0 : _wantedMake,
+        };
         if (MakeIndex != make)
         {
             _refreshingMode = true;
@@ -372,6 +450,13 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         OnPropertyChanged(nameof(EffectiveKind));
         OnPropertyChanged(nameof(MakeSchematic));
         OnPropertyChanged(nameof(MakeLayout));
+        OnPropertyChanged(nameof(MakeTouchstone));
+        OnPropertyChanged(nameof(MakeCsv));
+        OnPropertyChanged(nameof(IsPlotPicture));
+        OnPropertyChanged(nameof(IsDrawingPicture));
+        OnPropertyChanged(nameof(TargetApplies));
+        OnPropertyChanged(nameof(CreatesCell));
+        OnPropertyChanged(nameof(Raster));
         OnPropertyChanged(nameof(MakeLayoutEnabled));
         OnPropertyChanged(nameof(MakeLayoutTip));
         OnPropertyChanged(nameof(Title));
@@ -397,9 +482,20 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     /// <summary>The picture is read as a schematic — the line-art options apply.</summary>
     public bool IsSchematicPicture => HasPicture && EffectiveKind == DrawingKind.Schematic;
 
+    /// <summary>The picture is read as a plot (IM-14) — the plot mode's rows apply, and Create writes a file.</summary>
+    public bool IsPlotPicture => HasPicture && EffectiveKind == DrawingKind.Plot;
+
+    /// <summary>A picture read as anything but a plot: the schematic and layout Make segments apply.</summary>
+    public bool IsDrawingPicture => !IsPlotPicture;
+
+    /// <summary>A plot makes a file, not a cell: the target row does not apply.</summary>
+    public override bool TargetApplies => HasSource && !IsPlotPicture;
+
+    public override bool CreatesCell => !IsPlotPicture;
+
     /// <summary>Whether the right column holds anything: layers and options apply to a picture read as a drawing. A
     /// picture with no drawing gives the canvas the whole width.</summary>
-    public bool HasSideColumn => IsLayoutPicture || IsSchematicPicture;
+    public bool HasSideColumn => IsLayoutPicture || IsSchematicPicture || IsPlotPicture;
 
     public int CanvasSpan => HasSideColumn ? 1 : 3;
 
@@ -416,7 +512,8 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     public override bool ShowPlacementColumns => false;
 
     public override string Title =>
-        (MakeSchematic ? "Create Schematic from Image" : "Create Layout from Image") + (HasPicture ? $" — {SourceName}" : "");
+        (MakeTouchstone ? "Create Touchstone from Plot" : MakeCsv ? "Digitise Plot"
+         : MakeSchematic ? "Create Schematic from Image" : "Create Layout from Image") + (HasPicture ? $" — {SourceName}" : "");
 
     // ── target (D14) ─────────────────────────────────────────────────────────────────────────────────
 
@@ -676,6 +773,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         ImageOverlayClass.Part => ShowParts,
         ImageOverlayClass.Line => ShowLines,
         ImageOverlayClass.Port => ShowPorts,
+        ImageOverlayClass.Plot or ImageOverlayClass.Trace or ImageOverlayClass.Marker => true,
         _ => ShowUnknowns,
     };
 
@@ -785,7 +883,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
 
     // ── the reading ─────────────────────────────────────────────────────────────────────────────────
 
-    public override string? Blocked => HasPicture ? AdvancedBlocked() ?? base.Blocked : null;
+    public override string? Blocked => HasPicture ? (IsPlotPicture ? Plots.Blocked() : AdvancedBlocked() ?? base.Blocked) : null;
 
     public override string? CreateBlocked
     {
@@ -794,6 +892,10 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             if (!HasPicture) return DropPrompt;
             if (FailureText.Length > 0) return FailureText;
             if (EffectiveKind is null) return "Reading the picture…";
+            if (EffectiveKind == DrawingKind.Plot)
+                return Blocked ?? (Plots.Session is null ? "Reading the picture…"
+                    : MakeCsv ? (Plots.HasTraces ? null : "No trace was read on the plots.")
+                    : Plots.Refusal);
             if (EffectiveKind == DrawingKind.Schematic)
                 return MakeLayout ? MakeLayoutFromSchematicTip : _schematic is null ? "Reading the picture…" : base.CreateBlocked;
             if (Scale.Error.Length > 0) return Scale.Error;
@@ -833,6 +935,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     {
         1 => read.Force(DrawingKind.Schematic),
         2 => read.Force(DrawingKind.Layout),
+        3 => read.Force(DrawingKind.Plot),
         _ => read,
     };
 
@@ -855,12 +958,26 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         // A board photo is read square once per set of corners, in the background with the rest of the reading.
         var corners = Scale.AppliedCorners;
         var photoRead = _photo is { } readBefore && ReferenceEquals(readBefore.Corners, corners) ? readBefore : null;
+        // A plot session: every picture, and the options the plot rows say (IM-14).
+        var plotInputs = Plots.Inputs();
+        var plotReading = Plots.ReadingOptions();
+        var plotAssembly = Plots.AssemblyOptions();
 
         return control =>
         {
             var read = cachedKind ?? _runner.Classify(source.Raster);
-            var kind = kindIndex switch { 1 => read.Force(DrawingKind.Schematic), 2 => read.Force(DrawingKind.Layout), _ => read };
+            var kind = kindIndex switch
+            {
+                1 => read.Force(DrawingKind.Schematic), 2 => read.Force(DrawingKind.Layout), 3 => read.Force(DrawingKind.Plot), _ => read,
+            };
             var empty = new RecognitionReport();
+            if (kind.Kind == DrawingKind.Plot)
+            {
+                var session = _runner.ReadPlots(plotInputs, plotReading, control);
+                control.Token.ThrowIfCancellationRequested();
+                var assembly = _runner.AssemblePlots(session, plotAssembly);
+                return new RecognitionPreview(null, empty, null, new PlotPreviewDetail(read, session, assembly));
+            }
             if (kind.Kind == DrawingKind.None)
                 return new RecognitionPreview(null, empty, null, new ImagePreviewDetail(read, null, null, null, null, ImageOverlay.Empty, []));
             if (kind.Kind == DrawingKind.Schematic)
@@ -904,6 +1021,21 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
 
     protected override void OnPreviewApplied(RecognitionPreview preview)
     {
+        if (preview.Detail is PlotPreviewDetail plot)
+        {
+            ReadKind = plot.Kind;
+            SetFailure("");
+            Status = "";
+            Scale.Update(null, false);
+            LayerRows.Clear();
+            Plots.Apply(plot.Session, plot.Assembly);
+            Overlay = ImageOverlay.BuildPlot(plot.Session, Plots.ShownPicture);
+            if (plot.Session.Plots.Count == 0)
+                SetFailure("No plot was found: no rectangular axes with a grid or ticks, and no Smith or polar chart.", offersKind: true);
+            RefreshCreate();
+            CreatePlotCommand.NotifyCanExecuteChanged();
+            return;
+        }
         if (preview.Detail is not ImagePreviewDetail d) return;
         ReadKind = d.Kind;
         if (d.TechnologyPath is { } path) _technologies[path] = d.Technology;
@@ -1000,6 +1132,8 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
 
     protected override CreateJob BeginCreate()
     {
+        if (IsPlotPicture)
+            return new CreateJob("", () => new CreateOutcome("A plot is written with Create… (it asks where).", null, null), "");
         var techChoice = Technology;
         var cachedTech = techChoice is not null && _technologies.TryGetValue(techChoice.Path, out var t) ? t : null;
         var input = BuildTraceInput(cachedTech, ReadKind is { } k ? ForcedKind(k) : null);
@@ -1030,6 +1164,56 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
                                              schematicTarget, options, null);
             return new CreateOutcome(run.Refusal, run.Report, () => SchematicCreated?.Invoke(run));
         }, "The schematic could not be created");
+    }
+
+    // ── a plot picture's Create (brief-img-14 R-im14-11, R-im14-12) ──────────────────────────────────────
+
+    /// <summary>Set by the window: where to write — a save dialog opened on the workspace folder with the default name
+    /// (R-im14-12); null is cancelled.</summary>
+    public Func<string, string, Task<string?>>? SavePlotFileAsync { get; set; }
+
+    /// <summary>Raised on the UI thread when a Touchstone was written: its path, the file as built, the kept pictures.</summary>
+    public event Action<string, TouchstoneAssemblyResult, IReadOnlyList<KeptPicture>, PlotSession>? TouchstoneCreated;
+
+    /// <summary>Raised on the UI thread when the digitised traces were written as CSV.</summary>
+    public event Action<string>? PlotCsvCreated;
+
+    private bool CanCreatePlot() => IsPlotPicture && !IsCreating && CreateBlocked is null;
+
+    /// <summary>Create, for a plot: asks where (the workspace folder, named after the first picture), then writes the
+    /// Touchstone (with the pictures kept beside it) or the CSV — TouchstoneAssembly.WriteFile and PlotCsv.WriteFile, the
+    /// CLI's -o and --csv.</summary>
+    [RelayCommand(CanExecute = nameof(CanCreatePlot))]
+    private async Task CreatePlot()
+    {
+        if (Plots.Session is not { } session || Plots.Assembly is not { } assembly) return;
+        bool csv = MakeCsv;
+        string name = Plots.DefaultFileName(csv);
+        string? path = SavePlotFileAsync is { } ask ? await ask(name, _workspaceDir) : Path.Combine(_workspaceDir, name);
+        if (path is null) return;
+        if (!csv && !string.Equals(Path.GetExtension(path), assembly.Extension, StringComparison.OrdinalIgnoreCase))
+            path = Path.ChangeExtension(path, assembly.Extension);
+        var inputs = Plots.Inputs();
+        bool keep = Plots.KeepSources;
+        IsCreating = true;
+        Status = $"Writing {Path.GetFileName(path)}…";
+        try
+        {
+            var kept = await Task.Run(() =>
+            {
+                if (csv) { PlotCsv.WriteFile(path, session); return (IReadOnlyList<KeptPicture>)[]; }
+                return TouchstoneAssembly.WriteFile(assembly, path, inputs, keep);
+            });
+            IsCreating = false;
+            Status = "";
+            if (csv) PlotCsvCreated?.Invoke(path);
+            else TouchstoneCreated?.Invoke(path, assembly, kept, session);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            IsCreating = false;
+            Status = $"The file could not be written: {ex.Message}";
+        }
     }
 
     // ── a schematic picture (brief-img-10 R-im10-6 … R-im10-9) ─────────────────────────────────────────

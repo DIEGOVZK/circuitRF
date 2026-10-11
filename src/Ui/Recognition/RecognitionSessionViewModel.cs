@@ -119,6 +119,12 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
     /// which shows nothing but its drop zone.</summary>
     public virtual bool HasSource => true;
 
+    /// <summary>Whether the target row applies: a source that makes a cell. A plot picture makes a file (IM-14).</summary>
+    public virtual bool TargetApplies => HasSource;
+
+    /// <summary>Whether Create writes a cell (the Create and Replace buttons) — false for a plot, which writes a file.</summary>
+    public virtual bool CreatesCell => true;
+
     /// <summary>A suggestion the status line offers, applied only when accepted (a matching layer preset, R-im5-5).</summary>
     public virtual string OfferText => "";
     public virtual bool HasOffer => false;

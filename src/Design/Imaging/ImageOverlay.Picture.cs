@@ -34,8 +34,11 @@ public sealed partial class ImageOverlay
         ImageOverlayClass.Line => Colours.Line,
         ImageOverlayClass.Port => Colours.Port,
         ImageOverlayClass.Wire => Colours.Wire,
-        ImageOverlayClass.Text => Colours.Text,
+        ImageOverlayClass.Text => item.Rgb ?? Colours.Text,
         ImageOverlayClass.Crossing => item.Rgb ?? Colours.Ignored,
+        ImageOverlayClass.Plot => Colours.Accent,
+        ImageOverlayClass.Trace => item.Rgb ?? Colours.Line,
+        ImageOverlayClass.Marker => Colours.Port,
         _ => Colours.Amber,
     };
 
@@ -102,6 +105,13 @@ public sealed partial class ImageOverlay
                     // A junction dot filled; a dangling end a ring.
                     Circle(c.X, c.Y, c.R, item.Id.StartsWith("dot:", StringComparison.Ordinal) ? (colour, 1) : (0xFFFFFF, 0.6), colour, pen);
                     break;
+                case ImageOverlayClass.Plot when item.Circle is { } c:
+                    Circle(c.X, c.Y, c.R, null, colour, pen);
+                    break;
+                case ImageOverlayClass.Marker when item.Circle is { } c:
+                    Circle(c.X, c.Y, c.R, (0xFFFFFF, 0.6), colour, pen);
+                    if (item.Label is { } ml) Text(ml, c.X + c.R + 2 * u, c.Y - c.R, colour);
+                    break;
                 case ImageOverlayClass.Crossing when item.Circle is { } c:
                     Circle(c.X, c.Y, c.R, item.Rgb == Colours.Connected ? (colour, 0.35) : null, colour, (float)(2 * u));
                     break;
@@ -123,16 +133,27 @@ public sealed partial class ImageOverlay
                         stroke.StrokeWidth = pen + (float)(2 * u);
                         canvas.DrawPath(path, stroke);
                     }
+                    // A trace is drawn on a white halo so it shows over its own curve; a bridged gap dashed.
+                    if (item.Class == ImageOverlayClass.Trace)
+                    {
+                        stroke.Color = C(0xFFFFFF, 0.9);
+                        stroke.StrokeWidth = pen + (float)(2 * u);
+                        if (!item.Id.StartsWith(GapPrefix, StringComparison.Ordinal)) canvas.DrawPath(path, stroke);
+                    }
                     stroke.Color = C(colour);
                     stroke.StrokeWidth = pen;
+                    stroke.PathEffect = item.Id.StartsWith(GapPrefix, StringComparison.Ordinal)
+                        ? SKPathEffect.CreateDash([(float)(4 * u), (float)(3 * u)], 0) : null;
                     canvas.DrawPath(path, stroke);
+                    stroke.PathEffect = null;
                     break;
                 }
             }
-            if (item.Label is { Length: > 0 } text && item.Class is ImageOverlayClass.Part or ImageOverlayClass.Line or ImageOverlayClass.Text)
+            if (item.Label is { Length: > 0 } text && item.Class is ImageOverlayClass.Part or ImageOverlayClass.Line or ImageOverlayClass.Text
+                                                                         or ImageOverlayClass.Trace or ImageOverlayClass.Plot)
             {
                 double cap = 9 * u;
-                if (item.Class == ImageOverlayClass.Line && item.Paths is [{ Count: > 0 } first, ..])
+                if (item.Class is ImageOverlayClass.Line or ImageOverlayClass.Trace && item.Paths is [{ Count: > 0 } first, ..])
                 {
                     var (mx, my) = Midpoint(first);
                     double width = StrokeFont.Layout(text, LabelFontStyle.Regular, cap).Advance;

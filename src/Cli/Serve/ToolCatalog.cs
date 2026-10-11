@@ -277,6 +277,35 @@ internal static class ToolCatalog
         new("snap45",      "--snap45",       OptKind.Str,    "on or off: snap to 45 degrees as well as to the axes."),
     ];
 
+    // brief-img-14 R-im14-14 — a plot picture's flags, each read by PlotFlags.Take in recognize's argument loop.
+    private static readonly ToolOption[] PlotOptions =
+    [
+        new("pictures",    "--picture",      OptKind.PathRepeat,
+            "Plots: more pictures read into the same session as path (an S21 plot and an S11 chart make one .s2p)."),
+        new("plot",        "--plot",         OptKind.Str,    "Plots: read only these plots, by session number (1,3); the rest are drawn, not read."),
+        new("xAxis",       "--x-axis",       OptKind.StrRepeat,
+            "Plots: calibrate an axis whose labels were not read: <px>=<value>,<px>=<value>[@plot], pixels along the axis "
+          + "and their values (120px=1GHz,900px=5GHz@2). Plot 1 without @."),
+        new("yAxis",       "--y-axis",       OptKind.StrRepeat, "Plots: as xAxis, for the y axis (80px=0,560px=-40)."),
+        new("xLog",        "--x-log",        OptKind.Flag,   "Plots: every x axis is logarithmic (otherwise the better fit is taken)."),
+        new("yLog",        "--y-log",        OptKind.Flag,   "Plots: every y axis is logarithmic."),
+        new("trace",       "--trace",        OptKind.StrRepeat,
+            "Plots: assign a trace: <T3|#rrggbb|solid|dashed|dotted>[@plot]=S21:db, quantities db, mag, phase, rad, re, im, "
+          + "complex, vswr, rl, il; or =ignore."),
+        new("smithZ0",     "--smith-z0",     OptKind.Str,    "Plots: a Smith chart's reference impedance (50Ohm, the stated default)."),
+        new("freq",        "--freq",         OptKind.StrRepeat,
+            "Plots: a chart trace's start and stop frequency, <trace>=<start>..<stop> (T4=1GHz..5GHz); combines with markers."),
+        new("phase",       "--phase",        OptKind.Str,
+            "Plots: a magnitude with no phase: S21=min (minimum phase, the default, an estimate)|zero|delay:<t>, comma-separated."),
+        new("fill",        "--fill",         OptKind.Str,
+            "Plots: an entry nobody plotted: S12=S21|zero|default|unassigned, S22=S11, comma-separated."),
+        new("prefer",      "--prefer",       OptKind.Str,    "Plots: of two traces of one entry, which is written: S11=chart|rect|T3."),
+        new("grid",        "--grid",         OptKind.Str,    "Plots: the Touchstone's grid, <start>..<stop>/<points>[log] (1GHz..5GHz/81)."),
+        new("format",      "--format",       OptKind.Str,    "Plots: db (default), ma or ri."),
+        new("csv",         "--csv",          OptKind.Path,   "Plots: also write the raw digitised traces as CSV, in each plot's own units. Never waits."),
+        new("keepSources", "--keep-sources", OptKind.Str,    "Plots: on (default) or off — keep the source pictures beside the Touchstone."),
+    ];
+
     private static readonly ToolOption PictureUnderlay = new("underlay", "--underlay", OptKind.Str,
         "on or off: lay the picture, locked at 35 %, under what is written. Default on.");
 
@@ -1013,14 +1042,20 @@ internal static class ToolCatalog
           + "a layout picture is traced at a stated scale and then read as artwork; a schematic picture's wires, symbols "
           + "and words become the circuit. To correct a picture's reading: edit the parts CSV and pass it back (parts), "
           + "flip a crossing (connect/disconnect at its x,y from result.recognize.crossings), or write the .cnl yourself — "
-          + "the format is the contract.",
+          + "the format is the contract. A PLOT picture (a rectangular S-parameter plot, a Smith or polar chart) is "
+          + "digitised: several pictures (path plus pictures) are one session, and output=<x.s2p> writes the Touchstone "
+          + "their traces describe; result.recognize.plots says what every trace was read as, on what evidence, and "
+          + "where each matrix entry came from. Look at the returned overlay, then answer an unassigned trace with "
+          + "trace, a chart trace with no frequency with freq, an unread axis with xAxis/yAxis.",
             null, null,
             [
                 new("", [ "recognize" ],
-                    [new("path", true, "A .clay, a cell folder holding a layout view, a workspace (with cell), or a picture.")],
+                    [new("path", true, "A .clay, a cell folder holding a layout view, a workspace (with cell), or a picture (the first, for plots).")],
                     [
                         new("cell", "--cell", OptKind.Str, "With a workspace path: the cell whose layout to read."),
-                        new("output", "-o", OptKind.Path, "Write the circuit as this .cnl. Nothing else."),
+                        new("output", "-o", OptKind.Path,
+                            "Write the circuit as this .cnl — or, for plot pictures, the Touchstone (.s1p … .s4p, the port "
+                          + "count the traces make; the source pictures are kept beside it). Nothing else."),
                         new("into", "--into", OptKind.Str,
                             "Write the schematic: new:<name> (a new cell beside the artwork's) or artwork (the "
                           + "artwork's own cell, only when it has no schematic view)."),
@@ -1054,7 +1089,7 @@ internal static class ToolCatalog
                         new("freeOrientation", "--free-orientation", OptKind.Flag,
                             "Draw every shunt part below its line, not on the side of the line its copper is on."),
                         new("imageKind", "--image-kind", OptKind.Str,
-                            "A picture: auto (default), schematic or layout. A picture read as no drawing is refused, naming this."),
+                            "A picture: auto (default), schematic, layout or plot. A picture read as no drawing is refused, naming this."),
                         new("tech", "--tech", OptKind.PathOrName,
                             "A picture: the technology, a .ctech path or a technology id. Default: the picture's workspace's."),
                         .. PictureTraceOptions,
@@ -1070,6 +1105,7 @@ internal static class ToolCatalog
                         new("threshold", "--threshold", OptKind.Number,
                             "A schematic picture: the ink threshold (Sauvola's k), between 0 and 1."),
                         PictureOverlayPath,
+                        .. PlotOptions,
                     ],
                     ""),
             ],
