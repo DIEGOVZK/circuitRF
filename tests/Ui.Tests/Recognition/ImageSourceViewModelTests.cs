@@ -38,6 +38,7 @@ public sealed class ImageSourceViewModelTests : IDisposable
     public async Task APictureWithNoDrawing_DisablesCreateWithItsSentence_AndTheOverrideSetsTheKind()
     {
         var vm = ImageDialog.Open(_ws, new RecordingImageRunner(DrawingKind.None), ImageDialog.Board(), makeSchematic: false);
+        vm.IsAutoKind = true;
         await vm.Recognition;
 
         Assert.StartsWith("No drawing found: a photograph-like picture", vm.FailureText);
@@ -56,6 +57,7 @@ public sealed class ImageSourceViewModelTests : IDisposable
     public async Task MakeLayout_IsDisabledForASchematicPicture_AndComesBackWhenItIsReadAsALayout()
     {
         var vm = ImageDialog.Open(_ws, new RecordingImageRunner(DrawingKind.Schematic), ImageDialog.Board(), makeSchematic: false);
+        vm.IsAutoKind = true;
         await vm.Recognition;
 
         Assert.False(vm.MakeLayoutEnabled);
@@ -67,5 +69,24 @@ public sealed class ImageSourceViewModelTests : IDisposable
 
         Assert.True(vm.MakeLayoutEnabled);
         Assert.True(vm.MakeLayout);   // what was asked for, not what the misreading forced
+    }
+
+    [Fact]
+    public async Task CreateLayoutFromImage_ReadsEveryPictureAsALayout_WithoutReadingItsKind()
+    {
+        var runner = new RecordingImageRunner(DrawingKind.Plot);
+        var vm = ImageDialog.Open(_ws, runner, ImageDialog.Board(), makeSchematic: false);
+        await vm.Recognition;
+        vm.Replace(ImageDialog.Board());
+        await vm.Recognition;
+
+        Assert.True(vm.IsLayoutKind);
+        Assert.Equal(DrawingKind.Layout, vm.EffectiveKind);
+        Assert.Equal(0, runner.Classifications);
+        Assert.NotEmpty(runner.Traces);
+
+        vm.IsAutoKind = true;   // Auto still reads it
+        await vm.Recognition;
+        Assert.Equal(1, runner.Classifications);
     }
 }

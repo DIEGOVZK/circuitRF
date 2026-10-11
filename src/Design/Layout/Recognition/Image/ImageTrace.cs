@@ -12,7 +12,8 @@
 // edge keeps one coordinate and a 45° edge keeps x ± y, both rounded once per edge rather than once per vertex —
 // rounding the two ends' x and y separately would put a 1-DBU kink in an exact 45° jog.
 //
-// A trace is refused only for no technology or no shape on any copper layer; Run also refuses no scale.
+// A trace is refused only for no technology, or no shape on any copper layer with no source picture kept under the result
+// (a layout of the picture alone is one to trace by hand); Run also refuses no scale.
 
 using System.Globalization;
 using Clipper2Lib;
@@ -253,7 +254,12 @@ public static partial class ImageTrace
         ReportColours(prep, report);
         if (input.Photo is { } photoRead) BoardPhoto.Report(photoRead, report);
         if (scaleRefusal is not null) return result with { Refusal = scaleRefusal };
-        if (!anyCopper) return result with { Refusal = NoCopperRefusal };
+        // With nothing traced, the picture under the result is still a layout worth having — one to trace by hand.
+        bool pictureAlone = input.Options.KeepUnderlay && !(input.TargetIsPlacedLayout && input.Source.Placement is LayoutBitmapPlacement);
+        if (!anyCopper && !pictureAlone) return result with { Refusal = NoCopperRefusal };
+        if (!anyCopper)
+            report.Add(RecognitionFindingClass.ImageShapesTraced, 0,
+                "No copper was traced at the mapped colours, so the layout holds the source picture alone, to trace by hand.");
 
         report.Add(RecognitionFindingClass.ImageStackupNotRead, 1,
             $"The stackup is {tech.Name}'s: a picture says nothing about the stackup, and none was read from it.");
@@ -282,17 +288,43 @@ public static partial class ImageTrace
     /// <summary>Everything read from the picture before the scale is known.</summary>
     internal sealed record Prepared(ColourClusterSet Clusters, ImageLayerMap Map, List<PixelLayer> Layers,
                                     Dictionary<string, CoverageMap> Coverage, List<PixelPad> Pads, List<CircleFit> Drills,
-                                    double NarrowestPx);
+                                    double NarrowestPx, bool Photograph = false)
+    {
+        /// <summary>The clusters traced onto each layer.</summary>
+        public IReadOnlyDictionary<string, List<int>> ClustersByLayer { get; init; } = new Dictionary<string, List<int>>();
+
+        /// <summary><paramref name="layer"/>'s coverage over the WHOLE picture, the scope ignored — what a scale is measured
+        /// on, since a scale is the picture's and not the region's: a line picked for its impedance and then left outside
+        /// a region dragged later still says how big a pixel is, and one crossing the region's edge is not narrowed by it.
+        /// <see cref="Coverage"/> itself when there is no scope.</summary>
+        public CoverageMap? WholeCoverage(string layer, PixelRect? scope)
+        {
+            if (scope is null) return Coverage.GetValueOrDefault(layer);
+            if (!ClustersByLayer.TryGetValue(layer, out var ks)) return null;
+            var v = new float[Clusters.Width * Clusters.Height];
+            foreach (int k in ks)
+            {
+                var c = Clusters.Coverage(k).Values;
+                for (int i = 0; i < v.Length; i++) v[i] = Math.Min(1f, v[i] + c[i]);
+            }
+            return new CoverageMap(Clusters.Width, Clusters.Height, v);
+        }
+    }
 
     internal static Prepared Prepare(ImageTraceInput input)
     {
         var tech = input.Technology!;
         var o = input.Options;
+        // A photograph (not a board photo read square on its corners, which classes its own pixels) is clustered with
+        // its light taken out, so a bare laminate under a warm lamp reads grey and the copper reads copper.
+        var raster = input.Source.Raster;
+        bool photograph = input.Photo is null && ImageKind.IsPhotograph(raster);
         var clusters = input.Photo?.Clusters
-                       ?? ColourClusters.Find(input.Source.Raster, Math.Max(1, o.MaxColours), new ColourClusterOptions { MergeDeltaE = o.MergeDeltaE });
+                       ?? ColourClusters.Find(photograph ? WhiteBalance.Correct(raster) : raster, Math.Max(1, o.MaxColours),
+                                              new ColourClusterOptions { MergeDeltaE = o.MergeDeltaE });
         var map = input.LayerMap is { Edited: true } edited ? edited.Rebind(clusters)
                 : input.Photo is { } photo ? photo.DefaultMap(tech)
-                : ImageLayerMap.Auto(clusters, tech);
+                : ImageLayerMap.Auto(clusters, tech, photograph);
         var contour = new ContourOptions
         {
             Simplify = o.SimplifyPx, Snap = o.Snap, SnapAngleDeg = o.SnapAngleDeg, Snap45 = o.Snap45, MinArea = 0,
@@ -359,7 +391,10 @@ public static partial class ImageTrace
                 if (region.Holes.Count == 0 && RectOf(region.Outer) is { } r) pads.Add(new PixelPad(r.left, r.top, r.right, r.bottom, li + 1));
         }
 
-        return new Prepared(clusters, map, layers, coverage, pads, drills, Narrowest(layers, copperOrder));
+        return new Prepared(clusters, map, layers, coverage, pads, drills, Narrowest(layers, copperOrder), photograph)
+        {
+            ClustersByLayer = byLayer.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal),
+        };
     }
 
     private static void ClipToScope(float[] v, int w, int h, PixelRect s)
@@ -739,8 +774,9 @@ public static partial class ImageTrace
         string resolution = ImageScale.ResolutionLine(scale.MetresPerPixel, prep.NarrowestPx);
         report.Add(RecognitionFindingClass.ImageResolution, 1, resolution + ".");
         var perLayer = traced.Where(t => t.Shapes.Count > 0).Select(t => $"{t.Name}: {t.Shapes.Count}").ToList();
-        report.Add(RecognitionFindingClass.ImageShapesTraced, shapes.Count,
-            $"{Plural(shapes.Count, "shape", "shapes")} traced — {string.Join("; ", perLayer)}" + (vias.Count > 0 ? $"; vias: {vias.Count}" : "") + ".");
+        if (shapes.Count > 0)
+            report.Add(RecognitionFindingClass.ImageShapesTraced, shapes.Count,
+                $"{Plural(shapes.Count, "shape", "shapes")} traced — {string.Join("; ", perLayer)}" + (vias.Count > 0 ? $"; vias: {vias.Count}" : "") + ".");
         report.Add(RecognitionFindingClass.ImageCirclesFitted, circles, $"{Plural(circles, "region was fitted as a circle", "regions were fitted as circles")}.");
         ReportPixels(prep, report);
         if (strokes.Count > 0)
@@ -863,7 +899,9 @@ public static partial class ImageTrace
         var rows = prep.Map.Rows;
         report.Add(RecognitionFindingClass.ImageColoursMapped, rows.Count,
             $"{Plural(rows.Count, "colour", "colours")}: " +
-            string.Join(", ", rows.Select(r => $"{r.Hex} → {(r.Overlap ? r.Spelling + " (overlap)" : r.Spelling)} ({r.Share * 100:0.#} %)")) + ".");
+            string.Join(", ", rows.Select(r => $"{r.Hex} → {(r.Overlap ? r.Spelling + " (overlap)" : r.Spelling)} ({r.Share * 100:0.#} %)")) + "." +
+            (prep.Photograph ? " The picture is a photograph: its colours are read with the light's cast taken out, and " +
+                               "unless the map is edited the copper-coloured ones are the top copper and the rest is the board." : ""));
         var ignored = rows.Where(r => r.Role == ImageLayerRole.Ignore || (r.Role != ImageLayerRole.Background && r.Layers.Count == 0 && r.Role != ImageLayerRole.Drill)).ToList();
         report.Add(RecognitionFindingClass.ImageIgnored, ignored.Count,
             $"{Plural(ignored.Count, "colour was", "colours were")} not traced: {string.Join(", ", ignored.Select(r => $"{r.Hex} ({r.Share * 100:0.#} %)"))}.");

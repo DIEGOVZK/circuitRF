@@ -96,6 +96,9 @@ click.
 
 A sparse board of one trace width can look to Auto like a schematic drawing. If it does, choose **Layout**.
 
+**Design ▸ Create ▸ Layout from Image…** opens on **Layout**, and every picture you drop, paste or browse to while it is
+open is read as a layout straight away, without Auto deciding first. Choose **Auto** to have it decide.
+
 A photograph of a board reads as **Auto (board photo)**, with a less certain dot than a drawing gets: it is read as a
 layout, and is best set square on its corners first &mdash; see [Photographs of boards](#photos).
 
@@ -136,7 +139,7 @@ highlight its part on the picture.
 |---|---|
 | Wheel, or pinch | Zoom about the pointer. |
 | Right- or middle-drag, or Space with a drag | Pan. |
-| Drag | On a layout picture, read only the rectangle dragged; **Whole picture** reads all of it again. |
+| Drag | On a layout picture, read only the rectangle dragged; drag again to read another. **Whole picture**, or **Delete**, reads all of it again. The scale stays the picture's: a line picked for **Line impedance…** still sets it when a later rectangle leaves it out. |
 | Click a crossing | On a schematic picture, connect or disconnect it. |
 | Drag a wire end | On a schematic picture, drop a wire end that reaches nothing onto a pin to connect it. |
 | Double-click, **F** or the Zoom to Fit button | Fit the picture. It opens fitted and stays fitted as the dialog is resized, until it is zoomed or panned. |
@@ -398,6 +401,10 @@ what it is read as: one of your technology's layers, **Drill**, **Board outline*
 **Drill**, and the rest to your copper layers by area, top first; a colour that is two translucent layers drawn over
 each other is read as both. Hover over a row to see its colour on the picture.
 
+A photograph is read differently, since it shows one side of a real board and its largest colour is usually the
+laminate or the mask. Its colours are read with the lamp's tint taken out, the copper-coloured ones go to your top
+copper layer, and the rest &mdash; the board, the bench &mdash; to **Ignore**. Change a row if a colour is read wrongly.
+
 Change a row and it is marked with a dot: every later reading keeps it.
 
 Pictures from one source use the same colours every time, so a map can be kept. **Save Preset…** keeps the map and the
@@ -436,6 +443,9 @@ cell's folder; it is an ordinary bitmap, which you can move, resize, fade or del
 **Properties** shows its file, position, size and opacity &mdash; and it is never exported,
 checked or meshed. Clear **Keep the source picture under the result** to leave it out.
 
+With the picture kept, **Create** writes a layout even when no copper is traced &mdash; set every colour to **Ignore**
+and it holds the picture alone, at the scale you set, to draw over by hand in the layout editor.
+
 ## What reads well, and what does not {#reads}
 
 | Picture | Expect |
@@ -465,12 +475,13 @@ checked or meshed. Clear **Keep the source picture under the result** to leave i
 
 ## When nothing can be read {#failure}
 
-A picture with no drawing in it is shown dimmed, with one sentence saying what was seen &mdash; *No drawing found: a
+A picture with no drawing in it is shown faded, with one sentence at its foot saying what was seen &mdash; *No drawing found: a
 photograph-like picture with no straight line work*, *a blank picture*, *a page of text* &mdash; and two links, **Read
 it as a schematic** and **Read it as a layout**, for a picture you know better than that. A picture of line work that
 holds no circuit &mdash; a block diagram, a drawing &mdash; is read as a schematic and refused the same way: *No circuit: most of
 the lines in this picture curve or slant*, with the one link that reads it as a layout. A reading that finds nothing to make &mdash; no copper at the mapped
-colours, no technology &mdash; is shown the same way, with the control that answers it highlighted. **Paste Image as
+colours with **Keep the source picture under the result** cleared, no technology &mdash; is shown the same way, with
+the control that answers it highlighted. **Paste Image as
 Schematic** refuses a picture that is not a schematic &mdash; a photograph, a shaded illustration, a page of text, or one
 whose best reading finds almost nothing a schematic has &mdash; in one sentence in **Messages**: *This picture does not
 look like a schematic: …*, and pastes nothing. **Create** stays

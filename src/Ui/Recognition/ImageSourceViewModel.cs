@@ -111,6 +111,8 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         _technologyIndex = TechnologyChoices.Count == 0 ? -1 : Math.Clamp(defaultTechnology, 0, TechnologyChoices.Count - 1);
         _makeIndex = makeSchematic ? 0 : 1;
         _wantedMake = _makeIndex;
+        _commandKind = makeSchematic ? 0 : 2;
+        _kindIndex = _commandKind;
 
         var o = options ?? new ImageTraceOptions();
         _simplifyText = Num(o.SimplifyPx);
@@ -265,6 +267,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     public void Read(ImageSource source, bool makeSchematic)
     {
         MakeIndex = makeSchematic ? 0 : 1;
+        _commandKind = makeSchematic ? 0 : 2;
         Accept(source);
         TargetOwn = OwnTargetOffered;
     }
@@ -306,6 +309,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     {
         if (IsPlotPicture && HasPicture) { Plots.Add(source); return; }
         MakeIndex = csv ? 3 : 2;
+        _commandKind = 3;
         Accept(source);
         KindIndex = 3;
     }
@@ -314,6 +318,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     public void StartPlotMode(bool csv)
     {
         _wantedMake = csv ? 3 : 2;
+        _commandKind = 3;
         KindIndex = 3;
         MakeIndex = _wantedMake;
     }
@@ -339,7 +344,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         Scale.Reset();
         BoxTool = PlotBoxTool.None;
         Plots.SetPrimary(source);
-        if (KindIndex != 0) KindIndex = 0;
+        if (KindIndex != _commandKind) KindIndex = _commandKind;
         Source = source;
 
         // The name follows the picture until the user types one of their own.
@@ -371,6 +376,11 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
 
     /// <summary>0 Auto, 1 Schematic, 2 Layout, 3 Plot.</summary>
     [ObservableProperty] private int _kindIndex;
+
+    /// <summary>The kind the command that opened the dialog names — Layout for Create Layout from Image, Plot for the plot
+    /// commands, Auto for Create Schematic from Image (a schematic is made from a layout picture too). Every picture handed
+    /// in starts there, and a kind other than Auto is never classified: the command already said what the picture is.</summary>
+    private int _commandKind;
 
     /// <summary>What the picture was read as (IM-2), or null before the first reading.</summary>
     [ObservableProperty] private ImageKindResult? _readKind;
@@ -1155,6 +1165,17 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         _ => read,
     };
 
+    /// <summary>What a create goes by: the reading forced as the user chose, else the chosen kind stated, unread.</summary>
+    private ImageKindResult? CurrentKind() => ReadKind is { } k ? ForcedKind(k) : StatedKind(KindIndex);
+
+    private static ImageKindResult? StatedKind(int kindIndex) => kindIndex switch
+    {
+        1 => ImageKindResult.Stated(DrawingKind.Schematic),
+        2 => ImageKindResult.Stated(DrawingKind.Layout),
+        3 => ImageKindResult.Stated(DrawingKind.Plot),
+        _ => null,
+    };
+
     protected override Func<RunControl, RecognitionPreview>? BeginPreview()
     {
         if (Source is not { } source) return null;
@@ -1183,8 +1204,10 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
 
         return control =>
         {
-            var read = cachedKind ?? _runner.Classify(source.Raster);
-            var kind = kindIndex switch
+            // A kind already chosen is not classified for: the reading is slow, and a command that named the kind has
+            // already said what the picture is. Auto reads it then.
+            var read = cachedKind ?? (kindIndex == 0 ? _runner.Classify(source.Raster) : StatedKind(kindIndex)!);
+            var kind = read.IsStated ? read : kindIndex switch
             {
                 1 => read.Force(DrawingKind.Schematic), 2 => read.Force(DrawingKind.Layout), 3 => read.Force(DrawingKind.Plot), _ => read,
             };
@@ -1241,7 +1264,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     {
         if (preview.Detail is PlotPreviewDetail plot)
         {
-            ReadKind = plot.Kind;
+            if (!plot.Kind.IsStated) ReadKind = plot.Kind;
             SetFailure("");
             Status = "";
             Scale.Update(null, false);
@@ -1256,7 +1279,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             return;
         }
         if (preview.Detail is not ImagePreviewDetail d) return;
-        ReadKind = d.Kind;
+        if (!d.Kind.IsStated) ReadKind = d.Kind;
         if (d.TechnologyPath is { } path) _technologies[path] = d.Technology;
         _technology = d.Technology;
         _trace = d.Trace;
@@ -1357,7 +1380,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             return new CreateJob("", () => new CreateOutcome("A plot is written with Create… (it asks where).", null, null), "");
         var techChoice = Technology;
         var cachedTech = techChoice is not null && _technologies.TryGetValue(techChoice.Path, out var t) ? t : null;
-        var input = BuildTraceInput(cachedTech, ReadKind is { } k ? ForcedKind(k) : null);
+        var input = BuildTraceInput(cachedTech, CurrentKind());
         string name = NewCellName.Trim();
         Technology? Tech() => cachedTech ?? (techChoice is null ? null : _runner.LoadTechnology(techChoice.Path));
 
@@ -1573,7 +1596,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     private CreateJob BeginSchematicCreate(Func<Technology?> tech, string name)
     {
         var emit = BuildEmit();
-        var kind = ReadKind is { } k ? ForcedKind(k) : null;
+        var kind = CurrentKind();
         var input = BuildSchematicInput(null, kind);
         if (IntoPlacedSchematic && Source!.Placement is SchematicBitmapPlacement placed)
         {

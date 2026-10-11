@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using CircuitRF.Design.Imaging;
 using CircuitRF.Design.Layout;
 using CircuitRF.Design.Layout.Recognition;
@@ -30,8 +31,14 @@ internal sealed class RecordingImageRunner(DrawingKind kind) : IImageRecognition
     public List<(ImageTraceInput Input, ImageTraceTarget Target)> TraceRuns { get; } = [];
     public List<(ImageRecognitionInput Input, ImageRecognitionTarget Target, ImageRecognitionRunOptions Options)> RecognitionRuns { get; } = [];
 
-    public ImageKindResult Classify(RasterImage raster) =>
-        new(kind, 0.9, kind == DrawingKind.None ? "a photograph-like picture with no straight line work" : null, []);
+    /// <summary>How many times the picture's kind was read.</summary>
+    public int Classifications;
+
+    public ImageKindResult Classify(RasterImage raster)
+    {
+        Interlocked.Increment(ref Classifications);
+        return new(kind, 0.9, kind == DrawingKind.None ? "a photograph-like picture with no straight line work" : null, []);
+    }
 
     public Technology? LoadTechnology(string path) => Technology;
 

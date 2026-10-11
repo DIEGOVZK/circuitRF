@@ -331,7 +331,8 @@ then writes, the split `ArtworkRecognition.Recognize`/`Run` already has. Two sta
    silkscreen centre lines, the underlay, the resolution line.
 
 A trace is refused for no technology or **no shape on any copper layer** (*the picture has no copper-coloured regions
-at the mapped colours*). With no scale it is not refused — the result has the clusters, the map, the candidates and the
+at the mapped colours*) — unless the source picture is kept under the result and is not already in the target layout:
+then the layout is the picture alone, at the stated scale, for tracing by hand, and the report says so. With no scale it is not refused — the result has the clusters, the map, the candidates and the
 pixel regions, and no shapes — which is the dialog's waiting state; `Run` refuses it, listing what evidence it found.
 
 ### 6.2 Scale (R-im3-2, R-im3-3, D6)
@@ -359,6 +360,19 @@ with support ≥ 3, else nothing. Resolution metadata is listed with support 0 a
 Auto, in order: the background (most border contact, ties to the lightest — not the largest share); Drill (≥ 80 % of
 the components round and ringed by other non-background colour); Silkscreen (nothing deeper than a few pixels, and
 IM-2's text share ≥ 0.3); **overlaps**; the rest by area onto the stackup's conductors, top first, any extra ignored.
+
+**A photograph** (not one read square on its corners, §14, which classes its own pixels) breaks the area rule: it shows
+one side of a real board, and its largest colour is the laminate or the mask. A picture is a photograph to the trace when
+its 256 most common exact colours cover less than 0.85 of it (`ImageKind.IsPhotograph`) — every drawing measured is
+above 0.94, a dense layout at JPEG quality 60 0.955, a bare board's photo cropped into a paper's figure 0.42; flat share
+does not separate that figure (0.77), whose paper and smoothed photo are both flat. A photograph is clustered on its
+white-balanced picture (`WhiteBalance.Correct`), and after background, drill and silkscreen every colour that is copper
+(§14.4's exposed-copper hue and chroma) maps to the TOP conductor and every other colour is ignored. With no copper-hued
+colour the area rule applies.
+
+An impedance scale (§6.2) takes only a SOLVED width — the circuit model's, else a cross-section that found a return
+conductor. A layer with nothing to return on (the bottom copper of a two-layer board whose ground is the bottom) has
+neither, and is refused; the cross-section's own search start, 100 µm, was once taken as the width.
 
 An overlap is tested with the compositing a viewer actually does. A top layer of colour T and opacity α over a
 background W shows `P = αT + (1−α)W`; over a bottom layer showing Q it shows `αT + (1−α)Q = P + β(Q − W)` with

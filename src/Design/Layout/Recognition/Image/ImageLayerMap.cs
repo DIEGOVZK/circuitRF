@@ -13,6 +13,11 @@
 //     It maps to BOTH layers;
 //   - the rest by descending area onto the technology's copper layers, top first; any past the last copper layer are
 //     ignored.
+//
+// A PHOTOGRAPH is not a drawing: it shows one side of a real board, and its largest colour is the substrate or the mask,
+// not copper — area order put a bare board's laminate on the top copper and its traces on the bottom. So for a photo
+// (whose clusters the caller took on the white-balanced picture) every copper-hued colour is the TOP copper and every
+// other colour is the board or the bench, ignored. A photo with no copper-hued colour falls back to the rules above.
 
 using CircuitRF.Design.Imaging;
 using CircuitRF.Design.Layout.Extraction;
@@ -146,7 +151,9 @@ public sealed record ImageLayerMap(IReadOnlyList<ImageLayerRow> Rows, bool Edite
     // ── Auto ─────────────────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The map Auto reads (D7): see this file's header for the rules.</summary>
-    public static ImageLayerMap Auto(ColourClusterSet clusters, Technology technology)
+    /// <param name="photograph">The picture is a photograph, clustered white-balanced: copper-hued colours are the top
+    /// copper and the rest is ignored.</param>
+    public static ImageLayerMap Auto(ColourClusterSet clusters, Technology technology, bool photograph = false)
     {
         ArgumentNullException.ThrowIfNull(clusters);
         ArgumentNullException.ThrowIfNull(technology);
@@ -185,6 +192,21 @@ public sealed record ImageLayerMap(IReadOnlyList<ImageLayerRow> Rows, bool Edite
 
         // Overlaps among what is left, then the copper by area.
         var copperCandidates = Enumerable.Range(0, n).Where(k => role[k] is null).ToList();
+        var copperLayers = CopperLayers(technology);
+
+        if (photograph && copperLayers.Count > 0 && copperCandidates.Any(k => IsCopperColour(cs[k].Lab)))
+        {
+            string top = NameOf(technology, copperLayers[0]);
+            foreach (int k in copperCandidates)
+            {
+                bool copper = IsCopperColour(cs[k].Lab);
+                role[k] = copper ? ImageLayerRole.Layer : ImageLayerRole.Ignore;
+                if (copper) layers[k].Add(top);
+            }
+            return new ImageLayerMap([.. Enumerable.Range(0, n).Select(k =>
+                new ImageLayerRow(k, cs[k].Rgb, cs[k].Share, role[k] ?? ImageLayerRole.Ignore, layers[k]))]);
+        }
+
         var overlapOf = new Dictionary<int, (int P, int Q)>();
         foreach (int o in copperCandidates)
         {
@@ -204,7 +226,6 @@ public sealed record ImageLayerMap(IReadOnlyList<ImageLayerRow> Rows, bool Edite
             if (pair is { } pq) overlapOf[o] = pq;
         }
 
-        var copperLayers = CopperLayers(technology);
         int next = 0;
         foreach (int k in copperCandidates.Where(k => !overlapOf.ContainsKey(k)).OrderByDescending(k => cs[k].Share).ThenBy(k => k))
         {
@@ -226,6 +247,15 @@ public sealed record ImageLayerMap(IReadOnlyList<ImageLayerRow> Rows, bool Edite
         for (int k = 0; k < n; k++)
             rows.Add(new ImageLayerRow(k, cs[k].Rgb, cs[k].Share, role[k] ?? ImageLayerRole.Ignore, layers[k], overlapOf.ContainsKey(k)));
         return new ImageLayerMap(rows);
+    }
+
+    /// <summary>A white-balanced colour that is bare copper (or gold, or tin-plated copper's warm edge): the copper hues
+    /// at the chroma <see cref="BoardPhoto"/> reads exposed copper by.</summary>
+    internal static bool IsCopperColour(Lab lab)
+    {
+        double chroma = Math.Sqrt(lab.A * lab.A + lab.B * lab.B);
+        double hue = (Math.Atan2(lab.B, lab.A) * 180 / Math.PI + 360) % 360;
+        return chroma >= BoardPhoto.CopperMinChroma && hue >= BoardPhoto.CopperHueMin && hue <= BoardPhoto.CopperHueMax;
     }
 
     /// <summary>How far <paramref name="o"/> is from <paramref name="p"/> drawn translucently over <paramref name="q"/>:

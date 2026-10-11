@@ -471,3 +471,31 @@ answered on the way in, each recorded in `docs/design/image-to-circuit.md` §7:
 - **A skeleton cuts sharp corners**, enough to split "C12" at the matcher's letter-gap limit; `RasterSilkscreenEvidence`
   restores them before matching (§7.3).
 
+
+## Layout from a board photo with no corners picked (2026-10-11)
+
+A bare two-layer board photographed under a warm lamp, scaled with Line impedance, came in with its laminate on the top
+copper and its traces on the bottom, and a 50 Ω line 100 µm wide on 20 mil RO4350B (about 1.06 mm is right). Two causes:
+
+- **The area rule is a drawing's rule.** Auto maps colours to conductors by area, top first; in a photo the largest
+  colour is the laminate. Flat share does not tell such a photo from a drawing when it is cropped into a paper's figure
+  (0.77: the paper is flat and the photo is smoothed), but exact-colour repetition does — the 256 most common colours
+  cover 0.42 of the photo against ≥ 0.94 of every drawing in the corpus. A photograph is now clustered white-balanced
+  (the laminate goes from chroma 24 to 2, the copper stays at 20–27) and its copper-hued colours map to the top copper.
+- **The impedance scale took an unsolved width.** On a layer with no return conductor the line calculator has no model
+  and its cross-section refuses, but the row still carries the width the search started from (`hGuess`, 100 µm), and
+  `ImageScale.FromImpedance` took `CrossSection.WidthM` without looking at its `Z0`. It now refuses with the reason.
+
+The dialog also opened every picture in Auto, even from Create Layout from Image, and Auto read this photo as a plot
+after a long read. A dialog opened by a command that names its kind now starts there for every picture handed to it and
+never classifies until Auto is chosen (`ImageKindResult.Stated`, `IsStated` — a forced kind with no reading behind it).
+
+**A region dragged after the scale undid the scale.** The region clips each layer's coverage, and the impedance scale
+measured the picked line on that clipped coverage — so a second region leaving the line out refused the scale and traced
+nothing (the dialog looked as if it kept the first region), and a region whose edge crossed the line narrowed it.
+`Prepared.WholeCoverage` gives the scale the picture's own coverage. Delete on the dialog's canvas now clears the region.
+
+**A replace left an open tab on the old layout.** After Create replaced a cell's layout (or schematic), the window only
+activated the tab already open on it, which held the model it had read. The written files now go through the reload a
+history restore uses (`ReloadChangedDocuments`): the tab is closed, its edit session discarded, and it is reopened in
+place.

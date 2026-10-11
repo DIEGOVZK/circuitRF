@@ -51,6 +51,13 @@ public sealed record ImageKindResult(
     /// <summary>The wire spelling: <c>schematic</c>, <c>layout</c>, <c>photo</c>, <c>plot</c> or <c>none</c>.</summary>
     public string Name => ImageKind.Name(Kind);
 
+    /// <summary><paramref name="kind"/>, chosen with the picture never read: what a command that names its kind (Create
+    /// Layout from Image) goes by, so a picture it is handed is not classified first.</summary>
+    public static ImageKindResult Stated(DrawingKind kind) => new(kind, 1, null, [], Forced: true);
+
+    /// <summary>Made by <see cref="Stated"/>: forced, with no reading behind it.</summary>
+    public bool IsStated => Forced && Suggested is null;
+
     /// <summary>This reading as a picture to TRACE: a layout or a board photo as read, anything else forced to layout.</summary>
     public ImageKindResult AsLayout() => Kind is DrawingKind.Layout or DrawingKind.BoardPhoto ? this : Force(DrawingKind.Layout);
 }
@@ -332,6 +339,34 @@ public static class ImageKind
     private static string Leaning(double vote) => vote > 0.1 ? "layout" : vote < -0.1 ? "schematic" : "neither";
 
     private static double Round(double v) => Math.Round(v, 4, MidpointRounding.AwayFromZero);
+
+    /// <summary>A picture whose <see cref="CommonColourCount"/> most common exact colours cover less than this share of it
+    /// is a photograph, to the layout trace. Every drawing measured is above 0.94 (a dense layout saved as JPEG at quality
+    /// 60 is 0.955); a phone photo of a bare board, cropped into a paper's figure, is 0.42. Flat share does not tell that
+    /// figure apart — its paper and a smoothed photo are flat — but a photograph never repeats its colours.</summary>
+    public const double PhotographCommonColourShare = 0.85;
+
+    public const int CommonColourCount = 256;
+
+    /// <summary>The picture is a photograph — <see cref="PhotographCommonColourShare"/>.</summary>
+    public static bool IsPhotograph(RasterImage img) => CommonColourShare(img) < PhotographCommonColourShare;
+
+    /// <summary>The share of pixels whose exact colour is one of the picture's <see cref="CommonColourCount"/> most
+    /// common.</summary>
+    internal static double CommonColourShare(RasterImage img)
+    {
+        var p = img.Rgba;
+        int n = img.Width * img.Height;
+        if (n == 0) return 1;
+        var counts = new Dictionary<int, int>();
+        for (int i = 0; i < n; i++)
+        {
+            int rgb = (p[4 * i] << 16) | (p[4 * i + 1] << 8) | p[4 * i + 2];
+            counts[rgb] = counts.GetValueOrDefault(rgb) + 1;
+        }
+        long common = counts.Values.OrderByDescending(c => c).Take(CommonColourCount).Sum(c => (long)c);
+        return (double)common / n;
+    }
 
     /// <summary>The share of pixels within <see cref="FlatLevels"/> of their right and lower neighbours on every
     /// channel (the last row and column compared one way).</summary>

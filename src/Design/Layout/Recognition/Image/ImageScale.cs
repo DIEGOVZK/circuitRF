@@ -192,7 +192,7 @@ public static class ImageScale
             var row = prepared.Map.Of(prepared.Clusters.Label(x, y));
             layer = row is { Role: ImageLayerRole.Layer, Layers.Count: > 0 } ? row.Layers[0] : null;
         }
-        if (layer is null || !prepared.Coverage.TryGetValue(layer, out var cov))
+        if (layer is null || prepared.WholeCoverage(layer, input.Scope) is not { } cov)
         {
             refusal = "The picked point is not on a traced layer; click on the trace itself.";
             return null;
@@ -203,8 +203,15 @@ public static class ImageScale
         var calc = LineCalculator.Calculate(tech, new LineCalcRequest(layer, [], [st.Z0]));
         if (!calc.Ok) { refusal = $"The technology cannot give a width for {st.Z0:0.##} Ω on {layer}: {calc.Refusal}"; return null; }
         var r = calc.Rows.FirstOrDefault();
-        double? w = r?.Model?.WidthM ?? r?.CrossSection?.WidthM;
-        if (w is not > 0) { refusal = $"The technology gives no width for {st.Z0:0.##} Ω on {layer}: {r?.ModelRefusal ?? "out of range"}."; return null; }
+        // Only a SOLVED width is a scale. A cross-section that found no return conductor still carries the width its
+        // search started from (a substrate height, or 100 µm), and taking that put a 50 Ω line 100 µm wide.
+        double? w = r?.Model?.WidthM ?? (r?.CrossSection is { Z0: not null, Refusal: null } xs ? xs.WidthM : null);
+        if (w is not > 0)
+        {
+            string why = r?.ModelRefusal ?? r?.CrossSection?.Refusal ?? "out of range";
+            refusal = $"The technology gives no width for {st.Z0.ToString("0.##", CultureInfo.InvariantCulture)} Ω on {layer}: {why}.";
+            return null;
+        }
         return new ImageScaleCandidate(ImageScaleKind.Impedance, w.Value / widthPx, 1,
             $"a {st.Z0.ToString("0.##", CultureInfo.InvariantCulture)} Ω trace on {layer} is {FormatLength(w.Value)} wide and " +
             $"{widthPx.ToString("0.0", CultureInfo.InvariantCulture)} px in the picture");

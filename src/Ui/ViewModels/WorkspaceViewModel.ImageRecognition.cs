@@ -299,7 +299,7 @@ public partial class WorkspaceViewModel : IImageDialogHost
         }
         if (!result.Ok || result.Shapes.Count == 0)
         {
-            live.Complete(MessageLevel.Error, $"{command}: {result.Refusal ?? "nothing in the picture was traced."}");
+            live.Complete(MessageLevel.Error, $"{command}: {result.Refusal ?? ImageTrace.NoCopperRefusal}");
             return;
         }
 
@@ -462,7 +462,7 @@ public partial class WorkspaceViewModel : IImageDialogHost
         {
             _factory.ProjectTreeTool?.Refresh();
             PostImageReport(run.Report, "Create Schematic from Image", run.SchematicPath);
-            if (run.SchematicPath is { } schematic) OpenOrActivateSchematic(Path.GetFullPath(schematic));
+            if (run.SchematicPath is { } schematic) _ = ShowWrittenImageDocument(schematic, OpenOrActivateSchematic, schematic);
             dialog.Close();
         };
         vm.SchematicPictureDrawn += (edit, placed) =>
@@ -542,8 +542,28 @@ public partial class WorkspaceViewModel : IImageDialogHost
             return;
         }
         _factory.ProjectTreeTool?.Refresh();
-        if (run.LayoutPath is { } path) OpenOrActivateLayout(Path.GetFullPath(path));
+        if (run.LayoutPath is { } path) _ = ShowWrittenImageDocument(path, p => OpenOrActivateLayout(p), path);
     }
+
+    /// <summary>
+    /// Opens <paramref name="show"/>, which Create from Image just wrote — after reloading every open tab showing one of
+    /// <paramref name="written"/>. A REPLACE rewrites a cell's layout or schematic in place, and a tab already open on it
+    /// holds the model it read: activating it showed the old shapes until it was closed and opened again. It is reloaded
+    /// as a history restore reloads a file it brought back — closed, its edit session discarded (an undo would put the
+    /// replaced content back onto the new file), and reopened where its tab was. The replace was confirmed and took a
+    /// checkpoint first.
+    /// </summary>
+    private async Task ShowWrittenImageDocument(string show, Action<string> open, params string?[] written)
+    {
+        if (WorkspaceRootDir is { } root && WrittenAsRestoredPaths(root, written) is { Count: > 0 } changed)
+            await ReloadChangedDocuments(changed);
+        open(Path.GetFullPath(show));
+    }
+
+    /// <summary><paramref name="written"/> as the workspace-relative paths a restore reports.</summary>
+    internal static List<CircuitRF.Design.Revision.RestoredPath> WrittenAsRestoredPaths(string root, IEnumerable<string?> written) =>
+        [.. written.OfType<string>().Select(p => new CircuitRF.Design.Revision.RestoredPath(
+            Path.GetRelativePath(root, Path.GetFullPath(p)).Replace('\\', '/'), CircuitRF.Design.Revision.RestoredPathKind.Written))];
 
     /// <summary>Make Schematic written: the cell holds both views; the schematic opens focused, and the Tuning panel,
     /// which follows the focused schematic, lists its unknown values (as AS-8 R-as8-4).</summary>
@@ -551,7 +571,8 @@ public partial class WorkspaceViewModel : IImageDialogHost
     {
         _factory.ProjectTreeTool?.Refresh();
         PostImageReport(run.Report, "Create Schematic from Image", run.SchematicPath);
-        if (run.SchematicPath is { } schematic) OpenOrActivateSchematic(Path.GetFullPath(schematic));
+        if (run.SchematicPath is { } schematic)
+            _ = ShowWrittenImageDocument(schematic, OpenOrActivateSchematic, schematic, run.LayoutPath);
     }
 
     /// <summary>

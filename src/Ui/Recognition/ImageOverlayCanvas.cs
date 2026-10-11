@@ -160,6 +160,10 @@ public sealed class ImageOverlayCanvas : Control
 
     // ── drawing ─────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The picture under a failure: faded enough to say nothing is drawn over it, not so far that it cannot be
+    /// read — the failure note is small and sits at its foot.</summary>
+    private const double FailureOpacity = 0.7;
+
     public override void Render(DrawingContext context)
     {
         context.FillRectangle(new ImmutableSolidColorBrush(Color.Parse("#00000000")), new Rect(Bounds.Size));
@@ -172,7 +176,7 @@ public sealed class ImageOverlayCanvas : Control
             context.FillRectangle(Brushes.White, pictureRect);
             using (context.PushRenderOptions(new RenderOptions
                    { BitmapInterpolationMode = _zoom >= 2 ? BitmapInterpolationMode.None : BitmapInterpolationMode.HighQuality }))
-            using (context.PushOpacity(_vm.HasFailure ? 0.3 : 1.0))
+            using (context.PushOpacity(_vm.HasFailure ? FailureOpacity : 1.0))
                 context.DrawImage(_picture!, pictureRect);
 
             if (!_vm.HasFailure && _vm.Scale.Tool != ImageMeasureTool.Corners) DrawOverlay(context, pictureRect);
@@ -523,6 +527,13 @@ public sealed class ImageOverlayCanvas : Control
         else if (e.Key is Key.Delete or Key.Back && _vm?.Plots.SelectedIgnoreBox is { } box)
         {
             _vm.Plots.RemoveIgnoreBox(box);
+            InvalidateVisual();
+            e.Handled = true;
+        }
+        else if (e.Key is Key.Delete or Key.Back && _vm is { HasScope: true } scoped)
+        {
+            // The rectangle dragged on the picture is deleted like any other drawn box: the whole picture is read again.
+            scoped.WholePictureCommand.Execute(null);
             InvalidateVisual();
             e.Handled = true;
         }

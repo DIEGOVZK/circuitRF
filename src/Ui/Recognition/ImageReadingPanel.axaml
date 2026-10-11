@@ -136,31 +136,33 @@
                     </Border>
                     </StackPanel>
 
-                    <!-- The one prompt: a tool's instruction, or the scale the reading is waiting for. -->
-                    <Border Classes="pill" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="8,8,8,12"
-                            IsVisible="{Binding CanvasPrompt, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="{Binding CanvasPrompt}" FontSize="12" VerticalAlignment="Center"/>
-                            <Button Classes="link" Content="Cancel" Command="{Binding Scale.CancelToolCommand}"
-                                    IsVisible="{Binding Scale.HasTool}"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Failure on the picture (R-im5-8): the picture dimmed, one sentence, the links that answer it. -->
-                    <Border Classes="pill" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="600" Padding="14,10"
-                            IsVisible="{Binding HasFailure}">
-                        <StackPanel Spacing="8">
-                            <SelectableTextBlock Text="{Binding FailureText}" TextWrapping="Wrap" FontSize="13" TextAlignment="Center"
-                                                 HorizontalAlignment="Center"/>
-                            <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center"
-                                        IsVisible="{Binding FailureOffersKind}">
-                                <Button Classes="link" Content="Read it as a schematic" Command="{Binding ReadAsSchematicCommand}"
-                                        IsVisible="{Binding FailureOffersSchematic}"/>
-                                <Button Classes="link" Content="Read it as a layout" Command="{Binding ReadAsLayoutCommand}"
-                                        IsVisible="{Binding FailureOffersLayout}"/>
+                    <!-- Along the picture's foot, small, so the picture stays readable (and traceable by eye):
+                         a failure (R-im5-8) — one sentence and the links that answer it — and the one prompt, a tool's
+                         instruction or the scale the reading is waiting for. -->
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="8,8,8,12" Spacing="6">
+                        <Border Classes="pill" MaxWidth="520" Padding="10,5" HorizontalAlignment="Center"
+                                IsVisible="{Binding HasFailure}">
+                            <StackPanel Spacing="4">
+                                <SelectableTextBlock Text="{Binding FailureText}" TextWrapping="Wrap" FontSize="12" TextAlignment="Center"
+                                                     HorizontalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center"
+                                            IsVisible="{Binding FailureOffersKind}">
+                                    <Button Classes="link" Content="Read it as a schematic" Command="{Binding ReadAsSchematicCommand}"
+                                            IsVisible="{Binding FailureOffersSchematic}"/>
+                                    <Button Classes="link" Content="Read it as a layout" Command="{Binding ReadAsLayoutCommand}"
+                                            IsVisible="{Binding FailureOffersLayout}"/>
+                                </StackPanel>
                             </StackPanel>
-                        </StackPanel>
-                    </Border>
+                        </Border>
+                        <Border Classes="pill" HorizontalAlignment="Center"
+                                IsVisible="{Binding CanvasPrompt, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding CanvasPrompt}" FontSize="12" VerticalAlignment="Center"/>
+                                <Button Classes="link" Content="Cancel" Command="{Binding Scale.CancelToolCommand}"
+                                        IsVisible="{Binding Scale.HasTool}"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
 
                     <!-- The corrections made on the picture (R-im10-8), forgotten in one click. -->
                     <Button Classes="link" Content="Clear corrections" Command="{Binding ClearOverridesCommand}" IsVisible="{Binding HasOverrides}"
@@ -170,7 +172,7 @@
                     <!-- Whole picture: clears a dragged scope. -->
                     <Button Content="Whole picture" Command="{Binding WholePictureCommand}" IsVisible="{Binding HasScope}"
                             HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="8"
-                            ToolTip.Tip="Read the whole picture again, not only the rectangle dragged on it."/>
+                            ToolTip.Tip="Read the whole picture again, not only the rectangle dragged on it. Delete does the same."/>
 
                     <!-- Restore whole picture: undoes Read only here (PTU-6). -->
                     <Button Content="Restore whole picture" Command="{Binding RestorePictureCommand}" IsVisible="{Binding CanRestorePicture}"
