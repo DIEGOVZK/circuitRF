@@ -58,7 +58,7 @@ Wherever there is a picture, the command is one gesture away &mdash; and it is o
 | Where | Rows | What opens |
 |---|---|---|
 | **Design ▸ Create** | **Schematic from Image…**, **Layout from Image…** | The dialog, empty, ready for a drop, a paste or **Browse…** &mdash; every option, and the parts table to review. Enabled whenever a workspace is open; no document needs to be in front. |
-| **Edit** menu | **Paste Image as Schematic**, **Paste Image as Layout** | No dialog: the clipboard's picture is read with every default and pasted into the schematic or layout in front, with the picture itself under it as an ordinary bitmap. Everything pasted is selected and touches nothing already there, so it can be dragged into place &mdash; and in a layout, scaled as one with a corner handle or **Scale…**. Each is enabled only while a document of its own kind is in front and the clipboard holds a picture &mdash; a copied image, or one picture file copied in a file manager (two files, or a file that is not a picture, leave them greyed). The clipboard is looked at when the Edit menu opens and when you come back to the window. |
+| **Edit** menu | **Paste Image as Schematic**, **Paste Image as Layout** | No dialog: the clipboard's picture is read &mdash; a schematic picture a few ways, the most plausible reading kept &mdash; and pasted into the schematic or layout in front, with the picture itself under it as an ordinary bitmap. While it reads, a row in **Messages** says so; **Esc**, that row's right-click **Cancel**, or closing the document cancels it, and nothing is pasted. The row then says in one line what was pasted. In a schematic, the parts that need a look &mdash; one of no known kind, an amplifier or block on its default parameters, a value that was not read &mdash; are selected, and the row's **Correct…** opens the dialog on the same picture with the same reading; otherwise everything pasted is selected. Nothing pasted touches anything already there, so it can be dragged into place &mdash; and in a layout, scaled as one with a corner handle or **Scale…**. Each is enabled only while a document of its own kind is in front and the clipboard holds a picture &mdash; a copied image, or one picture file copied in a file manager (two files, or a file that is not a picture, leave them greyed). The clipboard is looked at when the Edit menu opens and when you come back to the window. |
 | Right-click a picture placed in a **layout** | **Trace Image into This Layout…**, **Create Schematic from Image…** | Tracing into this layout puts the copper in this layout, over the picture, at the size the picture is placed (scale **As placed**), in this layout's technology &mdash; one undo step. **Create Schematic from Image…** makes a new cell and offers **As placed** as its scale. |
 | Right-click a picture placed in a **schematic** | **Create Schematic from Image…**, **Create Layout from Image…** | A picture of a schematic is drawn into this schematic, over the picture, at the size the picture is placed &mdash; one undo step, and what was added is selected. A picture of a layout makes a new cell; a schematic has no physical size, so **As placed** is not offered, and the scale is set in the dialog. |
 | Right-click a picture file in the **Project** panel | **Create Schematic from Image…**, **Create Layout from Image…** | The dialog, already reading that file. Offered on a Known File and on a file inside the workspace folder whose extension is one circuitRF reads. |
@@ -185,6 +185,14 @@ schematic editor is drawn at the scale of its own grid, so its wires land on the
 picture lines up under the drawing. A part that would land on another
 is placed beside the drawing instead, and the report names it. **Tidy** draws the same circuit in circuitRF's own
 arrangement, signal path left to right, without the picture under it &mdash; it would not line up.
+
+**Readings.** A schematic picture is read up to four ways &mdash; at the scales measured from it; enlarged once more,
+for a small, low-resolution picture; with every crossing joined, for a drawing that joins its wires without dots; and
+with bold type read as drawn &mdash; and the most plausible reading is kept: the one that reads most of the ink as wires,
+parts and words, finds a part in each symbol, and leaves no net going nowhere. **Reading** lists them, each with its
+plausibility; pick another to see it at once, and **Create** makes the one shown. A way of reading that cannot change
+anything on the picture is not tried, and a large picture is read once. Stating a **Pen**, **Text height** or
+**Symbol scale**, or correcting a connection, reads it the one way.
 
 **Making a layout of it.** A schematic picture makes a schematic only. To get a layout, create the schematic, then use
 **Update Layout from Schematic**.
@@ -391,7 +399,10 @@ photograph-like picture with no straight line work*, *a blank picture*, *a page 
 it as a schematic** and **Read it as a layout**, for a picture you know better than that. A picture of line work that
 holds no circuit &mdash; a block diagram, a drawing &mdash; is read as a schematic and refused the same way: *No circuit: most of
 the lines in this picture curve or slant*, with the one link that reads it as a layout. A reading that finds nothing to make &mdash; no copper at the mapped
-colours, no technology &mdash; is shown the same way, with the control that answers it highlighted. **Create** stays
+colours, no technology &mdash; is shown the same way, with the control that answers it highlighted. **Paste Image as
+Schematic** refuses a picture that is not a schematic &mdash; a photograph, a shaded illustration, a page of text, or one
+whose best reading finds almost nothing a schematic has &mdash; in one sentence in **Messages**: *This picture does not
+look like a schematic: …*, and pastes nothing. **Create** stays
 disabled, and its tooltip is that sentence.
 
 {{ui: image-dialog-no-drawing}}

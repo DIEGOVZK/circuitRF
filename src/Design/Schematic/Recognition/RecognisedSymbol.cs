@@ -89,14 +89,15 @@ public static class SchematicSymbols
     public static bool IsMultiPinPart(ImageSymbolKind k) => k is ImageSymbolKind.Transistor or ImageSymbolKind.Transformer;
 
     /// <summary>Names every symbol region of <paramref name="read"/> with <paramref name="classifier"/> (the template
-    /// matcher when null). Pure.</summary>
-    public static SchematicSymbolsRead Read(SchematicImageRead read, IImageSymbolClassifier? classifier = null)
+    /// matcher when null). Pure; <paramref name="token"/> is checked before each region (IMF-9, R-imf9-6).</summary>
+    public static SchematicSymbolsRead Read(SchematicImageRead read, IImageSymbolClassifier? classifier = null, CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(read);
         classifier ??= new TemplateSymbolClassifier();
         double w = read.StrokeWidth, s0 = read.SymbolScale > 0 ? read.SymbolScale : TemplateSymbolClassifier.FallbackSymbolInW * w;
         var symbols = read.Symbols.Select(r =>
         {
+            token.ThrowIfCancellationRequested();
             // What a datasheet draws round its part, read by how it is wired before any template (R-imf8-1 … R-imf8-3),
             // and the block-diagram symbols drawn beside it (R-imf8-7) — a box with waves or a through line in it before
             // the IC a box is otherwise.

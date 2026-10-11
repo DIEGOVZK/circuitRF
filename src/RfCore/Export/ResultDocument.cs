@@ -1500,7 +1500,29 @@ namespace RfCore.Export
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         IReadOnlyList<ImageCrossingJson>?                  Crossings = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        RecognizePlotsJson?                                Plots = null);
+        RecognizePlotsJson?                                Plots = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        ImageReadingJson?                                  Reading = null);
+
+    /// <summary>A schematic picture's readings (IMF-9, R-imf9-7): the one kept, its plausibility, every candidate read,
+    /// and the counters the time budget is held by.</summary>
+    /// <param name="Chosen">The candidate kept: <c>measured</c>, <c>enlarged</c>, <c>crossings</c> or <c>bold</c>.</param>
+    /// <param name="Readings">Candidate readings run; 0 when the kind check alone refused the picture.</param>
+    /// <param name="Pixels">The measured reading's picture, pixels, after any enlargement.</param>
+    /// <param name="Regions">The symbol regions it matched templates against.</param>
+    /// <param name="Complex">Over the simple diagram's bounds: the other candidates ran only while the budget allowed.</param>
+    public sealed record ImageReadingJson(
+        string                                    Chosen,
+        double?                                   Score,
+        IReadOnlyList<ImageReadingCandidateJson>  Candidates,
+        int                                       Readings,
+        long                                      Pixels,
+        int                                       Regions,
+        bool                                      Complex);
+
+    /// <summary>One candidate reading and its plausibility terms, each in [0, 1].</summary>
+    public sealed record ImageReadingCandidateJson(
+        string Name, string Label, double Score, double InkExplained, double PartsNamed, double PinsHonest, double WordsRead, double GraphSane);
 
     /// <summary>
     /// What <c>recognize</c> read off plot pictures (brief-img-14 R-im14-14): every picture of the session, every plot's

@@ -135,8 +135,11 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
 
     // ---- Infrastructure ------------------------------------------------------
 
-    public IMessageSink Messages => _factory.MessagesTool
+    public IMessageSink Messages => MessagesOverride ?? _factory.MessagesTool
         ?? throw new InvalidOperationException("DockFactory must expose MessagesTool.");
+
+    /// <summary>A sink in place of the Messages panel's — for a test, which has no UI thread for the panel to post on.</summary>
+    internal IMessageSink? MessagesOverride { get; set; }
 
     // ---- Autosave / recovery -------------------------------------------------
 
@@ -17028,6 +17031,8 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
     // Clean up tracking so _scratchDocs, _scratchSymbols, and _openDocsByPath stay consistent.
     private void OnDockableClosed(IDockable dockable)
     {
+        // A paste reading into this document is cancelled with it (IMF-9, R-imf9-6).
+        CancelPasteInto(dockable);
         // Remove from scratch-docs lists for any document type.
         if (dockable is SchematicDocument scratchCandidate)
             _scratchDocs.Remove(scratchCandidate);

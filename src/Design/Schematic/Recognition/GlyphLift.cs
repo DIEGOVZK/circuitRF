@@ -126,7 +126,7 @@ internal static class GlyphLift
             foreach (int i in ink) residue.Pixels[i] = 0;
             count += members.Count;
             bool letter = members.Any(i => lone.Contains(i));
-            lifted.Add(TextRegions.Region(ink, box, W, false, letter ? [box] : [.. members.Select(i => pieces[i].Box)], []) with
+            lifted.Add(TextRegions.Region(ink, box, W, false, letter ? [box] : [.. members.Select(i => pieces[i].Box)], [], o.NormaliseBoldType) with
             {
                 Lifted = true,
                 Place = members.All(i => pieces[i].Inside) ? TextPlace.InsideBox : TextPlace.Free,

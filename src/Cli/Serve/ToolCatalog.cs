@@ -1104,6 +1104,8 @@ internal static class ToolCatalog
                             "A schematic picture: separate the wires crossing at x,y (source pixels)."),
                         new("threshold", "--threshold", OptKind.Number,
                             "A schematic picture: the ink threshold (Sauvola's k), between 0 and 1."),
+                        new("profile", "--profile", OptKind.Str,
+                            "A schematic picture: auto (default: read a few ways, keep the most plausible) or one reading alone — measured, enlarged, crossings or bold."),
                         new("pen", "--pen", OptKind.Number,
                             "A schematic picture: the width its lines are drawn with, source pixels; measured when omitted."),
                         new("textHeight", "--text-height", OptKind.Number,

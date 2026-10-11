@@ -138,6 +138,8 @@ public sealed class ImageRecognizeCliVerbTests(ITestOutputHelper output) : IDisp
             "ConnectionOverride", "PixelBox",
             // IMF-2's: the scales a user states (--pen, --text-height, --symbol-scale).
             "PictureProfileOptions",
+            // IMF-9's candidate readings, by name: what --profile takes.
+            "SchematicImageReadings",
         ];
         // Names these namespaces share with types elsewhere that src/Cli rightly uses (a component, a fit, a 3D view's
         // Perspective projection), and with an option's member (SchematicImageOptions.LineArt, set in an initializer).

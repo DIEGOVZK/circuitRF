@@ -10,12 +10,13 @@ namespace CircuitRF.Design.Imaging;
 
 public static class Skeleton
 {
-    /// <summary>The one-pixel-wide centre lines of <paramref name="mask"/>.</summary>
+    /// <summary>The one-pixel-wide centre lines of <paramref name="mask"/>; <paramref name="token"/> is checked once a
+    /// pass, so a large picture's thinning stops within one pass of being cancelled (IMF-9, R-imf9-6).</summary>
     /// <remarks>Each sub-iteration examines only the pixels a deletion has touched since that sub-iteration last looked
     /// at them: a pixel whose neighbourhood is unchanged decides as it did then. The result is the full scan's; the
     /// cost is the boundary's, not the picture's times the passes — a filled plane 1,000 px across takes 500 passes,
     /// and a full scan of a 4 MP picture per pass is minutes (IM-12).</remarks>
-    public static BinaryImage Thin(BinaryImage mask)
+    public static BinaryImage Thin(BinaryImage mask, CancellationToken token = default)
     {
         int w = mask.Width, h = mask.Height;
         var img = mask.Clone();
@@ -30,6 +31,7 @@ public static class Skeleton
         while (dirty[0].Count > 0 || dirty[1].Count > 0)
             for (int sub = 0; sub < 2; sub++)
             {
+                token.ThrowIfCancellationRequested();
                 del.Clear();
                 var these = dirty[sub];
                 // Index order, so the work list never depends on the order deletions were found in.

@@ -370,7 +370,8 @@ public sealed partial class ImageWebStyleTests(ITestOutputHelper output)
     [Fact] public void LoopCoilNames() => StyleScore.ReadsExactly(output, "loop-coil-names");
     [Fact(Skip = LowRes)] public void LowResolution() => StyleScore.ReadsExactly(output, "low-res");
 
-    /// <summary>IMF-9 refuses it in one sentence saying it is not a schematic; until then it is read and scored.</summary>
+    /// <summary>Paste refuses it in one sentence saying it is not a schematic (IMF-9 — ImageNothingHereTests holds that);
+    /// read here with its kind forced, as FieldScore reads every picture, it is scored.</summary>
     [Fact]
     public void Illustration_ReadsWithoutThrowing() => StyleScore.Read(output, "illustration");
 }

@@ -131,6 +131,13 @@ public sealed record SchematicImageRead
 
     public required SchematicImageReport Report { get; init; }
 
+    /// <summary>The ink pixels of the read picture (IMF-9, R-imf9-1) …</summary>
+    public long InkPixels { get; init; }
+
+    /// <summary>… and how many of them the reading accounts for: a wire, a symbol, a word, a supply mark or an
+    /// annotation.</summary>
+    public long ExplainedInk { get; init; }
+
     /// <summary>Why nothing can be made of the picture, or null.</summary>
     public string? Refusal { get; init; }
 
@@ -184,6 +191,7 @@ public static class SchematicImageReading
     {
         var o = options ?? new SchematicImageOptions();
         var token = control?.Token ?? CancellationToken.None;
+        token.ThrowIfCancellationRequested();
         var stated = o.Profile;
 
         // ── Normalise (R-im7-2), and the picture's own scales (R-imf2-1, R-imf2-3) ──
@@ -198,6 +206,9 @@ public static class SchematicImageReading
         double h0 = stated.TextHeight ?? text0.Height;
         bool hairline = Hairline(n.Mask, w0, o, out double cap, out double lineW);
         var (resolution, k) = PictureProfile.Resolve(pen0, h0, hairline, (long)source.Width * source.Height);
+        // A candidate reading (IMF-9, R-imf9-2): a Low picture read one step larger than its profile asks.
+        if (o.ResampleBoost > 0 && resolution == PictureResolution.Low)
+            k = PictureProfile.Boosted(k, o.ResampleBoost, (long)source.Width * source.Height);
         if (k > 1)
         {
             control?.BeginStage("Reading the line work, enlarged");
@@ -268,7 +279,7 @@ public static class SchematicImageReading
         for (int i = 0; i < wireMask.Pixels.Length; i++) if (fills.Pixels[i] != 0) wireMask.Pixels[i] = 0;
         var dt = DistanceTransform.Compute(wireMask, o.MaxThreads);
         var blobs = WireGraph.Blobs(wireMask, dt, w, o);
-        var skel = SkeletonGraph.Build(wireMask, new SkeletonGraphOptions { StrokeWidth = w, MaxThreads = o.MaxThreads });
+        var skel = SkeletonGraph.Build(wireMask, new SkeletonGraphOptions { StrokeWidth = w, MaxThreads = o.MaxThreads, Token = token });
 
         // ── The symbol scale, and the symbol tolerances it sets (R-imf2-1, R-imf2-2) ──
         // Measured on the line work as the defaults read it — the plates, bars and small outlines MaxSymbolStroke and
@@ -314,6 +325,7 @@ public static class SchematicImageReading
         // leaves the ink, and the line work is read again without it: an arrow left in would be wire or symbol.
         var marks = StrokeMarks.Find(inkMask, pieces, w, symbol.Px, text.Px, words.Words, keptBoxes, o);
         var annotations = marks.Annotations;
+        var erased = marks.Erase;
         if (marks.Erase is { } erase)
         {
             var restore = marks.Restore!;
@@ -324,7 +336,7 @@ public static class SchematicImageReading
             }
             dt = DistanceTransform.Compute(wireMask, o.MaxThreads);
             blobs = WireGraph.Blobs(wireMask, dt, w, o);
-            skel = SkeletonGraph.Build(wireMask, new SkeletonGraphOptions { StrokeWidth = w, MaxThreads = o.MaxThreads });
+            skel = SkeletonGraph.Build(wireMask, new SkeletonGraphOptions { StrokeWidth = w, MaxThreads = o.MaxThreads, Token = token });
             pieces = WireGraph.Pieces(skel, w, o);
             // Read once more for what the runs are now — the removed annotations stay as they were found.
             marks = StrokeMarks.Find(inkMask, pieces, w, symbol.Px, text.Px, words.Words, keptBoxes, o);
@@ -474,8 +486,60 @@ public static class SchematicImageReading
             SupplyMarks = attached.Supplies, Dangling = attached.Dangling,
             Strokes = read.Strokes with { RoundJunctions = round, SquareJunctions = square, DiamondJunctions = diamond },
         };
+        var (ink, explained) = InkExplained(mask, allWords, attached.Regions, attached.Supplies, graph, erased, w);
+        read = read with { InkPixels = ink, ExplainedInk = explained };
         read = read with { Report = Report(read) };
         return attached.Regions.Count == 0 ? read with { Refusal = SchematicImageReport.NoSymbolsRefusal } : read;
+    }
+
+    /// <summary>
+    /// How much of the ink the reading accounts for (IMF-9, R-imf9-1): the pixels of <paramref name="mask"/> inside a
+    /// word's glyph, a symbol region (its fills too), a supply mark, an annotation taken off the line work, or within half
+    /// a pen and a pixel of a wire. What is left is ink nothing was read from — a decoration, a picture's shading, a
+    /// region dropped as unreachable.
+    /// </summary>
+    private static (long Ink, long Explained) InkExplained(BinaryImage mask, IReadOnlyList<TextRegion> words, IReadOnlyList<SymbolRegion> regions,
+                                                           IReadOnlyList<SupplyMark> supplies, WireGraph graph, BinaryImage? erased, double w)
+    {
+        int W = mask.Width, H = mask.Height;
+        var seen = new bool[W * H];
+        void Box(PixelBox b)
+        {
+            for (int y = Math.Max(0, b.Top); y <= Math.Min(H - 1, b.Bottom); y++)
+                for (int x = Math.Max(0, b.Left); x <= Math.Min(W - 1, b.Right); x++) seen[y * W + x] = true;
+        }
+        foreach (var t in words) foreach (var g in t.Glyphs) Box(g);
+        foreach (var m in supplies) Box(m.Box);
+        foreach (var r in regions)
+        {
+            foreach (var f in r.Fills) Box(f);
+            for (int y = 0; y < r.Box.Height; y++)
+                for (int x = 0; x < r.Box.Width; x++)
+                {
+                    int X = r.Box.Left + x, Y = r.Box.Top + y;
+                    if (r.Mask[x, y] && (uint)X < (uint)W && (uint)Y < (uint)H) seen[Y * W + X] = true;
+                }
+        }
+        double reach = w / 2 + 1.5;
+        foreach (var g in graph.Segments)
+        {
+            int x0 = (int)Math.Floor(Math.Min(g.A.x, g.B.x) - reach), x1 = (int)Math.Ceiling(Math.Max(g.A.x, g.B.x) + reach);
+            int y0 = (int)Math.Floor(Math.Min(g.A.y, g.B.y) - reach), y1 = (int)Math.Ceiling(Math.Max(g.A.y, g.B.y) + reach);
+            for (int y = Math.Max(0, y0); y <= Math.Min(H - 1, y1); y++)
+                for (int x = Math.Max(0, x0); x <= Math.Min(W - 1, x1); x++)
+                {
+                    var (along, perp) = WireGraph.Local(g.A, g.B, new PointD(x + 0.5, y + 0.5));
+                    if (Math.Abs(perp) <= reach && along >= -reach && along <= g.Length + reach) seen[y * W + x] = true;
+                }
+        }
+        long ink = 0, explained = 0;
+        for (int i = 0; i < seen.Length; i++)
+        {
+            if (mask.Pixels[i] == 0) continue;
+            ink++;
+            if (seen[i] || erased is not null && erased.Pixels[i] != 0) explained++;
+        }
+        return (ink, explained);
     }
 
     /// <summary>The slanting wire pieces that are an arrow's tail standing out of a symbol (R-imf5-3): no longer than

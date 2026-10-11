@@ -203,6 +203,13 @@ public partial class WorkspaceWindow : Window
     // SchematicView tunnel and the canvas bubble, so it wins when armed and they don't double-rotate.
     private void OnWindowKeyDownTunnel(object? sender, KeyEventArgs e)
     {
+        // Esc goes to a paste reading its picture first (IMF-9, R-imf9-6): it is cancelled and the key is handled, so the
+        // editor neither deselects nor ends a tool. With no paste running, Esc means what it always did.
+        if (e.Key == Key.Escape && e.KeyModifiers == KeyModifiers.None && _vm?.CancelPasteInFlight() == true)
+        {
+            e.Handled = true;
+            return;
+        }
         if (TryHandleWirePanelKeys(e)) return;
 
         if (_vm is null || _vm.PlacementService.Pending is null) return;  // only when armed

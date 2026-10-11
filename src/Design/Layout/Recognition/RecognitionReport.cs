@@ -306,6 +306,9 @@ public enum RecognitionFindingClass
 
     /// <summary>Why the picture is not under the drawing.</summary>
     PictureUnderlay,
+
+    /// <summary>Which of the candidate readings was kept, and the runner-up (IMF-9, R-imf9-2).</summary>
+    PictureReading,
 }
 
 /// <summary>A place a finding is about, DBU, with the drawing layer when one is known.</summary>

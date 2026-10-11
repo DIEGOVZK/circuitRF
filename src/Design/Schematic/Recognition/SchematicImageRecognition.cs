@@ -51,6 +51,113 @@ public sealed record SchematicImageInput
     /// <summary>The symbol classifier and the text reader; null: the template matcher and the stroke reader.</summary>
     public IImageSymbolClassifier? Classifier { get; init; }
     public IImageTextReader? TextReader { get; init; }
+
+    /// <summary>One candidate reading to read alone (<see cref="SchematicImageReadings"/>' names) — the dialog's choice,
+    /// which its Create reads again; null reads the candidates and keeps the most plausible (R-imf9-2).</summary>
+    public string? Reading { get; init; }
+}
+
+/// <summary>What a reading cost (R-imf9-5): the counters the time budget is held by.</summary>
+/// <param name="Readings">Candidate readings run; 0 when the kind check alone decided.</param>
+/// <param name="Pixels">The pixels of the measured reading's picture, after any enlargement.</param>
+/// <param name="Regions">The symbol regions the measured reading matched templates against.</param>
+/// <param name="Complex">Over the simple diagram's bounds: the others ran only while the budget allowed.</param>
+public sealed record SchematicReadingCost(int Readings, long Pixels, int Regions, bool Complex);
+
+/// <summary>One candidate reading (R-imf9-2), its plausibility and what it read.</summary>
+public sealed record SchematicImageCandidate(string Name, double Score, SchematicImageResult Result)
+{
+    public string Label => SchematicImageReadings.Label(Name);
+}
+
+/// <summary>The candidate readings IMF-9 tries (R-imf9-2): what each changes, and when it can differ at all.</summary>
+public static class SchematicImageReadings
+{
+    /// <summary>The profile as measured (IMF-2) — always read, and read first.</summary>
+    public const string Measured = "measured";
+
+    /// <summary>A Low picture read one step larger.</summary>
+    public const string Enlarged = "enlarged";
+
+    /// <summary>Every four-way crossing joins (a picture with no junction dots and many T-junctions).</summary>
+    public const string Crossings = "crossings";
+
+    /// <summary>Bold type read as drawn, not thinned (IMF-7).</summary>
+    public const string BoldAsDrawn = "bold";
+
+    public static IReadOnlyList<string> All { get; } = [Measured, Enlarged, Crossings, BoldAsDrawn];
+
+    public static string Label(string name) => name switch
+    {
+        Enlarged => "Enlarged once more",
+        Crossings => "Every crossing joins",
+        BoldAsDrawn => "Bold type as drawn",
+        _ => "As measured",
+    };
+
+    /// <summary><paramref name="o"/> as candidate <paramref name="name"/> reads it.</summary>
+    public static SchematicImageOptions Options(string name, SchematicImageOptions o) => name switch
+    {
+        Enlarged => o with { ResampleBoost = 1 },
+        Crossings => o with { Crossings = CrossingRule.Always },
+        BoldAsDrawn => o with { NormaliseBoldType = false },
+        _ => o,
+    };
+
+    /// <summary>The candidates besides the measured one that can read <paramref name="read"/>'s picture differently —
+    /// a candidate that cannot differ is not run — in the order they are worth trying, each with the pixels it reads.</summary>
+    public static IReadOnlyList<(string Name, long Pixels)> Others(SchematicImageRead read, SchematicImageOptions o)
+    {
+        var r = new List<(string, long)>();
+        long pixels = (long)read.Width * read.Height, source = (long)read.SourceWidth * read.SourceHeight;
+        if (read.Profile is { Resolution: PictureResolution.Low } p && o.ResampleBoost == 0
+            && PictureProfile.Boosted(p.Resample, 1, source) is var b && b > p.Resample)
+            r.Add((Enlarged, source * b * b));
+        // No junction dot anywhere, a crossing read apart for want of one, and T-junctions a plenty: a drawing that joins
+        // its wires without dots may join them where they cross, too.
+        var g = read.Wires;
+        if (o.Crossings == CrossingRule.WithDot && !g.Nodes.Any(n => n.Dot)
+            && g.Crossings.Any(c => c.Node is not null && c.Reading == CrossingReading.NotConnected) && g.Nodes.Count(n => n.Degree == 3) >= MinTees)
+            r.Add((Crossings, pixels));
+        if (o.NormaliseBoldType && read.Words.Any(t => t.Thinned > 0)) r.Add((BoldAsDrawn, pixels));
+        return r;
+    }
+
+    /// <summary>The candidates of <paramref name="others"/> a picture whose measured reading read
+    /// <paramref name="measured"/> pixels runs: in order, each while every reading's pixels together stay within the
+    /// budget (R-imf9-5, held by this counter, not a clock). A reading's time is close to proportional to its pixels —
+    /// 2–3.5 s a megapixel in a Debug build — so a picture already read large is read once.</summary>
+    public static IReadOnlyList<string> WithinBudget(IReadOnlyList<(string Name, long Pixels)> others, long measured, bool complex)
+    {
+        long budget = complex ? ComplexPixels : SimplePixels, used = measured;
+        var r = new List<string>();
+        foreach (var (name, px) in others)
+            if (used + px <= budget) { used += px; r.Add(name); }
+        return r;
+    }
+
+    /// <summary>Every reading of a simple diagram together reads at most this many pixels …</summary>
+    public const long SimplePixels = 2_500_000;
+
+    /// <summary>… and of a complex one this many, while the clock allows.</summary>
+    public const long ComplexPixels = 5_000_000;
+
+    /// <summary>T-junctions a picture with no dots needs before every crossing is tried joined.</summary>
+    public const int MinTees = 2;
+
+    // ── The time budget (R-imf9-5, overview O8) ─────────────────────────────────────────────────────────────────
+
+    /// <summary>A simple diagram has at most this many symbol regions …</summary>
+    public const int SimpleRegions = 20;
+
+    /// <summary>… and at most this many pixels on its longer side as read (after IMF-2's enlargement).</summary>
+    public const int SimpleSide = 2500;
+
+    /// <summary>A complex picture runs its other candidates, one at a time, only while the reading so far, with one more
+    /// reading as long as the measured one took, stays within this.</summary>
+    public static readonly TimeSpan ComplexBudget = TimeSpan.FromSeconds(10);
+
+    public static bool IsComplex(SchematicImageRead read) => read.Symbols.Count > SimpleRegions || Math.Max(read.Width, read.Height) > SimpleSide;
 }
 
 /// <summary>What a reading produced, written nowhere.</summary>
@@ -60,6 +167,32 @@ public sealed record SchematicImageResult(
     SchematicImageCircuit? Circuit, RecognitionReport Report, string? Refusal)
 {
     public bool Ok => Refusal is null && Circuit is not null;
+
+    /// <summary>The token was cancelled before the reading finished (R-imf9-6): nothing was read, and nothing is made.</summary>
+    public bool Cancelled { get; init; }
+
+    /// <summary>What the picture was read as (IM-2): the kind check every reading starts with.</summary>
+    public ImageKindResult? Kind { get; init; }
+
+    /// <summary>The options this reading used — the chosen candidate's.</summary>
+    public SchematicImageOptions? Options { get; init; }
+
+    /// <summary>Which candidate this is (<see cref="SchematicImageReadings"/>).</summary>
+    public string ReadingName { get; init; } = SchematicImageReadings.Measured;
+
+    /// <summary>How believable it is (R-imf9-1); null when the kind check alone decided.</summary>
+    public ReadingPlausibility? Plausibility { get; init; }
+
+    /// <summary>Every candidate read, best first (R-imf9-2); one when only the measured reading could differ.</summary>
+    public IReadOnlyList<SchematicImageCandidate> Candidates { get; init; } = [];
+
+    /// <summary>The counters the time budget is held by (R-imf9-5).</summary>
+    public SchematicReadingCost Cost { get; init; } = new(0, 0, 0, false);
+
+    /// <summary>Candidate <paramref name="name"/>'s reading, carrying the same candidates — the dialog's one-click switch,
+    /// with no read again; null when no such candidate was read.</summary>
+    public SchematicImageResult? WithReading(string name) =>
+        Candidates.FirstOrDefault(c => c.Name == name)?.Result is { } r ? r with { Candidates = Candidates, Cost = Cost } : null;
 
     /// <summary>The parts table, pixel rows; empty before the emit.</summary>
     public PartsTable Parts => Circuit?.Parts ?? PartsTable.Empty with { Pixels = true };
@@ -258,7 +391,8 @@ public static class SchematicImageRecognition
 
             string pictureRef = ImageKeep.Into(cellDir, cellName, input.Source).RefFrom(schematicDir);
             if (Underlay(reading, input, model, pictureRef) is { } underlay) model.CanvasObjects.Add(underlay);
-            model.ImageSource = Provenance(input, pictureRef, now);
+            model.ImageSource = Provenance(input with { Kind = input.Kind ?? reading.Kind, Options = reading.Options ?? input.Options, Reading = reading.ReadingName },
+                                          pictureRef, now);
 
             if (existing is not null)
             {
@@ -361,16 +495,119 @@ public static class SchematicImageRecognition
 
     // ── the reading ─────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>The sentence a picture that is no schematic is refused with (R-imf9-3).</summary>
+    public static string NotASchematic(string evidence) => $"This picture does not look like a schematic: {evidence}.";
+
+    /// <summary>The refusal of a reading cancelled before it finished (R-imf9-6).</summary>
+    public const string CancelledRefusal = "The reading was cancelled.";
+
+    /// <summary>
+    /// The one reader (L5): the kind check first and alone, then the measured reading, then — with the profile measured
+    /// and no corrections — the other candidates that can differ for this picture, the most plausible kept (R-imf9-2).
+    /// A picture whose kind is none, or whose best reading is under <see cref="ReadingPlausibility.Floor"/>, is refused
+    /// in one sentence (R-imf9-3) — the floor only when the kind was read, not stated by the user. A cancelled token
+    /// returns a cancelled result; nothing is thrown.
+    /// </summary>
     private static SchematicImageResult Read(SchematicImageInput input, RecognitionEmitOptions emit, SchematicFrame? frame, RunControl? control)
     {
+        var token = control?.Token ?? CancellationToken.None;
+        SchematicImageResult Bare(string refusal, ImageKindResult? kind, int readings) =>
+            new(null, null, [], null, null, new RecognitionReport(), refusal) { Kind = kind, Cost = new SchematicReadingCost(readings, 0, 0, false) };
+        try
+        {
+            // ── is it a schematic at all: the kind check, alone (R-imf9-3) ──
+            control?.BeginStage("Is it a schematic");
+            var kind = input.Kind ?? ImageKind.Classify(input.Source.Raster);
+            token.ThrowIfCancellationRequested();
+            if (kind.Kind == DrawingKind.None) return Bare(NotASchematic(kind.Reason ?? "no drawing was found in it"), kind, 0);
+
+            // ── the measured reading, and the others that can differ (R-imf9-2) ──
+            var options = input.Options;
+            string first = SchematicImageReadings.Measured;
+            if (input.Reading is { } named && SchematicImageReadings.All.Contains(named))
+            {
+                first = named;
+                options = SchematicImageReadings.Options(named, options);
+            }
+            bool auto = input.Reading is null && options.AutoReadings && options.Profile.IsAuto && options.Overrides.Count == 0;
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var measured = Once(input, options, first, kind, emit, frame, control);
+            var spent = clock.Elapsed;
+            var readings = new List<SchematicImageResult> { measured };
+            bool complex = false;
+            if (auto && measured.Read is { Ok: true } read)
+            {
+                complex = SchematicImageReadings.IsComplex(read);
+                var others = SchematicImageReadings.WithinBudget(SchematicImageReadings.Others(read, options), (long)read.Width * read.Height, complex);
+                if (others.Count > 0)
+                {
+                    control?.BeginStage(others.Count == 1 ? "Trying another reading" : $"Trying {others.Count} other readings");
+                    var child = new RunControl { Token = token };
+                    if (!complex)
+                    {
+                        var more = new SchematicImageResult[others.Count];
+                        Parallel.For(0, others.Count, new ParallelOptions { CancellationToken = token },
+                                     i => more[i] = Once(input, SchematicImageReadings.Options(others[i], options), others[i], kind, emit, frame, child));
+                        readings.AddRange(more);
+                    }
+                    else
+                        // A complex picture: one at a time, and only while one more reading as long as the measured one
+                        // still fits the budget (overview O8).
+                        foreach (var name in others)
+                        {
+                            if (clock.Elapsed + spent > SchematicImageReadings.ComplexBudget) break;
+                            readings.Add(Once(input, SchematicImageReadings.Options(name, options), name, kind, emit, frame, child));
+                        }
+                }
+            }
+            token.ThrowIfCancellationRequested();
+
+            // ── the most plausible kept: the measured one unless another scores higher ──
+            var best = measured;
+            foreach (var r in readings.Skip(1))
+                if (r.Ok && (!best.Ok || r.Plausibility!.Score > best.Plausibility!.Score)) best = r;
+            var candidates = readings.Where(r => r.Plausibility is not null)
+                                     .OrderByDescending(r => ReferenceEquals(r, best))
+                                     .ThenByDescending(r => r.Plausibility!.Score)
+                                     .Select(r => new SchematicImageCandidate(r.ReadingName, r.Plausibility!.Score, r)).ToList();
+            var cost = new SchematicReadingCost(readings.Count, measured.Read is { } m ? (long)m.Width * m.Height : 0,
+                                                measured.Read?.Symbols.Count ?? 0, complex);
+            best = best with { Candidates = candidates, Cost = cost };
+            if (!best.Ok) return best;
+            if (candidates.Count > 1)
+            {
+                var runnerUp = candidates[1];
+                best.Report.Add(RecognitionFindingClass.PictureReading, 1, string.Create(CultureInfo.InvariantCulture,
+                    $"Read {candidates.Count} ways; kept \"{SchematicImageReadings.Label(best.ReadingName)}\" (plausibility {candidates[0].Score:0.00}) " +
+                    $"over \"{runnerUp.Label}\" ({runnerUp.Score:0.00})."));
+            }
+            // A reading too implausible to be a schematic's — unless the user said it is one (R-imf9-3).
+            if (!kind.Forced && best.Plausibility!.Score < ReadingPlausibility.Floor)
+                return best with { Refusal = NotASchematic(best.Plausibility.Evidence()) };
+            return best;
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return Bare(CancelledRefusal, input.Kind, 0) with { Cancelled = true };
+        }
+    }
+
+    /// <summary>One reading with <paramref name="options"/>: line work, symbols, words, the circuit, and its plausibility.</summary>
+    private static SchematicImageResult Once(SchematicImageInput input, SchematicImageOptions options, string name, ImageKindResult kind,
+                                             RecognitionEmitOptions emit, SchematicFrame? frame, RunControl? control)
+    {
+        var token = control?.Token ?? CancellationToken.None;
         var report = new RecognitionReport();
-        var read = SchematicImageReading.Read(input.Source, input.Options, control);
+        var read = SchematicImageReading.Read(input.Source, options, control);
         foreach (var line in read.Report.Lines()) report.Add(RecognitionFindingClass.PictureLineWork, 1, line);
-        if (!read.Ok) return new SchematicImageResult(read, null, [], null, null, report, read.Refusal);
+        SchematicImageResult Done(SchematicImageResult r) =>
+            r with { Kind = kind, Options = options, ReadingName = name, Plausibility = ReadingPlausibility.Of(r) };
+        if (!read.Ok) return Done(new SchematicImageResult(read, null, [], null, null, report, read.Refusal));
 
         control?.BeginStage("Naming symbols");
-        var symbols = SchematicSymbols.Read(read, input.Classifier);
+        var symbols = SchematicSymbols.Read(read, input.Classifier, token);
         foreach (var line in symbols.Report.Lines()) report.Add(RecognitionFindingClass.PictureSymbols, 1, line);
+        token.ThrowIfCancellationRequested();
 
         control?.BeginStage("Reading words");
         var words = ImageText.Read(read, input.TextReader);
@@ -381,16 +618,17 @@ public static class SchematicImageRecognition
             labels = LabelAssociation.Associate(read, symbols, words);
         }
         foreach (var line in labels.Report.Lines()) report.Add(RecognitionFindingClass.PictureWords, 1, line);
-        (control?.Token ?? CancellationToken.None).ThrowIfCancellationRequested();
+        token.ThrowIfCancellationRequested();
 
         control?.BeginStage("Making the circuit");
-        var circuit = SchematicImageEmit.Build(read, symbols, labels, input.Options.Overrides, new SchematicEmitOptions
+        var circuit = SchematicImageEmit.Build(read, symbols, labels, options.Overrides, new SchematicEmitOptions
         {
             Emit = emit, Technology = input.Technology, TechnologyPath = input.TechnologyPath,
             PartsCsvText = input.PartsCsvText, PartsCsvPath = input.PartsCsvPath, Frame = frame, Words = words,
-            UnknownAs = input.Options.UnknownAs,
+            UnknownAs = options.UnknownAs,
         }, report, out string? refusal);
-        return new SchematicImageResult(read, symbols, words, labels, circuit, report, refusal);
+        token.ThrowIfCancellationRequested();
+        return Done(new SchematicImageResult(read, symbols, words, labels, circuit, report, refusal));
     }
 
     /// <summary>The drawing — as drawn or tidied — with its report lines; null when it cannot be drawn.</summary>
@@ -455,6 +693,7 @@ public static class SchematicImageRecognition
         if (o.UnknownAs != d.UnknownAs) provenance.Options["UnknownAs"] = "capacitor";
         if (o.Overrides.Count > 0) provenance.Options["Overrides"] = ConnectionOverride.Spell(o.Overrides);
         if (input.PartsCsvText is not null || input.PartsCsvPath is not null) provenance.Options["PartsTable"] = "edited";
+        if (input.Reading is { } reading && reading != SchematicImageReadings.Measured) provenance.Options["Reading"] = reading;
         return provenance;
     }
 }

@@ -38,6 +38,9 @@ public sealed record SkeletonGraphOptions
     public double Simplify { get; init; } = 0.5;
 
     public int MaxThreads { get; init; }
+
+    /// <summary>Checked once a thinning pass (IMF-9, R-imf9-6).</summary>
+    public CancellationToken Token { get; init; }
 }
 
 public sealed class SkeletonGraph
@@ -70,7 +73,7 @@ public sealed class SkeletonGraph
     {
         options ??= new SkeletonGraphOptions();
         var dt = DistanceTransform.Compute(mask, options.MaxThreads);
-        var skel = Skeleton.Thin(mask);
+        var skel = Skeleton.Thin(mask, options.Token);
         RemoveStaircaseCorners(skel);
         double sw = options.StrokeWidth ?? Imaging.StrokeWidth.Estimate(skel, dt);
         var g = Walk(skel);

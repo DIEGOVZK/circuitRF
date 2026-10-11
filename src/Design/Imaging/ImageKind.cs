@@ -141,6 +141,13 @@ public static class ImageKind
     /// <summary>… and at least this share of the ink is type in rows. A layout's copper is neither thin nor typeset.</summary>
     public const double LineArtTextShare = 0.05;
 
+    /// <summary>A SHADED ILLUSTRATION (IMF-9, R-imf9-3): a flat-coloured drawing of things, not of a circuit or a board —
+    /// two or more chromatic inks, most of its ink filled area, its skeleton the width of an outline, and almost none of
+    /// it running across or down. A board's copper is skeletonised at the copper's own width (15–49 px on the gates'
+    /// layout pictures, whose filled rectangles skeletonise to diagonals), so a layout picture stays a layout; a shaded
+    /// cylinder's 1 px outline does not (measured: the IMF-1 illustration 1 px, a downloaded one 3.2 px).</summary>
+    public const double IllustrationFilledShare = 0.5, IllustrationOrthogonalShare = 0.2, IllustrationMaxStroke = 6;
+
     // ── Text (the IM-9 grouping's first pass) ────────────────────────────────────────────────────────────────────
 
     /// <summary>A text-sized component is at least this tall — below it no glyph is readable.</summary>
@@ -297,6 +304,9 @@ public static class ImageKind
         int chromatic = 0;
         foreach (var c in clusters.Clusters)
             if (c.Index != background && Math.Sqrt(c.Lab.A * c.Lab.A + c.Lab.B * c.Lab.B) > ChromaticChroma) chromatic++;
+        if (chromatic >= 2 && filledShare >= IllustrationFilledShare && orthogonal < IllustrationOrthogonalShare && sw <= IllustrationMaxStroke)
+            return None("a shaded illustration, with no circuit or board drawn in it",
+                0.5 + 0.5 * Math.Clamp((IllustrationOrthogonalShare - orthogonal) / IllustrationOrthogonalShare, 0, 1), evidence);
 
         double vInk = Vote(inkShare, InkShareCentre, InkShareSpan);
         double vFilled = Vote(filledShare, FilledShareCentre, FilledShareSpan);

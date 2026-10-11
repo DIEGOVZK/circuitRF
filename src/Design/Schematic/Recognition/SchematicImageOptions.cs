@@ -139,4 +139,17 @@ public sealed record SchematicImageOptions
     public IReadOnlyList<ConnectionOverride> Overrides { get; init; } = [];
 
     public int MaxThreads { get; init; }
+
+    // ── Readings (IMF-9) ────────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>With the profile measured (Auto) and no corrections, read a few candidate readings and keep the most
+    /// plausible (R-imf9-2); off reads once, with exactly these options.</summary>
+    public bool AutoReadings { get; init; } = true;
+
+    /// <summary>A Low picture is read this many steps larger than its profile asks (the enlarged candidate); 0 as asked.</summary>
+    public int ResampleBoost { get; init; }
+
+    /// <summary>A word heavier than a regular face is thinned to one before it is read (IMF-7, R-imf7-1); off reads it as
+    /// drawn (a candidate reading).</summary>
+    public bool NormaliseBoldType { get; init; } = true;
 }

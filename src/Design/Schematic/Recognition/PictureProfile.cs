@@ -190,6 +190,15 @@ public sealed record PictureProfile
 
     /// <summary>The resample factor a picture of pen <paramref name="w"/> and text <paramref name="h"/> (pixels) is read
     /// at, and whether it is Low; <paramref name="hairline"/>: a drawing the IM-12 thickening brings to the reference.</summary>
+    /// <summary><paramref name="k"/> raised by <paramref name="steps"/>, no further than <see cref="MaxResampledPixels"/>
+    /// allows for a picture of <paramref name="pixels"/> (IMF-9's enlarged candidate reading).</summary>
+    internal static int Boosted(int k, int steps, long pixels)
+    {
+        int b = k + steps;
+        while (b > k && pixels * b * b > MaxResampledPixels) b--;
+        return b;
+    }
+
     internal static (PictureResolution Resolution, int Factor) Resolve(double w, double h, bool hairline, long pixels)
     {
         bool low = (w < LowPen && !hairline) || (h > 0 && h < LowText);

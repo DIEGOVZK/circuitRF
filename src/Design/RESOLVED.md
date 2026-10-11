@@ -19493,3 +19493,21 @@ Traps worth keeping:
   ordinary drawings, so the cap is 5 s, not 2.5. The filter's waves stay in the region's mask (no glyph lift takes them);
   `GlyphLift` does take the words in a box, which is why the attenuator and balun are decided at emit, from the words.
   A block's generated designator would otherwise be the unread two-pin part's `C`n; it takes its own prefix.
+
+## IMF-9 — readings chosen by plausibility, "not a schematic", Paste's line and Esc (2026-10-11)
+
+- **Running every candidate tripled Paste's time.** Candidates read in parallel did not overlap much in a Debug build
+  (130 % CPU), and the enlarged candidate on an already-enlarged 1× crop reads 2–5 MP: typeset went 4.6 → 14.4 s. The
+  candidates are now cut by a PIXEL budget (2.5 MP for every reading of a simple diagram together), a counter rather
+  than a clock, so the choice is the same on every machine and the gates stay deterministic.
+- **The first floor (0.45) refused two real downloaded web schematics** (0.41, 0.43) that Paste used to paste. It is
+  0.30: the illustration, read as a schematic, scores 0.19; refusing a poor reading of a real schematic takes away the
+  dialog's chance to correct it.
+- **The first shaded-illustration rule read a layout as nothing.** Filled rectangles skeletonise to diagonals, so their
+  orthogonal share is 0 exactly as a shaded cylinder's is. The skeleton's width separates them: copper at its own width
+  (15–49 px), an illustration's outline 1–3 px (`ImageKind.IllustrationMaxStroke`).
+- **The fitted weights put nothing on "pins honest".** Every region with too many leads in the fixtures' readings is
+  also of no known kind, so "parts named" already counts it. A runaway region therefore lowers a reading's score (it
+  loses to the correct reading) but never takes an otherwise-read drawing under the floor.
+- **A cancelled read now RETURNS cancelled** (`SchematicImageResult.Cancelled`) instead of throwing; the CLI rethrows
+  so `recognize` still exits 130, and the dialog's own token check after the read still drops the preview.

@@ -35,6 +35,13 @@
                       ToolTip.Tip="Where two wires cross: never connected, connected where there is a dot, or always connected. Click a crossing on the picture to set that one."/>
         </WrapPanel>
 
+        <!-- A schematic picture read several ways (IMF-9, R-imf9-2): the readings, best first, one click apart. -->
+        <WrapPanel Classes="row" Orientation="Horizontal" IsVisible="{Binding ReadingsApply}">
+            <TextBlock Classes="label" Text="Reading" Width="70" Margin="0,0,10,0"/>
+            <ComboBox ItemsSource="{Binding ReadingChoices}" SelectedIndex="{Binding ReadingIndex}" MinWidth="220"
+                      ToolTip.Tip="The picture was read a few ways and the most plausible kept. Pick another to see it; Create makes the one shown."/>
+        </WrapPanel>
+
         <WrapPanel Classes="row" Orientation="Horizontal" IsVisible="{Binding ArtworkOptionsApply}">
             <TextBlock Classes="label" Text="Ground" Width="70" Margin="0,0,10,0"/>
             <ComboBox ItemsSource="{x:Static rec:RecognitionSessionViewModel.GroundOptions}"

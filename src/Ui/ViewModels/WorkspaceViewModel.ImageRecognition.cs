@@ -2,12 +2,14 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.Input;
 using CircuitRF.Design.Imaging;
+using CircuitRF.Engine;
 using CircuitRF.Design.Layout.Recognition;
 using CircuitRF.Design.Layout.Recognition.Image;
 using CircuitRF.Design.Workspace;
@@ -73,10 +75,75 @@ public partial class WorkspaceViewModel : IImageDialogHost
     private bool CanPasteImage() => CurrentWorkspaceRoot is not null && PasteImage.Available;
 
     // Paste Image as Schematic / as Layout paste INTO the document in focus, so each is enabled only while a document of
-    // its own kind is — and asks nothing: every setting is the default. Design ▸ Create ▸ is where the options are.
-    private bool CanPasteImageAsSchematic() => PasteImage.Available && IsSchematicDocumentActive();
+    // its own kind is — and asks nothing: every setting is chosen per picture (IMF-9). Design ▸ Create ▸ is where the
+    // options are. Neither is enabled while a paste is still reading (R-imf9-6).
+    private bool CanPasteImageAsSchematic() => _paste is null && PasteImage.Available && IsSchematicDocumentActive();
 
-    private bool CanPasteImageAsLayout() => PasteImage.Available && IsLayoutDocumentActive();
+    private bool CanPasteImageAsLayout() => _paste is null && PasteImage.Available && IsLayoutDocumentActive();
+
+    /// <summary>The paste reading in the background, and the document it pastes into (R-imf9-6); null when none is.</summary>
+    private (RunCancellation Cancellation, object Document)? _paste;
+
+    /// <summary>Whether a paste is reading its picture — while it is, the window's Esc cancels it (R-imf9-6).</summary>
+    public bool IsPasteInFlight => _paste is not null;
+
+    /// <summary>
+    /// Esc, or closing the document a paste goes into: cancels the paste in flight, through the one
+    /// <see cref="RunCancellation"/> its live row's right-click Cancel uses too. True when there was one to cancel, so
+    /// the window marks its Esc handled and the editor neither deselects nor ends a tool.
+    /// </summary>
+    public bool CancelPasteInFlight()
+    {
+        if (_paste is not { } p) return false;
+        p.Cancellation.Cancel();
+        return true;
+    }
+
+    /// <summary>The live row a paste reports on, its Cancel bound, and the paste registered as in flight.</summary>
+    private (IProgressMessage Live, RunControl Control, RunCancellation Cancellation, CancellationTokenSource Cts) BeginPaste(string command, object document)
+    {
+        string reading = $"{command}: reading the picture… (Esc to cancel)";
+        var live = Messages.BeginProgress(reading);
+        live.Update(reading, "starting", indeterminate: true);
+        var cts = new CancellationTokenSource();
+        var cancellation = new RunCancellation("the paste", cts.Cancel);
+        live.BindCancellation(cancellation);
+        var control = new RunControl
+        {
+            Token = cts.Token,
+            Progress = new Progress<RunProgress>(p =>
+            {
+                if (!cts.IsCancellationRequested) live.Update(reading, string.IsNullOrEmpty(p.Stage) ? "starting" : p.Stage, indeterminate: true);
+            }),
+        };
+        _paste = (cancellation, document);
+        RaiseImageCommandsChanged();
+        return (live, control, cancellation, cts);
+    }
+
+    private void EndPaste(RunCancellation cancellation, CancellationTokenSource cts)
+    {
+        cancellation.Finish();
+        cts.Dispose();
+        _paste = null;
+        RaiseImageCommandsChanged();
+    }
+
+    /// <summary>A document closed while a paste was reading into it: the paste is cancelled, as Esc cancels it.</summary>
+    private void CancelPasteInto(object document)
+    {
+        if (_paste is { } p && ReferenceEquals(p.Document, document)) p.Cancellation.Cancel();
+    }
+
+    /// <summary>The read Paste Image as Schematic runs off the UI thread — the one reader (L5). A seam for the tests,
+    /// which make it block at a checkpoint.</summary>
+    internal Func<CircuitRF.Design.Schematic.Recognition.SchematicImageInput, string?, RunControl,
+                  CircuitRF.Design.Schematic.Recognition.SchematicImagePasteDrawing> PasteSchematicReader { get; set; } =
+        (input, dir, control) => CircuitRF.Design.Schematic.Recognition.SchematicImageRecognition.PasteDrawing(input, dir, control);
+
+    /// <summary>The trace Paste Image as Layout runs off the UI thread; a seam for the tests.</summary>
+    internal Func<ImageTraceInput, RunControl, ImageTraceResult> PasteLayoutTracer { get; set; } =
+        (input, control) => ImageTrace.PasteTrace(input, control);
 
     [RelayCommand(CanExecute = nameof(CanPasteImageAsSchematic))]
     private async Task PasteImageAsSchematic()
@@ -90,53 +157,94 @@ public partial class WorkspaceViewModel : IImageDialogHost
         var read = await PasteImage.ReadAsync();
         if (read is null) { Messages.Error($"{command}: the clipboard holds no picture."); return; }
         if (!read.Ok) { Messages.Error($"{command}: {read.Refusal}"); return; }
+        await PasteSchematicPicture(doc, read.Source!);
+    }
 
+    /// <summary>The paste itself, from a picture in hand: read off the UI thread with Esc to cancel, then placed as one
+    /// undo step with the parts needing a look selected, and ONE line in Messages saying what was pasted (R-imf9-4).</summary>
+    internal async Task PasteSchematicPicture(SchematicDocument doc, ImageSource source)
+    {
+        const string command = "Paste Image as Schematic";
         var vm = doc.ActiveViewModel;
         string? path = doc.FilePath is { Length: > 0 } fp ? Path.GetFullPath(fp) : null;
-        var input = new CircuitRF.Design.Schematic.Recognition.SchematicImageInput { Source = read.Source! };
+        var input = new CircuitRF.Design.Schematic.Recognition.SchematicImageInput { Source = source };
+        var (live, control, cancellation, cts) = BeginPaste(command, doc);
         CircuitRF.Design.Schematic.Recognition.SchematicImagePasteDrawing paste;
         try
         {
-            paste = await Task.Run(() => CircuitRF.Design.Schematic.Recognition.SchematicImageRecognition.PasteDrawing(
-                input, path is null ? null : Path.GetDirectoryName(path)));
+            var reader = PasteSchematicReader;
+            paste = await Task.Run(() => reader(input, path is null ? null : Path.GetDirectoryName(path), control));
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or IOException)
         {
-            Messages.Error($"{command}: the picture could not be read: {ex.Message}");
+            live.Complete(MessageLevel.Error, $"{command}: the picture could not be read: {ex.Message}");
+            return;
+        }
+        catch (OperationCanceledException)
+        {
+            live.Complete(MessageLevel.Info, "Paste cancelled.");
+            return;
+        }
+        finally { EndPaste(cancellation, cts); }
+        // A cancelled paste changes nothing: no shapes, no picture kept, no undo step.
+        if (paste.Reading.Cancelled || cancellation.IsCancellationRequested)
+        {
+            live.Complete(MessageLevel.Info, "Paste cancelled.");
             return;
         }
         if (!paste.Ok)
         {
-            PostImageReport(paste.Reading.Report, command, null);
-            Messages.Error($"{command}: {paste.Refusal}");
+            live.Complete(MessageLevel.Error, $"{command}: {paste.Refusal}");
             return;
         }
 
-        // The picture goes under the drawing as an ordinary bitmap, kept beside the schematic so the reference holds.
+        // The picture goes under the drawing as an ordinary bitmap, kept beside the schematic so the reference holds —
+        // written only now, after the read succeeded.
         string? pictureRef = null;
-        if (path is null)
-            Messages.Info($"{command}: the schematic has not been saved, so the picture is not kept under the drawing.");
-        else
+        if (path is not null)
             // The ABSOLUTE path: an open document holds its bitmaps' paths resolved (the readers resolve a stored relative
             // one against the document's folder as they load); a relative path here is resolved against the process's
             // working directory, finds nothing, and draws the missing-picture cross.
-            try { pictureRef = ImageKeep.ForDocument(path, CircuitRF.Design.Cells.ViewType.Schematic, read.Source!).Kept.FullPath; }
+            try { pictureRef = ImageKeep.ForDocument(path, CircuitRF.Design.Cells.ViewType.Schematic, source).Kept.FullPath; }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 Messages.Warning($"{command}: the picture could not be kept beside the schematic, so it is not under the drawing: {ex.Message}");
             }
 
+        var outcome = CircuitRF.Design.Schematic.Recognition.SchematicPasteOutcome.Of(paste.Reading);
         var (x, y, inView) = vm.PicturePastePlace(paste.Picture.Width, paste.Picture.Height);
         var edit = CircuitRF.Design.Schematic.Recognition.SchematicImageRecognition.PasteInto(paste, vm.EditModel, (x, y), pictureRef);
         if (SchematicImageEditCommand.For(vm, edit, command) is not { } paste1)
         {
-            PostImageReport(edit.Report, command, null);
-            Messages.Error($"{command}: {edit.Refusal ?? "nothing in the picture was recognised as a part."}");
+            live.Complete(MessageLevel.Error, $"{command}: {edit.Refusal ?? "nothing in the picture was recognised as a part."}");
             return;
         }
+        // The command adds these very objects (renamed, if a name was taken): the ones needing a look are selected.
+        var flagged = edit.Drawing!.Components.Where(c => outcome.ToCorrect.Contains(c.InstanceName)).ToList();
         vm.Execute(paste1);
-        PostImageReport(edit.Report, command, null);
+        if (flagged.Count > 0) vm.Selection.SetAll(flagged.Select(c => c.Id));
+        LastPasteReading = paste.Reading;
+        if (outcome.ToCorrect.Count == 0) live.Complete(MessageLevel.Success, outcome.Sentence);
+        else
+        {
+            var reading = paste.Reading;
+            live.CompleteWithAction(MessageLevel.Warning, outcome.Sentence, "Correct…", () =>
+            {
+                OpenImageDialogOnReading(source, reading);
+                return Task.CompletedTask;
+            });
+        }
         if (!inView) doc.RequestZoomToWorldRect(x, y, x + paste.Picture.Width, y + paste.Picture.Height);
+    }
+
+    /// <summary>The reading the last paste placed — what its line's Correct… opens the dialog on.</summary>
+    internal CircuitRF.Design.Schematic.Recognition.SchematicImageResult? LastPasteReading { get; private set; }
+
+    /// <summary>R-imf9-4: the dialog on the pasted picture, with the paste's own reading loaded — correcting is one step,
+    /// not a read again.</summary>
+    internal void OpenImageDialogOnReading(ImageSource source, CircuitRF.Design.Schematic.Recognition.SchematicImageResult reading)
+    {
+        ShowImageDialog(source, makeSchematic: true, null, reading);
     }
 
     [RelayCommand(CanExecute = nameof(CanPasteImageAsLayout))]
@@ -151,7 +259,13 @@ public partial class WorkspaceViewModel : IImageDialogHost
         var read = await PasteImage.ReadAsync();
         if (read is null) { Messages.Error($"{command}: the clipboard holds no picture."); return; }
         if (!read.Ok) { Messages.Error($"{command}: {read.Refusal}"); return; }
+        await PasteLayoutPicture(doc, read.Source!);
+    }
 
+    /// <summary>Paste Image as Layout from a picture in hand — the same live row, Esc and cancel as the schematic paste.</summary>
+    internal async Task PasteLayoutPicture(LayoutDocument doc, ImageSource source)
+    {
+        const string command = "Paste Image as Layout";
         var vm = doc.ActiveViewModel;
         if (vm.Technology is not { } tech)
         {
@@ -159,18 +273,33 @@ public partial class WorkspaceViewModel : IImageDialogHost
             return;
         }
         string? path = doc.FilePath is { Length: > 0 } fp ? Path.GetFullPath(fp) : null;
-        var input = new ImageTraceInput { Source = read.Source!, Technology = tech, DbuPerMicron = vm.Model.DbuPerMicron };
+        var input = new ImageTraceInput { Source = source, Technology = tech, DbuPerMicron = vm.Model.DbuPerMicron };
+        var (live, control, cancellation, cts) = BeginPaste(command, doc);
         ImageTraceResult result;
-        try { result = await Task.Run(() => ImageTrace.PasteTrace(input)); }
+        try
+        {
+            var tracer = PasteLayoutTracer;
+            result = await Task.Run(() => tracer(input, control));
+        }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or IOException)
         {
-            Messages.Error($"{command}: the picture could not be traced: {ex.Message}");
+            live.Complete(MessageLevel.Error, $"{command}: the picture could not be traced: {ex.Message}");
+            return;
+        }
+        catch (OperationCanceledException)
+        {
+            live.Complete(MessageLevel.Info, "Paste cancelled.");
+            return;
+        }
+        finally { EndPaste(cancellation, cts); }
+        if (cancellation.IsCancellationRequested)
+        {
+            live.Complete(MessageLevel.Info, "Paste cancelled.");
             return;
         }
         if (!result.Ok || result.Shapes.Count == 0)
         {
-            PostImageReport(result.Report, command, null);
-            Messages.Error($"{command}: {result.Refusal ?? "nothing in the picture was traced."}");
+            live.Complete(MessageLevel.Error, $"{command}: {result.Refusal ?? "nothing in the picture was traced."}");
             return;
         }
 
@@ -179,17 +308,19 @@ public partial class WorkspaceViewModel : IImageDialogHost
             try
             {
                 // Absolute, as an open layout holds every bitmap's path (see the schematic paste above).
-                underlay.ImagePathRef = ImageKeep.ForDocument(path, CircuitRF.Design.Cells.ViewType.Layout, read.Source!).Kept.FullPath;
+                underlay.ImagePathRef = ImageKeep.ForDocument(path, CircuitRF.Design.Cells.ViewType.Layout, source).Kept.FullPath;
                 shapes.Add(underlay);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 Messages.Warning($"{command}: the picture could not be kept beside the layout, so it is not under the shapes: {ex.Message}");
             }
-        else if (path is null)
-            Messages.Info($"{command}: the layout has not been saved, so the picture is not kept under the shapes.");
         shapes.AddRange(result.Shapes);
         bool inView = vm.InsertTracedPicture(shapes);
+        live.Complete(MessageLevel.Success,
+                      $"Pasted {result.Shapes.Count} shape{(result.Shapes.Count == 1 ? "" : "s")} traced from the picture" +
+                      (path is null ? " — the layout has not been saved, so the picture is not kept under them." : "."));
+        // The trace's own findings after it — the scale it fell back to among them, which says how to size the shapes.
         PostImageReport(result.Report, command, null);
         if (!inView) doc.RequestZoomToFit();
     }
@@ -266,7 +397,12 @@ public partial class WorkspaceViewModel : IImageDialogHost
     /// Opens the picture dialog — empty, or already reading <paramref name="source"/> — with Make preset. One dialog per
     /// window: when it is already open, a picture handed in is read there and the dialog comes forward.
     /// </summary>
-    public void ShowImageDialog(ImageSource? source, bool makeSchematic, Window? owner)
+    public void ShowImageDialog(ImageSource? source, bool makeSchematic, Window? owner) => ShowImageDialog(source, makeSchematic, owner, null);
+
+    /// <summary>The dialog, as above — and, given a schematic picture's <paramref name="reading"/>, showing it with no
+    /// read again (R-imf9-4).</summary>
+    public void ShowImageDialog(ImageSource? source, bool makeSchematic, Window? owner,
+                                CircuitRF.Design.Schematic.Recognition.SchematicImageResult? reading)
     {
         if (CurrentWorkspaceRoot is not { } root)
         {
@@ -275,7 +411,11 @@ public partial class WorkspaceViewModel : IImageDialogHost
         }
         if (_imageDialog is { } open)
         {
-            if (source is not null && open.DataContext is ImageSourceViewModel reading) reading.Read(source, makeSchematic);
+            if (open.DataContext is ImageSourceViewModel shown)
+            {
+                if (source is not null && reading is not null) shown.SeedSchematic(source, reading);
+                else if (source is not null) shown.Read(source, makeSchematic);
+            }
             open.Activate();
             return;
         }
@@ -297,6 +437,8 @@ public partial class WorkspaceViewModel : IImageDialogHost
             AppPreferencesIo.Save(p);
         };
 
+        // Opened from a paste's line (R-imf9-4): the paste's own reading shown, not read again.
+        if (source is not null && reading is not null) vm.SeedSchematic(source, reading);
         var dialog = new CreateSchematicFromArtworkDialog(vm);
         vm.LayoutCreated += run =>
         {

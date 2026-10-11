@@ -3848,8 +3848,12 @@ Its kind is IM-2's reading, or `--image-kind auto|schematic|layout`'s; a picture
   workspace's technology, else a new workspace's default. A `--ground-at` is in the traced layout's lengths.
 - **A schematic picture** is `SchematicImageRecognition`, with `--crossings never|dot|always`, `--arrange drawn|tidy`,
   `--connect x,y` / `--disconnect x,y` (repeatable; source-picture pixels, the spelling `result.recognize.crossings`
-  gives — `x,y:x2,y2` joins two ends), `--threshold k` and `--underlay on|off`. Its parts CSV's rows are pixels
-  (`X (px)`); `--parts-out`/`--parts` round-trip it exactly as a board's.
+  gives — `x,y:x2,y2` joins two ends), `--threshold k`, `--underlay on|off`, the scales `--pen`/`--text-height`/
+  `--symbol-scale` (IMF-2) and `--profile auto|measured|enlarged|crossings|bold` (IMF-9): `auto`, the default, reads
+  the candidate readings that can differ for the picture and keeps the most plausible — exactly as the dialog and
+  Paste do — and a candidate's name reads that one alone; a stated scale or a `--connect`/`--disconnect` reads once.
+  A picture of no kind is refused in one sentence (*This picture does not look like a schematic: …*) before any
+  reading. Its parts CSV's rows are pixels (`X (px)`); `--parts-out`/`--parts` round-trip it exactly as a board's.
 
 A flag of the other kind is refused (`picture.args.wrong-kind`) rather than ignored, and so is a picture flag on a
 layout. The read-only default, `-o`, `--into new:<name>` (a new cell in the picture's workspace, else beside the
@@ -3857,7 +3861,10 @@ picture) and `--replace` are AS-7's; `--into artwork` has no meaning for a pictu
 `--overlay out.png` writes the annotated picture (§27.3) — **even when the reading is refused**.
 `result.recognize` gains `image` (kind, confidence, evidence, pixel size, reduction), for a layout picture `scale`
 (chosen, evidence, every candidate) and `layers` (the map as applied, each row's `--layer-map` spelling), and for a
-schematic picture `symbols`, `words` (read and unread, with boxes) and `crossings`. Exit codes are unchanged.
+schematic picture `symbols`, `words` (read and unread, with boxes), `crossings` and `reading` — the candidate kept,
+its plausibility, every candidate with its five terms, and the counters the time budget is held by (readings run,
+pixels read, regions matched, whether the picture counted as complex). Exit codes are unchanged; a cancelled reading
+is still 130.
 
 Over the protocol the tool takes the same parameters, and its result carries the overlay as **image content** beside
 the JSON whenever the path is a picture (the adapter's `overlay` argument, default true for a picture; `overlayPath`

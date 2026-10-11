@@ -287,6 +287,8 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     private void Accept(ImageSource source)
     {
         CancelRecognition();
+        _seed = null;
+        _readingChoice = null;
         _trace = null;
         _photo = null;
         _editedMap = null;
@@ -990,6 +992,8 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         var probe = BuildTraceInput(null, null);
         var recognitionProbe = BuildRecognitionInput(probe);
         var schematicProbe = BuildSchematicInput(null, null);
+        var seed = _seed;
+        _seed = null;
         // A board photo is read square once per set of corners, in the background with the rest of the reading.
         var corners = Scale.AppliedCorners;
         var photoRead = _photo is { } readBefore && ReferenceEquals(readBefore.Corners, corners) ? readBefore : null;
@@ -1018,7 +1022,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             if (kind.Kind == DrawingKind.Schematic)
             {
                 var lineTech = cached ? cachedTech : techChoice is null ? null : _runner.LoadTechnology(techChoice.Path);
-                var picture = _runner.ReadSchematic(schematicProbe with { Kind = kind, Technology = lineTech }, emit, control);
+                var picture = seed ?? _runner.ReadSchematic(schematicProbe with { Kind = kind, Technology = lineTech }, emit, control);
                 control.Token.ThrowIfCancellationRequested();
                 return new RecognitionPreview(picture.Parts, picture.Report, picture.Refusal,
                     new ImagePreviewDetail(read, lineTech, techChoice?.Path, null, null, ImageOverlay.BuildSchematic(picture), [], picture));
@@ -1093,6 +1097,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         {
             _schematic = d.Schematic;
             ShowProfile(d.Schematic?.Read?.Profile);
+            ShowReadings(d.Schematic);
             // Started on a placed schematic picture, the default target is the schematic it sits in, over it (D14) —
             // decided once the picture reads as a schematic, and once per picture, so the user's own choice stands.
             if (!_ownTargetDefaulted && OwnTargetOffered) { _ownTargetDefaulted = true; TargetOwn = true; }
@@ -1256,6 +1261,9 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
 
     /// <summary>The last reading of a schematic picture, or null.</summary>
     private SchematicImageResult? _schematic;
+
+    /// <summary>The schematic picture's reading shown — the paste's own when the dialog was opened on one (R-imf9-4).</summary>
+    internal SchematicImageResult? SchematicReading => _schematic;
     private bool _ownTargetDefaulted;
 
     /// <summary>The user's corrections — a crossing flipped, a dangling end joined to a pin — held like table edits and
@@ -1337,7 +1345,49 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             PartsCsvText = PartsCsvText,
             Arrange = ArrangeIndex == 1 ? SchematicArrange.Tidy : SchematicArrange.AsDrawn,
             KeepUnderlay = KeepUnderlay,
+            Reading = _readingChoice,
         };
+    }
+
+    // ── a reading handed in, and the candidate readings (IMF-9) ──────────────────────────────────────────────────
+
+    /// <summary>A reading to show instead of reading the picture — Paste's, or another candidate picked — taken by the
+    /// next preview and then cleared.</summary>
+    private SchematicImageResult? _seed;
+
+    /// <summary>The candidate the user picked, which Create reads again; null keeps the most plausible.</summary>
+    private string? _readingChoice;
+
+    /// <summary>
+    /// R-imf9-4: the dialog on a pasted picture with the paste's own reading loaded — the overlay, the parts table and the
+    /// candidates shown as Paste read them, with no read again, so correcting is one step. A picture Paste read as a
+    /// schematic though it classifies otherwise opens with the kind set to Schematic.
+    /// </summary>
+    public void SeedSchematic(ImageSource source, SchematicImageResult reading)
+    {
+        if (!ReferenceEquals(Source, source)) Read(source, makeSchematic: true);
+        else MakeIndex = 0;
+        _seed = reading;
+        if (reading.Kind is { Kind: not DrawingKind.Schematic }) KindIndex = 1;
+        ScheduleRecognition();
+    }
+
+    protected override void OnReadingChosen(int index)
+    {
+        if (_schematic?.Candidates is not { Count: > 1 } candidates || index >= candidates.Count) return;
+        var name = candidates[index].Name;
+        if (name == _schematic.ReadingName || _schematic.WithReading(name) is not { } chosen) return;
+        _readingChoice = name;
+        _seed = chosen;
+        ScheduleRecognition();
+    }
+
+    /// <summary>The candidate rows for <paramref name="reading"/>, the one shown selected.</summary>
+    private void ShowReadings(SchematicImageResult? reading)
+    {
+        var candidates = reading?.Candidates ?? [];
+        SetReadings([.. candidates.Select(c => string.Create(CultureInfo.InvariantCulture, $"{c.Label} ({c.Score:0.00})"))],
+                    candidates.Select((c, i) => (c, i)).FirstOrDefault(x => x.c.Name == reading?.ReadingName).i);
     }
 
     private CreateJob BeginSchematicCreate(Func<Technology?> tech, string name)

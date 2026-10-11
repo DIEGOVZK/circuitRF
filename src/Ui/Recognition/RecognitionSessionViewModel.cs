@@ -235,6 +235,35 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
     partial void OnArrangeIndexChanged(int value) => OnPictureOptionChanged(rereads: false);
     partial void OnCrossingIndexChanged(int value) => OnPictureOptionChanged(rereads: true);
 
+    /// <summary>Schematic pictures (IMF-9, R-imf9-2): the candidate readings, best first, each with its plausibility;
+    /// picking one shows it with no read again. Shown only when there is more than one.</summary>
+    public ObservableCollection<string> ReadingChoices { get; } = [];
+    [ObservableProperty] private int _readingIndex = -1;
+    [ObservableProperty] private bool _readingsApply;
+    private bool _settingReadings;
+
+    partial void OnReadingIndexChanged(int value)
+    {
+        if (!_settingReadings && value >= 0) OnReadingChosen(value);
+    }
+
+    /// <summary>The user picked candidate reading <paramref name="index"/> of <see cref="ReadingChoices"/>.</summary>
+    protected virtual void OnReadingChosen(int index) { }
+
+    /// <summary>The choices, then the selection — items first, in one code path (src/Ui/CLAUDE.md's ComboBox rule).</summary>
+    protected void SetReadings(IReadOnlyList<string> labels, int chosen)
+    {
+        _settingReadings = true;
+        try
+        {
+            ReadingChoices.Clear();
+            foreach (var l in labels) ReadingChoices.Add(l);
+            ReadingIndex = labels.Count == 0 ? -1 : chosen;
+            ReadingsApply = labels.Count > 1;
+        }
+        finally { _settingReadings = false; }
+    }
+
     /// <summary>A schematic picture's option changed; the crossing rule changes the reading, Arrange only the drawing.</summary>
     protected virtual void OnPictureOptionChanged(bool rereads) { if (rereads) ScheduleRecognition(); }
 

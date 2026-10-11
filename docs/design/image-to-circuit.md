@@ -2283,3 +2283,140 @@ and a solid box drawn round a part read as a frame (the test circuit's DUT box).
 Committed fixtures after the phase: rf-amp 1× topology right (designators 4/5), the gain block's Amp and coax ports at
 both scales, LDO still exact; regulator, test circuit and gain block stay skipped with measured reasons in
 `ImageStylePictureTests.cs`.
+
+## 25. IMF-9 — settings chosen per picture, "not a schematic", and what Paste says
+
+Paste asks nothing (L1), so the reader now chooses for itself: it reads a few ways and keeps the most plausible
+(R-imf9-2), refuses what is no schematic in one sentence (R-imf9-3), and Paste says in one line what it did
+(R-imf9-4), cancellable with Esc (R-imf9-6). All of it is inside `SchematicImageRecognition.Read`, so the dialog's
+reading, `recognize` (`--profile auto`, the default) and MCP choose exactly as Paste does (R-imf9-7, L5).
+
+### 25.1 Plausibility (`ReadingPlausibility`)
+
+Five terms in [0, 1]: **ink explained** (`SchematicImageRead.ExplainedInk / InkPixels` — ink inside a glyph box, a
+symbol region or its fills, a supply mark, an erased annotation, or within ½ w + 1.5 px of a wire), **parts named**
+(recognised, or multi-pin of a known kind — an IC box, a triangle, a block; a multi-pin region of no kind counts for
+nothing), **pins honest** (a two-pin part with two wired pins, no more leads than its template has, an unnamed
+multi-pin region at most 4), **words read** (mean of word regions read and designators found over the parts that carry
+one; ½ when there are no words), **graph sane** (1 − (two-pin parts shorted by their own pins + nets with fewer than two
+pins that no label, supply mark, terminal or port names) / (two-pin parts + nets)).
+
+**The fit.** Non-negative least squares of FieldScore's correctness (the mean of the stated tallies and topology) on the
+terms, over the 16 committed schematic fixtures' readings, every candidate reading of them, and the illustration read
+as a schematic (correctness 0) — 34 rows — with a ridge pull (λ = 1) toward equal weights, normalised to sum 1. Without
+the pull the fit puts 0.94 on parts named and nothing on three terms (r = 0.88); with it: **ink 0.10, parts 0.62, pins
+0.00, words 0.09, nets 0.19** (r = 0.87). Pins honest fits to zero because, on these readings, every region with too
+many leads is also a region of no known kind, which parts named already counts; it stays a term and is reported.
+
+| picture | reading | ink | parts | pins | words | nets | right (FieldScore) | score |
+|---|---|---|---|---|---|---|---|---|
+| ds-gain-block-1x | measured | 0.98 | 1.00 | 1.00 | 0.74 | 0.93 | 0.77 | 0.96 |
+| ds-gain-block-1x | enlarged | 0.96 | 0.80 | 1.00 | 0.73 | 0.94 | 0.51 | 0.84 |
+| ds-gain-block-2x | measured | 0.99 | 0.63 | 1.00 | 0.57 | 0.96 | 0.74 | 0.72 |
+| ds-gain-block-2x | bold | 0.99 | 0.63 | 1.00 | 0.54 | 0.96 | 0.67 | 0.72 |
+| ds-ldo-1x | measured | 1.00 | 1.00 | 1.00 | 0.79 | 1.00 | 1.00 | 0.98 |
+| ds-ldo-1x | enlarged | 1.00 | 1.00 | 1.00 | 0.79 | 1.00 | 1.00 | 0.98 |
+| ds-ldo-2x | measured | 1.00 | 1.00 | 1.00 | 0.75 | 1.00 | 1.00 | 0.98 |
+| ds-regulator-1x | measured | 0.99 | 1.00 | 1.00 | 1.00 | 1.00 | 0.81 | 1.00 |
+| ds-regulator-1x | enlarged | 0.99 | 0.92 | 1.00 | 0.89 | 1.00 | 0.76 | 0.94 |
+| ds-regulator-1x | bold | 0.99 | 1.00 | 1.00 | 0.02 | 1.00 | 0.83 | 0.91 |
+| ds-regulator-2x | measured | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 0.83 | 1.00 |
+| ds-regulator-2x | bold | 1.00 | 1.00 | 1.00 | 0.00 | 1.00 | 0.83 | 0.91 |
+| ds-rf-amp-1x | measured | 0.99 | 0.92 | 1.00 | 0.81 | 0.88 | 0.97 | 0.91 |
+| ds-rf-amp-1x | bold | 0.99 | 0.92 | 1.00 | 0.81 | 0.88 | 0.97 | 0.91 |
+| ds-rf-amp-1x | enlarged | 0.99 | 0.83 | 0.92 | 0.86 | 0.93 | 0.51 | 0.87 |
+| ds-rf-amp-2x | measured | 1.00 | 0.80 | 1.00 | 0.89 | 0.94 | 0.83 | 0.85 |
+| ds-rf-amp-2x | bold | 1.00 | 0.80 | 1.00 | 0.88 | 0.94 | 0.83 | 0.85 |
+| ds-test-circuit-1x | enlarged | 1.00 | 0.78 | 1.00 | 0.84 | 1.00 | 0.52 | 0.85 |
+| ds-test-circuit-1x | measured | 0.88 | 0.78 | 1.00 | 0.81 | 1.00 | 0.52 | 0.83 |
+| ds-test-circuit-1x | bold | 0.88 | 0.78 | 1.00 | 0.81 | 1.00 | 0.52 | 0.83 |
+| ds-test-circuit-2x | measured | 1.00 | 0.78 | 1.00 | 0.83 | 1.00 | 0.52 | 0.85 |
+| heavy-iec | measured | 0.99 | 1.00 | 1.00 | 0.91 | 1.00 | 0.96 | 0.99 |
+| heavy-iec | bold | 0.99 | 1.00 | 1.00 | 0.82 | 1.00 | 0.96 | 0.98 |
+| illustration | as a schematic | 0.94 | 0.00 | 1.00 | 0.50 | 0.29 | 0.00 | 0.19 |
+| ladder-dashed | measured | 0.99 | 1.00 | 1.00 | 0.67 | 1.00 | 0.92 | 0.97 |
+| loop-coil-names | measured | 1.00 | 1.00 | 0.50 | 0.50 | 0.67 | 1.00 | 0.89 |
+| low-res | enlarged | 0.99 | 1.00 | 1.00 | 0.42 | 1.00 | 0.88 | 0.95 |
+| low-res | measured | 0.99 | 1.00 | 1.00 | 0.00 | 1.00 | 0.75 | 0.91 |
+| low-res | bold | 0.99 | 1.00 | 1.00 | 0.00 | 1.00 | 0.75 | 0.91 |
+| textbook-zigzag | measured | 0.99 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| textbook-zigzag | bold | 0.99 | 1.00 | 1.00 | 0.88 | 1.00 | 1.00 | 0.99 |
+| typeset | measured | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| typeset | enlarged | 1.00 | 0.88 | 1.00 | 0.95 | 0.90 | 0.76 | 0.90 |
+
+**The floor is 0.30.** Every committed schematic scores ≥ 0.72; the illustration read as a schematic scores 0.19. The
+floor sits low in that gap because two downloaded web schematics read poorly score 0.41 and 0.43 — a poor reading of a
+real schematic is the dialog's to correct, not a refusal. It applies only when the kind was read (Paste, the dialog's
+Auto), never when the user stated *Schematic*.
+
+**A runaway region** (the pre-IMF-4 failure) lowers the score but cannot take a drawing that is otherwise read below
+the floor: merging ds-ldo-2x's parts into one 20-lead region of no kind scores 0.89 against the correct 0.98. That is
+what candidate choice needs (the runaway reading loses), and `ReadingPlausibilityTests` holds that, not the floor. It
+is built in the test from the real reading rather than recorded as JSON: the score reads only the result's own lists,
+and serialising the whole result graph would be a format kept for one fact.
+
+### 25.2 Candidates and the budget
+
+`SchematicImageReadings`: **measured** (always, first, with the caller's control); **enlarged** — a Low picture one
+resample step up (`SchematicImageOptions.ResampleBoost`, capped at IMF-2's 4 MP); **crossings** — every four-way
+crossing joined, only when the reading has no junction dot, a crossing read apart for want of one, and ≥ 2
+T-junctions; **bold** — `NormaliseBoldType` off, only when a word was thinned. Each is run only when it can differ
+(`Others`), and only within a **pixel budget** (`WithinBudget`, the R-imf9-5 counter): every reading of a simple
+diagram together at most 2.5 MP, of a complex one 5 MP and only while the clock allows another reading as long as the
+measured one within 10 s. Simple = ≤ 20 symbol regions and ≤ 2,500 px on the longer side as read. Ties keep the
+measured reading. Candidates are only run with the profile measured and no corrections; the dialog's pick
+(`SchematicImageInput.Reading`) reads that one alone, and so does `--profile <name>`.
+
+Over every committed fixture and every downloaded picture, within the budget a candidate is chosen twice — `low-res`
+and `picture-e`, both enlarged (FieldScore 0.75 → 0.88 on `low-res`). Without the budget it was also chosen on
+`ds-test-circuit-1x` and `picture-ds-e1` (enlarged, FieldScore unchanged) at two to three times the time, which is why
+the budget is pixels. A candidate FieldScore rates worse was never chosen. **bold** was never chosen; it is kept because the brief names it and a
+heavy-type picture the corpus lacks may want it.
+
+### 25.3 Time (owner's Debug build, scratch harness, one reading vs Auto)
+
+The budget is held by counters; these are the times, measured once. The O8 targets are **not met by the reader
+itself**: one reading of a 1× datasheet crop, enlarged by IMF-2, already takes 1–5 s in Debug (2–3.5 s a megapixel),
+and a 60-region evaluation board 18 s. Auto adds at most a second reading's worth where the budget lets one run.
+
+| picture | one | Auto | readings |
+|---|---|---|---|
+| ds-ldo-2x / ds-ldo-1x | 0.7 / 1.2 s | 0.7 / 1.2 s | 1 / 1 |
+| ds-gain-block-2x / 1x | 1.4 / 2.3 s | 2.5 / 1.8 s | 2 / 1 |
+| ds-regulator-2x / 1x | 2.5 / 4.8 s | 3.7 / 4.8 s | 2 / 1 |
+| ds-rf-amp-2x / 1x | 2.2 / 3.5 s | 3.1 / 3.5 s | 2 / 1 |
+| heavy-iec | 1.9 s | 3.4 s | 2 |
+| typeset | 4.5 s | 4.5 s | 1 |
+| low-res | 1.8 s | 3.3 s | 3 |
+| picture-ds-d2 | 3.8 s | 6.3 s | 2 |
+| picture-ds-f1 (complex) | 8.6 s | 8.4 s | 1 |
+| picture-ds-g1 (complex) | 18.4 s | 18.3 s | 1 |
+| illustration, picture-g | 0.2 s | 0.2 s | 0 (kind) |
+
+The kind check runs first and alone: 20–190 ms on every picture here (R-imf9-5's 0.5 s).
+
+### 25.4 Not a schematic
+
+`ImageKind` gained a **shaded illustration** rule (none): ≥ 2 chromatic inks, filled share ≥ 0.5, orthogonal share
+< 0.2 and a skeleton no wider than 6 px. The last is what keeps a layout a layout: filled copper skeletonises at its
+own width (15–49 px on the gates' layout pictures, whose filled rectangles skeletonise to diagonals and failed the
+first version of the rule); an illustration's outlines at 1–3 px. IMF-1's illustration and the downloaded shaded
+picture are refused by the kind check alone (zero readings). Paste still reads a picture classified *layout* as a
+schematic — forced away from layout, never past none.
+
+### 25.5 Paste
+
+One live row in Messages — "Paste Image as Schematic: reading the picture… (Esc to cancel)", its stages from the
+`RunControl` — bound to the paste's `RunCancellation`. Esc in the window (tunnelling, first), the row's right-click
+Cancel and closing the target document all cancel through that one object; both Paste commands are disabled while one
+is in flight. The reader checks the token at every stage, once a thinning pass (`Skeleton.Thin`) and before each region
+the matcher names, and returns `Cancelled` rather than throwing. A cancelled paste keeps no picture (it is written only
+after the read), adds no shape and no undo step; the row ends "Paste cancelled.". Otherwise the row becomes the one
+outcome line (`SchematicPasteOutcome`): counts, then the parts needing a look — `?n`, an amplifier on default gain, an
+IC or block on default parameters, a part whose value became a variable — which are what the paste selects, and a
+**Correct…** action opening the dialog seeded with the same reading (`ImageSourceViewModel.SeedSchematic`, no read
+again). Paste Image as Layout has the same row, Esc and cancel.
+
+Gates: `ReadingPlausibilityTests`, `ReadCancellationTests`, `ImageNothingHereTests` (illustration added; the kind check
+alone, zero readings), `PasteOutcomeTests`, `PasteCancelTests`, and `ImageDatasheetStyleTests`/`ImageWebStyleTests`
+through Auto.

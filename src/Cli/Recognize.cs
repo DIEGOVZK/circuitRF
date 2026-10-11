@@ -120,7 +120,8 @@ internal static partial class Recognize
             "                 [--layer-map \"#rrggbb=<layer>|drill|outline|silk|ignore,...\"] [--preset <name>]\n" +
             "                 [--region x0,y0,x1,y1 in px] [--min-feature px2] [--simplify px] [--edge-stroke px] [--snap-deg d] [--snap45 on|off]\n" +
             "    schematic:   [--crossings never|dot|always] [--arrange drawn|tidy] [--connect x,y] [--disconnect x,y]\n" +
-            "                 [--threshold k] [--pen px] [--text-height px] [--symbol-scale px]\n" +
+            "                 [--threshold k] [--profile auto|measured|enlarged|crossings|bold]\n" +
+            "                 [--pen px] [--text-height px] [--symbol-scale px]\n" +
             "    plot:        [-o part.s2p] [--csv traces.csv] [--picture more.png] [--plot n,n] [--keep-sources on|off]\n" +
             "                 [--x-axis <px>=<value>,<px>=<value>[@plot]] [--y-axis ...] [--x-log] [--y-log]\n" +
             "                 [--trace <T3|#rrggbb|dashed>[@plot]=S21:db] [--smith-z0 50Ohm] [--freq <trace>=<start>..<stop>]\n" +
@@ -648,6 +649,7 @@ internal static partial class Recognize
             Source = source, Kind = kind, Options = options, Technology = tech, TechnologyPath = techPath,
             PartsCsvPath = o.Parts is { } parts ? Path.GetFullPath(parts) : null,
             Arrange = o.Picture.Arrange ?? SchematicArrange.AsDrawn, KeepUnderlay = o.Picture.Underlay ?? true,
+            Reading = o.Picture.Profile,
         };
 
         Console.Error.WriteLine($"[circuitRF] recognising {path}");
@@ -673,9 +675,12 @@ internal static partial class Recognize
             refused = reading.Refusal;
         }
 
+        // A cancelled reading returns cancelled (R-imf9-6); the CLI's own answer to a cancel is still its exit 130.
+        if (reading.Cancelled) throw new OperationCanceledException();
         o.Picture.WriteOverlay(Verb, ImageOverlay.BuildSchematic(reading), source);
         var (symbols, words, marks) = PictureFlags.SchematicJson(reading);
-        RecognizeReportJson Picture(RecognizeReportJson j) => j with { Image = image, Symbols = symbols, Words = words, Crossings = marks };
+        var readings = PictureFlags.ReadingJson(reading);
+        RecognizeReportJson Picture(RecognizeReportJson j) => j with { Image = image, Symbols = symbols, Words = words, Crossings = marks, Reading = readings };
         if (refused is not null)
         {
             JsonRun.Recognize = Picture(Document(path, techPath, null, 0, reading.Report, reading.Parts));

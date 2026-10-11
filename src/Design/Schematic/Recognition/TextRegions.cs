@@ -202,7 +202,7 @@ internal static class TextRegions
                     splits.Add(new TextRegionSplit(sb, idx));
                 }
                 var ink = ordered.SelectMany(k => pixels[cands[k].Label]).ToList();
-                words.Add(Region(ink, box, width, vertical, glyphs, splits) with { OnWire = onWire });
+                words.Add(Region(ink, box, width, vertical, glyphs, splits, o.NormaliseBoldType) with { OnWire = onWire });
             }
         }
 
@@ -218,7 +218,7 @@ internal static class TextRegions
             if (Contact(px, line, width).Places > 0 || !Clear(mask, lab.Labels, c, (int)Math.Ceiling(ch / 3)) || !LoneLetter(px, Box(c), width)) continue;
             used.Add(k);
             foreach (int i in px) removed.Pixels[i] = 1;
-            words.Add(Region(px, Box(c), width, false, [Box(c)], []));
+            words.Add(Region(px, Box(c), width, false, [Box(c)], [], o.NormaliseBoldType));
         }
 
         // Reading order: top to bottom, then left to right.
@@ -432,13 +432,13 @@ internal static class TextRegions
     /// <see cref="TextRegion.InkWidth"/> is kept, and <see cref="TextRegion.Thinned"/> says by how much.
     /// </summary>
     internal static TextRegion Region(List<int> pixels, PixelBox box, int width, bool vertical, IReadOnlyList<PixelBox> glyphs,
-                                      IReadOnlyList<TextRegionSplit> splits)
+                                      IReadOnlyList<TextRegionSplit> splits, bool normaliseBold = true)
     {
         var crop = Crop(pixels, box, width);
         double ink = SchematicImageReading.RunWidth(crop);
         var region = new TextRegion(0, box, vertical, glyphs, [], splits) { InkWidth = ink };
         double h = CapHeight(region), weight = h > 0 ? ink / h : 0;
-        if (weight > StrokeTextReader.MaxWeight)
+        if (normaliseBold && weight > StrokeTextReader.MaxWeight)
             // Thinned by as much as leaves no crumb: a hairline join eroded through would read as two glyphs. Three
             // tries, then as drawn.
             foreach (double f in new[] { 1, 0.75, 0.5 })

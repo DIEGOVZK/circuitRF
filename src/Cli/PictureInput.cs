@@ -49,6 +49,9 @@ internal sealed class PictureFlags
     public double? Threshold;
     /// <summary>The picture's scales, stated in its pixels (IMF-2, R-imf2-5): each replaces only its own measurement.</summary>
     public double? Pen, TextHeight, SymbolScale;
+    /// <summary>IMF-9, R-imf9-7: <c>auto</c> (null) reads the candidate readings and keeps the most plausible; a candidate's
+    /// name reads that one alone.</summary>
+    public string? Profile;
     public readonly List<ConnectionOverride> Overrides = [];
 
     /// <summary>The layout-picture flags given, by spelling — refused on a schematic picture or a document.</summary>
@@ -167,6 +170,13 @@ internal sealed class PictureFlags
                 if (Number(v) is not { } k || !(k > 0) || k >= 1) return Bad("Sauvola's k, between 0 and 1");
                 Threshold = k;
                 { SchematicFlags.Add(a); i++; return 0; }
+            case "--profile":
+            {
+                string p = v.ToLowerInvariant();
+                if (p != "auto" && !SchematicImageReadings.All.Contains(p)) return Bad("auto, " + string.Join(", ", SchematicImageReadings.All));
+                Profile = p == "auto" ? null : p;
+                { SchematicFlags.Add(a); i++; return 0; }
+            }
             case "--pen" or "--text-height" or "--symbol-scale":
             {
                 string p = v.EndsWith("px", StringComparison.OrdinalIgnoreCase) ? v[..^2] : v;
@@ -431,6 +441,17 @@ internal sealed class PictureFlags
         trace.LayerMap is not { } map ? [] :
         [.. map.Rows.Select(r => new ImageLayerJson(r.Hex, r.Share, r.Role.ToString().ToLowerInvariant(), r.Layers,
                                                     r.Role == ImageLayerRole.Silkscreen ? "silk" : r.Spelling))];
+
+    /// <summary>IMF-9, R-imf9-7: the reading kept, every candidate read with its plausibility terms, and the counters the
+    /// time budget is held by; null when the kind check alone decided.</summary>
+    public static ImageReadingJson? ReadingJson(SchematicImageResult result) =>
+        result.Plausibility is null && result.Candidates.Count == 0 ? null
+        : new ImageReadingJson(result.ReadingName, result.Plausibility is { } p ? Math.Round(p.Score, 3) : null,
+            [.. result.Candidates.Select(c => c.Result.Plausibility is { } t
+                ? new ImageReadingCandidateJson(c.Name, c.Label, Math.Round(c.Score, 3), Math.Round(t.InkExplained, 3), Math.Round(t.PartsNamed, 3),
+                                                Math.Round(t.PinsHonest, 3), Math.Round(t.WordsRead, 3), Math.Round(t.GraphSane, 3))
+                : new ImageReadingCandidateJson(c.Name, c.Label, Math.Round(c.Score, 3), 0, 0, 0, 0, 0))],
+            result.Cost.Readings, result.Cost.Pixels, result.Cost.Regions, result.Cost.Complex);
 
     /// <summary>A schematic picture's symbols, words and crossings, in SOURCE-picture pixels — the space
     /// <c>--connect</c>/<c>--disconnect</c> and the parts CSV's pixel rows are in.</summary>
