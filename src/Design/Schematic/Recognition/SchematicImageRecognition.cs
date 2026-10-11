@@ -443,6 +443,9 @@ public static class SchematicImageRecognition
         provenance.Options["Crossings"] = o.Crossings switch { CrossingRule.Never => "never", CrossingRule.Always => "always", _ => "dot" };
         if (o.LineArt.K != d.LineArt.K) provenance.Options["Threshold"] = N(o.LineArt.K);
         if (o.LineArt.Window != d.LineArt.Window) provenance.Options["Window"] = o.LineArt.Window.ToString(CultureInfo.InvariantCulture);
+        if (o.Profile.Pen is { } pen) provenance.Options["Pen"] = N(pen);
+        if (o.Profile.TextHeight is { } th) provenance.Options["TextHeight"] = N(th);
+        if (o.Profile.SymbolScale is { } ss) provenance.Options["SymbolScale"] = N(ss);
         if (o.Overrides.Count > 0) provenance.Options["Overrides"] = ConnectionOverride.Spell(o.Overrides);
         if (input.PartsCsvText is not null || input.PartsCsvPath is not null) provenance.Options["PartsTable"] = "edited";
         return provenance;

@@ -741,7 +741,7 @@ public static class SchematicImageEmit
                 k *= new[] { 0.5, 2, 4, 5, 10 }.MinBy(m => Math.Abs(Math.Log(s / (k * m))));
             return new SchematicFrame(k, -k * grid.PhaseX, -k * grid.PhaseY);
         }
-        return new SchematicFrame(symbols ?? NetlistSchematic.Grid / Math.Max(1, 4 * read.StrokeWidth), 0, 0);
+        return new SchematicFrame(symbols ?? NetlistSchematic.Grid / Math.Max(1, 4 * read.StrokeWidth / read.Scale), 0, 0);
     }
 
     private static ExactPlacement Exact(SchematicImageRead read, List<Proto> protos, TestBench tb, SchematicFrame frame,

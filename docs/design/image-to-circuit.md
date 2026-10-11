@@ -511,12 +511,14 @@ Schematic must hand the user's Make back when they set the kind to Layout.
 `src/Design/Schematic/Recognition/` splits a schematic picture into the three things it is made of and says which wire
 ends reach which symbol. Nothing here names a part (IM-8) or reads a word (IM-9). The entry point is
 `SchematicImageReading.Read(ImageSource, SchematicImageOptions, RunControl?)`; it is pure, and on a refusal it still
-returns everything it read, so the overlay can show what was seen. Every tolerance is in units of the stroke width w.
+returns everything it read, so the overlay can show what was seen. Every tolerance is in units of the stroke width w at
+the reference profile, and scales with the picture's own text height or symbol scale outside it (§18).
 
 ### 9.1 Normalise (R-im7-2) — `SchematicImageReading.cs`
 
 A coloured picture keeps its **darkest** colours — those at least half as far from the ground's lightness as the
-darkest is — so a pale highlight or a tinted grid drops out and a coloured wire layer stays. A lean between 0.3° and
+darkest is — so a pale highlight or a tinted grid drops out and a coloured wire layer stays; and every other colour
+drawn as thin strokes that stands clear of the ground and is not a darker line's anti-aliased rim (§18.4). A lean between 0.3° and
 5° is straightened by turning the picture onto a larger white canvas; `ToSource` takes a point back. Then the border
 (a component reaching over 60 % of the picture each way and inking 90 % of each side of its box) is removed **with
 everything drawn on it** — a title block and zone marks are connected to the frame, and a wire never is — and a dot
@@ -1381,3 +1383,198 @@ Each sentence is from the scored lines above and the `recognize --overlay` pictu
   `CrO`, and its two-line notes under the blocking capacitors as garbage words (`BiOCi`, `C1EOF`).
 - **F12 — one reading, whatever it is (IMF-9).** The shaded illustration and `picture-g` are read as 2- and 5-pin
   circuits rather than refused: Paste forces the schematic kind and nothing asks whether the result is plausible.
+
+## 18. IMF-2 — the picture's own scales, and tolerances that follow them
+
+Every tolerance of the schematic reader was a number of pens w. That is right for wire geometry and wrong for anything
+the drawing sizes: a datasheet hairline at 1× draws 8 px type with a 1.1 px pen, a textbook's heavy pen draws 28 px type
+with an 8 px one, and the same tolerance in w is a different fraction of the drawing on each. IMF-2 measures the
+picture first (`PictureProfile.cs`) and gives each tolerance the unit it is about. It changes units, not what any
+stroke or region *is*; that is IMF-3's and IMF-4's.
+
+### 18.1 The profile (R-imf2-1) — `PictureProfile.cs`
+
+Measured once per reading, before the wires are traced, and reported line by line in `SchematicImageReport` and in the
+corner of the `--overlay` picture (`ImageOverlay.Legend`), each with how it was measured and over how many pieces:
+
+- **w, the pen.** The reading still runs on the run-width mode (§9.1) — the width of the BINARISED line work, which the
+  pen tolerances are about. The profile reports the pen as DRAWN: the darkness summed across each stroke (the shorter of
+  its horizontal and vertical ink runs, a pixel either side, in units of the darkest ink), the mode over the skeleton.
+  Anti-aliasing keeps that sum, so a 1.1 px hairline that Sauvola binarises 2 px wide — at 1× and, read enlarged, 6 px
+  at ×3 — measures 1.1.
+- **h, the text height.** The median height of the glyph-shaped pieces clear of the line work (2–20 w tall, 0.3–1.2 as
+  wide as tall, inking 15–60 % of their box) that stand in a row with another piece of type of a like height (within
+  1.6×, overlapping 40 %, at most 0.6 h apart), counting only a row's tall letters (none shorter than 85 % of a
+  neighbour) and no subscript or superscript (a piece just after one 1.3× its height, lowered or raised by 15 %, and the
+  pieces running on after it at its own size and level). With fewer than three in rows, every glyph-shaped piece is
+  counted and the upper quartile taken — a drawing labelled R, C and v_in.
+- **s, the symbol scale.** The median drawn length of the orthogonal lines with two bare ends that carry a lead (a T in
+  them) or stand in a stack of such lines (a plate, a ground's bars), and of the orthogonal sides of closed outlines no
+  more than 8 h across (a resistor's box, a pin-number box) — measured on the line work as the DEFAULT tolerances read
+  it, before any has moved (`WireGraph.SymbolStrokes`' sample). A bare line is its skeleton plus one pen; an end stopped
+  by a label kept as a symbol detail is bare, one stopped by a fill (an arrow's head) is not; three or more bare lines
+  on one line are a dashed line, not plates. With fewer than two, s = 3 h.
+- **g, the drawing grid.** `PictureGrids.Detect`'s canvas grid, else the modal spacing of three or more pairs of
+  parallel wires; reported, used by IMF-9.
+- **Resolution.** Low when the drawn pen is under 1.6 px or h is under 12 px (§18.3).
+
+Measured against the drawings' own sizes (`PictureProfileTests`), all within 15 %:
+
+| picture | pen drawn → read | h drawn → read | s drawn → read |
+|---|---|---|---|
+| ds-rf-amp-1x | 1.1 → 1.1 | 8 → 8.7 | 18 → 17.0 |
+| ds-rf-amp-2x | 2.2 → 2.2 | 16 → 16.0 | 36 → 35.0 |
+| heavy-iec | 8 → 8.0 | 28 → 29.0 | 64 → 63.0 |
+| low-res | 1.8 → 1.9 | 7.2 → 7.7 | 40.5 → 38.3 |
+
+Four measurement traps found on the way, each of which moved a number by 20–80 %: `StrokeGlyphs.Groups` returns a line
+**and** its halves, so taking its groups whole counts a glyph two or three times; a filled arrowhead cut down its middle
+by the shaft's long run is two glyph-shaped halves side by side — a "row of type" — until pieces touching line work are
+excluded; a dashed fixture box is dozens of short bare lines and swamped s at 9 px until runs of collinear dashes were
+excluded; and an arrow's shaft with an open head has two bare ends exactly like a plate, until a plate had to carry a
+lead or stand in a stack.
+
+### 18.2 Tolerances by what they measure (R-imf2-2) — `SchematicImageOptions.cs`
+
+Each option keeps its number, stated in w **at the reference profile**, and takes its class's factor:
+
+- **pen** — always w;
+- **text** — `TextFactor`: 1 while h stands 5–7.5 w, else h / w over the band's nearer edge;
+- **symbol** — `SymbolFactor`: 1 while s is 9–26 w, else s / w over the nearer edge.
+
+The reference profile is a **band**, not a point, because the pictures every default was measured on span one: the
+IEC drawing h = 5.0–6.25 w, s = 11.8–14.8 w (and 6.0 / 14.5 at half size); circuitRF's renders at the round trips'
+zooms s = 9.2–9.5 w; the editor screenshot s = 23.4 w. A picture inside the band reads with exactly the numbers it
+always had — that is what keeps `ImageScreenshotPasteTests`, the IM-12 round trips and `ImageForeignDrawingTests`
+untouched by construction rather than by luck. A **hairline drawing** that IM-12's thickening brings to h = 5 w takes
+text factor 1 by construction: the thickening has already set its text to the reference.
+
+| option | default | class | scales with |
+|---|---|---|---|
+| `SnapAngleDeg`, `MinDeskewDeg`, `MaxDeskewDeg` | 3°, 0.3°, 5° | angle | nothing |
+| `HairlineTextHeight`, `TextHeightInStrokes` | 8 w, 5 w | profile — they decide the hairline thickening | nothing |
+| `MinTextHeight` | 2 w | text | `TextFactor` |
+| `MaxTextHeight` | 12 w | text | `TextFactor` |
+| `TextContact` | 2 w | text | `TextFactor` |
+| `LabelGap` | 2 w | text | `TextFactor` |
+| `MinWireLength` | 3 w | pen | — |
+| `MaxResidual` | 0.25 w | pen | — |
+| `MinDot`, `MaxDot`, `DotCentre` | 2 w, 6 w, 1 w | pen | — |
+| `Attach` | 1.5 w | pen | — |
+| `MinDiagonalLength` | 8 w | symbol — a zig-zag's leg against a diagonal wire | `SymbolFactor` |
+| `MaxSymbolStroke` | 16 w | symbol | `SymbolFactor` |
+| `Grow` | 1 w | symbol — the region grow | `SymbolFactor` |
+| `MaxHopSpan` | 10 w | symbol — the hop span, a constant until IMF-2 | `SymbolFactor` |
+| `LineArt` (window, k) | 25 px, 0.34 | binarisation, in pixels | — |
+
+The **merge gap** of `SymbolRegions.Group` is no option: two pieces merge across a gap shorter than the larger one's
+extent along the faces, already a length of the drawing. `PictureProfile.Apply` is the one place a factor is applied.
+
+### 18.3 Low pictures are read enlarged (R-imf2-3) — `Resample.cs`
+
+A picture whose pen is drawn thinner than 1.6 px or whose type is under 12 px is **Low** and is read enlarged ×2, or
+×3 when ×2 leaves the pen under 3 px or the type under 18 px — never past 4 MP (×3 of a dense 1100 × 605 evaluation
+board took 8.8 s to read in a Debug build; ×2 a third of that). The brief's "w ≤ 2 px" is read on the DRAWN pen: every
+pen under 1.6 px binarises 2 px wide, while a crisp 2 px pen with 14 px type — what this repository's own test pictures
+draw — reads as it is (enlarged, a bold 14 px "IN" read as `tH`). A hairline drawing is never Low: IM-12's thickening
+already serves it. The enlargement is a **managed Lanczos-3**, not SkiaSharp's: the Skia this build carries (m119)
+offers only cubic resamplers, and a managed filter gives the same bytes on every machine. A whole factor k maps a source
+pixel's edges onto k of the enlarged picture's, so `SchematicImageRead.ToSource` divides by `Scale` after undoing the
+deskew, and `FromSource` multiplies first; every consumer of a read coordinate already went through them, and the three places
+that used the read's pen as a length in the file's pixels (the overlay's dot radii, the emit's fallback frame, the
+dialog's join reach) divide by `Scale`. The report says so in one line.
+
+### 18.4 Colour and fills (R-imf2-4)
+
+**Kind** (`ImageKind`). Before the area vote, line art is weighed: when the straight runs are line work, at least 80 %
+of their length runs across or down, at least 5 % of the ink is type in rows, and at least 40 % of the ink is in colours
+drawn as thin strokes (a colour's median run — the shorter of its horizontal and vertical runs through each pixel — no
+more than 3 strokes), the picture is a schematic whatever it fills. Measured: every schematic in both corpora is
+0.46–1.0 thin (the shaded crops `ds-gain-block-2x`, `picture-ds-c2`, `-f2`, `-g2` at 0.46–0.53 — the fill is half their
+ink, which is why "most" could not be the bar); IM-12's dark layouts 0.25–0.26, the shaded illustration 0, `picture-g`
+0.23. All four coloured crops that read as layouts now read as schematics; both layouts and both illustrations stay
+non-schematic. A fill's edge lying on ink rather than paper was tried as a second tell and does not separate (0.48 on
+the gain block, 0.61–0.78 on layouts and illustrations).
+
+**Colour is not darkness** (`SchematicImageReading.Binarise`). Besides the darkest colours (§9.1), every colour drawn
+as thin strokes is ink when it stands clear of the ground — a quarter of the darkest ink's contrast, or ΔE 40 — and is
+not another line's anti-aliased rim (more than half its pixels touching ink already kept). Without that last test
+circuitRF's own render kept its blue wires' lighter rim (`#6a8ef6`, a 1 px run) and its profile left the reference band.
+What drops out: a pale tint (a grid, a gradient, a highlight) and a wide colour that is not dark (a shaded triangle).
+
+**Fills are not ink.** A fill (`Fills`, §9.3) wider or taller than 3 s keeps only its rim — the pixels within a pen of
+its edge — in the symbol residue; its inside is recorded on the region it lies in (`SymbolRegion.Fills`) and reported.
+It was already never wire or junction; now it is not a region's ink either. A small fill (a diode's triangle, a dot) is
+ink as before. `ImageDatasheetStyleTests.GainBlock_TheTrianglesFill_MakesNoWireAndNoJunction` holds the triangle.
+
+### 18.5 The options expose the profile (R-imf2-5)
+
+`SchematicImageOptions.Profile` is `PictureProfileOptions.Auto` or any of pen, text height and symbol scale stated in the
+file's pixels; a stated value replaces only itself (`AStatedScale_ReplacesOnlyItself`) and is recorded in the
+provenance. The dialog's Advanced row has three fields that show the measured value while empty; the CLI takes
+`--pen`, `--text-height`, `--symbol-scale`; the MCP `recognize` tool `pen`, `textHeight`, `symbolScale`.
+
+### 18.6 The field table after IMF-2
+
+Scored exactly as §17.1 (`ImageFieldTests`, read from its TRX; `ms` is a Debug build under a parallel test run).
+
+Committed style pictures:
+
+```
+picture                  auto       read     kinds  ?   topo ports gnd   term  dev   block desig values names region     ms
+ds-gain-block-1x         schematic  read     1/5    6   no   1/2   3/4   -     0/1   1/1   0/5   0/2    0/1   3        1329
+ds-gain-block-2x         schematic  read     1/5    11  no   1/2   0/4   -     0/1   0/1   0/5   0/2    0/1   4         698
+ds-ldo-1x                schematic  read     0/2    1   no   2/2   3/3   2/2   0/1   1/1   0/2   0/2    0/2   7         949
+ds-ldo-2x                schematic  read     0/2    1   no   2/2   0/3   2/2   0/1   0/1   0/2   0/2    0/2   3         535
+ds-regulator-1x          schematic  read     0/7    3   no   -     3/4   -     0/1   1/1   0/7   0/7    0/2   8        1950
+ds-regulator-2x          schematic  read     0/7    4   no   -     2/4   -     0/1   0/1   0/7   0/7    0/2   9         925
+ds-rf-amp-1x             schematic  read     1/5    13  no   0/2   2/4   -     0/1   1/1   3/5   1/5    0/1   16       1730
+ds-rf-amp-2x             schematic  read     1/5    3   no   0/2   1/4   -     0/1   0/1   2/5   1/5    0/1   9         862
+ds-test-circuit-1x       schematic  read     0/3    2   no   0/2   0/3   -     0/1   0/1   1/3   0/3    0/1   16       1225
+ds-test-circuit-2x       schematic  read     0/3    4   no   0/2   0/3   -     0/1   0/1   2/3   1/3    0/1   6         722
+heavy-iec                schematic  read     0/8    5   no   0/1   5/6   -     0/3   -     0/9   -      -     35        834
+illustration             layout!    read!    -      2   -    -     -     -     -     -     -     -      -     2         390
+ladder-dashed            schematic  read     0/6    4   no   0/2   -     4/4   -     -     0/6   -      -     6         362
+loop-coil-names          schematic  read     1/2    0   no   0/3   -     -     -     -     -     -      0/3   2         205
+low-res                  schematic  read     1/2    3   no   1/2   -     2/4   -     -     0/2   -      -     2         528
+textbook-zigzag          schematic  read     0/2    2   no   1/2   -     4/4   -     -     0/2   -      -     2         317
+typeset                  schematic  read     1/5    2   no   -     1/1   -     0/1   -     0/6   0/5    -     4        1297
+```
+
+Field pictures (local, git-ignored; datasheet crops first):
+
+```
+picture                  auto       read     kinds  ?   topo ports gnd   term  dev   block desig values names region     ms
+picture-ds-a1            schematic  read     0/6    3   -    0/2   -     -     0/1   -     1/6   -      0/1   12       4066
+picture-ds-a2            schematic  read     0/6    4   -    0/2   -     -     0/1   -     1/6   -      0/1   20       2089
+picture-ds-b1            schematic  read     2/4    3   -    1/2   -     -     0/1   -     2/4   -      -     4         411
+picture-ds-b2            schematic  read     1/4    5   -    0/2   -     -     0/1   -     3/4   -      -     4         619
+picture-ds-c1            schematic  read     1/5    3   -    1/2   -     -     0/1   -     -     -      0/1   12        265
+picture-ds-c2            schematic  read     1/5    2   -    1/2   -     -     0/1   -     -     -      0/1   17        999
+picture-ds-d1            schematic  read     0/7    6   -    -     0/1   -     0/1   -     0/4   0/3    -     8        5488
+picture-ds-d2            schematic  read     0/7    2   -    -     0/1   -     0/1   -     0/4   0/3    -     17       1143
+picture-ds-e1            schematic  read     0/3    1   -    0/2   -     -     0/1   -     -     -      -     7        1715
+picture-ds-e2            schematic  read     0/3    4   -    0/2   -     -     0/1   -     -     -      -     9         947
+picture-ds-f1            schematic  read     -      3   -    -     -     -     0/2   -     -     -      -     70       3581
+picture-ds-f2            schematic  read     -      2   -    -     -     -     0/2   -     -     -      -     104      2991
+picture-ds-g1            schematic  read     -      6   -    -     -     -     0/4   -     -     -      -     116      4247
+picture-ds-g2            schematic  read     -      2   -    -     -     -     0/4   -     -     -      -     157      4441
+picture-ds-h1            schematic  read     1/2    1   -    2/2   3/3   -     0/1   -     0/2   0/2    0/2   6        1424
+picture-ds-h2            schematic  read     0/2    1   -    2/2   2/3   -     0/1   -     0/2   0/2    0/2   8         651
+picture-a                schematic  refused  0/8    0   -    -     0/4   0/6   -     -     -     -      -     0         231
+picture-b                schematic  read     1/4    1   -    -     -     -     -     -     0/2   -      -     2         610
+picture-c                schematic  read     0/8    2   -    -     -     -     0/3   -     0/8   -      -     32        607
+picture-d                schematic  read     0/2    8   -    -     1/1   -     -     -     -     -      0/2   3         936
+picture-e                schematic  read     0/5    2   -    -     -     -     -     -     -     -      -     12        512
+picture-f                schematic  read     0/6    8   -    -     -     4/4   -     -     -     -      -     4         302
+picture-g                layout!    read!    -      3   -    -     -     -     -     -     -     -      -     7        1328
+picture-h                schematic  read     6/7    9   -    -     -     -     0/2   -     -     0/7    -     5         482
+picture-i                schematic  read     1/2    1   -    -     -     -     -     -     -     -      0/3   2         782
+```
+
+The units move scores little, as expected. What moved: the four coloured crops are schematics; `ds-gain-block-1x` is no
+longer refused as curved line work; `heavy-iec` finds 5 of its 6 grounds (1); the largest region falls on `ds-rf-amp-1x`
+(45 → 16 pins), `picture-ds-g1` (270 → 116), `picture-ds-d1` (20 → 8) and `heavy-iec` (40 → 35); `picture-ds-h1`
+reads all three grounds and one passive. Worse: `ds-test-circuit-1x`'s largest region grows from 7 to 16 pins and its
+one passive is lost, and `picture-e`'s from 5 to 12 — both read enlarged, where the default region merge now meets a
+drawing three times its size in pixels at the same w; that is IMF-4's merge, not this phase's units.

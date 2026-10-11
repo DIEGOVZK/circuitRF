@@ -248,8 +248,16 @@ public sealed class WireGraph
 
     /// <summary>The indices of the wire candidates that are strokes of symbols — short lines with two bare ends, and
     /// every candidate on a cycle of candidates.</summary>
+    /// <param name="sample">When given, collects the symbol scale's samples (PictureProfile, R-imf2-1): the length of
+    /// every orthogonal line with two bare ends that carries a lead or stands in a stack of them (a plate, a bar), and
+    /// of every orthogonal side of a closed outline, no longer than
+    /// <paramref name="sampleMax"/> pixels across — whatever MaxSymbolStroke says. A line's length is its ink's: the
+    /// skeleton stops half a pen short of each bare end. An end stopping on a word kept as a symbol detail (a label
+    /// touching a plate) is bare for the sample, and one stopping on a fill is not: <paramref name="endAt"/> says which,
+    /// or null for the skeleton's own verdict.</param>
     internal static HashSet<int> SymbolStrokes(IReadOnlyList<WirePiece> candidates, IReadOnlyList<JunctionBlob> blobs,
-                                               double w, SchematicImageOptions o)
+                                               double w, SchematicImageOptions o, List<double>? sample = null, double sampleMax = 0,
+                                               Func<PointD, bool?>? endAt = null)
     {
         var a = Assemble(candidates, [], blobs, w, o, dissolve: false);
         var reject = new HashSet<int>();
@@ -260,6 +268,7 @@ public sealed class WireGraph
         var parent = Enumerable.Range(0, ne).ToArray();
         int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
         var paired = new HashSet<(int Edge, int Node)>();
+        var freeLines = new List<(PointD A, PointD B, double Length, bool Tee)>();
         var pairsAt = new List<(int A, int B)>[a.Nodes.Count];
         for (int n = 0; n < a.Nodes.Count; n++)
         {
@@ -295,7 +304,14 @@ public sealed class WireGraph
             }
             if (ends.Count != 2) continue;
             var (n0, n1) = (a.Nodes[ends[0]], a.Nodes[ends[1]]);
-            if (a.Degree(ends[0]) != 1 || a.Degree(ends[1]) != 1 || !n0.Free || !n1.Free) continue;
+            if (a.Degree(ends[0]) != 1 || a.Degree(ends[1]) != 1) continue;
+            bool Bare(ANode node) => endAt?.Invoke(node.P) ?? node.Free;
+            if (sample is not null && Bare(n0) && Bare(n1)
+                && Dist(n0.P, n1.P) + w <= sampleMax && line.All(e => a.Edges[e].Piece.Orientation != WireOrientation.Diagonal))
+                freeLines.Add((n0.P, n1.P, Dist(n0.P, n1.P) + w,
+                               line.SelectMany(e => new[] { a.Edges[e].From, a.Edges[e].To })
+                                   .Any(nd => nd != ends[0] && nd != ends[1] && a.Degree(nd) >= 3)));
+            if (!n0.Free || !n1.Free) continue;
             if (Dist(n0.P, n1.P) > o.MaxSymbolStroke * w) continue;
             foreach (int e in line) foreach (int s in a.Edges[e].Piece.Sources) reject.Add(s);
         }
@@ -358,6 +374,51 @@ public sealed class WireGraph
             var ps = g.SelectMany(e => new[] { a.Edges[e].Piece.A, a.Edges[e].Piece.B }).ToList();
             return (X0: ps.Min(p => p.x), Y0: ps.Min(p => p.y), X1: ps.Max(p => p.x), Y1: ps.Max(p => p.y));
         }).ToList();
+        // A plate or a bar carries a lead (a T in it) or stands in a stack of bare lines (a capacitor's other plate, a
+        // ground's lower bars); an arrow's shaft does neither. A dash is no plate: three or more bare lines on one line,
+        // each within its own length of the next, are a dashed line (two side by side are two grounds' bars).
+        if (sample is not null)
+        {
+            var chain = Enumerable.Range(0, freeLines.Count).ToArray();
+            int Chain(int x) { while (chain[x] != x) x = chain[x] = chain[chain[x]]; return x; }
+            var stacked = new bool[freeLines.Count];
+            for (int i = 0; i < freeLines.Count; i++)
+                for (int j = i + 1; j < freeLines.Count; j++)
+                {
+                    var (p0, p1, len, _) = freeLines[i];
+                    var (q0, q1, qLen, _) = freeLines[j];
+                    double perp0 = Local(p0, p1, q0).Perp, perp1 = Local(p0, p1, q1).Perp;
+                    if (Math.Abs(perp0) <= w && Math.Abs(perp1) <= w)
+                    {
+                        double gap = Math.Min(Math.Min(Dist(p0, q0), Dist(p0, q1)), Math.Min(Dist(p1, q0), Dist(p1, q1)));
+                        if (gap <= Math.Max(len, qLen) + w) chain[Chain(i)] = Chain(j);
+                        continue;
+                    }
+                    // Parallel, a short way off, side by side along their length.
+                    if (Math.Abs(perp0 - perp1) > w || Math.Abs(perp0) > Math.Max(len, qLen)) continue;
+                    double a0 = Local(p0, p1, q0).Along, a1 = Local(p0, p1, q1).Along;
+                    double overlap = Math.Min(Dist(p0, p1), Math.Max(a0, a1)) - Math.Max(0, Math.Min(a0, a1));
+                    if (overlap >= 0.3 * Math.Min(len, qLen)) stacked[i] = stacked[j] = true;
+                }
+            var size = Enumerable.Range(0, freeLines.Count).GroupBy(Chain).ToDictionary(g => g.Key, g => g.Count());
+            for (int i = 0; i < freeLines.Count; i++)
+                if (size[Chain(i)] < 3 && (freeLines[i].Tee || stacked[i])) sample.Add(freeLines[i].Length);
+        }
+        if (sample is not null)
+            foreach (var g in cycle.GroupBy(e => Root(a.Edges[e].From)))
+            {
+                var ps = g.SelectMany(e => new[] { a.Edges[e].Piece.A, a.Edges[e].Piece.B }).ToList();
+                if (ps.Max(p => p.x) - ps.Min(p => p.x) > sampleMax || ps.Max(p => p.y) - ps.Min(p => p.y) > sampleMax) continue;
+                // A side is the run of its straight pieces: a lead's T cuts one into two halves.
+                foreach (var side in g.GroupBy(Find))
+                {
+                    var pieces = side.Select(e => a.Edges[e].Piece).ToList();
+                    if (pieces.Any(p => p.Orientation == WireOrientation.Diagonal)) continue;
+                    var ends = pieces.SelectMany(p => new[] { p.A, p.B }).ToList();
+                    sample.Add(pieces[0].Orientation == WireOrientation.Horizontal
+                        ? ends.Max(p => p.x) - ends.Min(p => p.x) : ends.Max(p => p.y) - ends.Min(p => p.y));
+                }
+            }
         double tol = w;
         bool In(PointD p, (double X0, double Y0, double X1, double Y1) b) =>
             p.x >= b.X0 - tol && p.x <= b.X1 + tol && p.y >= b.Y0 - tol && p.y <= b.Y1 + tol;

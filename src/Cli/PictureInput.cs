@@ -47,6 +47,8 @@ internal sealed class PictureFlags
     public CrossingRule? Crossings;
     public SchematicArrange? Arrange;
     public double? Threshold;
+    /// <summary>The picture's scales, stated in its pixels (IMF-2, R-imf2-5): each replaces only its own measurement.</summary>
+    public double? Pen, TextHeight, SymbolScale;
     public readonly List<ConnectionOverride> Overrides = [];
 
     /// <summary>The layout-picture flags given, by spelling — refused on a schematic picture or a document.</summary>
@@ -165,6 +167,13 @@ internal sealed class PictureFlags
                 if (Number(v) is not { } k || !(k > 0) || k >= 1) return Bad("Sauvola's k, between 0 and 1");
                 Threshold = k;
                 { SchematicFlags.Add(a); i++; return 0; }
+            case "--pen" or "--text-height" or "--symbol-scale":
+            {
+                string p = v.EndsWith("px", StringComparison.OrdinalIgnoreCase) ? v[..^2] : v;
+                if (Number(p) is not { } px || !(px > 0)) return Bad("a size in pixels above zero");
+                if (a == "--pen") Pen = px; else if (a == "--text-height") TextHeight = px; else SymbolScale = px;
+                { SchematicFlags.Add(a); i++; return 0; }
+            }
             case "--connect" or "--disconnect":
                 if (ConnectionOverride.Parse(a, v, out string? error) is not { } o) return Bad(error ?? "x,y in pixels");
                 Overrides.Add(o);

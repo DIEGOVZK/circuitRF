@@ -18,8 +18,11 @@ public sealed record SchematicImageReport
     public const string CurvedLinesRefusal =
         "No circuit: most of the lines in this picture curve or slant, as a chart's or a drawing's do; a schematic's wires run across and down.";
 
-    /// <summary>The stroke width w, pixels.</summary>
+    /// <summary>The stroke width w the line work was read at, the source picture's pixels.</summary>
     public double StrokeWidth { get; init; }
+
+    /// <summary>The picture's own scales (R-imf2-1); null before they are measured.</summary>
+    public PictureProfile? Profile { get; init; }
 
     /// <summary>How far the picture was turned to straighten it, degrees (0: it was not).</summary>
     public double DeskewDeg { get; init; }
@@ -47,6 +50,9 @@ public sealed record SchematicImageReport
     public int Hops { get; init; }
 
     public int SymbolRegions { get; init; }
+
+    /// <summary>Large filled areas kept as their regions' fills, not read as ink (R-imf2-4).</summary>
+    public int FillsKept { get; init; }
     public int DecorationsRemoved { get; init; }
     public int NetLabels { get; init; }
     public int SupplyMarks { get; init; }
@@ -59,6 +65,7 @@ public sealed record SchematicImageReport
         {
             "Stroke width " + StrokeWidth.ToString("0.#", CultureInfo.InvariantCulture) + " px.",
         };
+        if (Profile is { } profile) r.AddRange(profile.Lines());
         if (DeskewDeg != 0)
             r.Add("Straightened by " + DeskewDeg.ToString("0.##", CultureInfo.InvariantCulture) + "°.");
         if (GridDotsRemoved > 0) r.Add($"Background grid removed ({Count(GridDotsRemoved, "dot")}).");
@@ -72,6 +79,7 @@ public sealed record SchematicImageReport
             r.Add($"Crossings: {CrossingsConnected} connected, {CrossingsNotConnected} not connected.");
         if (Hops > 0) r.Add(Count(Hops, "hop") + ", not connected.");
         r.Add(Count(SymbolRegions, "symbol region") + ".");
+        if (FillsKept > 0) r.Add($"{Count(FillsKept, "filled area")} kept as {(FillsKept == 1 ? "its symbol's fill" : "their symbols' fills")}, not ink.");
         if (DecorationsRemoved > 0) r.Add($"{Count(DecorationsRemoved, "decoration")} with no wire removed.");
         if (NetLabels > 0) r.Add(Count(NetLabels, "net label") + ".");
         if (SupplyMarks > 0) r.Add(Count(SupplyMarks, "supply mark") + ".");

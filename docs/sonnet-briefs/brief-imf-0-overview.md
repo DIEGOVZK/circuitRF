@@ -1,6 +1,6 @@
 # Brief series — Pasted schematic pictures from datasheets and the web (IMF-1 … IMF-10)
 
-**Status:** IMF-1 done 2026-10-11 (baseline in design note §17) · **Date:** 2026-10-11 · **Decisions:** §5 locked by this brief; §6 settled by the owner 2026-10-11
+**Status:** IMF-1 done 2026-10-11 (baseline in design note §17); IMF-2 done 2026-10-11 (design note §18) · **Date:** 2026-10-11 · **Decisions:** §5 locked by this brief; §6 settled by the owner 2026-10-11
 **Requirement tag:** `R-imf<n>-<m>` (phase n, requirement m).
 **Design note:** `docs/design/image-to-circuit.md` — this series adds §17 onward (IMF-1 opens it with the baseline).
 **Builds on:** the Create from Image series (`brief-img-0-overview.md`, D1–D18), above all the schematic reader IM-7…IM-10

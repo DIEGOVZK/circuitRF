@@ -24,7 +24,12 @@ public sealed record SymbolAttachment(int Node, double X, double Y, double DirX,
 
 /// <summary>One symbol on the picture, not yet named (IM-8 names it).</summary>
 /// <param name="Mask">The region's own pixels, cropped to <paramref name="Box"/>.</param>
-public sealed record SymbolRegion(int Id, PixelBox Box, int Area, IReadOnlyList<SymbolAttachment> Attachments, BinaryImage Mask);
+public sealed record SymbolRegion(int Id, PixelBox Box, int Area, IReadOnlyList<SymbolAttachment> Attachments, BinaryImage Mask)
+{
+    /// <summary>The large filled areas inside it — a shaded triangle, a filled box — kept as fills, not ink (IMF-2,
+    /// R-imf2-4): only their rim is in <see cref="Mask"/>.</summary>
+    public IReadOnlyList<PixelBox> Fills { get; init; } = [];
+}
 
 /// <summary>A word naming the net of the wire ending at <paramref name="Node"/> (R-im7-7).</summary>
 /// <param name="Text">The word's <see cref="TextRegion.Id"/>.</param>
@@ -179,12 +184,12 @@ internal static class SymbolRegions
                 if (at[i].Count == 1 && at[j].Count == 1)
                 {
                     var u = regions[i].Box.Union(regions[j].Box);
-                    if (u.Width <= 10 * w + 2 && u.Height <= 10 * w + 2) tries.Add((i, j, at[i][0], at[j][0]));
+                    if (u.Width <= o.MaxHopSpan * w + 2 && u.Height <= o.MaxHopSpan * w + 2) tries.Add((i, j, at[i][0], at[j][0]));
                 }
         foreach (var (ra, rb, p, q) in tries)
         {
             if (used.Contains(ra) || used.Contains(rb)) continue;
-            if (Hop(p, q, wires, w) is not { } hop) continue;
+            if (Hop(p, q, wires, w, o.MaxHopSpan) is not { } hop) continue;
             hops.Add(hop);
             used.Add(ra);
             used.Add(rb);
@@ -193,12 +198,12 @@ internal static class SymbolRegions
     }
 
     /// <summary>Two wire ends facing each other a few w apart, on one line, with another wire passing between them.</summary>
-    private static HopJoin? Hop(SymbolAttachment p, SymbolAttachment q, WireGraph wires, double w)
+    private static HopJoin? Hop(SymbolAttachment p, SymbolAttachment q, WireGraph wires, double w, double span)
     {
         if (p.DirX * q.DirX + p.DirY * q.DirY > -0.95) return null;
         var (a, b) = (new PointD(p.X, p.Y), new PointD(q.X, q.Y));
         double d = WireGraph.Dist(a, b);
-        if (d < 2 * w || d > 10 * w) return null;
+        if (d < 2 * w || d > span * w) return null;
         if (Math.Abs(WireGraph.Local(a, new PointD(a.x + p.DirX, a.y + p.DirY), b).Perp) > w) return null;
         var sa = wires.SegmentAt(p.Node).Id;
         var sb = wires.SegmentAt(q.Node).Id;

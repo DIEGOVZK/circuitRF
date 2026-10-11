@@ -120,7 +120,7 @@ internal static partial class Recognize
             "                 [--layer-map \"#rrggbb=<layer>|drill|outline|silk|ignore,...\"] [--preset <name>]\n" +
             "                 [--region x0,y0,x1,y1 in px] [--min-feature px2] [--simplify px] [--edge-stroke px] [--snap-deg d] [--snap45 on|off]\n" +
             "    schematic:   [--crossings never|dot|always] [--arrange drawn|tidy] [--connect x,y] [--disconnect x,y]\n" +
-            "                 [--threshold k]\n" +
+            "                 [--threshold k] [--pen px] [--text-height px] [--symbol-scale px]\n" +
             "    plot:        [-o part.s2p] [--csv traces.csv] [--picture more.png] [--plot n,n] [--keep-sources on|off]\n" +
             "                 [--x-axis <px>=<value>,<px>=<value>[@plot]] [--y-axis ...] [--x-log] [--y-log]\n" +
             "                 [--trace <T3|#rrggbb|dashed>[@plot]=S21:db] [--smith-z0 50Ohm] [--freq <trace>=<start>..<stop>]\n" +
@@ -639,6 +639,10 @@ internal static partial class Recognize
         var options = new SchematicImageOptions { Overrides = [.. o.Picture.Overrides] };
         if (o.Picture.Crossings is { } crossings) options = options with { Crossings = crossings };
         if (o.Picture.Threshold is { } k) options = options with { LineArt = options.LineArt with { K = k } };
+        options = options with
+        {
+            Profile = new PictureProfileOptions { Pen = o.Picture.Pen, TextHeight = o.Picture.TextHeight, SymbolScale = o.Picture.SymbolScale },
+        };
         var input = new SchematicImageInput
         {
             Source = source, Kind = kind, Options = options, Technology = tech, TechnologyPath = techPath,

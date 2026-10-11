@@ -75,6 +75,10 @@ public sealed partial class ImageOverlay
     /// <summary>The report's anchors are the picture's own pixels — a schematic picture's — rather than DBU.</summary>
     public bool PixelAnchors { get; }
 
+    /// <summary>What the reading measured of the picture, one line each — a schematic picture's scales (IMF-2, R-imf2-1):
+    /// written in the flattened picture's corner, the legend of what every mark was read at.</summary>
+    public IReadOnlyList<string> Legend { get; private init; } = [];
+
     public static ImageOverlay Empty { get; } = new([], null, [], [], null);
 
     public IReadOnlyList<ImageOverlayItem> Items { get; }
@@ -271,21 +275,21 @@ public sealed partial class ImageOverlay
         foreach (var node in graph.Nodes.Where(n => n.Dot))
         {
             var (x, y) = S(node.X, node.Y);
-            double r = Math.Max(2, read.StrokeWidth * 1.5);
+            double r = Math.Max(2, read.StrokeWidth / read.Scale * 1.5);
             items.Add(new ImageOverlayItem($"dot:{node.Id}", ImageOverlayClass.Wire, [], true, null, null, false, null,
                                            new PixelBounds(x - r, y - r, x + r, y + r), (x, y, r)));
         }
         foreach (var end in read.Dangling)
         {
             var (x, y) = S(graph.Nodes[end].X, graph.Nodes[end].Y);
-            double r = Math.Max(3, read.StrokeWidth * 2);
+            double r = Math.Max(3, read.StrokeWidth / read.Scale * 2);
             items.Add(new ImageOverlayItem($"{EndPrefix}{end}", ImageOverlayClass.Wire, [], true, null, null, true, null,
                                            new PixelBounds(x - r, y - r, x + r, y + r), (x, y, r)));
         }
         foreach (var c in graph.Crossings)
         {
             var (x, y) = S(c.X, c.Y);
-            double r = Math.Max(5, read.StrokeWidth * 3);
+            double r = Math.Max(5, read.StrokeWidth / read.Scale * 3);
             string label = c.Reading switch
             {
                 CrossingReading.Connected => "connected",
@@ -328,6 +332,6 @@ public sealed partial class ImageOverlay
             items.Add(new ImageOverlayItem($"text:{w.Id}", ImageOverlayClass.Text, [box], true,
                                            w.Class == WordClass.Unread ? null : w.Text, null, w.Class == WordClass.Unread, null, PixelBounds.Of(box)));
         }
-        return new ImageOverlay(items, null, [], [], null, pixelAnchors: true);
+        return new ImageOverlay(items, null, [], [], null, pixelAnchors: true) { Legend = read.Profile?.Lines() ?? [] };
     }
 }

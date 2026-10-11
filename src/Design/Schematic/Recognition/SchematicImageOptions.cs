@@ -1,7 +1,13 @@
-// How a schematic picture is read — brief-img-7-schematic-wires-and-regions.md R-im7-2 … R-im7-7 (overview D11, D16).
+// How a schematic picture is read — brief-img-7-schematic-wires-and-regions.md R-im7-2 … R-im7-7 (overview D11, D16),
+// brief-imf-2-picture-scale-profile.md R-imf2-2, R-imf2-5.
 //
-// Every tolerance is stated in units of the picture's stroke width w (R-im7-2), so one set of defaults reads a
-// 2-pixel screenshot and a 6-pixel scan alike. Every field has the dialog's default.
+// Every tolerance is a number of pens w AT THE REFERENCE PROFILE (PictureProfile: text 5–7.5 w tall, a symbol scale of
+// 9–26 w — the pictures every default was measured on), and each belongs to one of three classes, named on it:
+//   pen    — wire geometry: residuals, dots, how near an end reaches. Always in w.
+//   symbol — sized by the drawing's symbols: in s, PictureProfile.SymbolFactor times the number below.
+//   text   — sized by the drawing's type: in h, PictureProfile.TextFactor times the number below.
+// A picture inside the reference band reads with exactly these numbers. The mapping is design note §18.2's table.
+// Every field has the dialog's default.
 
 using CircuitRF.Design.Imaging;
 
@@ -24,6 +30,10 @@ public sealed record SchematicImageOptions
 {
     /// <summary>The binarisation (R-im1-3).</summary>
     public LineArtOptions LineArt { get; init; } = new();
+
+    /// <summary>The picture's scales: measured (Auto), or any of them stated in the source picture's pixels (R-imf2-5).
+    /// A stated value replaces only itself.</summary>
+    public PictureProfileOptions Profile { get; init; } = PictureProfileOptions.Auto;
 
     /// <summary>When a four-way crossing connects (R-im7-5).</summary>
     public CrossingRule Crossings { get; init; } = CrossingRule.WithDot;
@@ -48,58 +58,61 @@ public sealed record SchematicImageOptions
 
     // ── Text (R-im7-3) ──────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>A glyph is at least this many w tall.</summary>
+    /// <summary>Text: a glyph is at least this many w tall.</summary>
     public double MinTextHeight { get; init; } = 2.0;
 
-    /// <summary>A glyph is at most this many w tall; a straight run longer than this is line work, never text.</summary>
+    /// <summary>Text: a glyph is at most this many w tall; a straight run longer than this is line work, never text.</summary>
     public double MaxTextHeight { get; init; } = 12.0;
 
-    /// <summary>A word touching line work along more than this many w is kept as a symbol detail.</summary>
+    /// <summary>Text: a word touching line work along more than this many w is kept as a symbol detail.</summary>
     public double TextContact { get; init; } = 2.0;
 
-    /// <summary>A drawing whose text stands taller than this many w is drawn in hairlines (circuitRF's own schematic,
+    /// <summary>Profile: a drawing whose text stands taller than this many w is drawn in hairlines (circuitRF's own schematic,
     /// a vector export at a high zoom): its line work is thickened before wires and symbols are read (IM-12). 0 never
     /// thickens.</summary>
     public double HairlineTextHeight { get; init; } = 8.0;
 
-    /// <summary>A hairline drawing is thickened until its text stands this many w tall — the weight every other
+    /// <summary>Profile: a hairline drawing is thickened until its text stands this many w tall — the weight every other
     /// tolerance here was measured at.</summary>
     public double TextHeightInStrokes { get; init; } = 5.0;
 
     // ── Wires (R-im7-4) ─────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>An orthogonal straight run shorter than this many w is not a wire.</summary>
+    /// <summary>Pen: an orthogonal straight run shorter than this many w is not a wire.</summary>
     public double MinWireLength { get; init; } = 3.0;
 
-    /// <summary>A diagonal straight run is a wire only above this many w.</summary>
+    /// <summary>Symbol: a diagonal straight run is a wire only above this many w — below it, a zig-zag's leg.</summary>
     public double MinDiagonalLength { get; init; } = 8.0;
 
-    /// <summary>A run is straight when its pixels lie within this many w of its line (RMS).</summary>
+    /// <summary>Pen: a run is straight when its pixels lie within this many w of its line (RMS).</summary>
     public double MaxResidual { get; init; } = 0.25;
 
-    /// <summary>A straight line no longer than this many w whose BOTH ends stop in nothing is a stroke of a symbol — a
+    /// <summary>Symbol: a straight line no longer than this many w whose BOTH ends stop in nothing is a stroke of a symbol — a
     /// capacitor plate, a ground bar, a supply bar — not a wire.</summary>
     public double MaxSymbolStroke { get; init; } = 16.0;
 
-    /// <summary>A junction dot's diameter is at least this many w …</summary>
+    /// <summary>Pen: a junction dot's diameter is at least this many w …</summary>
     public double MinDot { get; init; } = 2.0;
 
     /// <summary>… and at most this many.</summary>
     public double MaxDot { get; init; } = 6.0;
 
-    /// <summary>A junction dot is centred within this many w of the node.</summary>
+    /// <summary>Pen: a junction dot is centred within this many w of the node.</summary>
     public double DotCentre { get; init; } = 1.0;
 
     // ── Symbols (R-im7-6, R-im7-7) ──────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>Residue pieces are grown by this many w before they are joined.</summary>
+    /// <summary>Symbol: residue pieces are grown by this many w before they are joined.</summary>
     public double Grow { get; init; } = 1.0;
 
-    /// <summary>A wire end stopping within this many w of a symbol region is attached to it.</summary>
+    /// <summary>Pen: a wire end stopping within this many w of a symbol region is attached to it.</summary>
     public double Attach { get; init; } = 1.5;
 
-    /// <summary>A word within this many w of a dangling end, in line with its wire, is the wire's net label.</summary>
+    /// <summary>Text: a word within this many w of a dangling end, in line with its wire, is the wire's net label.</summary>
     public double LabelGap { get; init; } = 2.0;
+
+    /// <summary>Symbol: two wire ends facing each other across a wire, no further apart than this many w, are a hop.</summary>
+    public double MaxHopSpan { get; init; } = 10.0;
 
     // ── Corrections (R-im10-8) ──────────────────────────────────────────────────────────────────────────────────
 

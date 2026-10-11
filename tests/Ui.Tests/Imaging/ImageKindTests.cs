@@ -26,6 +26,14 @@ public sealed class ImageKindTests(ITestOutputHelper output)
     public void ThinOrthogonalStrokes_ReadSchematic() =>
         Assert.Equal(DrawingKind.Schematic, Classify(Pictures.Schematic()).Kind);
 
+    /// <summary>IMF-2, R-imf2-4: line art before area. A datasheet's gain block at 2× — a grey-filled amplifier triangle,
+    /// blue type — is a schematic, whatever its fill; IM-12's dark translucent layout picture is still a layout.</summary>
+    [Theory]
+    [InlineData(ImageAcceptance.StylePictures.Folder + "/ds-gain-block-2x/picture.png", DrawingKind.Schematic)]
+    [InlineData(ImageAcceptance.ForeignPictures.Folder + "/dark-layout.png", DrawingKind.Layout)]
+    public void LineArt_IsASchematicWhateverItsFills(string picture, DrawingKind kind) =>
+        Assert.Equal(kind, Classify(ImageSource.FromFile(FixturePaths.Require(picture)).Source!.Raster).Kind);
+
     /// <summary>R-im14-1: a plot's grid and a Smith chart's circles are a plot, not wires — Plot is asked first.</summary>
     [Theory]
     [InlineData("plot-two-black.png")]

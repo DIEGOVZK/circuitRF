@@ -285,7 +285,7 @@
                             <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding EdgeStrokeText}"
                                      ToolTip.Tip="The width of a line the picture draws on every shape's edge, taken back off each traced shape. A circuitRF layout picture draws one 2 px wide."/>
                         </Grid>
-                        <Grid Classes="advanced" ColumnDefinitions="Auto,Auto,16,Auto,Auto" RowDefinitions="Auto,Auto"
+                        <Grid Classes="advanced" ColumnDefinitions="Auto,Auto,16,Auto,Auto" RowDefinitions="Auto,Auto,Auto"
                               RowSpacing="6" ColumnSpacing="6" IsVisible="{Binding IsSchematicPicture}">
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Threshold"/>
                             <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding ThresholdText}"
@@ -293,6 +293,15 @@
                             <TextBlock Grid.Row="0" Grid.Column="3" Text="Window, px"/>
                             <TextBox Grid.Row="0" Grid.Column="4" Text="{Binding WindowText}"
                                      ToolTip.Tip="The neighbourhood the threshold is judged over, pixels."/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Pen, px"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding PenText}" Watermark="{Binding MeasuredPen}"
+                                     ToolTip.Tip="The width the picture's lines are drawn with. Leave it empty to measure it."/>
+                            <TextBlock Grid.Row="1" Grid.Column="3" Text="Text height, px"/>
+                            <TextBox Grid.Row="1" Grid.Column="4" Text="{Binding TextHeightText}" Watermark="{Binding MeasuredTextHeight}"
+                                     ToolTip.Tip="The height of the picture's capital letters. Leave it empty to measure it."/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Symbol scale, px"/>
+                            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding SymbolScaleText}" Watermark="{Binding MeasuredSymbolScale}"
+                                     ToolTip.Tip="The length of a capacitor's plate or a ground's bar in the picture. Leave it empty to measure it."/>
                         </Grid>
                         <CheckBox Content="Keep the source picture under the result" IsChecked="{Binding KeepUnderlay}"
                                   ToolTip.Tip="The written layout and schematic carry the picture behind them, locked and faded, so each shape lies on what it was read from."/>

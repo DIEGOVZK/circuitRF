@@ -1,14 +1,17 @@
 // A schematic picture split into what it is made of — wires, words and symbols — with which wire ends reach which
 // symbol. brief-img-7-schematic-wires-and-regions.md R-im7-1 … R-im7-8 (overview D9, D11, D16).
 //
-//   picture ─ normalise: darkest colours → binarise → straighten (± 5°) → stroke width w → border, dot grid out
+//   picture ─ normalise: ink colours → binarise → straighten (± 5°) → stroke width w → border, dot grid out
+//           ─ profile (PictureProfile, IMF-2): the text height h; a Low picture is read again enlarged ×2 or ×3
 //           ─ words (TextRegions): small pieces off the long runs, in lines; their pixels removed
+//           ─ the symbol scale s, from the plates, bars and small outlines the default tolerances set aside
 //           ─ wires (WireGraph): the skeleton's straight runs, symbol strokes set aside, nodes, dots, crossings
 //           ─ symbols (SymbolRegions): the residue, grown and merged; attachments; hops, supply marks, net labels
 //
 // Nothing here names a component (IM-8) or reads a word (IM-9). Pure: it posts nothing and writes nothing. Every
-// tolerance is in units of w, the one number measured from the picture. The coordinates of everything returned are
-// the READ picture's — the source turned by the deskew, when there was one; ToSource takes a point back.
+// tolerance is a number of pens w at the reference profile, scaled by its class's factor (SchematicImageOptions). The
+// coordinates of everything returned are the READ picture's — the source enlarged when it was Low and turned by the
+// deskew when there was one; ToSource takes a point back.
 
 using Clipper2Lib;
 using CircuitRF.Design.Imaging;
@@ -61,11 +64,19 @@ public sealed record SchematicImageRead
     /// <summary>The turn applied to straighten the picture, degrees (0: none).</summary>
     public double DeskewDeg { get; init; }
 
+    /// <summary>How many times larger than the file the picture was read (R-imf2-3); 1: at its own size. Every
+    /// coordinate here is the read picture's: <see cref="ToSource"/> takes it back to the file's.</summary>
+    public int Scale { get; init; } = 1;
+
+    /// <summary>The picture's own scales and the factors its tolerances took (R-imf2-1).</summary>
+    public PictureProfile? Profile { get; init; }
+
     /// <summary>The source picture's size.</summary>
     public int SourceWidth { get; init; }
     public int SourceHeight { get; init; }
 
-    /// <summary>The read picture's size — the source's, or larger when it was turned.</summary>
+    /// <summary>The read picture's size — the source's, larger when it was turned, and <see cref="Scale"/> times it
+    /// when it was enlarged.</summary>
     public int Width { get; init; }
     public int Height { get; init; }
 
@@ -105,18 +116,20 @@ public sealed record SchematicImageRead
     /// <summary>A point of the read picture in the source picture's pixels.</summary>
     public (double X, double Y) ToSource(double x, double y)
     {
-        if (DeskewDeg == 0) return (x, y);
+        double k = Scale;
+        if (DeskewDeg == 0) return (x / k, y / k);
         double phi = DeskewDeg * Math.PI / 180, c = Math.Cos(phi), s = Math.Sin(phi);
         double rx = x - Width / 2.0, ry = y - Height / 2.0;
-        return (rx * c + ry * s + SourceWidth / 2.0, -rx * s + ry * c + SourceHeight / 2.0);
+        return ((rx * c + ry * s + k * SourceWidth / 2.0) / k, (-rx * s + ry * c + k * SourceHeight / 2.0) / k);
     }
 
     /// <summary>A point of the source picture in the read picture's pixels — the inverse of <see cref="ToSource"/>.</summary>
     public (double X, double Y) FromSource(double x, double y)
     {
-        if (DeskewDeg == 0) return (x, y);
+        double k = Scale;
+        if (DeskewDeg == 0) return (x * k, y * k);
         double phi = DeskewDeg * Math.PI / 180, c = Math.Cos(phi), s = Math.Sin(phi);
-        double qx = x - SourceWidth / 2.0, qy = y - SourceHeight / 2.0;
+        double qx = k * (x - SourceWidth / 2.0), qy = k * (y - SourceHeight / 2.0);
         return (qx * c - qy * s + Width / 2.0, qx * s + qy * c + Height / 2.0);
     }
 }
@@ -134,35 +147,28 @@ public static class SchematicImageReading
     {
         var o = options ?? new SchematicImageOptions();
         var token = control?.Token ?? CancellationToken.None;
+        var stated = o.Profile;
 
-        // ── Normalise (R-im7-2) ──
+        // ── Normalise (R-im7-2), and the picture's own scales (R-imf2-1, R-imf2-3) ──
         control?.BeginStage("Reading the line work");
-        var raster = source;
-        var mask = Binarise(raster, o);
-        double deskew = 0;
-        if (o.Deskew)
+        var n = Normalise(source, o, token);
+        // A Low picture — a 1–2 px hairline, 7–9 px type — is read enlarged: a glyph's skeleton and a plate's gap need
+        // the pixels. A hairline drawing whose text is tall enough is not Low: IM-12's thickening brings it to the
+        // reference, as it always has.
+        var (w0, _) = PenOf(n, stated, 1);
+        double pen0 = stated.Pen ?? (n.InkPen > 0 ? n.InkPen : n.Pen);
+        var text0 = stated.TextHeight is null ? PictureProfile.MeasureText(n.Mask, w0) : (0, 0, false);
+        double h0 = stated.TextHeight ?? text0.Height;
+        bool hairline = Hairline(n.Mask, w0, o, out double cap, out double lineW);
+        var (resolution, k) = PictureProfile.Resolve(pen0, h0, hairline, (long)source.Width * source.Height);
+        if (k > 1)
         {
-            double lean = Lean(mask, o);
-            if (Math.Abs(lean) > o.MinDeskewDeg && Math.Abs(lean) <= o.MaxDeskewDeg)
-            {
-                deskew = -lean;
-                raster = Rotate(source, deskew * Math.PI / 180);
-                mask = Binarise(raster, o);
-            }
+            control?.BeginStage("Reading the line work, enlarged");
+            n = Normalise(Resample.Enlarge(source, k, o.MaxThreads), o, token);
         }
+        var mask = n.Mask;
+        var (w, penSamples) = PenOf(n, stated, k);
         token.ThrowIfCancellationRequested();
-        double w = RunWidth(mask);
-        PixelBox? border = o.RemoveBorder ? RemoveBorder(mask, w) : null;
-        int grid = o.RemoveGrid ? RemoveGrid(mask, w) : 0;
-        if (border is not null || grid > 0) w = RunWidth(mask);
-        w = Math.Max(1.0, w);
-
-        // Specks (IM-12): a piece of ink, or a hole in it, smaller than a quarter of a stroke's square is noise — salt
-        // on a scan, a JPEG's ringing — never a full stop (about w²) or a junction dot (several w across). Left in, a
-        // speck beside a word is read as a glyph of it, and a hole in a stroke cuts a symbol's outline.
-        int speck = Math.Max(2, (int)Math.Ceiling(0.25 * w * w));
-        mask = Morphology.Despeckle(mask, speck);
-        mask = Morphology.Despeckle(mask.Inverted(), speck).Inverted();
 
         // ── Hairlines (IM-12) ──
         // Every tolerance below is in w, measured on drawings whose text stands 5–7 w tall. A drawing in hairlines —
@@ -172,25 +178,41 @@ public static class SchematicImageReading
         // the line work alone is thickened to the weight the tolerances were measured at.
         // The line work's own width decides, not w: on a drawing with more words than wire, w is the text's weight.
         double inkW = w, thick = 0, textW = w;
-        if (o.HairlineTextHeight > 0 && TextHeight(mask, w) is var cap and > 0 && LineWidth(mask, w) is var lineW
-            && cap > o.HairlineTextHeight * lineW)
+        if (k > 1) hairline = Hairline(mask, w, o, out cap, out lineW);
+        if (hairline)
         {
             textW = cap / o.TextHeightInStrokes;
             thick = Math.Max(0, (textW - lineW) / 2);
         }
 
+        // ── The text height, and the text tolerances it sets (R-imf2-2) ──
+        var (hMeasured, glyphs, alone) = stated.TextHeight is not null ? (0, 0, false) : k == 1 ? text0 : PictureProfile.MeasureText(mask, inkW);
+        var text = stated.TextHeight is { } th ? ProfileScale.Stated(th * k)
+                 : hMeasured > 0 ? new ProfileScale(hMeasured, glyphs, ProfileBasis.Measured)
+                 : new ProfileScale(PictureProfile.ReferenceTextLow * textW, 0, ProfileBasis.Derived);
+        // A hairline drawing's thickening has already set its text to the reference height in w: its factor is 1.
+        double textFactor = thick > 0 ? 1 : PictureProfile.Factor(text.Px / textW, PictureProfile.ReferenceTextLow, PictureProfile.ReferenceTextHigh);
+        var profile = new PictureProfile
+        {
+            Pen = stated.Pen is { } sp ? ProfileScale.Stated(sp)
+                : new ProfileScale((n.InkPen > 0 ? n.InkPen : inkW) / k, penSamples, ProfileBasis.Measured),
+            Text = text with { Px = text.Px / k }, TextAlone = alone && text.Basis == ProfileBasis.Measured, Resolution = resolution, Resample = k, TextFactor = textFactor,
+        };
+        var to = profile.Apply(o);
+
         var read = new SchematicImageRead
         {
-            StrokeWidth = w, TextStrokeWidth = inkW, Thickened = thick, DeskewDeg = deskew, SourceWidth = source.Width, SourceHeight = source.Height,
-            Width = raster.Width, Height = raster.Height, Border = border, GridDotsRemoved = grid,
-            Grid = PictureGrids.Detect(source), Report = new SchematicImageReport(),
+            StrokeWidth = w, TextStrokeWidth = inkW, Thickened = thick, DeskewDeg = n.Deskew, Scale = k,
+            SourceWidth = source.Width, SourceHeight = source.Height, Width = n.Raster.Width, Height = n.Raster.Height,
+            Border = n.Border, GridDotsRemoved = n.Grid,
+            Grid = PictureGrids.Detect(source), Profile = profile, Report = new SchematicImageReport(),
         };
 
         // ── Words (R-im7-3) ──
         control?.BeginStage("Finding words");
-        var text = TextRegions.Find(mask, textW, o);
+        var words = TextRegions.Find(mask, textW, to);
         var wireMask = mask.Clone();
-        for (int i = 0; i < wireMask.Pixels.Length; i++) if (text.Removed.Pixels[i] != 0) wireMask.Pixels[i] = 0;
+        for (int i = 0; i < wireMask.Pixels.Length; i++) if (words.Removed.Pixels[i] != 0) wireMask.Pixels[i] = 0;
         if (thick > 0)
         {
             // w is then the weight aimed at, not a measurement: a 2.6 px pen binarises to 2, 3 or 4 px by colour and
@@ -199,7 +221,7 @@ public static class SchematicImageReading
             w = textW;
             read = read with { StrokeWidth = w };
         }
-        read = read with { Words = text.Words, KeptText = text.Kept };
+        read = read with { Words = words.Words, KeptText = words.Kept };
         token.ThrowIfCancellationRequested();
 
         // ── Wires (R-im7-4, R-im7-5) ──
@@ -209,9 +231,47 @@ public static class SchematicImageReading
         var dt = DistanceTransform.Compute(wireMask, o.MaxThreads);
         var blobs = WireGraph.Blobs(wireMask, dt, w, o);
         var skel = SkeletonGraph.Build(wireMask, new SkeletonGraphOptions { StrokeWidth = w, MaxThreads = o.MaxThreads });
-        var pieces = WireGraph.Pieces(skel, w, o);
+
+        // ── The symbol scale, and the symbol tolerances it sets (R-imf2-1, R-imf2-2) ──
+        // Measured on the line work as the defaults read it — the plates, bars and small outlines MaxSymbolStroke and
+        // the candidate cycles set aside — before any tolerance has moved.
+        var basePieces = WireGraph.Pieces(skel, w, o);
+        var baseCandidates = basePieces.Where(p => p.IsWire).ToList();
+        var strokeLengths = new List<double>();
+        double reachS = 8 * text.Px;
+        // A line stopped by a label kept as a symbol detail ends in paper all the same; one ending on a fill (an
+        // arrow's shaft at its head) is no plate.
+        var keptBoxes = words.Kept.Select(t => t.Box).ToList();
+        bool? EndAt(PointD p)
+        {
+            if (keptBoxes.Any(b => b.Distance(p.x, p.y) <= w)) return true;
+            int r = (int)Math.Ceiling(w) + 1;
+            for (int y = (int)p.y - r; y <= (int)p.y + r; y++)
+                for (int x = (int)p.x - r; x <= (int)p.x + r; x++)
+                    if (fills.At(x, y)) return false;
+            return null;
+        }
+        var baseStrokes = WireGraph.SymbolStrokes(baseCandidates, blobs, w, o, strokeLengths, reachS, EndAt);
+        strokeLengths.Sort();
+        var symbol = stated.SymbolScale is { } ss ? ProfileScale.Stated(ss * k)
+                   : strokeLengths.Count >= PictureProfile.MinSymbolSamples
+                       ? new ProfileScale(PictureProfile.Median(strokeLengths), strokeLengths.Count, ProfileBasis.Measured)
+                       : new ProfileScale(PictureProfile.SymbolInText * text.Px, strokeLengths.Count, ProfileBasis.Derived);
+        double symbolFactor = PictureProfile.Factor(symbol.Px / w, PictureProfile.ReferenceSymbolLow, PictureProfile.ReferenceSymbolHigh);
+        var (spacing, pairs) = PictureProfile.WireSpacing(baseCandidates.Where(p => !baseStrokes.Contains(p.Sources[0])).ToList(), w);
+        profile = profile with
+        {
+            Symbol = symbol with { Px = symbol.Px / k }, SymbolFactor = symbolFactor,
+            Grid = read.Grid is { } pg ? new ProfileScale(pg.Pitch, 0, ProfileBasis.Measured)
+                 : spacing > 0 ? new ProfileScale(spacing / k, pairs, ProfileBasis.Measured) : null,
+            GridFromCanvas = read.Grid is not null,
+        };
+        o = profile.Apply(o);
+        read = read with { Profile = profile };
+
+        var pieces = symbolFactor == 1 ? basePieces : WireGraph.Pieces(skel, w, o);
         var candidates = pieces.Where(p => p.IsWire).ToList();
-        var strokes = WireGraph.SymbolStrokes(candidates, blobs, w, o);
+        var strokes = symbolFactor == 1 ? baseStrokes : WireGraph.SymbolStrokes(candidates, blobs, w, o);
         var wires = candidates.Where(p => !strokes.Contains(p.Sources[0])).ToList();
         token.ThrowIfCancellationRequested();
         if (wires.Count == 0)
@@ -231,12 +291,21 @@ public static class SchematicImageReading
         // ── Symbols (R-im7-6, R-im7-7) ──
         control?.BeginStage("Finding symbols");
         var residue = SymbolRegions.Residue(wireMask, first, blobs, w);
-        for (int i = 0; i < residue.Pixels.Length; i++) if (fills.Pixels[i] != 0) residue.Pixels[i] = 1;
+        // A large fill (R-imf2-4) — wider than three symbol scales — is the region's fill, not its ink: its rim joins
+        // the residue, so the region still stands where it is, and its inside does not.
+        var (largeFills, inside) = LargeFills(fills, w, 3 * symbol.Px, o);
+        for (int i = 0; i < residue.Pixels.Length; i++) if (fills.Pixels[i] != 0 && inside.Pixels[i] == 0) residue.Pixels[i] = 1;
         var raw = SymbolRegions.Group(residue, first, w, o);
         var (hops, hopRegions) = SymbolRegions.Hops(raw, mask.Width, first, w, o);
         var graph = hops.Count > 0 ? WireGraph.Build(wires, hops, blobs, w, o, flips) : first;
-        var regions = raw.Where((_, k) => !hopRegions.Contains(k)).ToList();
-        var attached = SymbolRegions.Attach(regions, mask.Width, graph, text.Words, w, o);
+        var regions = raw.Where((_, j) => !hopRegions.Contains(j)).ToList();
+        var attached = SymbolRegions.Attach(regions, mask.Width, graph, words.Words, w, o);
+        for (int i = 0; i < attached.Regions.Count; i++)
+        {
+            var r = attached.Regions[i];
+            var mine = largeFills.Where(f => r.Box.Distance(f.CentreX, f.CentreY) == 0).ToList();
+            if (mine.Count > 0) attached.Regions[i] = r with { Fills = mine };
+        }
         token.ThrowIfCancellationRequested();
 
         read = read with
@@ -248,13 +317,68 @@ public static class SchematicImageReading
         return attached.Regions.Count == 0 ? read with { Refusal = SchematicImageReport.NoSymbolsRefusal } : read;
     }
 
+    /// <summary>A picture binarised, straightened and cleaned.</summary>
+    /// <param name="Pen">The run-width mode: the w the binarised line work is read at.</param>
+    /// <param name="InkPen">The pen as drawn (PictureProfile.InkPen), 0 when unmeasured.</param>
+    private sealed record Normalised(RasterImage Raster, BinaryImage Mask, double Deskew, double Pen, double InkPen, int PenSamples,
+                                     PixelBox? Border, int Grid);
+
+    private static Normalised Normalise(RasterImage picture, SchematicImageOptions o, CancellationToken token)
+    {
+        var raster = picture;
+        var mask = Binarise(raster, o);
+        double deskew = 0;
+        if (o.Deskew)
+        {
+            double lean = Lean(mask, o);
+            if (Math.Abs(lean) > o.MinDeskewDeg && Math.Abs(lean) <= o.MaxDeskewDeg)
+            {
+                deskew = -lean;
+                raster = Rotate(picture, deskew * Math.PI / 180);
+                mask = Binarise(raster, o);
+            }
+        }
+        token.ThrowIfCancellationRequested();
+        double w = RunWidth(mask, out int samples);
+        PixelBox? border = o.RemoveBorder ? RemoveBorder(mask, w) : null;
+        int grid = o.RemoveGrid ? RemoveGrid(mask, w) : 0;
+        if (border is not null || grid > 0) w = RunWidth(mask, out samples);
+        w = Math.Max(1.0, w);
+
+        // Specks (IM-12): a piece of ink, or a hole in it, smaller than a quarter of a stroke's square is noise — salt
+        // on a scan, a JPEG's ringing — never a full stop (about w²) or a junction dot (several w across). Left in, a
+        // speck beside a word is read as a glyph of it, and a hole in a stroke cuts a symbol's outline.
+        int speck = Math.Max(2, (int)Math.Ceiling(0.25 * w * w));
+        mask = Morphology.Despeckle(mask, speck);
+        mask = Morphology.Despeckle(mask.Inverted(), speck).Inverted();
+        var (ink, inkSamples) = PictureProfile.InkPen(raster, mask);
+        return new Normalised(raster, mask, deskew, w, ink, ink > 0 ? inkSamples : samples, border, grid);
+    }
+
+    /// <summary>The pen to read at, read pixels: the stated one (source pixels × the scale) or the measured one.</summary>
+    private static (double W, int Samples) PenOf(Normalised n, PictureProfileOptions stated, int scale) =>
+        stated.Pen is { } pen ? (Math.Max(1.0, pen * scale), 0) : (n.Pen, n.PenSamples);
+
+    /// <summary>Whether the drawing is in hairlines (IM-12): its text, <paramref name="cap"/>, stands taller than
+    /// HairlineTextHeight times its line work's width, <paramref name="lineW"/>.</summary>
+    private static bool Hairline(BinaryImage mask, double w, SchematicImageOptions o, out double cap, out double lineW)
+    {
+        cap = lineW = 0;
+        if (o.HairlineTextHeight <= 0) return false;
+        cap = TextHeight(mask, w);
+        if (cap <= 0) return false;
+        lineW = LineWidth(mask, w);
+        return cap > o.HairlineTextHeight * lineW;
+    }
+
     /// <summary>A picture is refused as curved line work only with at least this many slanting wire pieces, and more
     /// than half its wire length in them: a schematic may have a diagonal wire or two.</summary>
     internal const int MinSlantingWires = 8;
 
     private static SchematicImageReport Report(SchematicImageRead r) => new()
     {
-        StrokeWidth = r.StrokeWidth,
+        StrokeWidth = r.StrokeWidth / r.Scale,
+        Profile = r.Profile,
         DeskewDeg = r.DeskewDeg,
         GridDotsRemoved = r.GridDotsRemoved,
         BorderRemoved = r.Border is not null,
@@ -267,6 +391,7 @@ public static class SchematicImageReading
         CrossingsNotConnected = r.Wires.Crossings.Count(c => c.Reading == CrossingReading.NotConnected),
         Hops = r.Wires.Crossings.Count(c => c.Reading == CrossingReading.Hop),
         SymbolRegions = r.Symbols.Count,
+        FillsKept = r.Symbols.Sum(s => s.Fills.Count),
         DecorationsRemoved = r.Decorations.Count,
         NetLabels = r.NetLabels.Count,
         SupplyMarks = r.SupplyMarks.Count,
@@ -297,11 +422,36 @@ public static class SchematicImageReading
         return near;
     }
 
+    /// <summary>The fills of <paramref name="fills"/> wider or taller than <paramref name="size"/> pixels, and their
+    /// insides: every pixel more than a pen from the fill's edge.</summary>
+    internal static (List<PixelBox> Boxes, BinaryImage Inside) LargeFills(BinaryImage fills, double w, double size, SchematicImageOptions o)
+    {
+        var inside = new BinaryImage(fills.Width, fills.Height);
+        var boxes = new List<PixelBox>();
+        if (fills.Count() == 0) return (boxes, inside);
+        var lab = Components.Label(fills);
+        var large = new HashSet<int>();
+        foreach (var c in lab.Components)
+            if (Math.Max(c.Right - c.Left + 1, c.Bottom - c.Top + 1) > size)
+            {
+                large.Add(c.Label);
+                boxes.Add(new PixelBox(c.Left, c.Top, c.Right, c.Bottom));
+            }
+        if (large.Count == 0) return (boxes, inside);
+        var dt = DistanceTransform.Compute(fills, o.MaxThreads);
+        for (int i = 0; i < inside.Pixels.Length; i++)
+            if (large.Contains(lab.Labels[i]) && dt[i] > w) inside.Pixels[i] = 1;
+        return (boxes, inside);
+    }
+
     // ── Normalise ───────────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The strokes as foreground. A coloured drawing is first reduced to its darkest colours — those at
-    /// least half as far from the ground as the darkest is — so a pale highlight or a tinted grid drops out while a
-    /// coloured wire layer stays (on a dark ground, the lightest).</summary>
+    /// <summary>The strokes as foreground. A coloured drawing is first reduced to its ink colours: those at least half
+    /// as far from the ground as the darkest is (on a dark ground, the lightest), and — colour is not darkness (IMF-2,
+    /// R-imf2-4) — every other colour drawn as thin strokes and standing clear of the ground: a datasheet's blue type, a
+    /// green not-fitted part. What drops out is a pale tint (a highlight, a tinted grid, a box's gradient) and a wide
+    /// colour that is not dark (a shaded triangle's fill), whose outline is drawn in ink of its own — and a dark
+    /// line's lighter anti-aliased rim, which touches it all along.</summary>
     internal static BinaryImage Binarise(RasterImage img, SchematicImageOptions o)
     {
         if (!HasColour(img)) return LineArt.Binarise(img, o.LineArt);
@@ -311,7 +461,16 @@ public static class SchematicImageReading
         bool darkGround = bgL < 50;
         double far = darkGround ? set.Clusters.Max(c => c.Lab.L) : set.Clusters.Min(c => c.Lab.L);
         double cut = bgL + 0.5 * (far - bgL);
-        var keep = set.Clusters.Where(c => c.Index != bg && (darkGround ? c.Lab.L >= cut : c.Lab.L <= cut)).Select(c => c.Index).ToList();
+        var (runs, _) = ImageKind.MedianRuns(set);
+        // The pen: the darkest ink's median run; a colour is thin within three of it.
+        int darkest = set.Clusters.Where(c => c.Index != bg).OrderBy(c => darkGround ? -c.Lab.L : c.Lab.L).First().Index;
+        double thin = ImageKind.ThinRunStrokes * Math.Max(2, runs[darkest]);
+        bool Dark(ColourCluster c) => darkGround ? c.Lab.L >= cut : c.Lab.L <= cut;
+        bool Clear(ColourCluster c) => Math.Abs(c.Lab.L - bgL) >= PaleContrast * Math.Abs(far - bgL) || c.Lab.DeltaE(set.Clusters[bg].Lab) >= PaleDeltaE;
+        var keep = set.Clusters.Where(c => c.Index != bg && Dark(c)).Select(c => c.Index).ToList();
+        var fringe = Fringes(set, keep);
+        keep.AddRange(set.Clusters.Where(c => c.Index != bg && !Dark(c) && runs[c.Index] <= thin && Clear(c) && !fringe[c.Index])
+                                  .Select(c => c.Index));
         if (keep.Count == 0) return LineArt.Binarise(img, o.LineArt);
 
         var cover = new float[img.Width * img.Height];
@@ -329,6 +488,35 @@ public static class SchematicImageReading
         }
         return LineArt.Binarise(new RasterImage(img.Width, img.Height, rgba), o.LineArt with { Invert = false });
     }
+
+    /// <summary>Which colours are another's anti-aliased edge: more than half their pixels touch a colour of
+    /// <paramref name="ink"/>. A blue wire's lighter rim is no line of its own; a green part's line is.</summary>
+    private static bool[] Fringes(ColourClusterSet set, List<int> ink)
+    {
+        int w = set.Width, h = set.Height, k = set.Clusters.Count;
+        var isInk = new bool[k];
+        foreach (int c in ink) isInk[c] = true;
+        var touching = new long[k];
+        var count = new long[k];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                int c = set.Label(x, y);
+                if (c < 0 || c >= k || isInk[c]) continue;
+                count[c]++;
+                if ((x > 0 && isInk[set.Label(x - 1, y)]) || (x + 1 < w && isInk[set.Label(x + 1, y)])
+                    || (y > 0 && isInk[set.Label(x, y - 1)]) || (y + 1 < h && isInk[set.Label(x, y + 1)]))
+                    touching[c]++;
+            }
+        var r = new bool[k];
+        for (int c = 0; c < k; c++) r[c] = count[c] > 0 && touching[c] * 2 > count[c];
+        return r;
+    }
+
+    /// <summary>A thin colour lighter than the darkness cut is ink only when it stands at least this share of the
+    /// darkest ink's contrast from the ground — or this far from it in CIELAB: a blue or a green line is far from
+    /// white in hue though not in lightness, a grid's tint or a gradient's step is near it in both.</summary>
+    internal const double PaleContrast = 0.25, PaleDeltaE = 40;
 
     /// <summary>More than one pixel in two thousand is clearly coloured.</summary>
     private static bool HasColour(RasterImage img)
@@ -410,7 +598,10 @@ public static class SchematicImageReading
     /// <summary>The stroke width: the mode, over the skeleton's path pixels, of the shorter of the horizontal and the
     /// vertical ink run through each. IM-1's 2·DT − 1 reads only odd widths on an orthogonal stroke (a 2 px wire is a
     /// distance of 1 from both sides' centres and reads 1); a run reads 2.</summary>
-    internal static double RunWidth(BinaryImage mask)
+    internal static double RunWidth(BinaryImage mask) => RunWidth(mask, out _);
+
+    /// <summary><see cref="RunWidth(BinaryImage)"/>, with how many skeleton pixels it was measured over.</summary>
+    internal static double RunWidth(BinaryImage mask, out int count)
     {
         var skel = Skeleton.Thin(mask);
         SkeletonGraph.RemoveStaircaseCorners(skel);
@@ -427,6 +618,7 @@ public static class SchematicImageReading
                 while (mask.At(x, b + 1)) b++;
                 samples.Add(Math.Min(r - l + 1, b - t + 1));
             }
+        count = samples.Count;
         return StrokeWidth.Mode(samples);
     }
 

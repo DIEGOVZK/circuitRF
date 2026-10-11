@@ -700,12 +700,41 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     partial void OnThresholdTextChanged(string value) => ScheduleRecognition();
     partial void OnWindowTextChanged(string value) => ScheduleRecognition();
 
+    /// <summary>Schematic pictures (IMF-2, R-imf2-5): the picture's pen, text height and symbol scale, source pixels.
+    /// Empty measures it; a number states it, and replaces only itself.</summary>
+    [ObservableProperty] private string _penText = "";
+    [ObservableProperty] private string _textHeightText = "";
+    [ObservableProperty] private string _symbolScaleText = "";
+
+    /// <summary>What the last reading measured, shown in each empty field.</summary>
+    [ObservableProperty] private string _measuredPen = "auto";
+    [ObservableProperty] private string _measuredTextHeight = "auto";
+    [ObservableProperty] private string _measuredSymbolScale = "auto";
+
+    partial void OnPenTextChanged(string value) => ScheduleRecognition();
+    partial void OnTextHeightTextChanged(string value) => ScheduleRecognition();
+    partial void OnSymbolScaleTextChanged(string value) => ScheduleRecognition();
+
+    /// <summary>A stated scale: a positive number, or null when the field is empty or holds none.</summary>
+    private static double? Stated(string text) => TryNum(text, out double v) && v > 0 ? v : null;
+
+    private void ShowProfile(PictureProfile? p)
+    {
+        static string N(double v) => v.ToString("0.#", CultureInfo.InvariantCulture);
+        MeasuredPen = p is null ? "auto" : "auto: " + N(p.Pen.Px);
+        MeasuredTextHeight = p is null ? "auto" : "auto: " + N(p.Text.Px);
+        MeasuredSymbolScale = p is null ? "auto" : "auto: " + N(p.Symbol.Px);
+    }
+
     private static bool TryNum(string text, out double v) =>
         double.TryParse(text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out v) && double.IsFinite(v);
 
     /// <summary>Why an advanced field cannot be read, or null.</summary>
     private string? AdvancedBlocked()
     {
+        if (IsSchematicPicture)
+            foreach (var (text, what) in new[] { (PenText, "Pen"), (TextHeightText, "Text height"), (SymbolScaleText, "Symbol scale") })
+                if (text.Trim().Length > 0 && Stated(text) is null) return $"{what} needs a size in pixels above zero, or nothing to measure it.";
         if (!IsLayoutPicture) return null;
         if (!TryNum(SimplifyText, out double s) || s < 0) return "Simplify needs a tolerance in pixels, zero or more.";
         if (!TryNum(MinFeatureText, out double m) || m < 0) return "Minimum feature needs an area in square pixels, zero or more.";
@@ -1063,6 +1092,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         if (kind == DrawingKind.Schematic)
         {
             _schematic = d.Schematic;
+            ShowProfile(d.Schematic?.Read?.Profile);
             // Started on a placed schematic picture, the default target is the schematic it sits in, over it (D14) —
             // decided once the picture reads as a schematic, and once per picture, so the user's own choice stands.
             if (!_ownTargetDefaulted && OwnTargetOffered) { _ownTargetDefaulted = true; TargetOwn = true; }
@@ -1263,7 +1293,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         if (!end.Id.StartsWith(ImageOverlay.EndPrefix, StringComparison.Ordinal) || end.Circle is not { } from
             || _schematic is not { Read: { } read, Symbols: { } symbols }) return;
         var pins = symbols.Symbols.SelectMany(sym => sym.Pins).Select(p => read.ToSource(p.X, p.Y)).ToList();
-        double reach = Math.Max(12, 6 * read.StrokeWidth);
+        double reach = Math.Max(12, 6 * read.StrokeWidth / read.Scale);
         var near = pins.Where(p => Math.Abs(p.X - to.X) <= reach && Math.Abs(p.Y - to.Y) <= reach)
                        .OrderBy(p => (p.X - to.X) * (p.X - to.X) + (p.Y - to.Y) * (p.Y - to.Y)).ToList();
         if (near.Count == 0) { Status = "Drop a wire end on a part's pin to connect it."; return; }
@@ -1299,6 +1329,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             {
                 LineArt = lineArt,
                 Crossings = CrossingIndex switch { 0 => CrossingRule.Never, 2 => CrossingRule.Always, _ => CrossingRule.WithDot },
+                Profile = new PictureProfileOptions { Pen = Stated(PenText), TextHeight = Stated(TextHeightText), SymbolScale = Stated(SymbolScaleText) },
                 Overrides = [.. Overrides],
             },
             Technology = technology,

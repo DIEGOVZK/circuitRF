@@ -124,6 +124,23 @@ public static class ImageKind
     /// <summary>The votes' weights: filled share is the strongest single tell, colour the weakest.</summary>
     public const double InkWeight = 1.0, FilledWeight = 1.5, OneWidthWeight = 1.0, ColourWeight = 0.5;
 
+    // ── Line art (IMF-2, R-imf2-4) ───────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>A colour's ink is thin strokes when its median run — the shorter of the horizontal and vertical runs of
+    /// that colour through each of its pixels — is at most this many stroke widths: a wire, a letter; a fill is wider.</summary>
+    public const double ThinRunStrokes = 3.0;
+
+    /// <summary>Line art: at least this share of the ink is in colours drawn as thin strokes … A shaded amplifier
+    /// triangle is half the ink of a 2× datasheet crop (0.46–0.49 thin, measured); a layout's copper leaves 0–0.26 (design
+    /// note §18.4).</summary>
+    public const double LineArtThinShare = 0.4;
+
+    /// <summary>… at least this share of the straight-run length runs across or down …</summary>
+    public const double LineArtOrthogonalShare = 0.8;
+
+    /// <summary>… and at least this share of the ink is type in rows. A layout's copper is neither thin nor typeset.</summary>
+    public const double LineArtTextShare = 0.05;
+
     // ── Text (the IM-9 grouping's first pass) ────────────────────────────────────────────────────────────────────
 
     /// <summary>A text-sized component is at least this tall — below it no glyph is readable.</summary>
@@ -258,12 +275,24 @@ public static class ImageKind
 
         double textShare = TextShare(ink, inkCount);
         evidence.Add(new("text share", Round(textShare), textShare > TextPageShare ? "text" : "neither"));
+        double thinShare = ThinInkShare(clusters, background, ThinRunStrokes * Math.Max(sw, 2));
+        double orthogonal = OrthogonalShare(graph, sw);
 
         if (flat < PhotographFlatShareFloor || (photographic && !lineWork))
             return None("a photograph-like picture with no straight line work",
                 0.5 + 0.5 * Math.Clamp((PhotographFlatShare - flat) / PhotographFlatShare, 0, 1), evidence);
         if (textShare > TextPageShare && !lineWork)
             return None("a page of text", 0.5 + 0.5 * Math.Clamp((textShare - TextPageShare) / (1 - TextPageShare), 0, 1), evidence);
+
+        // Line art before area (IMF-2, R-imf2-4): a datasheet shades its amplifier triangle and its IC box and colours
+        // its type, and a fill is area that votes layout. When the ink of every colour is thin strokes, the straight
+        // runs are orthogonal and the type stands in rows, the picture is a schematic whatever it fills.
+        bool lineArt = lineWork && thinShare >= LineArtThinShare && orthogonal >= LineArtOrthogonalShare && textShare >= LineArtTextShare;
+        evidence.Add(new("thin-stroke ink share", Round(thinShare), thinShare >= LineArtThinShare ? "schematic" : "neither"));
+        evidence.Add(new("orthogonal share", Round(orthogonal), orthogonal >= LineArtOrthogonalShare ? "schematic" : "neither"));
+        if (lineArt)
+            return new ImageKindResult(DrawingKind.Schematic,
+                Round(0.75 + 0.2 * Math.Clamp((thinShare - LineArtThinShare) / (1 - LineArtThinShare), 0, 1)), null, evidence);
 
         int chromatic = 0;
         foreach (var c in clusters.Clusters)
@@ -420,6 +449,82 @@ public static class ImageKind
         int second = Enumerable.Range(0, 90).Where(b => Math.Min(Math.Abs(b - first), 90 - Math.Abs(b - first)) >= 15).MaxBy(Window);
         double both = Window(first) + Window(second);
         return (mask / total, largest / total, weight > 0 ? Math.Min(1, both / weight) : 0);
+    }
+
+    /// <summary>The share of the ink (every colour but the background's) in colours whose median run is at most
+    /// <paramref name="thin"/> pixels — a run being the shorter of the horizontal and vertical runs of that colour through
+    /// a pixel.</summary>
+    internal static double ThinInkShare(ColourClusterSet clusters, int background, double thin)
+    {
+        var (median, count) = MedianRuns(clusters);
+        long all = 0, thinInk = 0;
+        for (int c = 0; c < median.Length; c++)
+        {
+            if (c == background || count[c] == 0) continue;
+            all += count[c];
+            if (median[c] <= thin) thinInk += count[c];
+        }
+        return all > 0 ? (double)thinInk / all : 0;
+    }
+
+    /// <summary>Each colour's median run, pixels (capped at 64), and its pixel count: a run is the shorter of the
+    /// horizontal and vertical runs of that colour through a pixel — a stroke's width, a fill's extent.</summary>
+    internal static (int[] Median, long[] Count) MedianRuns(ColourClusterSet clusters)
+    {
+        int w = clusters.Width, h = clusters.Height, k = clusters.Clusters.Count;
+        var label = new int[w * h];
+        for (int y = 0, i = 0; y < h; y++)
+            for (int x = 0; x < w; x++, i++) label[i] = clusters.Label(x, y);
+        var across = new int[w * h];
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w;)
+            {
+                int i = y * w + x, end = x;
+                while (end + 1 < w && label[y * w + end + 1] == label[i]) end++;
+                for (int u = x; u <= end; u++) across[y * w + u] = end - x + 1;
+                x = end + 1;
+            }
+        const int Cap = 64;
+        var hist = new long[k, Cap + 1];
+        var count = new long[k];
+        for (int x = 0; x < w; x++)
+            for (int y = 0; y < h;)
+            {
+                int i = y * w + x, end = y;
+                while (end + 1 < h && label[(end + 1) * w + x] == label[i]) end++;
+                int c = label[i];
+                if (c >= 0 && c < k)
+                    for (int v = y; v <= end; v++)
+                    {
+                        hist[c, Math.Min(Cap, Math.Min(end - y + 1, across[v * w + x]))]++;
+                        count[c]++;
+                    }
+                y = end + 1;
+            }
+        var median = new int[k];
+        for (int c = 0; c < k; c++)
+        {
+            median[c] = Cap;
+            long acc = 0;
+            for (int r = 0; r <= Cap; r++)
+                if ((acc += hist[c, r]) * 2 >= count[c]) { median[c] = r; break; }
+        }
+        return (median, count);
+    }
+
+    /// <summary>The share of the straight-run length (runs longer than <see cref="StraightRunStrokes"/> strokes) that
+    /// runs within 3° of across or down.</summary>
+    internal static double OrthogonalShare(SkeletonGraph graph, double sw)
+    {
+        double all = 0, ortho = 0;
+        foreach (var s in Segments.FromSkeleton(graph))
+        {
+            if (s.Length <= StraightRunStrokes * sw) continue;
+            double a = Math.Abs(Math.Atan2(s.B.y - s.A.y, s.B.x - s.A.x)) * 180 / Math.PI % 90;
+            all += s.Length;
+            if (Math.Min(a, 90 - a) <= 3) ortho += s.Length;
+        }
+        return all > 0 ? ortho / all : 0;
     }
 
     /// <summary>The share of the ink in text-sized components that sit beside another of a like height on one row —

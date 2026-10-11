@@ -59,7 +59,7 @@ public sealed partial class ImageOverlay
                 canvas.DrawImage(source, 0, 0);
             }
             finally { handle.Free(); }
-            Draw(canvas, Math.Max(1.0, Math.Max(w, h) / 800.0));
+            Draw(canvas, Math.Max(1.0, Math.Max(w, h) / 800.0), h);
         }
         using var image = SKImage.FromBitmap(bitmap);
         using var data = image.Encode(SKEncodedImageFormat.Png, 100);
@@ -76,7 +76,7 @@ public sealed partial class ImageOverlay
 
     /// <summary>Every item, in picture pixels; <paramref name="u"/> is one display pixel, so marks stay legible on a
     /// large picture.</summary>
-    private void Draw(SKCanvas canvas, double u)
+    private void Draw(SKCanvas canvas, double u, int height)
     {
         using var stroke = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeCap = SKStrokeCap.Round, StrokeJoin = SKStrokeJoin.Round };
         using var fill = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
@@ -162,6 +162,10 @@ public sealed partial class ImageOverlay
                 else Text(text, item.Bounds.Left, item.Bounds.Top - 3 * u, colour);
             }
         }
+
+        // The legend, bottom left: what every mark above was read at.
+        for (int k = 0; k < Legend.Count; k++)
+            Text(Legend[k], 4 * u, height - 4 * u - (Legend.Count - 1 - k) * 13 * u - 9 * u * StrokeFont.DescentOverCap, Colours.Text);
 
         void Circle(double x, double y, double r, (int Rgb, double Alpha)? inside, int colour, float pen)
         {

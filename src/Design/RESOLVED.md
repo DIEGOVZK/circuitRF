@@ -19309,3 +19309,25 @@ the wire graph itself (`SchematicImageDrawing`, with `ExactPlacement.PlaceOnly`)
 - Foreign textbook pictures still read badly (design note §16) — a reader limit the new drawing makes visible, not one it
   causes.
 
+
+## The picture's own scales (2026-10-11, brief-imf-2)
+
+The schematic reader now measures a picture's pen, text height and symbol scale (`PictureProfile`) and scales its text
+and symbol tolerances by them outside a reference band; Low pictures are read enlarged; line art outweighs fill area in
+`ImageKind`. Design note §18. Traps worth keeping:
+
+- **Sauvola binarises a sub-2 px pen 2 px wide**, and an enlarged one wider still (a 1.1 px hairline read 6 px at ×3).
+  The run-width w is right for the binarised geometry the pen tolerances act on, and useless for telling a hairline from
+  a crisp 2 px pen — the drawn pen is the darkness summed ACROSS the stroke, which anti-aliasing preserves.
+- **`StrokeGlyphs.Groups` returns each line and its halves.** Taking its groups whole counts a glyph two or three times.
+- **Pieces that touch line work are not type.** A filled arrowhead whose shaft is removed as a long run leaves two
+  glyph-shaped halves side by side, which measured as a row of 8 px text on a 7 px-type picture.
+- **A bare straight line is not a plate unless it carries a lead or stands in a stack.** Dashes and open arrow shafts
+  both have two bare ends; either one, left in, made the symbol scale the dash or the shaft.
+- **A colour cluster can be another colour's anti-aliased rim.** Keeping every thin colour kept circuitRF's own blue
+  wires' lighter rim, moved its pen and pushed its own render out of the reference band; a rim is a colour more than
+  half of whose pixels touch ink already kept.
+- **The Skia this build carries (m119) has no Lanczos filter**; the enlargement is managed (`Resample.cs`), which also
+  makes it byte-identical across machines.
+- **The reference profile is a band, not a point.** The pictures the defaults were tuned on span h = 5–6.4 w and
+  s = 9.2–23.4 w; a point would have moved every one of them.
