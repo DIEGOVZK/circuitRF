@@ -97,9 +97,57 @@ public static class SchematicSymbols
                 r = r with { Attachments = [.. r.Attachments.Where(a => a.Node >= 0)] };
                 c = classifier.Classify(r, read.StrokeWidth, read.SymbolScale);
             }
-            return Name(r, c);
+            var named = Name(r, c);
+            // A filled dot on a wire's free end is a datasheet's terminal (R-imf6-1), whatever template it came nearest.
+            return named.Pins.Count == 1 && named.Kind != ImageSymbolKind.Port && FilledDot(r, read.StrokeWidth)
+                ? new RecognisedSymbol(r, ImageSymbolKind.Port, SymbolDisposition.Recognised, null, default, named.Pins, 0, null,
+                                       PartConfidence.Medium, []) { Variant = DotVariant }
+                : named;
         }).ToList();
         return new SchematicSymbolsRead(symbols, SymbolReport.Of(symbols));
+    }
+
+    /// <summary>The variant of a terminal drawn as a filled dot (R-imf6-1).</summary>
+    public const string DotVariant = "dot";
+
+    /// <summary>A region that is a filled dot: 3–8 w across each way, as wide as tall within half; filled out across its
+    /// rows and its columns it fills at least seven tenths of its box and is the same turned half a turn, and its ink —
+    /// with the run the wire reading took out of it where the wire ends inside given back — is nearly all of that: a disc,
+    /// not an arrowhead, a ground or a ring.</summary>
+    internal static bool FilledDot(SymbolRegion r, double w)
+    {
+        int W = r.Box.Width, H = r.Box.Height;
+        if (W < 3 * w - 1 || H < 3 * w - 1 || W > 8 * w + 1 || H > 8 * w + 1 || Math.Max(W, H) > 1.5 * Math.Min(W, H)) return false;
+        var m = r.Mask;
+        var fill = new bool[W * H];
+        for (int y = 0; y < H; y++)
+        {
+            int a = -1, b = -1;
+            for (int x = 0; x < W; x++) if (m[x, y]) { if (a < 0) a = x; b = x; }
+            for (int x = a; x >= 0 && x <= b; x++) fill[y * W + x] = true;
+        }
+        for (int x = 0; x < W; x++)
+        {
+            int a = -1, b = -1;
+            for (int y = 0; y < H; y++) if (m[x, y]) { if (a < 0) a = y; b = y; }
+            for (int y = a; y >= 0 && y <= b; y++) fill[y * W + x] = true;
+        }
+        // Its own ink, with the run the wire took out of it — up to a pen past the wire's end — given back.
+        var at = r.Attachments.First(t => t.Node >= 0);
+        int ink = 0;
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++)
+            {
+                double dx = r.Box.Left + x + 0.5 - at.X, dy = r.Box.Top + y + 0.5 - at.Y;
+                bool run = dx * at.DirX + dy * at.DirY <= w && Math.Abs(dx * at.DirY - dy * at.DirX) <= 0.75 * w + 1;
+                if (m[x, y] || run && fill[y * W + x]) ink++;
+            }
+        int filled = fill.Count(f => f), same = 0;
+        if (filled < 0.7 * W * H || ink < 0.85 * filled) return false;
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++)
+                if (fill[y * W + x] && fill[(H - 1 - y) * W + (W - 1 - x)]) same++;
+        return same >= 0.85 * filled;
     }
 
     /// <summary>D9 applied to one classification.</summary>

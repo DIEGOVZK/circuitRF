@@ -109,12 +109,12 @@ internal static class StyleWires
 
 public sealed partial class ImageDatasheetStyleTests(ITestOutputHelper output)
 {
-    private const string RfAmp = "IMF-8 reads the 8-pin IC box (pin-number boxes, names inside) and the filled-dot RF connectors; " +
-                                 "it needs IMF-7's annotation phrases first";
+    private const string RfAmp = "IMF-8 reads the 8-pin IC box (pin-number boxes, names inside); it needs IMF-7's annotation " +
+                                 "phrases first";
     private const string GainBlock = "IMF-8 reads the filled triangle as an Amp and the coax connectors as ports; it needs the triangle " +
-                                     "closed at 1× (IMF-5), IMF-6's terminals and IMF-7's word designators (Cblock, Rbias, RFC) first";
+                                     "closed at 1× (IMF-5) and IMF-7's word designators (Cblock, Rbias, RFC) first";
     private const string Regulator = "IMF-8 reads the IC box with its pin names outside; it needs IMF-7's bold labels first";
-    private const string Ldo = "IMF-8 reads the IC box with its pin names inside; it needs IMF-6's named open-circle terminals first";
+    private const string Ldo = "IMF-8 reads the IC box with its pin names inside; it needs IMF-7 to read CIN and COUT (C1N) first";
     private const string TestCircuit = "IMF-8 reads the triangle as an Amp and the coax connectors as ports; it needs the solid " +
                                        "block box read as one part (IMF-5) first";
 
@@ -358,20 +358,18 @@ public sealed partial class ImageWebStyleTests
 
 public sealed partial class ImageWebStyleTests(ITestOutputHelper output)
 {
-    private const string HeavyIec = "IMF-6 reads the terminal dot as a port; it needs IMF-7's subscripts first";
-    private const string Textbook = "IMF-6 makes the terminal pairs ports and the bottom rail ground; it needs IMF-7's " +
-                                    "serif italic first";
-    private const string Ladder = "IMF-6 makes the terminal pairs ports and the bottom rail ground; it needs IMF-7 to read " +
-                                  "the italic designators first";
+    private const string HeavyIec = "IMF-7 reads the subscripted designators (R₁ … Q₁)";
+    private const string Textbook = "IMF-7 reads the serif italic labels: C's, tucked inside its plates' span, joins both, and the " +
+                                    "zig-zag and the capacitor are read as ?";
+    private const string Ladder = "IMF-7 reads the italic designators with subscripts";
     private const string Typeset = "IMF-7 reads the serif italic designator-then-value runs";
-    private const string BiasTee = "IMF-6 makes the names at a distance ports";
-    private const string LowRes = "IMF-6 makes the terminal pairs ports";
+    private const string LowRes = "IMF-7 reads the 7 px serif italic designators";
 
     [Fact(Skip = HeavyIec)] public void HeavyIecStage() => StyleScore.ReadsExactly(output, "heavy-iec");
     [Fact(Skip = Textbook)] public void TextbookZigzag() => StyleScore.ReadsExactly(output, "textbook-zigzag");
     [Fact(Skip = Ladder)] public void LadderDashed() => StyleScore.ReadsExactly(output, "ladder-dashed");
     [Fact(Skip = Typeset)] public void TypesetFigure() => StyleScore.ReadsExactly(output, "typeset");
-    [Fact(Skip = BiasTee)] public void LoopCoilNames() => StyleScore.ReadsExactly(output, "loop-coil-names");
+    [Fact] public void LoopCoilNames() => StyleScore.ReadsExactly(output, "loop-coil-names");
     [Fact(Skip = LowRes)] public void LowResolution() => StyleScore.ReadsExactly(output, "low-res");
 
     /// <summary>IMF-9 refuses it in one sentence saying it is not a schematic; until then it is read and scored.</summary>
@@ -462,4 +460,66 @@ public sealed partial class ImageWebStyleTests
     [Fact]
     public void LoopCoilNames_ReadsAnL() =>
         Assert.Equal(1, StyleParts.Count(StyleParts.Read("loop-coil-names"), ImageSymbolKind.Inductor));
+}
+
+/// <summary>IMF-6's facts: the ports a picture's terminals and names make, read as Paste reads.</summary>
+internal static class StylePorts
+{
+    /// <summary>The ports by number: each one's name as the picture writes it and how it was found.</summary>
+    public static (string Name, PicturePortSource Source)[] Of(string picture)
+    {
+        var r = StyleParts.Read(picture);
+        return [.. r.Circuit!.Ports.OrderBy(p => p.Number).Select(p => (p.Name, p.Source))];
+    }
+}
+
+public sealed partial class ImageDatasheetStyleTests
+{
+    /// <summary>IMF-6, R-imf6-1, R-imf6-5: the LDO's open-circle terminals named VIN and VOUT are Port 1 and Port 2.</summary>
+    [Theory]
+    [InlineData("ds-ldo-1x")]
+    [InlineData("ds-ldo-2x")]
+    public void Ldo_TheNamedTerminals_ArePort1Vin_AndPort2Vout(string picture) =>
+        Assert.Equal([("VIN", PicturePortSource.NamedTerminal), ("VOUT", PicturePortSource.NamedTerminal)], StylePorts.Of(picture));
+
+    /// <summary>IMF-6, R-imf6-1: the RF amplifier's filled dots named RF In and RF Out are its two ports — at 1× the left dot
+    /// is the junction blob on the wire's end, the right one a region of its own.</summary>
+    [Theory]
+    [InlineData("ds-rf-amp-1x")]
+    [InlineData("ds-rf-amp-2x")]
+    public void RfAmp_TheFilledDots_ArePortsRfIn_AndRfOut(string picture) =>
+        Assert.Equal([("RF_In", PicturePortSource.NamedTerminal), ("RF_Out", PicturePortSource.NamedTerminal)], StylePorts.Of(picture));
+}
+
+public sealed partial class ImageWebStyleTests
+{
+    /// <summary>IMF-6, R-imf6-2, R-imf6-3: the low-pass's two terminal pairs, each spanned by a voltage arrow, are two ports;
+    /// with no ground drawn, the bottom rail holding both references is ground, one ground symbol at its left end.</summary>
+    [Fact]
+    public void TextbookZigzag_TwoPorts_AndAGroundOnTheBottomRail()
+    {
+        var r = StyleParts.Read("textbook-zigzag");
+        var c = r.Circuit!;
+        var ports = c.TestBench.Instances.Where(i => i.Reference == "Port").ToList();
+        Assert.Equal(2, ports.Count);
+        Assert.All(ports, p => Assert.Equal("0", p.NetBindings[1]));
+        var (node, _, _) = Assert.Single(c.Grounds);
+        var (x, y) = r.Read!.ToSource(r.Read.Wires.Nodes[node].X, r.Read.Wires.Nodes[node].Y);
+        Assert.True(x < 100 && Math.Abs(y - 320) < 6, $"the ground is at ({x:0}, {y:0}), not the bottom rail's left end");
+    }
+
+    /// <summary>IMF-6, R-imf6-4: the bias tee's three names, 4-6 text heights beyond the open ends they name, are its three
+    /// ports — DC's end a lead ending in paper; RF+DC's port is RF_DC, a name the netlist can carry.</summary>
+    [Fact]
+    public void LoopCoilNames_ThreePorts_NamedByTheWords()
+    {
+        var ports = StylePorts.Of("loop-coil-names");
+        Assert.Equal(["DC", "RF", "RF_DC"], ports.Select(p => p.Name).Order(StringComparer.Ordinal).ToArray());
+        Assert.All(ports, p => Assert.Equal(PicturePortSource.FarName, p.Source));
+    }
+
+    /// <summary>IMF-6, R-imf6-2: the ladder's terminal pairs, stacked at its left and right edges, are two ports.</summary>
+    [Fact]
+    public void LadderDashed_TwoPorts() =>
+        Assert.Equal(2, StylePorts.Of("ladder-dashed").Length);
 }

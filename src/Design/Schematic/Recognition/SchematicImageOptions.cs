@@ -26,6 +26,16 @@ public enum CrossingRule
     Always,
 }
 
+/// <summary>What a two-pin part of no known kind is made in the circuit (O3, R-imf6-6).</summary>
+public enum UnknownPart
+{
+    /// <summary>A 0 Ω resistor designated <c>?n</c>: the circuit stays as drawn and no value is changed — the default.</summary>
+    ZeroOhm,
+
+    /// <summary>A capacitor whose value is a tunable variable, as the artwork recognition makes one.</summary>
+    Capacitor,
+}
+
 public sealed record SchematicImageOptions
 {
     /// <summary>The binarisation (R-im1-3).</summary>
@@ -37,6 +47,9 @@ public sealed record SchematicImageOptions
 
     /// <summary>When a four-way crossing connects (R-im7-5).</summary>
     public CrossingRule Crossings { get; init; } = CrossingRule.WithDot;
+
+    /// <summary>What a two-pin part of no known kind is made (O3, R-imf6-6).</summary>
+    public UnknownPart UnknownAs { get; init; } = UnknownPart.ZeroOhm;
 
     /// <summary>A straight run within this many degrees of 0°/90° is an orthogonal wire.</summary>
     public double SnapAngleDeg { get; init; } = 3.0;

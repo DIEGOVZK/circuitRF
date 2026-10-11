@@ -14,7 +14,10 @@
 //              εeff when the set gives a length; a stub a TLIN to ground (short) or to nothing (open); each unread
 //              parameter a variable like any other value;
 //   ports      D13 in priority: port symbols, then port words naming a net, else dangling ends at the drawing's left
-//              and right extremes; a cut-out device's wired pins after them (AS D9);
+//              and right extremes; a cut-out device's wired pins after them (AS D9). A datasheet's or a textbook's
+//              terminals (IMF-6): a named terminal is a port, a pair of terminals one port, the return rail ground when
+//              no ground is drawn, a name beyond an open end a port; inputs numbered first. A part of no known kind is
+//              a 0 Ω `?n` (O3);
 //   analysis   AS D15's SP1 when there is a port — none, and the report says so, when there is not.
 //
 // The drawing's EXACT hints come from the same pass (D12): each instance at the frame position of its pins, in the
@@ -38,8 +41,31 @@ public readonly record struct SchematicFrame(double Scale, double OffsetX, doubl
         new(placed.Width / Math.Max(1, pictureWidth), placed.X - placed.Width / 2, placed.Y - placed.Height / 2);
 }
 
-/// <summary>How a port was found (D13), strongest first.</summary>
-public enum PicturePortSource { Symbol, Name, DanglingEnd, CutOut }
+/// <summary>How a port was found (D13, R-imf6-8), strongest first.</summary>
+public enum PicturePortSource
+{
+    /// <summary>A port symbol: a Term box, a pin flag.</summary>
+    Symbol,
+    Name, DanglingEnd, CutOut,
+
+    /// <summary>A terminal with a word beside it (R-imf6-1).</summary>
+    NamedTerminal,
+
+    /// <summary>Two terminals stacked at the drawing's edge, or one of them on the return rail (R-imf6-2).</summary>
+    TerminalPair,
+
+    /// <summary>Two terminals a voltage arrow spans (R-imf6-2).</summary>
+    ArrowPair,
+
+    /// <summary>A name standing beyond an open end (R-imf6-4).</summary>
+    FarName,
+
+    /// <summary>A terminal alone, unnamed: a port to ground.</summary>
+    Terminal,
+
+    /// <summary>An AC source, a P1Tone (O2).</summary>
+    Tone,
+}
 
 /// <summary>One port of the circuit.</summary>
 /// <param name="X">Where it is on the source picture, pixels.</param>
@@ -67,6 +93,9 @@ public sealed record SchematicEmitOptions
     /// <summary>Every word read off the picture: a source's value, a transformer's k, a box marked BEAD are read from the
     /// words beside the part (IMF-5).</summary>
     public IReadOnlyList<ImageWord>? Words { get; init; }
+
+    /// <summary>What a two-pin part of no known kind is made (O3): a 0 Ω resistor designated <c>?n</c>, on a picture.</summary>
+    public UnknownPart UnknownAs { get; init; } = UnknownPart.ZeroOhm;
 }
 
 /// <summary>The circuit a schematic picture states, and what its drawing needs beside it.</summary>
@@ -109,6 +138,13 @@ public sealed record SchematicImageCircuit(TestBench TestBench)
     /// <summary>The wire nodes the picture names — a net label or a supply mark — with the net's name.</summary>
     public IReadOnlyList<(int Node, string Net)> NamedNodes { get; init; } = [];
 
+    /// <summary>Per port made from a pair of terminals, the wire node of its reference terminal: its minus is wired there
+    /// as drawn (R-imf6-7).</summary>
+    public IReadOnlyDictionary<string, int> PortReferences { get; init; } = new Dictionary<string, int>();
+
+    /// <summary>The parts of no known kind, made 0 Ω resistors (O3, R-imf6-6).</summary>
+    public IReadOnlyList<string> UnknownParts { get; init; } = [];
+
     /// <summary>The <c>.cnl</c> text, its technology relative to <paramref name="cnlDirectory"/>.</summary>
     public string CnlText(string cnlDirectory, string? header = "recognised from a schematic picture") =>
         new RecognitionCircuit(TestBench).CnlText(cnlDirectory, header);
@@ -125,6 +161,15 @@ public static class SchematicImageEmit
     public const string NoPortLine = "No port found: add Port components to simulate.";
 
     private const string Ground = "0";
+
+    /// <summary>A port found on the picture, before it is numbered.</summary>
+    /// <param name="RefRoot">The net its minus is on: ground, or a pair's reference terminal's net.</param>
+    private sealed record PortFound(string? Name, int Root, int RefRoot, PicturePortSource Source, double X, double Y,
+                                    double DirX, double DirY, int Symbol, int Node)
+    {
+        /// <summary>The wire node of a pair's reference terminal, or −1.</summary>
+        public int RefNode { get; init; } = -1;
+    }
 
     private sealed class Proto
     {
@@ -238,13 +283,99 @@ public static class SchematicImageEmit
                 $"{Plural(unflipped + joinsMissed.Count, "correction finds", "corrections find")} nothing at its point on this reading " +
                 "and changed nothing.");
 
+        // ── terminals, their pairs and the return rail (R-imf6-1 … R-imf6-3) ───────────────────────────
+        double s0 = read.SymbolScale > 0 ? read.SymbolScale : TemplateSymbolClassifier.FallbackSymbolInW * w;
+        var terminals = PictureTerminals.Find(read, symbols);
+        var termPair = Enumerable.Repeat(-1, terminals.Count).ToArray();
+        var pairs = new List<(int Plus, int Ref, PicturePortSource Source)>();
+        int TRoot(int t) => RootOf(terminals[t].Node);
+        double TDist(int a, int b) => Math.Abs(terminals[a].X - terminals[b].X) + Math.Abs(terminals[a].Y - terminals[b].Y);
+        void Pair(int plus, int reference, PicturePortSource source)
+        {
+            pairs.Add((plus, reference, source));
+            termPair[plus] = reference;
+            termPair[reference] = plus;
+        }
+        bool Pairable(int a, int b) => a != b && termPair[a] < 0 && termPair[b] < 0 && TRoot(a) >= 0 && TRoot(b) >= 0 && TRoot(a) != TRoot(b);
+        // The upper terminal of a pair is its +, or the left one of a pair side by side.
+        (int, int) Ordered(int a, int b)
+        {
+            var (ta, tb) = (terminals[a], terminals[b]);
+            bool aFirst = Math.Abs(ta.Y - tb.Y) >= Math.Abs(ta.X - tb.X) ? ta.Y < tb.Y : ta.X < tb.X;
+            return aFirst ? (a, b) : (b, a);
+        }
+        // A voltage arrow spanning two terminals: each end within three quarters of a symbol of one.
+        foreach (var arrow in read.Annotations.Where(a => a.Kind == StrokeAnnotationKind.VoltageArrow && a.Path.Count >= 2))
+        {
+            int NearestTo(double x, double y, int not) => Enumerable.Range(0, terminals.Count)
+                .Where(t => t != not && termPair[t] < 0)
+                .Select(t => (T: t, D: Math.Sqrt(Math.Pow(terminals[t].X - x, 2) + Math.Pow(terminals[t].Y - y, 2))))
+                .Where(c => c.D <= 0.75 * s0).OrderBy(c => c.D).Select(c => c.T).DefaultIfEmpty(-1).First();
+            int a0 = NearestTo(arrow.Path[0].x, arrow.Path[0].y, -1);
+            int a1 = a0 < 0 ? -1 : NearestTo(arrow.Path[^1].x, arrow.Path[^1].y, a0);
+            if (a1 >= 0 && Pairable(a0, a1)) { var (pl, rf) = Ordered(a0, a1); Pair(pl, rf, PicturePortSource.ArrowPair); }
+        }
+        // Two terminals stacked at the drawing's left or right edge, within half a symbol of each other across.
+        if (terminals.Count >= 2)
+        {
+            var xs = graph.Nodes.Select(n => n.X).Concat(terminals.Select(t => t.X)).ToList();
+            foreach (double edge in new[] { xs.Min(), xs.Max() })
+            {
+                var at = Enumerable.Range(0, terminals.Count).Where(t => termPair[t] < 0 && Math.Abs(terminals[t].X - edge) <= 0.5 * s0)
+                                   .OrderBy(t => terminals[t].Y).ToList();
+                for (int k = 0; k + 1 < at.Count; k++)
+                    if (Pairable(at[k], at[k + 1]) && Math.Abs(terminals[at[k]].X - terminals[at[k + 1]].X) <= 0.5 * s0)
+                    {
+                        Pair(at[k], at[k + 1], PicturePortSource.TerminalPair);
+                        k++;
+                    }
+            }
+        }
+        // The return rail (R-imf6-3): with no ground drawn anywhere, a net holding the reference terminals of two ports, or
+        // of one port and a source's minus, is ground — or, when no net does, the first port's reference, since a circuit
+        // with no ground cannot be simulated. A terminal on it pairs with the nearest terminal off it.
+        bool groundDrawn = groundMarks.Count > 0
+                           || syms.Any(s => s.Disposition == SymbolDisposition.Recognised && s.Kind == ImageSymbolKind.Ground);
+        var rails = new List<int>();
+        if (!groundDrawn && pairs.Count > 0)
+        {
+            var sourceMinus = syms.Where(s => s.Disposition == SymbolDisposition.Recognised && s.Kind == ImageSymbolKind.Source && s.Pins.Count == 2)
+                                  .Select(s => RootOf((s.Pins.FirstOrDefault(p => p.Name.Contains('-') || p.Name.Contains('−')) ?? s.Pins[1]).Node))
+                                  .ToHashSet();
+            rails = [.. pairs.GroupBy(p => TRoot(p.Ref)).Where(g => g.Key >= 0 && (g.Count() >= 2 || sourceMinus.Contains(g.Key))).Select(g => g.Key)];
+            // Nothing else would give the circuit a ground at all: the leftmost port's reference is its return.
+            if (rails.Count == 0) rails = [TRoot(pairs.MinBy(p => terminals[p.Plus].X).Ref)];
+            foreach (int t in Enumerable.Range(0, terminals.Count).Where(t => termPair[t] < 0 && rails.Contains(TRoot(t))).ToList())
+            {
+                int u = Enumerable.Range(0, terminals.Count)
+                    .Where(u => Pairable(t, u) && !rails.Contains(TRoot(u))
+                                && (Math.Abs(terminals[u].X - terminals[t].X) <= 0.5 * s0 || Math.Abs(terminals[u].Y - terminals[t].Y) <= 0.5 * s0))
+                    .OrderBy(u => TDist(t, u)).DefaultIfEmpty(-1).First();
+                if (u >= 0) Pair(u, t, PicturePortSource.TerminalPair);
+            }
+            foreach (int rail in rails)
+            {
+                // One ground symbol at the rail's left end, the only thing added to the drawing.
+                int leftEnd = Enumerable.Range(0, graph.Nodes.Count).Where(n => RootOf(n) == rail)
+                                        .OrderBy(n => graph.Nodes[n].X).ThenByDescending(n => graph.Nodes[n].Y).First();
+                Union(rail, G);
+                groundMarks.Add((leftEnd, 0, 1));
+            }
+        }
+        if (rails.Count > 0)
+            report.Add(RecognitionFindingClass.PictureEmitNotes, rails.Count,
+                "No ground is drawn, so the common return was taken as ground: " +
+                $"{(rails.Count == 1 ? "the net" : "the nets")} holding the ports' reference terminals, with a ground symbol at " +
+                $"{(rails.Count == 1 ? "its" : "each one's")} left end.");
+
         // ── the parts table (R-im10-7) ─────────────────────────────────────────────────────────────
         var rows = new List<PartRow>();
         var symbolOfRow = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var rowPins = new Dictionary<string, IReadOnlyList<RecognisedPin>>(StringComparer.OrdinalIgnoreCase);
         var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var words = options.Words ?? [];
-        double s0 = read.SymbolScale > 0 ? read.SymbolScale : TemplateSymbolClassifier.FallbackSymbolInW * w;
+        bool zeroOhm = options.UnknownAs == UnknownPart.ZeroOhm;
+        int unknownCount = 0;
         // A supply net (R-imf5-4): one a supply mark ends, or a word naming a V… rail names.
         var supplyRoots = read.SupplyMarks.Select(m => RootOf(m.Node))
                               .Concat(labels.Names.Where(n => SupplyName(n.Name)).Select(n => RootOf(n.Node)))
@@ -293,7 +424,9 @@ public static class SchematicImageEmit
                 PartKind.Bead => "FB", PartKind.I => "I", PartKind.V => "V", PartKind.K => "T",
                 _ => LabelAssociation.Prefix(s.Kind) ?? "U",
             };
-            string refdes = Unique(l?.Designator ?? $"{prefix}{i + 1}", taken);
+            // A part of no known kind, unnamed on the picture, is ?n (O3).
+            bool unknown = zeroOhm && twoPin && s.Kind == ImageSymbolKind.Unknown;
+            string refdes = Unique(unknown && l is null or { Generated: true } ? $"?{++unknownCount}" : l?.Designator ?? $"{prefix}{i + 1}", taken);
             var (x, y) = read.ToSource(s.Region.Box.CentreX, s.Region.Box.CentreY);
             var evidence = new Dictionary<PartField, PartEvidenceSource>
             {
@@ -315,7 +448,8 @@ public static class SchematicImageEmit
             };
             void Add(PartRow row, IReadOnlyList<RecognisedPin> pins)
             {
-                if (row.IsModelled && row.TakesValue && row.Value is null && row.Variable is null) row = row with { Variable = row.DefaultVariable };
+                if (row.IsModelled && row.TakesValue && row.Value is null && row.Variable is null && !(zeroOhm && row.Kind == PartKind.Unknown))
+                    row = row with { Variable = row.DefaultVariable };
                 rows.Add(row);
                 symbolOfRow[row.Refdes] = i;
                 rowPins[row.Refdes] = pins;
@@ -423,27 +557,90 @@ public static class SchematicImageEmit
             if (pins.Count == 2 && NetOf(pins[0].Node) >= 0 && NetOf(pins[1].Node) >= 0) Union(NetOf(pins[0].Node), NetOf(pins[1].Node));
         }
 
-        // ── ports (D13) ─────────────────────────────────────────────────────────────────────────────
-        var ports = new List<(string? Name, int Root, PicturePortSource Source, double X, double Y, double DirX, double DirY, int Symbol, int Node)>();
+        // ── ports (D13, R-imf6-1 … R-imf6-5) ────────────────────────────────────────────────────────
+        var ports = new List<PortFound>();
         bool Ported(int root) => ports.Any(p => p.Root == root);
         (double X, double Y) DirAt(SymbolRegion region, int node)
         {
             var a = region.Attachments.FirstOrDefault(t => t.Node == node);
             return a is null ? (0, 0) : (a.DirX, a.DirY);
         }
+        // A lead ending in paper that a name beyond it calls a port is a net of its own (R-imf6-4).
+        var leadRoot = new Dictionary<(int Symbol, int Pin), int>();
+        int PinRoot(int symbol, RecognisedPin p) =>
+            p.Node >= 0 ? RootOf(p.Node) : leadRoot.TryGetValue((symbol, p.Index), out int r) ? r : -1;
+
+        // Port symbols that are no terminal: a Term box, a pin flag.
         for (int i = 0; i < syms.Count; i++)
         {
             var s = syms[i];
-            if (s.Disposition != SymbolDisposition.Recognised || s.Kind != ImageSymbolKind.Port || s.Pins.Count == 0) continue;
+            if (s.Disposition != SymbolDisposition.Recognised || s.Kind != ImageSymbolKind.Port || s.Pins.Count == 0
+                || PictureTerminals.IsTerminal(s)) continue;
             var pin = s.Pins.FirstOrDefault(p => RootOf(p.Node) is var r and >= 0 && r != G) ?? s.Pins[0];
             int root = RootOf(pin.Node);
             if (root < 0 || root == G || Ported(root)) continue;
             var (dx, dy) = DirAt(s.Region, pin.Node);
-            ports.Add((lab[i] is { Generated: false } l ? l.Designator : null, root, PicturePortSource.Symbol, pin.X, pin.Y, dx, dy, i, pin.Node));
+            ports.Add(new PortFound(lab[i] is { Generated: false } l ? l.Designator : null, root, G, PicturePortSource.Symbol,
+                                    pin.X, pin.Y, dx, dy, i, pin.Node));
         }
+        // Terminals: a pair is one port, its reference the other terminal's net; one alone, named or not, a port to ground.
+        string? TerminalName(int t)
+        {
+            var n = labels.Names.FirstOrDefault(n => n.AtTerminal && n.Node == terminals[t].Node);
+            if (n is null && terminals[t].Symbol >= 0 && lab[terminals[t].Symbol] is { Generated: false } l) return l.Designator;
+            return n?.Name;
+        }
+        PortFound AtTerminal(int t, string? name, int refRoot, PicturePortSource source)
+        {
+            var term = terminals[t];
+            int node = term.Node;
+            var (x, y) = (graph.Nodes[node].X, graph.Nodes[node].Y);
+            var (dx, dy) = term.Symbol >= 0 ? DirAt(syms[term.Symbol].Region, node) : graph.Incoming(node);
+            return new PortFound(name, TRoot(t), refRoot, source, x, y, dx, dy, term.Symbol, node);
+        }
+        foreach (var (plus, reference, source) in pairs)
+        {
+            if (TRoot(plus) == G || Ported(TRoot(plus))) continue;
+            string? name = TerminalName(plus) ?? TerminalName(reference);
+            ports.Add(AtTerminal(plus, name is not null && PortWords.IsSupply(name) ? null : name, TRoot(reference), source)
+                      with { RefNode = terminals[reference].Node });
+        }
+        for (int t = 0; t < terminals.Count; t++)
+        {
+            if (termPair[t] >= 0 || TRoot(t) < 0 || TRoot(t) == G || Ported(TRoot(t))) continue;
+            string? name = TerminalName(t);
+            if (name is not null && PortWords.IsSupply(name)) continue;   // a supply terminal: a named net (IMF-8)
+            ports.Add(AtTerminal(t, name, G, name is null ? PicturePortSource.Terminal : PicturePortSource.NamedTerminal));
+        }
+        // Names beyond open ends (R-imf6-4).
+        foreach (var n in labels.Names.Where(n => n.Far && n.Port))
+        {
+            if (n.Lead is { } lead)
+            {
+                var pin = syms[lead.Symbol].Pins.FirstOrDefault(p => p.Index == lead.Pin);
+                var a = syms[lead.Symbol].Region.Attachments.FirstOrDefault(a => a.Node < 0 && pin is not null && a.X == pin.X && a.Y == pin.Y);
+                if (pin is null || a is null || leadRoot.ContainsKey(lead)) continue;
+                int root = G + 1 + leadRoot.Count;
+                leadRoot[lead] = root;
+                ports.Add(new PortFound(n.Name, root, G, PicturePortSource.FarName, pin.X, pin.Y, -a.DirX, -a.DirY, -1, -1));
+                continue;
+            }
+            int r = RootOf(n.Node);
+            if (r < 0 || r == G) continue;
+            if (ports.FindIndex(p => p.Root == r) is var at and >= 0)
+            {
+                if (ports[at].Name is null) ports[at] = ports[at] with { Name = n.Name };
+                continue;
+            }
+            var node = graph.Nodes[n.Node];
+            var (ix, iy) = graph.Incoming(n.Node);
+            ports.Add(new PortFound(n.Name, r, G, PicturePortSource.FarName, node.X, node.Y, ix, iy, -1, n.Node));
+        }
+        // Net names that name a port (D13).
         foreach (var n in labels.Names)
         {
-            if (supplyNodes.Contains(n.Node) || n.Word.Reading?.IsPortWord != true) continue;
+            if (supplyNodes.Contains(n.Node) || n.AtTerminal || n.Far) continue;
+            if (!(n.Word.Reading?.IsPortWord == true || PortWords.IsInput(n.Name) || PortWords.IsOutput(n.Name))) continue;
             int root = RootOf(n.Node);
             if (root < 0 || root == G) continue;
             int at = ports.FindIndex(p => p.Root == root);
@@ -455,21 +652,22 @@ public static class SchematicImageEmit
             }
             var node = graph.Nodes[n.Node];
             var (ix, iy) = node.IsEnd ? graph.Incoming(n.Node) : (0, 0);
-            ports.Add((n.Name, root, PicturePortSource.Name, node.X, node.Y, ix, iy, -1, n.Node));
+            ports.Add(new PortFound(n.Name, root, G, PicturePortSource.Name, node.X, node.Y, ix, iy, -1, n.Node));
         }
-        // The drawing's own ports in order: by the numbers their names carry when every one carries one, else left to
-        // right, top to bottom (a dangling end's order is already that).
+        // The drawing's own ports in order: by the numbers their names carry when every one carries one; else an input
+        // first, an output next, then the rest left to right, top to bottom (R-imf6-5).
         if (ports.Count > 0)
         {
             var numbers = ports.Select(p => TrailingNumber(p.Name)).ToList();
             ports = numbers.All(n => n is not null) && numbers.Distinct().Count() == numbers.Count
                 ? [.. ports.Zip(numbers).OrderBy(t => t.Second).Select(t => t.First)]
-                : [.. ports.OrderBy(p => Math.Round(p.X / (8 * w))).ThenBy(p => p.Y)];
+                : [.. ports.OrderBy(p => PortWords.Rank(p.Name)).ThenBy(p => Math.Round(p.X / (8 * w))).ThenBy(p => p.Y)];
         }
         // ── instances ───────────────────────────────────────────────────────────────────────────────
         var protos = new List<Proto>();
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var portInfo = new List<(Proto Proto, PicturePortSource Source, double X, double Y)>();
+        var portReferences = new Dictionary<string, int>(StringComparer.Ordinal);
         // An AC source is a P1Tone (O2): the circuit's input, numbered first among the ports.
         var tones = parts.Rows.Where(r => r.Kind == PartKind.V && r.Variant == "AC" && SymbolOf(r) >= 0 && PinsOf(r).Count == 2
                                           && r.Connection is PartConnection.Series or PartConnection.Shunt)
@@ -479,7 +677,7 @@ public static class SchematicImageEmit
             var p = ports[k];
             int number = k + 1 + tones.Count;
             string name = Unique(RecognitionEmit.Identifier(p.Name ?? $"P{number}", "P"), names);
-            var proto = new Proto { Type = "Port", Name = name, Roots = [p.Root, G], Symbol = p.Symbol, PortNumber = number };
+            var proto = new Proto { Type = "Port", Name = name, Roots = [p.Root, p.RefRoot], Symbol = p.Symbol, PortNumber = number };
             proto.Parameters.Add(new ParameterAssignment("Num", number.ToString(CultureInfo.InvariantCulture)));
             // The impedance printed under the port's designator, when one was read (IM-12); else 50 Ω.
             double? z = p.Symbol >= 0 && lab[p.Symbol]?.LineParameters is { } lp
@@ -489,6 +687,7 @@ public static class SchematicImageEmit
                 : new ParameterAssignment("Z", "50", "Ohm"));
             proto.PicturePins.Add((p.X, p.Y, p.DirX, p.DirY));
             proto.PinNodes.Add(p.Node);
+            if (p.RefNode >= 0) portReferences[name] = p.RefNode;
             // A port symbol drawn with its minus wired to ground (a Term's box) is fitted, and wired, by both pins.
             if (p.Symbol >= 0 && syms[p.Symbol].Pins.FirstOrDefault(q => q.Node != p.Node && RootOf(q.Node) == G) is { } minus)
             {
@@ -502,6 +701,7 @@ public static class SchematicImageEmit
 
         var variables = new List<(string Name, string Number, string? Unit, string Min, string Max)>();
         var instanceOfRow = new Dictionary<string, Proto>(StringComparer.OrdinalIgnoreCase);
+        var unknownParts = new List<string>();
         void Variable(string name, double value, PartKind kind)
         {
             if (variables.Any(v => v.Name == name)) return;
@@ -516,9 +716,20 @@ public static class SchematicImageEmit
             var s = syms[i];
             var rp = PinsOf(row);
             if (rp.Count != 2) continue;
-            string name = Unique(RecognitionEmit.Identifier(row.Refdes, row.ParameterName), names);
-            var roots = rp.Select(p => RootOf(p.Node)).ToList();
+            var roots = rp.Select(p => PinRoot(i, p)).ToList();
             Proto proto;
+            if (zeroOhm && row.Kind == PartKind.Unknown)
+            {
+                // A part of no known kind (O3): 0 Ω, the circuit as drawn, its designator ?n kept as the picture's.
+                proto = new Proto { Type = "R", Name = Unique(row.Refdes, names), Roots = roots, Symbol = i };
+                proto.Parameters.Add(new ParameterAssignment("R", "0", "Ohm"));
+                unknownParts.Add(proto.Name);
+                AddPins(proto, s, rp);
+                protos.Add(proto);
+                instanceOfRow[row.Refdes] = proto;
+                continue;
+            }
+            string name = Unique(RecognitionEmit.Identifier(row.Refdes, row.ParameterName), names);
             if (row.Model == PartModelKind.SnP && parts.ResolveModelFile(row) is { } file)
             {
                 proto = new Proto { Type = "SnP", Name = name, Roots = roots, Symbol = i };
@@ -557,7 +768,7 @@ public static class SchematicImageEmit
             int i = SymbolOf(row);
             var s = syms[i];
             var rp = PinsOf(row);
-            var roots = rp.Select(p => RootOf(p.Node)).ToList();
+            var roots = rp.Select(p => PinRoot(i, p)).ToList();
             string id = RecognitionEmit.Identifier(row.Refdes, row.Kind.ToString());
             string name = Unique(id, names);
             Proto proto;
@@ -599,7 +810,7 @@ public static class SchematicImageEmit
                     proto.Parameters.Add(new ParameterAssignment("Z", "50", "Ohm"));
                     if (f is { } fv) proto.Parameters.Add(new ParameterAssignment("Freq", Spell(fv / 1e9), "GHz"));
                     else { Raw($"{id}_Freq", "1", "GHz", "0.1 GHz", "10 GHz"); proto.Parameters.Add(new ParameterAssignment("Freq", $"{id}_Freq")); }
-                    portInfo.Add((proto, PicturePortSource.Symbol, rp[0].X, rp[0].Y));
+                    portInfo.Add((proto, PicturePortSource.Tone, rp[0].X, rp[0].Y));
                     break;
                 }
                 default:
@@ -690,7 +901,7 @@ public static class SchematicImageEmit
             {
                 if (s.Pins.Count == 0) continue;
                 string name = Unique(RecognitionEmit.Identifier(lab[i]?.Designator ?? $"TL{i + 1}", "TL"), names);
-                var roots = s.Pins.Take(2).Select(p => RootOf(p.Node)).ToList();
+                var roots = s.Pins.Take(2).Select(p => PinRoot(i, p)).ToList();
                 if (s.Kind == ImageSymbolKind.ShortStub && roots.Count == 1) roots.Add(G);
                 if (roots.Count == 1) roots.Add(-1);   // an open stub's far end: a net of its own
                 var proto = new Proto { Type = "TLIN", Name = name, Roots = roots, Symbol = i };
@@ -768,7 +979,13 @@ public static class SchematicImageEmit
                                                                  read.ToSource(t.X, t.Y).X, read.ToSource(t.X, t.Y).Y)).ToList();
         foreach (var (source, what) in new (PicturePortSource, string)[]
                  {
+                     (PicturePortSource.Tone, "from AC sources (P1Tone)"),
                      (PicturePortSource.Symbol, "from port symbols"),
+                     (PicturePortSource.NamedTerminal, "from named terminals"),
+                     (PicturePortSource.TerminalPair, "from terminal pairs"),
+                     (PicturePortSource.ArrowPair, "from terminal pairs a voltage arrow spans"),
+                     (PicturePortSource.FarName, "from names beyond open wire ends"),
+                     (PicturePortSource.Terminal, "from single terminals, to ground"),
                      (PicturePortSource.Name, "from net names that name a port"),
                      (PicturePortSource.DanglingEnd, "at dangling wire ends on the drawing's left and right edges"),
                  })
@@ -783,6 +1000,10 @@ public static class SchematicImageEmit
                 $"{block} is drawn as a box with {Plural(n, "wired pin", "wired pins")}, so it is a {n}-port S-parameter block: " +
                 "give it a Touchstone file to simulate it.");
         if (ports.Count + tones.Count == 0) report.Add(RecognitionFindingClass.PictureNoPort, 1, NoPortLine);
+        report.Add(RecognitionFindingClass.PictureEmitNotes, unknownParts.Count,
+            $"{string.Join(", ", unknownParts)} {(unknownParts.Count == 1 ? "is a part" : "are parts")} of no known kind, " +
+            $"{(unknownParts.Count == 1 ? "made a 0 Ω resistor" : "each made a 0 Ω resistor")} so the circuit stays as drawn: " +
+            "set the kind in the parts table.");
         report.Add(RecognitionFindingClass.PictureEmitNotes, deviceNotes.Count, string.Join(" ", deviceNotes));
         var settings = parts.Rows.Where(r => r.Kind == PartKind.R && SymbolOf(r) >= 0 && syms[SymbolOf(r)].Variable).Select(r => r.Refdes).ToList();
         report.Add(RecognitionFindingClass.PictureEmitNotes, settings.Count,
@@ -811,12 +1032,16 @@ public static class SchematicImageEmit
                 grounds.Add((p.Node, dx, dy));
             }
         var named = new List<(int Node, string Net)>();
-        foreach (int node in labels.Names.Select(n => n.Node).Concat(read.SupplyMarks.Select(m => m.Node)).Distinct())
+        // A name a port was made of is the port's name, not a label beside it (R-imf6-7).
+        var portNamed = labels.Names.Where(n => (n.Far || n.AtTerminal) && n.Port).Select(n => n.Node).ToHashSet();
+        foreach (int node in labels.Names.Select(n => n.Node).Where(n => !portNamed.Contains(n))
+                                   .Concat(read.SupplyMarks.Select(m => m.Node)).Distinct())
             if (RootOf(node) is var r and >= 0 && r != G && netName.TryGetValue(r, out var net)) named.Add((node, net));
         return new SchematicImageCircuit(tb)
         {
             PinNodes = protos.ToDictionary(p => p.Name, p => (IReadOnlyList<int>)p.PinNodes, StringComparer.Ordinal),
             NodeNets = nodeNets, Grounds = grounds, NamedNodes = named, HiddenSegments = hidden,
+            PortReferences = portReferences, UnknownParts = unknownParts,
             Exact = exact, Frame = frame, Parts = parts, Ports = picturePorts, Variables = [.. variables.Select(v => v.Name)],
             SymbolOf = protos.Where(p => p.Symbol >= 0).ToDictionary(p => p.Name, p => p.Symbol, StringComparer.Ordinal),
             SymbolOfRow = symbolOfRow,
@@ -914,12 +1139,7 @@ public static class SchematicImageEmit
     }
 
     /// <summary>Whether a word naming a supply mark's net names a supply — a voltage or a V… rail — rather than ground.</summary>
-    private static bool SupplyName(string name)
-    {
-        string t = name.Trim().TrimStart('+', '-', '−');
-        return t.Length > 0 && (char.ToUpperInvariant(t[0]) == 'V' || char.IsAsciiDigit(t[0]))
-            && !t.Contains("GND", StringComparison.OrdinalIgnoreCase);
-    }
+    private static bool SupplyName(string name) => PortWords.IsSupply(name);
 
     // ── lines ───────────────────────────────────────────────────────────────────────────────────────
 

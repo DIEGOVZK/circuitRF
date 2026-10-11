@@ -38,6 +38,9 @@ public enum WireOrientation { Horizontal, Vertical, Diagonal }
 public sealed record WireNode(int Id, double X, double Y, int Degree, bool Dot, bool Free)
 {
     public bool IsEnd => Degree == 1;
+
+    /// <summary>A filled dot sits on this free end: a datasheet's terminal (R-imf6-1).</summary>
+    public bool Terminal { get; init; }
 }
 
 /// <summary>One straight wire segment, from node <paramref name="From"/> at <paramref name="A"/> to node
@@ -797,7 +800,7 @@ public sealed class WireGraph
         {
             var an = a.Nodes[n];
             int deg = a.Degree(n);
-            return new WireNode(k, an.P.x, an.P.y, deg, deg >= 3 && an.Dot, an.Free);
+            return new WireNode(k, an.P.x, an.P.y, deg, deg >= 3 && an.Dot, an.Free) { Terminal = deg == 1 && an.Dot };
         }).ToList();
 
         var segOrder = Enumerable.Range(0, a.Edges.Count)

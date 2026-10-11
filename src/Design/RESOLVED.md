@@ -19421,3 +19421,26 @@ BJT or FET and a source a P1Tone or a Vdc (owner decisions O1, O2). Design note 
 - **The IMF-4 merge-refusal enum was named `Refusal`**, which `ImageRecognizeCliVerbTests.TheVerbs_OwnNoImageProcessing`
   forbids src/Cli to name — and src/Cli says `Refusal` everywhere. Renamed `MergeRefusal`.
 
+
+## Ports, terminals, return rails and names (2026-10-11, brief-imf-6)
+
+Terminals named by the word beside them, terminal pairs, the return rail as ground, names at a distance, and a part of
+no known kind as a 0 Ω `?n` (owner decision O3). Design note §22. Traps worth keeping:
+
+- **A datasheet dot at 1× is not a region.** Drawn 3 w across, the wire reading takes it as a junction blob on the
+  wire's free end, and a node of degree 1 never carried `Dot` (degree 3+ only), so nothing remembered it.
+  `WireNode.Terminal` does; at 2× the same dot is a one-pin region, and the template matcher read one as a chassis
+  ground.
+- **The wire is taken out of a dot it ends in.** The dot region arrives with a stripe missing where the wire ran to its
+  centre, so a plain fill ratio reads a filled dot as a ring. The fill is measured with that run given back.
+- **Misread port names are near-ties, not failures.** `RF` alone read `K4` (a designator outranks a name in the
+  grammar), `VIN` read `V1N`, `Out` read `Ωut`; the right letters were within 0.01–0.03 of the best each time. Reading
+  a word in a terminal's place against the port vocabulary, with a wider margin, gets them without touching IMF-7's
+  reader.
+- **A terminal's nearest word may be a neighbour's.** `V_CC`, written for the supply circle, is nearer the output dot
+  than any other word; a word nearer another part than the terminal names that part.
+- **A pair's minus wired along the + terminal's line shorts the port.** The terminals of a pair are stacked, so an L
+  leg that runs across first reaches the reference node through the + wire's end; the leg runs toward the reference
+  terminal first.
+- **`VIN` starts with V.** The emit's supply-name rule (a `V…` word names a supply) took every input and output name
+  for a supply; it now excludes the port vocabulary's inputs and outputs (`PortWords.IsSupply`).

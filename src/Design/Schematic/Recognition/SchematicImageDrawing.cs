@@ -44,7 +44,7 @@ public static class SchematicImageDrawing
 
         // ── the pins, where the placed parts put them ───────────────────────────────────────────────
         var pinAt = new Dictionary<int, List<(double X, double Y)>>();
-        var unwired = new List<(double X, double Y, string Net, double OutX, double OutY)>();
+        var unwired = new List<(double X, double Y, string Net, double OutX, double OutY, int To)>();
         foreach (var inst in circuit.TestBench.Instances)
         {
             if (model.Components.FirstOrDefault(c => c.InstanceName == inst.InstanceName) is not { } comp) continue;
@@ -60,7 +60,12 @@ public static class SchematicImageDrawing
                     if (!pinAt.TryGetValue(node, out var l)) pinAt[node] = l = [];
                     l.Add(at);
                 }
-                else unwired.Add((at.X, at.Y, offsets[k].Net, offsets[k].X - cx, offsets[k].Y - cy));
+                else
+                {
+                    // A port made of a pair of terminals has its minus wired to its reference terminal as drawn (R-imf6-7).
+                    int to = k == 1 && circuit.PortReferences.TryGetValue(inst.InstanceName, out int r) && r < N ? r : -1;
+                    unwired.Add((at.X, at.Y, offsets[k].Net, offsets[k].X - cx, offsets[k].Y - cy, to));
+                }
             }
         }
 
@@ -169,8 +174,23 @@ public static class SchematicImageDrawing
         }
         var nodesOf = Enumerable.Range(0, N).Where(circuit.NodeNets.ContainsKey).GroupBy(n => circuit.NodeNets[n])
                                 .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.Ordinal);
-        foreach (var (x, y, net, ox, oy) in unwired)
+        var loose = new Dictionary<string, (double X, double Y)>(StringComparer.Ordinal);
+        foreach (var (x, y, net, ox, oy, to) in unwired)
         {
+            if (to >= 0)
+            {
+                // Along the way the reference terminal lies — down to a rail below, across to one beside — then to it, so
+                // the wire stays clear of the + terminal's own.
+                var r = pos[to];
+                var corner = Math.Abs(r.Y - y) >= Math.Abs(r.X - x) ? (x, r.Y) : (r.X, y);
+                if (Simplify([(x, y), corner, r]) is { Count: >= 2 } rail)
+                {
+                    var w = new EditableWire();
+                    w.Points.AddRange(rail);
+                    wires.Add(w);
+                }
+                continue;
+            }
             if (net == "0")
             {
                 if (!grounded.Add((x, y))) continue;
@@ -187,6 +207,18 @@ public static class SchematicImageDrawing
                     wires.Add(w);
                 }
             }
+            // A net no wire of the picture carries — a lead ending in paper and the port its name makes (R-imf6-4): its
+            // pins joined to one another, as the lead joins them.
+            else if (loose.TryGetValue(net, out var first))
+            {
+                if (Simplify([first, (first.X, y), (x, y)]) is { Count: >= 2 } lead)
+                {
+                    var w = new EditableWire();
+                    w.Points.AddRange(lead);
+                    wires.Add(w);
+                }
+            }
+            else loose[net] = (x, y);
         }
         model.Wires.AddRange(wires);
 

@@ -383,6 +383,7 @@ public static class SchematicImageRecognition
         {
             Emit = emit, Technology = input.Technology, TechnologyPath = input.TechnologyPath,
             PartsCsvText = input.PartsCsvText, PartsCsvPath = input.PartsCsvPath, Frame = frame, Words = words,
+            UnknownAs = input.Options.UnknownAs,
         }, report, out string? refusal);
         return new SchematicImageResult(read, symbols, words, labels, circuit, report, refusal);
     }
@@ -446,6 +447,7 @@ public static class SchematicImageRecognition
         if (o.Profile.Pen is { } pen) provenance.Options["Pen"] = N(pen);
         if (o.Profile.TextHeight is { } th) provenance.Options["TextHeight"] = N(th);
         if (o.Profile.SymbolScale is { } ss) provenance.Options["SymbolScale"] = N(ss);
+        if (o.UnknownAs != d.UnknownAs) provenance.Options["UnknownAs"] = "capacitor";
         if (o.Overrides.Count > 0) provenance.Options["Overrides"] = ConnectionOverride.Spell(o.Overrides);
         if (input.PartsCsvText is not null || input.PartsCsvPath is not null) provenance.Options["PartsTable"] = "edited";
         return provenance;

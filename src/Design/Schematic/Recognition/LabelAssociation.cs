@@ -43,9 +43,22 @@ public sealed record SymbolLabels(int Symbol, ImageSymbolKind Kind, string? Desi
 }
 
 /// <summary>A net or port name at a wire end (R-im9-4).</summary>
-/// <param name="Node">The <see cref="WireGraph"/> node it names.</param>
+/// <param name="Node">The <see cref="WireGraph"/> node it names; −1 for a lead ending in paper (<see cref="Lead"/>).</param>
 /// <param name="Port">The name is a port word, or labels a supply mark's net.</param>
-public sealed record NodeName(int Node, string Name, ImageWord Word, bool Port);
+public sealed record NodeName(int Node, string Name, ImageWord Word, bool Port)
+{
+    /// <summary>It names the terminal standing on <see cref="Node"/> (R-imf6-1).</summary>
+    public bool AtTerminal { get; init; }
+
+    /// <summary>It stands beyond an open end, up to 6 h from it (R-imf6-4): the end is a port.</summary>
+    public bool Far { get; init; }
+
+    /// <summary>The symbol and the pin index of the lead ending in paper it names, or null.</summary>
+    public (int Symbol, int Pin)? Lead { get; init; }
+
+    /// <summary>The name's further words on its line (<c>RF</c> <c>In</c>).</summary>
+    public IReadOnlyList<ImageWord> More { get; init; } = [];
+}
 
 /// <summary>A value assigned to a symbol of another kind, left unattached.</summary>
 public sealed record KindMismatch(ImageWord Word, int Symbol, ImageSymbolKind Kind);
@@ -67,31 +80,47 @@ public static class LabelAssociation
         ArgumentNullException.ThrowIfNull(read);
         ArgumentNullException.ThrowIfNull(symbols);
         var targets = symbols.Symbols.Select((s, i) => new LabelTarget(i, s.Region.Box, s.Kind, s.Confidence)).ToList();
-        return Associate(targets, words, read.NetLabels, read.SupplyMarks);
+        // The words at wire ends first (IM-7's), then the names of terminals and of open ends at a distance (IMF-6).
+        var taken = words.Where(w => read.NetLabels.Any(l => l.Text == w.Region) || read.SupplyMarks.Any(m => m.Text == w.Region))
+                         .Select(w => w.Id).ToHashSet();
+        var far = PictureTerminals.Names(read, symbols, words, taken);
+        return Associate(targets, words, read.NetLabels, read.SupplyMarks, far);
     }
 
     /// <summary>Attaches <paramref name="words"/> to <paramref name="targets"/> and, through IM-7's net labels and
-    /// supply marks, to wire ends.</summary>
+    /// supply marks, to wire ends; <paramref name="named"/> are names already placed — a terminal's, an open end's at a
+    /// distance (IMF-6) — whose words nothing else takes.</summary>
     public static ImageTextLabels Associate(IReadOnlyList<LabelTarget> targets, IReadOnlyList<ImageWord> words,
-                                            IReadOnlyList<NetLabel>? labels = null, IReadOnlyList<SupplyMark>? supplies = null)
+                                            IReadOnlyList<NetLabel>? labels = null, IReadOnlyList<SupplyMark>? supplies = null,
+                                            IReadOnlyList<NodeName>? named = null)
     {
         ArgumentNullException.ThrowIfNull(targets);
         ArgumentNullException.ThrowIfNull(words);
         var used = new HashSet<int>();
 
-        // Names first: a word IM-7 put at a wire end names that net, whatever else it could be (P1 is a port there).
+        // Names first: a word IM-7 put at a wire end names that net, whatever else it could be (P1 is a port there). A
+        // port's name in the vocabulary is taken as the vocabulary spells it (R-imf6-1): V1N beside a wire is VIN.
         var names = new List<NodeName>();
         void Name(int node, int region, bool supply)
         {
-            foreach (var w in words.Where(w => w.Region == region && w.Reading is { } r
-                                                && r.Class is WordClass.Name or WordClass.Designator))
+            foreach (var w in words.Where(w => w.Region == region))
             {
-                names.Add(new NodeName(node, w.Reading!.Text, w, supply || w.Reading.IsPortWord));
+                string? snapped = PortWords.Snap([w]);
+                if (snapped is null && w.Reading is not { Class: WordClass.Name or WordClass.Designator }) continue;
+                string text = snapped ?? w.Reading!.Text;
+                names.Add(new NodeName(node, text, w, supply || w.Reading?.IsPortWord == true
+                                                      || snapped is not null && !PortWords.IsSupply(snapped)));
                 used.Add(w.Id);
             }
         }
         foreach (var l in labels ?? []) Name(l.Node, l.Text, false);
         foreach (var s in supplies ?? []) if (s.Text is { } t) Name(s.Node, t, true);
+        foreach (var n in named ?? [])
+        {
+            names.Add(n);
+            used.Add(n.Word.Id);
+            foreach (var m in n.More) used.Add(m.Id);
+        }
 
         var designator = new ImageWord?[targets.Count];
         var value = new ImageWord?[targets.Count];

@@ -1966,3 +1966,91 @@ joins the region (IMF-7). One crop lost a part by kind, `picture-ds-b2` 3/4 → 
 
 **Not done here.** The gain block's triangle is still open at 1× and the test circuit's solid block box still two
 regions; both skip reasons name IMF-5 and stay — they are the triangles' and boxes' phase (IMF-8) as much as this one.
+
+## 22. IMF-6 — ports, terminals, return rails and names, as datasheets and textbooks draw them
+
+IMF-5 named the parts; IMF-6 finds where the circuit is driven and measured. Everything here is in
+`PictureTerminals` (the terminals, the port vocabulary, the names) and the emit's port pass.
+
+### 22.1 Terminals and their names (R-imf6-1)
+
+A **terminal** is a one-pin port symbol drawn as an open circle (`terminal-circle`) or a filled dot, standing on a
+wire's free end. A filled dot reaches the reader two ways: as a one-pin region read as a disc
+(`SchematicSymbols.FilledDot` — 3–8 w each way, filled out across its rows and columns it fills seven tenths of its
+box and is the same turned half a turn, and its ink, with the run the wire reading took out of it given back, is
+nearly all of that), whatever template it came nearest (a 1× dot matched the chassis ground); or, drawn small, as the
+junction blob on a free end that no region reaches (`WireNode.Terminal`). A circle with two wires on it is no terminal.
+
+A terminal takes the nearest name within 3 h, any side, unless the word stands nearer another part — `V_CC` beside its
+supply circle is the circle's. The words of one line a word space apart are one name (`RF` `In`). **The port vocabulary
+is a grammar** (`PortWords`): a word in a terminal's place, or at an open end, is read once more against the names a
+port is called by — `IN`, `OUT`, `RF In`, `VIN`, `Vo`, `RF+DC`, `DC`, `RF`, `LO`, `IF`, `ANT` and the supply names —
+each glyph allowed any character within 0.4 of its best (and 0.04 more) rather than ImageText's 0.2: `V1N` is `VIN`,
+`K4` is `RF`, `Ωut` is `Out`. A net label at a wire end is snapped the same way. A supply name (`VCC`, `+Vs`, `V+`, a
+voltage) that is no input or output makes the terminal a supply terminal — its net named, no port (IMF-8 draws it).
+
+### 22.2 Pairs and the return rail (R-imf6-2, R-imf6-3)
+
+Two terminals are **one port** when a voltage arrow spans them (each end within ¾ s of one), when they are stacked at
+the drawing's left or right edge within ½ s across, or when one is on the return rail and the other is the nearest off
+it within ½ s across or along. The upper — or, side by side, the left — is `+`; on a rail, the one off it. The port's
+minus is the other terminal's net.
+
+With **no ground drawn anywhere** (no ground symbol, no ground read from wire bars), the net holding the reference
+terminals of two ports, or of one port and a source's minus, is ground. One ground symbol is placed at its left end —
+the only thing the drawing gains — and the report says "the common return was taken as ground". **Not in the brief:**
+when no net qualifies but a pair exists, the leftmost pair's reference is taken: a circuit with no ground cannot be
+simulated, and the corpus's 359 px ladder (one pair, a load resistor at the far end) otherwise floated. A drawn ground
+anywhere suppresses all of this: the pairs' references stay a net of their own.
+
+### 22.3 Names at a distance (R-imf6-4)
+
+An open end — a wire end nothing reaches, or a lead ending in paper (IMF-5's free lead) — takes a name in line with it
+(its line within 1 h of the word), beyond its end within 6 h, when no symbol and no other wire is nearer the word. It
+becomes a port carrying the name (`FarName`); a supply name stays a supply net. A free lead named so is a net of its own
+(a root past the wire graph's), and the drawing joins the part's pin to the port's with a wire, as the lead does. Names
+at a junction stay net labels.
+
+### 22.4 Numbering (R-imf6-5)
+
+AC sources first (P1Tone, O2), then — unless every port name carries a distinct number, which still orders them — an
+input name, an output name, then the rest left to right, top to bottom. `OUT` drawn left of `IN` is port 2.
+
+### 22.5 Parts of no known kind (R-imf6-6, O3)
+
+A two-pin region of no known kind is a **0 Ω resistor** designated `?n` (a designator read off the picture is kept), no
+variable, reported once with every `?n`; `SchematicImageCircuit.UnknownParts` lists them for Paste's outcome line
+(IMF-9), and Paste already selects everything it adds. `SchematicImageOptions.UnknownAs = Capacitor` restores the
+artwork's rule; it is recorded in the `ImageSource` block when set. The netlist reader takes `R:?1` as written, and a
+run stamps it as the engine's near-short with its own one-line warning.
+
+### 22.6 The drawing and the report (R-imf6-7, R-imf6-8)
+
+Each port is placed at its terminal (the `+` of a pair) by its one pin, as before; a pair's minus is wired to its
+reference terminal (`SchematicImageCircuit.PortReferences`), down to a rail below or across to one beside and then to
+it, so the wire stays clear of the `+` terminal's. A name a port was made of is the port's name, not a label beside it.
+The report counts ports by source — AC sources, port symbols, named terminals, terminal pairs, pairs a voltage arrow
+spans, names beyond open ends, single terminals, net names — the rails taken as ground, and the parts of no known kind.
+
+**Known:** `heavy-iec`'s terminal port is placed against its supply circle, which the exact placement then moves aside
+(a placement-fallback note) — ports are placed in netlist order, first.
+
+### 22.7 The field numbers after IMF-6
+
+The committed style pictures, against §21.9's:
+
+| picture | ports | topo | names | what moved |
+|---|---|---|---|---|
+| ds-ldo-1x / 2x | 2/2 | yes | **2/2** | VIN and VOUT named, in order |
+| ds-rf-amp-1x / 2x | 0/2 → **2/2** | no | — | the filled dots, `RF In` / `RF Out` |
+| ds-gain-block-1x | 1/2 → 0/2 | no | 1/1 | the `Vcc` terminal is a supply, no longer a port (the coax ports are IMF-8's) |
+| heavy-iec | 0/1 → **1/1** | no → **yes** | — | the terminal dot; RL read `?` and the subscripted designators are left (IMF-7) |
+| ladder-dashed | 3 → **2/2** | yes | — | the pairs, the rail as ground |
+| low-res | 3 → **2/2** | no → **yes** | — | the arrow pairs |
+| textbook-zigzag | 3 → **2/2** | no | — | the arrow pairs; its R and C still read `?` (IMF-7) |
+| loop-coil-names | 0/3 → **3/3** | no → **yes** | 0/3 → **3/3** | names at a distance; **reads exactly** |
+
+On the downloaded corpus: `picture-ds-c1`, `-h1`, `-h2` ports 1 → 2, the expected count (on `-h1` the second is the
+switch's `ON` end, not `VIN`, whose word is read joined to its small circle — IMF-7), `picture-ds-e1`/`-e2` 0 → 1 of 2
+(the supply dot, unnamed; the coax ports are IMF-8's), `picture-i` 0 → its 3 named ports, `picture-b` and `picture-f`
+3 → 2 with their rails grounded.
