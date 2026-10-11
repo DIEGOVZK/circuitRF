@@ -54,6 +54,17 @@ public enum PartKind
 
     /// <summary>A ferrite bead.</summary>
     Bead,
+
+    /// <summary>An IC drawn as a box (brief-imf-8 R-imf8-1): an S-parameter block, its ports its signal pins in pin-number
+    /// order.</summary>
+    IC,
+
+    /// <summary>An amplifier triangle (R-imf8-2): circuitRF's System Amp.</summary>
+    Amp,
+
+    /// <summary>A block-diagram symbol (R-imf8-7): a System component with its default parameters,
+    /// <see cref="PartRow.Variant"/> which one — Filter, Atten, Circulator, Switch, Coupler, Balun.</summary>
+    Block,
 }
 
 /// <summary>How a part's two pads sit on the board (R-as4-3) — measured, never stated.</summary>
@@ -250,6 +261,7 @@ public sealed record PartsTable(IReadOnlyList<PartRow> Rows, RailRf.RailLengthFo
     {
         PartKind.Q => ["NPN", "PNP", "NFET", "PFET"],
         PartKind.V => ["AC", "DC"],
+        PartKind.Block => ["Filter", "Atten", "Circulator", "Switch", "Coupler", "Balun"],
         _ => [],
     };
 

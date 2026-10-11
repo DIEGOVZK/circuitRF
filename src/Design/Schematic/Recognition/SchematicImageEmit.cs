@@ -67,6 +67,18 @@ public enum PicturePortSource
     Tone,
 }
 
+/// <summary>One pin of an IC drawn as a box (R-imf8-1): the number and the name the picture prints at it, either null
+/// where none was read.</summary>
+public sealed record IcPin(int? Number, string? Name);
+
+/// <summary>An IC's pins as the picture draws them (R-imf8-1).</summary>
+/// <param name="Ports">Its S-parameter ports in order: by pin number when every one has a number, else in package
+/// order.</param>
+/// <param name="ByNumber">The ports follow the pin numbers read.</param>
+/// <param name="Reference">The pins on ground or named GND: its reference.</param>
+/// <param name="Open">The pins wired to nothing, or named NC: left out.</param>
+public sealed record IcReading(IReadOnlyList<IcPin> Ports, bool ByNumber, IReadOnlyList<IcPin> Reference, IReadOnlyList<IcPin> Open);
+
 /// <summary>One port of the circuit.</summary>
 /// <param name="X">Where it is on the source picture, pixels.</param>
 public sealed record PicturePort(int Number, string Name, string Net, PicturePortSource Source, double X, double Y);
@@ -144,6 +156,10 @@ public sealed record SchematicImageCircuit(TestBench TestBench)
 
     /// <summary>The parts of no known kind, made 0 Ω resistors (O3, R-imf6-6).</summary>
     public IReadOnlyList<string> UnknownParts { get; init; } = [];
+
+    /// <summary>Per IC drawn as a box (R-imf8-1), its pins as read: each port's pin number and pin name, then the pins
+    /// that are its reference and those wired to nothing.</summary>
+    public IReadOnlyDictionary<string, IcReading> Ics { get; init; } = new Dictionary<string, IcReading>();
 
     /// <summary>The <c>.cnl</c> text, its technology relative to <paramref name="cnlDirectory"/>.</summary>
     public string CnlText(string cnlDirectory, string? header = "recognised from a schematic picture") =>
@@ -413,6 +429,7 @@ public static class SchematicImageEmit
                 ImageSymbolKind.Source when s.Variant == "current" && s.Pins.Count == 2 => PartKind.I,
                 ImageSymbolKind.Source => PartKind.V,
                 ImageSymbolKind.Transformer when s.Pins.Count >= 4 => PartKind.K,
+                ImageSymbolKind.Amplifier when s.Pins.Count >= 2 => PartKind.Amp,
                 _ => null,
             };
             bool twoPin = device is null && s.Pins.Count == 2 && s.Kind is ImageSymbolKind.Resistor or ImageSymbolKind.Inductor
@@ -483,7 +500,7 @@ public static class SchematicImageEmit
             }
             if (device is { } dk)
             {
-                var row = Row(refdes, dk, s.Pins, dk == PartKind.Q ? PartConnection.MultiPin : Connection(s.Pins));
+                var row = Row(refdes, dk, s.Pins, dk is PartKind.Q or PartKind.Amp ? PartConnection.MultiPin : Connection(s.Pins));
                 row = dk switch
                 {
                     PartKind.Q => row with { Variant = s.Variant?.ToUpperInvariant(), PartNumber = PartNumberOf(l) },
@@ -517,7 +534,8 @@ public static class SchematicImageEmit
             if (!twoPin)
                 made = new PartRow
                 {
-                    Refdes = refdes, Kind = PartKind.MultiPin, Connection = PartConnection.MultiPin, PadCount = s.Pins.Count,
+                    Refdes = refdes, Kind = s.Kind == ImageSymbolKind.Ic ? PartKind.IC : PartKind.MultiPin,
+                    Connection = PartConnection.MultiPin, PadCount = s.Pins.Count, PartNumber = PartNumberOf(l),
                     X = (long)Math.Round(x), Y = (long)Math.Round(y), Confidence = l?.Confidence ?? s.Confidence,
                     Evidence = evidence, Notes = notes, Terminals = Terminals(s.Pins),
                 };
@@ -778,7 +796,8 @@ public static class SchematicImageEmit
             if (!variables.Any(v => v.Name == name)) variables.Add((name, number, unit, min, max));
         }
         string Spell(double v) => RecognitionEmitOptions.Spell(v, digits);
-        foreach (var row in parts.Rows.Where(r => r.Kind is PartKind.Q or PartKind.V or PartKind.I or PartKind.D or PartKind.Bead && SymbolOf(r) >= 0))
+        foreach (var row in parts.Rows.Where(r => r.Kind is PartKind.Q or PartKind.V or PartKind.I or PartKind.D or PartKind.Bead or PartKind.Amp
+                                                  && SymbolOf(r) >= 0))
         {
             int i = SymbolOf(row);
             var s = syms[i];
@@ -801,6 +820,20 @@ public static class SchematicImageEmit
                 case PartKind.D:
                     proto = new Proto { Type = "Diode", Name = name, Roots = roots, Symbol = i };
                     break;
+                case PartKind.Amp:
+                {
+                    // O5: the System Amp — in+ the input lead, out+ the output lead, in− and out− on ground. A lead on its
+                    // other sides to ground is its reference; one to anything else (a supply) ends at its body.
+                    if (rp.Count < 2) continue;
+                    proto = new Proto { Type = "Amp", Name = name, Roots = [roots[0], G, roots[1], G], Symbol = i };
+                    Raw($"{id}_Gain", "20", null, "0", "40");
+                    proto.Parameters.Add(new ParameterAssignment("Gain", $"{id}_Gain"));
+                    var fed = rp.Skip(2).Where(p => PinRoot(i, p) is var r && r >= 0 && r != G).ToList();
+                    deviceNotes.Add($"{name} is an amplifier triangle: an ideal Amp, its gain the global {id}_Gain — set it." +
+                                    (fed.Count > 0 ? $" {Plural(fed.Count, "lead", "leads")} to its supply end at its body: the supply pin of an ideal amplifier carries no current." : ""));
+                    rp = [rp[0], rp[1]];
+                    break;
+                }
                 case PartKind.Bead:
                     proto = new Proto { Type = "Bead", Name = name, Roots = roots, Symbol = i };
                     proto.Parameters.Add(new ParameterAssignment("Rdc", "0.01", "Ohm"));
@@ -883,15 +916,49 @@ public static class SchematicImageEmit
         // A multi-pin symbol — a box, a transistor, an amplifier — is an S-parameter block with one port per wired pin
         // and a pin on ground its reference: the shape an RF schematic draws a black box in, and the part it is drawn as.
         var blocks = new List<(string Name, int Ports)>();
-        foreach (var row in parts.Rows.Where(r => r.Kind is PartKind.MultiPin or PartKind.Connector && SymbolOf(r) >= 0)
+        var ics = new Dictionary<string, IcReading>(StringComparer.Ordinal);
+        var icNotes = new List<string>();
+        foreach (var row in parts.Rows.Where(r => r.Kind is PartKind.MultiPin or PartKind.Connector or PartKind.IC && SymbolOf(r) >= 0)
                                       .OrderBy(r => r.X).ThenBy(r => r.Y))
         {
             int i = SymbolOf(row);
             var s = syms[i];
-            var signal = s.Pins.Where(p => RootOf(p.Node) is var r and >= 0 && r != G)
-                               .OrderBy(p => Math.Round(p.X / (4 * w))).ThenBy(p => p.Y).ToList();
+            List<RecognisedPin> signal;
+            RecognisedPin? reference;
+            IcReading? ic = null;
+            if (row.Kind == PartKind.IC)
+            {
+                // R-imf8-1: the pins read by number and name; the grounded ones its reference, the ones wired to nothing
+                // left out, the rest its ports in pin-number order.
+                var read1 = IcPins.Read(s, words, PictureTerminals.TextHeight(read));
+                bool Elsewhere(RecognisedPin p, int root) =>
+                    syms.Where((_, k) => k != i).SelectMany(o => o.Pins).Any(q => RootOf(q.Node) == root)
+                    || s.Pins.Any(q => q != p && RootOf(q.Node) == root)
+                    || ports.Any(o => o.Root == root) || labels.Names.Any(n => RootOf(n.Node) == root) || supplyRoots.Contains(root);
+                var refs = new List<(RecognisedPin Pin, IcPin Read)>();
+                var open = new List<(RecognisedPin Pin, IcPin Read)>();
+                var sig = new List<(RecognisedPin Pin, IcPin Read)>();
+                foreach (var p in s.Pins)
+                {
+                    var pr = read1[p.Index];
+                    int root = RootOf(p.Node);
+                    if (root == G || pr.Name is { } n0 && IcPins.IsGround(n0)) refs.Add((p, pr));
+                    else if (root < 0 || pr.Name is { } n1 && IcPins.IsNoConnect(n1) || !Elsewhere(p, root)) open.Add((p, pr));
+                    else sig.Add((p, pr));
+                }
+                bool byNumber = sig.Count > 0 && sig.All(t => t.Read.Number is not null) && sig.Select(t => t.Read.Number).Distinct().Count() == sig.Count;
+                if (byNumber) sig = [.. sig.OrderBy(t => t.Read.Number)];
+                signal = [.. sig.Select(t => t.Pin)];
+                reference = refs.Select(t => t.Pin).FirstOrDefault(p => RootOf(p.Node) == G);
+                ic = new IcReading([.. sig.Select(t => t.Read)], byNumber, [.. refs.Select(t => t.Read)], [.. open.Select(t => t.Read)]);
+            }
+            else
+            {
+                signal = [.. s.Pins.Where(p => RootOf(p.Node) is var r and >= 0 && r != G)
+                                   .OrderBy(p => Math.Round(p.X / (4 * w))).ThenBy(p => p.Y)];
+                reference = s.Pins.FirstOrDefault(p => RootOf(p.Node) == G);
+            }
             if (signal.Count == 0) continue;
-            var reference = s.Pins.FirstOrDefault(p => RootOf(p.Node) == G);
             string name = Unique(RecognitionEmit.Identifier(row.Refdes, "S"), names);
             var proto = new Proto { Type = "SnP", Name = name, Roots = [.. signal.Select(p => RootOf(p.Node))], Symbol = i };
             proto.Parameters.Add(new ParameterAssignment("NumPorts", signal.Count.ToString(CultureInfo.InvariantCulture)));
@@ -904,7 +971,15 @@ public static class SchematicImageEmit
             }
             if (reference is not null) proto.RefRoot = G;
             protos.Add(proto);
-            blocks.Add((name, signal.Count));
+            if (ic is null) { blocks.Add((name, signal.Count)); continue; }
+            ics[name] = ic;
+            static string PinText(IcPin p) => p.Number is { } n ? (p.Name is { } nm ? $"{n} {nm}" : $"{n}") : p.Name ?? "?";
+            icNotes.Add($"{name} is an IC drawn as a box with {Plural(s.Pins.Count, "pin", "pins")}: " +
+                        $"{Plural(ic.Ports.Count, "port", "ports")} {(ic.ByNumber ? "by pin number" : "in the order a package numbers its pins")} " +
+                        $"({string.Join(", ", ic.Ports.Select(PinText))})" +
+                        (ic.Reference.Count > 0 ? $", {Plural(ic.Reference.Count, "pin", "pins")} its reference ({string.Join(", ", ic.Reference.Select(PinText))})" : "") +
+                        (ic.Open.Count > 0 ? $", {Plural(ic.Open.Count, "pin", "pins")} wired to nothing left out ({string.Join(", ", ic.Open.Select(PinText))})" : "") +
+                        ". Give it a Touchstone file whose ports follow its pin numbers.");
         }
 
         var lineNotes = new List<string>();
@@ -1020,6 +1095,7 @@ public static class SchematicImageEmit
             $"{(unknownParts.Count == 1 ? "made a 0 Ω resistor" : "each made a 0 Ω resistor")} so the circuit stays as drawn: " +
             "set the kind in the parts table.");
         report.Add(RecognitionFindingClass.PictureEmitNotes, deviceNotes.Count, string.Join(" ", deviceNotes));
+        report.Add(RecognitionFindingClass.PictureEmitNotes, icNotes.Count, string.Join(" ", icNotes));
         var settings = parts.Rows.Where(r => r.Kind == PartKind.R && SymbolOf(r) >= 0 && syms[SymbolOf(r)].Variable).Select(r => r.Refdes).ToList();
         report.Add(RecognitionFindingClass.PictureEmitNotes, settings.Count,
             $"{string.Join(", ", settings)} {(settings.Count == 1 ? "is a variable resistor" : "are variable resistors")}: " +
@@ -1056,7 +1132,7 @@ public static class SchematicImageEmit
         {
             PinNodes = protos.ToDictionary(p => p.Name, p => (IReadOnlyList<int>)p.PinNodes, StringComparer.Ordinal),
             NodeNets = nodeNets, Grounds = grounds, NamedNodes = named, HiddenSegments = hidden,
-            PortReferences = portReferences, UnknownParts = unknownParts,
+            PortReferences = portReferences, UnknownParts = unknownParts, Ics = ics,
             Exact = exact, Frame = frame, Parts = parts, Ports = picturePorts, Variables = [.. variables.Select(v => v.Name)],
             SymbolOf = protos.Where(p => p.Symbol >= 0).ToDictionary(p => p.Name, p => p.Symbol, StringComparer.Ordinal),
             SymbolOfRow = symbolOfRow,

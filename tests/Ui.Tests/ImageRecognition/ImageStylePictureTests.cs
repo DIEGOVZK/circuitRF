@@ -109,13 +109,14 @@ internal static class StyleWires
 
 public sealed partial class ImageDatasheetStyleTests(ITestOutputHelper output)
 {
-    private const string RfAmp = "IMF-8 reads the 8-pin IC box (pin-number boxes, names inside)";
-    private const string GainBlock = "IMF-8 reads the filled triangle as an Amp and the coax connectors as ports; it needs the triangle " +
-                                     "closed at 1× and the RFC coil and Cbypass read as parts (IMF-5) first. IMF-7 reads Cblock, " +
-                                     "RFC and Cbypass; Rbias is not read";
-    private const string Regulator = "IMF-8 reads the IC box with its pin names outside";
-    private const string TestCircuit = "IMF-8 reads the triangle as an Amp and the coax connectors as ports; it needs the solid " +
-                                       "block box read as one part (IMF-5) first";
+    private const string RfAmp = "Measured short after IMF-8: the circuit reads (the IC an SnP in pin order) but C3's designator, " +
+                                 "touching its plate, is not read";
+    private const string GainBlock = "Measured short after IMF-8: the triangle is an Amp and the coax connectors ports, but Cbypass " +
+                                     "reads as a supply bar at 1× and the RFC coil comes apart at 2× (IMF-5); Rbias is not read";
+    private const string Regulator = "Measured short after IMF-8: the IC is a 3-port SnP, but the answer draws VIN and VOUT as net " +
+                                     "names where IMF-6 reads names beyond open ends as ports";
+    private const string TestCircuit = "Measured short after IMF-8: the solid DUT box drawn round the triangle is read as one part " +
+                                       "with it, so no Amp — a box framing a part is not read as a frame";
 
     [Fact(Skip = RfAmp)] public void RfAmp_1x() => StyleScore.ReadsExactly(output, "ds-rf-amp-1x");
     [Fact(Skip = RfAmp)] public void RfAmp_2x() => StyleScore.ReadsExactly(output, "ds-rf-amp-2x");

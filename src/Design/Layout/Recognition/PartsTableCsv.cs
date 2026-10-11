@@ -245,12 +245,23 @@ public static class PartsTableCsv
                 bool multiPad = row.PadCount > 2;
                 // A picture's own kinds (R-imf5-8): a transistor stays a transistor and a coupling a coupling — only the
                 // variant changes — and none of them is an artwork part's.
-                bool device = row.Kind is PartKind.Q or PartKind.K, toDevice = kind is PartKind.Q or PartKind.K;
-                bool pictureKind = kind is PartKind.D or PartKind.Q or PartKind.V or PartKind.I or PartKind.K or PartKind.Bead;
+                // An IC, an amplifier and a block-diagram symbol (R-imf8-9) are read by how they are wired: none changes kind.
+                static bool Device(PartKind k) => k is PartKind.Q or PartKind.K or PartKind.IC or PartKind.Amp or PartKind.Block;
+                bool device = Device(row.Kind), toDevice = Device(kind);
+                bool pictureKind = kind is PartKind.D or PartKind.Q or PartKind.V or PartKind.I or PartKind.K or PartKind.Bead
+                                   or PartKind.IC or PartKind.Amp or PartKind.Block;
                 if (pictureKind && !table.Pixels)
                     notes.Add($"{row.Refdes}: {PartsTable.KindText(kind)} is a schematic picture's kind, not an artwork part's; the kind was kept.");
                 else if ((device || toDevice) && kind != row.Kind)
-                    notes.Add($"{row.Refdes} is {PartsTable.KindText(row)} and can only change its {(row.Kind == PartKind.Q ? "polarity" : "value")}; the kind was kept.");
+                    notes.Add(row.Kind switch
+                    {
+                        PartKind.Q or PartKind.K => $"{row.Refdes} is {PartsTable.KindText(row)} and can only change its {(row.Kind == PartKind.Q ? "polarity" : "value")}; the kind was kept.",
+                        PartKind.Block => $"{row.Refdes} is {PartsTable.KindText(row)} and can only change which block it is; the kind was kept.",
+                        PartKind.IC or PartKind.Amp => $"{row.Refdes} is {PartsTable.KindText(row)}, read by how it is wired; the kind was kept.",
+                        _ => kind is PartKind.Q or PartKind.K
+                            ? $"{row.Refdes} is {PartsTable.KindText(row)} and can only change its value; the kind was kept."
+                            : $"{row.Refdes} cannot become {PartsTable.KindText(kind)}: that kind is read by how the picture draws it; the kind was kept.",
+                    });
                 else if (multiPad && kind is not (PartKind.MultiPin or PartKind.Connector or PartKind.Ignore or PartKind.Q))
                     notes.Add($"{row.Refdes} has {row.PadCount} pads and cannot be a two-terminal {PartsTable.KindText(kind)}; the kind was kept.");
                 else if (!multiPad && kind == PartKind.MultiPin)

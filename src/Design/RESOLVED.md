@@ -19473,3 +19473,17 @@ Traps worth keeping:
 - **The serif-foot trim changes nothing measurable on the corpus** (mean glyph distance 0.0385 vs 0.0386 on typeset,
   identical elsewhere): the complex faces' templates already have their feet dropped. Kept for bracketed serifs the
   corpus does not hold; it costs one more match per schematic word.
+
+## IMF-8 — datasheet IC boxes, amplifier triangles, coax connectors, pin markers (2026-10-11)
+
+- **A thin-pen triangle never closed its cycle.** At each acute corner the skeleton breaks into 1–3 px runs that are no
+  wire candidate, so the outline's cycle stayed open, its sides became wire and the `2,4` ground lead shorted the
+  amplifier's input and output to ground. `WireGraph.AcuteCorners` marks such a corner chain a `Side`.
+- **The committed regulator answer disagrees with IMF-6.** `answer.cnl` draws VIN/VOUT as net names; IMF-6 reads a name
+  beyond an open end as a port (as the LDO answer does). Left as is; `Regulator_*x` stays skipped saying so.
+- **The brief's rf-amp gate describes the downloaded ds-a, not the committed fixture** (VCC/RFIN/RFOUT/PWDN, pins 3,4,6,8
+  ground). The fixture is pins 1 RFIN, 7 RFOUT, 8 VCC, GND on 2,3,5,6, NC on 4 — what the facts hold.
+- **A coax test must reject a `+` source circle**: both are a ring with ink at the centre. The dot is required to fill
+  ≥ 0.6 of its own box and nothing else may stand inside the ring.
+- At 2× the rf-amp's hop where L1's lead crosses pin 8's wire reads as two stubs, so VCC is its own net there; the gain
+  block's RFC coil comes apart at 2× and Cbypass reads as a supply bar at 1× (both IMF-5).

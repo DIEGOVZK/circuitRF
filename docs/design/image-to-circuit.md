@@ -2236,3 +2236,34 @@ On the downloaded corpus (`ImageFieldTests`, 26 pass), designators and values re
 `ds-a1`/`-a2` 5/6, `ds-b1` 2/4 and `-b2` 3/4, `ds-d1` 2/4 (values 1/3) and `-d2` 4/4 (3/3), `ds-h1` 2/2 (0/2) and `-h2` 1/2
 (1/2), `picture-c` 5/8, `picture-b` 1/2, `picture-h` values 2/7. Reading time is over O8's 10 s on `ds-g1` (18 s) and
 `ds-g2` (12 s); where that time goes is not measured here (IMF-9's speed target).
+
+## 24. IMF-8 — the part a datasheet's drawing is for
+
+Scoped down by the owner mid-phase: the IC box, the amplifier triangle, coax connectors and pin markers are read; a
+drawing none of them fits falls back to what IM-8 always did (a multi-pin S-parameter block, a `?` part), which is the
+graceful failure. Not done: the System block templates (R-imf8-7), a `Vdc` on a supply arrow that states a voltage
+(R-imf8-5), a not-fitted part marked by a second colour (R-imf8-6; the `DNP`/`NC` word rule IM-10 already had stands),
+and a solid box drawn round a part read as a frame (the test circuit's DUT box).
+
+- **Triangle corners close** (`WireGraph.AcuteCorners`): where two sides meet at a sharp angle in a thin pen the skeleton
+  breaks into short non-candidate runs, so the triangle's cycle stayed open and its sides were wire. A chain of such runs
+  no longer than 3 w, joining two candidates not in line (one slanting) or two slanting ones in line (a side a lead's T
+  cuts), is a `Side`: cycle search only, never wire. The gain block's triangle is now one region at 1× and 2×.
+- **Amplifier** (`DatasheetSymbols.Triangle`/`Amplifier`): the region's ink hull has three corners and ink along each
+  side; the apex is the corner a lead leaves. One lead at the apex and one on the side facing it is the System `Amp`
+  (`in+`, `out+`, `in−`/`out−` on ground, `Gain` a tunable global at 20 dB); leads on the other sides go to the reference
+  or end at the body. Two inputs or outputs make it an IC.
+- **IC box** (`DatasheetSymbols.IcBox`, `IcPins`): three or more leads round a closed orthogonal outline. Pins are taken in
+  package order (down the left, along the bottom, up the right, back along the top); pin numbers read beside the pins
+  replace that order only when every signal pin has a distinct one. Grounded or GND-named pins are the reference; a pin
+  wired to nothing else, or named NC, is left out. Port names go to `SchematicImageCircuit.Ics` and the report (an SnP
+  carries none). Parts-table kinds `IC`, `Amp` and `Block` (variant = the System block) added.
+- **Coax connector**: a ring 4 w–2 s across with a filled dot (≥ 0.6 of its box — a `+` sign fills under half) and
+  nothing else inside; a terminal, its shell's lead the port's minus. A short wire whose two ends stop on one region is
+  that region's outline (a ring's flat run read as wire).
+- **Pin marker**: a round ring 2.5 w–0.8 s with two wire ends meeting it from opposite sides is joined through as a hop is
+  (`HopJoin.Marker`), so the lead is one wire.
+
+Committed fixtures after the phase: rf-amp 1× topology right (designators 4/5), the gain block's Amp and coax ports at
+both scales, LDO still exact; regulator, test circuit and gain block stay skipped with measured reasons in
+`ImageStylePictureTests.cs`.

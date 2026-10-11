@@ -75,8 +75,8 @@ public sealed record SchematicSymbolsRead(IReadOnlyList<RecognisedSymbol> Symbol
 public static class SchematicSymbols
 {
     /// <summary>The kinds that are an S-parameter block whatever their pin count (D9). A transistor is no longer one: it
-    /// is circuitRF's own BJT or FET (IMF O1).</summary>
-    public static bool IsDevice(ImageSymbolKind k) => k is ImageSymbolKind.Amplifier or ImageSymbolKind.Ic;
+    /// is circuitRF's own BJT or FET (IMF O1); nor is an amplifier, circuitRF's System Amp (IMF O5).</summary>
+    public static bool IsDevice(ImageSymbolKind k) => k is ImageSymbolKind.Ic;
 
     /// <summary>The kinds read with their own pins whatever their count: a transistor's three, a transformer's four or
     /// five (IMF-5).</summary>
@@ -88,8 +88,17 @@ public static class SchematicSymbols
     {
         ArgumentNullException.ThrowIfNull(read);
         classifier ??= new TemplateSymbolClassifier();
+        double w = read.StrokeWidth, s0 = read.SymbolScale > 0 ? read.SymbolScale : TemplateSymbolClassifier.FallbackSymbolInW * w;
         var symbols = read.Symbols.Select(r =>
         {
+            // What a datasheet draws round its part, read by how it is wired before any template (R-imf8-1 … R-imf8-3).
+            if (DatasheetSymbols.IcBox(r, read.Outlines, w) is { } ic) return ic;
+            if (r.Attachments.Count >= 2 && DatasheetSymbols.Triangle(r, w, s0) is { } triangle
+                && DatasheetSymbols.Amplifier(r, triangle, w) is { } amp) return amp;
+            if (DatasheetSymbols.Coax(r, w, s0))
+                return new RecognisedSymbol(r, ImageSymbolKind.Port, SymbolDisposition.Recognised, null, default,
+                                            [.. r.Attachments.Select((a, i) => Pin(i, (i + 1).ToString(CultureInfo.InvariantCulture), a))],
+                                            0, null, PartConfidence.High, []) { Variant = DatasheetSymbols.CoaxVariant };
             var c = classifier.Classify(r, read.StrokeWidth, read.SymbolScale);
             // A lead ending in paper (R-imf5-4) stands only when it makes a part: else the region is read without it.
             if (c.Best is null && r.Attachments.Any(a => a.Node < 0))

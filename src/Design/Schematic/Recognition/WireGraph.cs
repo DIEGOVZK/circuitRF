@@ -191,6 +191,7 @@ public sealed class WireGraph
         Square(r, w, o, maxResidual);
         Corners(r, w);
         Sides(r, w, maxResidual);
+        AcuteCorners(r, w);
         return r;
     }
 
@@ -232,6 +233,44 @@ public sealed class WireGraph
             if (ma && mb && (ca || cb)) sides.Add(p);
         }
         foreach (var p in sides) p.Side = true;
+    }
+
+    /// <summary>The corner of a triangle drawn in a thin pen (R-imf8-2): where two sides meet at a sharp angle the
+    /// skeleton breaks into a few short runs no candidate is made of, and the triangle's cycle stays open — its sides are
+    /// taken for wire and its leads short through them. A chain of such runs, no longer than 3 w in all and no end of
+    /// it in paper, joining the ends of two candidates that are not in line — one of them slanting — or of two slanting
+    /// candidates in line (a side a lead's T cuts in two) is a
+    /// <see cref="WirePiece.Side"/>: it closes the outline's cycle and is never a wire.</summary>
+    private static void AcuteCorners(List<WirePiece> pieces, double w)
+    {
+        double reach = 1.5 * w + 0.5;
+        var shorts = pieces.Where(p => !p.IsWire && !p.Side && !p.RoundLoop && !p.FreeA && !p.FreeB && p.Length <= 3 * w).ToList();
+        if (shorts.Count == 0) return;
+        // The chains: short runs end to end within a pixel and a half.
+        var root = Enumerable.Range(0, shorts.Count).ToArray();
+        int Find(int x) { while (root[x] != x) x = root[x] = root[root[x]]; return x; }
+        static bool Touch(WirePiece a, WirePiece b) =>
+            Dist(a.A, b.A) <= 1.5 || Dist(a.A, b.B) <= 1.5 || Dist(a.B, b.A) <= 1.5 || Dist(a.B, b.B) <= 1.5;
+        for (int i = 0; i < shorts.Count; i++)
+            for (int j = i + 1; j < shorts.Count; j++)
+                if (Touch(shorts[i], shorts[j])) root[Find(i)] = Find(j);
+        foreach (var chain in Enumerable.Range(0, shorts.Count).GroupBy(Find).Select(g => g.Select(i => shorts[i]).ToList()))
+        {
+            if (chain.Sum(p => p.Length) > 3 * w) continue;
+            // Its outer ends: the run ends no other run of the chain touches.
+            var ends = chain.SelectMany(p => new[] { p.A, p.B })
+                            .Where(e => chain.Count(q => Dist(q.A, e) <= 1.5 || Dist(q.B, e) <= 1.5) == 1).ToList();
+            if (ends.Count != 2) continue;
+            WirePiece? At(PointD e) => pieces.Where(q => q.IsWire && (Dist(q.A, e) <= reach || Dist(q.B, e) <= reach))
+                                             .OrderBy(q => Math.Min(Dist(q.A, e), Dist(q.B, e))).FirstOrDefault();
+            if (At(ends[0]) is not { } a || At(ends[1]) is not { } b || a == b) continue;
+            if (a.Orientation != WireOrientation.Diagonal && b.Orientation != WireOrientation.Diagonal) continue;
+            // In line, both slanting: one side cut where a lead's T meets it.
+            double turn = Math.Abs(a.Angle - b.Angle);
+            if (Math.Min(turn, Math.PI - turn) < 20 * Math.PI / 180
+                && (a.Orientation != WireOrientation.Diagonal || b.Orientation != WireOrientation.Diagonal)) continue;
+            foreach (var p in chain) p.Side = true;
+        }
     }
 
     /// <summary>A short run that is no wire candidate — curved, or a diagonal too short to be a wire — joining the end of
@@ -1003,7 +1042,7 @@ public sealed class WireGraph
             segs.RemoveAt(Math.Max(x.Seg, y.Seg));
             segs.RemoveAt(Math.Min(x.Seg, y.Seg));
             segs.Add(m);
-            result.Hops.Add(hop);
+            if (!hop.Marker) result.Hops.Add(hop);
         }
 
         // A T: an end on another wire's interior splits that wire.
@@ -1264,7 +1303,11 @@ internal sealed record JunctionBlob(PointD Centre, double Radius);
 
 /// <summary>A hop: the wire ends at <paramref name="End1"/> and <paramref name="End2"/> are one wire, crossing the
 /// other at <paramref name="At"/> without connecting to it.</summary>
-internal sealed record HopJoin(PointD End1, PointD End2, PointD At);
+internal sealed record HopJoin(PointD End1, PointD End2, PointD At)
+{
+    /// <summary>A pin marker's two halves (R-imf8-4): one wire through an open circle on a lead, crossing nothing.</summary>
+    public bool Marker { get; init; }
+}
 
 /// <summary>A closed outline's box, read pixels; <paramref name="Orthogonal"/>: drawn only across and down (a box, not a
 /// triangle or a diamond).</summary>

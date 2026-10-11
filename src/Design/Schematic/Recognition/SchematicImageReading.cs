@@ -123,6 +123,9 @@ public sealed record SchematicImageRead
     /// <summary>What the region growing closed, merged, refused and split, for the report (R-imf4-6).</summary>
     internal RegionCounts Regions { get; init; } = new();
 
+    /// <summary>The closed outlines the wire reading set aside — an IC's box among them (R-imf8-1).</summary>
+    internal IReadOnlyList<OutlineBox> Outlines { get; init; } = [];
+
     public required SchematicImageReport Report { get; init; }
 
     /// <summary>Why nothing can be made of the picture, or null.</summary>
@@ -401,6 +404,11 @@ public static class SchematicImageReading
         var scales = new RegionScales(symbol.Px, plates.Outlines, PlatePairs(plates.Lines, symbol.Px, w)) { Circles = circles };
         var raw = SymbolRegions.Group(residue, first, w, o, scales, regionCounts);
         var (hops, hopRegions) = SymbolRegions.Hops(raw, mask.Width, first, w, o);
+        // A pin marker on a lead (R-imf8-4) is the lead's: its two halves one wire, as a hop's are.
+        var (markers, markerRegions) = SymbolRegions.Markers(raw, mask.Width, first, w, symbol.Px, o, hopRegions);
+        hops.AddRange(markers);
+        hopRegions.UnionWith(markerRegions);
+        regionCounts.PinMarkers = markers.Count;
         // A variable resistor's arrow (R-imf5-3): the stretch of its shaft standing out of the body, read as a short
         // slanting wire with one bare end that points into a region, is the arrow's — off the wires, so the body keeps
         // its two leads and the classifier finds the rest of the arrow across it.
@@ -413,6 +421,19 @@ public static class SchematicImageReading
         var graph = hops.Count > 0 || tails.Count > 0 || taps.Count > 0 ? WireGraph.Build(wires, hops, blobs, w, o, flips) : first;
         var regions = raw.Where((_, j) => !hopRegions.Contains(j)).ToList();
         var attached = SymbolRegions.Attach(regions, mask.Width, graph, allWords, w, o);
+        // A short wire whose two ends both stop on one region and nowhere else — a flat run of a ring's outline taken for
+        // wire, a coax connector's between its leads (R-imf8-3) — is the region's.
+        var own = attached.Regions.SelectMany(r => graph.Segments.Where(g => g.Length <= 0.5 * symbol.Px
+                                                                             && graph.Nodes[g.From].IsEnd && graph.Nodes[g.To].IsEnd
+                                                                             && r.Attachments.Any(a => a.Node == g.From)
+                                                                             && r.Attachments.Any(a => a.Node == g.To))).ToList();
+        if (own.Count > 0)
+        {
+            bool Near(PointD p, PointD q) => WireGraph.Dist(p, q) <= 1.5 * w + 1;
+            wires = [.. wires.Where(p => !own.Any(g => Near(p.A, g.A) && Near(p.B, g.B) || Near(p.A, g.B) && Near(p.B, g.A)))];
+            graph = WireGraph.Build(wires, hops, blobs, w, o, flips);
+            attached = SymbolRegions.Attach(regions, mask.Width, graph, allWords, w, o);
+        }
         for (int i = 0; i < attached.Regions.Count; i++)
         {
             var r = attached.Regions[i];
@@ -438,6 +459,7 @@ public static class SchematicImageReading
         read = read with
         {
             Wires = graph, Symbols = attached.Regions, Decorations = attached.Decorations, NetLabels = attached.Labels, Regions = regionCounts,
+            Outlines = plates.Outlines,
             SupplyMarks = attached.Supplies, Dangling = attached.Dangling,
             Strokes = read.Strokes with { RoundJunctions = round, SquareJunctions = square, DiamondJunctions = diamond },
         };

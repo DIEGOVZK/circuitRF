@@ -36,11 +36,18 @@ public static class PictureTerminals
         ArgumentNullException.ThrowIfNull(symbols);
         var result = new List<PictureTerminal>();
         var syms = symbols.Symbols;
+        // A coax connector's terminal is its centre's lead, not its shell's: the shell's goes to ground (R-imf8-3).
+        var graph = read.Wires;
+        int NetAt(int node) => graph.Segments.FirstOrDefault(g => g.From == node || g.To == node) is { } seg ? graph.Net(seg.Id) : -1;
+        var groundNets = syms.Where(g => g.Disposition == SymbolDisposition.Recognised && g.Kind == ImageSymbolKind.Ground)
+                             .SelectMany(g => g.Pins).Select(p => NetAt(p.Node)).Where(n => n >= 0).ToHashSet();
         for (int i = 0; i < syms.Count; i++)
         {
             var s = syms[i];
-            if (IsTerminal(s) && s.Pins[0].Node >= 0)
-                result.Add(new PictureTerminal(i, s.Pins[0].Node, s.Region.Box, s.Variant == SchematicSymbols.DotVariant));
+            if (!IsTerminal(s)) continue;
+            var pin = s.Pins.FirstOrDefault(p => p.Node >= 0 && !groundNets.Contains(NetAt(p.Node)));
+            if (pin is not null)
+                result.Add(new PictureTerminal(i, pin.Node, s.Region.Box, s.Variant == SchematicSymbols.DotVariant));
         }
         var reached = syms.SelectMany(s => s.Pins).Select(p => p.Node).ToHashSet();
         int r = (int)Math.Ceiling(1.5 * read.StrokeWidth);
@@ -52,11 +59,12 @@ public static class PictureTerminals
         return [.. result.OrderBy(t => t.X).ThenBy(t => t.Y)];
     }
 
-    /// <summary>A one-pin port symbol drawn as a terminal — an open circle or a filled dot — rather than a Term box or a
-    /// pin flag.</summary>
+    /// <summary>A one-pin port symbol drawn as a terminal — an open circle or a filled dot — or a coax connector
+    /// (R-imf8-3), rather than a Term box or a pin flag.</summary>
     public static bool IsTerminal(RecognisedSymbol s) =>
-        s.Disposition == SymbolDisposition.Recognised && s.Kind == ImageSymbolKind.Port && s.Pins.Count == 1
-        && (s.Template?.Name == "terminal-circle" || s.Variant == SchematicSymbols.DotVariant);
+        s.Disposition == SymbolDisposition.Recognised && s.Kind == ImageSymbolKind.Port
+        && (s.Pins.Count == 1 && (s.Template?.Name == "terminal-circle" || s.Variant == SchematicSymbols.DotVariant)
+            || s.Pins.Count >= 1 && s.Variant == DatasheetSymbols.CoaxVariant);
 
     /// <summary>The picture's text height h in read pixels; six pens when the profile has none.</summary>
     internal static double TextHeight(SchematicImageRead read) =>

@@ -73,7 +73,7 @@ internal enum MergeRefusal { None, Gap, Lead, Size, Pins, Outline }
 internal sealed class RegionCounts
 {
     public int Boxes, Triangles, Circles, Merged, RefusedGap, RefusedLead, RefusedSize, RefusedPins, RefusedOutline, Split, SplitInto,
-               Blocks, Glyphs;
+               Blocks, Glyphs, PinMarkers;
 }
 
 internal sealed record AttachResult(List<SymbolRegion> Regions, List<PixelBox> Decorations, List<NetLabel> Labels,
@@ -527,6 +527,64 @@ internal static class SymbolRegions
             used.Add(rb);
         }
         return (hops, used);
+    }
+
+    /// <summary>The pin markers (R-imf8-4): an open circle on a lead, between a wire and a part's body — two wire ends
+    /// meeting its ring from opposite sides, in line through its centre. The lead passes through it: its two halves are
+    /// one wire, and the circle is no symbol. The ring is the region's largest piece, so a pin number standing on it is
+    /// left aside; it is 2.5 w to 0.8 s across, round, its ink on the circle and none at its centre.</summary>
+    public static (List<HopJoin> Joins, HashSet<int> Regions) Markers(List<RawRegion> regions, int width, WireGraph wires,
+                                                                     double w, double s, SchematicImageOptions o, HashSet<int> skip)
+    {
+        var joins = new List<HopJoin>();
+        var used = new HashSet<int>();
+        var at = Attachments(regions, width, wires, w, o);
+        for (int k = 0; k < regions.Count; k++)
+        {
+            if (skip.Contains(k) || at[k].Count < 2 || Ring(regions[k], width, w, s) is not { } ring) continue;
+            double reach = o.Attach * w + w + 1;
+            var on = at[k].Where(a => Math.Abs(WireGraph.Dist(new PointD(a.X, a.Y), ring.Centre) - ring.R) <= reach).ToList();
+            if (on.Count != 2) continue;
+            var (p, q) = (on[0], on[1]);
+            if (p.DirX * q.DirX + p.DirY * q.DirY > -0.95) continue;
+            var (a, b) = (new PointD(p.X, p.Y), new PointD(q.X, q.Y));
+            if (Math.Abs(WireGraph.Local(a, b, ring.Centre).Perp) > w) continue;
+            joins.Add(new HopJoin(a, b, ring.Centre) { Marker = true });
+            used.Add(k);
+        }
+        return (joins, used);
+    }
+
+    /// <summary>The region's largest piece as an open circle — its centre and the radius of its centre line — or null.</summary>
+    internal static (PointD Centre, double R)? Ring(RawRegion region, int width, double w, double s)
+    {
+        var box = region.Box;
+        var m = new BinaryImage(box.Width, box.Height);
+        foreach (int i in region.Pixels) m.Pixels[(i / width - box.Top) * box.Width + (i % width - box.Left)] = 1;
+        var lab = Components.Label(m);
+        if (lab.Components.Count == 0) return null;
+        var big = lab.Components.MaxBy(c => c.Area)!;
+        int id = big.Label;
+        var pts = new List<(double X, double Y)>();
+        for (int y = 0; y < m.Height; y++)
+            for (int x = 0; x < m.Width; x++)
+                if (lab.Labels[y * m.Width + x] == id) pts.Add((x + 0.5, y + 0.5));
+        double x0 = pts.Min(p => p.X) - 0.5, x1 = pts.Max(p => p.X) + 0.5, y0 = pts.Min(p => p.Y) - 0.5, y1 = pts.Max(p => p.Y) + 0.5;
+        double wd = x1 - x0, ht = y1 - y0, d = (wd + ht) / 2;
+        if (d < 2.5 * w || d > 0.8 * s || Math.Max(wd, ht) > 1.3 * Math.Min(wd, ht)) return null;
+        double cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, r = (d - w) / 2;
+        if (r < 1) return null;
+        int onRing = 0, inner = 0;
+        var bins = new bool[16];
+        foreach (var (x, y) in pts)
+        {
+            double dist = Math.Sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
+            if (Math.Abs(dist - r) <= w / 2 + 1) onRing++;
+            if (dist < 0.5 * r) inner++;
+            bins[(int)((Math.Atan2(y - cy, x - cx) + Math.PI) / (2 * Math.PI) * 16) & 15] = true;
+        }
+        if (onRing < 0.85 * pts.Count || inner > 0 || bins.Count(b => b) < 12) return null;
+        return (new PointD(box.Left + cx, box.Top + cy), r);
     }
 
     /// <summary>Two wire ends facing each other a few w apart, on one line, with another wire passing between them.</summary>
