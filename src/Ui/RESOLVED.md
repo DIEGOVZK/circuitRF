@@ -39366,3 +39366,22 @@ report strip's anchor lines carry their own `PointerPressed` (they show the anch
 `TextBlock.error` did not reach a `SelectableTextBlock` (type selectors match exactly), so it is
 `TextBlock.error, SelectableTextBlock.error` in `RecognitionDialogStyles.axaml`; likewise `Grid.layers > …` for the
 layer rows' share. Gate: `tests/Ui.Tests/PlotRecognition/ImageSourceReplaceTests.cs`.
+
+## Create … from Image, PTU-2: toolbar glyphs and Help (2026-10-11)
+
+The dialog's word buttons became the editors' toolbar idiom (`StackPanel.Toolbar`, `Padding="6,3"`, 16-px glyphs, the
+1-px separator as `Border.sep`). **`ToggleButton.PanelToggle` cannot be reused on the Read as / Make choices (the caption was "It is" until the owner found it meaningless)**: they are
+`RadioButton`s (for `GroupName`), and a type selector matches its type exactly, so the same treatment is restated as
+`RadioButton.tool` in `RecognitionDialogStyles.axaml` — flat as a STYLE value so the theme's `:checked` fill still
+wins, and the checked foreground for the icons and the custom glyphs. The old `RadioButton.seg` styles went with them.
+
+**The Project Tree has no schematic or layout icon** — every view file is `FileOutline` — so Schematic is Material's
+`ResistorNodes` and Layout and Touchstone are drawn (`Controls/ImageMakeGlyphControl`: two pads and a routed trace;
+an `S` over a 2 × 2 grid), themed through a `Stroke` set from styles as `PlotTypeGlyphControl` is. `ImagePlusOutline`
+does not exist in Material.Icons 3.0.2; Add picture is `FileImagePlusOutline`. The toolbar's plain buttons keep the
+theme's button fill, exactly as the schematic editor's do.
+
+Auto's face lost its "Auto (layout)" word; the tooltip leads with it (a `MultiBinding` of `AutoLabel` and `AutoTip`),
+so nothing the view model says changed. Help is `ImageSourceViewModel.HelpAnchor(kind, photoCorners)` — `plots`,
+`schematic`, `photos` (Auto read a board photo, or a layout set square on its corners), else `dialog`; the artwork
+flavour opens `artwork-to-schematic.html`. Gate: `tests/Ui.Tests/PlotRecognition/RecognitionDialogHelpTests.cs`.

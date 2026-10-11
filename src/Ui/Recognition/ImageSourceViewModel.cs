@@ -503,6 +503,21 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     /// <summary>The picture is read as a plot (IM-14) — the plot mode's rows apply, and Create writes a file.</summary>
     public bool IsPlotPicture => HasPicture && EffectiveKind == DrawingKind.Plot;
 
+    /// <summary>The Help button's section of <c>reference/create-from-image.html</c> for what is on screen (brief-ptu-2
+    /// R-ptu2-3): a plot, a schematic picture, a board photograph — one Auto read as such, or a layout set square on its
+    /// corners — else the dialog's own section. <paramref name="kind"/> is null with no picture.</summary>
+    public static string HelpAnchor(DrawingKind? kind, bool photoCorners) => kind switch
+    {
+        DrawingKind.Plot => "plots",
+        DrawingKind.Schematic => "schematic",
+        DrawingKind.BoardPhoto => "photos",
+        DrawingKind.Layout when photoCorners => "photos",
+        _ => "dialog",
+    };
+
+    /// <summary><see cref="HelpAnchor(DrawingKind?, bool)"/> for this picture, now.</summary>
+    public string CurrentHelpAnchor => HelpAnchor(HasPicture ? EffectiveKind : null, Scale.AppliedCorners is not null);
+
     /// <summary>A picture read as anything but a plot: the schematic and layout Make segments apply.</summary>
     public bool IsDrawingPicture => !IsPlotPicture;
 

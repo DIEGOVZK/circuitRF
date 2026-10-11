@@ -80,15 +80,17 @@ nothing else changes.
 
 With a picture, the top of the dialog is the picture and what to do with it; below it is the body the
 [artwork dialog](artwork-to-schematic.html) has &mdash; target, options, parts table, report and **Create** &mdash;
-with the picture itself taking the left two-thirds. **Replace…** and **Paste** read another picture in its place.
+with the picture itself taking the left two-thirds. The buttons along the top are glyphs, each named in its tooltip:
+**Replace** and **Paste** read another picture in its place, and **Help**, bottom left, opens this page at the section
+for what is on screen.
 
 {{ui: image-dialog-layout-picture}}
 
 ## What kind of picture it is {#kind}
 
-**It is** says what the picture was read as. **Auto** decides from the picture &mdash; how much of it is ink, whether
-the ink is filled or stroked, how many colours it has, whether its lines run straight &mdash; and its label says what
-it decided, with a dot for how sure it is: green sure, amber fairly sure, red a guess. Hover over it to see what it
+**Read as** says what kind of picture it is. **Auto** decides from the picture &mdash; how much of it is ink, whether
+the ink is filled or stroked, how many colours it has, whether its lines run straight &mdash; and its tooltip says what
+it decided, with a dot beside it for how sure it is: green sure, amber fairly sure, red a guess. Hover over it to see what it
 measured. **Schematic**, **Layout** and **Plot** override it; a picture Auto reads wrongly is read your way after one
 click.
 

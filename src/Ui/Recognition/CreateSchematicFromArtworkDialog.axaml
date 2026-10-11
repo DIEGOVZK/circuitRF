@@ -11,6 +11,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:rec="using:CircuitRF.Ui.Recognition"
+        xmlns:mi="using:Material.Icons.Avalonia"
         x:Class="CircuitRF.Ui.Recognition.CreateSchematicFromArtworkDialog"
         x:DataType="rec:RecognitionSessionViewModel"
         Title="{Binding Title}"
@@ -99,18 +100,29 @@
         </StackPanel>
 
         <!-- ── Buttons ───────────────────────────────────────────────────────────────────── -->
-        <Grid Grid.Row="6" ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" Margin="0,8,0,0">
-            <Button Grid.Column="0" Content="Export Parts…" Command="{Binding ExportPartsCommand}" Margin="0,0,6,0"
-                    IsVisible="{Binding PartsApply}"
-                    ToolTip.Tip="Write the parts table as CSV — the file circuitrf recognize --parts reads."/>
-            <Button Grid.Column="1" Content="Import Parts…" Command="{Binding ImportPartsCommand}" Margin="0,0,6,0"
-                    IsVisible="{Binding PartsApply}"
-                    ToolTip.Tip="Read an edited parts table back; only the Refdes, Kind, Value, Variable and Model columns change anything."/>
-            <Button Grid.Column="2" Content="Learn These Glyphs" Command="{Binding LearnGlyphsCommand}"
+        <!-- Help at the left, opposite Cancel / Create (brief-ptu-2 R-ptu2-3); the parts table's file buttons beside it,
+             toolbar-style. -->
+        <Grid Grid.Row="6" ColumnDefinitions="Auto,Auto,*,Auto,Auto" Margin="0,8,0,0">
+            <StackPanel Grid.Column="0" Classes="Toolbar" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                <Button Click="OnHelpClick" Padding="6,3"
+                        ToolTip.Tip="Help — the reference page for what this dialog is reading.">
+                    <mi:MaterialIcon Kind="HelpCircleOutline" Width="16" Height="16"/>
+                </Button>
+                <Border Classes="sep" IsVisible="{Binding PartsApply}"/>
+                <Button Command="{Binding ExportPartsCommand}" Padding="6,3" IsVisible="{Binding PartsApply}"
+                        ToolTip.Tip="Export Parts — write the parts table as CSV: the file circuitrf recognize --parts reads.">
+                    <mi:MaterialIcon Kind="TableExport" Width="16" Height="16"/>
+                </Button>
+                <Button Command="{Binding ImportPartsCommand}" Padding="6,3" IsVisible="{Binding PartsApply}"
+                        ToolTip.Tip="Import Parts — read an edited parts table back; only the Refdes, Kind, Value, Variable and Model columns change anything.">
+                    <mi:MaterialIcon Kind="TableImport" Width="16" Height="16"/>
+                </Button>
+            </StackPanel>
+            <Button Grid.Column="1" Content="Learn These Glyphs" Command="{Binding LearnGlyphsCommand}" Margin="8,0,0,0"
                     IsVisible="{Binding CanLearn}"
                     ToolTip.Tip="Remember the selected part's silkscreen glyphs as the characters its corrected designator says they are."/>
-            <Button Grid.Column="4" Content="Cancel" Click="OnCancelClick" Margin="0,0,6,0" MinWidth="80"/>
-            <Panel Grid.Column="5">
+            <Button Grid.Column="3" Content="Cancel" Click="OnCancelClick" Margin="0,0,6,0" MinWidth="80"/>
+            <Panel Grid.Column="4">
                 <Panel IsVisible="{Binding CreatesCell}">
                     <Button Content="Create" Command="{Binding CreateCommand}" MinWidth="90" Classes="accent"
                             IsVisible="{Binding !IsReplace}"

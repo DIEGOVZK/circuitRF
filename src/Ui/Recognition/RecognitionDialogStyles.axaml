@@ -2,7 +2,9 @@
      built from — RecognitionTargetRow, RecognitionOptionsRow, PartsTablePanel, RecognitionReportStrip, ImageSourcePane
      and ImageReadingPanel — so a row looks the same whichever source sits above it. -->
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mi="using:Material.Icons.Avalonia"
+        xmlns:ctrl="using:CircuitRF.Ui.Controls">
 
     <Style Selector="TextBox.invalid">
         <Setter Property="BorderBrush" Value="#C8463A"/>
@@ -55,21 +57,37 @@
         <Setter Property="HorizontalContentAlignment" Value="Left"/>
     </Style>
 
-    <!-- A segmented choice: radio buttons drawn as one strip of toggle buttons, joined at the seams. -->
-    <Style Selector="RadioButton.seg">
-        <Setter Property="Padding" Value="10,3"/>
-        <Setter Property="MinHeight" Value="26"/>
-        <Setter Property="FontSize" Value="12"/>
-        <Setter Property="CornerRadius" Value="0"/>
-        <Setter Property="Margin" Value="-1,0,0,0"/>
+    <!-- A choice in a toolbar (brief-ptu-2 R-ptu2-1): a radio button drawn as a toolbar toggle — flat while unchecked,
+         the theme's checked fill when chosen. ToggleButton.PanelToggle's treatment, restated for RadioButton because a
+         type selector matches its type exactly. The flat background is a STYLE value, never a local one: a local value
+         would beat the theme's :checked fill and the choice would never look chosen. -->
+    <Style Selector="RadioButton.tool">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="6,3"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="MinHeight" Value="0"/>
         <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
-    <Style Selector="RadioButton.seg.first">
-        <Setter Property="CornerRadius" Value="4,0,0,4"/>
-        <Setter Property="Margin" Value="0"/>
+    <Style Selector="RadioButton.tool:checked mi|MaterialIcon">
+        <Setter Property="Foreground" Value="{DynamicResource ToggleButtonForegroundChecked}"/>
     </Style>
-    <Style Selector="RadioButton.seg.last">
-        <Setter Property="CornerRadius" Value="0,4,4,0"/>
+    <!-- The custom glyphs take the toolbar's icon grey, and the checked foreground when chosen, as the icons do. -->
+    <Style Selector="StackPanel.Toolbar ctrl|ImageMakeGlyphControl">
+        <Setter Property="Stroke" Value="{DynamicResource SystemBaseMediumColor}"/>
+    </Style>
+    <Style Selector="RadioButton.tool:checked ctrl|ImageMakeGlyphControl">
+        <Setter Property="Stroke" Value="{DynamicResource ToggleButtonForegroundChecked}"/>
+    </Style>
+    <Style Selector="RadioButton.tool:disabled">
+        <Setter Property="Opacity" Value="0.45"/>
+    </Style>
+    <!-- The editors' toolbar separator, sized for a row whose children are centred rather than stretched. -->
+    <Style Selector="Border.sep">
+        <Setter Property="Width" Value="1"/>
+        <Setter Property="Height" Value="20"/>
+        <Setter Property="Margin" Value="10,0"/>
+        <Setter Property="Background" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
     </Style>
 
     <!-- A slot around a control that may be the one the reading is waiting for (R-im5-4, R-im5-8): its border is

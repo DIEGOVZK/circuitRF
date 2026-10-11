@@ -140,5 +140,13 @@ public partial class CreateSchematicFromArtworkDialog : Window
         e.Handled = true;
     }
 
+    /// <summary>Help opens the reference on what is on screen (brief-ptu-2 R-ptu2-3): a picture's section of Create from
+    /// Image, or the artwork flow's own page.</summary>
+    private void OnHelpClick(object? sender, RoutedEventArgs e)
+    {
+        if (_vm is ImageSourceViewModel image) DocLauncher.Open("reference/create-from-image.html", image.CurrentHelpAnchor);
+        else DocLauncher.Open("reference/artwork-to-schematic.html");
+    }
+
     private void OnCancelClick(object? sender, RoutedEventArgs e) => Close();
 }
