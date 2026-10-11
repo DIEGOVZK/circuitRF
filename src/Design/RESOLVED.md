@@ -19289,3 +19289,23 @@ Found by drawing pictures with `circuitrf render` and reading them back (`docs/d
 - **Smaller ones:** a phase-only entry crashed `DefaultFill` (now refused, naming the magnitude it lacks); a chart's
   title `S11` reads `Stt` at 18 px and is now an entry; a chart trace's `--trace` names a complex value whatever
   quantity it gives; the unassigned refusal suggests `T1=S11` for a chart.
+
+## Paste Image as Schematic: the drawing, not the pixels, was wrong (2026-10-11)
+
+A screenshot of a Term and an S2P pasted back produced six Terms, no S2P and a net label on every wire. The reading was
+nearly right; the emit and the drawing were not: a multi-pin box was "cut out" into ports (a board rule applied to a
+schematic), a dangling wire end became a port, and the drawing was `NetlistSchematic.Build`'s, which labels every net
+and drops any wire not between two pins. Now a multi-pin symbol is an SnP, dangling ends stay wires, and As drawn draws
+the wire graph itself (`SchematicImageDrawing`, with `ExactPlacement.PlaceOnly`). Traps worth keeping:
+
+- **An editor screenshot's labels can cover a ground symbol**, and what is left reads as wire (a tee with short arms and
+  a shorter bar beneath) or as a supply bar. Both are grounds unless a supply-looking word names them.
+- **The symbol-ratio frame runs about 3× small on circuitRF's own symbols**: pins are read at the glyph edge, inside the
+  leads. The canvas grid is the scale — but only the PAPER pixels show it; profiling every pixel let text and wires swamp
+  the comb (the strongest period was half the pitch), and the first "longest period at half strength" lands on the
+  fundamental's lobe several pixels off its top, so climb before refining.
+- **`SnP ... 0` round-trips as `SnP ...`** in the `.cnl` (a ground reference is the default), while the drawing keeps
+  `RefNetBinding = "0"` so the symbol draws its Ref pin.
+- Foreign textbook pictures still read badly (design note §16) — a reader limit the new drawing makes visible, not one it
+  causes.
+

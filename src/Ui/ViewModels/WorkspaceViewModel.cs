@@ -16391,6 +16391,9 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         UpdateSchematicFromLayoutCommand.NotifyCanExecuteChanged();
         CreateSchematicFromArtworkCommand.NotifyCanExecuteChanged();
         DrawGroundPourCommand.NotifyCanExecuteChanged();
+        // Edit ▸ Paste Image as Schematic / Layout paste into the document in focus.
+        PasteImageAsSchematicCommand.NotifyCanExecuteChanged();
+        PasteImageAsLayoutCommand.NotifyCanExecuteChanged();
         // Design ▸ Find Instance… — a schematic or a layout; both fan-outs, per the gotcha above.
         FindInstanceCommand.NotifyCanExecuteChanged();
         // brief-em3d-43 — the 3D menu: every item needs an active 3D document; both fan-outs.
@@ -16691,6 +16694,9 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         UpdateSchematicFromLayoutCommand.NotifyCanExecuteChanged();
         CreateSchematicFromArtworkCommand.NotifyCanExecuteChanged();
         DrawGroundPourCommand.NotifyCanExecuteChanged();
+        // Edit ▸ Paste Image as Schematic / Layout paste into the document in focus.
+        PasteImageAsSchematicCommand.NotifyCanExecuteChanged();
+        PasteImageAsLayoutCommand.NotifyCanExecuteChanged();
         // Design ▸ Find Instance… — a schematic or a layout; both fan-outs, per the gotcha above.
         FindInstanceCommand.NotifyCanExecuteChanged();
         // brief-em3d-43 — the 3D menu: every item needs an active 3D document; both fan-outs.

@@ -96,7 +96,7 @@
 
                 <!-- Placeholder (hidden when cell or specific component is active) -->
                 <TextBlock Text="Select object to inspect its properties."
-                           IsVisible="{Binding EditorVm.IsEmptyState}"
+                           IsVisible="{Binding ShowSchematicPlaceholder}"
                            Foreground="{DynamicResource SystemBaseMediumColor}"
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center"
@@ -107,6 +107,11 @@
                 <param:ParameterEditorView
                     DataContext="{Binding EditorVm}"
                     IsVisible="{Binding IsNotEmptyState}"/>
+
+                <!-- Pictures placed in the schematic, while they are the whole selection. -->
+                <symInsp:SchematicPictureInspectorView
+                    DataContext="{Binding PictureInspectorVm}"
+                    IsVisible="{Binding IsActive}"/>
 
             </Grid>
 

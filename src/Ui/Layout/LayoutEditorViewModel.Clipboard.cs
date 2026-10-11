@@ -348,6 +348,39 @@ public sealed partial class LayoutEditorViewModel
     /// the newly placed shapes AND instances together become the selection (§3: "the next action
     /// operates on what was just placed"; mirrors <c>ReplaceMixedSelection</c>'s "both kinds at once"
     /// rule elsewhere in this VM).</summary>
+    /// <summary>
+    /// Edit ▸ Paste Image as Layout: a traced picture's shapes added as ONE undo step and selected, so they are moved or
+    /// scaled together. They land in the middle of the view when that leaves them clear of everything already in the
+    /// layout, else beside it — never on it, so nothing pasted touches existing copper. Returns whether the pasted shapes
+    /// lie wholly in the view (the caller frames them when not).
+    /// </summary>
+    public bool InsertTracedPicture(IReadOnlyList<LayoutShape> shapes)
+    {
+        if (shapes.Count == 0) return true;
+        var bb = shapes.Aggregate(Bbox.Empty, (b, s) => b.Union(LayoutGeometry.BboxOf(s)));
+        var existing = Model.Shapes.Aggregate(Bbox.Empty, (b, s) => b.Union(LayoutGeometry.BboxOf(s)));
+        long w = bb.MaxX - bb.MinX, h = bb.MaxY - bb.MinY, gap = Math.Max(w, h) / 10;
+        long Snap(double v) => Model.SnapDbu > 0 ? (long)Math.Round(v / Model.SnapDbu) * Model.SnapDbu : (long)Math.Round(v);
+
+        long dx = -bb.MinX, dy = -bb.MinY;
+        bool placed = false;
+        if (LastViewport is { } view)
+        {
+            dx = Snap((view.VisibleMinX + view.VisibleMaxX) / 2 - (bb.MinX + bb.MaxX) / 2.0);
+            dy = Snap((view.VisibleMinY + view.VisibleMaxY) / 2 - (bb.MinY + bb.MaxY) / 2.0);
+            placed = existing.IsEmpty || bb.MaxX + dx + gap < existing.MinX || bb.MinX + dx - gap > existing.MaxX
+                                      || bb.MaxY + dy + gap < existing.MinY || bb.MinY + dy - gap > existing.MaxY;
+        }
+        if (!placed && !existing.IsEmpty)
+        {
+            dx = Snap(existing.MaxX + gap - bb.MinX);
+            dy = Snap(existing.MaxY - bb.MaxY);
+        }
+        InsertPastedMixed(LayoutFragment.Translate(shapes, dx, dy), [], "Paste Image as Layout");
+        return LastViewport is { } v && bb.MinX + dx >= v.VisibleMinX && bb.MaxX + dx <= v.VisibleMaxX
+                                     && bb.MinY + dy >= v.VisibleMinY && bb.MaxY + dy <= v.VisibleMaxY;
+    }
+
     private void InsertPastedMixed(IReadOnlyList<LayoutShape> shapes, IReadOnlyList<LayoutInstance> instances,
                                    string description, IReadOnlyList<RulerAnnotation>? rulers = null)
     {

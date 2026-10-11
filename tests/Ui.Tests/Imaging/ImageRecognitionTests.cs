@@ -129,13 +129,13 @@ public sealed class ImageRecognitionTests(ArtworkRoundTripBoard board) : IClassF
         Assert.StartsWith(cell, run.SchematicPath);
         var clay = LayoutPersistence.LoadFromFile(run.LayoutPath!);
         var under = Assert.Single(clay.Shapes.OfType<BitmapShape>());
-        Assert.True(under.Locked);
+        Assert.False(under.Locked);
         Assert.Equal(ImageTrace.UnderlayOpacity, under.Opacity, 6);
         Assert.NotNull(clay.ImageSource);
 
         var (csch, _, _) = SchematicPersistence.LoadFromFile(run.SchematicPath!);
         var behind = Assert.Single(csch.CanvasObjects.OfType<EditableBitmap>());
-        Assert.True(behind.IsLocked);
+        Assert.False(behind.IsLocked);
         Assert.Equal(1 - ImageTrace.UnderlayOpacity, behind.Transparency, 6);
         Assert.True(File.Exists(Path.Combine(Path.GetDirectoryName(run.SchematicPath)!, behind.ImagePath)));
         Assert.Equal(clay.ImageSource!.Sha256, csch.ImageSource!.Sha256);

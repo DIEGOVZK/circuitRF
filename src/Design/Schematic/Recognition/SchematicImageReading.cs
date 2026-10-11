@@ -74,6 +74,9 @@ public sealed record SchematicImageRead
 
     public int GridDotsRemoved { get; init; }
 
+    /// <summary>The drawing grid the picture shows (an editor's canvas), in source pixels; null when it shows none.</summary>
+    public PictureGrid? Grid { get; init; }
+
     public IReadOnlyList<TextRegion> Words { get; init; } = [];
 
     /// <summary>Word-shaped pieces kept as symbol details because they touch line work.</summary>
@@ -180,7 +183,7 @@ public static class SchematicImageReading
         {
             StrokeWidth = w, TextStrokeWidth = inkW, Thickened = thick, DeskewDeg = deskew, SourceWidth = source.Width, SourceHeight = source.Height,
             Width = raster.Width, Height = raster.Height, Border = border, GridDotsRemoved = grid,
-            Report = new SchematicImageReport(),
+            Grid = PictureGrids.Detect(source), Report = new SchematicImageReport(),
         };
 
         // ── Words (R-im7-3) ──

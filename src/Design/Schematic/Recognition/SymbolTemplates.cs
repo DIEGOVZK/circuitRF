@@ -40,13 +40,13 @@ public enum ImageSymbolKind
     OpenStub,
     Diode,
 
-    /// <summary>A FET or a BJT — cut out (D9).</summary>
+    /// <summary>A FET or a BJT — an S-parameter block (D9).</summary>
     Transistor,
 
-    /// <summary>An amplifier triangle — cut out (D9).</summary>
+    /// <summary>An amplifier triangle — an S-parameter block (D9).</summary>
     Amplifier,
 
-    /// <summary>A generic IC box — cut out (D9).</summary>
+    /// <summary>A generic IC box — an S-parameter block (D9).</summary>
     Ic,
 }
 

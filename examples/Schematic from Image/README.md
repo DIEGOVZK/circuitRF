@@ -33,7 +33,7 @@ S21 move. The variables are ordinary globals: type the value once you know it.
 
 ## 3. Make them again yourself
 
-**Design ▸ Create Schematic from Image…**, then drop `pictures/matching-network.png` on the dialog — or browse to it.
+**Design ▸ Create ▸ Schematic from Image…**, then drop `pictures/matching-network.png` on the dialog — or browse to it.
 It is read at once; **Create** makes a new cell. Drop it onto an open schematic instead, as a bitmap, and right-click
 it: the command then draws the circuit over the picture where it lies.
 

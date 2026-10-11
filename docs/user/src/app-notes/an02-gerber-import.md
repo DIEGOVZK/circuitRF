@@ -269,11 +269,11 @@ out which of the two is right.
 The usual reason to import a board is to simulate it, and a whole board is too large for that as an EM problem:
 the full-wave matrix grows as the square of the mesh, and a run whose matrix will not fit is refused before it
 starts ([what makes a run infeasible](../reference/mom-engine.html#budget)). But a board of ordinary SMT parts joined by
-controlled-impedance lines is already a circuit, and **Design ▸ Create Schematic from Artwork…** reads it out of
+controlled-impedance lines is already a circuit, and **Design ▸ Create ▸ Schematic from Artwork…** reads it out of
 the copper as one: lines, bends, tees, vias and parts, as native components that run as an ordinary S-parameter
 simulation. The steps below run on the example's **Board** cell, whose stackup is already corrected.
 
-**1. Recognise.** Open Board's layout and choose **Design ▸ Create Schematic from Artwork…**
+**1. Recognise.** Open Board's layout and choose **Design ▸ Create ▸ Schematic from Artwork…**
 ([opening it](../reference/artwork-to-schematic.html#open)). Recognition runs as the dialog opens. Give it the
 [placement file and the BOM](../reference/artwork-to-schematic.html#companions): **Placement…** `fab/Board.pos`,
 **BOM…** `fab/Board-bom.csv`.

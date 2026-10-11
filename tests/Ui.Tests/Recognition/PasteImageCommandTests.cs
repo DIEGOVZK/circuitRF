@@ -1,5 +1,6 @@
-// brief-img-6-entry-points.md §4 — Edit ▸ Paste Image as Schematic… / as Layout…: enabled only when the clipboard holds
-// a picture, and the clipboard is asked only when the window is activated or the Edit menu opens — never polled.
+// brief-img-6-entry-points.md §4 — Edit ▸ Paste Image as …: enabled only when the clipboard holds a picture, and the
+// clipboard is asked only when the window is activated or the Edit menu opens — never polled. Paste Image as Schematic and
+// as Layout paste INTO the document in focus, so each is enabled only while a document of its own kind is.
 
 using System;
 using System.IO;
@@ -55,8 +56,27 @@ public sealed class PasteImageCommandTests : IDisposable
         try { Directory.Delete(_ws, true); } catch { /* best effort */ }
     }
 
-    private bool Enabled => _vm.PasteImageAsSchematicCommand.CanExecute(null) && _vm.PasteImageAsLayoutCommand.CanExecute(null);
-    private bool Disabled => !_vm.PasteImageAsSchematicCommand.CanExecute(null) && !_vm.PasteImageAsLayoutCommand.CanExecute(null);
+    private bool Enabled => _vm.PasteImageAsTouchstoneCommand.CanExecute(null);
+    private bool Disabled => !_vm.PasteImageAsTouchstoneCommand.CanExecute(null);
+
+    [Fact]
+    public async Task AsSchematicAndAsLayout_FollowTheDocumentInFocus()
+    {
+        // No workspace, so New Schematic opens a scratch schematic rather than asking for a cell name.
+        var vm = new WorkspaceViewModel { PictureClipboard = () => _clipboard };
+        _clipboard.Contents = new PictureClipboardContents(true, []);
+        await vm.RefreshPasteImage();
+        Assert.False(vm.PasteImageAsSchematicCommand.CanExecute(null));   // a picture, but nothing to paste it into
+        Assert.False(vm.PasteImageAsLayoutCommand.CanExecute(null));
+
+        await vm.NewScratchSchematicCommand.ExecuteAsync(null);
+        Assert.True(vm.PasteImageAsSchematicCommand.CanExecute(null));
+        Assert.False(vm.PasteImageAsLayoutCommand.CanExecute(null));
+
+        _clipboard.Contents = PictureClipboardContents.Nothing;
+        await vm.RefreshPasteImage();
+        Assert.False(vm.PasteImageAsSchematicCommand.CanExecute(null));   // a schematic, but no picture
+    }
 
     [Fact]
     public async Task TheRowsFollowWhatTheClipboardHolds()
@@ -92,7 +112,7 @@ public sealed class PasteImageCommandTests : IDisposable
 
         await _vm.RefreshPasteImage();   // the window activated
         await _vm.RefreshPasteImage();   // the Edit menu opened
-        _ = _vm.PasteImageAsSchematicCommand.CanExecute(null);
+        _ = _vm.PasteImageAsTouchstoneCommand.CanExecute(null);
 
         Assert.Equal(2, _clipboard.Peeks);
         Assert.True(Enabled);

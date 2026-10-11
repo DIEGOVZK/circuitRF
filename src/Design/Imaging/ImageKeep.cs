@@ -48,6 +48,20 @@ public static class ImageKeep
         }
     }
 
+    /// <summary>Keeps <paramref name="source"/> beside the document at <paramref name="documentPath"/> — in its cell
+    /// folder when it is a view of one (named after the cell), else in its own folder (named after it) — and returns the
+    /// kept copy with the reference the document stores to it.</summary>
+    public static (KeptPicture Kept, string Ref) ForDocument(string documentPath, Cells.ViewType own, ImageSource source)
+    {
+        string full = Path.GetFullPath(documentPath);
+        string dir = Path.GetDirectoryName(full)!;
+        var sibling = Cells.CellFolder.SiblingView(full, own, own);
+        var kept = sibling.CellDir is { } cellDir
+            ? Into(cellDir, Path.GetFileName(cellDir), source)
+            : Into(dir, Path.GetFileNameWithoutExtension(full), source);
+        return (kept, kept.RefFrom(dir));
+    }
+
     private static string Sha256Of(string path)
     {
         using var stream = File.OpenRead(path);

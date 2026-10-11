@@ -2,9 +2,9 @@
 //
 // SchematicSymbols.Read asks the classifier (R-im8-6) what each region of a schematic picture's reading is, and applies
 // D9 to the answer, the same whichever classifier gave it:
-//  * three or more attachments — a transistor, an IC box, or anything not matched — is CUT OUT: each attachment
-//    becomes a port in IM-10, exactly as the artwork series cuts out a multi-pin part. So is an amplifier triangle,
-//    though it has two;
+//  * three or more attachments — a transistor, an IC box, or anything not matched — is a MULTI-PIN device, which
+//    IM-10 makes an S-parameter block with one port per wired pin and a grounded pin its reference. So is an amplifier
+//    triangle, though it has two;
 //  * two attachments and no match is kind `?` with its two pins (generated as a C, as the artwork series does);
 //  * one attachment and no match is an UNREAD TERMINAL, reported and left open.
 // Nothing here reads a value or a designator (IM-9) or makes a circuit (IM-10).
@@ -23,7 +23,7 @@ public enum SymbolDisposition
     /// <summary>Two pins, nothing matched: kind <c>?</c>.</summary>
     Unknown,
 
-    /// <summary>A multi-pin device: each pin becomes a port (D9).</summary>
+    /// <summary>A multi-pin device: an S-parameter block, a port per wired pin (D9).</summary>
     CutOut,
 
     /// <summary>One pin, nothing matched: left open.</summary>
@@ -60,7 +60,7 @@ public sealed record SchematicSymbolsRead(IReadOnlyList<RecognisedSymbol> Symbol
 
 public static class SchematicSymbols
 {
-    /// <summary>The kinds that are cut out whatever their pin count (D9).</summary>
+    /// <summary>The kinds that are an S-parameter block whatever their pin count (D9).</summary>
     public static bool IsDevice(ImageSymbolKind k) => k is ImageSymbolKind.Transistor or ImageSymbolKind.Amplifier or ImageSymbolKind.Ic;
 
     /// <summary>Names every symbol region of <paramref name="read"/> with <paramref name="classifier"/> (the template
@@ -104,7 +104,7 @@ public sealed record SymbolReport
     /// <summary>Two-pin regions nothing matched: kind <c>?</c>.</summary>
     public int Unknown { get; init; }
 
-    /// <summary>Each cut-out device: its kind (<see cref="ImageSymbolKind.Unknown"/> when unmatched) and pin count.</summary>
+    /// <summary>Each multi-pin device: its kind (<see cref="ImageSymbolKind.Unknown"/> when unmatched) and pin count.</summary>
     public IReadOnlyList<(ImageSymbolKind Kind, int Pins)> CutOut { get; init; } = [];
 
     /// <summary>Readings set aside by a structure check, by the check.</summary>
@@ -131,7 +131,7 @@ public sealed record SymbolReport
             r.Add("Symbols: " + string.Join(", ", ByKind.Select(kv => $"{kv.Value} {Noun(kv.Key)}")) + ".");
         if (Unknown > 0) r.Add($"{Count(Unknown, "two-pin symbol")} matching no drawing, read as ?.");
         foreach (var (kind, pins) in CutOut)
-            r.Add($"{(kind == ImageSymbolKind.Unknown ? "Multi-pin device" : Noun(kind))} cut out: {Count(pins, "pin")} become ports.");
+            r.Add($"{(kind == ImageSymbolKind.Unknown ? "Multi-pin symbol" : Noun(kind))} with {Count(pins, "pin")}: an S-parameter block.");
         foreach (var (check, n) in Demotions)
             r.Add($"{Count(n, "reading")} set aside by the {check.ToString().ToLowerInvariant()} structure check.");
         if (UnreadTerminals > 0) r.Add($"{Count(UnreadTerminals, "unread terminal")} left open.");

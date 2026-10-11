@@ -66,7 +66,7 @@ Update Layout from Schematic; the dialog says so in one line.
 | **D2** | Everything that decides anything lives below the firewall (`src/Design/Imaging/`, `…/Layout/Recognition/Image/`, `…/Schematic/Recognition/`); `src/Ui` holds the dialog, overlay and entry points only. | A rule living only in the dialog is a rule the CLI does not apply. IM-11's gate is byte identity between GUI, CLI and MCP. |
 | **D3** | The pipelines above; the artwork recognition and `NetlistSchematic.Build` are reused unchanged. | Two readers of copper would be two answers; a second schematic writer would drift. |
 | **D4** | The source picture is copied into the target cell folder as `<cell>.source.<ext>` and referenced by path, never embedded; provenance records the original file NAME (no path), SHA-256, pixel size and options. | Documents reference images by path (the bitmap primitives' rule); no personal paths in a workspace; a re-run compares the hash. |
-| **D5** | The result carries the source picture as a locked underlay at 35 % opacity, placed so every recognised item lies on what it was read from. A setting turns it off. | Cleaning up becomes comparing in place, not flipping between windows. A bitmap is already excluded from export, DRC and EM. |
+| **D5** | The result carries the source picture as an underlay at 35 % opacity (an ordinary, unlocked bitmap since §16), placed so every recognised item lies on what it was read from. A setting turns it off. | Cleaning up becomes comparing in place, not flipping between windows. A bitmap is already excluded from export, DRC and EM. |
 | **D6** | Scale is never a silent guess. Evidence, strongest first: the placed bitmap's own placement; two picked points and a typed distance with an SI unit; agreeing land patterns (≥ 3 within 3 %); a line of stated Z0; the file's resolution metadata (offered, never chosen). The GUI may default to an inferred scale one click from being changed; the CLI needs `--scale`, and `--scale auto` is refused when the land-pattern evidence is not met. | A wrong scale is off by orders of magnitude while looking fine. A screenshot's 72/96 dpi describes a screen. |
 | **D7** | Layers come from colour: at most eight CIELAB clusters, deterministic k-means, ΔE < 10 merged; each mapped by the user to a technology layer, Drill, Board outline, Silkscreen or Ignore. The border-majority cluster defaults to Background. Mappings save as per-user presets. | A picture's colours are its only layer information; pictures from one source always use the same colours. |
 | **D8** | The technology is the user's; the report says the stackup was not read from the picture. | A picture says nothing about the stackup. |
@@ -1213,3 +1213,48 @@ read off what is left: `PlotForeignDrawingTests` leaves those columns out of the
 
 Click-to-follow and drag-to-exclude (R-im14-5) exist in the reader (`TraceHints`) but neither the dialog nor the CLI
 sets them yet. Polar charts are read but no gate draws one.
+
+## 16. The first field paste — drawing what the picture draws, and pasting with no dialog
+
+The first real use (2026-10-11) was a screenshot of circuitRF's own editor — one Term, one S2P with its Ref grounded, a
+wire running off the right edge — pasted back with every default. It came back with six Terms, no S2P, a net label on
+every wire and extra nets. Three causes, none in the pixels:
+
+- **The drawing was a netlist redrawn.** IM-10 made the reading a `TestBench` and drew it with `NetlistSchematic.Build`,
+  whose contract is a round trip of NAMES: it labels every net. A wire that reached no pin was not in the netlist and so
+  was not drawn. **As drawn now places the instances only** (`ExactPlacement.PlaceOnly`) and `SchematicImageDrawing`
+  draws the picture's own wire graph: every node a vertical segment joins shares one x and every node a horizontal one
+  joins shares one y, a node a pin stands on takes the pin's coordinate, a non-connecting crossing node is passed
+  straight through (so the wires cross mid-segment), and diagonals become an L. Ground symbols go where the picture draws
+  them; a net label only where the picture writes a name. The drawing is extracted and compared with the circuit, and a
+  disagreement is reported rather than labelled away. **Tidy** is still the netlist redrawn.
+- **A box was cut out** (AS D9's rule for a multi-pin part on a board): each wired pin a port. On a schematic that
+  invents ports. **A multi-pin symbol is now an SnP** — one port per non-ground wired pin, ordered left to right then
+  top to bottom, the first grounded pin its reference (`RefNetBinding`).
+- **A dangling end was a port** (D13's third source). Removed: a wire off the edge is a wire.
+
+Two reading fixes the screenshot needed: the editor draws its labels large enough to cover a ground symbol, so (a) a tee
+at the foot of a wire with shorter bars beneath it, all read as wire, is a ground (`WireGrounds`; its bars are hidden
+from the drawing), and (b) a lone supply bar under a wire coming down to it, labelled by nothing that reads as a supply
+(`V…`, a voltage), is a ground. And **the frame**: a symbol's pins are read where its wires reach its glyph, inside its
+leads, so the symbol-ratio frame drew circuitRF's own symbols at about a third of the picture's size. `PictureGrids.Detect`
+reads an editor's canvas grid from the PAPER pixels' column and row profiles (high-passed against a running median; the
+pitch is the longest period with half the strongest comb strength, climbed to its lobe's top, refined to 0.01 px) and
+the frame puts one pitch on one schematic grid step with the grid lines on the schematic's — the picture then lies
+exactly under the drawing. The symbols override only by a factor beyond 2.5.
+
+**Edit ▸ Paste Image as Schematic / Layout ask nothing** and paste into the document in focus (enabled only while one of
+their kind is): `SchematicImageRecognition.PasteDrawing` reads off the UI thread, `PasteInto` moves the drawing by whole
+grid steps to a top-left the editor chooses (the middle of the view when that is clear of the sheet, else beside it),
+renames variables and nets the sheet already has, adds no analysis, and puts the picture under it; one CommandBatch adds
+it all, selected. `ImageTrace.PasteTrace` traces with every default and falls back on 96 px/in when no scale is stated
+or inferred — the pasted shapes are selected, and a selection of two or more shapes has corner scale handles. Every
+underlay is now unlocked. The options live in Design ▸ Create ▸ Schematic from Artwork / Schematic from Image / Layout
+from Image.
+
+**What does not read (measured, not fixed).** Four textbook schematics from a public image library — a tee/pi/L pad set,
+an RC low-pass with terminal circles and voltage arrows, a common-emitter stage with IEC boxes, an RC divider — all read
+badly: heavy-pen IEC boxes and capacitor plates are taken for wire, labels beside zig-zags merge into one "box" region
+with them, voltage arrows become wire, and a terminal circle is a port. That is the IM-7/IM-8 reader, not the drawing:
+the drawing faithfully draws a wrong reading. The gate is `ImageScreenshotPasteTests`.
+

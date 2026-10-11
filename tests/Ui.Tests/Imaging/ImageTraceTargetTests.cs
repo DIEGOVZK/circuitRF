@@ -74,7 +74,7 @@ public sealed class ImageTraceTargetTests : IDisposable
         var u = Assert.Single(view.Shapes.OfType<BitmapShape>());
         Assert.Equal((0L, -3_000_000L, 4_000_000L, 3_000_000L), (u.X, u.Y, u.W, u.H));
         Assert.Equal(ImageTrace.UnderlayOpacity, u.Opacity);
-        Assert.True(u.Locked);
+        Assert.False(u.Locked);
         Assert.True(File.Exists(Path.Combine(_dir, "board", "board.source.png")));
         Assert.Equal(Path.GetFullPath(Path.Combine(_dir, "board", "board.source.png")), Path.GetFullPath(u.ImagePathRef));
         Assert.Equal("10 µm/px", view.ImageSource!.Scale);

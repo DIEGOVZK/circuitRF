@@ -10,7 +10,10 @@ using CircuitRF.Design.Imaging;
 using CircuitRF.Design.Layout.Recognition;
 using CircuitRF.Design.Layout.Recognition.Image;
 using CircuitRF.Design.Workspace;
+using CircuitRF.Design.Layout;
+using CircuitRF.Ui.Layout;
 using CircuitRF.Ui.Messages;
+using CircuitRF.Ui.Schematic;
 using CircuitRF.Ui.Recognition;
 using CircuitRF.Ui.Theming;
 using CircuitRF.Ui.ViewModels.ProjectTree;
@@ -24,8 +27,9 @@ namespace CircuitRF.Ui.ViewModels;
 /// one undo step with what it added selected.
 ///
 /// <para><b>It never runs except from the user's invocation</b> (the L5 rule). Every way in
-/// (brief-img-6-entry-points.md) — the Design-menu rows, Edit ▸ Paste Image as …, a placed picture's right-click and
-/// the Project Tree's picture rows — calls <see cref="ShowImageDialog"/>. What is written is written by
+/// (brief-img-6-entry-points.md) — the Design ▸ Create rows, a placed picture's right-click and the Project Tree's picture
+/// rows — calls <see cref="ShowImageDialog"/>; Edit ▸ Paste Image as Schematic / Layout ask nothing and paste into the
+/// document in focus with every default. What is written is written by
 /// <see cref="ImageTrace.Run"/> and <see cref="ImageRecognition.Run"/> — the functions the CLI calls (overview D2).</para>
 /// </summary>
 public partial class WorkspaceViewModel : IImageDialogHost
@@ -67,11 +71,127 @@ public partial class WorkspaceViewModel : IImageDialogHost
 
     private bool CanPasteImage() => CurrentWorkspaceRoot is not null && PasteImage.Available;
 
-    [RelayCommand(CanExecute = nameof(CanPasteImage))]
-    private Task PasteImageAsSchematic(Window? owner) => PasteImageAs(makeSchematic: true, owner);
+    // Paste Image as Schematic / as Layout paste INTO the document in focus, so each is enabled only while a document of
+    // its own kind is — and asks nothing: every setting is the default. Design ▸ Create ▸ is where the options are.
+    private bool CanPasteImageAsSchematic() => PasteImage.Available && IsSchematicDocumentActive();
 
-    [RelayCommand(CanExecute = nameof(CanPasteImage))]
-    private Task PasteImageAsLayout(Window? owner) => PasteImageAs(makeSchematic: false, owner);
+    private bool CanPasteImageAsLayout() => PasteImage.Available && IsLayoutDocumentActive();
+
+    [RelayCommand(CanExecute = nameof(CanPasteImageAsSchematic))]
+    private async Task PasteImageAsSchematic()
+    {
+        const string command = "Paste Image as Schematic";
+        if (ResolveActiveDocumentForCommands() is not SchematicDocument doc)
+        {
+            Messages.Error($"{command}: click into a schematic first — the picture is pasted into the schematic in focus.");
+            return;
+        }
+        var read = await PasteImage.ReadAsync();
+        if (read is null) { Messages.Error($"{command}: the clipboard holds no picture."); return; }
+        if (!read.Ok) { Messages.Error($"{command}: {read.Refusal}"); return; }
+
+        var vm = doc.ActiveViewModel;
+        string? path = doc.FilePath is { Length: > 0 } fp ? Path.GetFullPath(fp) : null;
+        var input = new CircuitRF.Design.Schematic.Recognition.SchematicImageInput { Source = read.Source! };
+        CircuitRF.Design.Schematic.Recognition.SchematicImagePasteDrawing paste;
+        try
+        {
+            paste = await Task.Run(() => CircuitRF.Design.Schematic.Recognition.SchematicImageRecognition.PasteDrawing(
+                input, path is null ? null : Path.GetDirectoryName(path)));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or IOException)
+        {
+            Messages.Error($"{command}: the picture could not be read: {ex.Message}");
+            return;
+        }
+        if (!paste.Ok)
+        {
+            PostImageReport(paste.Reading.Report, command, null);
+            Messages.Error($"{command}: {paste.Refusal}");
+            return;
+        }
+
+        // The picture goes under the drawing as an ordinary bitmap, kept beside the schematic so the reference holds.
+        string? pictureRef = null;
+        if (path is null)
+            Messages.Info($"{command}: the schematic has not been saved, so the picture is not kept under the drawing.");
+        else
+            // The ABSOLUTE path: an open document holds its bitmaps' paths resolved (the readers resolve a stored relative
+            // one against the document's folder as they load); a relative path here is resolved against the process's
+            // working directory, finds nothing, and draws the missing-picture cross.
+            try { pictureRef = ImageKeep.ForDocument(path, CircuitRF.Design.Cells.ViewType.Schematic, read.Source!).Kept.FullPath; }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Messages.Warning($"{command}: the picture could not be kept beside the schematic, so it is not under the drawing: {ex.Message}");
+            }
+
+        var (x, y, inView) = vm.PicturePastePlace(paste.Picture.Width, paste.Picture.Height);
+        var edit = CircuitRF.Design.Schematic.Recognition.SchematicImageRecognition.PasteInto(paste, vm.EditModel, (x, y), pictureRef);
+        if (SchematicImageEditCommand.For(vm, edit, command) is not { } paste1)
+        {
+            PostImageReport(edit.Report, command, null);
+            Messages.Error($"{command}: {edit.Refusal ?? "nothing in the picture was recognised as a part."}");
+            return;
+        }
+        vm.Execute(paste1);
+        PostImageReport(edit.Report, command, null);
+        if (!inView) doc.RequestZoomToWorldRect(x, y, x + paste.Picture.Width, y + paste.Picture.Height);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanPasteImageAsLayout))]
+    private async Task PasteImageAsLayout()
+    {
+        const string command = "Paste Image as Layout";
+        if (ResolveActiveDocumentForCommands() is not LayoutDocument doc)
+        {
+            Messages.Error($"{command}: click into a layout first — the picture is pasted into the layout in focus.");
+            return;
+        }
+        var read = await PasteImage.ReadAsync();
+        if (read is null) { Messages.Error($"{command}: the clipboard holds no picture."); return; }
+        if (!read.Ok) { Messages.Error($"{command}: {read.Refusal}"); return; }
+
+        var vm = doc.ActiveViewModel;
+        if (vm.Technology is not { } tech)
+        {
+            Messages.Error($"{command}: the layout has no technology, so there are no layers to trace the picture onto.");
+            return;
+        }
+        string? path = doc.FilePath is { Length: > 0 } fp ? Path.GetFullPath(fp) : null;
+        var input = new ImageTraceInput { Source = read.Source!, Technology = tech, DbuPerMicron = vm.Model.DbuPerMicron };
+        ImageTraceResult result;
+        try { result = await Task.Run(() => ImageTrace.PasteTrace(input)); }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or IOException)
+        {
+            Messages.Error($"{command}: the picture could not be traced: {ex.Message}");
+            return;
+        }
+        if (!result.Ok || result.Shapes.Count == 0)
+        {
+            PostImageReport(result.Report, command, null);
+            Messages.Error($"{command}: {result.Refusal ?? "nothing in the picture was traced."}");
+            return;
+        }
+
+        var shapes = new List<LayoutShape>();
+        if (result.Underlay is { } underlay && path is not null)
+            try
+            {
+                // Absolute, as an open layout holds every bitmap's path (see the schematic paste above).
+                underlay.ImagePathRef = ImageKeep.ForDocument(path, CircuitRF.Design.Cells.ViewType.Layout, read.Source!).Kept.FullPath;
+                shapes.Add(underlay);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Messages.Warning($"{command}: the picture could not be kept beside the layout, so it is not under the shapes: {ex.Message}");
+            }
+        else if (path is null)
+            Messages.Info($"{command}: the layout has not been saved, so the picture is not kept under the shapes.");
+        shapes.AddRange(result.Shapes);
+        bool inView = vm.InsertTracedPicture(shapes);
+        PostImageReport(result.Report, command, null);
+        if (!inView) doc.RequestZoomToFit();
+    }
 
     /// <summary>Edit ▸ Paste Image as Touchstone… (brief-img-14 R-im14-13): IM-6's clipboard rule, a plot read.</summary>
     [RelayCommand(CanExecute = nameof(CanPasteImage))]
@@ -104,15 +224,6 @@ public partial class WorkspaceViewModel : IImageDialogHost
         if (source is not null) vm.ReadPlot(source, csv);
         else if (!wasOpen) vm.StartPlotMode(csv);
         _imageDialog.Activate();
-    }
-
-    private async Task PasteImageAs(bool makeSchematic, Window? owner)
-    {
-        string command = makeSchematic ? "Paste Image as Schematic" : "Paste Image as Layout";
-        var read = await PasteImage.ReadAsync();
-        if (read is null) Messages.Error($"{command}: the clipboard holds no picture.");
-        else if (!read.Ok) Messages.Error($"{command}: {read.Refusal}");
-        else ShowImageDialog(read.Source, makeSchematic, owner);
     }
 
     private void RaiseImageCommandsChanged()

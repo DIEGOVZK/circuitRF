@@ -31,7 +31,7 @@ impedance comes from it.
 
 ## 2. Create Schematic from Artwork
 
-With the layout focused, choose **Design ▸ Create Schematic from Artwork…**. Recognition runs as the dialog opens.
+With the layout focused, choose **Design ▸ Create ▸ Schematic from Artwork…**. Recognition runs as the dialog opens.
 Then:
 
 - **Placement…** → `fab/Board.pos`. The file states its own origin, so no origin choice appears.

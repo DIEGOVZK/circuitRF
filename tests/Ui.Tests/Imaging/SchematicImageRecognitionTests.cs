@@ -134,7 +134,9 @@ public sealed class SchematicImageRecognitionTests : IDisposable
         Assert.Equal(Connectivity(want), Connectivity(drawn));
         Assert.Empty(run.Report.Findings.Where(f => f.Class == RecognitionFindingClass.PicturePlacementFallbacks));
         var underlay = Assert.Single(run.Schematic!.CanvasObjects.OfType<EditableBitmap>());
-        Assert.True(underlay.IsLocked);
+        Assert.False(underlay.IsLocked);   // an ordinary picture: selected, moved, resized or deleted like any other
+        // A label only where the picture writes a net's name — not one per net, as a redrawn netlist has.
+        Assert.Equal(["VCC"], run.Schematic!.NetLabels.Select(l => l.Name));
         Assert.True(File.Exists(Path.Combine(_dir, "ladder", underlay.ImagePath.Replace("../", ""))), underlay.ImagePath);
         Assert.Equal("schematic", run.Schematic!.ImageSource!.Kind);
     }

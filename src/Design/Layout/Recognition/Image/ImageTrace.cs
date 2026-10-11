@@ -200,6 +200,28 @@ public static partial class ImageTrace
         "There is no technology, so there are no layers to trace onto. Choose one — the workspace's default — and try again.";
 
     /// <summary>Traces <paramref name="input"/>'s picture (R-im3-1). Pure: posts nothing, writes nothing.</summary>
+    /// <summary>The scale Paste Image as Layout draws a picture at when it states none and none can be inferred: a screen's
+    /// 96 pixels to the inch.</summary>
+    public const double PasteFallbackMetresPerPixel = 0.0254 / 96;
+
+    /// <summary>
+    /// Paste Image as Layout: <paramref name="input"/> traced with what it gives — every default but its technology and
+    /// DBU — at the scale the picture states or shows, else at <see cref="PasteFallbackMetresPerPixel"/>, said in the
+    /// report, since the pasted shapes are selected and scaled as one afterwards. Writes nothing.
+    /// </summary>
+    public static ImageTraceResult PasteTrace(ImageTraceInput input, RunControl? control = null)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        var result = Trace(input, control);
+        if (!result.Ok || result.Scale is not null) return result;
+        result = Trace(input with { Scale = ImageScaleStatement.Stated(PasteFallbackMetresPerPixel) }, control);
+        if (result.Ok)
+            result.Report.Add(RecognitionFindingClass.ImageScaleChosen, 1,
+                "The picture states no scale and none could be inferred, so it is drawn at 96 pixels to the inch: " +
+                "the pasted shapes are selected — drag a corner handle, or use Scale…, to size them.");
+        return result;
+    }
+
     public static ImageTraceResult Trace(ImageTraceInput input, RunControl? control = null)
     {
         ArgumentNullException.ThrowIfNull(input);
@@ -704,7 +726,7 @@ public static partial class ImageTrace
                 Layer = layer, ImagePathRef = input.Source.Path ?? "",
                 X = (long)Math.Round(x0), Y = (long)Math.Round(yBottom),
                 W = (long)Math.Round(x1 - x0), H = (long)Math.Round(yTop - yBottom),
-                Opacity = UnderlayOpacity, Locked = true,
+                Opacity = UnderlayOpacity,   // an ordinary picture: selected, moved, scaled or deleted like any other
             };
             if (doc is null)
                 report.Add(RecognitionFindingClass.ImageUnderlayOnCopper, 1,

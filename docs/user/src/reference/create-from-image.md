@@ -57,8 +57,8 @@ Wherever there is a picture, the command is one gesture away &mdash; and it is o
 
 | Where | Rows | What opens |
 |---|---|---|
-| **Design** menu | **Create Schematic from Image…**, **Create Layout from Image…** | The dialog, empty, ready for a drop, a paste or **Browse…**. Enabled whenever a workspace is open; no document needs to be in front. |
-| **Edit** menu | **Paste Image as Schematic…**, **Paste Image as Layout…** | The dialog, already reading the clipboard's picture. Enabled only when the clipboard holds a picture &mdash; a copied image, or one picture file copied in a file manager (two files, or a file that is not a picture, leave them greyed). The clipboard is looked at when the Edit menu opens and when you come back to the window. |
+| **Design ▸ Create** | **Schematic from Image…**, **Layout from Image…** | The dialog, empty, ready for a drop, a paste or **Browse…** &mdash; every option, and the parts table to review. Enabled whenever a workspace is open; no document needs to be in front. |
+| **Edit** menu | **Paste Image as Schematic**, **Paste Image as Layout** | No dialog: the clipboard's picture is read with every default and pasted into the schematic or layout in front, with the picture itself under it as an ordinary bitmap. Everything pasted is selected and touches nothing already there, so it can be dragged into place &mdash; and in a layout, scaled as one with a corner handle or **Scale…**. Each is enabled only while a document of its own kind is in front and the clipboard holds a picture &mdash; a copied image, or one picture file copied in a file manager (two files, or a file that is not a picture, leave them greyed). The clipboard is looked at when the Edit menu opens and when you come back to the window. |
 | Right-click a picture placed in a **layout** | **Trace Image into This Layout…**, **Create Schematic from Image…** | Tracing into this layout puts the copper in this layout, over the picture, at the size the picture is placed (scale **As placed**), in this layout's technology &mdash; one undo step. **Create Schematic from Image…** makes a new cell and offers **As placed** as its scale. |
 | Right-click a picture placed in a **schematic** | **Create Schematic from Image…**, **Create Layout from Image…** | A picture of a schematic is drawn into this schematic, over the picture, at the size the picture is placed &mdash; one undo step, and what was added is selected. A picture of a layout makes a new cell; a schematic has no physical size, so **As placed** is not offered, and the scale is set in the dialog. |
 | Right-click a picture file in the **Project** panel | **Create Schematic from Image…**, **Create Layout from Image…** | The dialog, already reading that file. Offered on a Known File and on a file inside the workspace folder whose extension is one circuitRF reads. |
@@ -146,9 +146,10 @@ A picture of a schematic is read as its wires, its symbols and its words, and dr
 components.
 
 **What is recognised.** Resistors, inductors and capacitors in both the US and the IEC drawings, grounds, ports and
-terminals, transmission lines and stubs, and diodes. A transistor, an amplifier triangle or an IC box is **cut out**:
-each of its wired pins becomes a port, so the circuit is the networks around the device as the device sees them. A
-two-pin symbol nothing matches is shown as **?** in the parts table and drawn as a capacitor until you say what it is.
+terminals, transmission lines and stubs, and diodes. A transistor, an amplifier triangle or a box with three or more
+pins is an **S-parameter block** (SnP) with one port per wired pin and a grounded pin as its reference &mdash; an S2P
+drawn as a box with pins 1, 2 and Ref reads as an S2P &mdash; ready for its Touchstone file. A two-pin symbol nothing
+matches is shown as **?** in the parts table and drawn as a capacitor until you say what it is.
 
 {{ui: image-dialog-schematic-picture}}
 
@@ -172,13 +173,16 @@ missing. A transmission line takes its Z and E (or its length) from the text bes
 variable in the same way. The parts table lists the parts with their position on the picture in pixels; edit a kind or
 a value there exactly as for [artwork](artwork-to-schematic.html).
 
-**Ports.** Port and terminal symbols are ports first, then net names that name a port (`RFIN`, `OUT`, `P1`); with
-neither, wire ends at the drawing's left and right edges are. A schematic picture with no port at all is still made:
+**Ports.** Port and terminal symbols are ports, and so are net names that name a port (`RFIN`, `OUT`, `P1`); nothing
+else is &mdash; a wire running off the edge of the picture stays a wire. A schematic picture with no port at all is still made:
 it is written without its S-parameter analysis, and the report says *No port found: add Port components to simulate*.
 A supply net, such as `VCC`, has no source in the circuit and is left as a named net.
 
-**Arrange.** **As drawn** puts each part where the picture has it, turned as it is drawn, and runs each wire along the
-picture's own route, all snapped to the schematic grid, with the picture under it. A part that would land on another
+**Arrange.** **As drawn** puts each part where the picture has it, turned as it is drawn, and draws the picture's own
+wires &mdash; every corner, junction and loose end &mdash; snapped to the schematic grid, with a ground symbol where the
+picture draws one, a net label only where the picture writes a net's name, and the picture under it. A screenshot of a
+schematic editor is drawn at the scale of its own grid, so its wires land on the schematic's grid lines and the
+picture lines up under the drawing. A part that would land on another
 is placed beside the drawing instead, and the report names it. **Tidy** draws the same circuit in circuitRF's own
 arrangement, signal path left to right, without the picture under it &mdash; it would not line up.
 
@@ -247,7 +251,7 @@ against frequency, a Smith chart, a polar chart &mdash; is read as **Plot**, and
 
 | Where | Row |
 |---|---|
-| **Edit** menu | **Paste Image as Touchstone…** &mdash; the clipboard's picture, with the same enablement as the other paste rows. |
+| **Edit** menu | **Paste Image as Touchstone…** &mdash; the clipboard's picture, enabled whenever a workspace is open and the clipboard holds a picture. |
 | **Tools** menu | **Digitise Plot…** &mdash; the dialog, empty, in plot mode. |
 | Right-click a picture file in the **Project** panel | **Create Touchstone from Plot…** |
 
@@ -347,10 +351,11 @@ Collapsed until you open it, and it stays as you left it. Each change reads the 
 
 ## The picture under the result {#underlay}
 
-The written layout and schematic carry the source picture behind them, locked and faded to 35 %, placed so each
+The written layout and schematic carry the source picture behind them, faded to 35 %, placed so each
 shape lies on what it was read from. A schematic picture drawn **Tidy** has none, since its parts are not where the
 picture has them; one drawn into the schematic it is placed in needs none, since the picture is already there. Checking the result is then comparing in place. The picture is copied into the
-cell's folder; it is an ordinary bitmap, which you can hide, fade or delete like any other, and it is never exported,
+cell's folder; it is an ordinary bitmap, which you can move, resize, fade or delete like any other &mdash; select it and
+**Properties** shows its file, position, size and opacity &mdash; and it is never exported,
 checked or meshed. Clear **Keep the source picture under the result** to leave it out.
 
 ## What reads well, and what does not {#reads}

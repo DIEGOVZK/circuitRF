@@ -303,7 +303,7 @@ public static class ImageRecognition
         return new EditableBitmap
         {
             ImagePath = pictureRef, X = left + width / 2, Y = top + height / 2, Width = width, Height = height,
-            Transparency = 1 - ImageTrace.UnderlayOpacity, IsLocked = true,
+            Transparency = 1 - ImageTrace.UnderlayOpacity,   // an ordinary picture, not a locked one
             ZOrder = model.CanvasObjects.Count > 0 ? model.CanvasObjects.Min(o => o.ZOrder) - 1 : 0,
         };
     }

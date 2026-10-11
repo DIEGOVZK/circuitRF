@@ -38,7 +38,7 @@ artwork (.clay + .ctech [+ .cem] [+ placement/BOM])
    └─ AS-6  emit          — TestBench (+ globals, tune entries, sparam analysis)
                              └─ NetlistSchematic.Build → .csch in the target cell
 
-surfaces: AS-7 `circuitrf recognize` + MCP `recognize` · AS-8 Design ▸ Create Schematic from Artwork…
+surfaces: AS-7 `circuitrf recognize` + MCP `recognize` · AS-8 Design ▸ Create ▸ Schematic from Artwork…
 afterwards: AS-11 Swap Line Type · gate: AS-9 round trip
 ```
 
@@ -477,7 +477,7 @@ it, the first in walk order bare and the rest `_2`, `_3`, …, ahead of a port's
 simulates), `NetlistSchematicHintTests`, `RecognitionTargetTests` (the `.clay` byte-identical throughout; the checkpoint
 a counter), `FromArtworkSyncTests` — all in `tests/Ui.Tests/Recognition/`.
 
-## 8. AS-8 — Design ▸ Create Schematic from Artwork…
+## 8. AS-8 — Design ▸ Create ▸ Schematic from Artwork…
 
 The GUI command is a shell round the same three calls the verb makes, behind `IArtworkRecognitionRunner`
 (`src/Ui/Recognition/`): `RecognitionInput.FromFile` on open, `ArtworkRecognition.Circuit` for every preview, and

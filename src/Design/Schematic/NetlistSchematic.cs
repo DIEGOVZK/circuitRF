@@ -39,6 +39,10 @@ public sealed record ExactPlacement
     /// <summary>Per net, by the name the netlist gives it, its wire runs — each a polyline.</summary>
     public IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyList<(double X, double Y)>>> Routes { get; init; } =
         new Dictionary<string, IReadOnlyList<IReadOnlyList<(double X, double Y)>>>();
+
+    /// <summary>Place the instances and nothing else — no ground symbol, wire or net label: the caller draws the wiring
+    /// itself, as a picture draws it (<see cref="Routes"/> is then unused).</summary>
+    public bool PlaceOnly { get; init; }
 }
 
 /// <summary>
@@ -215,9 +219,12 @@ public static class NetlistSchematic
 
         var fallbacks = new List<string>();
         var placed = Place(items, notes, hints, artworkSides, exact, fallbacks);
-        var grounds = PlaceGrounds(model, placed);
-        if (exact is null) Wire(model, placed, grounds, notes);
-        else WireExact(model, placed, grounds, exact, notes);
+        if (exact is not { PlaceOnly: true })
+        {
+            var grounds = PlaceGrounds(model, placed);
+            if (exact is null) Wire(model, placed, grounds, notes);
+            else WireExact(model, placed, grounds, exact, notes);
+        }
         PlaceDirectives(model, tb);
 
         foreach (var a in tb.Analyses) model.Analyses.Add(a);
@@ -1029,30 +1036,38 @@ public static class NetlistSchematic
 
                 var (px, py) = owner.Pin(k);
                 var (ux, uy) = Outward(owner, k);
-                var comp = new EditableComponent
-                {
-                    Symbol           = SymbolKind.Ground,
-                    ShowTypeLabel    = ComponentTypeRegistry.Get(SymbolKind.Ground).DefaultShowTypeLabel,
-                    ShowInstanceName = ComponentTypeRegistry.Get(SymbolKind.Ground).DefaultShowInstanceName,
-                    X        = px,
-                    Y        = py,
-                    // A ground's stem is drawn along local +Y, so it is turned to point AWAY from
-                    // the terminal it sits on.
-                    Rotation = (ux, uy) switch
-                    {
-                        (0, > 0) => SymbolRotation.R0,
-                        (< 0, 0) => SymbolRotation.R90,
-                        (0, < 0) => SymbolRotation.R180,
-                        _        => SymbolRotation.R270,
-                    },
-                };
-                comp.InstanceName = $"{ComponentTypeRegistry.InstancePrefix(SymbolKind.Ground)}{n}";
+                var comp = NewGround(px, py, ux, uy, n);
                 model.Components.Add(comp);
                 var g = new Item { Comp = comp, Nets = [net], Local = [(0f, 0f)], Placed = true };
                 BoxOf(g);
                 made.Add(g);
             }
         return made;
+    }
+
+    /// <summary>A ground symbol with its pin at (<paramref name="x"/>, <paramref name="y"/>), its stem pointing along
+    /// (<paramref name="ux"/>, <paramref name="uy"/>) — away from the terminal or wire it sits on — named for
+    /// <paramref name="n"/>.</summary>
+    public static EditableComponent NewGround(double x, double y, int ux, int uy, int n)
+    {
+        var info = ComponentTypeRegistry.Get(SymbolKind.Ground);
+        return new EditableComponent
+        {
+            Symbol           = SymbolKind.Ground,
+            ShowTypeLabel    = info.DefaultShowTypeLabel,
+            ShowInstanceName = info.DefaultShowInstanceName,
+            X                = x,
+            Y                = y,
+            // A ground's stem is drawn along local +Y, so it is turned to point AWAY from what it sits on.
+            Rotation = (ux, uy) switch
+            {
+                (0, > 0) => SymbolRotation.R0,
+                (< 0, 0) => SymbolRotation.R90,
+                (0, < 0) => SymbolRotation.R180,
+                _        => SymbolRotation.R270,
+            },
+            InstanceName = $"{ComponentTypeRegistry.InstancePrefix(SymbolKind.Ground)}{n}",
+        };
     }
 
     /// <summary>The way a lead points: from the glyph's centre towards the pin, on the dominant axis.</summary>

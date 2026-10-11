@@ -124,8 +124,74 @@ public sealed record SchematicImageEdit(SchematicImageResult Reading, SchematicE
     public RecognitionReport Report => Reading.Report;
 }
 
+/// <summary>Paste Image as Schematic's drawing before it is placed: read with every default, drawn as the picture draws
+/// it, with the rectangle the picture covers on the sheet.</summary>
+public sealed record SchematicImagePasteDrawing(SchematicImageResult Reading, SchematicEditModel? Drawing,
+                                                (double X, double Y, double Width, double Height) Picture, string? Refusal)
+{
+    public bool Ok => Refusal is null && Drawing is not null;
+}
+
 public static class SchematicImageRecognition
 {
+    /// <summary>
+    /// Paste Image as Schematic, the half that reads: the picture read with every default and drawn as it draws it, at
+    /// the scale its own grid gives (or its symbols do), not yet placed in any schematic. Writes nothing and touches no
+    /// open document, so it runs off the UI thread; <see cref="PasteInto"/> places it.
+    /// </summary>
+    public static SchematicImagePasteDrawing PasteDrawing(SchematicImageInput input, string? schematicDirectory, RunControl? control = null)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        input = input with { Arrange = SchematicArrange.AsDrawn };
+        var reading = Read(input, new RecognitionEmitOptions(), null, control);
+        if (!reading.Ok) return new SchematicImagePasteDrawing(reading, null, default, reading.Refusal ?? "The picture could not be read.");
+        if (Draw(reading, input, schematicDirectory) is not { } model)
+            return new SchematicImagePasteDrawing(reading, null, default,
+                "The recognised circuit cannot be drawn: " + reading.Report.Of(RecognitionFindingClass.DrawingNotes)?.Sentence);
+        var f = reading.Circuit!.Frame;
+        var raster = input.Source.Raster;
+        return new SchematicImagePasteDrawing(reading, model, (f.OffsetX, f.OffsetY, f.Scale * raster.Width, f.Scale * raster.Height), null);
+    }
+
+    /// <summary>
+    /// Paste Image as Schematic, the half that places: <paramref name="paste"/>'s drawing moved by whole grid steps so the
+    /// picture's top-left corner lands at <paramref name="topLeft"/>, with the picture itself — an ordinary bitmap the user
+    /// moves, resizes or deletes — under it when <paramref name="pictureRef"/> names its kept copy, as the open document
+    /// holds a bitmap's path: absolute. Every variable or net
+    /// name <paramref name="into"/> already has takes a suffix, so nothing pasted joins anything already there; a paste
+    /// is the drawing alone, so no analysis is added. Nothing is changed in <paramref name="into"/>: the editor adds
+    /// <see cref="SchematicImageEdit.Drawing"/> through its own commands.
+    /// </summary>
+    public static SchematicImageEdit PasteInto(SchematicImagePasteDrawing paste, SchematicEditModel into, (double X, double Y) topLeft,
+                                               string? pictureRef)
+    {
+        ArgumentNullException.ThrowIfNull(paste);
+        ArgumentNullException.ThrowIfNull(into);
+        var none = new Dictionary<string, string>();
+        if (!paste.Ok) return new SchematicImageEdit(paste.Reading, null, none, none, paste.Refusal);
+        var model = paste.Drawing!;
+        double P = NetlistSchematic.Grid;
+        double dx = Math.Round((topLeft.X - paste.Picture.X) / P) * P, dy = Math.Round((topLeft.Y - paste.Picture.Y) / P) * P;
+        foreach (var c in model.Components) { c.X += dx; c.Y += dy; }
+        foreach (var w in model.Wires)
+            for (int i = 0; i < w.Points.Count; i++) w.Points[i] = (w.Points[i].X + dx, w.Points[i].Y + dy);
+        foreach (var l in model.NetLabels) { l.X += dx; l.Y += dy; }
+        foreach (var o in model.CanvasObjects) { o.X += dx; o.Y += dy; }
+        model.Analyses.Clear();
+        var (variables, nets) = Merge(paste.Reading, model, into);
+        if (pictureRef is not null)
+        {
+            var (x, y, width, height) = paste.Picture;
+            model.CanvasObjects.Add(new EditableBitmap
+            {
+                ImagePath = pictureRef, X = x + dx + width / 2, Y = y + dy + height / 2, Width = width, Height = height,
+                Transparency = 1 - Layout.Recognition.Image.ImageTrace.UnderlayOpacity,
+                ZOrder = into.CanvasObjects.Count > 0 ? into.CanvasObjects.Min(o => o.ZOrder) - 1 : 0,
+            });
+        }
+        return new SchematicImageEdit(paste.Reading, model, variables, nets, null);
+    }
+
     /// <summary>Read and emit, and write nothing (R-im10-1).</summary>
     public static SchematicImageResult Circuit(SchematicImageInput input, RecognitionEmitOptions? emit = null, RunControl? control = null)
     {
@@ -235,7 +301,22 @@ public static class SchematicImageRecognition
             reading.Report.Add(RecognitionFindingClass.PictureUnderlay, 1,
                 "The picture is turned on the sheet; the drawing is laid over its unturned rectangle.");
 
-        // Names the schematic already has take a suffix, so nothing new joins anything there.
+        var (variables, nets) = Merge(reading, model, into);
+        if (into.Analyses.Count > 0 && model.Analyses.Count > 0)
+        {
+            model.Analyses.Clear();
+            reading.Report.Add(RecognitionFindingClass.PictureEmitNotes, 1,
+                "The schematic already has analyses, so no S-parameter analysis was added.");
+        }
+        return new SchematicImageEdit(reading, model, variables, nets, null);
+    }
+
+    /// <summary>Every variable and net name of <paramref name="model"/> that <paramref name="into"/> already has given a
+    /// suffix, so nothing new joins anything there; the renames, reported.</summary>
+    private static (Dictionary<string, string> Variables, Dictionary<string, string> Nets) Merge(SchematicImageResult reading,
+                                                                                                 SchematicEditModel model,
+                                                                                                 SchematicEditModel into)
+    {
         var haveVariables = into.Components.Where(c => c.Symbol == SymbolKind.Var).SelectMany(c => c.Parameters).Select(p => p.Name)
                                 .Concat(into.Tuning?.Variables.Select(v => v.Key) ?? []).ToHashSet(StringComparer.Ordinal);
         var variables = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -275,13 +356,7 @@ public static class SchematicImageRecognition
             reading.Report.Add(RecognitionFindingClass.PictureVariablesRenamed, nets.Count,
                 "The schematic already has the net " + string.Join(", ", nets.Select(kv => $"{kv.Key} (the new one is {kv.Value})")) +
                 ", so the two are not joined.");
-        if (into.Analyses.Count > 0 && model.Analyses.Count > 0)
-        {
-            model.Analyses.Clear();
-            reading.Report.Add(RecognitionFindingClass.PictureEmitNotes, 1,
-                "The schematic already has analyses, so no S-parameter analysis was added.");
-        }
-        return new SchematicImageEdit(reading, model, variables, nets, null);
+        return (variables, nets);
     }
 
     // ── the reading ─────────────────────────────────────────────────────────────────────────────────
@@ -317,14 +392,19 @@ public static class SchematicImageRecognition
     {
         var circuit = reading.Circuit!;
         var report = reading.Report;
+        // As drawn, the parts are placed where the picture has them and the picture's own wires are drawn between them
+        // (SchematicImageDrawing) — no net label or port the picture does not have. Tidy is the netlist redrawn.
+        bool asDrawn = input.Arrange == SchematicArrange.AsDrawn;
         var drawn = NetlistSchematic.Build(new Library("netlist"), circuit.TestBench, schematicDir,
-                                           exact: input.Arrange == SchematicArrange.AsDrawn ? circuit.Exact : null);
+                                           exact: asDrawn ? circuit.Exact with { PlaceOnly = true } : null);
         if (drawn.Schematic is null)
         {
             report.Add(RecognitionFindingClass.DrawingNotes, drawn.Refusals.Count, string.Join(" ", drawn.Refusals));
             return null;
         }
-        report.Add(RecognitionFindingClass.DrawingNotes, drawn.Notes.Count, string.Join(" ", drawn.Notes));
+        var notes = drawn.Notes.ToList();
+        if (asDrawn) notes.AddRange(SchematicImageDrawing.Wire(drawn.Schematic, reading.Read!, circuit));
+        report.Add(RecognitionFindingClass.DrawingNotes, notes.Count, string.Join(" ", notes));
         report.Add(RecognitionFindingClass.PicturePlacementFallbacks, drawn.PlacementFallbacks.Count,
             $"{string.Join(", ", drawn.PlacementFallbacks)} would land on another part where the picture draws " +
             $"{(drawn.PlacementFallbacks.Count == 1 ? "it, and was" : "them, and were")} placed beside the drawing.");
@@ -334,7 +414,7 @@ public static class SchematicImageRecognition
         return drawn.Schematic;
     }
 
-    /// <summary>D5: the picture as a locked 35 % bitmap behind the drawing, at the drawing's frame — As drawn only.</summary>
+    /// <summary>D5: the picture as a 35 % bitmap behind the drawing, at the drawing's frame — As drawn only.</summary>
     private static EditableBitmap? Underlay(SchematicImageResult reading, SchematicImageInput input, SchematicEditModel model, string pictureRef)
     {
         if (input.Arrange != SchematicArrange.AsDrawn || !input.KeepUnderlay) return null;
@@ -344,7 +424,8 @@ public static class SchematicImageRecognition
         return new EditableBitmap
         {
             ImagePath = pictureRef, X = f.OffsetX + width / 2, Y = f.OffsetY + height / 2, Width = width, Height = height,
-            Transparency = 1 - Layout.Recognition.Image.ImageTrace.UnderlayOpacity, IsLocked = true,
+            // An ordinary picture on the sheet — selected, moved, resized or deleted like any other — not a locked one.
+            Transparency = 1 - Layout.Recognition.Image.ImageTrace.UnderlayOpacity,
             ZOrder = model.CanvasObjects.Count > 0 ? model.CanvasObjects.Min(o => o.ZOrder) - 1 : 0,
         };
     }

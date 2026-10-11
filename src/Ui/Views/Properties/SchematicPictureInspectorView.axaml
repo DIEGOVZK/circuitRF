@@ -1,0 +1,67 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CircuitRF.Ui.ViewModels"
+             x:Class="CircuitRF.Ui.Views.Properties.SchematicPictureInspectorView"
+             x:DataType="vm:SchematicPictureInspectorViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBox.error">
+            <Setter Property="BorderBrush" Value="{DynamicResource CrfWarningBrush}"/>
+            <Setter Property="BorderThickness" Value="1.5"/>
+        </Style>
+        <Style Selector="TextBlock.caption">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+        </Style>
+        <Style Selector="TextBox.field">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Padding" Value="4,2"/>
+        </Style>
+    </UserControl.Styles>
+
+    <!-- A picture placed in a schematic: its file, the position of its centre, its size and its opacity. LostFocus and
+         Enter commit, Escape reverts — the layout inspector's convention. -->
+    <StackPanel Margin="6,4" Spacing="4">
+        <Grid ColumnDefinitions="56,*,Auto">
+            <TextBlock Grid.Column="0" Classes="caption" Text="Path"/>
+            <TextBox Grid.Column="1" Classes="field" Text="{Binding PathText}" Tag="Path"
+                     Classes.error="{Binding PathIsBroken}" ToolTip.Tip="{Binding PathText}"
+                     GotFocus="OnFieldGotFocus" LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown" Margin="0,0,4,0"/>
+            <Button Grid.Column="2" Content="Browse…" Click="OnBrowseClick" FontSize="11" Padding="6,2"/>
+        </Grid>
+        <Grid ColumnDefinitions="56,*,56,*" ColumnSpacing="4">
+            <TextBlock Grid.Column="0" Classes="caption" Text="X"/>
+            <TextBox Grid.Column="1" Classes="field" Text="{Binding XText}" Tag="X"
+                     ToolTip.Tip="Where the picture's centre is, in schematic units."
+                     GotFocus="OnFieldGotFocus" LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"/>
+            <TextBlock Grid.Column="2" Classes="caption" Text="Y"/>
+            <TextBox Grid.Column="3" Classes="field" Text="{Binding YText}" Tag="Y"
+                     ToolTip.Tip="Where the picture's centre is, in schematic units."
+                     GotFocus="OnFieldGotFocus" LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"/>
+        </Grid>
+        <Grid ColumnDefinitions="56,*,56,*" ColumnSpacing="4">
+            <TextBlock Grid.Column="0" Classes="caption" Text="Width"/>
+            <TextBox Grid.Column="1" Classes="field" Text="{Binding WidthText}" Tag="Width"
+                     GotFocus="OnFieldGotFocus" LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"/>
+            <TextBlock Grid.Column="2" Classes="caption" Text="Height"/>
+            <TextBox Grid.Column="3" Classes="field" Text="{Binding HeightText}" Tag="Height"
+                     GotFocus="OnFieldGotFocus" LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"/>
+        </Grid>
+        <Grid ColumnDefinitions="56,*">
+            <CheckBox Grid.Column="1" IsChecked="{Binding KeepAspect, Mode=TwoWay}" FontSize="11"
+                      Content="Keep aspect ratio"
+                      ToolTip.Tip="Changing the width changes the height with it, and the other way round."/>
+        </Grid>
+        <Grid ColumnDefinitions="56,*">
+            <TextBlock Grid.Column="0" Classes="caption" Text="Opacity"/>
+            <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
+                <TextBox Grid.Column="0" Classes="field" Text="{Binding OpacityText}" Tag="Opacity"
+                         GotFocus="OnFieldGotFocus" LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"/>
+                <TextBlock Grid.Column="1" Classes="caption" Text="%" Margin="4,0,0,0"/>
+            </Grid>
+        </Grid>
+        <TextBlock Text="{Binding Error}" IsVisible="{Binding HasError}" FontSize="11" TextWrapping="Wrap"
+                   Foreground="{DynamicResource CrfWarningBrush}"/>
+    </StackPanel>
+</UserControl>

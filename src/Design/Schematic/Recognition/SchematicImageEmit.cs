@@ -89,6 +89,22 @@ public sealed record SchematicImageCircuit(TestBench TestBench)
     /// Glyphs' word.</summary>
     public IReadOnlyDictionary<string, int> SymbolOfRow { get; init; } = new Dictionary<string, int>();
 
+    /// <summary>Per instance, the wire node each of its drawn pins stands on (−1: none), in the symbol's pin order — what
+    /// the drawing wires the picture's own wires to.</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<int>> PinNodes { get; init; } = new Dictionary<string, IReadOnlyList<int>>();
+
+    /// <summary>Each wire node's net by its netlist name (<c>0</c> is ground); a node on wire no part touches is absent.</summary>
+    public IReadOnlyDictionary<int, string> NodeNets { get; init; } = new Dictionary<int, string>();
+
+    /// <summary>The picture's ground symbols: the wire node each stands on, and the way its stem points (picture axes).</summary>
+    public IReadOnlyList<(int Node, double DirX, double DirY)> Grounds { get; init; } = [];
+
+    /// <summary>Wire segments that are a ground symbol's bars, drawn by the ground symbol rather than as wire.</summary>
+    public IReadOnlySet<int> HiddenSegments { get; init; } = new HashSet<int>();
+
+    /// <summary>The wire nodes the picture names — a net label or a supply mark — with the net's name.</summary>
+    public IReadOnlyList<(int Node, string Net)> NamedNodes { get; init; } = [];
+
     /// <summary>The <c>.cnl</c> text, its technology relative to <paramref name="cnlDirectory"/>.</summary>
     public string CnlText(string cnlDirectory, string? header = "recognised from a schematic picture") =>
         new RecognitionCircuit(TestBench).CnlText(cnlDirectory, header);
@@ -113,6 +129,8 @@ public static class SchematicImageEmit
         public required List<int> Roots { get; init; }          // net roots; -1 a private net (an open stub's end)
         public List<ParameterAssignment> Parameters { get; } = [];
         public List<(double X, double Y, double DirX, double DirY)> PicturePins { get; } = [];   // read pixels
+        public List<int> PinNodes { get; } = [];   // the wire node of each picture pin, parallel to PicturePins
+        public int? RefRoot { get; set; }          // an S-parameter block's reference pin's net
         public int Symbol { get; init; } = -1;
         public int PortNumber { get; init; }
     }
@@ -160,6 +178,24 @@ public static class SchematicImageEmit
         foreach (var s in syms.Where(s => s.Disposition == SymbolDisposition.Recognised && s.Kind == ImageSymbolKind.Ground))
             foreach (var p in s.Pins)
                 if (NetOf(p.Node) is var n and >= 0) Union(n, G);
+
+        // Grounds drawn in strokes the wire reading took for something else: a bar across the foot of a wire with shorter
+        // bars beneath it — what is left of a ground symbol a label is drawn over, as an editor's screenshot can have —
+        // and a lone bar under a wire coming down to it that no supply name labels. Their bars are drawn by the ground
+        // symbol, not as wire.
+        var hidden = new HashSet<int>();
+        var groundMarks = new List<(int Node, double DirX, double DirY)>();
+        foreach (var (node, bars) in WireGrounds(graph, w))
+        {
+            foreach (int b in bars) { Union(graph.Net(b), G); hidden.Add(b); }
+            groundMarks.Add((node, 0, 1));
+        }
+        foreach (var m in read.SupplyMarks.Where(m => m.Shape == SupplyShape.Bar && graph.Nodes[m.Node].IsEnd))
+        {
+            if (graph.Incoming(m.Node).Y < 0.7 || labels.Names.Any(n => n.Node == m.Node && SupplyName(n.Name))) continue;
+            if (NetOf(m.Node) is var n and >= 0) Union(n, G);
+            groundMarks.Add((m.Node, 0, 1));
+        }
 
         // Equal names join (D11); a supply mark's net is a supply net.
         var supplyNodes = read.SupplyMarks.Select(m => m.Node).ToHashSet();
@@ -287,7 +323,7 @@ public static class SchematicImageEmit
         }
 
         // ── ports (D13) ─────────────────────────────────────────────────────────────────────────────
-        var ports = new List<(string? Name, int Root, PicturePortSource Source, double X, double Y, double DirX, double DirY, int Symbol)>();
+        var ports = new List<(string? Name, int Root, PicturePortSource Source, double X, double Y, double DirX, double DirY, int Symbol, int Node)>();
         bool Ported(int root) => ports.Any(p => p.Root == root);
         (double X, double Y) DirAt(SymbolRegion region, int node)
         {
@@ -302,7 +338,7 @@ public static class SchematicImageEmit
             int root = RootOf(pin.Node);
             if (root < 0 || root == G || Ported(root)) continue;
             var (dx, dy) = DirAt(s.Region, pin.Node);
-            ports.Add((lab[i] is { Generated: false } l ? l.Designator : null, root, PicturePortSource.Symbol, pin.X, pin.Y, dx, dy, i));
+            ports.Add((lab[i] is { Generated: false } l ? l.Designator : null, root, PicturePortSource.Symbol, pin.X, pin.Y, dx, dy, i, pin.Node));
         }
         foreach (var n in labels.Names)
         {
@@ -318,48 +354,17 @@ public static class SchematicImageEmit
             }
             var node = graph.Nodes[n.Node];
             var (ix, iy) = node.IsEnd ? graph.Incoming(n.Node) : (0, 0);
-            ports.Add((n.Name, root, PicturePortSource.Name, node.X, node.Y, ix, iy, -1));
-        }
-        if (ports.Count == 0 && graph.Nodes.Count > 0)
-        {
-            double minX = graph.Nodes.Min(n => n.X), maxX = graph.Nodes.Max(n => n.X), band = 4 * w + 2;
-            var ends = read.Dangling.Select(d => graph.Nodes[d]).Where(n => RootOf(n.Id) is var r and >= 0 && r != G).ToList();
-            foreach (var n in ends.Where(n => n.X <= minX + band).OrderBy(n => n.Y)
-                                  .Concat(ends.Where(n => n.X >= maxX - band && n.X > minX + band).OrderBy(n => n.Y)))
-            {
-                int root = RootOf(n.Id);
-                if (Ported(root)) continue;
-                var (ix, iy) = graph.Incoming(n.Id);
-                ports.Add((null, root, PicturePortSource.DanglingEnd, n.X, n.Y, ix, iy, -1));
-            }
+            ports.Add((n.Name, root, PicturePortSource.Name, node.X, node.Y, ix, iy, -1, n.Node));
         }
         // The drawing's own ports in order: by the numbers their names carry when every one carries one, else left to
         // right, top to bottom (a dangling end's order is already that).
-        if (ports.Count > 0 && ports[0].Source != PicturePortSource.DanglingEnd)
+        if (ports.Count > 0)
         {
             var numbers = ports.Select(p => TrailingNumber(p.Name)).ToList();
             ports = numbers.All(n => n is not null) && numbers.Distinct().Count() == numbers.Count
                 ? [.. ports.Zip(numbers).OrderBy(t => t.Second).Select(t => t.First)]
                 : [.. ports.OrderBy(p => Math.Round(p.X / (8 * w))).ThenBy(p => p.Y)];
         }
-        int drawingPorts = ports.Count;
-        // A cut-out device's wired pins, after them, device by device left to right (AS D9).
-        var cutOut = new List<(string Device, int From, int To)>();
-        foreach (var r in parts.Rows.Where(r => r.Kind is PartKind.MultiPin or PartKind.Connector && SymbolOf(r) >= 0)
-                                    .OrderBy(r => r.X).ThenBy(r => r.Y))
-        {
-            var s = syms[SymbolOf(r)];
-            int from = ports.Count + 1;
-            foreach (var pin in s.Pins)
-            {
-                int root = RootOf(pin.Node);
-                if (root < 0 || root == G) continue;
-                var (dx, dy) = DirAt(s.Region, pin.Node);
-                ports.Add((null, root, PicturePortSource.CutOut, pin.X, pin.Y, dx, dy, SymbolOf(r)));
-            }
-            if (ports.Count >= from) cutOut.Add((r.Refdes, from, ports.Count));
-        }
-
         // ── instances ───────────────────────────────────────────────────────────────────────────────
         var protos = new List<Proto>();
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -377,6 +382,14 @@ public static class SchematicImageEmit
                 ? new ParameterAssignment("Z", RecognitionEmit.Split(PartsTable.ValueText(zv, PartKind.R, digits)).Number, "Ohm")
                 : new ParameterAssignment("Z", "50", "Ohm"));
             proto.PicturePins.Add((p.X, p.Y, p.DirX, p.DirY));
+            proto.PinNodes.Add(p.Node);
+            // A port symbol drawn with its minus wired to ground (a Term's box) is fitted, and wired, by both pins.
+            if (p.Symbol >= 0 && syms[p.Symbol].Pins.FirstOrDefault(q => q.Node != p.Node && RootOf(q.Node) == G) is { } minus)
+            {
+                var (mx, my) = DirAt(syms[p.Symbol].Region, minus.Node);
+                proto.PicturePins.Add((minus.X, minus.Y, mx, my));
+                proto.PinNodes.Add(minus.Node);
+            }
             protos.Add(proto);
             portInfo.Add((proto, p.Source, p.X, p.Y));
         }
@@ -421,6 +434,33 @@ public static class SchematicImageEmit
             }
             AddPins(proto, s);
             protos.Add(proto);
+        }
+
+        // A multi-pin symbol — a box, a transistor, an amplifier — is an S-parameter block with one port per wired pin
+        // and a pin on ground its reference: the shape an RF schematic draws a black box in, and the part it is drawn as.
+        var blocks = new List<(string Name, int Ports)>();
+        foreach (var row in parts.Rows.Where(r => r.Kind is PartKind.MultiPin or PartKind.Connector && SymbolOf(r) >= 0)
+                                      .OrderBy(r => r.X).ThenBy(r => r.Y))
+        {
+            int i = SymbolOf(row);
+            var s = syms[i];
+            var signal = s.Pins.Where(p => RootOf(p.Node) is var r and >= 0 && r != G)
+                               .OrderBy(p => Math.Round(p.X / (4 * w))).ThenBy(p => p.Y).ToList();
+            if (signal.Count == 0) continue;
+            var reference = s.Pins.FirstOrDefault(p => RootOf(p.Node) == G);
+            string name = Unique(RecognitionEmit.Identifier(row.Refdes, "S"), names);
+            var proto = new Proto { Type = "SnP", Name = name, Roots = [.. signal.Select(p => RootOf(p.Node))], Symbol = i };
+            proto.Parameters.Add(new ParameterAssignment("NumPorts", signal.Count.ToString(CultureInfo.InvariantCulture)));
+            if (parts.ResolveModelFile(row) is { } file) proto.Parameters.Add(new ParameterAssignment("File", $"\"{file}\""));
+            foreach (var p in reference is null ? signal : [.. signal, reference])
+            {
+                var (dx, dy) = DirAt(s.Region, p.Node);
+                proto.PicturePins.Add((p.X, p.Y, dx, dy));
+                proto.PinNodes.Add(p.Node);
+            }
+            if (reference is not null) proto.RefRoot = G;
+            protos.Add(proto);
+            blocks.Add((name, signal.Count));
         }
 
         var lineNotes = new List<string>();
@@ -497,7 +537,10 @@ public static class SchematicImageEmit
         var tb = new TestBench("tb") { Technology = options.TechnologyPath is { } tp ? Path.GetFullPath(tp) : null };
         foreach (var v in variables) tb.GlobalVariables.Add(new Variable(v.Name, v.Number, v.Unit));
         foreach (var p in protos)
-            tb.Instances.Add(new Instance(p.Name, p.Type, [.. Enumerable.Range(0, p.Roots.Count).Select(k => NetName(p, k))], p.Parameters));
+            tb.Instances.Add(new Instance(p.Name, p.Type, [.. Enumerable.Range(0, p.Roots.Count).Select(k => NetName(p, k))], p.Parameters)
+            {
+                RefNetBinding = p.RefRoot is { } rr ? netName[rr] : null,
+            });
         if (variables.Count > 0)
         {
             tb.Tuning = new TuningSetup();
@@ -524,12 +567,11 @@ public static class SchematicImageEmit
                 $"{Plural(these.Count, "port", "ports")} {what}: {string.Join(", ", these.Select(p => p.Name))}.",
                 [.. these.Select(p => Anchor(p.X, p.Y))]);
         }
-        foreach (var (device, from, to) in cutOut)
-            report.Add(RecognitionFindingClass.PicturePorts, to - from + 1,
-                $"{device} is cut out: its wired pins are ports {from}–{to}, so the circuit is the networks around it as it sees them.");
+        foreach (var (block, n) in blocks)
+            report.Add(RecognitionFindingClass.PictureEmitNotes, 1,
+                $"{block} is drawn as a box with {Plural(n, "wired pin", "wired pins")}, so it is a {n}-port S-parameter block: " +
+                "give it a Touchstone file to simulate it.");
         if (ports.Count == 0) report.Add(RecognitionFindingClass.PictureNoPort, 1, NoPortLine);
-        if (drawingPorts == 0 && ports.Count > 0)
-            report.Add(RecognitionFindingClass.PicturePorts, 1, "The drawing has no port of its own: every port is a cut-out device's pin.");
         var unsourced = supplyNets.Where(netName.ContainsKey).Select(r => netName[r]).Order(StringComparer.Ordinal).ToList();
         report.Add(RecognitionFindingClass.PictureSupplyNets, unsourced.Count,
             $"{Plural(unsourced.Count, "supply net has", "supply nets have")} no source in the circuit and " +
@@ -542,8 +584,23 @@ public static class SchematicImageEmit
         // ── the drawing as drawn (D12) ──────────────────────────────────────────────────────────────
         var frame = options.Frame ?? AutoFrame(read, protos, tb);
         var exact = Exact(read, protos, tb, frame, Find, G, netName);
+        var nodeNets = new Dictionary<int, string>();
+        for (int node = 0; node < graph.Nodes.Count; node++)
+            if (RootOf(node) is var r and >= 0 && netName.TryGetValue(r, out var net)) nodeNets[node] = net;
+        var grounds = new List<(int Node, double DirX, double DirY)>(groundMarks);
+        foreach (var s in syms.Where(s => s.Disposition == SymbolDisposition.Recognised && s.Kind == ImageSymbolKind.Ground))
+            foreach (var p in s.Pins)
+            {
+                double dx = s.Region.Box.CentreX - p.X, dy = s.Region.Box.CentreY - p.Y;
+                grounds.Add((p.Node, dx, dy));
+            }
+        var named = new List<(int Node, string Net)>();
+        foreach (int node in labels.Names.Select(n => n.Node).Concat(read.SupplyMarks.Select(m => m.Node)).Distinct())
+            if (RootOf(node) is var r and >= 0 && r != G && netName.TryGetValue(r, out var net)) named.Add((node, net));
         return new SchematicImageCircuit(tb)
         {
+            PinNodes = protos.ToDictionary(p => p.Name, p => (IReadOnlyList<int>)p.PinNodes, StringComparer.Ordinal),
+            NodeNets = nodeNets, Grounds = grounds, NamedNodes = named, HiddenSegments = hidden,
             Exact = exact, Frame = frame, Parts = parts, Ports = picturePorts, Variables = [.. variables.Select(v => v.Name)],
             SymbolOf = protos.Where(p => p.Symbol >= 0).ToDictionary(p => p.Name, p => p.Symbol, StringComparer.Ordinal),
             SymbolOfRow = symbolOfRow,
@@ -555,8 +612,44 @@ public static class SchematicImageEmit
             {
                 var (dx, dy) = DirAt(s.Region, p.Node);
                 proto.PicturePins.Add((p.X, p.Y, dx, dy));
+                proto.PinNodes.Add(p.Node);
             }
         }
+    }
+
+    // ── grounds the wire reading took for wire ──────────────────────────────────────────────────────
+
+    /// <summary>A ground symbol whose bars were read as wire: a tee at the foot of a wire coming down, its two arms short and
+    /// ending bare or on a label, with at least one shorter bar beneath — the node it stands on and the bars' segments.</summary>
+    private static IEnumerable<(int Node, List<int> Bars)> WireGrounds(WireGraph graph, double w)
+    {
+        foreach (var n in graph.Nodes.Where(n => n.Degree == 3))
+        {
+            var at = graph.Segments.Where(s => s.From == n.Id || s.To == n.Id).ToList();
+            var stems = at.Where(s => s.Orientation == WireOrientation.Vertical).ToList();
+            var arms = at.Where(s => s.Orientation == WireOrientation.Horizontal).ToList();
+            if (stems.Count != 1 || arms.Count != 2) continue;
+            int Far(WireSegment s) => s.From == n.Id ? s.To : s.From;
+            if (graph.Nodes[Far(stems[0])].Y >= n.Y || arms.Any(a => graph.Nodes[Far(a)].Degree != 1)) continue;
+            double left = arms.Min(a => graph.Nodes[Far(a)].X), right = arms.Max(a => graph.Nodes[Far(a)].X);
+            double len = right - left;
+            if (len < 3 * w || len > 20 * w || left > n.X - w || right < n.X + w) continue;
+            var under = graph.Segments
+                .Where(s => s.Orientation == WireOrientation.Horizontal && graph.Nodes[s.From].IsEnd && graph.Nodes[s.To].IsEnd
+                            && Math.Min(s.A.y, s.B.y) > n.Y + 0.5 * w && Math.Max(s.A.y, s.B.y) <= n.Y + 6 * w
+                            && s.Length < len + w && Math.Min(s.A.x, s.B.x) >= left - 2 * w && Math.Max(s.A.x, s.B.x) <= right + 2 * w)
+                .Select(s => s.Id).ToList();
+            if (under.Count == 0) continue;
+            yield return (n.Id, [.. arms.Select(a => a.Id), .. under]);
+        }
+    }
+
+    /// <summary>Whether a word naming a supply mark's net names a supply — a voltage or a V… rail — rather than ground.</summary>
+    private static bool SupplyName(string name)
+    {
+        string t = name.Trim().TrimStart('+', '-', '−');
+        return t.Length > 0 && (char.ToUpperInvariant(t[0]) == 'V' || char.IsAsciiDigit(t[0]))
+            && !t.Contains("GND", StringComparison.OrdinalIgnoreCase);
     }
 
     // ── lines ───────────────────────────────────────────────────────────────────────────────────────
@@ -617,22 +710,38 @@ public static class SchematicImageEmit
 
     // ── the drawing (D12) ───────────────────────────────────────────────────────────────────────────
 
-    /// <summary>The frame where the median recognised pin span equals the symbols' own (R-im10-4).</summary>
+    /// <summary>
+    /// The frame the drawing is made at (R-im10-4). A picture showing a drawing grid — an editor's screenshot — is drawn
+    /// one of its grid pitches to one schematic grid step, its grid lines on the schematic's; the symbols decide only when
+    /// they say the picture's grid is a coarser or finer one than that. Without a grid, the frame is the one where the
+    /// median recognised pin span equals the symbols' own.
+    /// </summary>
     private static SchematicFrame AutoFrame(SchematicImageRead read, List<Proto> protos, TestBench tb)
     {
         var ratios = new List<double>();
-        foreach (var p in protos.Where(p => p.PicturePins.Count == 2))
+        foreach (var p in protos.Where(p => p.PicturePins.Count == 2 && p.Type != "Port"))
         {
             var inst = tb.Instances.First(i => i.InstanceName == p.Name);
             if (NetlistSchematic.PinOffsets(inst, SymbolRotation.R0, false) is not { Count: >= 2 } pins) continue;
             double own = Math.Sqrt(Math.Pow(pins[0].X - pins[1].X, 2) + Math.Pow(pins[0].Y - pins[1].Y, 2));
-            double seen = Math.Sqrt(Math.Pow(p.PicturePins[0].X - p.PicturePins[1].X, 2) + Math.Pow(p.PicturePins[0].Y - p.PicturePins[1].Y, 2));
+            var (ax, ay) = read.ToSource(p.PicturePins[0].X, p.PicturePins[0].Y);
+            var (bx, by) = read.ToSource(p.PicturePins[1].X, p.PicturePins[1].Y);
+            double seen = Math.Sqrt(Math.Pow(ax - bx, 2) + Math.Pow(ay - by, 2));
             if (own > 0 && seen > 1) ratios.Add(own / seen);
         }
         ratios.Sort();
-        double k = ratios.Count == 0 ? NetlistSchematic.Grid / Math.Max(1, 4 * read.StrokeWidth)
-                 : ratios.Count % 2 == 1 ? ratios[ratios.Count / 2] : 0.5 * (ratios[ratios.Count / 2 - 1] + ratios[ratios.Count / 2]);
-        return new SchematicFrame(k, 0, 0);
+        double? symbols = ratios.Count == 0 ? null
+                        : ratios.Count % 2 == 1 ? ratios[ratios.Count / 2] : 0.5 * (ratios[ratios.Count / 2 - 1] + ratios[ratios.Count / 2]);
+        if (read.Grid is { } grid)
+        {
+            double k = NetlistSchematic.Grid / grid.Pitch;
+            // A symbol's pins are read where its wires reach its glyph, inside the ends of its leads, so the symbols'
+            // own estimate runs high; only a factor of 2.5 says the grid read is a finer or coarser one.
+            if (symbols is { } s && (s / k > 2.5 || s / k < 0.4))
+                k *= new[] { 0.5, 2, 4, 5, 10 }.MinBy(m => Math.Abs(Math.Log(s / (k * m))));
+            return new SchematicFrame(k, -k * grid.PhaseX, -k * grid.PhaseY);
+        }
+        return new SchematicFrame(symbols ?? NetlistSchematic.Grid / Math.Max(1, 4 * read.StrokeWidth), 0, 0);
     }
 
     private static ExactPlacement Exact(SchematicImageRead read, List<Proto> protos, TestBench tb, SchematicFrame frame,

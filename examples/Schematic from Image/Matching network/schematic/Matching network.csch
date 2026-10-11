@@ -92,6 +92,24 @@
       ]
     },
     {
+      "InstanceName": "VAR1",
+      "Symbol": "Var",
+      "X": 1100,
+      "Y": 2400,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "L1_L",
+          "Expression": "100",
+          "Unit": "pH",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        }
+      ]
+    },
+    {
       "InstanceName": "GND1",
       "Symbol": "Ground",
       "X": 900,
@@ -114,51 +132,9 @@
       "Parameters": [],
       "ShowTypeLabel": false,
       "ShowInstanceName": false
-    },
-    {
-      "InstanceName": "VAR1",
-      "Symbol": "Var",
-      "X": 900,
-      "Y": 2400,
-      "Rotation": "R0",
-      "MirrorX": false,
-      "Disable": "None",
-      "Parameters": [
-        {
-          "Name": "L1_L",
-          "Expression": "100",
-          "Unit": "pH",
-          "ShowOnSchematic": true,
-          "Dimension": "None"
-        }
-      ]
     }
   ],
   "Wires": [
-    {
-      "Points": [
-        [
-          5200,
-          3300
-        ],
-        [
-          9100,
-          3300
-        ]
-      ]
-    },
-    {
-      "Points": [
-        [
-          9600,
-          3300
-        ],
-        [
-          9100,
-          3300
-        ]
-      ]
-    },
     {
       "Points": [
         [
@@ -174,11 +150,11 @@
     {
       "Points": [
         [
-          10500,
+          5300,
           3300
         ],
         [
-          14100,
+          9600,
           3300
         ]
       ]
@@ -190,44 +166,13 @@
           3300
         ],
         [
-          10500,
+          14100,
           3300
         ]
       ]
     }
   ],
-  "NetLabels": [
-    {
-      "X": 7100,
-      "Y": 3300,
-      "Name": "n1",
-      "OwnerWireIndex": 0,
-      "SegmentIndex": 0,
-      "AlongT": 0.48717948717948717,
-      "OffsetX": 0,
-      "OffsetY": 0
-    },
-    {
-      "X": 3100,
-      "Y": 3300,
-      "Name": "p1",
-      "OwnerWireIndex": 2,
-      "SegmentIndex": 0,
-      "AlongT": 0.5,
-      "OffsetX": 0,
-      "OffsetY": 0
-    },
-    {
-      "X": 12300,
-      "Y": 3300,
-      "Name": "p2",
-      "OwnerWireIndex": 3,
-      "SegmentIndex": 0,
-      "AlongT": 0.5,
-      "OffsetX": 0,
-      "OffsetY": 0
-    }
-  ],
+  "NetLabels": [],
   "Dots": [],
   "CanvasObjects": [
     {
@@ -238,7 +183,7 @@
       "Height": 6626.650660264106,
       "RotationDeg": 0,
       "Transparency": 0.65,
-      "IsLocked": true,
+      "IsLocked": false,
       "ZOrder": 0,
       "ImagePath": "../Matching network.source.png",
       "FontSize": 12,

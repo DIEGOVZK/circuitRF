@@ -31,7 +31,7 @@ keywords: recognise, recognize, artwork, Gerber, board, parts table, BOM, placem
 ## What it does {#what}
 
 A board of ordinary SMT parts joined by controlled-impedance lines does not need an EM run: its copper is
-already a circuit. **Design ▸ Create Schematic from Artwork…** reads that circuit out of the artwork &mdash; an
+already a circuit. **Design ▸ Create ▸ Schematic from Artwork…** reads that circuit out of the artwork &mdash; an
 imported Gerber set, a flattened GDSII, a board read back as copper &mdash; and writes it as a schematic of
 native circuitRF components:
 
@@ -55,7 +55,7 @@ materials has no row for L1, on purpose. Beside it, **Board design** is the sche
 
 1. Open **Board**'s layout. Its technology is the one the import wrote beside it, with the fabricator's stackup
    typed in on the **Stackup** tab &mdash; a Gerber set carries no stackup, and every line's impedance comes from it.
-2. **Design ▸ Create Schematic from Artwork…**. Name **Placement…** `fab/Board.pos` and **BOM…**
+2. **Design ▸ Create ▸ Schematic from Artwork…**. Name **Placement…** `fab/Board.pos` and **BOM…**
    `fab/Board-bom.csv`. The report reads ground on the bottom plane, one `VIAGND`, two ports at the board edges,
    seven `MLIN`s, a bend, a tee and one open end &mdash; the stub.
 3. In the [parts table](#parts), C1 (2.2 pF) and R1 (10 Ohm) have their values from the BOM. L1 is a shunt L of
@@ -69,7 +69,7 @@ one step earlier, from the Gerber files, and has a figure for each step.
 
 ## Opening it {#open}
 
-Focus a **saved** layout and choose **Design ▸ Create Schematic from Artwork…**. A layout that has never been
+Focus a **saved** layout and choose **Design ▸ Create ▸ Schematic from Artwork…**. A layout that has never been
 saved has no cell to write beside, and is refused with a message, as **Update Schematic from Layout** refuses
 it. The dialog reads the layout and its technology as they are saved on disk. When either has unsaved changes
 &mdash; a stackup you have just built in the Technology editor, say &mdash; it asks first: **Save** writes them,
