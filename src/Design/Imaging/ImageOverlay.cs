@@ -18,9 +18,10 @@ using CircuitRF.Design.Schematic.Recognition;
 namespace CircuitRF.Design.Imaging;
 
 /// <summary>The overlay's classes, each toggled from the legend. A schematic picture's are its wires (junction dots and
-/// dangling ends among them), its symbols (as parts), its ports, its words and its crossings (IM-10). A plot picture's
-/// are its frames, its traces, its markers and its words (IM-14).</summary>
-public enum ImageOverlayClass { Copper, Drill, Ignored, Part, Line, Port, Unknown, Wire, Text, Crossing, Plot, Trace, Marker }
+/// dangling ends among them), its symbols (as parts), its ports, its words and its crossings (IM-10), and its
+/// annotation strokes — arrows and dashed lines, with what each was read as (IMF-3). A plot picture's are its frames,
+/// its traces, its markers and its words (IM-14).</summary>
+public enum ImageOverlayClass { Copper, Drill, Ignored, Part, Line, Port, Unknown, Wire, Text, Crossing, Plot, Trace, Marker, Annotation }
 
 /// <summary>A rectangle in the picture, pixels.</summary>
 public readonly record struct PixelBounds(double Left, double Top, double Right, double Bottom)
@@ -300,6 +301,15 @@ public sealed partial class ImageOverlay
                                            c.Connected ? Colours.Connected : Colours.Ignored, false, null, new PixelBounds(x - r, y - r, x + r, y + r), (x, y, r)));
         }
 
+        // Annotation strokes (R-imf3-3, R-imf3-4): an arrow from its tail to its tip, a dashed line end to end, named.
+        for (int i = 0; i < read.Annotations.Count; i++)
+        {
+            var a = read.Annotations[i];
+            var path = a.Path.Select(p => S(p.x, p.y)).ToList();
+            items.Add(new ImageOverlayItem($"annotation:{i}", ImageOverlayClass.Annotation, [path], false, AnnotationLabel(a.Kind), null, false, null,
+                                           PixelBounds.Of(path).Inflate(2)));
+        }
+
         // Symbols, as parts: the parts-table row's designator where there is one, so a row and its box name each other.
         var rowOf = result.Circuit?.SymbolOfRow.ToDictionary(kv => kv.Value, kv => kv.Key) ?? [];
         var rows = result.Parts;
@@ -334,4 +344,17 @@ public sealed partial class ImageOverlay
         }
         return new ImageOverlay(items, null, [], [], null, pixelAnchors: true) { Legend = read.Profile?.Lines() ?? [] };
     }
+
+    /// <summary>What an annotation stroke was read as, in the overlay's words.</summary>
+    public static string AnnotationLabel(StrokeAnnotationKind kind) => kind switch
+    {
+        StrokeAnnotationKind.DimensionArrow => "dimension arrow",
+        StrokeAnnotationKind.CurrentArrow => "current arrow",
+        StrokeAnnotationKind.VoltageArrow => "voltage arrow",
+        StrokeAnnotationKind.TerminalArrow => "arrow into a terminal",
+        StrokeAnnotationKind.SupplyArrow => "supply arrow",
+        StrokeAnnotationKind.SymbolArrow => "arrow on a symbol",
+        StrokeAnnotationKind.DashedBox => "dashed boundary",
+        _ => "dashed wire",
+    };
 }

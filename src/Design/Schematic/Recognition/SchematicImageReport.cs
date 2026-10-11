@@ -58,6 +58,40 @@ public sealed record SchematicImageReport
     public int SupplyMarks { get; init; }
     public int DanglingEnds { get; init; }
 
+    // ── What is not wire (R-imf3-7) ─────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Plates a lead meets (R-imf3-1), at any length — a capacitor's, a ground's top bar.</summary>
+    public int Plates { get; init; }
+
+    /// <summary>Plate pairs found side by side across a clear strip, and curved plates.</summary>
+    public int PlatePairs { get; init; }
+    public int CurvedPlates { get; init; }
+
+    /// <summary>Closed outlines set aside as symbols (R-imf3-2).</summary>
+    public int Boxes { get; init; }
+
+    /// <summary>Arrows by class (R-imf3-3).</summary>
+    public int DimensionArrows { get; init; }
+    public int CurrentArrows { get; init; }
+    public int VoltageArrows { get; init; }
+    public int TerminalArrows { get; init; }
+    public int SupplyArrows { get; init; }
+    public int SymbolArrows { get; init; }
+
+    /// <summary>Dashed lines by role (R-imf3-4): removed as annotations, or read as wires.</summary>
+    public int DashedAnnotations { get; init; }
+    public int DashedWires { get; init; }
+
+    /// <summary>Zig-zag chains whose slanted legs were left out of the curved-lines count (R-imf3-5).</summary>
+    public int ZigzagChains { get; init; }
+
+    /// <summary>Junction marks by shape (R-imf3-6).</summary>
+    public int RoundJunctions { get; init; }
+    public int SquareJunctions { get; init; }
+    public int DiamondJunctions { get; init; }
+
+    public const string DashedWireNote = "A dashed line was read as a wire; it usually stands for repeated sections left out.";
+
     /// <summary>The report in words, one finding per line; a count of nothing is not a line.</summary>
     public IReadOnlyList<string> Lines()
     {
@@ -74,10 +108,31 @@ public sealed record SchematicImageReport
         if (WordsKeptAsSymbolDetail > 0)
             r.Add($"{Count(WordsKeptAsSymbolDetail, "text-sized piece")} touching line work kept as symbol detail.");
         r.Add(Count(WireSegments, "wire segment") + (DiagonalWires > 0 ? $", {DiagonalWires} diagonal." : "."));
-        if (JunctionDots > 0) r.Add(Count(JunctionDots, "junction dot") + ".");
+        if (JunctionDots > 0)
+            r.Add(Count(JunctionDots, "junction dot") + (SquareJunctions + DiamondJunctions == 0 ? "." :
+                  " (" + string.Join(", ", new[] { (RoundJunctions, "round"), (SquareJunctions, "square"), (DiamondJunctions, "diamond") }
+                                               .Where(t => t.Item1 > 0).Select(t => $"{t.Item1} {t.Item2}")) + ")."));
         if (CrossingsConnected + CrossingsNotConnected > 0)
             r.Add($"Crossings: {CrossingsConnected} connected, {CrossingsNotConnected} not connected.");
         if (Hops > 0) r.Add(Count(Hops, "hop") + ", not connected.");
+        if (Plates + PlatePairs + CurvedPlates > 0)
+            r.Add("Plates and bars, not wire: " + string.Join(", ", new[]
+            {
+                Plates > 0 ? $"{Plates} met by a lead" : null,
+                PlatePairs > 0 ? Count(PlatePairs, "pair") + " side by side" : null,
+                CurvedPlates > 0 ? $"{CurvedPlates} curved" : null,
+            }.Where(x => x is not null)) + ".");
+        if (Boxes > 0) r.Add(Count(Boxes, "closed outline") + " set aside as symbols.");
+        var arrows = new[]
+        {
+            (DimensionArrows, "dimension"), (CurrentArrows, "current"), (VoltageArrows, "voltage"),
+            (TerminalArrows, "into a terminal"), (SupplyArrows, "supply"), (SymbolArrows, "on a symbol"),
+        }.Where(t => t.Item1 > 0).ToList();
+        if (arrows.Count > 0)
+            r.Add("Arrows: " + string.Join(", ", arrows.Select(t => $"{t.Item1} {t.Item2}")) + "; annotations, not wire.");
+        if (DashedAnnotations > 0) r.Add(Count(DashedAnnotations, "dashed line") + " removed as an annotation (a box or a boundary).");
+        if (DashedWires > 0) r.Add(DashedWireNote);
+        if (ZigzagChains > 0) r.Add(Count(ZigzagChains, "zig-zag") + " not counted as curved lines.");
         r.Add(Count(SymbolRegions, "symbol region") + ".");
         if (FillsKept > 0) r.Add($"{Count(FillsKept, "filled area")} kept as {(FillsKept == 1 ? "its symbol's fill" : "their symbols' fills")}, not ink.");
         if (DecorationsRemoved > 0) r.Add($"{Count(DecorationsRemoved, "decoration")} with no wire removed.");

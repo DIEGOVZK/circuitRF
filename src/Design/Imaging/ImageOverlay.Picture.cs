@@ -39,6 +39,7 @@ public sealed partial class ImageOverlay
         ImageOverlayClass.Plot => Colours.Accent,
         ImageOverlayClass.Trace => item.Rgb ?? Colours.Line,
         ImageOverlayClass.Marker => Colours.Port,
+        ImageOverlayClass.Annotation => Colours.Ignored,
         _ => Colours.Amber,
     };
 
@@ -142,7 +143,8 @@ public sealed partial class ImageOverlay
                     }
                     stroke.Color = C(colour);
                     stroke.StrokeWidth = pen;
-                    stroke.PathEffect = item.Id.StartsWith(GapPrefix, StringComparison.Ordinal)
+                    // A bridged gap and an annotation stroke dashed: not read as line work.
+                    stroke.PathEffect = item.Id.StartsWith(GapPrefix, StringComparison.Ordinal) || item.Class == ImageOverlayClass.Annotation
                         ? SKPathEffect.CreateDash([(float)(4 * u), (float)(3 * u)], 0) : null;
                     canvas.DrawPath(path, stroke);
                     stroke.PathEffect = null;
@@ -150,10 +152,10 @@ public sealed partial class ImageOverlay
                 }
             }
             if (item.Label is { Length: > 0 } text && item.Class is ImageOverlayClass.Part or ImageOverlayClass.Line or ImageOverlayClass.Text
-                                                                         or ImageOverlayClass.Trace or ImageOverlayClass.Plot)
+                                                                         or ImageOverlayClass.Trace or ImageOverlayClass.Plot or ImageOverlayClass.Annotation)
             {
                 double cap = 9 * u;
-                if (item.Class is ImageOverlayClass.Line or ImageOverlayClass.Trace && item.Paths is [{ Count: > 0 } first, ..])
+                if (item.Class is ImageOverlayClass.Line or ImageOverlayClass.Trace or ImageOverlayClass.Annotation && item.Paths is [{ Count: > 0 } first, ..])
                 {
                     var (mx, my) = Midpoint(first);
                     double width = StrokeFont.Layout(text, LabelFontStyle.Regular, cap).Advance;

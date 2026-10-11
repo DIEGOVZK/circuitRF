@@ -794,7 +794,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     /// <summary>Whether the legend shows a class.</summary>
     public bool Shows(ImageOverlayClass c) => c switch
     {
-        ImageOverlayClass.Wire or ImageOverlayClass.Crossing => ShowWires,
+        ImageOverlayClass.Wire or ImageOverlayClass.Crossing or ImageOverlayClass.Annotation => ShowWires,
         ImageOverlayClass.Text => ShowText,
         ImageOverlayClass.Copper => ShowCopper,
         ImageOverlayClass.Drill => ShowDrills,

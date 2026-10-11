@@ -1463,6 +1463,7 @@ text factor 1 by construction: the thickening has already set its text to the re
 | `Attach` | 1.5 w | pen | — |
 | `MinDiagonalLength` | 8 w | symbol — a zig-zag's leg against a diagonal wire | `SymbolFactor` |
 | `MaxSymbolStroke` | 16 w | symbol | `SymbolFactor` |
+| `MaxSymbolStrokeScales` (IMF-3) | 1 s | symbol — a bare line meeting no wire, in s itself | — |
 | `Grow` | 1 w | symbol — the region grow | `SymbolFactor` |
 | `MaxHopSpan` | 10 w | symbol — the hop span, a constant until IMF-2 | `SymbolFactor` |
 | `LineArt` (window, k) | 25 px, 0.34 | binarisation, in pixels | — |
@@ -1578,3 +1579,155 @@ longer refused as curved line work; `heavy-iec` finds 5 of its 6 grounds (1); th
 reads all three grounds and one passive. Worse: `ds-test-circuit-1x`'s largest region grows from 7 to 16 pins and its
 one passive is lost, and `picture-e`'s from 5 to 12 — both read enlarged, where the default region merge now meets a
 drawing three times its size in pixels at the same w; that is IMF-4's merge, not this phase's units.
+
+## 19. IMF-3 — what is wire: plates, boxes, annotation arrows, dashes
+
+IMF-2 gave every tolerance its unit; IMF-3 makes the wire graph take for wire only what is wire, whatever the pen.
+Two places change. `WireGraph.SymbolStrokes` learns the picture's own plates and boxes once s is known (it keeps IM-7's
+rules exactly for the symbol scale's own measurement, which runs before s exists). A new step,
+`StrokeMarks.Find` (`StrokeMarks.cs`), runs on the runs the final tolerances cut and finds what is drawn on a schematic
+but is not part of the circuit — arrows, dashed lines — and the zig-zags. What it calls an annotation leaves the ink,
+and the line work is skeletonised again without it; it then runs once more on the new runs for what does not erase
+(dashed wires, zig-zag legs, supply arrows), and the removed annotations are kept as first found.
+
+### 19.1 Plates at any pen weight (R-imf3-1) — `WireGraph.SymbolStrokes`, `PlateRules`
+
+A straight line with two **bare** ends — the skeleton stops in paper, or on a label kept as a symbol detail — is:
+
+- a **plate** when exactly one lead meets it from the side, in its middle 60 %, and nothing crosses it — at any length
+  up to 4 s (`MaxPlate`; the heavy IEC drawing's plates are 152 px = 19 w = 2.4 s). A ground's top bar is one too;
+- a stroke when it meets no wire and is no longer than `MaxSymbolStroke` w **or** `MaxSymbolStrokeScales` s (1 s) —
+  a datasheet's hairline bars at 2× run past 16 pens;
+- either way still a stroke under `MaxSymbolStroke` w, as IM-7 had it, whatever meets it.
+
+A line with a word **off both ends** — clear of its middle — is a labelled wire, never a plate. "Clear of its middle"
+matters: a coax connector's ground drawn at 1× has its two lower bars read as a word lying under the top bar, and
+counting that as a label at both ends made the bar a wire.
+
+Two more shapes are plates. A **pair**: two such lines side by side, within 10°, 1 w to 1.5 s apart, overlapping over
+half the shorter, no more than 2.5× different in length, with the strip between them clear of ink — or a line with
+**one** bare end and a lead (its other end running into a glyph of a label that touches it) beside a plate already
+found, or beside a parallel stroke of ink as long across a clear strip (the partner can be dropped as part of the
+touching label). A **curved plate**: a chain of runs turning gently (each turn ≤ 45°) between two bare ends, its chord
+2 w to 1.5 s, its sagitta under 0.35 of the chord, with one lead meeting it — or within 45° of a plate's direction
+across a clear strip.
+
+A half plate beside its lead's T leans on the T's pixels (C4's on `ds-rf-amp-1x` fitted 4° off level) and was no
+candidate, so the plate's line was cut in two. `WireGraph.Square` now also snaps a short run within 12° of an axis that
+carries straight on, end to end, from a candidate on that axis **to a bare end of its own** — without the bare end, an
+italic F touching both plates of a capacitor was snapped into a loop.
+
+### 19.2 Boxes at any pen weight (R-imf3-2) — `WireGraph.Sides`
+
+The cycle rule (§9.3) was right; heavy pens defeated it. An 8 px pen fills a 40 px box's corners, and the box's short
+sides, cut in two by their leads' Ts, are 2.3–2.5 w — under `MinWireLength`, so no candidates, so no cycle, so the long
+sides were wire. A **side** is an orthogonal run too short to be a wire, straight, with neither end in paper, both of
+whose ends meet the end of an orthogonal run within 1.5 w — at a corner (a perpendicular run) on at least one, and in
+line only with another short run (a long run in line is a wire, and its last pixels before a plate are no side).
+Sides take part in the **cycle search only** (`SymbolStrokes` assembles them with the candidates for it); they never
+become wire and never enter the line analysis, where they cut plates' lines. A side wholly inside a kept label no
+taller than 1.5 h is no side. On the heavy IEC drawing all five resistor boxes are set aside.
+
+### 19.3 Annotation arrows (R-imf3-3) — `StrokeMarks.Arrows`
+
+**A head** is read off the ink's width across a run's line, from half a symbol scale back down the shaft to two past
+its end, every half pixel: a pen-wide shaft; within half a symbol scale of the run's end an abrupt widening to at least
+max(1.8 w, pen + 0.8 w) and 2.2 w; widest within the first 40 % of its length; narrowing steadily (no rise over a pen),
+within a third of its width of a straight taper; 2 w to 2 s long, 0.3–1.8 as wide as long; and solid — 90 % of a
+grid inside the triangle is ink. A dot widens and narrows symmetrically, a plate or a ground bar is a pen deep, a
+diamond is widest in its middle, two glyph strokes meeting at an angle leave paper between them: none is a head.
+What lies past the apex is read off the same profile: paper; a **bar** as wide as half the head again within half a pen
+and narrow again within 1.6 w (a filled diode's cathode); a **wire across** the tip — wider than twice the head within
+1.5 w (a dimension's head touching a rail, often stopping a pen or two short of it); the **shaft's wire carrying on** a
+pen wide for 2 w; or anything else (a terminal's dot).
+
+| class | read when | done |
+|---|---|---|
+| dimension | heads at both ends; or one head into a wire across its tip (the shaft is often broken by its own label: each half is one); or tail on a wire with a wire just past the apex | shaft and heads removed, other wires spared |
+| current, inline | one head, the wire carrying on past it, head ≤ 1 s | head removed but the wire's own stripe through it kept |
+| current, beside | one head, tail in paper, a parallel wire within 2 s | removed |
+| voltage | one head, tail in paper, no wire alongside | removed; kept in `Annotations` as evidence for IMF-6's port pairs |
+| into a terminal | one head ending in a blob, the shaft a wire (or its tail on one), head ≤ 1 s | head removed, the stripe kept — the wire runs into the terminal |
+| supply | one head into paper, the tail on a wire or a symbol, a word within 2 h of the apex | left as drawn (IM-7's supply mark) |
+| on a symbol | a diagonal shaft crossing other line work, head into paper | left in its region for IMF-5 |
+
+A diagonal shaft crossing nothing — a transistor's emitter arrow — is no annotation. A filled head is often a *fill*
+(§9, `Fills`), taken out of the wire mask with the wire through it; the kept stripe is put back as line work
+(`StrokeMarks.Restore`), or an inline head cut its wire in two. `Fills` itself now keeps a dot-sized blob as a junction
+only when it is **symmetric about its centre** (92 % of its pixels' point reflections in it): a filled diode's triangle
+at a datasheet's scale is dot-sized, and read as a junction it drew a wire straight through the diode — which closed a
+loop through the regulator's IC box and took the whole circuit for one symbol (§17's "one 17–20-pin region").
+
+### 19.4 Dashed lines (R-imf3-4) — `StrokeMarks.Dashes`
+
+A **dash** is an orthogonal straight run 0.75 w to 3 s long that stops in paper at both ends, or at a wire crossing it
+(a coil's humps, cut into runs, line up as evenly but each carries on into the next). Three or more on one line, within
+half a pen across, lengths within 1.5× of each other, gaps 0.5 w to 1.5 s and no more than three dashes long, each gap
+like the last, and **paper between them** (but for a wire crossing) are a dashed line. Dashed lines of the two
+directions whose ends meet within a gap and a dash (and 2 w) — a corner's own dash bends round it and belongs to
+neither line — are a **box**. A box, or a dashed line with no wire in line beyond either end, is an annotation: its ink
+is removed along its whole length and a dash and a gap past each end, sparing every other wire. A dashed line with a
+wire in line beyond an end — collinear within a pen, its end within 1.5 gaps and 2 w, and longer than 1.5 dashes (a
+corner's dash or one cut by a crossing is no wire) — is **one wire** from that wire's end to the other's, flagged
+`WireSegment.Dashed`, and named once in the report: "A dashed line was read as a wire; it usually stands for repeated
+sections left out." At a datasheet's 1× (`ds-test-circuit-1x`) the fixture box's dashes are read as type and removed
+before the wires are; it makes no wire either way.
+
+### 19.5 Zig-zags never refuse (R-imf3-5) — `StrokeMarks.Zigzags`
+
+A chain of three or more slanted runs — each a mirror of the next (folded angles within 15°, turning at least 40° at
+the peak), or a leg the skeleton cut in two carrying on — end to end within 3 w, all at one slope either way (folded
+angles within 20°), rising and falling legs each 25–75 % of the chain's length, crossing the line of the two collinear
+orthogonal leads at its extreme ends, its axis within 15° of theirs. Its legs are never wire, so the curved-lines
+refusal (§13.4) never counts them. A coil's arcs, cut into runs, lean every way and fail the slope rule; an amplifier
+triangle's two sides meet the lead line only at the apex and fail the crossing rule.
+
+**Deviation from the brief:** its legs are 1.5 w to 1.5 s, not "1–6 s". Every zig-zag measured has legs under one symbol
+scale — 0.4 s on `picture-a`, 0.6 s on `textbook-zigzag` — so the brief's range would have found none.
+`picture-a` (six attenuator zig-zags, refused at the baseline) now reads, its four grounds and four of six terminals
+right; a Smith chart has no chains and is still refused (`ImageNothingHereTests`).
+
+### 19.6 Junction marks of any shape (R-imf3-6)
+
+Round, square and diamond marks were already found by `WireGraph.Blobs` (2–6.9 w across, the 6 w bound with the
+distance transform's slack) at every scale the corpus has, the datasheet's 4 w dot on a 1.1 px hairline included once
+IMF-2 reads it enlarged; what was missing was keeping a dot-sized filled *triangle* out of them (§19.3). Each junction
+mark is now classified by rays from its centre (`StrokeMarks.ShapeAt`): along the diagonals, where no orthogonal wire
+leaves, a square reaches 1.25× or more of the free axes' reach; along an axis no wire leaves by, a diamond reaches 1.25×
+the diagonals; a mark under 4 px in inscribed radius is round. A distance-transform core does not work: the core of a
+disc bulges along every wire leaving it, and every round dot read as a diamond.
+
+### 19.7 The report and the overlay (R-imf3-7)
+
+`SchematicImageReport` counts plates met by a lead, pairs and curved plates, closed outlines, arrows by class, dashed
+lines removed and read as wire, zig-zags left out of the curved-lines count, and junction marks by shape (only when one
+is not round). `SchematicImageRead.Annotations` carries every arrow and dashed line with what it was read as and
+whether its ink was removed; the overlay draws them as a new class, `ImageOverlayClass.Annotation`, dashed grey with the
+reading as the label, shown with the wires.
+
+### 19.8 The field numbers after IMF-3
+
+The committed style pictures (`ImageFieldTests.TheCommittedStylePictures_AreScored`), against §18's:
+
+| picture | kinds | gnd | region | what moved |
+|---|---|---|---|---|
+| ds-regulator-1x / 2x | 0/7 → 3/7, 0/7 → 2/7 | 3/4 → 4/4, 2/4 → 4/4 | 8 → 5, 9 → 6 | the diodes are fills, the Vref arrow is a dimension: the output and adjust rails are two nets and the IC box is no longer swallowed |
+| ds-rf-amp-1x / 2x | 1/5 → 2/5, 1/5 → 3/5 | 2/4 → 3/4, 1/4 → 3/4 | 16 → 5, 9 → 5 | hairline plates are plates; the supply arrow is found |
+| ds-test-circuit-2x | 0/3 → 2/3 | 0/3 → 2/3 | 6 → 4 | the dashed fixture box is removed |
+| ds-gain-block-2x | 1/5 → 2/5 | 0/4 → 4/4 | 4 | the hairline ground bars are bars at 2×; the current arrow beside the bias resistor is removed |
+| heavy-iec | 0/8 | 5/6 | 35 → 23 | plates and box sides are no wire; the arrow into v_o is a terminal arrow |
+| ladder-dashed | 0/6 | — | 6 → 2 | each rail one net through its dashes |
+| low-res | 1/2 → 2/2 | terminals 2/4 → 4/4 | 2 | the voltage arrows are removed |
+| typeset | 1/5 | 1/1 | 4 → 10 | **worse**: see below |
+
+On the downloaded corpus, `picture-a` reads instead of being refused; the real regulator's dimension arrow — cut in two
+by its own label, each head touching a rail — is a dimension at both scales; the real gain blocks' current arrows and
+the test circuit's dashed fixture boxes are found; `picture-c`'s largest region falls 32 → 20.
+
+**`typeset` is worse, and the cause is IMF-4's.** Its C1 is labelled in italic touching both plates, and the label's F
+joins the plates' left ends; with it the right-hand mesh (C1 and R3 between the rails) is a closed loop of candidates,
+and the cycle rule takes the mesh for an outline. At IMF-2 the same mesh read as wire with C1 a short through the F.
+Both readings are wrong in the same place; lifting a touching label off its symbol (F7, IMF-4) removes the loop.
+Excluding every candidate inside a kept label fixed `typeset` and broke the L-network and the attenuator round trips,
+whose kept labels hold real wire.
+

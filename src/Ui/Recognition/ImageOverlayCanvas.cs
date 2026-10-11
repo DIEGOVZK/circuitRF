@@ -228,8 +228,10 @@ public sealed class ImageOverlayCanvas : Control
                 case ImageOverlayClass.Marker when item.Circle is { } c:
                     context.DrawEllipse(new ImmutableSolidColorBrush(Colors.White, 0.6), pen, new Point(c.X, c.Y), c.R * px * 1.2, c.R * px * 1.2);
                     break;
+                case ImageOverlayClass.Annotation:
                 case ImageOverlayClass.Trace when item.Id.StartsWith(ImageOverlay.GapPrefix, StringComparison.Ordinal):
-                    // A bridged gap: dashed, so what was interpolated is told from what was read.
+                    // A bridged gap, an annotation stroke (IMF-3): dashed, so what was interpolated or set aside is told
+                    // from what was read as line work.
                     context.DrawGeometry(null, new Pen(pen.Brush, pen.Thickness, new ImmutableDashStyle([3, 3], 0)), GeometryOf(item));
                     break;
                 case ImageOverlayClass.Crossing when item.Circle is { } c:
@@ -252,7 +254,7 @@ public sealed class ImageOverlayCanvas : Control
             }
             if (item.Label is { Length: > 0 } label
                 && item.Class is ImageOverlayClass.Part or ImageOverlayClass.Line or ImageOverlayClass.Text
-                              or ImageOverlayClass.Plot or ImageOverlayClass.Trace or ImageOverlayClass.Marker)
+                              or ImageOverlayClass.Plot or ImageOverlayClass.Trace or ImageOverlayClass.Marker or ImageOverlayClass.Annotation)
                 DrawLabel(context, item, label, selected ? Accent : colour, px);
         }
 

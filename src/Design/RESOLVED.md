@@ -19331,3 +19331,30 @@ and symbol tolerances by them outside a reference band; Low pictures are read en
   makes it byte-identical across machines.
 - **The reference profile is a band, not a point.** The pictures the defaults were tuned on span h = 5–6.4 w and
   s = 9.2–23.4 w; a point would have moved every one of them.
+
+## What is wire: plates, boxes, arrows, dashes (2026-10-11, brief-imf-3)
+
+The schematic reader sets aside plates at any length (one lead in the middle), plate pairs and curved plates, heavy
+boxes whose short sides the corners swallowed, annotation arrows (dimension, current, voltage, into a terminal, supply,
+on a symbol) and dashed lines (removed as boundaries, or one wire flagged `Dashed`), and leaves zig-zag legs out of the
+curved-lines refusal (`StrokeMarks.cs`, `WireGraph.SymbolStrokes`/`Sides`). Design note §19. Traps worth keeping:
+
+- **A filled diode's triangle is dot-sized at a datasheet's scale**, so `Fills` kept it as a junction blob and the
+  skeleton ran straight through it as wire. A loop through the diode and the IC box then made the cycle rule take the
+  whole circuit for one symbol. A junction mark is symmetric about its centre; a triangle is not (0.85 vs 1.00).
+- **A filled head removed as a fill takes the wire through it with it.** Removing an inline head while keeping the
+  wire's stripe has to PUT the stripe back into the wire mask, or the wire is cut where the head was.
+- **The symbol scale sampler's "an end at a fill is not bare" must not reach the plate rule.** A hairline ground's
+  lower bars merge into a fill under its top bar, and the top bar stopped being a bar.
+- **A word near both ends of a line is a label only off its ends.** A ground's lower bars read as type lie under the
+  whole top bar; "a word at both ends" made it a labelled wire.
+- **Short box sides belong in the cycle search only.** In the line analysis they joined plates to glyph strokes and cut
+  the plates' lines; and a side in line with a LONG run is the run's last pixels before a plate, not a side.
+- **A distance-transform core reads every dot as a diamond**: it bulges along each wire leaving the dot. Junction shape
+  is read by rays — the diagonals carry no orthogonal wire, and a free axis tells a diamond.
+- **Kept text boxes are not always text.** One kept box covered a ground's bars, another a whole Vref arrow, another a
+  plate. Exclusions keyed on "inside a kept box" need a text-height limit and a length limit, and excluding candidates
+  inside kept labels outright broke the L-network and attenuator round trips — so it is used for box sides only.
+- **A dimension arrow's shaft is often cut by its own label**, and its heads stop a pen or two short of the rails;
+  each half is a one-headed arrow pointing into a wire across its tip, and that is enough to call it a dimension.
+- **Dashes at a datasheet's 1× are read as type** (a row of hyphens) and removed with the words; at 2× they are runs.

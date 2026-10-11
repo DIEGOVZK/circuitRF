@@ -5,6 +5,7 @@
 //           ─ profile (PictureProfile, IMF-2): the text height h; a Low picture is read again enlarged ×2 or ×3
 //           ─ words (TextRegions): small pieces off the long runs, in lines; their pixels removed
 //           ─ the symbol scale s, from the plates, bars and small outlines the default tolerances set aside
+//           ─ annotation strokes (StrokeMarks, IMF-3): arrows, dashed lines, zig-zags; an annotation leaves the ink
 //           ─ wires (WireGraph): the skeleton's straight runs, symbol strokes set aside, nodes, dots, crossings
 //           ─ symbols (SymbolRegions): the residue, grown and merged; attachments; hops, supply marks, net labels
 //
@@ -106,6 +107,12 @@ public sealed record SchematicImageRead
     /// <summary>End nodes reaching nothing: no symbol, no label, no supply mark.</summary>
     public IReadOnlyList<int> Dangling { get; init; } = [];
 
+    /// <summary>The arrows and dashed lines read as annotations, or as wire (R-imf3-3, R-imf3-4).</summary>
+    public IReadOnlyList<StrokeAnnotation> Annotations { get; init; } = [];
+
+    /// <summary>What else the wire reading set aside or found, for the report (R-imf3-7).</summary>
+    internal StrokeCounts Strokes { get; init; } = new();
+
     public required SchematicImageReport Report { get; init; }
 
     /// <summary>Why nothing can be made of the picture, or null.</summary>
@@ -132,6 +139,19 @@ public sealed record SchematicImageRead
         double qx = k * (x - SourceWidth / 2.0), qy = k * (y - SourceHeight / 2.0);
         return (qx * c - qy * s + Width / 2.0, qx * s + qy * c + Height / 2.0);
     }
+}
+
+/// <summary>The counts the wire reading keeps for the report (R-imf3-7).</summary>
+internal sealed record StrokeCounts
+{
+    public int Plates { get; init; }
+    public int PlatePairs { get; init; }
+    public int CurvedPlates { get; init; }
+    public int Boxes { get; init; }
+    public int ZigzagChains { get; init; }
+    public int RoundJunctions { get; init; }
+    public int SquareJunctions { get; init; }
+    public int DiamondJunctions { get; init; }
 }
 
 public static class SchematicImageReading
@@ -227,6 +247,7 @@ public static class SchematicImageReading
         // ── Wires (R-im7-4, R-im7-5) ──
         control?.BeginStage("Tracing wires");
         var fills = Fills(wireMask, w, o);
+        var inkMask = wireMask.Clone();
         for (int i = 0; i < wireMask.Pixels.Length; i++) if (fills.Pixels[i] != 0) wireMask.Pixels[i] = 0;
         var dt = DistanceTransform.Compute(wireMask, o.MaxThreads);
         var blobs = WireGraph.Blobs(wireMask, dt, w, o);
@@ -270,9 +291,56 @@ public static class SchematicImageReading
         read = read with { Profile = profile };
 
         var pieces = symbolFactor == 1 ? basePieces : WireGraph.Pieces(skel, w, o);
-        var candidates = pieces.Where(p => p.IsWire).ToList();
-        var strokes = symbolFactor == 1 ? baseStrokes : WireGraph.SymbolStrokes(candidates, blobs, w, o);
+
+        // ── Annotation strokes (R-imf3-3 … R-imf3-5) ──
+        // Arrows, dashed lines and zig-zag chains, found on the runs the final tolerances cut. What is an annotation
+        // leaves the ink, and the line work is read again without it: an arrow left in would be wire or symbol.
+        var marks = StrokeMarks.Find(inkMask, pieces, w, symbol.Px, text.Px, words.Words, keptBoxes, o);
+        var annotations = marks.Annotations;
+        if (marks.Erase is { } erase)
+        {
+            var restore = marks.Restore!;
+            for (int i = 0; i < erase.Pixels.Length; i++)
+            {
+                if (erase.Pixels[i] != 0) wireMask.Pixels[i] = fills.Pixels[i] = inkMask.Pixels[i] = 0;
+                else if (restore.Pixels[i] != 0) { wireMask.Pixels[i] = 1; fills.Pixels[i] = 0; }
+            }
+            dt = DistanceTransform.Compute(wireMask, o.MaxThreads);
+            blobs = WireGraph.Blobs(wireMask, dt, w, o);
+            skel = SkeletonGraph.Build(wireMask, new SkeletonGraphOptions { StrokeWidth = w, MaxThreads = o.MaxThreads });
+            pieces = WireGraph.Pieces(skel, w, o);
+            // Read once more for what the runs are now — the removed annotations stay as they were found.
+            marks = StrokeMarks.Find(inkMask, pieces, w, symbol.Px, text.Px, words.Words, keptBoxes, o);
+            annotations = [.. annotations.Where(a => a.Removed), .. marks.Annotations.Where(a => !a.Removed)];
+        }
+        var candidates = pieces.Where(p => p.IsWire && !marks.Dropped(p)).Concat(marks.DashedWires).ToList();
+        // A short stroke wholly inside a label kept as a symbol detail — a box no taller than a line and a half of
+        // text; what is kept is sometimes a ground's bars — is no box's side.
+        var labels = keptBoxes.Where(b => b.Height <= 1.5 * text.Px).ToList();
+        bool Glyph(WirePiece p) => labels.Any(b => b.Distance(p.A.x, p.A.y) <= 1 && b.Distance(p.B.x, p.B.y) <= 1);
+        // A line's end is bare when the skeleton stops in paper or on a label kept as a symbol detail (a value touching
+        // a plate). A line with a word at BOTH ends is a wire its labels name, not a plate (R-imf3-1).
+        var wordBoxes = words.Words.Select(t => t.Box).ToList();
+        var plates = new PlateRules
+        {
+            // Not EndAt's fill rule, which keeps an arrow's shaft out of the scale's samples: a ground's lower bars,
+            // merged at a hairline, are a fill under its top bar.
+            Symbol = symbol.Px, Bare = p => keptBoxes.Any(b => b.Distance(p.x, p.y) <= w) ? true : null,
+            Labelled = (end, mid) => wordBoxes.Any(b => b.Distance(end.x, end.y) <= w && b.Distance(mid.x, mid.y) > w),
+            Ink = p => inkMask.At((int)Math.Floor(p.x), (int)Math.Floor(p.y)),
+            Sides = [.. pieces.Where(p => p.Side && !Glyph(p))],
+        };
+        var strokes = WireGraph.SymbolStrokes(candidates, blobs, w, o, plates: plates);
         var wires = candidates.Where(p => !strokes.Contains(p.Sources[0])).ToList();
+        read = read with
+        {
+            Annotations = annotations,
+            Strokes = new StrokeCounts
+            {
+                Plates = plates.Plates, PlatePairs = plates.PlatePairs, CurvedPlates = plates.CurvedPlates, Boxes = plates.Boxes,
+                ZigzagChains = marks.ZigzagChains,
+            },
+        };
         token.ThrowIfCancellationRequested();
         if (wires.Count == 0)
             return read with { Report = Report(read), Refusal = SchematicImageReport.NoWiresRefusal };
@@ -308,10 +376,25 @@ public static class SchematicImageReading
         }
         token.ThrowIfCancellationRequested();
 
+        // Junction marks by shape (R-imf3-6).
+        int round = 0, square = 0, diamond = 0;
+        foreach (var node in graph.Nodes.Where(nd => nd.Dot))
+        {
+            var at = new PointD(node.X, node.Y);
+            var blob = blobs.OrderBy(b => WireGraph.Dist(b.Centre, at)).FirstOrDefault();
+            if (blob is null) continue;
+            switch (StrokeMarks.ShapeAt(wireMask, blob.Centre, blob.Radius))
+            {
+                case JunctionShape.Square: square++; break;
+                case JunctionShape.Diamond: diamond++; break;
+                default: round++; break;
+            }
+        }
         read = read with
         {
             Wires = graph, Symbols = attached.Regions, Decorations = attached.Decorations, NetLabels = attached.Labels,
             SupplyMarks = attached.Supplies, Dangling = attached.Dangling,
+            Strokes = read.Strokes with { RoundJunctions = round, SquareJunctions = square, DiamondJunctions = diamond },
         };
         read = read with { Report = Report(read) };
         return attached.Regions.Count == 0 ? read with { Refusal = SchematicImageReport.NoSymbolsRefusal } : read;
@@ -396,12 +479,25 @@ public static class SchematicImageReading
         NetLabels = r.NetLabels.Count,
         SupplyMarks = r.SupplyMarks.Count,
         DanglingEnds = r.Dangling.Count,
+        Plates = r.Strokes.Plates, PlatePairs = r.Strokes.PlatePairs, CurvedPlates = r.Strokes.CurvedPlates, Boxes = r.Strokes.Boxes,
+        DimensionArrows = r.Annotations.Count(a => a.Kind == StrokeAnnotationKind.DimensionArrow),
+        CurrentArrows = r.Annotations.Count(a => a.Kind == StrokeAnnotationKind.CurrentArrow),
+        VoltageArrows = r.Annotations.Count(a => a.Kind == StrokeAnnotationKind.VoltageArrow),
+        TerminalArrows = r.Annotations.Count(a => a.Kind == StrokeAnnotationKind.TerminalArrow),
+        SupplyArrows = r.Annotations.Count(a => a.Kind == StrokeAnnotationKind.SupplyArrow),
+        SymbolArrows = r.Annotations.Count(a => a.Kind == StrokeAnnotationKind.SymbolArrow),
+        DashedAnnotations = r.Annotations.Count(a => a.Kind == StrokeAnnotationKind.DashedBox),
+        DashedWires = r.Annotations.Count(a => a.Kind == StrokeAnnotationKind.DashedWire),
+        ZigzagChains = r.Strokes.ZigzagChains,
+        RoundJunctions = r.Strokes.RoundJunctions, SquareJunctions = r.Strokes.SquareJunctions, DiamondJunctions = r.Strokes.DiamondJunctions,
     };
 
     /// <summary>The filled areas of the drawing that are not junction dots — a filled rectangle, a diode's triangle,
-    /// a supply's arrowhead: what survives an opening by a disc 1.5 w in radius, larger than a dot or far from round,
-    /// with its anti-aliased rim. They are symbol, never wire: the skeleton runs straight through a filled rectangle
-    /// between two collinear leads, and without this the whole symbol read as one wire with a dot on it.</summary>
+    /// a supply's arrowhead: what survives an opening by a disc 1.5 w in radius, larger than a dot, far from round or
+    /// not symmetric about its centre (a small filled triangle is dot-sized; a round, square or diamond junction mark is
+    /// symmetric, R-imf3-6), with its anti-aliased rim. They are symbol, never wire: the skeleton runs straight through
+    /// a filled rectangle between two collinear leads, and without this the whole symbol read as one wire with a dot on
+    /// it — and a filled diode as a wire through a junction.</summary>
     internal static BinaryImage Fills(BinaryImage mask, double w, SchematicImageOptions o)
     {
         var open = Morphology.Open(mask, 1.5 * w, o.MaxThreads);
@@ -411,7 +507,7 @@ public static class SchematicImageReading
         foreach (var c in lab.Components)
         {
             int cw = c.Right - c.Left + 1, ch = c.Bottom - c.Top + 1;
-            bool dotLike = cw <= dot && ch <= dot && Math.Max(cw, ch) <= 1.5 * Math.Min(cw, ch);
+            bool dotLike = cw <= dot && ch <= dot && Math.Max(cw, ch) <= 1.5 * Math.Min(cw, ch) && Symmetric(lab, c, open.Width);
             if (!dotLike) keep.Add(c.Label);
         }
         var core = new BinaryImage(mask.Width, mask.Height);
@@ -420,6 +516,28 @@ public static class SchematicImageReading
         var near = Morphology.Dilate(core, 1.0, o.MaxThreads);
         for (int i = 0; i < near.Pixels.Length; i++) near.Pixels[i] &= mask.Pixels[i];
         return near;
+    }
+
+    /// <summary>At least 92 % of the component's pixels have their point reflection through its centroid in it too: a
+    /// disc, a square or a diamond does, a triangle does not.</summary>
+    private static bool Symmetric(ComponentLabels lab, Component c, int width)
+    {
+        double cx = 0, cy = 0;
+        int n = 0;
+        for (int y = c.Top; y <= c.Bottom; y++)
+            for (int x = c.Left; x <= c.Right; x++)
+                if (lab.Labels[y * width + x] == c.Label) { cx += x; cy += y; n++; }
+        if (n < 9) return true;
+        cx /= n; cy /= n;
+        int hit = 0;
+        for (int y = c.Top; y <= c.Bottom; y++)
+            for (int x = c.Left; x <= c.Right; x++)
+            {
+                if (lab.Labels[y * width + x] != c.Label) continue;
+                int rx = (int)Math.Round(2 * cx - x), ry = (int)Math.Round(2 * cy - y);
+                if (rx >= c.Left && rx <= c.Right && ry >= c.Top && ry <= c.Bottom && lab.Labels[ry * width + rx] == c.Label) hit++;
+            }
+        return hit >= 0.92 * n;
     }
 
     /// <summary>The fills of <paramref name="fills"/> wider or taller than <paramref name="size"/> pixels, and their

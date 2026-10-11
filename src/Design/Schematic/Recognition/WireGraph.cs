@@ -13,6 +13,11 @@
 //  * every candidate on a CYCLE of candidates (a box, a triangle): a loop made only of wire is two wires shorting the
 //    same two nodes, which nobody draws, while a symbol's outline is exactly that. At a four-way crossing the cycle is
 //    looked for with the crossing's two straight pairs kept apart, so two wires crossing twice are not a loop.
+// Once the symbol scale s is known (brief-imf-3, R-imf3-1, R-imf3-2) the first rule becomes the picture's: a line
+// with two bare ends that ONE lead meets in its middle is a plate at any length up to 4 s (a heavy pen's plate is
+// 19 w); a line meeting no wire is a stroke up to MaxSymbolStroke w or MaxSymbolStrokeScales s; two lines side by side
+// across a clear strip, 1 w to 1.5 s apart, are a plate pair; a gently curved chain with a lead is a curved plate. A
+// heavy box's sides too short to be wire close its cycle all the same (WirePiece.Side).
 //
 // Nodes are the candidates' ends clustered within 1.5 w (or within a junction dot), with an end that lands on another
 // wire's interior splitting it (a T). A node with two collinear wires is dissolved — one wire. A degree-3 node always
@@ -43,6 +48,10 @@ public sealed record WireSegment(int Id, int From, int To, PointD A, PointD B, W
     double Width, double Residual)
 {
     public double Length => Math.Sqrt((B.x - A.x) * (B.x - A.x) + (B.y - A.y) * (B.y - A.y));
+
+    /// <summary>Drawn as a dashed line in line with a wire (R-imf3-4): it abbreviates a connection — repeated sections
+    /// left out — and is read as an ordinary wire.</summary>
+    public bool Dashed { get; init; }
 }
 
 public enum CrossingReading
@@ -178,7 +187,48 @@ public sealed class WireGraph
         }
         Square(r, w, o, maxResidual);
         Corners(r, w);
+        Sides(r, w, maxResidual);
         return r;
+    }
+
+    /// <summary>A short straight side of a box drawn in a heavy pen (R-imf3-2): the corners fill in, the skeleton's runs
+    /// stop short of each other, and a side cut in two by its lead's T leaves halves under MinWireLength — no candidate,
+    /// so the box's cycle stays open and its long sides are taken for wire. An orthogonal run too short to be a wire,
+    /// straight, with neither end in paper, whose ends both meet the end of an orthogonal run within 1.5 w — at a
+    /// corner on at least one of them — is a <see cref="WirePiece.Side"/>: it closes the cycle the outline makes, and
+    /// is never a wire.</summary>
+    private static void Sides(List<WirePiece> pieces, double w, double maxResidual)
+    {
+        double reach = 1.5 * w + 0.5;
+        bool Orthogonal(WirePiece q) => q.Orientation != WireOrientation.Diagonal;
+        bool Short(WirePiece q) => !q.IsWire && !q.RoundLoop && Orthogonal(q) && !q.FreeA && !q.FreeB
+                                   && q.Residual <= maxResidual && q.Length >= 0.75 * w;
+        var shorts = pieces.Where(Short).ToList();
+        if (shorts.Count == 0) return;
+        // (meets, at a corner). In line, only another short run counts: a side's other half beyond its lead's T. A long
+        // run in line is a wire, and its last pixels before a plate are no side.
+        (bool Meets, bool Corner) At(WirePiece p, PointD end)
+        {
+            bool meets = false, corner = false;
+            foreach (var q in pieces)
+            {
+                if (q == p || !Orthogonal(q) || !(q.IsWire || Short(q))) continue;
+                if (Dist(q.A, end) > reach && Dist(q.B, end) > reach) continue;
+                bool across = q.Orientation != p.Orientation;
+                if (!across && !Short(q)) continue;
+                meets = true;
+                corner |= across;
+            }
+            return (meets, corner);
+        }
+        var sides = new List<WirePiece>();
+        foreach (var p in shorts)
+        {
+            var (ma, ca) = At(p, p.A);
+            var (mb, cb) = At(p, p.B);
+            if (ma && mb && (ca || cb)) sides.Add(p);
+        }
+        foreach (var p in sides) p.Side = true;
     }
 
     /// <summary>A short run that is no wire candidate — curved, or a diagonal too short to be a wire — joining the end of
@@ -210,7 +260,7 @@ public sealed class WireGraph
     /// axis — a side of a small box. Its fit leans on the pixel steps of the corners at its ends (a 3 w side of a box
     /// read 6.5°, a half side beside its lead's T 3–5°), and read as a diagonal it was no wire candidate and left the
     /// box's cycle open, so the box's other sides were taken for wire. A circle's flat bottom leans as little, but
-    /// meets runs at 30° or more, never a square corner.</summary>
+    /// meets runs at 30° or more, never a square corner. So does one carrying straight on from a run on its axis.</summary>
     private static void Square(List<WirePiece> pieces, double w, SchematicImageOptions o, double maxResidual)
     {
         double tol = 12 * Math.PI / 180, reach = 1.5 * w + 0.5;
@@ -228,7 +278,14 @@ public sealed class WireGraph
             if (axis < 0) continue;
             bool Corner(PointD end) =>
                 pieces.Any(q => q != p && Near(q) == 1 - axis && (Dist(q.A, end) <= reach || Dist(q.B, end) <= reach));
-            if (Corner(p.A) && Corner(p.B)) snap.Add((p, axis));
+            // Or carrying straight on from a run on its axis, end to end, to a bare end: a plate's half beside its
+            // lead's T, which leans on the T's pixels as a box's side does on its corners (IMF-3).
+            bool Continues(PointD end) =>
+                (Dist(p.A, end) <= Dist(p.B, end) ? p.FreeB : p.FreeA)
+                && pieces.Any(q => q != p && q.IsWire && (int)q.Orientation == axis
+                                && ((Dist(q.A, end) <= reach && Math.Abs(Local(q.A, q.B, Far(p, end)).Perp) <= Math.Max(1.5, 0.5 * w))
+                                    || (Dist(q.B, end) <= reach && Math.Abs(Local(q.A, q.B, Far(p, end)).Perp) <= Math.Max(1.5, 0.5 * w))));
+            if ((Corner(p.A) && Corner(p.B)) || Continues(p.A) || Continues(p.B)) snap.Add((p, axis));
         }
         foreach (var (p, axis) in snap)
         {
@@ -246,6 +303,8 @@ public sealed class WireGraph
         }
     }
 
+    private static PointD Far(WirePiece p, PointD end) => Dist(p.A, end) <= Dist(p.B, end) ? p.B : p.A;
+
     /// <summary>The indices of the wire candidates that are strokes of symbols — short lines with two bare ends, and
     /// every candidate on a cycle of candidates.</summary>
     /// <param name="sample">When given, collects the symbol scale's samples (PictureProfile, R-imf2-1): the length of
@@ -255,9 +314,12 @@ public sealed class WireGraph
     /// skeleton stops half a pen short of each bare end. An end stopping on a word kept as a symbol detail (a label
     /// touching a plate) is bare for the sample, and one stopping on a fill is not: <paramref name="endAt"/> says which,
     /// or null for the skeleton's own verdict.</param>
+    /// <param name="plates">When given, the rules of R-imf3-1 and R-imf3-2 apply, in its symbol scale: a plate at any
+    /// length, a parallel pair, a curved plate, a heavy box's short sides in the cycle search — and it counts them.
+    /// Without it (the symbol scale's own measurement, before s is known) the strokes are IM-7's.</param>
     internal static HashSet<int> SymbolStrokes(IReadOnlyList<WirePiece> candidates, IReadOnlyList<JunctionBlob> blobs,
                                                double w, SchematicImageOptions o, List<double>? sample = null, double sampleMax = 0,
-                                               Func<PointD, bool?>? endAt = null)
+                                               Func<PointD, bool?>? endAt = null, PlateRules? plates = null)
     {
         var a = Assemble(candidates, [], blobs, w, o, dissolve: false);
         var reject = new HashSet<int>();
@@ -265,34 +327,9 @@ public sealed class WireGraph
 
         // Lines: segments paired straight through a node.
         int ne = a.Edges.Count;
-        var parent = Enumerable.Range(0, ne).ToArray();
-        int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
-        var paired = new HashSet<(int Edge, int Node)>();
+        var (pairsAt, paired, root) = StraightPairs(a, cosSnap);
+        int Find(int x) => root[x];
         var freeLines = new List<(PointD A, PointD B, double Length, bool Tee)>();
-        var pairsAt = new List<(int A, int B)>[a.Nodes.Count];
-        for (int n = 0; n < a.Nodes.Count; n++)
-        {
-            pairsAt[n] = [];
-            var at = a.EdgesAt(n);
-            var cand = new List<(double Cos, int A, int B)>();
-            for (int i = 0; i < at.Count; i++)
-                for (int j = i + 1; j < at.Count; j++)
-                {
-                    if (at[i] == at[j] || !a.Straight(at[i], at[j], n, cosSnap)) continue;
-                    var (ax, ay) = a.Away(at[i], n);
-                    var (bx, by) = a.Away(at[j], n);
-                    cand.Add((ax * bx + ay * by, at[i], at[j]));
-                }
-            var used = new HashSet<int>();
-            foreach (var (_, ea, eb) in cand.OrderBy(t => t.Cos).ThenBy(t => t.A).ThenBy(t => t.B))
-            {
-                if (used.Contains(ea) || used.Contains(eb)) continue;
-                used.Add(ea); used.Add(eb);
-                pairsAt[n].Add((ea, eb));
-                paired.Add((ea, n)); paired.Add((eb, n));
-                parent[Find(ea)] = Find(eb);
-            }
-        }
         foreach (var line in Enumerable.Range(0, ne).GroupBy(Find))
         {
             var ends = new List<int>();
@@ -311,28 +348,67 @@ public sealed class WireGraph
                 freeLines.Add((n0.P, n1.P, Dist(n0.P, n1.P) + w,
                                line.SelectMany(e => new[] { a.Edges[e].From, a.Edges[e].To })
                                    .Any(nd => nd != ends[0] && nd != ends[1] && a.Degree(nd) >= 3)));
+            if (plates is not null)
+            {
+                bool BareEnd(ANode node) => plates.Bare?.Invoke(node.P) ?? node.Free;
+                bool bare0 = BareEnd(n0), bare1 = BareEnd(n1);
+                if (!bare0 && !bare1) continue;
+                double len = Dist(n0.P, n1.P);
+                if (plates.Labelled is { } labelled)
+                {
+                    var mid = new PointD((n0.P.x + n1.P.x) / 2, (n0.P.y + n1.P.y) / 2);
+                    if (labelled(n0.P, mid) && labelled(n1.P, mid)) continue;
+                }
+                var (tees, crossings, teeAt) = Tees(a, line, ends);
+                // One bare end — the other running into an unread glyph — with a lead meeting it is a plate only beside
+                // another (a pair).
+                if (!bare0 || !bare1)
+                {
+                    if (tees == 1 && crossings == 0 && len <= MaxPlate * plates.Symbol)
+                        plates.Lines.Add(new PlateLine(n0.P, n1.P, [.. line.SelectMany(e => a.Edges[e].Piece.Sources)], false) { OneBare = true });
+                    continue;
+                }
+                bool plate = len <= o.MaxSymbolStroke * w
+                             || (tees == 0 && crossings == 0 && len <= o.MaxSymbolStrokeScales * plates.Symbol)
+                             || (tees == 1 && crossings == 0 && len <= MaxPlate * plates.Symbol
+                                 && Local(n0.P, n1.P, teeAt).Along is var t && t >= 0.2 * len && t <= 0.8 * len);
+                if (plate)
+                {
+                    if (tees == 1) plates.Plates++;
+                    foreach (int e in line) foreach (int s in a.Edges[e].Piece.Sources) reject.Add(s);
+                }
+                if (tees <= 1 && crossings == 0 && len <= MaxPlate * plates.Symbol)
+                    plates.Lines.Add(new PlateLine(n0.P, n1.P, [.. line.SelectMany(e => a.Edges[e].Piece.Sources)], plate));
+                continue;
+            }
             if (!n0.Free || !n1.Free) continue;
             if (Dist(n0.P, n1.P) > o.MaxSymbolStroke * w) continue;
             foreach (int e in line) foreach (int s in a.Edges[e].Piece.Sources) reject.Add(s);
         }
+        if (plates is not null) PairsAndCurves(a, paired, pairsAt, plates, w, reject);
 
+        // Cycles — on the candidates and a heavy box's short sides (R-imf3-2), which close its outline but are no
+        // line of their own.
+        var c = plates is null || plates.Sides.Count == 0 ? a : Assemble([.. candidates, .. plates.Sides], [], blobs, w, o, dissolve: false);
+        var cPairs = c == a ? pairsAt : StraightPairs(c, cosSnap).PairsAt;
+        int cne = c.Edges.Count;
         // Cycles: every edge that is not a bridge, with a four-way crossing's two straight pairs kept apart.
         var vertexOf = new Dictionary<(int Node, int Edge), int>();
-        int nv = a.Nodes.Count;
-        for (int n = 0; n < a.Nodes.Count; n++)
-            if (a.Degree(n) == 4 && pairsAt[n].Count == 2)
+        int nv = c.Nodes.Count;
+        for (int n = 0; n < c.Nodes.Count; n++)
+            if (c.Degree(n) == 4 && cPairs[n].Count == 2)
             {
-                vertexOf[(n, pairsAt[n][1].A)] = nv;
-                vertexOf[(n, pairsAt[n][1].B)] = nv;
+                vertexOf[(n, cPairs[n][1].A)] = nv;
+                vertexOf[(n, cPairs[n][1].B)] = nv;
                 nv++;
             }
         int V(int node, int edge) => vertexOf.TryGetValue((node, edge), out int v) ? v : node;
         var adj = new List<(int To, int Edge)>[nv];
         for (int v = 0; v < nv; v++) adj[v] = [];
-        for (int e = 0; e < ne; e++)
+        for (int e = 0; e < cne; e++)
         {
-            int u = V(a.Edges[e].From, e), v = V(a.Edges[e].To, e);
-            if (u == v) { foreach (int s in a.Edges[e].Piece.Sources) reject.Add(s); continue; }
+            int u = V(c.Edges[e].From, e), v = V(c.Edges[e].To, e);
+            if (u == v) { foreach (int s in c.Edges[e].Piece.Sources) reject.Add(s); continue; }
             adj[u].Add((v, e));
             adj[v].Add((u, e));
         }
@@ -340,7 +416,7 @@ public sealed class WireGraph
         var low = new int[nv];
         Array.Fill(disc, -1);
         int time = 0;
-        var bridge = new bool[ne];
+        var bridge = new bool[cne];
         void Dfs(int u, int viaEdge)
         {
             disc[u] = low[u] = time++;
@@ -357,21 +433,21 @@ public sealed class WireGraph
             }
         }
         for (int v = 0; v < nv; v++) if (disc[v] < 0) Dfs(v, -1);
-        for (int e = 0; e < ne; e++)
-            if (!bridge[e] && a.Edges[e].From != a.Edges[e].To)
-                foreach (int s in a.Edges[e].Piece.Sources) reject.Add(s);
+        for (int e = 0; e < cne; e++)
+            if (!bridge[e] && c.Edges[e].From != c.Edges[e].To)
+                foreach (int s in c.Edges[e].Piece.Sources) reject.Add(s);
 
         // Inside an outline: a candidate lying wholly within the box of a connected cycle is drawn in the symbol — a
         // termination's lead carried on through the top of its box to the zig-zag (IM-12). Its length inside depends on
         // the zoom; where the outline is crossed does not.
-        var cycle = Enumerable.Range(0, ne).Where(e => !bridge[e] && a.Edges[e].From != a.Edges[e].To).ToList();
+        var cycle = Enumerable.Range(0, cne).Where(e => !bridge[e] && c.Edges[e].From != c.Edges[e].To).ToList();
         var outline = new Dictionary<int, int>();
-        foreach (int e in cycle) { outline[a.Edges[e].From] = a.Edges[e].From; outline[a.Edges[e].To] = a.Edges[e].To; }
+        foreach (int e in cycle) { outline[c.Edges[e].From] = c.Edges[e].From; outline[c.Edges[e].To] = c.Edges[e].To; }
         int Root(int x) { while (outline[x] != x) x = outline[x] = outline[outline[x]]; return x; }
-        foreach (int e in cycle) outline[Root(a.Edges[e].From)] = Root(a.Edges[e].To);
-        var boxes = cycle.GroupBy(e => Root(a.Edges[e].From)).Select(g =>
+        foreach (int e in cycle) outline[Root(c.Edges[e].From)] = Root(c.Edges[e].To);
+        var boxes = cycle.GroupBy(e => Root(c.Edges[e].From)).Select(g =>
         {
-            var ps = g.SelectMany(e => new[] { a.Edges[e].Piece.A, a.Edges[e].Piece.B }).ToList();
+            var ps = g.SelectMany(e => new[] { c.Edges[e].Piece.A, c.Edges[e].Piece.B }).ToList();
             return (X0: ps.Min(p => p.x), Y0: ps.Min(p => p.y), X1: ps.Max(p => p.x), Y1: ps.Max(p => p.y));
         }).ToList();
         // A plate or a bar carries a lead (a T in it) or stands in a stack of bare lines (a capacitor's other plate, a
@@ -405,30 +481,229 @@ public sealed class WireGraph
                 if (size[Chain(i)] < 3 && (freeLines[i].Tee || stacked[i])) sample.Add(freeLines[i].Length);
         }
         if (sample is not null)
-            foreach (var g in cycle.GroupBy(e => Root(a.Edges[e].From)))
+            foreach (var g in cycle.GroupBy(e => Root(c.Edges[e].From)))
             {
-                var ps = g.SelectMany(e => new[] { a.Edges[e].Piece.A, a.Edges[e].Piece.B }).ToList();
+                var ps = g.SelectMany(e => new[] { c.Edges[e].Piece.A, c.Edges[e].Piece.B }).ToList();
                 if (ps.Max(p => p.x) - ps.Min(p => p.x) > sampleMax || ps.Max(p => p.y) - ps.Min(p => p.y) > sampleMax) continue;
                 // A side is the run of its straight pieces: a lead's T cuts one into two halves.
                 foreach (var side in g.GroupBy(Find))
                 {
-                    var pieces = side.Select(e => a.Edges[e].Piece).ToList();
+                    var pieces = side.Select(e => c.Edges[e].Piece).ToList();
                     if (pieces.Any(p => p.Orientation == WireOrientation.Diagonal)) continue;
                     var ends = pieces.SelectMany(p => new[] { p.A, p.B }).ToList();
                     sample.Add(pieces[0].Orientation == WireOrientation.Horizontal
                         ? ends.Max(p => p.x) - ends.Min(p => p.x) : ends.Max(p => p.y) - ends.Min(p => p.y));
                 }
             }
+        if (plates is not null) plates.Boxes = boxes.Count;
         double tol = w;
         bool In(PointD p, (double X0, double Y0, double X1, double Y1) b) =>
             p.x >= b.X0 - tol && p.x <= b.X1 + tol && p.y >= b.Y0 - tol && p.y <= b.Y1 + tol;
-        for (int e = 0; e < ne; e++)
+        for (int e = 0; e < cne; e++)
         {
-            var p = a.Edges[e].Piece;
+            var p = c.Edges[e].Piece;
             if (p.Sources.Any(reject.Contains)) continue;
             if (boxes.Any(b => In(p.A, b) && In(p.B, b))) foreach (int s in p.Sources) reject.Add(s);
         }
         return reject;
+    }
+
+    /// <summary>The straight pairs at every node of <paramref name="a"/> — the two edges leaving it most nearly opposite,
+    /// repeatedly — which edges are paired at which node, and each edge's line (the union-find root of its pairs).</summary>
+    private static (List<(int A, int B)>[] PairsAt, HashSet<(int Edge, int Node)> Paired, int[] Line) StraightPairs(Assembled a, double cosSnap)
+    {
+        int ne = a.Edges.Count;
+        var parent = Enumerable.Range(0, ne).ToArray();
+        int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
+        var paired = new HashSet<(int Edge, int Node)>();
+        var pairsAt = new List<(int A, int B)>[a.Nodes.Count];
+        for (int n = 0; n < a.Nodes.Count; n++)
+        {
+            pairsAt[n] = [];
+            var at = a.EdgesAt(n);
+            var cand = new List<(double Cos, int A, int B)>();
+            for (int i = 0; i < at.Count; i++)
+                for (int j = i + 1; j < at.Count; j++)
+                {
+                    if (at[i] == at[j] || !a.Straight(at[i], at[j], n, cosSnap)) continue;
+                    var (ax, ay) = a.Away(at[i], n);
+                    var (bx, by) = a.Away(at[j], n);
+                    cand.Add((ax * bx + ay * by, at[i], at[j]));
+                }
+            var used = new HashSet<int>();
+            foreach (var (_, ea, eb) in cand.OrderBy(t => t.Cos).ThenBy(t => t.A).ThenBy(t => t.B))
+            {
+                if (used.Contains(ea) || used.Contains(eb)) continue;
+                used.Add(ea); used.Add(eb);
+                pairsAt[n].Add((ea, eb));
+                paired.Add((ea, n)); paired.Add((eb, n));
+                parent[Find(ea)] = Find(eb);
+            }
+        }
+        return (pairsAt, paired, Enumerable.Range(0, ne).Select(Find).ToArray());
+    }
+
+    /// <summary>A plate is never longer than this many symbol scales, whatever else it meets: the heavy IEC drawing's
+    /// plates are 2.4 s.</summary>
+    internal const double MaxPlate = 4.0;
+
+    /// <summary>The Ts on a line: its interior nodes of degree 3 (a lead meeting it from the side), of degree 4 or more
+    /// (a wire crossing it), and where the last T is.</summary>
+    private static (int Tees, int Crossings, PointD At) Tees(Assembled a, IEnumerable<int> line, List<int> ends)
+    {
+        var interior = line.SelectMany(e => new[] { a.Edges[e].From, a.Edges[e].To }).Where(n => !ends.Contains(n)).Distinct().ToList();
+        int tees = 0, crossings = 0;
+        PointD at = default;
+        foreach (int n in interior)
+        {
+            int d = a.Degree(n);
+            if (d == 3) { tees++; at = a.Nodes[n].P; }
+            else if (d >= 4) crossings++;
+        }
+        return (tees, crossings, at);
+    }
+
+    /// <summary>R-imf3-1's other two plates. A pair: two lines with bare ends side by side, 1 w to 1.5 s apart, the strip
+    /// between them clear of ink — a datasheet's hairline plates set far apart, whose lead may stop short — or a line
+    /// with one bare end (the other running into a glyph that touches it) beside a plate. A curved
+    /// plate: a chain of runs bending gently (each turn under 45°) between two bare ends, its chord no longer than
+    /// 1.5 s, with one lead meeting it, or lying within 45° of a plate's direction across a clear strip.</summary>
+    private static void PairsAndCurves(Assembled a, HashSet<(int Edge, int Node)> paired, List<(int A, int B)>[] pairsAt,
+                                       PlateRules plates, double w, HashSet<int> reject)
+    {
+        double s = plates.Symbol;
+        if (s <= 0) return;
+        bool Clear(PointD p0, PointD p1, PointD q0, PointD q1)
+        {
+            if (plates.Ink is null) return true;
+            // The midline between the two, over their common length, a pen in from each end.
+            for (int k = 1; k < 8; k++)
+            {
+                double f = k / 8.0;
+                var m = new PointD((p0.x + (p1.x - p0.x) * f + q0.x + (q1.x - q0.x) * f) / 2,
+                                   (p0.y + (p1.y - p0.y) * f + q0.y + (q1.y - q0.y) * f) / 2);
+                if (plates.Ink(m)) return false;
+            }
+            return true;
+        }
+        // Side by side: q's ends projected on p, over at least half the shorter, 1 w … 1.5 s across, within 45°.
+        bool Facing(PointD p0, PointD p1, PointD q0, PointD q1, double maxTurnDeg, out PointD r0, out PointD r1)
+        {
+            r0 = q0; r1 = q1;
+            double lp = Dist(p0, p1), lq = Dist(q0, q1);
+            if (lp < 1e-9 || lq < 1e-9) return false;
+            double cos = Math.Abs(((p1.x - p0.x) * (q1.x - q0.x) + (p1.y - p0.y) * (q1.y - q0.y)) / (lp * lq));
+            if (cos < Math.Cos(maxTurnDeg * Math.PI / 180)) return false;
+            var (a0, d0) = Local(p0, p1, q0);
+            var (a1, d1) = Local(p0, p1, q1);
+            double across = Math.Abs((d0 + d1) / 2);
+            if (across < w || across > 1.5 * s) return false;
+            double overlap = Math.Min(lp, Math.Max(a0, a1)) - Math.Max(0, Math.Min(a0, a1));
+            if (overlap < 0.5 * Math.Min(lp, lq)) return false;
+            if (a0 > a1) (r0, r1) = (q1, q0);
+            return Math.Max(lp, lq) <= 2.5 * Math.Min(lp, lq);
+        }
+
+        var lines = plates.Lines;
+        for (int i = 0; i < lines.Count; i++)
+            for (int j = i + 1; j < lines.Count; j++)
+            {
+                var (p, q) = (lines[i], lines[j]);
+                if (p.Plate && q.Plate) continue;
+                if ((p.OneBare || q.OneBare) && !p.Plate && !q.Plate) continue;
+                if (!Facing(p.A, p.B, q.A, q.B, 10, out var r0, out var r1) || !Clear(p.A, p.B, r0, r1)) continue;
+                plates.PlatePairs++;
+                foreach (int x in p.Sources.Concat(q.Sources)) reject.Add(x);
+                lines[i] = p with { Plate = true };
+                lines[j] = q with { Plate = true };
+            }
+
+        // A line with one bare end and no partner among the candidates (the other plate dropped as a glyph's stroke of
+        // a label touching it): a stroke of ink as long, parallel, across a clear strip.
+        if (plates.Ink is { } ink)
+            for (int i = 0; i < lines.Count; i++)
+            {
+                var p = lines[i];
+                if (p.Plate || !p.OneBare) continue;
+                double lp = Dist(p.A, p.B);
+                double nx = -(p.B.y - p.A.y) / lp, ny = (p.B.x - p.A.x) / lp;
+                bool found = false;
+                foreach (int side in new[] { 1, -1 })
+                    for (double d = Math.Max(w, 2); d <= 1.5 * s && !found; d += 0.5)
+                    {
+                        PointD At(PointD q, double off) => new(q.x + side * nx * off, q.y + side * ny * off);
+                        int hits = 0;
+                        for (int k = 1; k < 8; k++)
+                        {
+                            double f = k / 8.0;
+                            if (ink(At(new PointD(p.A.x + (p.B.x - p.A.x) * f, p.A.y + (p.B.y - p.A.y) * f), d))) hits++;
+                        }
+                        if (hits < 7) continue;
+                        found = Clear(At(p.A, w), At(p.B, w), At(p.A, d - w), At(p.B, d - w));
+                        break;   // the nearest stroke beside it decides
+                    }
+                if (!found) continue;
+                plates.PlatePairs++;
+                foreach (int x in p.Sources) reject.Add(x);
+                lines[i] = p with { Plate = true };
+            }
+
+        // Curves: edges joined at a node where they turn gently and are no straight pair.
+        int ne = a.Edges.Count;
+        var parent = Enumerable.Range(0, ne).ToArray();
+        int Find(int x) { while (parent[x] != x) x = parent[x] = parent[parent[x]]; return x; }
+        var joined = new HashSet<(int Edge, int Node)>();
+        bool bent = false;
+        var bentGroups = new HashSet<int>();
+        for (int n = 0; n < a.Nodes.Count; n++)
+        {
+            var at = a.EdgesAt(n);
+            foreach (var (ea, eb) in pairsAt[n]) { parent[Find(ea)] = Find(eb); joined.Add((ea, n)); joined.Add((eb, n)); }
+            if (at.Count is < 2 or > 3) continue;
+            var free = at.Where(e => !paired.Contains((e, n))).ToList();
+            (int A, int B, double Turn)? best = null;
+            for (int i = 0; i < free.Count; i++)
+                for (int j = i + 1; j < free.Count; j++)
+                {
+                    if (free[i] == free[j]) continue;
+                    var (ax, ay) = a.Away(free[i], n);
+                    var (bx, by) = a.Away(free[j], n);
+                    double turn = Math.PI - Math.Acos(Math.Clamp(ax * bx + ay * by, -1, 1));
+                    if (turn <= Math.PI / 4 && (best is null || turn < best.Value.Turn)) best = (free[i], free[j], turn);
+                }
+            if (best is not { } b) continue;
+            parent[Find(b.A)] = Find(b.B);
+            joined.Add((b.A, n)); joined.Add((b.B, n));
+            bent = true;
+            bentGroups.Add(b.A);
+        }
+        if (!bent) return;
+        var groupsBent = bentGroups.Select(Find).ToHashSet();
+        foreach (var g in Enumerable.Range(0, ne).GroupBy(Find))
+        {
+            if (!groupsBent.Contains(g.Key)) continue;
+            var ends = new List<int>();
+            foreach (int e in g)
+            {
+                var (f, t) = (a.Edges[e].From, a.Edges[e].To);
+                if (!joined.Contains((e, f))) ends.Add(f);
+                if (!joined.Contains((e, t))) ends.Add(t);
+            }
+            if (ends.Count != 2 || a.Degree(ends[0]) != 1 || a.Degree(ends[1]) != 1) continue;
+            var (n0, n1) = (a.Nodes[ends[0]], a.Nodes[ends[1]]);
+            if (!(plates.Bare?.Invoke(n0.P) ?? n0.Free) || !(plates.Bare?.Invoke(n1.P) ?? n1.Free)) continue;
+            double chord = Dist(n0.P, n1.P);
+            if (chord > 1.5 * s || chord < 2 * w) continue;
+            var nodes = g.SelectMany(e => new[] { a.Edges[e].From, a.Edges[e].To }).Distinct().ToList();
+            double sag = nodes.Max(n => Math.Abs(Local(n0.P, n1.P, a.Nodes[n].P).Perp));
+            if (sag > 0.35 * chord) continue;
+            var (tees, crossings, _) = Tees(a, g, ends);
+            if (crossings > 0 || tees > 1) continue;
+            bool plate = tees == 1 || lines.Any(l => l.Plate && Facing(l.A, l.B, n0.P, n1.P, 45, out var r0, out var r1) && Clear(l.A, l.B, r0, r1));
+            if (!plate) continue;
+            plates.CurvedPlates++;
+            foreach (int e in g) foreach (int x in a.Edges[e].Piece.Sources) reject.Add(x);
+        }
     }
 
     /// <summary>The graph of <paramref name="wires"/>, with each hop's two halves joined across the wire it hops.</summary>
@@ -474,7 +749,8 @@ public sealed class WireGraph
             var (pa, pb) = (a.Nodes[ed.From].P, a.Nodes[ed.To].P);
             if (f > t) { (f, t) = (t, f); (pa, pb) = (pb, pa); }
             segId[e] = segments.Count;
-            segments.Add(new WireSegment(segments.Count, f, t, pa, pb, ed.Piece.Orientation, ed.Piece.Width, ed.Piece.Residual));
+            segments.Add(new WireSegment(segments.Count, f, t, pa, pb, ed.Piece.Orientation, ed.Piece.Width, ed.Piece.Residual)
+                         { Dashed = ed.Piece.Dashed });
         }
 
         // Crossings and nets.
@@ -778,6 +1054,7 @@ public sealed class WireGraph
                 p.Width = (e1.Piece.Width + e2.Piece.Width) / 2;
                 p.Residual = Math.Max(e1.Piece.Residual, e2.Piece.Residual);
                 if (e1.Piece.Orientation != e2.Piece.Orientation) p.Orientation = WireOrientation.Diagonal;
+                p.Dashed = e1.Piece.Dashed || e2.Piece.Dashed;
                 p.Sources = [.. e1.Piece.Sources.Concat(e2.Piece.Sources).Distinct().OrderBy(s => s)];
                 a.Edges.RemoveAt(Math.Max(at[0], at[1]));
                 a.Edges.RemoveAt(Math.Min(at[0], at[1]));
@@ -896,6 +1173,12 @@ internal sealed class WirePiece
     /// <summary>Cut from a small round loop of the skeleton — a terminal's circle — and so never a wire.</summary>
     public bool RoundLoop;
 
+    /// <summary>A short side of a box (R-imf3-2): looked at by the cycle search only, never a wire.</summary>
+    public bool Side;
+
+    /// <summary>Stands for a dashed line in line with a wire (R-imf3-4).</summary>
+    public bool Dashed;
+
     /// <summary>The runs it was made from (indices into the first list of pieces).</summary>
     public List<int> Sources = [];
 
@@ -915,3 +1198,35 @@ internal sealed record JunctionBlob(PointD Centre, double Radius);
 /// <summary>A hop: the wire ends at <paramref name="End1"/> and <paramref name="End2"/> are one wire, crossing the
 /// other at <paramref name="At"/> without connecting to it.</summary>
 internal sealed record HopJoin(PointD End1, PointD End2, PointD At);
+
+/// <summary>A line with two bare ends, at most one lead and no crossing: a plate, or one of a pair (R-imf3-1).</summary>
+internal sealed record PlateLine(PointD A, PointD B, IReadOnlyList<int> Sources, bool Plate)
+{
+    /// <summary>Only one of its ends is bare: a plate only beside a plate.</summary>
+    public bool OneBare { get; init; }
+}
+
+/// <summary>What the stroke rules of R-imf3-1 and R-imf3-2 need — the symbol scale, whether an end is bare and where
+/// the ink is — and what they found, for the report (R-imf3-7).</summary>
+internal sealed class PlateRules
+{
+    /// <summary>The symbol scale s, read pixels.</summary>
+    public double Symbol { get; init; }
+
+    /// <summary>Whether a line's end at a point stops in bare paper; null for the skeleton's verdict.</summary>
+    public Func<PointD, bool?>? Bare { get; init; }
+
+    /// <summary>Whether a line's end (the first point) stops at a word clear of its middle (the second): one with a word
+    /// off both ends is a labelled wire. A word lying along the line — a ground's lower bars read as type — is not.</summary>
+    public Func<PointD, PointD, bool>? Labelled { get; init; }
+
+    /// <summary>Whether a point is ink — a pair's strip must be clear.</summary>
+    public Func<PointD, bool>? Ink { get; init; }
+
+    /// <summary>The short sides of heavy boxes (WirePiece.Side): in the cycle search, never wire.</summary>
+    public IReadOnlyList<WirePiece> Sides { get; init; } = [];
+
+    public int Plates, PlatePairs, CurvedPlates, Boxes;
+
+    internal readonly List<PlateLine> Lines = [];
+}

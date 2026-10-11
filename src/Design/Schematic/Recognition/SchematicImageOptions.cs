@@ -91,6 +91,11 @@ public sealed record SchematicImageOptions
     /// capacitor plate, a ground bar, a supply bar — not a wire.</summary>
     public double MaxSymbolStroke { get; init; } = 16.0;
 
+    /// <summary>Symbol scale: a straight line meeting no wire, with BOTH ends stopping in nothing, is a stroke of a symbol
+    /// up to this many symbol scales s long as well (R-imf3-1) — a datasheet's hairline plates and bars at 2× are longer
+    /// than MaxSymbolStroke pens. A line a lead meets is a plate at any length.</summary>
+    public double MaxSymbolStrokeScales { get; init; } = 1.0;
+
     /// <summary>Pen: a junction dot's diameter is at least this many w …</summary>
     public double MinDot { get; init; } = 2.0;
 
