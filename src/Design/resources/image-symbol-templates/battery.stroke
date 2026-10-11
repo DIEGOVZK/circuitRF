@@ -1,0 +1,11 @@
+# A battery: a long plate (pin 1, positive) and a short one.
+kind source
+variant battery
+check battery
+convention A battery: a long plate, the positive, and a short one.
+pin + 0 -100
+pin - 0 100
+line 0 -100 0 -12
+line 0 12 0 100
+line -50 -12 50 -12
+line -22 12 22 12

@@ -1,0 +1,13 @@
+# A DC source: a circle with + by its positive lead (pin 1) and − by its negative.
+kind source
+variant dc
+check marked
+convention A DC voltage source: a circle with + and −, the + by pin 1.
+pin + 0 -100
+pin - 0 100
+line 0 -100 0 -45
+line 0 45 0 100
+circle 0 0 45
+line -9 -20 9 -20
+line 0 -29 0 -11
+line -9 20 9 20

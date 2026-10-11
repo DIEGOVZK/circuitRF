@@ -1,0 +1,12 @@
+# A current source: a circle with an arrow in it pointing from pin 2 to pin 1, the way the current leaves.
+kind source
+variant current
+check marked
+convention A current source: a circle with an arrow along its leads.
+pin 1 0 -100
+pin 2 0 100
+line 0 -100 0 -45
+line 0 45 0 100
+circle 0 0 45
+line 0 28 0 -20
+loop -10 -14 10 -14 0 -30

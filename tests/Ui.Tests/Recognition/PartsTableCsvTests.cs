@@ -128,4 +128,47 @@ public sealed class PartsTableCsvTests
         Assert.Null(read.Table!.Row("C99"));
         Assert.Equal(table.Rows.Count, read.Table.Rows.Count);
     }
+
+    /// <summary>brief-imf-5 R-imf5-8: a picture's own kinds — a transistor with its polarity, a source AC or DC with its
+    /// volts, a current source, a coupling with its k, a bead, a diode with its part number — round-trip; a transistor's
+    /// polarity is an edit, its kind is not, and none of them is an artwork part's.</summary>
+    [Fact]
+    public void APicturesDeviceKindsRoundTrip_AndATransistorChangesOnlyItsPolarity()
+    {
+        PartRow Row(string refdes, PartKind kind, int pads, PartConnection connection, string? variant = null, double? value = null) => new()
+        {
+            Refdes = refdes, Kind = kind, Variant = variant, Connection = connection, PadCount = pads, Value = value,
+            Variable = value is null && kind is PartKind.V or PartKind.I or PartKind.K && variant != "AC" ? $"{refdes}_{kind}" : null,
+        };
+        var picture = new PartsTable(
+        [
+            Row("D1", PartKind.D, 2, PartConnection.Series) with { PartNumber = "1N4002" },
+            Row("FB1", PartKind.Bead, 2, PartConnection.Series),
+            Row("I1", PartKind.I, 2, PartConnection.Shunt),
+            Row("Q1", PartKind.Q, 3, PartConnection.MultiPin, "NPN"),
+            Row("T1", PartKind.K, 0, PartConnection.Series),
+            Row("V1", PartKind.V, 2, PartConnection.Shunt, "AC"),
+            Row("V2", PartKind.V, 2, PartConnection.Shunt, "DC", 12),
+        ], CircuitRF.Design.RailRf.RailLengthFormat.Dbu, null) { Pixels = true };
+        string text = PartsTableCsv.Write(picture);
+        Assert.Contains("Q1,Q NPN,", text);
+        Assert.Contains("V2,V DC,shunt,,12 V,", text);
+
+        var read = PartsTableCsv.Read(text, picture);
+        Assert.Empty(read.Notes);
+        Assert.Equal(text, PartsTableCsv.Write(read.Table!));
+
+        var edited = PartsTableCsv.Read(text.Replace("Q1,Q NPN,", "Q1,Q PNP,").Replace("T1,K,series,,,", "T1,K,series,,0.95,")
+                                            .Replace("V2,V DC,shunt,,12 V,", "V2,V DC,shunt,,5V,"), picture).Table!;
+        Assert.Equal((PartKind.Q, "PNP"), (edited.Row("Q1")!.Kind, edited.Row("Q1")!.Variant));
+        Assert.Equal(0.95, edited.Row("T1")!.Value);
+        Assert.Equal(5, edited.Row("V2")!.Value);
+        var kept = PartsTableCsv.Read(text.Replace("Q1,Q NPN,", "Q1,R,"), picture);
+        Assert.Equal(PartKind.Q, kept.Table!.Row("Q1")!.Kind);
+        Assert.Contains(kept.Notes, n => n.StartsWith("Q1 is Q NPN", StringComparison.Ordinal));
+
+        var artwork = Recognised();
+        var refused = PartsTableCsv.Read(Csv(artwork, (r, c) => r == "R1" && c == "Kind" ? "Bead" : null), artwork);
+        Assert.Equal(PartKind.R, refused.Table!.Row("R1")!.Kind);
+    }
 }

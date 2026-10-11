@@ -1,0 +1,11 @@
+# An AC source: a circle with one cycle of a sine across it, a lead top and bottom.
+kind source
+variant ac
+check marked
+convention An AC source: a circle with a sine in it.
+pin 1 0 -100
+pin 2 0 100
+line 0 -100 0 -45
+line 0 45 0 100
+circle 0 0 45
+line -25.0 0.0 -22.92 -3.11 -20.83 -6.0 -18.75 -8.49 -16.67 -10.39 -14.58 -11.59 -12.5 -12.0 -10.42 -11.59 -8.33 -10.39 -6.25 -8.49 -4.17 -6.0 -2.08 -3.11 0.0 -0.0 2.08 3.11 4.17 6.0 6.25 8.49 8.33 10.39 10.42 11.59 12.5 12.0 14.58 11.59 16.67 10.39 18.75 8.49 20.83 6.0 22.92 3.11 25.0 0.0

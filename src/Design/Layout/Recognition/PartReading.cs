@@ -500,6 +500,9 @@ public static class PartReading
     {
         PartKind.R => UnitDimension.Resistance,
         PartKind.L => UnitDimension.Inductance,
+        PartKind.V => UnitDimension.Voltage,
+        PartKind.I => UnitDimension.Current,
+        PartKind.K => UnitDimension.None,
         _ => UnitDimension.Capacitance,
     };
 

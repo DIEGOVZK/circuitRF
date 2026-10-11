@@ -1,0 +1,10 @@
+# Two hairline plates with a wide gap between them, as a datasheet draws them: plates two and a half gaps long.
+kind capacitor
+convention A capacitor of two flat plates, the gap between them wide — a datasheet's hairline drawing.
+check capacitor
+pin 1 0 -100
+pin 2 0 100
+line 0 -100 0 -20
+line 0 20 0 100
+line -50 -20 50 -20
+line -50 20 50 20

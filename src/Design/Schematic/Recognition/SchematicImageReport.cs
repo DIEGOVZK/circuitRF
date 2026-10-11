@@ -29,6 +29,7 @@ public sealed record SchematicImageReport
 
     /// <summary>Dots of a background grid removed.</summary>
     public int GridDotsRemoved { get; init; }
+    public int HatchesClosed { get; init; }
 
     /// <summary>Whether a border frame (and the title block drawn on it) was removed.</summary>
     public bool BorderRemoved { get; init; }
@@ -130,6 +131,7 @@ public sealed record SchematicImageReport
         if (DeskewDeg != 0)
             r.Add("Straightened by " + DeskewDeg.ToString("0.##", CultureInfo.InvariantCulture) + "°.");
         if (GridDotsRemoved > 0) r.Add($"Background grid removed ({Count(GridDotsRemoved, "dot")}).");
+        if (HatchesClosed > 0) r.Add($"{Count(HatchesClosed, "hatched stroke")} closed into the {(HatchesClosed == 1 ? "line it draws" : "lines they draw")}.");
         if (BorderRemoved) r.Add("Border frame removed.");
         r.Add(Count(Words, "word") + " found.");
         if (WordsKeptAsSymbolDetail > 0)

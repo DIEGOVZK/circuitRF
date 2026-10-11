@@ -311,7 +311,10 @@ public sealed partial class ImageOverlay
         }
 
         // Symbols, as parts: the parts-table row's designator where there is one, so a row and its box name each other.
-        var rowOf = result.Circuit?.SymbolOfRow.ToDictionary(kv => kv.Value, kv => kv.Key) ?? [];
+        // A transformer is three rows on one symbol — its two coils and its coupling — and its box names the coupling's,
+        // the transformer's own designator (the shortest of the three).
+        var rowOf = result.Circuit?.SymbolOfRow.GroupBy(kv => kv.Value)
+                          .ToDictionary(g => g.Key, g => g.Select(kv => kv.Key).MinBy(k => k.Length)!) ?? [];
         var rows = result.Parts;
         var labels = result.Labels?.Symbols.ToDictionary(l => l.Symbol) ?? [];
         var syms = result.Symbols?.Symbols ?? [];

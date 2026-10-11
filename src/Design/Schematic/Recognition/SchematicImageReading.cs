@@ -73,6 +73,9 @@ public sealed record SchematicImageRead
     /// <summary>The picture's own scales and the factors its tolerances took (R-imf2-1).</summary>
     public PictureProfile? Profile { get; init; }
 
+    /// <summary>The symbol scale s in the read picture's pixels; 0 when the profile has none.</summary>
+    public double SymbolScale => (Profile?.Symbol.Px ?? 0) * Scale;
+
     /// <summary>The source picture's size.</summary>
     public int SourceWidth { get; init; }
     public int SourceHeight { get; init; }
@@ -86,6 +89,9 @@ public sealed record SchematicImageRead
     public PixelBox? Border { get; init; }
 
     public int GridDotsRemoved { get; init; }
+
+    /// <summary>Hatched strokes closed into the strokes they draw (R-imf5-3).</summary>
+    public int HatchesClosed { get; init; }
 
     /// <summary>The drawing grid the picture shows (an editor's canvas), in source pixels; null when it shows none.</summary>
     public PictureGrid? Grid { get; init; }
@@ -229,7 +235,7 @@ public static class SchematicImageReading
         {
             StrokeWidth = w, TextStrokeWidth = inkW, Thickened = thick, DeskewDeg = n.Deskew, Scale = k,
             SourceWidth = source.Width, SourceHeight = source.Height, Width = n.Raster.Width, Height = n.Raster.Height,
-            Border = n.Border, GridDotsRemoved = n.Grid,
+            Border = n.Border, GridDotsRemoved = n.Grid, HatchesClosed = n.Hatches,
             Grid = PictureGrids.Detect(source), Profile = profile, Report = new SchematicImageReport(),
         };
 
@@ -395,7 +401,16 @@ public static class SchematicImageReading
         var scales = new RegionScales(symbol.Px, plates.Outlines, PlatePairs(plates.Lines, symbol.Px, w)) { Circles = circles };
         var raw = SymbolRegions.Group(residue, first, w, o, scales, regionCounts);
         var (hops, hopRegions) = SymbolRegions.Hops(raw, mask.Width, first, w, o);
-        var graph = hops.Count > 0 ? WireGraph.Build(wires, hops, blobs, w, o, flips) : first;
+        // A variable resistor's arrow (R-imf5-3): the stretch of its shaft standing out of the body, read as a short
+        // slanting wire with one bare end that points into a region, is the arrow's — off the wires, so the body keeps
+        // its two leads and the classifier finds the rest of the arrow across it.
+        var tails = ArrowTails(wires, first, raw, symbol.Px, w);
+        if (tails.Count > 0) wires = [.. wires.Where(p => !tails.Contains(p))];
+        // A part standing on a wire at a junction dot with no lead of its own between them — a bias tee's coil drawn down
+        // onto its rail (R-imf5-4): a stub from the dot to the part, so the wire is split there and the part has an end.
+        var taps = Taps(wires, first, raw, blobs, mask.Width, o.Attach * w + w / 2 + 1, w);
+        if (taps.Count > 0) wires = [.. wires, .. taps];
+        var graph = hops.Count > 0 || tails.Count > 0 || taps.Count > 0 ? WireGraph.Build(wires, hops, blobs, w, o, flips) : first;
         var regions = raw.Where((_, j) => !hopRegions.Contains(j)).ToList();
         var attached = SymbolRegions.Attach(regions, mask.Width, graph, allWords, w, o);
         for (int i = 0; i < attached.Regions.Count; i++)
@@ -428,6 +443,68 @@ public static class SchematicImageReading
         };
         read = read with { Report = Report(read) };
         return attached.Regions.Count == 0 ? read with { Refusal = SchematicImageReport.NoSymbolsRefusal } : read;
+    }
+
+    /// <summary>The slanting wire pieces that are an arrow's tail standing out of a symbol (R-imf5-3): no longer than
+    /// 1.5 s, one end bare in paper, the other a wire end alone at a region, and the line through them running on into
+    /// that region's ink.</summary>
+    private static HashSet<WirePiece> ArrowTails(List<WirePiece> wires, WireGraph graph, List<RawRegion> regions, double s, double w)
+    {
+        var r = new HashSet<WirePiece>();
+        foreach (var p in wires)
+        {
+            if (p.Orientation != WireOrientation.Diagonal || p.FreeA == p.FreeB || p.Length > 1.5 * s) continue;
+            var (bare, inner) = p.FreeA ? (p.A, p.B) : (p.B, p.A);
+            if (!graph.Ends.Any(e => Math.Abs(e.X - inner.x) <= w && Math.Abs(e.Y - inner.y) <= w)) continue;
+            double len = WireGraph.Dist(bare, inner);
+            if (len < 1) continue;
+            double ux = (inner.x - bare.x) / len, uy = (inner.y - bare.y) / len;
+            // On into a region: a point a third of a symbol scale beyond the inner end lies in a region's box.
+            double qx = inner.x + ux * s / 3, qy = inner.y + uy * s / 3;
+            if (regions.Any(g => g.Box.Distance(inner.x, inner.y) <= 1.5 * w && g.Box.Distance(qx, qy) == 0)) r.Add(p);
+        }
+        return r;
+    }
+
+    /// <summary>A stub from a junction dot on a wire's interior toward a region no wire end reaches whose ink comes within
+    /// <paramref name="reach"/> of the dot's edge (R-imf5-4) — toward its nearest ink outside the dot, and at least two
+    /// pens beyond the dot, so the dot and the stub's far end stay two nodes.</summary>
+    private static List<WirePiece> Taps(List<WirePiece> wires, WireGraph graph, List<RawRegion> regions, IReadOnlyList<JunctionBlob> blobs,
+                                        int width, double reach, double w)
+    {
+        var r = new List<WirePiece>();
+        foreach (var g in regions)
+        {
+            if (graph.Ends.Any(e => g.Box.Distance(e.X, e.Y) <= reach)) continue;
+            foreach (var b in blobs)
+            {
+                if (g.Box.Distance(b.Centre.x, b.Centre.y) > b.Radius + reach) continue;
+                // On a wire: through its interior, or where two of its pieces meet at the dot.
+                var on = wires.FirstOrDefault(p => WireGraph.Local(p.A, p.B, b.Centre) is var (along, perp)
+                                                   && Math.Abs(perp) <= Math.Max(w, b.Radius) && along >= -b.Radius && along <= p.Length + b.Radius);
+                if (on is null) continue;
+                // The way to the part: its nearest ink outside the dot (its foot may run into the dot itself).
+                double D(int i) => Math.Sqrt(Math.Pow(i % width + 0.5 - b.Centre.x, 2) + Math.Pow(i / width + 0.5 - b.Centre.y, 2));
+                var outside = g.Pixels.Where(i => D(i) > b.Radius + 0.5).ToList();
+                if (outside.Count == 0) continue;
+                int nearest = outside.MinBy(D);
+                double px = nearest % width + 0.5, py = nearest / width + 0.5, d = D(nearest);
+                if (d > b.Radius + reach) continue;
+                double ux = (px - b.Centre.x) / d, uy = (py - b.Centre.y) / d, len = Math.Max(d, b.Radius + 2 * w);
+                // Drawn across or down where it is within 30° of either: a lead is, and the part's ink nearest the dot is
+                // often a hump beside the lead's line rather than on it.
+                if (Math.Abs(ux) < 0.5) (ux, uy) = (0, Math.Sign(uy));
+                else if (Math.Abs(uy) < 0.5) (ux, uy) = (Math.Sign(ux), 0);
+                var end = new PointD(b.Centre.x + ux * len, b.Centre.y + uy * len);
+                r.Add(new WirePiece
+                {
+                    A = b.Centre, B = end, Width = w, IsWire = true, Angle = Math.Atan2(uy, ux) is var a && a < 0 ? a + Math.PI : a,
+                    Orientation = Math.Abs(ux) < 0.2 ? WireOrientation.Vertical : Math.Abs(uy) < 0.2 ? WireOrientation.Horizontal : WireOrientation.Diagonal,
+                });
+                break;
+            }
+        }
+        return r;
     }
 
     /// <summary>The words in reading order, numbered again, each placed against the closed outlines (R-imf4-2): inside an
@@ -483,7 +560,11 @@ public static class SchematicImageReading
     /// <param name="Pen">The run-width mode: the w the binarised line work is read at.</param>
     /// <param name="InkPen">The pen as drawn (PictureProfile.InkPen), 0 when unmeasured.</param>
     private sealed record Normalised(RasterImage Raster, BinaryImage Mask, double Deskew, double Pen, double InkPen, int PenSamples,
-                                     PixelBox? Border, int Grid);
+                                     PixelBox? Border, int Grid)
+    {
+        /// <summary>Hatched strokes closed (R-imf5-3).</summary>
+        public int Hatches { get; init; }
+    }
 
     private static Normalised Normalise(RasterImage picture, SchematicImageOptions o, CancellationToken token)
     {
@@ -513,8 +594,10 @@ public static class SchematicImageReading
         int speck = Math.Max(2, (int)Math.Ceiling(0.25 * w * w));
         mask = Morphology.Despeckle(mask, speck);
         mask = Morphology.Despeckle(mask.Inverted(), speck).Inverted();
+        // A stroke drawn hatched (R-imf5-3): its ticks closed into the stroke before the type and the regions are read.
+        mask = Hatching.Close(mask, w, out int hatches);
         var (ink, inkSamples) = PictureProfile.InkPen(raster, mask);
-        return new Normalised(raster, mask, deskew, w, ink, ink > 0 ? inkSamples : samples, border, grid);
+        return new Normalised(raster, mask, deskew, w, ink, ink > 0 ? inkSamples : samples, border, grid) { Hatches = hatches };
     }
 
     /// <summary>The pen to read at, read pixels: the stated one (source pixels × the scale) or the measured one.</summary>
@@ -542,7 +625,7 @@ public static class SchematicImageReading
         StrokeWidth = r.StrokeWidth / r.Scale,
         Profile = r.Profile,
         DeskewDeg = r.DeskewDeg,
-        GridDotsRemoved = r.GridDotsRemoved,
+        GridDotsRemoved = r.GridDotsRemoved, HatchesClosed = r.HatchesClosed,
         BorderRemoved = r.Border is not null,
         Words = r.Words.Count,
         WordsKeptAsSymbolDetail = r.KeptText.Count,

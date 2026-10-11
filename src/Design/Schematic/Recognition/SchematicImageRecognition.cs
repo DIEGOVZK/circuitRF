@@ -382,7 +382,7 @@ public static class SchematicImageRecognition
         var circuit = SchematicImageEmit.Build(read, symbols, labels, input.Options.Overrides, new SchematicEmitOptions
         {
             Emit = emit, Technology = input.Technology, TechnologyPath = input.TechnologyPath,
-            PartsCsvText = input.PartsCsvText, PartsCsvPath = input.PartsCsvPath, Frame = frame,
+            PartsCsvText = input.PartsCsvText, PartsCsvPath = input.PartsCsvPath, Frame = frame, Words = words,
         }, report, out string? refusal);
         return new SchematicImageResult(read, symbols, words, labels, circuit, report, refusal);
     }

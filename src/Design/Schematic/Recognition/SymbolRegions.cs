@@ -26,7 +26,8 @@ using CircuitRF.Design.Imaging;
 
 namespace CircuitRF.Design.Schematic.Recognition;
 
-/// <summary>A wire end reaching a symbol region, and the unit direction its wire arrives in.</summary>
+/// <summary>Where a wire meets a symbol region: the wire's end node — −1 for a lead that ends in paper, an open pin
+/// (R-imf5-4) — where it is, and the direction the wire arrives in.</summary>
 public sealed record SymbolAttachment(int Node, double X, double Y, double DirX, double DirY);
 
 /// <summary>One symbol on the picture, not yet named (IM-8 names it).</summary>
@@ -66,7 +67,7 @@ internal sealed record EnvelopeCircle(double X, double Y, double R, PixelBox Box
 }
 
 /// <summary>Why two pieces were not merged (R-imf4-1, R-imf4-2).</summary>
-internal enum Refusal { None, Gap, Lead, Size, Pins, Outline }
+internal enum MergeRefusal { None, Gap, Lead, Size, Pins, Outline }
 
 /// <summary>What the region growing did, for the report (R-imf4-6).</summary>
 internal sealed class RegionCounts
@@ -159,7 +160,7 @@ internal static class SymbolRegions
 
         // Merged closest first (R-imf4-1): a capacitor's two plates join before either joins the part beside it, so a
         // runaway's cut (R-imf4-5) falls between parts, not through one.
-        var refused = new Dictionary<(int, int), Refusal>();
+        var refused = new Dictionary<(int, int), MergeRefusal>();
         while (true)
         {
             (int I, int J, double Gap) best = (-1, -1, double.MaxValue);
@@ -175,7 +176,7 @@ internal static class SymbolRegions
                     {
                         if (boxes[i].Distance(boxes[j]) >= scales.Symbol) continue;
                         (gap, var why) = Merge(i, j);
-                        if (why != Refusal.None) refused[(i, j)] = why;
+                        if (why != MergeRefusal.None) refused[(i, j)] = why;
                         else refused.Remove((i, j));
                     }
                     if (gap is { } g && g < best.Gap) best = (i, j, g);
@@ -198,35 +199,35 @@ internal static class SymbolRegions
             if (!alive[i] || !alive[j]) continue;
             switch (why)
             {
-                case Refusal.Gap: counts.RefusedGap++; break;
-                case Refusal.Lead: counts.RefusedLead++; break;
-                case Refusal.Size: counts.RefusedSize++; break;
-                case Refusal.Pins: counts.RefusedPins++; break;
-                case Refusal.Outline: counts.RefusedOutline++; break;
+                case MergeRefusal.Gap: counts.RefusedGap++; break;
+                case MergeRefusal.Lead: counts.RefusedLead++; break;
+                case MergeRefusal.Size: counts.RefusedSize++; break;
+                case MergeRefusal.Pins: counts.RefusedPins++; break;
+                case MergeRefusal.Outline: counts.RefusedOutline++; break;
             }
         }
 
         // Whether i and j are one part, and the gap between them; null and why when they are two (R-imf4-1, R-imf4-2).
-        (double? Gap, Refusal Why) Merge(int i, int j)
+        (double? Gap, MergeRefusal Why) Merge(int i, int j)
         {
             var (a, b) = (boxes[i], boxes[j]);
             // A closed outline takes in what lies inside it, and nothing outside merges into it.
             if (closed[i] is not null || closed[j] is not null)
             {
-                if (closed[i] is { } oi && Inside(b, oi, w)) return (0, Refusal.None);
-                if (closed[j] is { } oj && Inside(a, oj, w)) return (0, Refusal.None);
-                return (null, FacingGap(a, b, wires) is not null ? Refusal.Outline : Refusal.None);
+                if (closed[i] is { } oi && Inside(b, oi, w)) return (0, MergeRefusal.None);
+                if (closed[j] is { } oj && Inside(a, oj, w)) return (0, MergeRefusal.None);
+                return (null, FacingGap(a, b, wires) is not null ? MergeRefusal.Outline : MergeRefusal.None);
             }
-            if (Inside(a, b, 0) || Inside(b, a, 0)) return (0, Refusal.None);
-            if (FacingGap(a, b, wires) is not { } face) return (null, Refusal.None);
+            if (Inside(a, b, 0) || Inside(b, a, 0)) return (0, MergeRefusal.None);
+            if (FacingGap(a, b, wires) is not { } face) return (null, MergeRefusal.None);
             // Shorter than a symbol scale, and still shorter than the larger one's extent along the faces, as IM-7 had it:
             // a label beside a small part is no part of it.
-            if (face.Gap >= Math.Min(scales!.Symbol, face.Extent)) return (null, Refusal.Gap);
-            if (LeadFacing(ends[i], a, face.Side) || LeadFacing(ends[j], b, (-face.Side.X, -face.Side.Y))) return (null, Refusal.Lead);
+            if (face.Gap >= Math.Min(scales!.Symbol, face.Extent)) return (null, MergeRefusal.Gap);
+            if (LeadFacing(ends[i], a, face.Side) || LeadFacing(ends[j], b, (-face.Side.X, -face.Side.Y))) return (null, MergeRefusal.Lead);
             var u = a.Union(b);
-            if (Math.Min(u.Width, u.Height) > MaxRegionScales * scales.Symbol) return (null, Refusal.Size);
-            if (at[i] + at[j] > MaxMergedPins && (at[i] < 3 || at[j] < 3)) return (null, Refusal.Pins);
-            return (face.Gap, Refusal.None);
+            if (Math.Min(u.Width, u.Height) > MaxRegionScales * scales.Symbol) return (null, MergeRefusal.Size);
+            if (at[i] + at[j] > MaxMergedPins && (at[i] < 3 || at[j] < 3)) return (null, MergeRefusal.Pins);
+            return (face.Gap, MergeRefusal.None);
         }
 
         var r = new List<RawRegion>();
@@ -569,6 +570,7 @@ internal static class SymbolRegions
             }
             var mask = new BinaryImage(reg.Box.Width, reg.Box.Height);
             foreach (int i in reg.Pixels) mask.Pixels[(i / width - reg.Box.Top) * mask.Width + (i % width - reg.Box.Left)] = 1;
+            if (at[k].Count == 1 && FreeLead(reg, width, at[k][0], w) is { } free) at[k].Add(free);
             result.Regions.Add(new SymbolRegion(result.Regions.Count, reg.Box, reg.Pixels.Count, at[k], mask));
         }
 
@@ -595,6 +597,30 @@ internal static class SymbolRegions
             else result.Dangling.Add(end.Id);
         }
         return result;
+    }
+
+    /// <summary>A lead with no wire on it (R-imf5-4): the far end of a region drawn along its one wire — twice as long
+    /// that way as it is across — when it ends in a straight stub on that wire's line, a pen and a half wide, a pen and a
+    /// half or a fourteenth of the part long. Its node is −1: the pin is open. A pointed flag's tip is narrow for less than a pen,
+    /// and a ground's bars are wider than long.</summary>
+    private static SymbolAttachment? FreeLead(RawRegion reg, int width, SymbolAttachment a, double w)
+    {
+        double ux = a.DirX, uy = a.DirY;
+        if (ux == 0 && uy == 0) return null;
+        var pts = reg.Pixels.Select(i =>
+        {
+            double dx = i % width + 0.5 - a.X, dy = i / width + 0.5 - a.Y;
+            return (T: dx * ux + dy * uy, A: -dx * uy + dy * ux);
+        }).ToList();
+        double tMax = pts.Max(p => p.T), across = pts.Max(p => p.A) - pts.Min(p => p.A) + 1;
+        if (tMax < 2 * across) return null;
+        double stub = Math.Max(1.5 * w, tMax / 14);
+        var tip = pts.Where(p => p.T >= tMax - stub).ToList();
+        if (tip.Count == 0 || tip.Max(p => p.A) - tip.Min(p => p.A) + 1 > 1.5 * w + 1 || Math.Abs(tip.Average(p => p.A)) > w) return null;
+        // Every slice of the stub carries ink: a straight run, not a scatter of ends.
+        for (double t = tMax - stub; t <= tMax - 1; t += 1)
+            if (!tip.Any(p => p.T >= t && p.T < t + 1.5)) return null;
+        return new SymbolAttachment(-1, a.X + ux * tMax, a.Y + uy * tMax, -ux, -uy);
     }
 
     /// <summary>For each region, the wire ends stopping within Attach w of one of its pixels — each end going to the

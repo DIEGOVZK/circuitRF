@@ -1,0 +1,12 @@
+# A battery of two cells: long, short, long, short.
+kind source
+variant battery
+convention A battery of two cells: long and short plates in turn, the first long one the positive.
+pin + 0 -100
+pin - 0 100
+line 0 -100 0 -30
+line 0 30 0 100
+line -50 -30 50 -30
+line -22 -10 22 -10
+line -50 10 50 10
+line -22 30 22 30

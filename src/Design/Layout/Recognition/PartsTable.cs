@@ -34,6 +34,26 @@ public enum PartKind
 
     /// <summary>Left out: a series one is an open, a shunt one is removed.</summary>
     Ignore,
+
+    // The kinds a schematic PICTURE reads beside R, L and C (brief-imf-5 R-imf5-8). An artwork's table never has one.
+
+    /// <summary>A diode; its part number, where the picture prints one, in <see cref="PartRow.PartNumber"/>.</summary>
+    D,
+
+    /// <summary>A transistor; <see cref="PartRow.Variant"/> its polarity: NPN, PNP, NFET, PFET.</summary>
+    Q,
+
+    /// <summary>A voltage source; <see cref="PartRow.Variant"/> AC (a P1Tone) or DC (a Vdc — a battery or a supply too).</summary>
+    V,
+
+    /// <summary>A DC current source.</summary>
+    I,
+
+    /// <summary>A coupling between a transformer's coils: its value is the coefficient k.</summary>
+    K,
+
+    /// <summary>A ferrite bead.</summary>
+    Bead,
 }
 
 /// <summary>How a part's two pads sit on the board (R-as4-3) — measured, never stated.</summary>
@@ -110,6 +130,10 @@ public sealed record PartRow
 
     public string? PartNumber { get; init; }
 
+    /// <summary>Which of its kind a picture's part is, where the kind has several (brief-imf-5 R-imf5-8): a Q's polarity
+    /// (NPN, PNP, NFET, PFET), a V's AC or DC. Written in the Kind column after the kind; null for every other kind.</summary>
+    public string? Variant { get; init; }
+
     /// <summary>The part's centre, DBU.</summary>
     public long X { get; init; }
     public long Y { get; init; }
@@ -149,8 +173,12 @@ public sealed record PartRow
     /// <summary>The kind the circuit is built with: an unknown kind is a capacitor (D10).</summary>
     public PartKind GeneratedKind => Kind == PartKind.Unknown ? PartKind.C : Kind;
 
-    /// <summary>Whether the row's kind takes a value.</summary>
-    public bool TakesValue => GeneratedKind is PartKind.R or PartKind.L or PartKind.C;
+    /// <summary>Whether the row's kind takes a value: R, L, C, a DC source's volts or amps, a coupling's k.</summary>
+    public bool TakesValue => GeneratedKind is PartKind.R or PartKind.L or PartKind.C or PartKind.I or PartKind.K
+                              || GeneratedKind == PartKind.V && Variant != "AC";
+
+    /// <summary>An R, an L or a C — what the two-terminal passive emit builds.</summary>
+    public bool IsPassive => GeneratedKind is PartKind.R or PartKind.L or PartKind.C;
 
     /// <summary>
     /// The initial value of the variable an unknown value becomes (R-as4-5): TRANSPARENT, so the first
@@ -164,11 +192,16 @@ public sealed record PartRow
         (PartKind.C, true) => 0.01e-12,
         (PartKind.L, true) => 1e-6,
         (PartKind.R, true) => 1e6,
+        (PartKind.K, _) => 0.99,
         _ => 0,
     };
 
-    /// <summary>The parameter a value is: <c>C</c>, <c>L</c> or <c>R</c>.</summary>
-    public string ParameterName => GeneratedKind switch { PartKind.R => "R", PartKind.L => "L", _ => "C" };
+    /// <summary>The parameter a value is: <c>C</c>, <c>L</c> or <c>R</c>; a source's <c>V</c> or <c>I</c>, a coupling's
+    /// <c>K</c>.</summary>
+    public string ParameterName => GeneratedKind switch
+    {
+        PartKind.R => "R", PartKind.L => "L", PartKind.V => "V", PartKind.I => "I", PartKind.K => "K", _ => "C",
+    };
 
     /// <summary>The variable name an unknown value takes: <c>&lt;Refdes&gt;_&lt;Param&gt;</c>, the
     /// designator's non-identifier characters made underscores.</summary>
@@ -209,12 +242,34 @@ public sealed record PartsTable(IReadOnlyList<PartRow> Rows, RailRf.RailLengthFo
     /// <summary>Kind as the table spells it.</summary>
     public static string KindText(PartKind k) => k == PartKind.Unknown ? "?" : k.ToString();
 
-    public static PartKind? ParseKind(string? text)
+    /// <summary>A row's kind as the Kind column spells it: the kind, then its variant — <c>Q NPN</c>, <c>V AC</c>.</summary>
+    public static string KindText(PartRow row) => row.Variant is { } v ? $"{KindText(row.Kind)} {v}" : KindText(row.Kind);
+
+    /// <summary>The variants each kind that has them takes (R-imf5-8).</summary>
+    public static IReadOnlyList<string> Variants(PartKind k) => k switch
     {
-        string t = (text ?? "").Trim();
-        if (t is "?" or "") return t == "?" ? PartKind.Unknown : null;
+        PartKind.Q => ["NPN", "PNP", "NFET", "PFET"],
+        PartKind.V => ["AC", "DC"],
+        _ => [],
+    };
+
+    public static PartKind? ParseKind(string? text) => ParseKindAndVariant(text)?.Kind;
+
+    /// <summary>A Kind cell: the kind, and its variant where the kind has variants — required then, refused otherwise.</summary>
+    public static (PartKind Kind, string? Variant)? ParseKindAndVariant(string? text)
+    {
+        var words = (text ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (words.Length is 0 or > 2) return null;
+        if (words[0] == "?") return words.Length == 1 ? (PartKind.Unknown, null) : null;
         foreach (var k in Enum.GetValues<PartKind>())
-            if (k != PartKind.Unknown && string.Equals(t, k.ToString(), StringComparison.OrdinalIgnoreCase)) return k;
+        {
+            if (k == PartKind.Unknown || !string.Equals(words[0], k.ToString(), StringComparison.OrdinalIgnoreCase)) continue;
+            var variants = Variants(k);
+            if (variants.Count == 0) return words.Length == 1 ? (k, null) : null;
+            if (words.Length != 2) return null;
+            string? v = variants.FirstOrDefault(x => string.Equals(x, words[1], StringComparison.OrdinalIgnoreCase));
+            return v is null ? null : (k, v);
+        }
         return null;
     }
 
@@ -234,11 +289,16 @@ public sealed record PartsTable(IReadOnlyList<PartRow> Rows, RailRf.RailLengthFo
     /// figures (<see cref="RecognitionEmitOptions.Spell"/>); null writes every figure the table does.</summary>
     public static string ValueText(double si, PartKind kind, int? digits)
     {
-        string unit = kind switch { PartKind.R => "Ohm", PartKind.L => "H", _ => "F" };
+        if (kind == PartKind.K)
+            return digits is int kd ? RecognitionEmitOptions.Spell(si, kd) : si.ToString("0.############", CultureInfo.InvariantCulture);
+        string unit = kind switch { PartKind.R => "Ohm", PartKind.L => "H", PartKind.V => "V", PartKind.I => "A", _ => "F" };
         if (si == 0) return $"0 {unit}";
-        (double Scale, string Prefix)[] prefixes = kind == PartKind.R
-            ? [(1e9, "G"), (1e6, "M"), (1e3, "k"), (1, ""), (1e-3, "m")]
-            : [(1, ""), (1e-3, "m"), (1e-6, "u"), (1e-9, "n"), (1e-12, "p"), (1e-15, "f")];
+        (double Scale, string Prefix)[] prefixes = kind switch
+        {
+            PartKind.R => [(1e9, "G"), (1e6, "M"), (1e3, "k"), (1, ""), (1e-3, "m")],
+            PartKind.V or PartKind.I => [(1e3, "k"), (1, ""), (1e-3, "m"), (1e-6, "u"), (1e-9, "n")],
+            _ => [(1, ""), (1e-3, "m"), (1e-6, "u"), (1e-9, "n"), (1e-12, "p"), (1e-15, "f")],
+        };
         double a = Math.Abs(si);
         var (scale, prefix) = prefixes.FirstOrDefault(p => a >= p.Scale * 0.999_999_999, prefixes[^1]);
         string number = digits is int d ? RecognitionEmitOptions.Spell(si / scale, d)

@@ -19389,3 +19389,35 @@ R-imf4-1 rules, close on outlines and envelope circles, and a runaway is re-cut 
   wire — drop the wire runs lying inside the circle and read the wires again, or the transistor has five wire ends.
 - **Equal runs between boxes on one line read as dashes** (IMF-3's rule) at a large stated symbol scale — draw test
   pictures with runs of different lengths.
+
+## Two-pin parts, transformers, transistors and sources as datasheets and textbooks draw them (2026-10-11, brief-imf-5)
+
+Each region is named: the datasheets' capacitors, diodes and resistors, the textbooks' heavy, hatched and variable
+resistors, looped coils, transformers, transistors in their circles and source circles; a transistor is circuitRF's own
+BJT or FET and a source a P1Tone or a Vdc (owner decisions O1, O2). Design note §21. Traps worth keeping:
+
+- **A filled diode lost to the filled IEC inductor, not to a missing template.** The diode template already took filled
+  regions; the filled-rectangle template scored within the kind margin of it. A filled box must fill its box — measured
+  on the ink deeper than 0.6 w, because the opening `Solid` is decided by rounds a triangle toward a disc, which fills
+  its box as well as a rectangle does.
+- **An enveloped transistor template matches a large junction dot** with three wires (a field picture): the circle is
+  all it needs. The envelope's inner disc must be mostly paper. Likewise a source circle matched an empty outline (IM-8's
+  blob): a source must have its mark inside.
+- **Hatch ticks are type before they are anything else.** Closing them inside the region (the brief) is too late: the
+  word finder lifts them first and no region forms. They are replaced at normalisation by the line through them, and
+  only when the ticks lie ACROSS their chain — a dashed fixture box's dashes lie along theirs and are IMF-3's.
+- **A transistor's polarity cannot be read off template overlap** when the picture's proportions differ from circuitRF's
+  own drawing; the arrowhead is read directly — its filled core, the axis through it, which way it tapers — sampled
+  INSIDE the head (within its inradius): beyond the base, the arm's width is measured and the two sides look alike.
+- **The lead leaves a hole in a plate at the axis.** The wire is taken off the ink with its own width, so the plate's
+  run across the axis is broken exactly where a structure check looks for it; a reach "contiguous through the axis"
+  read 0 for one plate and passed a battery as a capacitor.
+- **The across window of a gap is the plates', not 0.5 s.** With a derived s smaller than the plates, the window cut
+  off a rectangle's joining sides and read two bars joined at their ends as a capacitor.
+- **A variable resistor's arrow tail outside the body is a wire** with one bare end; it is taken off the wires before
+  the regions attach, or the resistor has three pins and is cut out.
+- **A transformer is three parts-table rows on one symbol**; the overlay inverted `SymbolOfRow` with `ToDictionary` and
+  would have thrown.
+- **The IMF-4 merge-refusal enum was named `Refusal`**, which `ImageRecognizeCliVerbTests.TheVerbs_OwnNoImageProcessing`
+  forbids src/Cli to name — and src/Cli says `Refusal` everywhere. Renamed `MergeRefusal`.
+

@@ -1846,3 +1846,123 @@ On the downloaded corpus the largest region falls everywhere: `picture-ds-g2` 18
 **Seen, not fixed (IMF-3's).** A wire through two IEC resistor boxes on one line, its three runs of one length, reads
 as a dashed line at a large stated symbol scale: each run stops at a box side, which the dash rule takes for a wire
 crossing it. `SymbolRegionsMergeTests` draws its runs of different lengths for that reason.
+
+## 21. IMF-5 — two-pin parts, transformers, transistors and sources, as datasheets and textbooks draw them
+
+IMF-4 left one region per part; IMF-5 names it. New drawings are `.stroke` files (`capacitor-wide`, `coil-looped-3…5`,
+`source-ac`, `source-dc`, `source-plus`, `supply-plus`, `source-current`, `battery`, `battery-two-cells`,
+`transformer-core`, `transformer-air`, `transformer-centre-tap`); the four transistors gain an enveloped twin composed
+from their built-in drawing (`SymbolTemplates.Enveloped`). A template carries a `Variant` (`npn`, `ac`, `looped` …)
+which the circuit is made with. The structure checks measure a drawing's lengths in the symbol scale s and a pen's in w
+(the classifier is handed `SchematicImageRead.SymbolScale`), and three are new.
+
+### 21.1 Capacitors (R-imf5-1)
+
+`capacitor-wide` draws a datasheet's plates, two and a half gaps long. The capacitor check wants a band of bare paper
+no wider than 1.5 s between two plates each at least min(2.5 w, 0.4 s) long — and neither under 0.55 of the other,
+which is a battery's. The ink it looks at is the ink within the plates' own reach of the axis: the unbroken ink across
+the axis just inside each lead, the lead's hole at the axis allowed (the wire is taken off the plate there). A label
+standing beyond a plate's end is then beside the part; a rectangle's joining sides are not. Where no template takes a
+two-pin region, it is read once more with the ink beyond the plates' reach trimmed off (`PlateTrim`) and taken only as
+a capacitor — `ds-rf-amp-1x`'s C3, whose `C3` touches its plate's end. A `+` word beside one plate makes that plate's
+lead pin 1 (the emit). The curved plate is pin 2 in `capacitor-curved`; the datasheet curves read best as
+`capacitor-wide`, and the circuit's C has no polarity.
+
+### 21.2 Diodes (R-imf5-2)
+
+The diode template already took filled regions; what lost was the filled IEC inductor, within the kind margin of it.
+`iec-inductor` now asks that the filled ink fill three quarters of its box (`FilledBox`), measured on the ink deeper
+than 0.6 w — the opening `Solid` is decided by rounds a triangle toward a disc. The diode asks for no band of bare
+paper between its leads (`Diode`), which a capacitor has. Diodes are parts-table rows (`D`); a word under a diode's or
+transistor's designator is its value word, and the row takes it as its `PartNumber`.
+
+### 21.3 Resistors (R-imf5-3)
+
+The zig-zag's swing must reach 0.1 s (and half a pen), binned at the finer of w and s/16: a heavy and a hairline
+zig-zag both alternate. A **variable** resistor: a two-pin body crossed by a straight run of ink at 20°–70° to its axis,
+crossing it between the leads, longer than 1.2 s or half the body (`CrossingArrow`) — no zig-zag leg is — is read again
+with that run and the arrowhead at its wider end erased, and is a resistor `Variable`, reported "its value is one
+setting". Where the arrow's tail stands out of the body it is read as a short slanting wire with one bare end; the
+reader takes such a wire off (`ArrowTails`) before the regions attach, or the resistor has three pins.
+
+**Hatched** (deviation): the brief closes a hatched zig-zag inside its region. On the picture the ticks never reach a
+region — the word finder takes a row of glyph-sized pieces for type and lifts them. `Hatching.Close`, at normalisation,
+finds a chain of twelve or more small pieces of one size, most 1.6 times as long as wide and lying ACROSS the chain
+(a dashed line's dashes lie along it), and redraws it as the line through the ticks — the shortest tree joining their
+centres, at the line work's pen. The region-level close by w stays for a region that still arrives in many pieces.
+
+### 21.4 Coils and beads (R-imf5-4)
+
+`coil-looped-3…5` are prolate cycloids that start and end on the leads' line; the coil check passes a looped coil on
+three loops in its centre line, or (loops the skeleton merged) three dips of a whole w in its nearest approach to the
+axis. `loop-coil-names`' coil has no wire end at all — its foot stands on its rail at a junction dot and its head is a
+free lead — so two things not in the brief: a **tap** (`Taps`) draws a stub from a dot on a wire's interior to a region
+no wire end reaches, snapped across or down; and a **free lead** (`FreeLead`) gives a one-ended region drawn along its
+wire, twice as long as across, a second pin with no node where it ends in a straight stub on that line. The free pin
+stands only when it makes a part; it is an open net of its own. A box marked `BEAD`, or a filled box on a supply net (a
+supply mark's, or one a `V…` word names), is a ferrite bead: `Bead`, its parameters the defaults, reported.
+
+### 21.5 Transformers (R-imf5-5)
+
+Two coils facing across a core or a gap, four pins, or five with a centre tap (the classifier reads regions of up to
+five ends). Emitted as drawn: an L per coil — a centre tap splits its coil in two — and a `Mutual` for each pair. A
+Mutual takes M, not k, so M is `k*sqrt(L1*L2)` written over the coils' own values or variables; k from a word beside it
+(`k=0.95`), else the tunable global `<ref>_K` at 0.99. In the parts table a transformer is three rows on one symbol —
+its coils (`T1_L1`, `T1_L2`) and its coupling (`T1`, kind `K`). No committed style picture draws one; the
+`SymbolMatchTests` drawing holds it.
+
+### 21.6 Transistors (R-imf5-6, O1)
+
+Each transistor template has an enveloped twin: the built-in drawing with a circle a tenth wider than its body, its
+leads cut where they cross it, as IMF-4 cuts a picture's wires. The envelope's inner disc must be mostly paper
+(`Envelope`): a large junction dot with three wires on a field picture matched the circle alone. **Polarity is read off
+the arrow**, not the template: the arrowhead is the region's deepest ink, its axis the main direction of the ink round
+it, and it tapers toward its tip — sampled inside the head, within its inradius, since beyond the base the arm's own
+width is read. A BJT's arrow pointing at its emitter pin is an n-p-n; a FET's pointing away from its gate pin an
+n-channel. Emitted as `BJT_NPN`, `BJT_PNP`, `FET_Curtice` or `PFET_Curtice` on the template's pins (c, b, e; g, d, s),
+every parameter its default, reported "with the default model — set its parameters". A three-pin region that is no
+transistor is still an S-parameter block. **Not read** (deviation): a transistor drawn without its circle — its bar
+and arms are straight strokes the wire reader takes for wire; the corpus draws every transistor in a circle, and the
+brief's PNP gate drawing is drawn in one.
+
+### 21.7 Sources (R-imf5-7, O2)
+
+Circles with a sine, with + and −, with a + alone (two leads, or one: a supply), with an arrow, and the long-short
+battery (one and two cells). A source circle must have its mark inside (`Marked`) — an empty circle between two leads
+is no source — and a battery's plates must differ (`Battery`). AC is a `P1Tone`, numbered first among the ports, its
+`Pavl` and `Freq` from a word beside it (`-10 dBm`, `105MHz`) or the tunable globals `<ref>_Pavl` (0 dBm) and
+`<ref>_Freq` (1 GHz); its minus is the pin on ground. DC, a battery and a supply are a `Vdc` whose value is a word
+beside it (`6V`, the last word of `Vs 6V`) or the global `<ref>_V` at 0 V, + first, minus on ground (a supply circle's
+minus is ground); a current circle an `I_1Tone` with its `Idc`.
+
+### 21.8 The parts table, the report, the overlay (R-imf5-8)
+
+`PartKind` gains `D`, `Q`, `V`, `I`, `K` and `Bead`, and `PartRow` a `Variant`, written in the Kind column after the
+kind — `Q NPN`, `V AC` — and read back (`PartsTable.ParseKindAndVariant`). A V or I row's value is volts or amps and a
+K row's is k (`PartsTableCsv.TryReadValue`). A Q row may change only its polarity and a K row only its value; the
+picture's kinds are refused on an artwork's table. The symbol report counts the variants and the variable resistors;
+the emit names each device and its default model; the overlay's label carries the variant (`Transistor NPN`,
+`Source AC`, `Resistor (variable)`).
+
+### 21.9 The field numbers after IMF-5
+
+The committed style pictures (`ImageFieldTests.TheCommittedStylePictures_AreScored`), against §20.6's:
+
+| picture | kinds | ? | topo | dev | what moved |
+|---|---|---|---|---|---|
+| ds-regulator-1x / 2x | 4/7, 5/7 → **7/7** | 4, 3 → 1 | no → **yes** | — | filled diodes, R2 variable at both scales; the circuit is the answer's |
+| ds-rf-amp-1x / 2x | 3/5, 4/5 → **5/5** | 3, 6 → 2, 5 | no | — | hairline wide-gap plates; C3 read with its label trimmed off |
+| ds-gain-block-1x / 2x | 2/5 → 4/5 | 5, 14 → 5, 12 | no | — | hairline plates |
+| ds-ldo-1x / 2x | 2/2 | 1 | yes | — | unchanged |
+| heavy-iec | 6/8 → 7/8 | 5 → 1 | no | 0/3 → **3/3** | the BJT (NPN, pins by role), the P1Tone, the Vdc; C1's heavy plates |
+| loop-coil-names | 1/2 → **2/2** | 0 | no | — | the looped coil, by its tap and its free lead |
+| typeset | 2/5 | 1 → 0 | no | 0/1 → **1/1** | the ± circle is a Vdc |
+| textbook-zigzag | 0/2 | 2 | no | — | its C's italic label is tucked inside the plates' span and joins both (IMF-7) |
+
+The rest topology is still no for IMF-6's ports, IMF-7's type and IMF-8's IC boxes and triangles. On the downloaded
+corpus: `picture-c` devices 0/3 → 3/3 and `?` 5 → 3; `picture-h` devices 0/2 → 1/2, `?` 11 → 10; `picture-ds-d1`/`d2` kinds 2/7, 0/7 →
+4/7 both, `?` 5 → 3, 1; `picture-b` 1/4 → 2/4; `picture-e` 4/5 → 5/5; `picture-d`'s hatch is redrawn but its italic `R`
+joins the region (IMF-7). One crop lost a part by kind, `picture-ds-b2` 3/4 → 2/4; not examined here.
+
+**Not done here.** The gain block's triangle is still open at 1× and the test circuit's solid block box still two
+regions; both skip reasons name IMF-5 and stay — they are the triangles' and boxes' phase (IMF-8) as much as this one.

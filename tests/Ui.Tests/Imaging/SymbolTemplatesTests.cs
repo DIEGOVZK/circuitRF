@@ -17,7 +17,8 @@ public sealed class SymbolTemplatesTests
         Assert.NotEmpty(builtIn);
         foreach (var t in builtIn.Where(t => !t.Composed))
             Assert.Equal(BuiltInSymbols.Primitives(t.Source!.Value).Pins.Count, t.Pins.Count);
-        // The stubs are the TLIN drawing with one lead left off.
-        Assert.All(builtIn.Where(t => t.Composed), t => Assert.Single(t.Pins));
+        // The stubs are the TLIN drawing with one lead left off; a transistor in its envelope circle keeps its pins.
+        Assert.All(builtIn.Where(t => t.Composed), t => Assert.Equal(
+            t.Kind is ImageSymbolKind.OpenStub or ImageSymbolKind.ShortStub ? 1 : BuiltInSymbols.Primitives(t.Source!.Value).Pins.Count, t.Pins.Count));
     }
 }

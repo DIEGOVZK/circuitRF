@@ -40,7 +40,7 @@ public enum ImageSymbolKind
     OpenStub,
     Diode,
 
-    /// <summary>A FET or a BJT — an S-parameter block (D9).</summary>
+    /// <summary>A FET or a BJT — circuitRF's own, by the template's <see cref="SymbolTemplate.Variant"/> (IMF O1).</summary>
     Transistor,
 
     /// <summary>An amplifier triangle — an S-parameter block (D9).</summary>
@@ -48,6 +48,16 @@ public enum ImageSymbolKind
 
     /// <summary>A generic IC box — an S-parameter block (D9).</summary>
     Ic,
+
+    /// <summary>A source circle or a battery (R-imf5-7): AC, DC, a supply or a current, by the template's
+    /// <see cref="SymbolTemplate.Variant"/>.</summary>
+    Source,
+
+    /// <summary>Two coils facing each other (R-imf5-5): two L and a Mutual.</summary>
+    Transformer,
+
+    /// <summary>A ferrite bead (R-imf5-4): a box marked BEAD, or a filled box on a supply line.</summary>
+    Bead,
 }
 
 /// <summary>The structure rule a template's match must also pass (R-im8-4).</summary>
@@ -66,6 +76,21 @@ public enum StructureCheck
 
     /// <summary>Bars shrinking away from the one attachment.</summary>
     Ground,
+
+    /// <summary>No band of bare paper across the axis between the leads: a triangle joins its base to its bar (R-imf5-2).</summary>
+    Diode,
+
+    /// <summary>The filled ink fills its box: a rectangle, not a triangle (R-imf5-2).</summary>
+    FilledBox,
+
+    /// <summary>Two bars with bare paper between, one clearly shorter: a battery, not a capacitor (R-imf5-7).</summary>
+    Battery,
+
+    /// <summary>An envelope circle with paper inside it — a transistor's, not a junction dot's (R-imf5-6).</summary>
+    Envelope,
+
+    /// <summary>A circle with a mark drawn inside it — a source's sine, sign or arrow, not an empty outline (R-imf5-7).</summary>
+    Marked,
 }
 
 /// <summary>Whether a template is drawn filled.</summary>
@@ -95,6 +120,11 @@ public sealed record SymbolTemplate(
     string Name, ImageSymbolKind Kind, string Convention, IReadOnlyList<TemplatePin> Pins,
     IReadOnlyList<double[]> Strokes, StructureCheck Check, TemplateFill Fill, SymbolKind? Source, bool Composed = false)
 {
+    /// <summary>Which of its kind the drawing is, where the kind has several (IMF-5): a transistor's <c>npn</c>,
+    /// <c>pnp</c>, <c>nfet</c>, <c>pfet</c>; a source's <c>ac</c>, <c>dc</c>, <c>supply</c>, <c>battery</c>,
+    /// <c>current</c>; a coil's <c>looped</c>. Null when the kind has one.</summary>
+    public string? Variant { get; init; }
+
     public override string ToString() => Name;
 }
 
@@ -131,14 +161,41 @@ public static class SymbolTemplates
             FromSymbol(SymbolKind.Mlin, ImageSymbolKind.TransmissionLine, "A rounded box: a trace."),
             FromSymbol(SymbolKind.Cpwg, ImageSymbolKind.TransmissionLine, "A trace between two coplanar grounds."),
             FromSymbol(SymbolKind.Slin, ImageSymbolKind.TransmissionLine, "A trace between two planes."),
-            FromSymbol(SymbolKind.Diode, ImageSymbolKind.Diode, "A triangle pointing at a bar."),
-            FromSymbol(SymbolKind.FetCurtice, ImageSymbolKind.Transistor, "An n-channel FET: a gate onto an unbroken channel."),
-            FromSymbol(SymbolKind.PFetCurtice, ImageSymbolKind.Transistor, "A p-channel FET: a gate onto an unbroken channel."),
-            FromSymbol(SymbolKind.BjtNpn, ImageSymbolKind.Transistor, "An n-p-n BJT: base bar, arrow out of the emitter."),
-            FromSymbol(SymbolKind.BjtPnp, ImageSymbolKind.Transistor, "A p-n-p BJT: base bar, arrow into the base."),
+            FromSymbol(SymbolKind.Diode, ImageSymbolKind.Diode, "A triangle pointing at a bar.", StructureCheck.Diode),
         };
+        foreach (var (kind, variant, convention) in Transistors)
+        {
+            r.Add(FromSymbol(kind, ImageSymbolKind.Transistor, convention) with { Variant = variant });
+            r.Add(Enveloped(kind, variant, convention));
+        }
         r.AddRange(Stubs());
         return r;
+    }
+
+    /// <summary>The four transistors and the variant each is (R-imf5-6).</summary>
+    private static readonly (SymbolKind Kind, string Variant, string Convention)[] Transistors =
+    [
+        (SymbolKind.FetCurtice, "nfet", "An n-channel FET: a gate onto an unbroken channel."),
+        (SymbolKind.PFetCurtice, "pfet", "A p-channel FET: a gate onto an unbroken channel."),
+        (SymbolKind.BjtNpn, "npn", "An n-p-n BJT: base bar, arrow out of the emitter."),
+        (SymbolKind.BjtPnp, "pnp", "A p-n-p BJT: base bar, arrow into the base."),
+    ];
+
+    /// <summary>A transistor drawn in its envelope circle (R-imf5-6): the built-in drawing with a circle about its body
+    /// — its leads cut where they cross it, as a picture's wires are (IMF-4 drops the runs inside a circle).</summary>
+    private static SymbolTemplate Enveloped(SymbolKind source, string variant, string convention)
+    {
+        var sym = BuiltInSymbols.Primitives(source);
+        var strokes = Flatten(sym.Primitives);
+        var tips = sym.Pins.OrderBy(p => p.PortIndex).Select(p => (p.Name ?? (p.PortIndex + 1).ToString(CultureInfo.InvariantCulture), p.LocalX, p.LocalY)).ToList();
+        // The body is what is left with the leads cut off; the circle stands round it with a tenth to spare.
+        var body = strokes.Select(s => (double[])s.Clone()).ToList();
+        foreach (var (_, tx, ty) in tips) TrimLead(body, tx, ty);
+        var pts = body.Where(b => b.Length >= 4).SelectMany(b => Xs(b).Zip(Ys(b))).ToList();
+        double cx = (pts.Min(p => p.First) + pts.Max(p => p.First)) / 2, cy = (pts.Min(p => p.Second) + pts.Max(p => p.Second)) / 2;
+        double r = 1.1 * pts.Max(p => Math.Sqrt(Sq(p.First - cx) + Sq(p.Second - cy)));
+        return Make(source + "Envelope", ImageSymbolKind.Transistor, convention[..^1] + ", in an envelope circle.",
+                    [.. strokes, Arc(cx, cy, r, 0, 360)], tips, StructureCheck.Envelope, TemplateFill.Any, source, composed: true) with { Variant = variant };
     }
 
     private static SymbolTemplate FromSymbol(SymbolKind source, ImageSymbolKind kind, string convention,
@@ -210,7 +267,8 @@ public static class SymbolTemplates
     /// <summary>Reads one stroke file. Lines, blank and <c>#</c> comments aside:
     /// <code>
     /// kind &lt;ImageSymbolKind&gt;          convention &lt;one line&gt;
-    /// check none|capacitor|zigzag|coil|ground    fill hollow|any|solid   (default: none, hollow)
+    /// check none|capacitor|zigzag|coil|ground|diode|filledbox|battery|envelope|marked    fill hollow|any|solid   (default: none, hollow)
+    /// variant &lt;word&gt;                   (which of its kind: npn, ac, dc, supply, battery, current, looped …)
     /// pin &lt;name&gt; x y                   (the pin's TIP, in pin order)
     /// line x y x y …                   (an open polyline)
     /// loop x y x y …                   (a closed polygon)
@@ -229,6 +287,7 @@ public static class SymbolTemplates
         string? convention = null;
         var check = StructureCheck.None;
         var fill = TemplateFill.Hollow;
+        string? variant = null;
         var tips = new List<(string, double, double)>();
         var strokes = new List<double[]>();
         int lineNo = 0;
@@ -249,6 +308,7 @@ public static class SymbolTemplates
                     case "convention": convention = rest; break;
                     case "check": check = Enum.Parse<StructureCheck>(rest, ignoreCase: true); break;
                     case "fill": fill = Enum.Parse<TemplateFill>(rest, ignoreCase: true); break;
+                    case "variant": variant = rest; break;
                     case "pin":
                     {
                         var parts = rest.Split(' ', StringSplitOptions.RemoveEmptyEntries);
@@ -284,7 +344,7 @@ public static class SymbolTemplates
         if (kind is null) throw new FormatException($"{name}: no kind.");
         if (convention is null) throw new FormatException($"{name}: no convention.");
         if (tips.Count == 0) throw new FormatException($"{name}: no pin.");
-        return Make(name, kind.Value, convention, strokes, tips, check, fill, null);
+        return Make(name, kind.Value, convention, strokes, tips, check, fill, null) with { Variant = variant };
 
         static double Num(string t) => double.Parse(t, NumberStyles.Float, CultureInfo.InvariantCulture);
     }

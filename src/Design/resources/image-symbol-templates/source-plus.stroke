@@ -1,0 +1,12 @@
+# A DC source drawn with a + alone in the middle of its circle: the + lead is the one the drawing says (pin 1 on top).
+kind source
+variant dc
+check marked
+convention A DC voltage source: a circle with a + in it.
+pin + 0 -100
+pin - 0 100
+line 0 -100 0 -45
+line 0 45 0 100
+circle 0 0 45
+line -18 0 18 0
+line 0 -18 0 18

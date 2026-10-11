@@ -1,0 +1,22 @@
+# A transformer: two coils facing each other across two bars (an iron core), each coil with a lead top and bottom.
+# Pins 1, 2 the left coil top and bottom; 3, 4 the right coil top and bottom.
+kind transformer
+convention A transformer: two coils facing each other across a core of two bars.
+pin 1 -100 -70
+pin 2 -100 70
+pin 3 100 -70
+pin 4 100 70
+line -100 -70 -40 -70 -40 -60
+line -100 70 -40 70 -40 60
+line 100 -70 40 -70 40 -60
+line 100 70 40 70 40 60
+arc -40 -45.0 15.0 -90 180
+arc -40 -15.0 15.0 -90 180
+arc -40 15.0 15.0 -90 180
+arc -40 45.0 15.0 -90 180
+arc 40 -45.0 15.0 -90 -180
+arc 40 -15.0 15.0 -90 -180
+arc 40 15.0 15.0 -90 -180
+arc 40 45.0 15.0 -90 -180
+line -6 -70 -6 70
+line 6 -70 6 70

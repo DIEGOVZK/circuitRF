@@ -51,8 +51,22 @@ public sealed record RecognisedSymbol(
     /// <summary>The drawing convention the matched template follows, or null.</summary>
     public string? Convention => Template?.Convention;
 
-    /// <summary>The kind as the parts table shows it: <c>?</c> for <see cref="ImageSymbolKind.Unknown"/>.</summary>
-    public string KindLabel => Kind == ImageSymbolKind.Unknown ? "?" : Kind.ToString();
+    /// <summary>Which of its kind it is (IMF-5): a transistor's polarity — from its arrow where that settles it — a
+    /// source's AC, DC, supply, battery or current; null when the kind has one.</summary>
+    public string? Variant { get; init; }
+
+    /// <summary>A resistor crossed by an arrow: a variable resistor, whose value is one setting (R-imf5-3).</summary>
+    public bool Variable { get; init; }
+
+    /// <summary>The kind as the overlay names it: <c>?</c> for <see cref="ImageSymbolKind.Unknown"/>; a transistor's or a
+    /// source's variant after it (<c>Transistor NPN</c>, <c>Source AC</c>), a variable resistor so called.</summary>
+    public string KindLabel => Kind switch
+    {
+        ImageSymbolKind.Unknown => "?",
+        ImageSymbolKind.Transistor or ImageSymbolKind.Source when Variant is { } v => $"{Kind} {v.ToUpperInvariant()}",
+        ImageSymbolKind.Resistor when Variable => "Resistor (variable)",
+        _ => Kind.ToString(),
+    };
 }
 
 /// <summary>Every region of a reading, named, and the report.</summary>
@@ -60,8 +74,13 @@ public sealed record SchematicSymbolsRead(IReadOnlyList<RecognisedSymbol> Symbol
 
 public static class SchematicSymbols
 {
-    /// <summary>The kinds that are an S-parameter block whatever their pin count (D9).</summary>
-    public static bool IsDevice(ImageSymbolKind k) => k is ImageSymbolKind.Transistor or ImageSymbolKind.Amplifier or ImageSymbolKind.Ic;
+    /// <summary>The kinds that are an S-parameter block whatever their pin count (D9). A transistor is no longer one: it
+    /// is circuitRF's own BJT or FET (IMF O1).</summary>
+    public static bool IsDevice(ImageSymbolKind k) => k is ImageSymbolKind.Amplifier or ImageSymbolKind.Ic;
+
+    /// <summary>The kinds read with their own pins whatever their count: a transistor's three, a transformer's four or
+    /// five (IMF-5).</summary>
+    public static bool IsMultiPinPart(ImageSymbolKind k) => k is ImageSymbolKind.Transistor or ImageSymbolKind.Transformer;
 
     /// <summary>Names every symbol region of <paramref name="read"/> with <paramref name="classifier"/> (the template
     /// matcher when null). Pure.</summary>
@@ -69,7 +88,17 @@ public static class SchematicSymbols
     {
         ArgumentNullException.ThrowIfNull(read);
         classifier ??= new TemplateSymbolClassifier();
-        var symbols = read.Symbols.Select(r => Name(r, classifier.Classify(r, read.StrokeWidth))).ToList();
+        var symbols = read.Symbols.Select(r =>
+        {
+            var c = classifier.Classify(r, read.StrokeWidth, read.SymbolScale);
+            // A lead ending in paper (R-imf5-4) stands only when it makes a part: else the region is read without it.
+            if (c.Best is null && r.Attachments.Any(a => a.Node < 0))
+            {
+                r = r with { Attachments = [.. r.Attachments.Where(a => a.Node >= 0)] };
+                c = classifier.Classify(r, read.StrokeWidth, read.SymbolScale);
+            }
+            return Name(r, c);
+        }).ToList();
         return new SchematicSymbolsRead(symbols, SymbolReport.Of(symbols));
     }
 
@@ -79,7 +108,7 @@ public static class SchematicSymbols
         int n = region.Attachments.Count;
         var best = c.Best;
         var kind = best?.Kind ?? ImageSymbolKind.Unknown;
-        var disposition = n >= 3 || IsDevice(kind) ? SymbolDisposition.CutOut
+        var disposition = n >= 3 && !IsMultiPinPart(kind) || IsDevice(kind) ? SymbolDisposition.CutOut
                         : best is not null ? SymbolDisposition.Recognised
                         : n == 2 ? SymbolDisposition.Unknown
                         : SymbolDisposition.UnreadTerminal;
@@ -89,7 +118,11 @@ public static class SchematicSymbols
             : [.. region.Attachments.Select((a, i) => Pin(i, (i + 1).ToString(CultureInfo.InvariantCulture), a))];
         return new RecognisedSymbol(region, kind, disposition, best?.Template, best?.Orientation ?? default, pins,
                                     best?.Score ?? c.RunnerUp?.Score ?? double.PositiveInfinity, c.RunnerUp,
-                                    best is null ? PartConfidence.Low : c.Confidence, c.Demotions);
+                                    best is null ? PartConfidence.Low : c.Confidence, c.Demotions)
+        {
+            Variant = best is null ? null : c.Variant ?? best.Template.Variant,
+            Variable = best is not null && c.Crossed,
+        };
     }
 
     private static RecognisedPin Pin(int i, string name, SymbolAttachment a) => new(i, name, a.X, a.Y, a.Node);
@@ -112,8 +145,18 @@ public sealed record SymbolReport
 
     public int UnreadTerminals { get; init; }
 
+    /// <summary>Resistors crossed by an arrow (R-imf5-3).</summary>
+    public int Variable { get; init; }
+
+    /// <summary>Transistors and sources by their variant (R-imf5-6, R-imf5-7): <c>npn</c>, <c>ac</c> ….</summary>
+    public IReadOnlyDictionary<string, int> Variants { get; init; } = new Dictionary<string, int>();
+
     public static SymbolReport Of(IReadOnlyList<RecognisedSymbol> symbols) => new()
     {
+        Variable = symbols.Count(s => s.Variable),
+        Variants = symbols.Where(s => s.Disposition == SymbolDisposition.Recognised && s.Kind is ImageSymbolKind.Transistor or ImageSymbolKind.Source
+                                      && s.Variant is not null)
+                          .GroupBy(s => s.Variant!).OrderBy(g => g.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count()),
         ByKind = symbols.Where(s => s.Disposition == SymbolDisposition.Recognised).GroupBy(s => s.Kind)
                         .OrderBy(g => g.Key).ToDictionary(g => g.Key, g => g.Count()),
         Unknown = symbols.Count(s => s.Disposition == SymbolDisposition.Unknown),
@@ -129,6 +172,9 @@ public sealed record SymbolReport
         var r = new List<string>();
         if (ByKind.Count > 0)
             r.Add("Symbols: " + string.Join(", ", ByKind.Select(kv => $"{kv.Value} {Noun(kv.Key)}")) + ".");
+        if (Variants.Count > 0)
+            r.Add("Transistors and sources: " + string.Join(", ", Variants.Select(kv => $"{kv.Value} {VariantNoun(kv.Key)}")) + ".");
+        if (Variable > 0) r.Add($"{Count(Variable, "resistor")} crossed by an arrow: variable, {(Variable == 1 ? "its value" : "each value")} one setting.");
         if (Unknown > 0) r.Add($"{Count(Unknown, "two-pin symbol")} matching no drawing, read as ?.");
         foreach (var (kind, pins) in CutOut)
             r.Add($"{(kind == ImageSymbolKind.Unknown ? "Multi-pin symbol" : Noun(kind))} with {Count(pins, "pin")}: an S-parameter block.");
@@ -144,7 +190,15 @@ public sealed record SymbolReport
         ImageSymbolKind.ShortStub => "short stub",
         ImageSymbolKind.OpenStub => "open stub",
         ImageSymbolKind.Ic => "IC",
+        ImageSymbolKind.Bead => "ferrite bead",
         _ => k.ToString().ToLowerInvariant(),
+    };
+
+    private static string VariantNoun(string v) => v switch
+    {
+        "npn" => "n-p-n", "pnp" => "p-n-p", "nfet" => "n-channel FET", "pfet" => "p-channel FET",
+        "ac" => "AC", "dc" => "DC", "supply" => "supply", "battery" => "battery", "current" => "current",
+        _ => v,
     };
 
     private static string Count(int n, string noun) => n.ToString(CultureInfo.InvariantCulture) + " " + noun + (n == 1 ? "" : "s");

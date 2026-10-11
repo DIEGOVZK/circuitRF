@@ -76,7 +76,7 @@ public static class PartsTableCsv
     public static string Cell(PartsTable table, PartRow row, string column) => column switch
     {
         "Refdes" => row.Refdes,
-        "Kind" => PartsTable.KindText(row.Kind),
+        "Kind" => PartsTable.KindText(row),
         "Connection" => PartsTable.ConnectionText(row.Connection),
         "Case" => row.Case?.Code ?? "",
         "Value" => row.Value is { } v ? PartsTable.ValueText(v, row.GeneratedKind) : "",
@@ -237,20 +237,29 @@ public static class PartsTableCsv
         // ── kind ──────────────────────────────────────────────────────────────────────────────────
         if (field("Kind") is { Length: > 0 } kindText)
         {
-            if (PartsTable.ParseKind(kindText) is not { } kind)
-                notes.Add($"{row.Refdes}: '{kindText}' is not a kind ({string.Join(", ", Enum.GetValues<PartKind>().Select(PartsTable.KindText))}); the kind was kept.");
-            else if (kind != row.Kind)
+            if (PartsTable.ParseKindAndVariant(kindText) is not { } parsed)
+                notes.Add($"{row.Refdes}: '{kindText}' is not a kind ({string.Join(", ", Enum.GetValues<PartKind>().Select(KindSpelling))}); the kind was kept.");
+            else if (parsed.Kind != row.Kind || parsed.Variant != row.Variant)
             {
+                var kind = parsed.Kind;
                 bool multiPad = row.PadCount > 2;
-                if (multiPad && kind is not (PartKind.MultiPin or PartKind.Connector or PartKind.Ignore))
+                // A picture's own kinds (R-imf5-8): a transistor stays a transistor and a coupling a coupling — only the
+                // variant changes — and none of them is an artwork part's.
+                bool device = row.Kind is PartKind.Q or PartKind.K, toDevice = kind is PartKind.Q or PartKind.K;
+                bool pictureKind = kind is PartKind.D or PartKind.Q or PartKind.V or PartKind.I or PartKind.K or PartKind.Bead;
+                if (pictureKind && !table.Pixels)
+                    notes.Add($"{row.Refdes}: {PartsTable.KindText(kind)} is a schematic picture's kind, not an artwork part's; the kind was kept.");
+                else if ((device || toDevice) && kind != row.Kind)
+                    notes.Add($"{row.Refdes} is {PartsTable.KindText(row)} and can only change its {(row.Kind == PartKind.Q ? "polarity" : "value")}; the kind was kept.");
+                else if (multiPad && kind is not (PartKind.MultiPin or PartKind.Connector or PartKind.Ignore or PartKind.Q))
                     notes.Add($"{row.Refdes} has {row.PadCount} pads and cannot be a two-terminal {PartsTable.KindText(kind)}; the kind was kept.");
                 else if (!multiPad && kind == PartKind.MultiPin)
                     notes.Add($"{row.Refdes} has {row.PadCount} pads and cannot be a multi-pin part; the kind was kept.");
                 else
                 {
-                    bool sameDimension = edited.TakesValue && (edited with { Kind = kind }).TakesValue
-                                         && edited.GeneratedKind == (edited with { Kind = kind }).GeneratedKind;
-                    edited = edited with { Kind = kind, Value = sameDimension ? edited.Value : null };
+                    var next = edited with { Kind = kind, Variant = parsed.Variant };
+                    bool sameDimension = edited.TakesValue && next.TakesValue && edited.GeneratedKind == next.GeneratedKind;
+                    edited = next with { Value = sameDimension ? edited.Value : null };
                     evidence[PartField.Kind] = PartEvidenceSource.User;
                     if (!sameDimension) evidence.Remove(PartField.Value);
                 }
@@ -325,6 +334,7 @@ public static class PartsTableCsv
     public static bool TryReadValue(string text, PartKind kind, out double si, out string? why)
     {
         why = null;
+        if (kind is PartKind.V or PartKind.I or PartKind.K) return TryReadSourceValue(text, kind, out si, out why);
         var want = PartReading.DimensionOf(kind);
         if (!Schematic.BomTablePaste.TryReadValue(text, PartReading.ToSymbol(kind), description: false, out si, out var dim))
         {
@@ -335,4 +345,27 @@ public static class PartsTableCsv
         why = $"'{text}' is not a {want.ToString().ToLowerInvariant()}";
         return false;
     }
+
+    private static readonly Regex SourceValue = new(@"^([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*([kmuµn]?)\s*([VA]?)$", RegexOptions.CultureInvariant);
+
+    /// <summary>A source's volts or amps — <c>12 V</c>, <c>-5V</c>, <c>10 mA</c> — or a coupling's plain number.</summary>
+    private static bool TryReadSourceValue(string text, PartKind kind, out double si, out string? why)
+    {
+        si = 0;
+        why = null;
+        var m = SourceValue.Match(text.Trim());
+        string unit = kind switch { PartKind.V => "V", PartKind.I => "A", _ => "" };
+        if (!m.Success || (m.Groups[3].Value.Length > 0 && m.Groups[3].Value != unit) || (kind == PartKind.K && m.Groups[2].Value.Length > 0)
+            || !double.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double n))
+        {
+            why = kind == PartKind.K ? $"'{text}' is not a coupling coefficient" : $"'{text}' is not a {(kind == PartKind.V ? "voltage" : "current")}";
+            return false;
+        }
+        si = n * m.Groups[2].Value switch { "k" => 1e3, "m" => 1e-3, "u" or "µ" => 1e-6, "n" => 1e-9, _ => 1 };
+        return true;
+    }
+
+    /// <summary>A kind as the refusal lists it: with its variants where it has them.</summary>
+    private static string KindSpelling(PartKind k) =>
+        PartsTable.Variants(k) is { Count: > 0 } v ? string.Join(", ", v.Select(x => $"{PartsTable.KindText(k)} {x}")) : PartsTable.KindText(k);
 }

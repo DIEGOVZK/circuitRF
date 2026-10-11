@@ -58,6 +58,13 @@ public sealed record SymbolDemotion(SymbolCandidate Candidate, StructureCheck Fa
 public sealed record SymbolClassification(SymbolCandidate? Best, SymbolCandidate? RunnerUp, IReadOnlyList<SymbolDemotion> Demotions,
                                           PartConfidence Confidence)
 {
+    /// <summary>The body is crossed by an arrow — a variable resistor's (R-imf5-3) — read with the arrow taken off.</summary>
+    public bool Crossed { get; init; }
+
+    /// <summary>The variant the drawing's own marks give where they settle it over the template's — a transistor's
+    /// polarity from its arrow (R-imf5-6); null to take the template's.</summary>
+    public string? Variant { get; init; }
+
     public static SymbolClassification None { get; } = new(null, null, [], PartConfidence.Low);
 }
 
@@ -66,4 +73,8 @@ public interface IImageSymbolClassifier
 {
     /// <param name="strokeWidth">The picture's stroke width w, pixels.</param>
     SymbolClassification Classify(SymbolRegion region, double strokeWidth);
+
+    /// <param name="symbolScale">The picture's symbol scale s, read pixels (IMF-2); 0 when unmeasured. A classifier that
+    /// measures nothing in s may ignore it.</param>
+    SymbolClassification Classify(SymbolRegion region, double strokeWidth, double symbolScale) => Classify(region, strokeWidth);
 }

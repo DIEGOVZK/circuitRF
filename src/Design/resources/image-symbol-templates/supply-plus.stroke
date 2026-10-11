@@ -1,0 +1,10 @@
+# A supply: a circle with a + in it on one lead, its other side the ground it is drawn over.
+kind source
+variant supply
+check marked
+convention A supply: a circle with a + in it at the end of one lead.
+pin + 0 -100
+line 0 -100 0 -45
+circle 0 0 45
+line -18 0 18 0
+line 0 -18 0 18

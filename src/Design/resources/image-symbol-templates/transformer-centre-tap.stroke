@@ -1,0 +1,24 @@
+# A transformer whose right coil has a centre tap: a fifth lead from between its humps.
+kind transformer
+variant centretap
+convention A transformer with a centre-tapped coil: two coils across a core, a lead from the middle of the second.
+pin 1 -100 -70
+pin 2 -100 70
+pin 3 100 -70
+pin 4 100 70
+pin 5 100 0
+line -100 -70 -40 -70 -40 -60
+line -100 70 -40 70 -40 60
+line 100 -70 40 -70 40 -60
+line 100 70 40 70 40 60
+line 100 0 40 0
+arc -40 -45.0 15.0 -90 180
+arc -40 -15.0 15.0 -90 180
+arc -40 15.0 15.0 -90 180
+arc -40 45.0 15.0 -90 180
+arc 40 -45.0 15.0 -90 -180
+arc 40 -15.0 15.0 -90 -180
+arc 40 15.0 15.0 -90 -180
+arc 40 45.0 15.0 -90 -180
+line -6 -70 -6 70
+line 6 -70 6 70

@@ -2,6 +2,7 @@
 kind inductor
 convention The IEC inductor: a filled rectangle, three times as long as it is wide.
 fill solid
+check filledbox
 pin 1 0 -100
 pin 2 0 100
 line 0 -100 0 -60

@@ -115,6 +115,17 @@ public static class LabelAssociation
                 used.Add(vw.Id);
                 break;
             }
+        // A part number under a diode's or a transistor's designator — D1 over 1N4002 (R-imf5-2): its value word, which
+        // the parts table takes as the part's number.
+        foreach (var pw in words.Where(w => w.Class != WordClass.Designator && !used.Contains(w.Id)).ToList())
+            for (int t = 0; t < targets.Count; t++)
+            {
+                if (designator[t] is not { } dw || value[t] is not null || targets[t].Kind is not (ImageSymbolKind.Diode or ImageSymbolKind.Transistor)
+                    || !Under(pw, dw)) continue;
+                value[t] = pw;
+                used.Add(pw.Id);
+                break;
+            }
         // A value that states its unit goes first to the symbols it can be the value of: a tool that prints a part's
         // label block beside the NEXT part's drawing (circuitRF's own, IM-12) puts C=1pF nearer a resistor than its
         // capacitor. Then the rest, by distance alone — so a value with no part of its kind near is still a mismatch.
@@ -216,6 +227,9 @@ public static class LabelAssociation
         ImageSymbolKind.Transistor => "Q",
         ImageSymbolKind.Amplifier or ImageSymbolKind.Ic => "U",
         ImageSymbolKind.Port => "P",
+        ImageSymbolKind.Source => "V",
+        ImageSymbolKind.Transformer => "T",
+        ImageSymbolKind.Bead => "FB",
         _ => null,
     };
 

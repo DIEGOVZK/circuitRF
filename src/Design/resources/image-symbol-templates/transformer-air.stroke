@@ -1,0 +1,19 @@
+# A transformer with no core: two coils facing each other across a gap.
+kind transformer
+convention A transformer: two coils facing each other across a gap, no core drawn.
+pin 1 -100 -70
+pin 2 -100 70
+pin 3 100 -70
+pin 4 100 70
+line -100 -70 -30 -70 -30 -60
+line -100 70 -30 70 -30 60
+line 100 -70 30 -70 30 -60
+line 100 70 30 70 30 60
+arc -30 -45.0 15.0 -90 180
+arc -30 -15.0 15.0 -90 180
+arc -30 15.0 15.0 -90 180
+arc -30 45.0 15.0 -90 180
+arc 30 -45.0 15.0 -90 -180
+arc 30 -15.0 15.0 -90 -180
+arc 30 15.0 15.0 -90 -180
+arc 30 45.0 15.0 -90 -180

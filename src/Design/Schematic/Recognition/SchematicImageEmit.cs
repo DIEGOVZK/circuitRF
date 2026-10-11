@@ -63,6 +63,10 @@ public sealed record SchematicEmitOptions
 
     /// <summary>The frame the drawing is made at; null: the one where the median pin span is the symbols' own.</summary>
     public SchematicFrame? Frame { get; init; }
+
+    /// <summary>Every word read off the picture: a source's value, a transformer's k, a box marked BEAD are read from the
+    /// words beside the part (IMF-5).</summary>
+    public IReadOnlyList<ImageWord>? Words { get; init; }
 }
 
 /// <summary>The circuit a schematic picture states, and what its drawing needs beside it.</summary>
@@ -237,16 +241,59 @@ public static class SchematicImageEmit
         // ── the parts table (R-im10-7) ─────────────────────────────────────────────────────────────
         var rows = new List<PartRow>();
         var symbolOfRow = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var rowPins = new Dictionary<string, IReadOnlyList<RecognisedPin>>(StringComparer.OrdinalIgnoreCase);
         var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var words = options.Words ?? [];
+        double s0 = read.SymbolScale > 0 ? read.SymbolScale : TemplateSymbolClassifier.FallbackSymbolInW * w;
+        // A supply net (R-imf5-4): one a supply mark ends, or a word naming a V… rail names.
+        var supplyRoots = read.SupplyMarks.Select(m => RootOf(m.Node))
+                              .Concat(labels.Names.Where(n => SupplyName(n.Name)).Select(n => RootOf(n.Node)))
+                              .Where(r => r >= 0 && r != G).ToHashSet();
+        bool IsBead(RecognisedSymbol s)
+        {
+            if (s.Disposition != SymbolDisposition.Recognised || s.Pins.Count != 2) return false;
+            if (s.Kind is ImageSymbolKind.Resistor or ImageSymbolKind.Inductor
+                && words.Any(t => string.Equals(t.Text, "BEAD", StringComparison.OrdinalIgnoreCase) && s.Region.Box.Distance(t.Box.CentreX, t.Box.CentreY) <= w))
+                return true;
+            return s.Template?.Fill == TemplateFill.Solid && s.Kind == ImageSymbolKind.Inductor && s.Pins.Any(p => supplyRoots.Contains(RootOf(p.Node)));
+        }
+        PartConnection Connection(IReadOnlyList<RecognisedPin> pins)
+        {
+            if (pins.Count == 1) return RootOf(pins[0].Node) == G ? PartConnection.Shorted : PartConnection.Shunt;
+            int r0 = RootOf(pins[0].Node), r1 = RootOf(pins[1].Node);
+            return (r0 == G, r1 == G) switch
+            {
+                (true, true) => PartConnection.Shorted,
+                (true, false) or (false, true) => PartConnection.Shunt,
+                _ => r0 == r1 ? PartConnection.Bridged : PartConnection.Series,
+            };
+        }
+        var notesOf = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < syms.Count; i++)
         {
             var s = syms[i];
-            bool twoPin = s.Pins.Count == 2 && s.Kind is ImageSymbolKind.Resistor or ImageSymbolKind.Inductor
+            bool bead = IsBead(s);
+            PartKind? device = s.Disposition != SymbolDisposition.Recognised ? null : s.Kind switch
+            {
+                _ when bead => PartKind.Bead,
+                ImageSymbolKind.Diode when s.Pins.Count == 2 => PartKind.D,
+                ImageSymbolKind.Transistor when s.Pins.Count == 3 => PartKind.Q,
+                ImageSymbolKind.Source when s.Variant == "current" && s.Pins.Count == 2 => PartKind.I,
+                ImageSymbolKind.Source => PartKind.V,
+                ImageSymbolKind.Transformer when s.Pins.Count >= 4 => PartKind.K,
+                _ => null,
+            };
+            bool twoPin = device is null && s.Pins.Count == 2 && s.Kind is ImageSymbolKind.Resistor or ImageSymbolKind.Inductor
                                               or ImageSymbolKind.Capacitor or ImageSymbolKind.Unknown
                           && s.Disposition is SymbolDisposition.Recognised or SymbolDisposition.Unknown;
-            if (!twoPin && s.Disposition != SymbolDisposition.CutOut) continue;
+            if (!twoPin && device is null && s.Disposition != SymbolDisposition.CutOut) continue;
             var l = lab[i];
-            string refdes = Unique(l?.Designator ?? $"{LabelAssociation.Prefix(s.Kind) ?? "U"}{i + 1}", taken);
+            string prefix = device switch
+            {
+                PartKind.Bead => "FB", PartKind.I => "I", PartKind.V => "V", PartKind.K => "T",
+                _ => LabelAssociation.Prefix(s.Kind) ?? "U",
+            };
+            string refdes = Unique(l?.Designator ?? $"{prefix}{i + 1}", taken);
             var (x, y) = read.ToSource(s.Region.Box.CentreX, s.Region.Box.CentreY);
             var evidence = new Dictionary<PartField, PartEvidenceSource>
             {
@@ -254,19 +301,79 @@ public static class SchematicImageEmit
             };
             var notes = new List<string>();
             if (l is { Contradicts: true }) notes.Add($"{refdes} names a different kind than its symbol is drawn as");
-            var terminals = s.Pins.Select(p =>
+            List<PartTerminal> Terminals(IEnumerable<RecognisedPin> pins) => [.. pins.Select(p =>
             {
                 var (px, py) = read.ToSource(p.X, p.Y);
                 return new PartTerminal((long)Math.Round(px), (long)Math.Round(py), null, -1, RootOf(p.Node) == G);
-            }).ToList();
+            })];
+            PartRow Row(string name, PartKind kind, IReadOnlyList<RecognisedPin> pins, PartConnection connection) => new()
+            {
+                Refdes = name, Kind = kind, Connection = connection, PadCount = pins.Count,
+                X = (long)Math.Round(x), Y = (long)Math.Round(y), Confidence = l?.Confidence ?? s.Confidence,
+                Evidence = new Dictionary<PartField, PartEvidenceSource>(evidence) { [PartField.Kind] = PartEvidenceSource.Picture },
+                Notes = notes, Terminals = Terminals(pins),
+            };
+            void Add(PartRow row, IReadOnlyList<RecognisedPin> pins)
+            {
+                if (row.IsModelled && row.TakesValue && row.Value is null && row.Variable is null) row = row with { Variable = row.DefaultVariable };
+                rows.Add(row);
+                symbolOfRow[row.Refdes] = i;
+                rowPins[row.Refdes] = pins;
+            }
 
-            PartRow row;
+            if (device == PartKind.K)
+            {
+                // A transformer (R-imf5-5): its coils as drawn, each an L on its own two pins — a centre tap splitting its
+                // coil in two — and one coupling row whose value is k.
+                var p = s.Pins;
+                var coils = p.Count >= 5 ? new[] { (p[0], p[1]), (p[2], p[4]), (p[4], p[3]) } : new[] { (p[0], p[1]), (p[2], p[3]) };
+                for (int k = 0; k < coils.Length; k++)
+                {
+                    var pair = new[] { coils[k].Item1, coils[k].Item2 };
+                    Add(Row(Unique($"{refdes}_L{k + 1}", taken), PartKind.L, pair, Connection(pair)), pair);
+                }
+                double? kv = NearWords(s, words, s0).Select(t => ReadCoupling(t.Text)).FirstOrDefault(v => v is not null);
+                Add(Row(refdes, PartKind.K, [], PartConnection.Series) with
+                {
+                    Value = kv, PartNumber = PartNumberOf(l),
+                    Evidence = kv is null ? evidence : new Dictionary<PartField, PartEvidenceSource>(evidence) { [PartField.Value] = PartEvidenceSource.Picture },
+                }, []);
+                continue;
+            }
+            if (device is { } dk)
+            {
+                var row = Row(refdes, dk, s.Pins, dk == PartKind.Q ? PartConnection.MultiPin : Connection(s.Pins));
+                row = dk switch
+                {
+                    PartKind.Q => row with { Variant = s.Variant?.ToUpperInvariant(), PartNumber = PartNumberOf(l) },
+                    PartKind.D => row with { PartNumber = PartNumberOf(l) },
+                    PartKind.V => row with { Variant = s.Variant == "ac" ? "AC" : "DC" },
+                    _ => row,
+                };
+                if (dk is PartKind.V or PartKind.I && row.TakesValue
+                    && NearWords(s, words, s0).Select(t => SourceValue(t.Text, dk)).FirstOrDefault(v => v is not null) is { } sv)
+                    row = row with { Value = sv, Evidence = new Dictionary<PartField, PartEvidenceSource>(row.Evidence) { [PartField.Value] = PartEvidenceSource.Picture } };
+                if (dk == PartKind.V && s.Pins.Count == 1) row = row with { Connection = PartConnection.Shunt };
+                Add(row, s.Pins);
+                continue;
+            }
+
+            // A polarised capacitor (R-imf5-1): a + beside one plate makes that plate's lead pin 1.
+            var pinsDrawn = s.Pins;
+            if (s.Kind == ImageSymbolKind.Capacitor && s.Pins.Count == 2
+                && NearWords(s, words, s0).FirstOrDefault(t => t.Text.Trim() == "+") is { } plus)
+            {
+                double D(RecognisedPin p) => Math.Pow(p.X - plus.Box.CentreX, 2) + Math.Pow(p.Y - plus.Box.CentreY, 2);
+                if (D(s.Pins[1]) < D(s.Pins[0])) pinsDrawn = [s.Pins[1], s.Pins[0]];
+            }
+
+            PartRow made;
             if (!twoPin)
-                row = new PartRow
+                made = new PartRow
                 {
                     Refdes = refdes, Kind = PartKind.MultiPin, Connection = PartConnection.MultiPin, PadCount = s.Pins.Count,
                     X = (long)Math.Round(x), Y = (long)Math.Round(y), Confidence = l?.Confidence ?? s.Confidence,
-                    Evidence = evidence, Notes = notes, Terminals = terminals,
+                    Evidence = evidence, Notes = notes, Terminals = Terminals(s.Pins),
                 };
             else
             {
@@ -276,13 +383,7 @@ public static class SchematicImageEmit
                     ImageSymbolKind.Capacitor => PartKind.C, _ => PartKind.Unknown,
                 };
                 if (kind != PartKind.Unknown) evidence[PartField.Kind] = PartEvidenceSource.Picture;
-                int r0 = RootOf(s.Pins[0].Node), r1 = RootOf(s.Pins[1].Node);
-                var connection = (r0 == G, r1 == G) switch
-                {
-                    (true, true) => PartConnection.Shorted,
-                    (true, false) or (false, true) => PartConnection.Shunt,
-                    _ => r0 == r1 ? PartConnection.Bridged : PartConnection.Series,
-                };
+                if (s.Variable) notes.Add($"{refdes} is a variable resistor: its value is one setting");
                 double? value = null;
                 if (l?.Value is { } v)
                 {
@@ -291,16 +392,14 @@ public static class SchematicImageEmit
                     else if (v.Fits(dim)) { value = v.Si; evidence[PartField.Value] = PartEvidenceSource.Picture; }
                     else notes.Add($"'{l.ValueWord!.Text}' is not a {dim.ToString().ToLowerInvariant()}, so the value was not applied");
                 }
-                row = new PartRow
+                made = new PartRow
                 {
-                    Refdes = refdes, Kind = kind, Connection = connection, Value = value, PadCount = 2,
+                    Refdes = refdes, Kind = kind, Connection = Connection(pinsDrawn), Value = value, PadCount = 2,
                     X = (long)Math.Round(x), Y = (long)Math.Round(y), Confidence = l?.Confidence ?? s.Confidence,
-                    Evidence = evidence, Notes = notes, Terminals = terminals,
+                    Evidence = evidence, Notes = notes, Terminals = Terminals(pinsDrawn),
                 };
-                if (row.IsModelled && row.TakesValue && row.Value is null) row = row with { Variable = row.DefaultVariable };
             }
-            rows.Add(row);
-            symbolOfRow[refdes] = i;
+            Add(made, pinsDrawn);
         }
         var parts = new PartsTable([.. rows.OrderBy(r => r.Refdes, PartsTable.NaturalOrder)], RailRf.RailLengthFormat.Dbu, null) { Pixels = true };
         if (options.PartsCsvText is not null || options.PartsCsvPath is not null)
@@ -315,10 +414,12 @@ public static class SchematicImageEmit
         }
         int SymbolOf(PartRow r) => symbolOfRow.TryGetValue(r.BoardRefdes, out int i) ? i : -1;
 
+        IReadOnlyList<RecognisedPin> PinsOf(PartRow r) => rowPins.TryGetValue(r.BoardRefdes, out var p) ? p : syms[SymbolOf(r)].Pins;
+
         // A short in the table joins its two nets.
         foreach (var r in parts.Rows.Where(r => r.Kind == PartKind.Short && SymbolOf(r) >= 0))
         {
-            var pins = syms[SymbolOf(r)].Pins;
+            var pins = PinsOf(r);
             if (pins.Count == 2 && NetOf(pins[0].Node) >= 0 && NetOf(pins[1].Node) >= 0) Union(NetOf(pins[0].Node), NetOf(pins[1].Node));
         }
 
@@ -369,12 +470,17 @@ public static class SchematicImageEmit
         var protos = new List<Proto>();
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var portInfo = new List<(Proto Proto, PicturePortSource Source, double X, double Y)>();
+        // An AC source is a P1Tone (O2): the circuit's input, numbered first among the ports.
+        var tones = parts.Rows.Where(r => r.Kind == PartKind.V && r.Variant == "AC" && SymbolOf(r) >= 0 && PinsOf(r).Count == 2
+                                          && r.Connection is PartConnection.Series or PartConnection.Shunt)
+                              .OrderBy(r => r.X).ThenBy(r => r.Y).ToList();
         for (int k = 0; k < ports.Count; k++)
         {
             var p = ports[k];
-            string name = Unique(RecognitionEmit.Identifier(p.Name ?? $"P{k + 1}", "P"), names);
-            var proto = new Proto { Type = "Port", Name = name, Roots = [p.Root, G], Symbol = p.Symbol, PortNumber = k + 1 };
-            proto.Parameters.Add(new ParameterAssignment("Num", (k + 1).ToString(CultureInfo.InvariantCulture)));
+            int number = k + 1 + tones.Count;
+            string name = Unique(RecognitionEmit.Identifier(p.Name ?? $"P{number}", "P"), names);
+            var proto = new Proto { Type = "Port", Name = name, Roots = [p.Root, G], Symbol = p.Symbol, PortNumber = number };
+            proto.Parameters.Add(new ParameterAssignment("Num", number.ToString(CultureInfo.InvariantCulture)));
             // The impedance printed under the port's designator, when one was read (IM-12); else 50 Ω.
             double? z = p.Symbol >= 0 && lab[p.Symbol]?.LineParameters is { } lp
                 ? lp.FirstOrDefault(q => q.Key is "Z" or "Z0")?.Si : null;
@@ -395,6 +501,7 @@ public static class SchematicImageEmit
         }
 
         var variables = new List<(string Name, string Number, string? Unit, string Min, string Max)>();
+        var instanceOfRow = new Dictionary<string, Proto>(StringComparer.OrdinalIgnoreCase);
         void Variable(string name, double value, PartKind kind)
         {
             if (variables.Any(v => v.Name == name)) return;
@@ -403,13 +510,14 @@ public static class SchematicImageEmit
             variables.Add((name, number, unit, tune.Min!, tune.Max!));
         }
 
-        foreach (var row in parts.Rows.Where(r => r.IsModelled && SymbolOf(r) >= 0))
+        foreach (var row in parts.Rows.Where(r => r.IsModelled && r.IsPassive && SymbolOf(r) >= 0))
         {
             int i = SymbolOf(row);
             var s = syms[i];
-            if (s.Pins.Count != 2) continue;
+            var rp = PinsOf(row);
+            if (rp.Count != 2) continue;
             string name = Unique(RecognitionEmit.Identifier(row.Refdes, row.ParameterName), names);
-            var roots = s.Pins.Select(p => RootOf(p.Node)).ToList();
+            var roots = rp.Select(p => RootOf(p.Node)).ToList();
             Proto proto;
             if (row.Model == PartModelKind.SnP && parts.ResolveModelFile(row) is { } file)
             {
@@ -432,8 +540,118 @@ public static class SchematicImageEmit
                     Variable(variable, row.TransparentValue, row.GeneratedKind);
                 }
             }
-            AddPins(proto, s);
+            AddPins(proto, s, rp);
             protos.Add(proto);
+            instanceOfRow[row.Refdes] = proto;
+        }
+
+        // ── the picture's own devices (IMF-5) ───────────────────────────────────────────────────────
+        var deviceNotes = new List<string>();
+        void Raw(string name, string number, string? unit, string min, string max)
+        {
+            if (!variables.Any(v => v.Name == name)) variables.Add((name, number, unit, min, max));
+        }
+        string Spell(double v) => RecognitionEmitOptions.Spell(v, digits);
+        foreach (var row in parts.Rows.Where(r => r.Kind is PartKind.Q or PartKind.V or PartKind.I or PartKind.D or PartKind.Bead && SymbolOf(r) >= 0))
+        {
+            int i = SymbolOf(row);
+            var s = syms[i];
+            var rp = PinsOf(row);
+            var roots = rp.Select(p => RootOf(p.Node)).ToList();
+            string id = RecognitionEmit.Identifier(row.Refdes, row.Kind.ToString());
+            string name = Unique(id, names);
+            Proto proto;
+            switch (row.Kind)
+            {
+                case PartKind.Q:
+                {
+                    // O1: circuitRF's own transistor, pins in its own order — the template's — every parameter its default.
+                    string type = row.Variant switch { "PNP" => "BJT_PNP", "NFET" => "FET_Curtice", "PFET" => "PFET_Curtice", _ => "BJT_NPN" };
+                    proto = new Proto { Type = type, Name = name, Roots = roots, Symbol = i };
+                    string what = row.Variant switch { "PNP" => "a p-n-p BJT", "NFET" => "an n-channel FET", "PFET" => "a p-channel FET", _ => "an n-p-n BJT" };
+                    deviceNotes.Add($"{name} is {what} with the default model — set its parameters.");
+                    break;
+                }
+                case PartKind.D:
+                    proto = new Proto { Type = "Diode", Name = name, Roots = roots, Symbol = i };
+                    break;
+                case PartKind.Bead:
+                    proto = new Proto { Type = "Bead", Name = name, Roots = roots, Symbol = i };
+                    proto.Parameters.Add(new ParameterAssignment("Rdc", "0.01", "Ohm"));
+                    proto.Parameters.Add(new ParameterAssignment("L", "0", "uH"));
+                    proto.Parameters.Add(new ParameterAssignment("Rp", "0", "Ohm"));
+                    proto.Parameters.Add(new ParameterAssignment("Cp", "0", "pF"));
+                    deviceNotes.Add($"{name} is a ferrite bead with the default model — set its parameters.");
+                    break;
+                case PartKind.V when row.Variant == "AC":
+                {
+                    if (rp.Count != 2 || !tones.Contains(row)) continue;
+                    // P1Tone (O2): + is the pin not on ground; its tone and power from a word beside it, else globals.
+                    if (roots[0] == G && roots[1] != G) { roots.Reverse(); rp = [rp[1], rp[0]]; }
+                    int number = tones.IndexOf(row) + 1;
+                    proto = new Proto { Type = "P1Tone", Name = name, Roots = roots, Symbol = i, PortNumber = number };
+                    proto.Parameters.Add(new ParameterAssignment("Num", number.ToString(CultureInfo.InvariantCulture)));
+                    var near = NearWords(s, words, s0).ToList();
+                    double? f = near.Select(t => ReadFrequency(t.Text)).FirstOrDefault(v => v is not null);
+                    double? pw = near.Select(t => ReadPower(t.Text)).FirstOrDefault(v => v is not null);
+                    if (pw is { } pv) proto.Parameters.Add(new ParameterAssignment("Pavl", Spell(pv), "dBm"));
+                    else { Raw($"{id}_Pavl", "0", "dBm", "-30 dBm", "30 dBm"); proto.Parameters.Add(new ParameterAssignment("Pavl", $"{id}_Pavl")); }
+                    proto.Parameters.Add(new ParameterAssignment("Z", "50", "Ohm"));
+                    if (f is { } fv) proto.Parameters.Add(new ParameterAssignment("Freq", Spell(fv / 1e9), "GHz"));
+                    else { Raw($"{id}_Freq", "1", "GHz", "0.1 GHz", "10 GHz"); proto.Parameters.Add(new ParameterAssignment("Freq", $"{id}_Freq")); }
+                    portInfo.Add((proto, PicturePortSource.Symbol, rp[0].X, rp[0].Y));
+                    break;
+                }
+                default:
+                {
+                    // Vdc (O2) or a DC current source: + first, the minus on ground where the picture grounds it; a supply
+                    // circle on one lead is drawn over its ground.
+                    if (rp.Count == 2 && roots[0] == G && roots[1] != G && !s.Pins[0].Name.Contains('+')) { roots.Reverse(); rp = [rp[1], rp[0]]; }
+                    if (rp.Count == 1) roots.Add(G);
+                    bool current = row.Kind == PartKind.I;
+                    proto = new Proto { Type = current ? "I_1Tone" : "Vdc", Name = name, Roots = roots, Symbol = i };
+                    string key = current ? "Idc" : "Vdc", unit = current ? "mA" : "V";
+                    string value;
+                    if (row.Value is { } dc) value = current ? Spell(dc * 1e3) : Spell(dc);
+                    else
+                    {
+                        value = RecognitionEmit.Identifier(row.Variable ?? row.DefaultVariable, "V");
+                        Raw(value, "0", unit, current ? "-100 mA" : "-30 V", current ? "100 mA" : "30 V");
+                    }
+                    if (current)
+                    {
+                        proto.Parameters.Add(new ParameterAssignment("I", "0", "mA"));
+                        proto.Parameters.Add(new ParameterAssignment("Freq", "1", "GHz"));
+                    }
+                    proto.Parameters.Add(row.Value is null ? new ParameterAssignment(key, value) : new ParameterAssignment(key, value, unit));
+                    break;
+                }
+            }
+            AddPins(proto, s, rp);
+            protos.Add(proto);
+            instanceOfRow[row.Refdes] = proto;
+        }
+        // A transformer (R-imf5-5): its coils are L rows above; each pair of them coupled by one Mutual whose M is k√(L₁L₂).
+        foreach (var row in parts.Rows.Where(r => r.Kind == PartKind.K && SymbolOf(r) >= 0))
+        {
+            var coils = parts.Rows.Where(r => r.Kind == PartKind.L && SymbolOf(r) == SymbolOf(row) && instanceOfRow.ContainsKey(r.Refdes))
+                                  .Select(r => instanceOfRow[r.Refdes]).ToList();
+            if (coils.Count < 2) continue;
+            string id = RecognitionEmit.Identifier(row.Refdes, "K");
+            string k;
+            if (row.Value is { } kv) k = Spell(kv);
+            else { k = RecognitionEmit.Identifier(row.Variable ?? row.DefaultVariable, "K"); Raw(k, "0.99", null, "0.5", "1"); }
+            string L(Proto p) => p.Parameters.First(q => q.Name == "L") is var a && a.Unit is { } u ? $"({a.Expression}*{UnitScale(u)})" : a.Expression;
+            for (int a = 0; a < coils.Count; a++)
+                for (int b = a + 1; b < coils.Count; b++)
+                {
+                    var proto = new Proto { Type = "Mutual", Name = Unique(coils.Count == 2 ? id : $"{id}_{a + 1}{b + 1}", names), Roots = [], Symbol = SymbolOf(row) };
+                    proto.Parameters.Add(new ParameterAssignment("Inductor1", $"\"{coils[a].Name}\""));
+                    proto.Parameters.Add(new ParameterAssignment("Inductor2", $"\"{coils[b].Name}\""));
+                    proto.Parameters.Add(new ParameterAssignment("M", $"{k}*sqrt({L(coils[a])}*{L(coils[b])})"));
+                    protos.Add(proto);
+                }
+            deviceNotes.Add($"{row.Refdes} is a transformer: {string.Join(" and ", coils.Select(c => c.Name))} coupled by k = {k}.");
         }
 
         // A multi-pin symbol — a box, a transistor, an amplifier — is an S-parameter block with one port per wired pin
@@ -480,13 +698,6 @@ public static class SchematicImageEmit
                 {
                     if (!variables.Any(x => x.Name == n)) variables.Add((n, v, u, lo, hi));
                 }, lineNotes);
-                AddPins(proto, s);
-                protos.Add(proto);
-            }
-            else if (s.Kind == ImageSymbolKind.Diode && s.Pins.Count == 2)
-            {
-                string name = Unique(RecognitionEmit.Identifier(lab[i]?.Designator ?? $"D{i + 1}", "D"), names);
-                var proto = new Proto { Type = "Diode", Name = name, Roots = [.. s.Pins.Select(p => RootOf(p.Node))], Symbol = i };
                 AddPins(proto, s);
                 protos.Add(proto);
             }
@@ -546,7 +757,7 @@ public static class SchematicImageEmit
             tb.Tuning = new TuningSetup();
             foreach (var v in variables) tb.Tuning.Variables.Add(new TunableEntry { Key = v.Name, Tune = true, Opt = false, Min = v.Min, Max = v.Max });
         }
-        if (ports.Count > 0)
+        if (ports.Count + tones.Count > 0)
             tb.Analyses.Add(new SParameterAnalysis(RecognitionEmit.AnalysisName, options.Emit.Sweep ?? RecognitionEmitOptions.DefaultSweep));
 
         // ── the report ──────────────────────────────────────────────────────────────────────────────
@@ -571,7 +782,12 @@ public static class SchematicImageEmit
             report.Add(RecognitionFindingClass.PictureEmitNotes, 1,
                 $"{block} is drawn as a box with {Plural(n, "wired pin", "wired pins")}, so it is a {n}-port S-parameter block: " +
                 "give it a Touchstone file to simulate it.");
-        if (ports.Count == 0) report.Add(RecognitionFindingClass.PictureNoPort, 1, NoPortLine);
+        if (ports.Count + tones.Count == 0) report.Add(RecognitionFindingClass.PictureNoPort, 1, NoPortLine);
+        report.Add(RecognitionFindingClass.PictureEmitNotes, deviceNotes.Count, string.Join(" ", deviceNotes));
+        var settings = parts.Rows.Where(r => r.Kind == PartKind.R && SymbolOf(r) >= 0 && syms[SymbolOf(r)].Variable).Select(r => r.Refdes).ToList();
+        report.Add(RecognitionFindingClass.PictureEmitNotes, settings.Count,
+            $"{string.Join(", ", settings)} {(settings.Count == 1 ? "is a variable resistor" : "are variable resistors")}: " +
+            $"{(settings.Count == 1 ? "its value is" : "each value is")} one setting.");
         var unsourced = supplyNets.Where(netName.ContainsKey).Select(r => netName[r]).Order(StringComparer.Ordinal).ToList();
         report.Add(RecognitionFindingClass.PictureSupplyNets, unsourced.Count,
             $"{Plural(unsourced.Count, "supply net has", "supply nets have")} no source in the circuit and " +
@@ -606,9 +822,9 @@ public static class SchematicImageEmit
             SymbolOfRow = symbolOfRow,
         };
 
-        void AddPins(Proto proto, RecognisedSymbol s)
+        void AddPins(Proto proto, RecognisedSymbol s, IReadOnlyList<RecognisedPin>? pins = null)
         {
-            foreach (var p in s.Pins)
+            foreach (var p in pins ?? s.Pins)
             {
                 var (dx, dy) = DirAt(s.Region, p.Node);
                 proto.PicturePins.Add((p.X, p.Y, dx, dy));
@@ -616,6 +832,59 @@ public static class SchematicImageEmit
             }
         }
     }
+
+    // ── words beside a part (IMF-5) ─────────────────────────────────────────────────────────────────
+
+    /// <summary>The words within a symbol scale of a part's region, nearest first.</summary>
+    private static IEnumerable<ImageWord> NearWords(RecognisedSymbol s, IReadOnlyList<ImageWord> words, double sScale) =>
+        words.Select(t => (Word: t, Gap: s.Region.Box.Distance(t.Box))).Where(t => t.Gap <= sScale).OrderBy(t => t.Gap).Select(t => t.Word);
+
+    /// <summary>The part number printed under a part's designator, where the label association gave the part a word
+    /// that is no value of its own (a diode's <c>1N4002</c>, R-imf5-2).</summary>
+    private static string? PartNumberOf(SymbolLabels? l) => l?.ValueWord is { } v && v.Reading?.Value is null ? v.Text : null;
+
+    private static readonly System.Text.RegularExpressions.Regex Frequency =
+        new(@"^(\d+(?:\.\d*)?)\s*([kMG]?)Hz$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+    private static readonly System.Text.RegularExpressions.Regex Power =
+        new(@"^([+-−]?\d+(?:\.\d*)?)\s*dBm$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>A tone's frequency, Hz: <c>105MHz</c>.</summary>
+    internal static double? ReadFrequency(string text)
+    {
+        var m = Frequency.Match(text.Trim());
+        if (!m.Success || !double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double n)) return null;
+        return n * m.Groups[2].Value switch { "k" => 1e3, "M" => 1e6, "G" => 1e9, _ => 1 };
+    }
+
+    /// <summary>An available power, dBm: <c>-10 dBm</c>.</summary>
+    internal static double? ReadPower(string text)
+    {
+        var m = Power.Match(text.Trim());
+        return m.Success && double.TryParse(m.Groups[1].Value.Replace('−', '-'), NumberStyles.Float, CultureInfo.InvariantCulture, out double n) ? n : null;
+    }
+
+    /// <summary>A DC source's volts or amps from a word beside it — <c>6V</c>, or the last word of <c>Vs 6V</c>.</summary>
+    internal static double? SourceValue(string text, PartKind kind)
+    {
+        string last = text.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "";
+        if (!last.EndsWith(kind == PartKind.I ? "A" : "V", StringComparison.Ordinal)) return null;
+        return PartsTableCsv.TryReadValue(last, kind, out double si, out _) ? si : null;
+    }
+
+    /// <summary>A coupling coefficient beside a transformer: <c>k=0.95</c>, <c>K 0.9</c>.</summary>
+    internal static double? ReadCoupling(string text)
+    {
+        string t = text.Trim();
+        if (t.Length < 2 || char.ToUpperInvariant(t[0]) != 'K') return null;
+        t = t[1..].TrimStart(' ', '=');
+        return double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out double k) && k > 0 && k <= 1 ? k : null;
+    }
+
+    /// <summary>The factor a unit's prefix scales its number by, for an expression written in base SI.</summary>
+    private static string UnitScale(string unit) => (unit.Length > 1 ? unit[0] : ' ') switch
+    {
+        'f' => "1e-15", 'p' => "1e-12", 'n' => "1e-9", 'u' or 'µ' => "1e-6", 'm' => "1e-3", 'k' => "1e3", 'M' => "1e6", 'G' => "1e9", _ => "1",
+    };
 
     // ── grounds the wire reading took for wire ──────────────────────────────────────────────────────
 

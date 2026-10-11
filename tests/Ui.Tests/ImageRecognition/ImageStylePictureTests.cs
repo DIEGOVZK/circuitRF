@@ -113,8 +113,7 @@ public sealed partial class ImageDatasheetStyleTests(ITestOutputHelper output)
                                  "it needs IMF-7's annotation phrases first";
     private const string GainBlock = "IMF-8 reads the filled triangle as an Amp and the coax connectors as ports; it needs the triangle " +
                                      "closed at 1× (IMF-5), IMF-6's terminals and IMF-7's word designators (Cblock, Rbias, RFC) first";
-    private const string Regulator = "IMF-8 reads the IC box with its pin names outside; it needs IMF-5's filled diodes and variable resistor " +
-                                     "and IMF-7's bold labels first";
+    private const string Regulator = "IMF-8 reads the IC box with its pin names outside; it needs IMF-7's bold labels first";
     private const string Ldo = "IMF-8 reads the IC box with its pin names inside; it needs IMF-6's named open-circle terminals first";
     private const string TestCircuit = "IMF-8 reads the triangle as an Amp and the coax connectors as ports; it needs the solid " +
                                        "block box read as one part (IMF-5) first";
@@ -359,14 +358,13 @@ public sealed partial class ImageWebStyleTests
 
 public sealed partial class ImageWebStyleTests(ITestOutputHelper output)
 {
-    private const string HeavyIec = "IMF-5 reads the transistor in its circle and the two source circles; it needs " +
-                                    "IMF-6's terminal dot and IMF-7's subscripts first";
+    private const string HeavyIec = "IMF-6 reads the terminal dot as a port; it needs IMF-7's subscripts first";
     private const string Textbook = "IMF-6 makes the terminal pairs ports and the bottom rail ground; it needs IMF-7's " +
                                     "serif italic first";
     private const string Ladder = "IMF-6 makes the terminal pairs ports and the bottom rail ground; it needs IMF-7 to read " +
                                   "the italic designators first";
-    private const string Typeset = "IMF-7 reads the serif italic designator-then-value runs; it needs IMF-5's ± source circle first";
-    private const string BiasTee = "IMF-6 makes the names at a distance ports; it needs IMF-5's looped coil first";
+    private const string Typeset = "IMF-7 reads the serif italic designator-then-value runs";
+    private const string BiasTee = "IMF-6 makes the names at a distance ports";
     private const string LowRes = "IMF-6 makes the terminal pairs ports";
 
     [Fact(Skip = HeavyIec)] public void HeavyIecStage() => StyleScore.ReadsExactly(output, "heavy-iec");
@@ -379,4 +377,89 @@ public sealed partial class ImageWebStyleTests(ITestOutputHelper output)
     /// <summary>IMF-9 refuses it in one sentence saying it is not a schematic; until then it is read and scored.</summary>
     [Fact]
     public void Illustration_ReadsWithoutThrowing() => StyleScore.Read(output, "illustration");
+}
+
+/// <summary>IMF-5's facts, read as Paste reads: every symbol named, and the circuit made.</summary>
+internal static class StyleParts
+{
+    public static SchematicImageResult Read(string picture)
+    {
+        var source = ImageSource.FromFile(Path.Combine(FixturePaths.Require(StylePictures.Folder), picture, "picture.png")).Source!;
+        return SchematicImageRecognition.Circuit(new SchematicImageInput { Source = source, Kind = ImageKind.Classify(source.Raster).Force(DrawingKind.Schematic) });
+    }
+
+    public static int Count(SchematicImageResult r, ImageSymbolKind kind) =>
+        r.Symbols!.Symbols.Count(s => s.Kind == kind && s.Disposition == SymbolDisposition.Recognised);
+}
+
+public sealed partial class ImageDatasheetStyleTests
+{
+    /// <summary>IMF-5, R-imf5-1 … R-imf5-3: the regulator's two resistors — R2 variable, its arrow across it — its three
+    /// curved-plate capacitors and its two filled diodes, at both scales.</summary>
+    [Theory]
+    [InlineData("ds-regulator-1x")]
+    [InlineData("ds-regulator-2x")]
+    public void Regulator_Reads2R_OneVariable_3C_2D(string picture)
+    {
+        var r = StyleParts.Read(picture);
+        Assert.Equal(2, StyleParts.Count(r, ImageSymbolKind.Resistor));
+        Assert.Single(r.Symbols!.Symbols, s => s.Kind == ImageSymbolKind.Resistor && s.Variable);
+        Assert.Equal(3, StyleParts.Count(r, ImageSymbolKind.Capacitor));
+        Assert.Equal(2, StyleParts.Count(r, ImageSymbolKind.Diode));
+        Assert.Equal(2, r.Circuit!.TestBench.Instances.Count(i => i.Reference == "Diode"));
+    }
+
+    /// <summary>IMF-5, R-imf5-1, R-imf5-4: the RF amplifier's four hairline capacitors (wide gaps; C3's label touching its
+    /// plate) and its coil, at both scales. (The brief counts five capacitors; the picture draws four.)</summary>
+    [Theory]
+    [InlineData("ds-rf-amp-1x")]
+    [InlineData("ds-rf-amp-2x")]
+    public void RfAmp_Reads4C_1L(string picture)
+    {
+        var r = StyleParts.Read(picture);
+        Assert.Equal(4, StyleParts.Count(r, ImageSymbolKind.Capacitor));
+        Assert.Equal(1, StyleParts.Count(r, ImageSymbolKind.Inductor));
+    }
+
+    /// <summary>IMF-5, R-imf5-1: the LDO's two hairline capacitors, at both scales.</summary>
+    [Theory]
+    [InlineData("ds-ldo-1x")]
+    [InlineData("ds-ldo-2x")]
+    public void Ldo_Reads2C(string picture) => Assert.Equal(2, StyleParts.Count(StyleParts.Read(picture), ImageSymbolKind.Capacitor));
+}
+
+public sealed partial class ImageWebStyleTests
+{
+    /// <summary>IMF-5, R-imf5-6, R-imf5-7 (O1, O2): the heavy IEC stage's transistor in its circle is a BJT_NPN whose base
+    /// is the wire from the left, collector the one up and emitter the one down; the sine circle is a P1Tone, the first
+    /// port, its minus on ground; the + circle a Vdc from the supply rail to ground.</summary>
+    [Fact]
+    public void HeavyIec_TheBjtIsNpn_OnItsPins_TheSineIsAP1Tone_TheplusCircleAVdc()
+    {
+        var r = StyleParts.Read("heavy-iec");
+        var c = r.Circuit!;
+        var read = r.Read!;
+        (double X, double Y) At(string instance, int pin) => read.ToSource(read.Wires.Nodes[c.PinNodes[instance][pin]].X, read.Wires.Nodes[c.PinNodes[instance][pin]].Y);
+
+        var q = Assert.Single(c.TestBench.Instances, i => i.Reference == "BJT_NPN");
+        Assert.DoesNotContain(c.TestBench.Instances, i => i.Reference == "SnP");
+        var (cx, cy) = At(q.InstanceName, 0);
+        var (bx, by) = At(q.InstanceName, 1);
+        var (ex, ey) = At(q.InstanceName, 2);
+        Assert.True(cy < 320 && Math.Abs(cx - 580) < 15, $"collector at ({cx:0}, {cy:0})");
+        Assert.True(bx < 500 && Math.Abs(by - 360) < 15, $"base at ({bx:0}, {by:0})");
+        Assert.True(ey > 400 && Math.Abs(ex - 580) < 15, $"emitter at ({ex:0}, {ey:0})");
+
+        var tone = Assert.Single(c.TestBench.Instances, i => i.Reference == "P1Tone");
+        Assert.Equal("0", tone.NetBindings[1]);
+        Assert.Equal("1", tone.Overrides.Single(o => o.Name == "Num").Expression);
+        var vdc = Assert.Single(c.TestBench.Instances, i => i.Reference == "Vdc");
+        Assert.Equal("0", vdc.NetBindings[1]);
+        Assert.Contains(c.TestBench.Instances, i => i.Reference == "R" && i.NetBindings.Contains(vdc.NetBindings[0]));
+    }
+
+    /// <summary>IMF-5, R-imf5-4: the bias tee's looped coil is an inductor.</summary>
+    [Fact]
+    public void LoopCoilNames_ReadsAnL() =>
+        Assert.Equal(1, StyleParts.Count(StyleParts.Read("loop-coil-names"), ImageSymbolKind.Inductor));
 }
