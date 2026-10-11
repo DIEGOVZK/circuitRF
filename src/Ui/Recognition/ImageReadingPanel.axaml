@@ -194,6 +194,21 @@
                                                      IsVisible="{Binding Scale.SizeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                             </StackPanel>
                         </Border>
+                        <!-- A plot's tick label clicked (PTU-4): its value, typed, becomes one pair of its axis row. -->
+                        <Border x:Name="LabelBox" Classes="pill" IsVisible="{Binding Plots.AskingLabel}" Padding="8,6">
+                            <StackPanel Spacing="4">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="{Binding Plots.LabelCaption}" FontSize="12" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="LabelInput" Text="{Binding Plots.LabelText}" Width="100" KeyDown="OnLabelKey"
+                                             PlaceholderText="value"
+                                             Classes.invalid="{Binding Plots.LabelError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                             ToolTip.Tip="What the label says. An x value takes its unit (2.4 GHz); a y value is a number in the axis's units. Two labels on one axis calibrate it."/>
+                                    <Button Content="Set" Command="{Binding Plots.SetLabelCommand}"/>
+                                </StackPanel>
+                                <SelectableTextBlock Text="{Binding Plots.LabelError}" Classes="error" MaxWidth="300"
+                                                     IsVisible="{Binding Plots.LabelError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                            </StackPanel>
+                        </Border>
                         <Border x:Name="Z0Box" Classes="pill" IsVisible="{Binding Scale.AskingZ0}" Padding="8,6">
                             <StackPanel Spacing="4">
                                 <StackPanel Orientation="Horizontal" Spacing="6">

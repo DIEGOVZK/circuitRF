@@ -39407,3 +39407,26 @@ entry on `SelectableTextBlock`).
 On the canvas a trace is never amber now: unselected, it is 1 px, dashed and neutral; selected, it is the accent at
 2 px, and only its label is drawn (`T2 · S11 · dB`, the reader's label with ` · ` between words). The CLI's
 `--overlay` picture (`ImageOverlay.Picture.cs`) is unchanged. Gate: `tests/Ui.Tests/PlotRecognition/PlotTraceSelectionTests.cs`.
+
+## Create … from Image, PTU-4: click a tick label, type its value (2026-10-11)
+
+A canvas selection of a `Text` overlay item on a rectangular plot opens an inline editor (`LabelBox` in
+`ImageReadingPanel.axaml`, placed by the same `PlaceInline` as the measure tools' boxes). Both a read label
+(`tick:<plot>:<k>`, with `k ≥ 1000` for y) and an unread word (`text:<id>`) qualify. The lookup is Ui-side only
+(`PlotAxisLabels.Find`, beside `PlotTraceLink`). The axis comes from the label's position against its frame: left or
+right of the frame is y, below or above is x, and at a corner the side it stands further out wins. The pixel is the
+nearest frame tick within half the label's extent, which is the reader's own pairing rule (`RectAxes.Pair`), so a
+clicked value lands where a read one would. The editor opens only from a USER selection, after the
+`_syncingSelection` guard. A re-read's programmatic `SelectTraceItem` must not close an editor the user is typing in.
+
+A committed value is merged into the frame row's `XAxisText`/`YAxisText` as one `<px>px=<value>` pair, so the typed
+row and the clicks share one grammar (the CLI's `--x-axis`). A pair at the same pixel is replaced; with two already,
+the older goes. With only one pair, `Blocked()` says "click another label" instead of quoting the pixel grammar.
+
+**`NeedsX`/`NeedsY` now mean only "the reading left this axis uncalibrated".** The row's visibility is
+`ShowsX`/`ShowsY` (needs it, or has text). Before this, `NeedsY` stayed true once any text was typed, so it could not
+report that the typed values had calibrated the axis.
+
+**R-ptu4-4 needed no change: clicks already win.** `RectAxes.Calibrate` builds the axis from the `AxisClicks` in place
+of the label fit whenever they are given, so an axis calibrated from misread labels is corrected by two clicked values.
+The labels stay in the report, marked unused. Gate: `tests/Ui.Tests/PlotRecognition/PlotAxisLabelClickTests.cs`.

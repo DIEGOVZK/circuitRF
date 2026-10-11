@@ -313,8 +313,13 @@ were not read or were outvoted, and each trace is drawn over its curve in its ow
 one colour that could not be told apart is amber. Under **Plots**, clear a plot's box to leave it out: it is drawn and
 not read.
 
-**An axis whose labels did not read** waits, and its plot's **x axis** or **y axis** row takes two positions along
-it, in pixels, with the values there: `120px=1GHz,900px=5GHz`. A logarithmic axis is read as one from its labels.
+**An axis whose labels did not read** waits. Click a tick label on the picture, read or not, and type what it says
+in the box beside it: a y value as a number in the axis's units (`-10`), an x value with its unit (`2.4 GHz`). A bare
+x number takes the unit the other x labels were read in, and is refused when none was read. Two labels on one axis
+calibrate it; a third replaces the older of the two. This also corrects an axis calibrated from misread labels: the
+values you give replace what was read. Each value is written into the plot's **x axis** or **y axis** row as a pixel
+position and its value, `120px=1GHz,900px=5GHz`, and the row can be typed directly in that form. A logarithmic axis is
+read as one from its labels.
 
 **Traces.** Each row is one curve: its colour, its range, its points and its resolution per pixel. **Entry** and
 **quantity** say what it is &mdash; S21 in dB, S11 as phase, a chart's complex value, VSWR, return loss and so on

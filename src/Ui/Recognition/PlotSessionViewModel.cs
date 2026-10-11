@@ -17,6 +17,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -24,6 +25,7 @@ using CommunityToolkit.Mvvm.Input;
 using CircuitRF.Design.Imaging;
 using CircuitRF.Design.Imaging.Plots;
 using CircuitRF.Design.Layout.Recognition;
+using CircuitRF.Design.Schematic.Recognition;
 using RfCore;
 using FillRule = CircuitRF.Design.Imaging.Plots.FillRule;
 using PlotType = CircuitRF.Design.Imaging.Plots.PlotType;
@@ -69,8 +71,10 @@ public sealed partial class PlotFrameRowViewModel : ObservableObject
         Picture = plot.Picture + 1;
         Kind = PlotKind.Name(plot.Type);
         Calibration = plot.Excluded ? "not read" : TouchstoneAssemblyText.Calibration(plot);
-        NeedsX = plot.Rect is { X: null } || xText.Length > 0;
-        NeedsY = plot.Rect is { Y: null } || yText.Length > 0;
+        NeedsX = plot.Rect is { X: null };
+        NeedsY = plot.Rect is { Y: null };
+        ShowsX = NeedsX || xText.Length > 0;
+        ShowsY = NeedsY || yText.Length > 0;
         _include = include;
         _xAxisText = xText;
         _yAxisText = yText;
@@ -83,9 +87,13 @@ public sealed partial class PlotFrameRowViewModel : ObservableObject
     public string Calibration { get; }
     public string Title => $"Plot {Number.ToString(CultureInfo.InvariantCulture)} · {Kind} · picture {Picture.ToString(CultureInfo.InvariantCulture)}";
 
-    /// <summary>The x (y) axis waits for two values — or has them typed.</summary>
+    /// <summary>The x (y) axis waits for two values: the reading left it uncalibrated.</summary>
     public bool NeedsX { get; }
     public bool NeedsY { get; }
+
+    /// <summary>The x (y) row is shown: the axis waits, or has values typed or clicked (R-ptu4-2).</summary>
+    public bool ShowsX { get; }
+    public bool ShowsY { get; }
 
     [ObservableProperty] private bool _include;
 
@@ -329,6 +337,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         Session = null;
         Assembly = null;
         SelectedTrace = null;
+        AskingLabel = false;
         Frames.Clear();
         Traces.Clear();
         Matrix.Clear();
@@ -385,7 +394,9 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         if (SmithZ0Text.Trim().Length > 0 && Z0() is null) return "Smith Z0 needs an impedance in ohms (50).";
         foreach (var ((plot, axis), text) in _axis)
             if (text.Trim().Length > 0 && Clicks(text, axis) is null)
-                return $"Plot {plot}'s {axis} axis needs two pixel positions and their values: 120px=1GHz,900px=5GHz.";
+                return PlotAxisLabels.Pairs(text, axis).Count == 1 && !text.Contains(',')
+                    ? $"Plot {plot}'s {axis} axis needs one more value: click another {axis} label on the picture."
+                    : $"Plot {plot}'s {axis} axis needs two pixel positions and their values: 120px=1GHz,900px=5GHz.";
         foreach (var (trace, (start, stop)) in _freq)
             if ((start.Trim().Length > 0 || stop.Trim().Length > 0) && Range(start, stop) is null)
                 return $"{trace}'s frequency needs a start and a stop with units, the stop above the start (1 GHz, 5 GHz).";
@@ -477,6 +488,72 @@ public sealed partial class PlotSessionViewModel : ObservableObject
                 return v * scale;
         return null;
     }
+
+    // ── a tick label clicked on the canvas (R-ptu4-1, R-ptu4-2) ──────────────────────────────────────
+
+    /// <summary>The label editor is open: a tick label was clicked and its value is asked for.</summary>
+    [ObservableProperty] private bool _askingLabel;
+
+    /// <summary>The value typed for the clicked label — pre-filled with what was read, if anything.</summary>
+    [ObservableProperty] private string _labelText = "";
+
+    /// <summary>Why the typed value was refused, or empty.</summary>
+    [ObservableProperty] private string _labelError = "";
+
+    /// <summary>The clicked label: its plot, its axis and its pixel along that axis.</summary>
+    public PlotAxisLabel? Label { get; private set; }
+
+    /// <summary><c>y label at 312 px</c>.</summary>
+    public string LabelCaption => Label is { } l ? $"{l.Axis} label at {PlotAxisLabels.Px(l.Pixel)} px" : "";
+
+    /// <summary>A refusal for the dialog's status line.</summary>
+    public event Action<string>? StatusRaised;
+
+    /// <summary>Opens the label editor when <paramref name="item"/> is a tick label of a rectangular plot on the shown
+    /// picture, read or not; closes it otherwise. True when it opened.</summary>
+    public bool AskLabel(ImageOverlayItem? item)
+    {
+        Label = Session is { } s && item is not null ? PlotAxisLabels.Find(s, ShownPicture, item) : null;
+        LabelText = Label?.Read ?? "";
+        LabelError = "";
+        OnPropertyChanged(nameof(Label));
+        OnPropertyChanged(nameof(LabelCaption));
+        AskingLabel = Label is not null;
+        return AskingLabel;
+    }
+
+    /// <summary>The typed value becomes one <c>&lt;px&gt;px=&lt;value&gt;</c> pair of its plot's axis row; the second pair
+    /// completes the axis and a third replaces the older. Null when committed, else why not.</summary>
+    public string? CommitLabel()
+    {
+        if (Label is not { } l) return null;
+        var plot = Session?.Plots.FirstOrDefault(p => p.Number == l.Plot);
+        string existing = _axis.GetValueOrDefault((l.Plot, l.Axis), "");
+        string? why = $"Plot {l.Plot.ToString(CultureInfo.InvariantCulture)} is no longer read.";
+        if ((plot is null ? null : PlotAxisLabels.Value(LabelText, l.Axis, plot, existing, out why)) is not { } value)
+        {
+            LabelError = why ?? "";
+            StatusRaised?.Invoke(LabelError);
+            return LabelError;
+        }
+        string text = PlotAxisLabels.Merge(existing, l.Axis, l.Pixel, value);
+        AskingLabel = false;
+        LabelError = "";
+        if (Frames.FirstOrDefault(f => f.Number == l.Plot) is { } row)
+        {
+            if (l.Axis == 'x') row.XAxisText = text; else row.YAxisText = text;   // OnFrameEdited holds it and reads again
+        }
+        else
+        {
+            _axis[(l.Plot, l.Axis)] = text;
+            Changed?.Invoke();
+        }
+        return null;
+    }
+
+    [RelayCommand] private void SetLabel() => CommitLabel();
+
+    [RelayCommand] private void CancelLabel() => AskingLabel = false;
 
     // ── a reading arrived ────────────────────────────────────────────────────────────────────────────
 
@@ -636,4 +713,152 @@ internal static class TouchstoneAssemblyText
 
     private static string Axis(AxisCalibration? a) => a is null ? "uncalibrated"
         : $"{a.Scale.ToString().ToLowerInvariant()}{(a.Manual ? " (typed)" : $", {a.Used.ToString(CultureInfo.InvariantCulture)} labels")}";
+}
+
+/// <summary>A tick label clicked on the canvas (R-ptu4-1): its plot, the axis it labels, its pixel along that axis — at
+/// its tick, as the reader pairs a label with its tick — what was read of it, and where the editor stands.</summary>
+public sealed record PlotAxisLabel(int Plot, char Axis, double Pixel, string Read, double X, double Y);
+
+/// <summary>The dialog's own lookup of a clicked tick label and the axis-row text it becomes (R-ptu4-1, R-ptu4-2). The
+/// reader is not asked: the label's place against its frame says which axis it labels, and the pairs are the typed row's
+/// <c>120px=1GHz,900px=5GHz</c> grammar — the CLI's — so a click and a typed row are one way in.</summary>
+internal static class PlotAxisLabels
+{
+    private static readonly Regex Leading = new(@"^[-+]?(\d+(\.\d*)?|\.\d+)([eE][-+]?\d{1,3})?", RegexOptions.CultureInvariant);
+
+    private static readonly (string Name, double Scale)[] Units = [("Hz", 1), ("kHz", 1e3), ("MHz", 1e6), ("GHz", 1e9), ("THz", 1e12)];
+
+    public static string Px(double p) => p.ToString("0.#", CultureInfo.InvariantCulture);
+
+    /// <summary>The tick label <paramref name="item"/> is — a label the reader read (<c>tick:</c>) or a word it boxed and
+    /// could not read (<c>text:</c>) — on a rectangular plot of picture <paramref name="picture"/>; null for anything
+    /// else. Left or right of its frame it labels y; below or above, x; at a corner, the side it stands further out.</summary>
+    public static PlotAxisLabel? Find(PlotSession session, int picture, ImageOverlayItem item)
+    {
+        if (item.Class != ImageOverlayClass.Text) return null;
+        var rects = session.Plots.Where(p => p.Picture == picture && p.Type == PlotType.Rectangular).ToList();
+        string[] id = item.Id.Split(':');
+        PixelBox box;
+        string read;
+        if (id is ["tick", var n, var k] && int.TryParse(n, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number)
+            && int.TryParse(k, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)
+            && rects.FirstOrDefault(p => p.Number == number) is { Rect: { } r } plot)
+        {
+            var labels = index >= 1000 ? r.YLabels : r.XLabels;
+            index %= 1000;
+            if (index >= labels.Count) return null;
+            (box, read) = (labels[index].Box, labels[index].Text);
+            rects = [plot];
+        }
+        else if (id is ["text", var w] && int.TryParse(w, NumberStyles.Integer, CultureInfo.InvariantCulture, out int word)
+                 && session.Words.TryGetValue(picture, out var words) && words.FirstOrDefault(x => x.Id == word) is { } found)
+            (box, read) = (found.Box, found.Text);
+        else return null;
+
+        PlotAxisLabel? best = null;
+        double nearest = double.MaxValue;
+        foreach (var p in rects)
+        {
+            var f = p.Frame;
+            double cx = box.CentreX, cy = box.CentreY;
+            double dx = cx < f.Left ? f.Left - cx : cx > f.Right ? cx - f.Right : 0;
+            double dy = cy > f.Bottom ? cy - f.Bottom : cy < f.Top ? f.Top - cy : 0;
+            double d = Math.Max(dx, dy);
+            // Inside the frame, or too far from it to be one of its labels.
+            if (d == 0 || d > 0.3 * Math.Max(f.Right - f.Left, f.Bottom - f.Top) || d >= nearest) continue;
+            nearest = d;
+            bool x = dy >= dx;
+            best = new PlotAxisLabel(p.Number, x ? 'x' : 'y', AtTick(box, x ? f.XTicks : f.YTicks, x), read, box.Right + 1, box.Bottom + 1);
+        }
+        return best;
+    }
+
+    /// <summary>The label's pixel along its axis: the nearest tick within half its extent, else its own centre — the
+    /// reader's pairing (RectAxes), so a clicked value lands where a read one would.</summary>
+    private static double AtTick(PixelBox b, IReadOnlyList<double> ticks, bool horizontal)
+    {
+        double centre = (horizontal ? b.CentreX : b.CentreY) - 0.5;
+        double half = 0.5 * (horizontal ? b.Width : b.Height) + 1;
+        double at = centre, best = double.MaxValue;
+        foreach (double t in ticks)
+            if (Math.Abs(t - centre) <= half && Math.Abs(t - centre) < best) { best = Math.Abs(t - centre); at = t; }
+        return at;
+    }
+
+    /// <summary>The well-formed <c>px=value</c> pairs of an axis row, in order.</summary>
+    public static List<(double Px, string Value)> Pairs(string text, char axis)
+    {
+        var pairs = new List<(double, string)>();
+        foreach (string part in text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        {
+            int eq = part.IndexOf('=');
+            if (eq <= 0) continue;
+            string px = part[..eq].Trim();
+            if (px.EndsWith("px", StringComparison.OrdinalIgnoreCase)) px = px[..^2];
+            string value = part[(eq + 1)..].Replace(" ", "");
+            if (double.TryParse(px, NumberStyles.Float, CultureInfo.InvariantCulture, out double p)
+                && (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _) || axis == 'x' && RecognitionSweep.Parse(value) is not null))
+                pairs.Add((p, value));
+        }
+        return pairs;
+    }
+
+    /// <summary>The row with the clicked pair in it: a pair at the same pixel is replaced; with two already, the older goes.</summary>
+    public static string Merge(string existing, char axis, double pixel, string value)
+    {
+        var pairs = Pairs(existing, axis);
+        pairs.RemoveAll(p => Math.Abs(p.Px - pixel) < 1);
+        while (pairs.Count >= 2) pairs.RemoveAt(0);
+        pairs.Add((pixel, value));
+        return string.Join(",", pairs.Select(p => $"{Px(p.Px)}px={p.Value}"));
+    }
+
+    /// <summary>A typed label value as the row spells it, or null with <paramref name="why"/>. A y value is a number in the
+    /// axis's own units (a unit word after it is dropped); an x value on a frequency axis takes a unit — a bare number
+    /// takes the unit the other x labels were read in, else is refused.</summary>
+    public static string? Value(string typed, char axis, PlotRead plot, string existing, out string? why)
+    {
+        string t = typed.Replace(" ", "");
+        why = null;
+        if (axis == 'y')
+        {
+            var m = Leading.Match(t);
+            if (m.Success && double.TryParse(m.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double y) && double.IsFinite(y)
+                && t[m.Length..].All(c => char.IsLetter(c) || c is '°' or '%'))
+                return m.Value;
+            why = "Type the label's value: -10.";
+            return null;
+        }
+        if (RecognitionSweep.Parse(t) is { } f) return f.Text + f.Unit;
+        if (!double.TryParse(t, NumberStyles.Float, CultureInfo.InvariantCulture, out double x) || !double.IsFinite(x))
+        {
+            why = "Type the label's value with its unit: 2.4 GHz.";
+            return null;
+        }
+        if (plot.Rect is { XIsFrequency: false }) return t;
+        if (XUnit(plot, existing) is { } unit) return t + unit;
+        why = "Say the unit: 2.4 GHz.";
+        return null;
+    }
+
+    /// <summary>The unit the x labels were read in: a clicked pair's, the title's or a label's own suffix; null when
+    /// none was read (the GHz the reader assumes is not one).</summary>
+    private static string? XUnit(PlotRead plot, string existing)
+    {
+        foreach (var (_, v) in Pairs(existing, 'x'))
+            if (RecognitionSweep.Parse(v) is { } f) return f.Unit;
+        if (plot.Rect is not { XUnitStated: true } r) return null;
+        if (r.XUnit != 1) return Name(r.XUnit);
+        foreach (var l in r.XLabels)
+        {
+            string text = l.Text.Replace(" ", "");
+            var m = Leading.Match(text);
+            if (m.Success && m.Length < text.Length && double.TryParse(m.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double n)
+                && n != 0 && Name(l.Value / n) is { } u)
+                return u;
+        }
+        return null;
+    }
+
+    private static string? Name(double scale) => Units.FirstOrDefault(u => Math.Abs(scale / u.Scale - 1) < 1e-6).Name;
 }

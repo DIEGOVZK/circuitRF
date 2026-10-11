@@ -31,9 +31,24 @@ public partial class ImageReadingPanel : UserControl
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
-        if (_vm is not null) _vm.Scale.PropertyChanged -= OnScaleChanged;
+        if (_vm is not null)
+        {
+            _vm.Scale.PropertyChanged -= OnScaleChanged;
+            _vm.Plots.PropertyChanged -= OnPlotsChanged;
+        }
         _vm = DataContext as ImageSourceViewModel;
-        if (_vm is not null) _vm.Scale.PropertyChanged += OnScaleChanged;
+        if (_vm is not null)
+        {
+            _vm.Scale.PropertyChanged += OnScaleChanged;
+            _vm.Plots.PropertyChanged += OnPlotsChanged;
+        }
+    }
+
+    private void OnPlotsChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(PlotSessionViewModel.AskingLabel) || _vm?.Plots.AskingLabel != true) return;
+        PlaceInline();
+        Dispatcher.UIThread.Post(() => { LabelInput.Focus(); LabelInput.SelectAll(); });
     }
 
     private void OnScaleChanged(object? sender, PropertyChangedEventArgs e)
@@ -54,15 +69,23 @@ public partial class ImageReadingPanel : UserControl
     /// <summary>The inline box beside the point it asks about.</summary>
     private void PlaceInline()
     {
-        if (_vm?.Scale.PromptAt is not { } p) return;
-        var at = Canvas.ToView(p.X, p.Y);
-        foreach (var box in new Control[] { DistanceBox, Z0Box, SizeBox })
-        {
-            double x = Math.Clamp(at.X + 12, 4, Math.Max(4, Canvas.Bounds.Width - 320));
-            double y = Math.Clamp(at.Y + 12, 4, Math.Max(4, Canvas.Bounds.Height - 80));
-            Avalonia.Controls.Canvas.SetLeft(box, x);
-            Avalonia.Controls.Canvas.SetTop(box, y);
-        }
+        if (_vm?.Scale.PromptAt is { } p)
+            foreach (var box in new Control[] { DistanceBox, Z0Box, SizeBox }) Place(box, p.X, p.Y);
+        // The label editor beside the label's own box (PTU-4).
+        if (_vm?.Plots.Label is { } label) Place(LabelBox, label.X, label.Y);
+    }
+
+    private void Place(Control box, double px, double py)
+    {
+        var at = Canvas.ToView(px, py);
+        Avalonia.Controls.Canvas.SetLeft(box, Math.Clamp(at.X + 12, 4, Math.Max(4, Canvas.Bounds.Width - 320)));
+        Avalonia.Controls.Canvas.SetTop(box, Math.Clamp(at.Y + 12, 4, Math.Max(4, Canvas.Bounds.Height - 80)));
+    }
+
+    private void OnLabelKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) { _vm?.Plots.SetLabelCommand.Execute(null); e.Handled = true; }
+        else if (e.Key == Key.Escape) { _vm?.Plots.CancelLabelCommand.Execute(null); e.Handled = true; }
     }
 
     /// <summary>Zoom to Fit hands the keyboard back to the canvas, as the editors' button does, so F and Space work next.</summary>

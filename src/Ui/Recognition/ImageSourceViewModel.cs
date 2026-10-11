@@ -152,12 +152,14 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         Presets = new ObservableCollection<string>(LoadPresets().Select(p => p.Name));
         Overrides.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasOverrides));
         Plots.Changed += ScheduleRecognition;
+        Plots.StatusRaised += why => Status = why;
         // Create… (a plot's) is enabled by what enables Create: re-read whenever its tooltip is.
         PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CreateTip)) CreatePlotCommand.NotifyCanExecuteChanged(); };
         Plots.ShownChanged += () =>
         {
             OnPropertyChanged(nameof(Raster));
             if (Plots.Session is { } session) Overlay = ImageOverlay.BuildPlot(session, Plots.ShownPicture);
+            Plots.AskLabel(null);   // the clicked label was on the picture no longer shown
             SelectTraceItem();
         };
         Plots.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(PlotSessionViewModel.SelectedTrace)) OnTraceSelected(); };
@@ -901,7 +903,11 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         try
         {
             if (IsPlotPicture)
+            {
                 Plots.SelectedTrace = Plots.TraceRow(PlotTraceLink.TraceName(value));
+                // A tick label clicked asks for its value (R-ptu4-1); anything else clicked closes the editor.
+                Plots.AskLabel(value);
+            }
             else if (value?.PartKey is { } key)
                 SelectedRow = Rows.FirstOrDefault(r => string.Equals(r.BoardRefdes, key, StringComparison.OrdinalIgnoreCase));
             else if (value is not null) SelectedRow = null;

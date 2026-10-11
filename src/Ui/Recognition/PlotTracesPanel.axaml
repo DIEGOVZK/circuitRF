@@ -23,15 +23,15 @@
                                                   ToolTip.Tip="Read this plot. Left out, it is drawn on the canvas and not read."/>
                                     </StackPanel>
                                     <SelectableTextBlock Text="{Binding Calibration}" FontSize="11" Opacity="0.75" Margin="28,0,0,0"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="28,0,0,0" IsVisible="{Binding NeedsX}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="28,0,0,0" IsVisible="{Binding ShowsX}">
                                         <TextBlock Text="x axis" FontSize="12" VerticalAlignment="Center" Width="44"/>
-                                        <TextBox Text="{Binding XAxisText}" Width="220" PlaceholderText="120px=1GHz,900px=5GHz"
-                                                 ToolTip.Tip="Two pixel positions along the x axis and the values there, with units — what the labels would have said."/>
+                                        <TextBox Text="{Binding XAxisText}" Width="220" PlaceholderText="Click two x labels on the picture"
+                                                 ToolTip.Tip="Two pixel positions along the x axis and the values there, with units: 120px=1GHz,900px=5GHz. A label clicked on the picture and given its value writes one pair here."/>
                                     </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="28,0,0,0" IsVisible="{Binding NeedsY}">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="28,0,0,0" IsVisible="{Binding ShowsY}">
                                         <TextBlock Text="y axis" FontSize="12" VerticalAlignment="Center" Width="44"/>
-                                        <TextBox Text="{Binding YAxisText}" Width="220" PlaceholderText="80px=0,560px=-40"
-                                                 ToolTip.Tip="Two pixel positions along the y axis and the values there, in the axis's own units."/>
+                                        <TextBox Text="{Binding YAxisText}" Width="220" PlaceholderText="Click two y labels on the picture"
+                                                 ToolTip.Tip="Two pixel positions along the y axis and the values there, in the axis's own units: 80px=0,560px=-40. A label clicked on the picture and given its value writes one pair here."/>
                                     </StackPanel>
                                 </StackPanel>
                             </DataTemplate>
