@@ -421,6 +421,13 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         ImportBoardCommand.NotifyCanExecuteChanged();
         ImportGerberCommand.NotifyCanExecuteChanged();
         ImportComponentCommand.NotifyCanExecuteChanged();
+        ImportDataCommand.NotifyCanExecuteChanged();
+        ImportPdkCommand.NotifyCanExecuteChanged();
+        ImportModelCardCommand.NotifyCanExecuteChanged();
+        ImportTechnologyCommand.NotifyCanExecuteChanged();
+        ImportWirebondAsCellCommand.NotifyCanExecuteChanged();
+        NewTechnologyCommand.NotifyCanExecuteChanged();
+        NewEmSetupCommand.NotifyCanExecuteChanged();
         ManagePdksCommand.NotifyCanExecuteChanged();
 
         if (_factory.ProjectTreeTool is { } tree)
@@ -2936,7 +2943,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
     [RelayCommand(CanExecute = nameof(CanAddLibrary))]
     private async Task AddLibrary(Window? owner) => await Task.CompletedTask;
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasWorkspaceOpen))]
     private async Task ImportData(Window? owner)
     {
         var window = ResolveOwner(owner);
@@ -5999,7 +6006,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
                          .Distinct(StringComparer.Ordinal)];
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasWorkspaceOpen))]
     private async Task ImportPdk(Window? owner)
     {
         var window = ResolveOwner(owner);
@@ -7095,7 +7102,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
     /// File-menu "New Technology…" entry point. Delegates to the same core logic as the
     /// tree-header/context-menu command (<see cref="NewTechnologyAsync"/>).
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasWorkspaceOpen))]
     private async Task NewTechnology(Window? owner)
     {
         var window = ResolveOwner(owner);
@@ -7173,7 +7180,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
     /// <c>EmMeshSettings.Default</c>, 50 Ω, and a 1–20 GHz / 101-point sweep, so the only thing the
     /// user must supply is which layout.
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasWorkspaceOpen))]
     private async Task NewEmSetup(Window? owner)
     {
         var window = ResolveOwner(owner);
@@ -7385,7 +7392,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         OpenOrActivatePartLibrary(files[0].Path.LocalPath);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasWorkspaceOpen))]
     private async Task ImportTechnology(Window? owner)
     {
         var window = ResolveOwner(owner);
@@ -10633,7 +10640,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
     /// view as a wBond component, and the design's embedded geometry becomes its layout view. One
     /// implementation, two doors.</para>
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasWorkspaceOpen))]
     private async Task ImportWirebondAsCell(Window? window)
     {
         if (await PickWBondAsync(window, "Import Wirebond as Cell") is not { } path) return;
@@ -14268,7 +14275,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
     /// workspace. Here the user has already said what the file is by choosing it, and vendor cards
     /// arrive as <c>.lib</c>, <c>.txt</c> and <c>.cir</c> at least as often as <c>.model</c>.
     /// </remarks>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasWorkspaceOpen))]
     private async Task ImportModelCard(Window? window)
     {
         var owner = ResolveOwner(window);

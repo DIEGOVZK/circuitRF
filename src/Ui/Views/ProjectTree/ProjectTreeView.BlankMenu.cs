@@ -45,6 +45,8 @@ public partial class ProjectTreeView
     internal static readonly (string Header, string Command, string? Tip)[] ImportItems =
     [
         ("_Data…", nameof(WorkspaceViewModel.ImportDataCommand), null),
+        // File ▸ Import nests this under Image ▸; the menu below does the same.
+        ("As _Touchstone…", nameof(WorkspaceViewModel.ImportImageAsTouchstoneCommand), null),
         ("_GDSII…", nameof(WorkspaceViewModel.ImportGdsiiLibraryCommand), null),
         ("GDSII (gdstk)…", nameof(WorkspaceViewModel.ImportGdsiiGdstkCommand), "{Binding " + nameof(WorkspaceViewModel.GdstkImportGdsiiTip) + "}"),
         ("OASIS (gdstk)…", nameof(WorkspaceViewModel.ImportOasisGdstkCommand), "{Binding " + nameof(WorkspaceViewModel.GdstkImportOasisTip) + "}"),
@@ -173,7 +175,10 @@ public partial class ProjectTreeView
                 CommandParameter = owner,
             };
             if (tip is not null) ToolTip.SetTip(sub, BoundTip(tip, ws));
-            import.Items.Add(sub);
+            if (command == nameof(WorkspaceViewModel.ImportImageAsTouchstoneCommand))
+                import.Items.Add(new MenuItem { Header = "_Image", Items = { sub } });
+            else
+                import.Items.Add(sub);
         }
 
         menu.ItemsSource = new List<object>
