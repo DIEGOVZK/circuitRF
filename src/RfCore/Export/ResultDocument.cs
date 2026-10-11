@@ -178,7 +178,86 @@ namespace RfCore.Export
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         RecognizeReportJson? Recognize = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        StepImportReportJson? StepImport = null);
+        StepImportReportJson? StepImport = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        ConvertImageJson? Convert = null);
+
+    /// <summary>What <c>convert</c> read off a picture (brief-img-11 R-im11-4): <c>recognize</c>'s <c>image</c>,
+    /// <c>scale</c> and <c>layers</c>, the same three objects.</summary>
+    public sealed record ConvertImageJson(
+        ImageReadJson                 Image,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        ImageScaleJson?               Scale,
+        IReadOnlyList<ImageLayerJson> Layers);
+
+    /// <summary>A picture as read (brief-img-11 R-im11-4): its kind (IM-2), how sure and why, its size in pixels as
+    /// read, and the reduction a very large picture was read at (1 = none).</summary>
+    /// <param name="Forced">The kind was chosen with <c>--image-kind</c>; <paramref name="Suggested"/> is what was read.</param>
+    /// <param name="Reason">For kind <c>none</c>, what was seen.</param>
+    public sealed record ImageReadJson(
+        string                               Kind,
+        double                               Confidence,
+        bool                                 Forced,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?                              Suggested,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?                              Reason,
+        IReadOnlyList<ImageKindEvidenceJson> Evidence,
+        int                                  Width,
+        int                                  Height,
+        double                               Reduction);
+
+    /// <summary>One measured feature of the kind vote and which way it reads.</summary>
+    public sealed record ImageKindEvidenceJson(string Name, double Value, string Reads);
+
+    /// <summary>The scale (D6): the one chosen — null when none was — and every piece of evidence there was.</summary>
+    /// <param name="Chosen">The chosen scale as a length per pixel (<c>20 µm/px</c>), or null.</param>
+    public sealed record ImageScaleJson(
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?                                Chosen,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        double?                                MetresPerPixel,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?                                Evidence,
+        IReadOnlyList<ImageScaleCandidateJson> Candidates);
+
+    /// <summary>One piece of scale evidence: its kind (<c>stated</c>, <c>parts</c>, <c>resolution</c>, …), the length per
+    /// pixel it gives, how many things agree (parts), and whether it is only offered (a file's own dpi).</summary>
+    public sealed record ImageScaleCandidateJson(
+        string Kind, string Display, double MetresPerPixel, int Support, string Evidence, bool OfferedOnly);
+
+    /// <summary>One colour of the picture and what it was traced as — the layer map as applied. <c>Spelling</c> is what
+    /// <c>--layer-map</c> takes for this row.</summary>
+    public sealed record ImageLayerJson(string Colour, double Share, string Role, IReadOnlyList<string> Layers, string Spelling);
+
+    /// <summary>A rectangle in the picture, pixels, inclusive.</summary>
+    public sealed record PixelBoxJson(int Left, int Top, int Right, int Bottom);
+
+    /// <summary>A schematic picture's symbol (IM-8): its kind, the template and orientation it matched, what became of
+    /// it, and the parts-table designator it carries.</summary>
+    public sealed record ImageSymbolJson(
+        int          Index,
+        string       Kind,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?      Template,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?      Orientation,
+        string       Disposition,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?      Refdes,
+        PixelBoxJson Box);
+
+    /// <summary>A word in a schematic picture (IM-9): what it was read as and its class, or <c>unread</c> with no text.</summary>
+    public sealed record ImageWordJson(
+        int          Id,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?      Text,
+        string       Class,
+        PixelBoxJson Box);
+
+    /// <summary>A place two wires cross (IM-7): how it was read, whether it joins, and whether a <c>--connect</c> or
+    /// <c>--disconnect</c> decided it. X and Y are source-picture pixels — the spelling those two flags take.</summary>
+    public sealed record ImageCrossingJson(int Id, double X, double Y, string Reading, bool Connected, bool Overridden);
 
     /// <summary>
     /// What <c>convert x.step</c> created, or with <c>--list-parts</c> would create (brief-em3d-128 R-em3d128-3b): the
@@ -1394,6 +1473,8 @@ namespace RfCore.Export
     /// <param name="Netlist">The <c>.cnl</c> written under <c>-o</c>, or null.</param>
     /// <param name="PartsTable">The CSV written under <c>--parts-out</c>, or null.</param>
     /// <param name="CheckpointTaken">A history checkpoint was taken before a replace.</param>
+    /// <param name="Image">A picture source only (brief-img-11 R-im11-4): the picture as read; with <c>Scale</c> and
+    /// <c>Layers</c> for a layout picture, <c>Symbols</c>, <c>Words</c> and <c>Crossings</c> for a schematic one.</param>
     public sealed record RecognizeReportJson(
         string                                             Layout,
         string?                                            Technology,
@@ -1405,7 +1486,19 @@ namespace RfCore.Export
         string?                                            Cell,
         string?                                            Netlist,
         string?                                            PartsTable,
-        bool                                               CheckpointTaken);
+        bool                                               CheckpointTaken,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        ImageReadJson?                                     Image = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        ImageScaleJson?                                    Scale = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        IReadOnlyList<ImageLayerJson>?                     Layers = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        IReadOnlyList<ImageSymbolJson>?                    Symbols = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        IReadOnlyList<ImageWordJson>?                      Words = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        IReadOnlyList<ImageCrossingJson>?                  Crossings = null);
 
     /// <summary>One class of the recognition's report: how many, its sentence, and the places it is about (DBU).</summary>
     public sealed record RecognizeFindingJson(

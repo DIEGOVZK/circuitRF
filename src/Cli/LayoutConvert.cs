@@ -17,9 +17,11 @@
 // the same default the dialog pre-selects (add the layer to the technology) and says so.
 
 using CircuitRF.Design.Cells;
+using CircuitRF.Design.Imaging;
 using CircuitRF.Design.Layout;
 using CircuitRF.Design.Layout.Interchange;
 using CircuitRF.Design.Layout.Interchange.Gdstk;
+using CircuitRF.Design.Layout.Recognition.Image;
 using CircuitRF.Design.ThreeD;
 using CircuitRF.Design.ThreeD.Occ;
 using CircuitRF.Design.ThreeD.Step;
@@ -36,7 +38,7 @@ public static class LayoutConvert
     /// second rule for it — an interchange file they could not name would read as a file circuitRF
     /// does not handle, when in fact `convert` handles it.
     /// </summary>
-    internal enum Fmt { Clay, Gdsii, Dxf, Gerber, Board, Step, Gltf, Oasis }
+    internal enum Fmt { Clay, Gdsii, Dxf, Gerber, Board, Step, Gltf, Oasis, Image }
 
     private sealed class Options
     {
@@ -97,7 +99,13 @@ public static class LayoutConvert
 
         // brief-em3d-111 R-em3d111-3c — glTF export: the Export glTF dialog's options, one flag each.
         public bool GltfAssembly, GltfFlags;
-        public string? GltfField, GltfRegion;
+        public string? GltfField;
+
+        // --region: a glTF target's region name, or a picture source's pixel rectangle (brief-img-11 R-im11-1).
+        public string? Region;
+
+        // brief-img-11 R-im11-1 — a picture source: the Create Layout from Image dialog's fields, one flag each.
+        public readonly PictureFlags Picture = new();
     }
 
     public static int Run(string[] args)
@@ -107,6 +115,11 @@ public static class LayoutConvert
         for (int i = 0; i < args.Length; i++)
         {
             string a = args[i];
+            if (o.Picture.Take("convert", args, ref i, schematic: false) is { } took)
+            {
+                if (took != 0) return took;
+                continue;
+            }
             switch (a)
             {
                 case "-o" or "--output" when i + 1 < args.Length: o.Output = args[++i]; break;
@@ -205,7 +218,7 @@ public static class LayoutConvert
                 case "--include-airbox": o.StepAirBox = o.StepExportFlags = true; break;
                 case "--gltf-assembly": o.GltfAssembly = o.GltfFlags = true; break;
                 case "--gltf-field" when i + 1 < args.Length: o.GltfField = args[++i]; o.GltfFlags = true; break;
-                case "--region" when i + 1 < args.Length: o.GltfRegion = args[++i]; o.GltfFlags = true; break;
+                case "--region" when i + 1 < args.Length: o.Region = args[++i]; break;
                 case "--schema" when i + 1 < args.Length:
                     o.StepExportFlags = true;
                     switch (args[++i].ToLowerInvariant())
@@ -277,7 +290,14 @@ public static class LayoutConvert
         if (o.From == Fmt.Gltf || (o.From is null && IsGltf(o.Input))) return JsonRun.Fail(CliDiagnostics.ConvertGltfImport(o.Input));
         bool gltfTarget = o.To == Fmt.Gltf || (o.To is null && o.Output is not null && IsGltf(o.Output));
         if (gltfTarget) return ExportGltf(o);
-        if (o.GltfFlags) return JsonRun.Fail(CliDiagnostics.ConvertGltfFlagsWithoutGltf());
+
+        // brief-img-11 R-im11-1 — a picture: traced by ImageTrace onto a cell folder plus a technology, like every reader.
+        bool pictureSource = o.From == Fmt.Image || (o.From is null && DocumentKinds.Classify(o.Input) == DocumentKind.Picture);
+        if (pictureSource) return ConvertPicture(o);
+        if (o.Picture.All.FirstOrDefault() is { } pictureFlag)
+            return JsonRun.Fail(CliDiagnostics.PictureFlagWrongKind("convert", pictureFlag, "a picture source",
+                                                                   "a " + Name(o.From ?? DetectSource(o.Input) ?? Fmt.Clay) + " source"));
+        if (o.GltfFlags || o.Region is not null) return JsonRun.Fail(CliDiagnostics.ConvertGltfFlagsWithoutGltf());
 
         bool stepSource = o.From == Fmt.Step || (o.From is null && DetectSource(o.Input) == Fmt.Step);
         if (stepSource)
@@ -566,6 +586,108 @@ public static class LayoutConvert
     /// brief-em3d-111 R-em3d111-3c — <c>.c3d</c> → one <c>.glb</c>. Argument checks and reporting only: what is in the file is
     /// <see cref="CircuitRF.Render.Scene3D.Export.GltfExport"/>'s, the function the Export glTF dialog calls (GltfConvert).
     /// </summary>
+    /// <summary>
+    /// brief-img-11 R-im11-1 — a picture traced onto a NEW cell folder plus a technology, the neutral thing every reader
+    /// lands on, so every target follows from the one-import, one-export rule: a clay target stops here, anything else
+    /// exports out of the scratch directory. Every decision is <see cref="ImageTrace"/>'s — the function Create Layout from
+    /// Image calls (<see cref="PictureFlags"/> holds the flags, the refusals and the projection; a source scan holds it).
+    /// </summary>
+    private static int ConvertPicture(Options o)
+    {
+        const string verb = "convert";
+        if (o.ListCells) return JsonRun.Fail(CliDiagnostics.PictureFlagWrongKind(verb, "--list-cells", "a source holding cells", "a picture"));
+        if (o.Output is null)
+        {
+            JsonRun.Report(CliDiagnostics.ConvertOutputRequired());
+            return Usage();
+        }
+        Fmt? to = o.To ?? DetectTarget(o.Output);
+        if (to is null or Fmt.Image or Fmt.Gltf) return JsonRun.Fail(CliDiagnostics.ConvertTargetUnrecognised(o.Output));
+        if (to == Fmt.Step) return JsonRun.Fail(CliDiagnostics.PictureFlagWrongKind(verb, "-o", "a .c3d, a .clay or an interchange source", "a picture"));
+        if (to == Fmt.Clay && ClayDirectoryRefusal(o.Output) is { } clayRefusal) return clayRefusal;
+
+        var read = ImageSource.FromFile(o.Input!);
+        if (read.Source is not { } source) return JsonRun.Fail(CliDiagnostics.PictureUnreadable(verb, o.Input!, read.Refusal ?? "not a picture"));
+        PixelRect? region = null;
+        if (o.Region is { } r)
+        {
+            var (rect, refusal) = PictureFlags.Region(verb, r);
+            if (refusal is { } no) return no;
+            region = rect;
+        }
+        var (tech, techPath, catalogId, techRefusal) = PictureFlags.Technology(verb, o.TechPath, o.Input!, walkUp: false);
+        if (techRefusal is { } noTech) return noTech;
+
+        Console.Error.WriteLine($"[circuitRF] picture -> {RouteName(o, to.Value)}");
+        string staging;
+        string? scratch = null;
+        if (to == Fmt.Clay) staging = Path.GetFullPath(o.Output);
+        else if (o.KeepCells is { } keep) staging = Path.GetFullPath(keep);
+        else staging = scratch = Path.Combine(Path.GetTempPath(), "circuitrf-convert-" + Guid.NewGuid().ToString("N")[..12]);
+        try
+        {
+            var (input, inputRefusal) = o.Picture.TraceInput(verb, source, null, tech!, techPath, region);
+            if (inputRefusal is { } noInput) return noInput;
+
+            // D6, headless: with no scale stated the trace is made only to say what evidence there is.
+            if (o.Picture.Mode is PictureFlags.ScaleMode.Unstated or PictureFlags.ScaleMode.Auto)
+            {
+                var trace = ImageTrace.Trace(input!, RunHost.Control);
+                if (trace.Refusal is null && o.Picture.ScaleGate(verb, trace) is { } noScale)
+                {
+                    Report(trace, source, tech, o);
+                    return noScale;
+                }
+            }
+
+            // Headless there is no open workspace: a catalogue technology is written into the target as its own .ctech
+            // (convert's rule for every importer), and the cell references it.
+            Directory.CreateDirectory(staging);
+            if (techPath is null && catalogId is not null)
+            {
+                techPath = WorkspaceCreate.InstallTechnology(staging, catalogId);
+                input = input! with { TechnologyPath = techPath };
+                Console.Error.WriteLine($"[circuitRF] technology: {techPath}");
+            }
+
+            string name = ImageTraceTarget.DefaultCellName(source, staging);
+            var run = ImageTrace.Run(input!, ImageTraceTarget.NewCell(staging, name), control: RunHost.Control);
+            Report(run.Result, source, tech, o);
+            if (!run.Ok) return JsonRun.Fail(CliDiagnostics.PictureRefused(verb, run.Refusal ?? "The picture could not be traced."));
+            foreach (string line in run.Report.Lines()) Console.Error.WriteLine($"note: {line}");
+            if (scratch is null && techPath is not null && catalogId is not null) JsonRun.AddOutput("ctech", techPath);
+
+            if (to == Fmt.Clay)
+            {
+                Console.Error.WriteLine($"[circuitRF] wrote 1 cell to {o.Output}");
+                Console.WriteLine(run.CellDir);
+                JsonRun.AddOutput("cell", run.CellDir!);
+                return 0;
+            }
+            return Finish(run.CellDir!, tech, [run.CellDir!]) is { } src ? Export(o, to.Value, src) : 1;
+        }
+        catch (OperationCanceledException)
+        {
+            Console.Error.WriteLine("[circuitRF] cancelled; nothing was written");
+            return 130;
+        }
+        finally
+        {
+            if (scratch is not null && Directory.Exists(scratch))
+                try { Directory.Delete(scratch, recursive: true); } catch { /* best effort */ }
+        }
+
+        static void Report(ImageTraceResult trace, ImageSource source, Technology? tech, Options o)
+        {
+            var kind = ImageKind.Classify(source.Raster);
+            JsonRun.ConvertImage = new ConvertImageJson(PictureFlags.ImageJson(source, kind), PictureFlags.ScaleJson(trace),
+                                                        PictureFlags.LayersJson(trace));
+            if (o.Picture.LayerMap is null && trace.LayerMap is { } map)
+                Console.Error.WriteLine($"[circuitRF] layer map: --layer-map \"{PictureFlags.Spell(map)}\"");
+            o.Picture.WriteOverlay(verb, ImageOverlay.Build(trace, null, tech), source);
+        }
+    }
+
     private static int ExportGltf(Options o)
     {
         if (o.ListCells) return JsonRun.Fail(CliDiagnostics.ConvertListCellsNotApplicable());
@@ -579,7 +701,7 @@ public static class LayoutConvert
         string input = Path.GetFullPath(o.Input!);
         var kind = DocumentKinds.Classify(input);
         if (kind != DocumentKind.ThreeD) return JsonRun.Fail(CliDiagnostics.ConvertGltfSource(o.Input!, DocumentKinds.Name(kind)));
-        return GltfConvert.Export(input, o.Output, o.GltfAssembly, o.GltfField, o.GltfRegion);
+        return GltfConvert.Export(input, o.Output, o.GltfAssembly, o.GltfField, o.Region);
     }
 
     /// <summary>A glTF path, binary or not (<c>.gltf</c> is refused as a target by name, D1).</summary>
@@ -1165,6 +1287,7 @@ public static class LayoutConvert
         "board" or "kicad_pcb" => Fmt.Board,   // the extension is a data format; the bare product name is not ours to use
         "step" or "stp" => Fmt.Step,
         "gltf" or "glb" => Fmt.Gltf,
+        "image" or "picture" => Fmt.Image,
         _ => null,
     };
 
@@ -1176,7 +1299,7 @@ public static class LayoutConvert
     internal static string Name(Fmt f) => f switch
     {
         Fmt.Clay => "clay", Fmt.Gdsii => "GDSII", Fmt.Oasis => "OASIS", Fmt.Dxf => "DXF",
-        Fmt.Gerber => "Gerber", Fmt.Step => "STEP", Fmt.Gltf => "glTF", _ => "board",
+        Fmt.Gerber => "Gerber", Fmt.Step => "STEP", Fmt.Gltf => "glTF", Fmt.Image => "picture", _ => "board",
     };
 
     internal static Fmt? DetectSource(string path)
@@ -1226,6 +1349,11 @@ public static class LayoutConvert
         Console.Error.WriteLine("       gltf target (-o <file>.glb; from a .c3d):  --gltf-assembly  --gltf-field <plot>  --region <name>");
         Console.Error.WriteLine("       --no-coalesce  keep a painted pour's individual strokes");
         Console.Error.WriteLine("       gerber source, clay target:  --into-tech <path.ctech>  import into that technology and write none");
+        Console.Error.WriteLine("       picture source (png, jpeg, bmp, gif, webp; --from image):  --scale <len>/px | --dpi <n> |");
+        Console.Error.WriteLine("              --scale-points x0,y0,x1,y1=<len> | --scale auto   --tech <id|path.ctech>");
+        Console.Error.WriteLine("              --layer-map \"#rrggbb=<layer>|drill|outline|silk|ignore,...\"  --preset <name>");
+        Console.Error.WriteLine("              --region x0,y0,x1,y1 (each with px)  --min-feature px2  --simplify px  --snap-deg d");
+        Console.Error.WriteLine("              --snap45 on|off  --underlay on|off  --overlay out.png");
         JsonRun.Note(CliDiagnostics.ConvertUsage());
         return 1;
     }

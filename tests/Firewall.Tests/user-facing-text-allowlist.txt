@@ -1147,3 +1147,24 @@ src/Design/Layout/Text/StrokeFont.cs|the embedded stroke font '{resource}' is mi
 src/Design/Schematic/CnlTechnologyBinding.cs|{label} is refused: {refused}.
 src/Design/Schematic/CnlTechnologyBinding.cs|{label} names {Describe(namedLayers, Text)}, but {(tech is null ? 
 src/Engine/Statistics/LeastSquares.cs|A fit needs at least one observation and one column.
+
+# ── Create from Image's internal invariants (IM-1, IM-2, IM-8; allow-listed 2026-10-10) ───────────────
+# Argument checks against circuitRF's own callers — a coverage or raster buffer of the wrong length, a fit handed too
+# few points, a kind of None forced or recorded — and a decoded bitmap whose pixels Skia then cannot read. None is
+# reachable from a user's input: a picture that does not decode is ImageSource's refusal, which IS user-facing and is
+# returned, not thrown. SymbolTemplates' are parse errors in the .stroke template files embedded in this assembly, so
+# one can only be a build defect.
+src/Design/Imaging/CoverageMap.cs|Length does not match the size.
+src/Design/Imaging/Fit.cs|A circle needs at least three points.
+src/Design/Imaging/Fit.cs|A segment needs at least one point.
+src/Design/Imaging/ImageKind.cs|Only Schematic or Layout can be forced.
+src/Design/Imaging/ImageProvenance.cs|A result is read as a schematic or a layout, never as none.
+src/Design/Imaging/RasterImage.cs|RGBA8 length does not match the size.
+src/Design/Imaging/RasterImage.cs|The bitmap's pixels could not be read.
+src/Design/Schematic/Recognition/SymbolTemplates.cs|Symbol template {name}: no extent.
+src/Design/Schematic/Recognition/SymbolTemplates.cs|Symbol template {name}: nothing but leads.
+src/Design/Schematic/Recognition/SymbolTemplates.cs|unknown word '{word}'
+src/Design/Schematic/Recognition/SymbolTemplates.cs|{name}, line {lineNo}: {e.Message}
+src/Design/Schematic/Recognition/SymbolTemplates.cs|{name}: no convention.
+src/Design/Schematic/Recognition/SymbolTemplates.cs|{name}: no kind.
+src/Design/Schematic/Recognition/SymbolTemplates.cs|{name}: no pin.

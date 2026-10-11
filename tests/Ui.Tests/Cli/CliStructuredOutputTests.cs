@@ -802,6 +802,22 @@ public sealed class CliStructuredOutputTests(ITestOutputHelper output) : IDispos
         "new.refused",
         "new.tech.unknown",
         "new.views.unknown",
+        // brief-img-11: a picture read by convert or recognize — one family for both verbs.
+        "picture.args.px-required",
+        "picture.args.value",
+        "picture.args.wrong-kind",
+        "picture.kind.none",
+        "picture.layer-map.layer-unknown",
+        "picture.overlay.write-failed",
+        "picture.preset.not-found",
+        "picture.refused",
+        "picture.scale.auto-refused",
+        "picture.scale.inferred-unaccepted",
+        "picture.scale.unstated",
+        "picture.target.artwork",
+        "picture.tech.unknown",
+        "picture.tech.unreadable",
+        "picture.unreadable",
         // AUT-11 R-aut11-2: `plot`. One picture from one result, building the same document
         // `render --data` consumes — so there is one plotting path rather than two.
         "plot.angle-labels.needs-polar",

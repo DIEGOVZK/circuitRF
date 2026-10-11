@@ -1047,7 +1047,9 @@ public sealed class ServeProtocolAdapterTests(ITestOutputHelper output) : IDispo
                     // TheAttachedPicture_IsTheFileOnDisk_ByteForByte and the cap test beside it;
                     // exempting it here would be free if it were never asserted anywhere, so it is
                     // counted and the count is checked below.
-                    if (argument == ToolCatalog.AttachImageArgument) { adapterArguments++; continue; }
+                    // brief-img-11 R-im11-5 adds the second, by name too: `overlay` asks for convert's and
+                    // recognize's overlay picture back as image content (its gate is McpImageToolTests).
+                    if (argument is ToolCatalog.AttachImageArgument or ToolCatalog.OverlayArgument) { adapterArguments++; continue; }
 
                     var arguments = new JsonObject();
                     if (selector.Key is not null) arguments[selector.Key] = mode;

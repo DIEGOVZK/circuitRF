@@ -1,4 +1,5 @@
-// What the picture canvas draws over the picture — brief-img-5-dialog.md R-im5-3.
+// What is drawn over a picture — brief-img-5-dialog.md R-im5-3; below the firewall since brief-img-11 R-im11-3, so the
+// dialog's canvas and the CLI's --overlay picture draw the same marks from the same result (ImageOverlay.Picture.cs).
 //
 // Built ONLY from what the reading returned (the trace, and the recognition when a schematic is made) and carried into
 // pixel space through the trace's own PixelFrame, so every item lies on the pixels it was read from. Nothing here reads
@@ -8,17 +9,13 @@
 // The items are also the cross-probe: a parts-table row and an overlay item name each other by the board's designator,
 // and a report anchor finds the item nearest to it — a pure mapping, so it is tested without rendering.
 
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
-using CircuitRF.Design.Imaging;
 using CircuitRF.Design.Layout;
 using CircuitRF.Design.Layout.Recognition;
 using CircuitRF.Design.Layout.Recognition.Image;
 using CircuitRF.Design.Schematic.Recognition;
 
-namespace CircuitRF.Ui.Recognition;
+namespace CircuitRF.Design.Imaging;
 
 /// <summary>The overlay's classes, each toggled from the legend. A schematic picture's are its wires (junction dots and
 /// dangling ends among them), its symbols (as parts), its ports, its words and its crossings (IM-10).</summary>
@@ -61,7 +58,7 @@ public sealed record ImageOverlayItem(
     string? Label, int? Rgb, bool Unknown, string? PartKey, PixelBounds Bounds, (double X, double Y, double R)? Circle = null);
 
 /// <summary>Everything the canvas draws over one reading.</summary>
-public sealed class ImageOverlay
+public sealed partial class ImageOverlay
 {
     private ImageOverlay(IReadOnlyList<ImageOverlayItem> items, ColourClusterSet? clusters, IReadOnlyList<int> ignored,
                          IReadOnlyList<int> unmapped, PixelFrame? frame, bool pixelAnchors = false)
@@ -202,8 +199,8 @@ public sealed class ImageOverlay
                 b = b.Inflate(pad);
                 var box = new List<(double X, double Y)> { (b.Left, b.Top), (b.Right, b.Top), (b.Right, b.Bottom), (b.Left, b.Bottom) };
                 bool unknown = row.Kind == PartKind.Unknown || (row.Value is null && row.Model != PartModelKind.SnP);
-                items.Add(new ImageOverlayItem($"part:{row.BoardRefdes}", ImageOverlayClass.Part, [box], true, row.Refdes, null,
-                                               unknown, row.BoardRefdes, b));
+                items.Add(new ImageOverlayItem($"part:{row.BoardRefdes}", ImageOverlayClass.Part, [box], true,
+                                               WithValue(row.Refdes, recognition.Parts, row), null, unknown, row.BoardRefdes, b));
             }
 
             foreach (var line in recognition.Lines.Elements)
@@ -236,6 +233,10 @@ public sealed class ImageOverlay
                                             && r.Layers.Count == 0).Select(r => r.Cluster).ToList() ?? [];
         return new ImageOverlay(items, trace.Clusters, ignored, unmapped, trace.Frame);
     }
+
+    /// <summary>A part's label with its value after it (R-im11-3: refdes and value), when the row has one.</summary>
+    private static string WithValue(string label, PartsTable parts, PartRow? row) =>
+        row is not null && PartsTableCsv.Cell(parts, row, "Value") is { Length: > 0 } value ? $"{label} {value}" : label;
 
     private static IReadOnlyList<(double X, double Y)> Points(Clipper2Lib.PathD path) => [.. path.Select(p => (p.x, p.y))];
 
@@ -291,7 +292,7 @@ public sealed class ImageOverlay
                 _ => "not connected",
             } + (c.Overridden ? " (yours)" : "");
             items.Add(new ImageOverlayItem($"{CrossingPrefix}{c.Id}", ImageOverlayClass.Crossing, [], true, label,
-                                           c.Connected ? 0x2E9D4A : 0x707070, false, null, new PixelBounds(x - r, y - r, x + r, y + r), (x, y, r)));
+                                           c.Connected ? Colours.Connected : Colours.Ignored, false, null, new PixelBounds(x - r, y - r, x + r, y + r), (x, y, r)));
         }
 
         // Symbols, as parts: the parts-table row's designator where there is one, so a row and its box name each other.
@@ -307,7 +308,7 @@ public sealed class ImageOverlay
             string? key = rowOf.TryGetValue(i, out var k) ? k : null;
             var row = key is null ? null : rows.Rows.FirstOrDefault(r => string.Equals(r.BoardRefdes, key, StringComparison.OrdinalIgnoreCase));
             string name = row?.Refdes ?? (labels.TryGetValue(i, out var l) ? l.Designator : null) ?? "";
-            string label = $"{name} {s.KindLabel}{(s.Template is null ? "" : " " + s.Orientation)}".Trim();
+            string label = WithValue($"{name} {s.KindLabel}{(s.Template is null ? "" : " " + s.Orientation)}".Trim(), rows, row);
             bool unknown = s.Disposition is SymbolDisposition.Unknown or SymbolDisposition.UnreadTerminal
                            || (row is not null && row.IsModelled && row.TakesValue && row.Value is null && row.Model != PartModelKind.SnP);
             items.Add(new ImageOverlayItem($"part:{key ?? "symbol" + i}", ImageOverlayClass.Part, [box], true, label, null, unknown, key,

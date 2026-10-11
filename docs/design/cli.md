@@ -58,7 +58,7 @@ Fourteen verbs run no analysis, so none of §3-§6 applies to them and §7's exi
 
 | Verb | Input | Does | Writes |
 |---|---|---|---|
-| `convert` | any interchange format; a STEP file; a `.c3d` or a cell folder (to STEP); a `.c3d` (to glTF) | one import, one export | the target format; documented in the repo-root `CLAUDE.md`. **A `clay` target is a DIRECTORY**; a STEP source's one target is a new `.c3d`, and a STEP target takes a `.c3d`, a `.clay`, a cell folder or any interchange source; a `.glb` target takes a `.c3d` only, and glTF is never a source — see below |
+| `convert` | any interchange format; a picture of a layout (§27); a STEP file; a `.c3d` or a cell folder (to STEP); a `.c3d` (to glTF) | one import, one export | the target format; documented in the repo-root `CLAUDE.md`. **A `clay` target is a DIRECTORY**; a STEP source's one target is a new `.c3d`, and a STEP target takes a `.c3d`, a `.clay`, a cell folder or any interchange source; a `.glb` target takes a `.c3d` only, and glTF is never a source — see below |
 | `new workspace` | a directory | `WorkspaceCreate.Create` | a `.cws` and, unless `--tech none`, a copied `.ctech` |
 | `new cell` | a workspace + a name | `CellCreate.Create` | a cell folder and one empty-but-valid file per `--views` |
 | `import part` | a component file or folder | `ComponentRead` + `ComponentImport.Import` | a cell folder holding the land patterns and the symbol |
@@ -70,7 +70,7 @@ Fourteen verbs run no analysis, so none of §3-§6 applies to them and §7's exi
 | `plot` | a result file | builds a one-plot data display and draws it | one `.svg` / `.pdf` / `.png`, and the `.cdd` under `--write-cdd` — §15 |
 | `find` | a directory | enumerates the workspaces, cells, views and analyses under it | **nothing** — §16 |
 | `lvs` | a cell folder, a workspace, a `.clay` or a `.csch` | compares the artwork against the drawing, through `LvsRun.Run` | **nothing** unless `-o` names a report — §19 |
-| `recognize` | a `.clay`, a cell folder, or a workspace + `--cell` | reads the artwork as a circuit, through `ArtworkRecognition` | **nothing** unless `-o` (a `.cnl`), `--into` (a schematic) or `--parts-out` (the parts table) — §26 |
+| `recognize` | a `.clay`, a cell folder, a workspace + `--cell`, or a picture (§26.8) | reads the artwork — or the picture — as a circuit, through `ArtworkRecognition` / `ImageRecognition` / `SchematicImageRecognition` | **nothing** unless `-o` (a `.cnl`), `--into` (a schematic), `--parts-out` (the parts table) or `--overlay` (the picture, annotated) — §26 |
 | `serve` | `--root <dir>` | a protocol server on stdin/stdout — §11 | whatever the tool it was asked for writes |
 
 **`convert`'s `clay` target is a directory, and a file-shaped path there is a refusal** (R-aut12-4).
@@ -3836,3 +3836,84 @@ refusals (`--region` bare numbers, `--into artwork` on a cell with a schematic, 
 and then with `--replace`), the end to end (`recognize --into` then `sparam` on the schematic, no display), and
 the source scan. `ServeProtocolAdapterTests.Recognize_IsListed_AndItsReadOnlyDefaultWritesNothing` holds the
 tool; `NetlistToSchematicTests.AQuotedLayerName_IsStoredBare` the layer-name fix.
+
+### 26.8 A picture (brief-img-11)
+
+A picture path (PNG, JPEG, BMP, GIF, WebP — `DocumentKinds.Classify`'s `picture`) is accepted where a layout is.
+Its kind is IM-2's reading, or `--image-kind auto|schematic|layout`'s; a picture read as **no drawing** is refused
+(`picture.kind.none`, IM-2's sentence, naming `--image-kind`). Then:
+
+- **A layout picture** is `ImageRecognition` — traced (every §27 flag: the scale, `--tech`, `--layer-map`, `--preset`,
+  `--region` in px, the trace options) and recognised with every artwork flag above. `--tech` absent: the picture's
+  workspace's technology, else a new workspace's default. A `--ground-at` is in the traced layout's lengths.
+- **A schematic picture** is `SchematicImageRecognition`, with `--crossings never|dot|always`, `--arrange drawn|tidy`,
+  `--connect x,y` / `--disconnect x,y` (repeatable; source-picture pixels, the spelling `result.recognize.crossings`
+  gives — `x,y:x2,y2` joins two ends), `--threshold k` and `--underlay on|off`. Its parts CSV's rows are pixels
+  (`X (px)`); `--parts-out`/`--parts` round-trip it exactly as a board's.
+
+A flag of the other kind is refused (`picture.args.wrong-kind`) rather than ignored, and so is a picture flag on a
+layout. The read-only default, `-o`, `--into new:<name>` (a new cell in the picture's workspace, else beside the
+picture) and `--replace` are AS-7's; `--into artwork` has no meaning for a picture (`picture.target.artwork`).
+`--overlay out.png` writes the annotated picture (§27.3) — **even when the reading is refused**.
+`result.recognize` gains `image` (kind, confidence, evidence, pixel size, reduction), for a layout picture `scale`
+(chosen, evidence, every candidate) and `layers` (the map as applied, each row's `--layer-map` spelling), and for a
+schematic picture `symbols`, `words` (read and unread, with boxes) and `crossings`. Exit codes are unchanged.
+
+Over the protocol the tool takes the same parameters, and its result carries the overlay as **image content** beside
+the JSON whenever the path is a picture (the adapter's `overlay` argument, default true for a picture; `overlayPath`
+keeps the file too). The description says how an agent corrects a reading: edit the parts CSV and pass it back, flip
+a crossing, or write the `.cnl` itself. The server's instructions carry a *Picture to circuit* walk. Gates:
+`tests/Ui.Tests/Cli/ImageRecognizeCliVerbTests.cs` (the `.cnl` byte for byte against both entry points in process,
+the blank refusal, the overlay on a refused read, and the R-im11-6 source scan) and `McpImageToolTests`.
+
+## 27. A picture as `convert`'s source — the image reader, the scale, the overlay
+
+**brief-img-11.** `convert board.png -o <target>` (or `--from image`; a picture is also recognised by its content)
+traces a picture of a layout onto technology layers and writes any target: like every reader it lands on a cell
+folder plus a technology, so `--to clay` stops there and every other target exports out of the scratch directory
+(`--keep-cells` keeps it). The reader is `ImageTrace.Run` — the function Create Layout from Image calls — and
+`src/Cli/PictureInput.cs` owns no image processing: the flags, the refusals and the projection only. A
+comment-stripped source scan holds `src/Cli` to naming nothing of `CircuitRF.Design.Imaging` or the two recognition
+namespaces but the entry points, their options and results, `ImageOverlay` and `PartsTableCsv` (R-im11-6).
+
+### 27.1 Flags
+
+`--scale <length>/px` (`25.4um/px`), `--dpi <n>`, `--scale-points x0,y0,x1,y1=<length>` (pixels), `--scale auto`;
+`--tech <id|path.ctech>` (absent: a new workspace's default technology, written into the target as a `.ctech` of its
+own — `convert`'s rule for every importer; an id is installed the same way, a path is referenced); `--layer-map
+"#rrggbb=<layer>[+<layer>]|drill|outline|silk|background|ignore,…"` (an edited map: each picture colour takes the
+nearest row within ΔE 8, a colour no row names is ignored), `--preset <name>` (a saved image-trace preset, its map and
+options; a flag beside it wins); with neither, IM-3's automatic map, **printed on stderr in `--layer-map`'s spelling**
+so the caller can pin it; `--region x0,y0,x1,y1` in pixels, **`px` on every number** (`render --window`'s rule — a bare
+number is `picture.args.px-required`); `--min-feature` (px²), `--simplify` (px), `--snap-deg` (0 snaps nothing),
+`--snap45 on|off`, `--underlay on|off`. Pixel numbers and lengths per pixel are the FILE's pixels, carried onto a
+reduced reading as the file's own dpi is. `--json` carries `result.convert`: `image`, `scale` and `layers`, the
+objects `recognize` reports.
+
+### 27.2 The scale is never a guess (D6)
+
+The dialog may open on an inferred scale because the user sees it and changes it with one click; a build machine sees
+nothing. So **with no scale flag a picture is refused** — the dialog's own sentence (`ImageTrace.NoScaleRefusal`, which
+lists the evidence found) and the flags that state one (`picture.scale.unstated`); when the land patterns DO give a
+scale, the refusal names it and says `--scale auto` takes it (`picture.scale.inferred-unaccepted`). `--scale auto`
+takes the parts inference only on D6's terms — at least `ImageScale.MinPartsSupport` (3) agreeing — and below that is
+refused **listing every candidate with its support** (`picture.scale.auto-refused`). A stated scale's own refusal (two
+points with a unitless distance) is the trace's, as `picture.refused`.
+
+### 27.3 The overlay
+
+`--overlay out.png` (both verbs) writes the source picture with what was read drawn over it: IM-5's overlay classes —
+copper outlined in its layer's colour, drills, parts boxed and labelled with refdes and value, lines, ports with their
+number, a schematic picture's wires, junctions, crossings and words — and **whatever was not read in amber**. It is
+drawn by `ImageOverlay` in `src/Design/Imaging` (`ImageOverlay.Picture.cs`) with SkiaSharp, its labels in circuitRF's
+own stroke font, from the same `ImageOverlay` the dialog's canvas draws live (the canvas reads the same class colours,
+`ImageOverlay.Colours`); the file is every class at once. It is written **even when the run is refused after
+reading**, because that is when it is most useful, and listed in `outputs` as `overlay`. A failed overlay write is a
+warning, not a refusal. Exit codes: 0, 1, 130; never 2.
+
+### 27.4 The gate
+
+`tests/Ui.Tests/Cli/ImageConvertCliVerbTests.cs`: a generated layout picture to `.clay` at `--scale 20um/px`, byte for
+byte against `ImageTrace.Run` in process but the provenance time; to `.gds`, byte for byte against `GdsiiExport` of
+the in-process cell but the GDSII timestamps; no scale refused with the D6 sentence; `--scale auto` on two land
+patterns refused listing the candidates; a bare-number `--region` refused.

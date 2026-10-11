@@ -279,6 +279,13 @@ internal sealed class McpServer
                 "Artwork to circuit: 1. recognize path=<.clay> -> the report and the parts table; writes nothing. " +
                 "2. recognize partsOut=<p.csv>, edit Kind/Value there, pass it back as parts=<p.csv>. 3. recognize " +
                 "into=new:<name> (or output=<x.cnl>) -> the schematic. 4. run analysis=sparam on it.\n" +
+                "Picture to circuit: 1. recognize path=<.png> (a layout picture also scale=<len>/px, dpi or " +
+                "scalePoints; scale=auto accepts its parts evidence) -> the report, the parts table, result.recognize " +
+                "(image, scale, layers; for a schematic picture symbols, words, crossings) and the overlay as an image: " +
+                "look at it. 2. correct: partsOut/parts as above, layerMap to pin a layout picture's colours, " +
+                "connect/disconnect=x,y to flip a schematic crossing, imageKind if the kind is wrong — or write the .cnl " +
+                "yourself. 3. recognize into=new:<name> (or output=<x.cnl>). 4. run analysis=sparam. convert path=<.png> " +
+                "output=<dir|x.gds> traces a layout picture without recognising it.\n" +
                 "On an instance line the NETS come first and every 'Key=value' after them; how many " +
                 "nets each type takes is the 'nets' field of reference components, which is not the " +
                 "same number as its symbol's pin count; 'reference component-index' lists every type " +
@@ -434,6 +441,8 @@ internal sealed class McpServer
     {
         int    refusedCode;
         string document;
+        bool   overlay = false;
+        string? scratchOverlay = null;
 
         if (tool == HistoryBatch.ToolName)
         {
@@ -445,6 +454,19 @@ internal sealed class McpServer
         else
         {
             var argv = ToolCatalog.ToArgv(tool, arguments, _root, out var refusal);
+
+            // brief-img-11 R-im11-5. A picture's reading comes back as a picture an agent can SEE: the verb writes
+            // its overlay (to overlayPath, or here to a scratch file the result carries and nothing keeps) and the
+            // file is attached below, exactly as a render's is. The picture is the verb's; the adapter only asks.
+            if (argv is not null && ToolCatalog.OverlayAsked(tool, arguments, argv))
+            {
+                overlay = true;
+                if (!argv.Contains("--overlay"))
+                {
+                    scratchOverlay = Path.Combine(Path.GetTempPath(), "circuitrf-overlay-" + Guid.NewGuid().ToString("N")[..12] + ".png");
+                    argv = [.. argv[..^1], "--overlay", scratchOverlay, argv[^1]];   // before the trailing --json
+                }
+            }
 
             document = argv is null
                 ? RefusalDocument(tool, refusal!, out refusedCode)
@@ -459,7 +481,8 @@ internal sealed class McpServer
             ["text"] = document,
         });
 
-        if (ToolCatalog.AttachmentAsked(arguments)) Attach(content, document);
+        if (ToolCatalog.AttachmentAsked(arguments) || overlay) Attach(content, document);
+        if (scratchOverlay is not null) try { File.Delete(scratchOverlay); } catch (IOException) { /* best effort */ }
 
         var result = new JsonObject
         {

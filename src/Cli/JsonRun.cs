@@ -185,6 +185,9 @@ internal static class JsonRun
     /// <summary>What <c>convert x.step</c> created, or would create with <c>--list-parts</c> (brief-em3d-128 R-em3d128-3b).</summary>
     public static StepImportReportJson? StepImport;
 
+    /// <summary>What <c>convert</c> read off a picture (brief-img-11 R-im11-4).</summary>
+    public static ConvertImageJson? ConvertImage;
+
     /// <summary>
     /// Where <see cref="Finish"/> writes, instead of stdout. Set by <c>serve</c> only.
     ///
@@ -239,6 +242,7 @@ internal static class JsonRun
         Doe                 = null;
         Recognize           = null;
         StepImport          = null;
+        ConvertImage        = null;
         _summaryOnly        = false;
         _diagnosticsSummary = false;
         Malformed           = null;
@@ -467,13 +471,13 @@ internal static class JsonRun
          || History is not null || Render is not null || Find is not null || Smith is not null
          || Lvs is not null || Impedance is not null || ImpedanceSurvey is not null || FieldPlots is not null
          || ImpedanceLine is not null || Solvers is not null || Optimize is not null || Yield is not null || Corners is not null
-         || Center is not null || Doe is not null || Recognize is not null || StepImport is not null)
+         || Center is not null || Doe is not null || Recognize is not null || StepImport is not null || ConvertImage is not null)
             return new ResultPayload(null, null, Check, Explain, Document, Reference, History, Render,
                                      Find: Find, Smith: Smith, Lvs: Lvs, Impedance: Impedance,
                                      ImpedanceSurvey: ImpedanceSurvey, FieldPlots: FieldPlots,
                                      ImpedanceLine: ImpedanceLine, Solvers: Solvers, Optimize: Optimize,
                                      Yield: Yield, Corners: Corners, Center: Center, Doe: Doe,
-                                     Recognize: Recognize, StepImport: StepImport);
+                                     Recognize: Recognize, StepImport: StepImport, Convert: ConvertImage);
 
         // `rail` is the one verb that carries a report AND a DataSet — the cubes are the field and
         // the report is the domain shape §2.4 asks for — so a refused run still answers with its

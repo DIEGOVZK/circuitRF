@@ -3170,3 +3170,25 @@ the write and the optimum) before it was changed; none turned out wrong. Gate:
   `TrialViews.ColourByRefusal`/`EnvelopeRefusal`, and each statistic's options against what it reads
   (`StatOptionsOf`), all as `plot.trace.stat-refused` with the reason — no new plot ids. The usage example's
   `y=db` (itself refused as ambiguous) is `y=db20`, as are the two doc copies of it.
+
+## Pictures on `convert` and `recognize`, and through MCP (brief-img-11, 2026-10-10)
+
+- **`convert --region` meant two things once a picture became a source.** It was a glTF target's region name, and
+  setting it marked the run as glTF (`GltfFlags`), so any other conversion carrying it was refused as "glTF flags
+  without a glTF target". It is now stored plainly: a glTF target reads it as before, a picture source reads it as a
+  pixel rectangle (`px` on every number), and anything else still refuses it with the same sentence.
+- **A headless default never takes an inferred scale.** With no `--scale`/`--dpi`/`--scale-points`, the picture is
+  traced only to report the evidence, and refused. Without that rule a picture with three matching land patterns
+  would trace silently at an inferred scale on a build machine, where nobody sees the number. `--scale auto` is the
+  explicit opt-in, on D6's own support threshold.
+- **The overlay PNG labels with the stroke font, not a typeface.** A system or bundled TrueType face reached from
+  `src/Design` falls back to `SKTypeface.Default` headlessly (the `LayoutTextOutline` trap), so the same reading would
+  flatten to different pixels on different machines. `StrokeFont` is embedded in `src/Design` and identical everywhere.
+- **The MCP overlay is the one default the adapter supplies.** For a picture path the adapter appends `--overlay` with
+  a scratch `.png`, attaches it through the existing render attachment path, then deletes it; the document's
+  `outputs` therefore names a file that is gone by the time the client reads it, which the tool description states
+  ("returned, not kept" unless `overlayPath` is given). The parity gate exempts `overlay` by name alongside
+  `attachImage`.
+- **`ImageOverlay` moved from `src/Ui/Recognition` to `src/Design/Imaging`** unchanged but for the part labels, which
+  now carry the value after the refdes (R-im11-3), and the class colours, now one table (`ImageOverlay.Colours`) the
+  canvas and the PNG both read.

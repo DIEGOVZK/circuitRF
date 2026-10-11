@@ -29,14 +29,11 @@ namespace CircuitRF.Ui.Recognition;
 
 public sealed class ImageOverlayCanvas : Control
 {
-    private static readonly Color Amber = Color.Parse("#E0A010");
-    private static readonly Color Accent = Color.Parse("#1E88E5");
-    private static readonly Color PartColour = Color.Parse("#7B1FA2");
-    private static readonly Color LineColour = Color.Parse("#00897B");
-    private static readonly Color PortColour = Color.Parse("#C62828");
-    private static readonly Color DrillColour = Color.Parse("#37474F");
-    private static readonly Color WireColour = Color.Parse("#1565C0");
-    private static readonly Color TextColour = Color.Parse("#5D4037");
+    // The classes' colours are ImageOverlay.Colours — the flattened --overlay picture reads the same constants.
+    private static Color Rgb(int rgb) => Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb);
+    private static readonly Color Amber = Rgb(ImageOverlay.Colours.Amber);
+    private static readonly Color Accent = Rgb(ImageOverlay.Colours.Accent);
+    private static readonly Color PortColour = Rgb(ImageOverlay.Colours.Port);
 
     private ImageSourceViewModel? _vm;
     private RasterImage? _rasterShown;
@@ -210,7 +207,7 @@ public sealed class ImageOverlayCanvas : Control
                 case ImageOverlayClass.Crossing when item.Circle is { } c:
                     // Read as connected: a filled disc; not connected: a ring with a gap — what a click flips.
                     var ring = new Pen(new ImmutableSolidColorBrush(selected ? Accent : colour), 2 * px);
-                    context.DrawEllipse(item.Rgb == 0x2E9D4A ? new ImmutableSolidColorBrush(colour, 0.35) : null, ring, new Point(c.X, c.Y), c.R, c.R);
+                    context.DrawEllipse(item.Rgb == ImageOverlay.Colours.Connected ? new ImmutableSolidColorBrush(colour, 0.35) : null, ring, new Point(c.X, c.Y), c.R, c.R);
                     if (selected && item.Label is { } l) DrawLabel(context, item, l, Accent, px);
                     break;
                 default:
@@ -234,19 +231,7 @@ public sealed class ImageOverlayCanvas : Control
                                   new Rect(s.Left, s.Top, s.Right - s.Left, s.Bottom - s.Top));
     }
 
-    private static Color ColourOf(ImageOverlayItem item) => item.Class switch
-    {
-        ImageOverlayClass.Copper when item.Rgb is { } rgb => Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb),
-        ImageOverlayClass.Copper => Color.Parse("#B87333"),
-        ImageOverlayClass.Drill => DrillColour,
-        ImageOverlayClass.Part => PartColour,
-        ImageOverlayClass.Line => LineColour,
-        ImageOverlayClass.Port => PortColour,
-        ImageOverlayClass.Wire => WireColour,
-        ImageOverlayClass.Text => TextColour,
-        ImageOverlayClass.Crossing when item.Rgb is { } rgb => Color.FromRgb((byte)(rgb >> 16), (byte)(rgb >> 8), (byte)rgb),
-        _ => Amber,
-    };
+    private static Color ColourOf(ImageOverlayItem item) => Rgb(ImageOverlay.ColourOf(item with { Unknown = false }));
 
     private Geometry GeometryOf(ImageOverlayItem item)
     {
@@ -363,7 +348,7 @@ public sealed class ImageOverlayCanvas : Control
             {
                 if (((x + y) & 7) >= 2) continue;
                 int l = clusters.Label(x, y);
-                Color? c = unmapped.Contains(l) ? Amber : ignored.Contains(l) ? Color.Parse("#707070") : null;
+                Color? c = unmapped.Contains(l) ? Amber : ignored.Contains(l) ? Rgb(ImageOverlay.Colours.Ignored) : null;
                 if (c is not { } col) continue;
                 int i = (y * w + x) * 4;
                 px[i] = col.R; px[i + 1] = col.G; px[i + 2] = col.B; px[i + 3] = 170;

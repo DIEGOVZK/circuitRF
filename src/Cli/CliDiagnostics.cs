@@ -3788,6 +3788,96 @@ internal static class CliDiagnostics
     public static Diagnostic RecognizeCancelled() => new(
         "recognize.cancelled", DiagnosticSeverity.Error,
         "recognize: cancelled. Nothing was written.");
+    // ── a picture, read by convert or recognize (brief-img-11-cli-and-mcp.md) ─────────────────
+    //
+    // One family for both verbs: the refusals are about the INPUT (a picture's scale, its pixels, its kind), and
+    // they read the same whichever verb was handed it. The verb is an argument so the sentence still names it. The
+    // reading's OWN refusals (no copper at the mapped colours, no wires) arrive as picture.refused with the reading's
+    // sentence, never re-authored here.
+
+    public static Diagnostic PictureBadValue(string verb, string option, string text, string expected) => Diagnostic.Create(
+        "picture.args.value", DiagnosticSeverity.Error,
+        "{verb}: {option} takes {expected}, got '{text}'.",
+        ("verb", verb), ("option", option), ("text", text), ("expected", expected));
+
+    /// <summary>A picture coordinate given as a bare number — <c>render --window</c>'s rule, in pixels.</summary>
+    public static Diagnostic PictureCoordinateNeedsPx(string verb, string option, string text) => Diagnostic.Create(
+        "picture.args.px-required", DiagnosticSeverity.Error,
+        "{verb}: {option} '{text}' is a bare number. On a picture a coordinate is in pixels and says so: write '{text}px'.",
+        ("verb", verb), ("option", option), ("text", text));
+
+    /// <summary>A flag that belongs to the other kind of input — never a silent no-op.</summary>
+    public static Diagnostic PictureFlagWrongKind(string verb, string option, string reads, string given) => Diagnostic.Create(
+        "picture.args.wrong-kind", DiagnosticSeverity.Error,
+        "{verb}: {option} applies to {reads}, and this input is {given}.",
+        ("verb", verb), ("option", option), ("reads", reads), ("given", given));
+
+    public static Diagnostic PictureUnreadable(string verb, string path, string why) => Diagnostic.Create(
+        "picture.unreadable", DiagnosticSeverity.Error,
+        "{verb}: '{path}' could not be read as a picture: {why}", ("verb", verb), ("path", path), ("why", why));
+
+    /// <summary>IM-2's None, with the flag that overrides it.</summary>
+    public static Diagnostic PictureNoDrawing(string verb, string path, string reason) => Diagnostic.Create(
+        "picture.kind.none", DiagnosticSeverity.Error,
+        "{verb}: No drawing found in '{path}': {reason}. If it is one, say which with --image-kind schematic or "
+      + "--image-kind layout.",
+        ("verb", verb), ("path", path), ("reason", reason));
+
+    /// <summary>D6 — no scale stated and none inferred: the dialog's sentence, then the flags that state one.</summary>
+    public static Diagnostic PictureScaleUnstated(string verb, string sentence) => Diagnostic.Create(
+        "picture.scale.unstated", DiagnosticSeverity.Error,
+        "{verb}: {sentence} State it with --scale <length>/px (25.4um/px), --dpi <n> or --scale-points "
+      + "x0,y0,x1,y1=<length>.",
+        ("verb", verb), ("sentence", sentence));
+
+    /// <summary>The land patterns gave a scale, and a command line does not take an inference it was not asked to.</summary>
+    public static Diagnostic PictureScaleNotAccepted(string verb, string scale, string evidence) => Diagnostic.Create(
+        "picture.scale.inferred-unaccepted", DiagnosticSeverity.Error,
+        "{verb}: the picture states no scale. Its land patterns give {scale} ({evidence}); accept that with "
+      + "--scale auto, or state the scale with --scale <length>/px, --dpi <n> or --scale-points x0,y0,x1,y1=<length>.",
+        ("verb", verb), ("scale", scale), ("evidence", evidence));
+
+    /// <summary><c>--scale auto</c> with too little parts evidence — every candidate listed, with its support.</summary>
+    public static Diagnostic PictureScaleAutoRefused(string verb, int minimum, string candidates) => Diagnostic.Create(
+        "picture.scale.auto-refused", DiagnosticSeverity.Error,
+        "{verb}: --scale auto takes the land-pattern evidence only when at least {minimum} parts agree, and this picture "
+      + "offers {candidates}. State the scale with --scale <length>/px, --dpi <n> or --scale-points x0,y0,x1,y1=<length>.",
+        ("verb", verb), ("minimum", Inv(minimum)), ("candidates", candidates));
+
+    public static Diagnostic PictureTechnologyUnknown(string verb, string id, string known) => Diagnostic.Create(
+        "picture.tech.unknown", DiagnosticSeverity.Error,
+        "{verb}: --tech '{id}' is neither a .ctech file nor a technology circuitRF knows. Known: {known}",
+        ("verb", verb), ("id", id), ("known", known));
+
+    public static Diagnostic PictureTechnologyUnreadable(string verb, string path, string why) => Diagnostic.Create(
+        "picture.tech.unreadable", DiagnosticSeverity.Error,
+        "{verb}: could not read technology '{path}': {why}", ("verb", verb), ("path", path), ("why", why));
+
+    public static Diagnostic PictureLayerUnknown(string verb, string layer, string technology, string known) => Diagnostic.Create(
+        "picture.layer-map.layer-unknown", DiagnosticSeverity.Error,
+        "{verb}: --layer-map names '{layer}', and {technology} has no such layer. Its layers: {known}",
+        ("verb", verb), ("layer", layer), ("technology", technology), ("known", known));
+
+    public static Diagnostic PicturePresetNotFound(string verb, string name, string known) => Diagnostic.Create(
+        "picture.preset.not-found", DiagnosticSeverity.Error,
+        "{verb}: no image-trace preset is called '{name}'. Saved presets: {known}",
+        ("verb", verb), ("name", name), ("known", known));
+
+    /// <summary>The reading refused — its own sentence, unchanged.</summary>
+    public static Diagnostic PictureRefused(string verb, string why) => Diagnostic.Create(
+        "picture.refused", DiagnosticSeverity.Error,
+        "{verb}: {why} Nothing was written.", ("verb", verb), ("why", why));
+
+    /// <summary><c>--into artwork</c> on a picture: there is no artwork cell to write into.</summary>
+    public static Diagnostic PictureIntoArtwork() => new(
+        "picture.target.artwork", DiagnosticSeverity.Error,
+        "recognize: a picture has no artwork cell, so --into artwork has nowhere to write. Write a new cell with "
+      + "--into new:<name>.");
+
+    public static Diagnostic PictureOverlayFailed(string verb, string path, string why) => Diagnostic.Create(
+        "picture.overlay.write-failed", DiagnosticSeverity.Warning,
+        "{verb}: the overlay '{path}' was not written: {why}", ("verb", verb), ("path", path), ("why", why));
+
     // ── impedance (Trace Impedance Analysis) ──────────────────────────────────────────────────
     //
     // Every id here is a REFUSAL of the verb's own. What the analysis FOUND — a trace out of band,

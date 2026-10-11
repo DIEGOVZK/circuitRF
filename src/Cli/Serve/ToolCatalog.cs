@@ -255,6 +255,53 @@ internal static class ToolCatalog
         new("corners",      "--corners",      OptKind.StrList, "Run at each of these enabled corners (the statistics line's corners= otherwise), process draws off there; result.corners."),
     ];
 
+    // brief-img-11 R-im11-5 — a picture source's flags, the same on convert and recognize. Every one is read by
+    // PictureFlags.Take, which both verbs' argument loops call first.
+    private static readonly ToolOption[] PictureTraceOptions =
+    [
+        new("scale",       "--scale",        OptKind.Str,
+            "A picture's scale: a length per pixel with its unit (25.4um/px), or auto (accept land-pattern evidence when "
+          + "at least 3 parts agree). With no scale, dpi or scalePoints a picture is refused, listing the evidence found."),
+        new("dpi",         "--dpi",          OptKind.Number, "A picture's scale as pixels per inch, stated by you."),
+        new("scalePoints", "--scale-points", OptKind.Str,    "A picture's scale from two pixel points and their distance: x0,y0,x1,y1=12.7mm."),
+        new("layerMap",    "--layer-map",    OptKind.Str,
+            "A picture's colours: #rrggbb=<layer>[+<layer>]|drill|outline|silk|background|ignore, comma-separated; a colour "
+          + "not named is ignored. Without it the automatic map is used and returned in layers, in this spelling."),
+        new("preset",      "--preset",       OptKind.Str,    "A saved image-trace preset (map and options) by name."),
+        new("minFeature",  "--min-feature",  OptKind.Number, "Specks smaller than this many square pixels are dropped."),
+        new("simplify",    "--simplify",     OptKind.Number, "Outline simplification tolerance, pixels."),
+        new("snapDeg",     "--snap-deg",     OptKind.Number, "Edges within this many degrees of an axis (or 45) are snapped; 0 snaps none."),
+        new("snap45",      "--snap45",       OptKind.Str,    "on or off: snap to 45 degrees as well as to the axes."),
+    ];
+
+    private static readonly ToolOption PictureUnderlay = new("underlay", "--underlay", OptKind.Str,
+        "on or off: lay the picture, locked at 35 %, under what is written. Default on.");
+
+    private static readonly ToolOption PictureOverlayPath = new("overlayPath", "--overlay", OptKind.Path,
+        "Also keep the overlay picture (the source with what was read drawn over it) as this .png. Written even "
+      + "when the reading is refused.");
+
+    /// <summary>The adapter argument that returns the overlay as image content (R-im11-5). Named here so the row that
+    /// advertises it and the code that reads it cannot part company.</summary>
+    public const string OverlayArgument = "overlay";
+
+    private static readonly ToolOption PictureOverlay = new(OverlayArgument, "", OptKind.Flag,
+        "Return the overlay picture (the source with what was read drawn over it, unknowns in amber) as image content "
+      + "beside the JSON. Default true when the path is a picture. Without overlayPath it is returned, not kept.");
+
+    /// <summary>
+    /// Whether a <c>convert</c> or <c>recognize</c> call wants the overlay back (R-im11-5): as it says, else whenever its
+    /// path is a picture. The one default the adapter supplies, and the brief's: an agent reading a picture should
+    /// SEE what was read, without knowing to ask.
+    /// </summary>
+    public static bool OverlayAsked(string tool, JsonObject? arguments, string[] argv)
+    {
+        if (tool is not ("convert" or "recognize")) return false;
+        if (arguments?[OverlayArgument] is { } node && node.GetValue<JsonElement>().ValueKind is JsonValueKind.True or JsonValueKind.False)
+            return node.GetValue<bool>();
+        return argv.Length > 1 && DocumentKinds.Classify(argv[1]) == DocumentKind.Picture;
+    }
+
     /// <summary>
     /// The largest rendered file handed back inside a tool result (R-rnd5-4).
     ///
@@ -582,19 +629,23 @@ internal static class ToolCatalog
             "Convert artwork from one format to another, in either direction: export a layout (.clay) to "
           + "GDSII, OASIS, Gerber, DXF, a .kicad_pcb board, STEP or glTF, or import the interchange formats to .clay. Formats come from the paths; "
           + "from and to override. OASIS, and GDSII with engine gdstk, go through the gdstk worker. "
-          + "A STEP product of several solids imports as one object per solid, gathered in a group named after the file.",
+          + "A STEP product of several solids imports as one object per solid, gathered in a group named after the file. "
+          + "A picture of a layout (png, jpeg, bmp, gif, webp) is traced onto layers at a stated scale, then written as any "
+          + "target; result.convert says how it was read. To correct a reading, pin the colours with layerMap.",
             null, null,
             [
                 new("", ["convert"],
-                    [new("path", true, "The file or folder to convert. A folder is a Gerber file set.")],
+                    [new("path", true, "The file or folder to convert. A folder is a Gerber file set; a picture is traced.")],
                     [
                         Output,
-                        new("from",       "--from",        OptKind.Str,  "The source format when the path does not say: clay, gdsii, oasis, dxf, gerber, board."),
+                        new("from",       "--from",        OptKind.Str,  "The source format when the path does not say: clay, gdsii, oasis, dxf, gerber, board, image."),
                         new("to",         "--to",          OptKind.Str,  "The target format when the path does not say."),
                         new("cell",       "--cell",        OptKind.Str,  "Which cell, when the source holds several."),
                         new("name",       "--name",        OptKind.Str,  "What to call the written file set (gerber)."),
                         new("listCells",  "--list-cells",  OptKind.Flag, "Report what the input holds and write nothing."),
-                        new("tech",       "--tech",        OptKind.Path, "The technology to convert against."),
+                        new("tech",       "--tech",        OptKind.PathOrName,
+                            "The technology to convert against: a .ctech path, or for a picture also a technology id (the default "
+                          + "is a new workspace's)."),
                         new("intoTech",   "--into-tech",   OptKind.Path,
                             "Gerber source, clay target: import into this .ctech, reference it, and write none. Refused with --tech, and when its copper count or order disagrees with the set's."),
                         new("keepCells",  "--keep-cells",  OptKind.Path, "Keep the cells the import produced, here."),
@@ -613,11 +664,17 @@ internal static class ToolCatalog
                         new("drillZeros", "--drill-zeros", OptKind.Str,  "leading or trailing suppression."),
                         new("acceptInferredDrillFormat", "--accept-inferred-drill-format", OptKind.Flag,
                             "Proceed on a guessed Excellon format. Unstated, it is refused: the two readings differ by four orders of magnitude."),
+                        .. PictureTraceOptions,
+                        new("region",     "--region",      OptKind.Str,
+                            "A picture: trace only x0,y0,x1,y1, each in pixels with px. A gltf target: the region to export."),
+                        PictureUnderlay,
+                        PictureOverlayPath,
                         Summary,
                     ],
                     "One import and one export, between any two interchange formats. A clay target is a "
                   + "DIRECTORY of cell folders plus a technology, not a file; a file-shaped path there is refused."),
-            ]),
+            ],
+            Adapter: [PictureOverlay]),
 
         // RND-5's one new tool, and it is one (R-rnd0-4 / R-rnd5-1): the document kind comes from the
         // path exactly as `check`'s does, so there is no `render-schematic` and no selector. Making
@@ -949,11 +1006,15 @@ internal static class ToolCatalog
           + "components (MLIN, CPWG, SLIN, TLIN, VIA, parts as R/L/C or an SnP; unknown values as tunable variables) "
           + "with an S-parameter analysis. Read-only unless into or output is given: the result is the report and "
           + "the parts table. Review parts (partsOut, edit the CSV, pass it back as parts) before writing. The "
-          + "result is a schematic (into) or a .cnl (output) to simulate with run analysis=sparam.",
+          + "result is a schematic (into) or a .cnl (output) to simulate with run analysis=sparam. A picture is read too: "
+          + "a layout picture is traced at a stated scale and then read as artwork; a schematic picture's wires, symbols "
+          + "and words become the circuit. To correct a picture's reading: edit the parts CSV and pass it back (parts), "
+          + "flip a crossing (connect/disconnect at its x,y from result.recognize.crossings), or write the .cnl yourself — "
+          + "the format is the contract.",
             null, null,
             [
                 new("", [ "recognize" ],
-                    [new("path", true, "A .clay, a cell folder holding a layout view, or a workspace (with cell).")],
+                    [new("path", true, "A .clay, a cell folder holding a layout view, a workspace (with cell), or a picture.")],
                     [
                         new("cell", "--cell", OptKind.Str, "With a workspace path: the cell whose layout to read."),
                         new("output", "-o", OptKind.Path, "Write the circuit as this .cnl. Nothing else."),
@@ -973,8 +1034,8 @@ internal static class ToolCatalog
                             "symbol, body or pin1 — required when the placement file does not declare it."),
                         new("placementUnit", "--placement-unit", OptKind.Str, "mm, mil or in."),
                         new("region", "--region", OptKind.Str,
-                            "Read only this rectangle: x0,y0,x1,y1, every coordinate with a unit (um, mm, mil). A "
-                          + "line it cuts becomes a port."),
+                            "Read only this rectangle: x0,y0,x1,y1, every coordinate with a unit (um, mm, mil); on a "
+                          + "picture, in pixels with px. A line it cuts becomes a port."),
                         new("ground", "--ground", OptKind.Str, "The net to read as ground."),
                         new("groundAt", "--ground-at", OptKind.Str, "x,y with units: the copper there is ground."),
                         new("vias", "--vias", OptKind.Str, "model (default: VIAGND components) or ground (plain GND)."),
@@ -989,9 +1050,27 @@ internal static class ToolCatalog
                             "Significant digits every value in the circuit is written with, 1 to 15. Default 6."),
                         new("freeOrientation", "--free-orientation", OptKind.Flag,
                             "Draw every shunt part below its line, not on the side of the line its copper is on."),
+                        new("imageKind", "--image-kind", OptKind.Str,
+                            "A picture: auto (default), schematic or layout. A picture read as no drawing is refused, naming this."),
+                        new("tech", "--tech", OptKind.PathOrName,
+                            "A picture: the technology, a .ctech path or a technology id. Default: the picture's workspace's."),
+                        .. PictureTraceOptions,
+                        PictureUnderlay,
+                        new("crossings", "--crossings", OptKind.Str,
+                            "A schematic picture: never, dot (default) or always — when two crossing wires join."),
+                        new("arrange", "--arrange", OptKind.Str,
+                            "A schematic picture: drawn (default: parts where the picture draws them) or tidy."),
+                        new("connect", "--connect", OptKind.StrRepeat,
+                            "A schematic picture: join the wires crossing at x,y (source pixels), or x,y:x2,y2 to join two ends."),
+                        new("disconnect", "--disconnect", OptKind.StrRepeat,
+                            "A schematic picture: separate the wires crossing at x,y (source pixels)."),
+                        new("threshold", "--threshold", OptKind.Number,
+                            "A schematic picture: the ink threshold (Sauvola's k), between 0 and 1."),
+                        PictureOverlayPath,
                     ],
                     ""),
-            ]),
+            ],
+            Adapter: [PictureOverlay]),
 
         // Trace Impedance Analysis — the `impedance` verb with no second implementation. A reviewer's
         // question an agent is well placed to ask on a board it did not draw: which traces are not
