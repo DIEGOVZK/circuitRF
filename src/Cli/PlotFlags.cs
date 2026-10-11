@@ -27,6 +27,7 @@ internal sealed class PlotFlags
     public double? SmithZ0;
     public AssemblyGrid? Grid;
     public MatrixFormat? Format;
+    public int? Ports;
     public string? Csv;
     public bool KeepSources = true;
 
@@ -151,6 +152,12 @@ internal sealed class PlotFlags
                 Format = v.Trim().ToLowerInvariant() switch { "db" => MatrixFormat.DB, "ma" => MatrixFormat.MA, "ri" => MatrixFormat.RI, _ => null };
                 if (Format is null) return Bad("db, ma or ri");
                 break;
+            case "--ports":
+                if (!int.TryParse(v.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int ports)
+                    || ports < 1 || ports > TouchstoneAssembly.MaxPorts)
+                    return Bad($"a whole number of ports from 1 to {TouchstoneAssembly.MaxPorts}");
+                Ports = ports;
+                break;
             case "--csv":
                 Csv = v;
                 break;
@@ -192,6 +199,7 @@ internal sealed class PlotFlags
         Prefer = new Dictionary<(int, int), string>(Prefer),
         Grid = Grid,
         Format = Format ?? MatrixFormat.DB,
+        Ports = Ports,
     };
 
     // ── spellings ────────────────────────────────────────────────────────────

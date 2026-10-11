@@ -104,6 +104,19 @@ public sealed class PlotAxisLabelClickTests : IDisposable
         Assert.True(vm.Plots.Frames[0].ShowsY);   // the row shows the pairs the clicks wrote
     }
 
+    /// <summary>PTU-7: a typed value replaces what was read on the canvas at once — one value alone blocks the reading, so
+    /// waiting for a re-read would leave the misread text standing.</summary>
+    [Fact]
+    public async Task ATypedValue_ShowsOnTheCanvas_BeforeAnyReading()
+    {
+        var (vm, _, _) = await Read();
+        vm.SelectedItem = YLabels(vm)[0];
+        vm.Plots.LabelText = "7";
+        Assert.Null(vm.Plots.CommitLabel());
+        Assert.NotNull(vm.Plots.Blocked());
+        Assert.Equal("7", YLabels(vm)[0].Label);
+    }
+
     [Fact]
     public void AThirdValue_ReplacesTheOlder() =>
         Assert.Equal("200px=-10,300px=-20", PlotAxisLabels.Merge("100px=0,200px=-10", 'y', 300, "-20"));

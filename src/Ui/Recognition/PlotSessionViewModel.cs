@@ -113,9 +113,12 @@ public sealed partial class PlotFrameRowViewModel : ObservableObject
 /// <summary>One trace of the traces table (R-im14-12): swatch, plot, entry, quantity, range, points, resolution, evidence.</summary>
 public sealed partial class PlotTraceRowViewModel : ObservableObject
 {
-    /// <summary>The entry combo: unassigned, ignore, then S11 … S44.</summary>
-    public static readonly IReadOnlyList<string> Entries =
-        ["unassigned", "ignore", .. Enumerable.Range(1, 4).SelectMany(i => Enumerable.Range(1, 4).Select(j => $"S{i}{j}"))];
+    /// <summary>Every entry a trace can be: unassigned, ignore, then S11 … S44. <see cref="EntryIndex"/> indexes this.</summary>
+    public static readonly IReadOnlyList<string> Entries = EntriesFor(TouchstoneAssembly.MaxPorts);
+
+    /// <summary>The entry combo for an <paramref name="ports"/>-port file: unassigned, ignore, then S11 … Snn (PTU-7).</summary>
+    public static IReadOnlyList<string> EntriesFor(int ports) =>
+        ["unassigned", "ignore", .. Enumerable.Range(1, ports).SelectMany(i => Enumerable.Range(1, ports).Select(j => $"S{i}{j}"))];
 
     /// <summary>The quantity combo, in <c>--trace</c>'s spelling.</summary>
     public static readonly IReadOnlyList<string> Quantities = ["db", "mag", "phase", "phase-rad", "re", "im", "complex", "vswr", "rl", "il"];
@@ -123,9 +126,11 @@ public sealed partial class PlotTraceRowViewModel : ObservableObject
     private readonly Action<PlotTraceRowViewModel> _changed;
     private bool _loading = true;
 
-    public PlotTraceRowViewModel(PlotTraceRead t, PlotRead plot, string startText, string stopText, Action<PlotTraceRowViewModel> changed)
+    public PlotTraceRowViewModel(PlotTraceRead t, PlotRead plot, string startText, string stopText, Action<PlotTraceRowViewModel> changed,
+                                 IReadOnlyList<string>? entryChoices = null)
     {
         _changed = changed;
+        EntryChoices = entryChoices ?? Entries;
         Name = t.Name;
         Plot = t.Plot;
         Swatch = new ImmutableSolidColorBrush(Color.FromRgb((byte)(t.Curve.Rgb >> 16), (byte)(t.Curve.Rgb >> 8), (byte)t.Curve.Rgb));
@@ -170,6 +175,27 @@ public sealed partial class PlotTraceRowViewModel : ObservableObject
     [ObservableProperty] private int _entryIndex;
     [ObservableProperty] private int _quantityIndex;
 
+    /// <summary>What the entry combo lists: the session's, up to its port count — one list every row shares (PTU-7).</summary>
+    public IReadOnlyList<string> EntryChoices { get; }
+
+    /// <summary>The entry combo's choice; null while the entry is one the port count leaves out. Null written back is the
+    /// combo letting go of an item taken out of its list, never a choice.</summary>
+    public string? EntryChoice
+    {
+        get => EntryChoices.Contains(Entries[EntryIndex]) ? Entries[EntryIndex] : null;
+        set { if (value is not null && Entries.ToList().IndexOf(value) is var k and >= 0) EntryIndex = k; }
+    }
+
+    /// <summary>An entry beyond the port count, said where the combo cannot show it: <c>S41 · beyond 2 ports</c>.</summary>
+    public string EntryPlaceholder => PlotSessionViewModel.Beyond(Entries[EntryIndex], EntryChoices);
+
+    /// <summary>The port count changed under the combo.</summary>
+    public void RefreshChoice()
+    {
+        OnPropertyChanged(nameof(EntryChoice));
+        OnPropertyChanged(nameof(EntryPlaceholder));
+    }
+
     /// <summary>A chart trace's typed start and stop (the frequency row, R-im14-8 (3)); never pre-filled.</summary>
     [ObservableProperty] private string _startText;
     [ObservableProperty] private string _stopText;
@@ -185,7 +211,11 @@ public sealed partial class PlotTraceRowViewModel : ObservableObject
     /// <summary>The user has chosen the combos (rather than the reading).</summary>
     public bool Edited { get; private set; }
 
-    partial void OnEntryIndexChanged(int value) { if (!_loading) { Edited = true; _changed(this); } }
+    partial void OnEntryIndexChanged(int value)
+    {
+        RefreshChoice();
+        if (!_loading) { Edited = true; _changed(this); }
+    }
     partial void OnQuantityIndexChanged(int value) { if (!_loading) { Edited = true; _changed(this); } }
     partial void OnStartTextChanged(string value) { if (!_loading) _changed(this); }
     partial void OnStopTextChanged(string value) { if (!_loading) _changed(this); }
@@ -211,6 +241,7 @@ public sealed partial class PlotTraceGroupViewModel : ObservableObject
                 if (e.PropertyName is not (nameof(PlotTraceRowViewModel.EntryIndex) or nameof(PlotTraceRowViewModel.QuantityIndex))) return;
                 OnPropertyChanged(nameof(EntryIndex));
                 OnPropertyChanged(nameof(QuantityIndex));
+                RefreshChoice();
             };
     }
 
@@ -242,6 +273,24 @@ public sealed partial class PlotTraceGroupViewModel : ObservableObject
     {
         get => Same(m => m.EntryIndex);
         set { if (value >= 0 && value != EntryIndex) _batch(() => { foreach (var m in Members) m.EntryIndex = value; }); }
+    }
+
+    public IReadOnlyList<string> EntryChoices => First.EntryChoices;
+
+    /// <summary>The pieces' entry when they agree and the port count includes it; else null — <i>mixed</i>, or the entry
+    /// said in <see cref="EntryPlaceholder"/>.</summary>
+    public string? EntryChoice
+    {
+        get => EntryIndex >= 0 && EntryChoices.Contains(PlotTraceRowViewModel.Entries[EntryIndex]) ? PlotTraceRowViewModel.Entries[EntryIndex] : null;
+        set { if (value is not null && PlotTraceRowViewModel.Entries.ToList().IndexOf(value) is var k and >= 0) EntryIndex = k; }
+    }
+
+    public string EntryPlaceholder => EntryIndex < 0 ? "mixed" : PlotSessionViewModel.Beyond(PlotTraceRowViewModel.Entries[EntryIndex], EntryChoices);
+
+    public void RefreshChoice()
+    {
+        OnPropertyChanged(nameof(EntryChoice));
+        OnPropertyChanged(nameof(EntryPlaceholder));
     }
 
     public int QuantityIndex
@@ -339,11 +388,116 @@ public sealed partial class PlotSessionViewModel : ObservableObject
     private readonly Dictionary<(int I, int J), (int Index, string Delay)> _phase = [];
     private readonly List<PlotIgnoreBox> _ignore = [];
 
+    // ── the port count and the assignment undo (PTU-7) ───────────────────────────────────────────────
+
+    /// <summary>The typed port count; empty is <see cref="AutoPorts"/>.</summary>
+    [ObservableProperty] private string _portsText = "";
+
+    /// <summary>The entry combos' list, shared by every row: unassigned, ignore, S11 … Snn for <see cref="EntryPorts"/>.
+    /// Changed in place, never replaced, so a combo keeps the choice it has when another entry comes or goes.</summary>
+    public ObservableCollection<string> EntryChoices { get; } = new(PlotTraceRowViewModel.EntriesFor(2));
+
+    /// <summary>The port count when none is typed: the highest port a trace names, at least 2.</summary>
+    public int AutoPorts => Math.Clamp(
+        Session?.Traces.Where(t => t.Assignment.Assigned && !t.Assignment.Ignored)
+                       .Select(t => Math.Max(t.Assignment.I, t.Assignment.J)).DefaultIfEmpty(0).Max() ?? 0,
+        2, TouchstoneAssembly.MaxPorts);
+
+    public string AutoPortsText => AutoPorts.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>The typed port count, or null when none (or none legible) is typed.</summary>
+    public int? TypedPorts() =>
+        int.TryParse(PortsText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int n) && n >= 1 && n <= TouchstoneAssembly.MaxPorts
+            ? n : null;
+
+    public bool PortsInvalid => PortsText.Trim().Length > 0 && TypedPorts() is null;
+
+    /// <summary>The ports the entry combos offer.</summary>
+    public int EntryPorts => TypedPorts() ?? AutoPorts;
+
+    /// <summary><c>S41 · beyond 2 ports</c> for an entry the list leaves out; empty otherwise.</summary>
+    public static string Beyond(string entry, IReadOnlyList<string> choices)
+    {
+        if (choices.Contains(entry)) return "";
+        int ports = choices.Count(c => c.Length == 3 && c[0] == 'S' && c[1] == c[2]);
+        return $"{entry} · beyond {ports.ToString(CultureInfo.InvariantCulture)} port{(ports == 1 ? "" : "s")}";
+    }
+
+    partial void OnPortsTextChanged(string? oldValue, string newValue)
+    {
+        if (!_undoing) Remember(new AssignmentState(new(_assign, StringComparer.Ordinal), oldValue ?? ""));
+        OnPropertyChanged(nameof(PortsInvalid));
+        SyncChoices();
+        if (!_undoing) Changed?.Invoke();
+    }
+
+    /// <summary>Brings the shared entry list to <see cref="EntryPorts"/>: what leaves goes, what joins is put in its
+    /// place; every combo is told after.</summary>
+    private void SyncChoices()
+    {
+        var want = PlotTraceRowViewModel.EntriesFor(EntryPorts);
+        for (int k = EntryChoices.Count - 1; k >= 0; k--)
+            if (!want.Contains(EntryChoices[k])) EntryChoices.RemoveAt(k);
+        for (int k = 0; k < want.Count; k++)
+            if (k >= EntryChoices.Count || EntryChoices[k] != want[k]) EntryChoices.Insert(k, want[k]);
+        foreach (var t in Traces) t.RefreshChoice();
+        foreach (var g in Groups) g.RefreshChoice();
+        OnPropertyChanged(nameof(AutoPortsText));
+    }
+
+    /// <summary>The assignments the user made and the port count, as one undo step restores them.</summary>
+    private sealed record AssignmentState(Dictionary<string, PlotAssignment> Assign, string Ports);
+
+    private readonly Stack<AssignmentState> _undo = new();
+    private bool _undoing;
+
+    private AssignmentState State() => new(new(_assign, StringComparer.Ordinal), PortsText);
+
+    private void Remember(AssignmentState before)
+    {
+        _undo.Push(before);
+        UndoCommand.NotifyCanExecuteChanged();
+    }
+
+    private void ForgetUndo()
+    {
+        _undo.Clear();
+        UndoCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool CanUndo() => _undo.Count > 0;
+
+    /// <summary>Puts back the assignments and the port count as they were before the last change to either — a group's
+    /// combo assigning every piece is one step.</summary>
+    [RelayCommand(CanExecute = nameof(CanUndo))]
+    private void Undo()
+    {
+        if (_undo.Count == 0) return;
+        var back = _undo.Pop();
+        _undoing = true;
+        try
+        {
+            _assign.Clear();
+            foreach (var (name, a) in back.Assign) _assign[name] = a;
+            PortsText = back.Ports;
+        }
+        finally { _undoing = false; }
+        UndoCommand.NotifyCanExecuteChanged();
+        Changed?.Invoke();
+    }
+
+    private static bool Same(Dictionary<string, PlotAssignment> a, Dictionary<string, PlotAssignment> b) =>
+        a.Count == b.Count && a.All(kv => b.TryGetValue(kv.Key, out var v) && Equals(v, kv.Value));
+
     /// <summary>Raised when anything the reading or the file depends on changed: the dialog reads again.</summary>
     public event Action? Changed;
 
     /// <summary>Raised when the canvas should show another picture.</summary>
     public event Action? ShownChanged;
+
+    /// <summary>Raised when an axis row's values changed: the canvas shows a typed label's value at once, before (and
+    /// even without) a reading — one value alone blocks the reading until the second (PTU-7).</summary>
+    public event Action? AxisTextChanged;
 
     public ObservableCollection<PlotPictureRowViewModel> Pictures { get; } = [];
     public ObservableCollection<PlotFrameRowViewModel> Frames { get; } = [];
@@ -351,6 +505,14 @@ public sealed partial class PlotSessionViewModel : ObservableObject
 
     /// <summary>The traces by colour (R-ptu5-2): what the table lists in Simple mode.</summary>
     public ObservableCollection<PlotTraceGroupViewModel> Groups { get; } = [];
+
+    /// <summary>The traces (groups) of the selected plot — what the traces table lists (PTU-7). Every plot's when none is
+    /// selected.</summary>
+    public ObservableCollection<PlotTraceRowViewModel> ShownTraces { get; } = [];
+    public ObservableCollection<PlotTraceGroupViewModel> ShownGroups { get; } = [];
+
+    /// <summary>The plot chosen in the plots list: the traces table lists its traces, and the canvas shows its picture.</summary>
+    [ObservableProperty] private PlotFrameRowViewModel? _selectedFrame;
 
     public ObservableCollection<PlotMatrixCellViewModel> Matrix { get; } = [];
     public ObservableCollection<string> ReportLines { get; } = [];
@@ -375,7 +537,33 @@ public sealed partial class PlotSessionViewModel : ObservableObject
 
     partial void OnDetailedChanged(bool value) => OnPropertyChanged(nameof(Simple));
 
-    partial void OnSelectedTraceChanged(PlotTraceRowViewModel? value) => SelectedGroup = GroupOf(value);
+    partial void OnSelectedTraceChanged(PlotTraceRowViewModel? value)
+    {
+        // A trace chosen on the canvas on another plot brings its plot's traces into the table.
+        if (value is not null && value.Plot != SelectedFrame?.Number) SelectedFrame = FrameRow(value.Plot);
+        SelectedGroup = GroupOf(value);
+    }
+
+    partial void OnSelectedFrameChanged(PlotFrameRowViewModel? value)
+    {
+        // Null is the list letting go while its rows are rebuilt; Apply restores the selection.
+        if (value is null) return;
+        ListShown();
+        if (SelectedTrace is { } t && t.Plot != value.Number) SelectedTrace = null;
+        if (value.Picture - 1 != ShownPicture) ShownPicture = value.Picture - 1;
+    }
+
+    private PlotFrameRowViewModel? FrameRow(int plot) => Frames.FirstOrDefault(f => f.Number == plot);
+
+    /// <summary>Fills the traces table with the selected plot's traces and groups.</summary>
+    private void ListShown()
+    {
+        int? plot = SelectedFrame?.Number;
+        ShownTraces.Clear();
+        foreach (var t in Traces.Where(t => plot is null || t.Plot == plot)) ShownTraces.Add(t);
+        ShownGroups.Clear();
+        foreach (var g in Groups.Where(g => plot is null || g.First.Plot == plot)) ShownGroups.Add(g);
+    }
 
     partial void OnSelectedGroupChanged(PlotTraceGroupViewModel? value)
     {
@@ -420,7 +608,13 @@ public sealed partial class PlotSessionViewModel : ObservableObject
     partial void OnGridLogChanged(bool value) => Changed?.Invoke();
     partial void OnFormatIndexChanged(int value) => Changed?.Invoke();
 
-    partial void OnShownPictureChanged(int value) => ShownChanged?.Invoke();
+    partial void OnShownPictureChanged(int value)
+    {
+        // Another picture shown: the plots list follows to its first plot, so the traces listed are the ones on screen.
+        if (SelectedFrame is { } f && f.Picture - 1 != value && Frames.FirstOrDefault(r => r.Picture - 1 == value) is { } first)
+            SelectedFrame = first;
+        ShownChanged?.Invoke();
+    }
 
     public static IReadOnlyList<string> Formats { get; } = ["DB", "MA", "RI"];
 
@@ -431,6 +625,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
     {
         Pictures.Clear();
         _assign.Clear();
+        ForgetUndo();
         _freq.Clear();
         _excluded.Clear();
         _axis.Clear();
@@ -441,11 +636,17 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         Assembly = null;
         SelectedTrace = null;
         AskingLabel = false;
+        SelectedFrame = null;
         Frames.Clear();
         Traces.Clear();
         Groups.Clear();
+        ShownTraces.Clear();
+        ShownGroups.Clear();
         Matrix.Clear();
         ReportLines.Clear();
+        _undoing = true;
+        try { PortsText = ""; }
+        finally { _undoing = false; }
         Add(source, notify: false);
         ShownPicture = 0;
         RefreshDerived();
@@ -471,6 +672,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         Renumber();
         // Plot and trace numbers move when a picture goes; choices held by number would land on the wrong one.
         _assign.Clear();
+        ForgetUndo();
         _freq.Clear();
         _excluded.Clear();
         _axis.Clear();
@@ -490,6 +692,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         Pictures[index] = new PlotPictureRowViewModel(source, RemovePicture, p => ShownPicture = Pictures.IndexOf(p)) { Original = original };
         Renumber();
         _assign.Clear();
+        ForgetUndo();
         _freq.Clear();
         _excluded.Clear();
         _axis.Clear();
@@ -522,6 +725,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
     public string? Blocked()
     {
         if (SmithZ0Text.Trim().Length > 0 && Z0() is null) return "Smith Z0 needs an impedance in ohms (50).";
+        if (PortsInvalid) return $"Ports needs a whole number from 1 to {TouchstoneAssembly.MaxPorts.ToString(CultureInfo.InvariantCulture)}.";
         foreach (var ((plot, axis), text) in _axis)
             if (text.Trim().Length > 0 && Clicks(text, axis) is null)
                 return PlotAxisLabels.Pairs(text, axis).Count == 1 && !text.Contains(',')
@@ -612,6 +816,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         }),
         Grid = Grid(),
         Format = FormatIndex switch { 1 => MatrixFormat.MA, 2 => MatrixFormat.RI, _ => MatrixFormat.DB },
+        Ports = TypedPorts(),
     };
 
     private double? Z0()
@@ -727,6 +932,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         else
         {
             _axis[(l.Plot, l.Axis)] = text;
+            AxisTextChanged?.Invoke();
             Changed?.Invoke();
         }
         return null;
@@ -736,6 +942,26 @@ public sealed partial class PlotSessionViewModel : ObservableObject
 
     [RelayCommand] private void CancelLabel() => AskingLabel = false;
 
+    /// <summary>
+    /// <paramref name="overlay"/> with each tick label a value was typed for showing that value rather than what was read
+    /// (PTU-7: a label misread as <c>2.n</c> and typed as 2.4 reads 2.4 on the canvas). The typed value is the axis row's
+    /// pair at the label's tick, so a value typed into the row itself relabels its label too.
+    /// </summary>
+    public ImageOverlay Relabel(ImageOverlay overlay)
+    {
+        if (Session is not { } s || _axis.Values.All(t => t.Trim().Length == 0)) return overlay;
+        bool any = false;
+        var items = overlay.Items.Select(item =>
+        {
+            if (PlotAxisLabels.Find(s, ShownPicture, item) is not { } l) return item;
+            var pairs = PlotAxisLabels.Pairs(_axis.GetValueOrDefault((l.Plot, l.Axis), ""), l.Axis);
+            if (pairs.FirstOrDefault(p => Math.Abs(p.Px - l.Pixel) < 1) is not { Value: { } value }) return item;
+            any = true;
+            return item with { Label = PlotAxisLabels.Shown(value, l.Read), Unknown = false };
+        }).ToList();
+        return any ? overlay.WithItems(items) : overlay;
+    }
+
     // ── a reading arrived ────────────────────────────────────────────────────────────────────────────
 
     /// <summary>The rows, rebuilt from what came back, with the user's choices laid over them.</summary>
@@ -744,6 +970,8 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         Session = session;
         Assembly = assembly;
 
+        // The plot chosen is held by number across a re-read; a new reading starts on its first plot on the shown picture.
+        int? plotChosen = SelectedFrame?.Number;
         Frames.Clear();
         foreach (var p in session.Plots)
             Frames.Add(new PlotFrameRowViewModel(p, !_excluded.Contains(p.Number), _axis.GetValueOrDefault((p.Number, 'x'), ""),
@@ -755,7 +983,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         foreach (var t in session.Traces)
         {
             var (start, stop) = _freq.GetValueOrDefault(t.Name, ("", ""));
-            Traces.Add(new PlotTraceRowViewModel(t, session.Plots[t.Plot - 1], start, stop, OnTraceEdited));
+            Traces.Add(new PlotTraceRowViewModel(t, session.Plots[t.Plot - 1], start, stop, OnTraceEdited, EntryChoices));
         }
         Groups.Clear();
         foreach (var (members, debris) in PlotColourGroups.Group(session))
@@ -763,6 +991,10 @@ public sealed partial class PlotSessionViewModel : ObservableObject
             var rows = members.Select(m => TraceRow(m.Name)!).ToList();
             Groups.Add(new PlotTraceGroupViewModel(rows, PlotColourGroups.Title(session, members), debris, Batch));
         }
+        SelectedFrame = (plotChosen is { } n ? FrameRow(n) : null)
+                        ?? Frames.FirstOrDefault(f => f.Picture - 1 == ShownPicture) ?? Frames.FirstOrDefault();
+        SyncChoices();   // the highest port read may have moved
+        ListShown();
         SelectedTrace = TraceRow(chosen);
         SelectedGroup = GroupOf(SelectedTrace);
 
@@ -806,6 +1038,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         if (row.Include) _excluded.Remove(plot); else _excluded.Add(plot);
         _axis[(plot, 'x')] = row.XAxisText;
         _axis[(plot, 'y')] = row.YAxisText;
+        AxisTextChanged?.Invoke();
         Changed?.Invoke();
     }
 
@@ -813,8 +1046,10 @@ public sealed partial class PlotSessionViewModel : ObservableObject
     {
         if (row.Edited)
         {
+            var before = _quiet > 0 || _undoing ? null : State();
             if (row.Assignment is { } a) _assign[row.Name] = a;
             else _assign.Remove(row.Name);
+            if (before is not null && !Same(before.Assign, _assign)) Remember(before);
         }
         _freq[row.Name] = (row.StartText, row.StopText);
         if (_quiet > 0) _pending = true;
@@ -827,9 +1062,11 @@ public sealed partial class PlotSessionViewModel : ObservableObject
     /// <summary>Several pieces assigned at once (a group's combo, R-ptu5-2): one re-read, not one a piece.</summary>
     private void Batch(Action edit)
     {
+        var before = _quiet == 0 && !_undoing ? State() : null;
         _quiet++;
         try { edit(); }
         finally { _quiet--; }
+        if (before is not null && !Same(before.Assign, _assign)) Remember(before);
         if (_quiet > 0 || !_pending) return;
         _pending = false;
         Changed?.Invoke();
@@ -1112,6 +1349,15 @@ internal static class PlotAxisLabels
                 pairs.Add((p, value));
         }
         return pairs;
+    }
+
+    /// <summary>A typed value as its label shows it: with its unit when the picture's label carried one (<c>2.4 GHz</c>),
+    /// else the number alone, as the picture's other labels read.</summary>
+    public static string Shown(string value, string read)
+    {
+        if (read.Contains("Hz", StringComparison.OrdinalIgnoreCase)) return value;
+        var m = Leading.Match(value);
+        return m.Success ? m.Value : value;
     }
 
     /// <summary>The row with the clicked pair in it: a pair at the same pixel is replaced; with two already, the older goes.</summary>

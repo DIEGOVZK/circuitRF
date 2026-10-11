@@ -3899,6 +3899,7 @@ Flags (`@<n>` names a plot; none means plot 1):
 | `--prefer S11=chart` (`rect`, `T3`) | which of two traces of one entry is written |
 | `--grid 1GHz..5GHz/81[log]` | the Touchstone's grid (default: the traces' common range at the densest trace's resolution, a 1-2-5 step) |
 | `--format db`, `ma`, `ri` | the Touchstone's format (DB) |
+| `--ports 2` | the file's ports, 1-4 (default: the highest port any trace names); a trace naming a port beyond it waits, as an unassigned one does |
 | `--csv out.csv` | the raw digitised traces in each plot's own units — never resampled, and **never waits** |
 | `--keep-sources on`, `off` | the source pictures beside the Touchstone as `<name>.source.png`, `.source-2.png` … (on) |
 | `--overlay out.png` | each picture with what was read drawn over it; picture n's beside it as `out-n.png` |

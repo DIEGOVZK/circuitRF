@@ -50,6 +50,30 @@ public sealed class PlotTraceSelectionTests : IDisposable
         Assert.Null(vm.Plots.SelectedTrace);
     }
 
+    /// <summary>PTU-7: the traces table lists the selected plot's traces; choosing another plot lists its own and shows its
+    /// picture, and a trace chosen elsewhere brings its plot back.</summary>
+    [Fact]
+    public async Task ThePlotChosen_ListsItsTraces()
+    {
+        var vm = await Read();
+        vm.Plots.Add(ImageSource.FromFile(FixturePaths.Require(Path.Combine(ForeignPlots.Folder, "plot-legend.png"))).Source!);
+        await vm.Recognition;
+        Assert.Equal(2, vm.Plots.Frames.Count);
+        var (one, two) = (vm.Plots.Frames[0], vm.Plots.Frames[1]);
+
+        vm.Plots.SelectedFrame = one;
+        Assert.All(vm.Plots.ShownTraces, t => Assert.Equal(1, t.Plot));
+        Assert.All(vm.Plots.ShownGroups, g => Assert.Equal(1, g.First.Plot));
+
+        vm.Plots.SelectedFrame = two;
+        Assert.NotEmpty(vm.Plots.ShownTraces);
+        Assert.All(vm.Plots.ShownTraces, t => Assert.Equal(2, t.Plot));
+        Assert.Equal(1, vm.Plots.ShownPicture);
+
+        vm.Plots.SelectedTrace = vm.Plots.Traces.First(t => t.Plot == 1);
+        Assert.Same(one, vm.Plots.SelectedFrame);
+    }
+
     [Fact]
     public async Task AGap_SelectsItsTrace()
     {

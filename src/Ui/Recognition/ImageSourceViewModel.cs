@@ -156,13 +156,18 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         Overrides.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasOverrides));
         Plots.Changed += ScheduleRecognition;
         Plots.StatusRaised += why => Status = why;
+        // A typed tick label reads as typed at once — one value alone blocks the reading until the second (PTU-7).
+        Plots.AxisTextChanged += () =>
+        {
+            if (Plots.Session is { } session) Overlay = Plots.Relabel(ImageOverlay.BuildPlot(session, Plots.ShownPicture));
+        };
         // Create… (a plot's) is enabled by what enables Create: re-read whenever its tooltip is.
         PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CreateTip)) CreatePlotCommand.NotifyCanExecuteChanged(); };
         Plots.ShownChanged += () =>
         {
             OnPropertyChanged(nameof(Raster));
             OnPropertyChanged(nameof(CanRestorePicture));
-            if (Plots.Session is { } session) Overlay = ImageOverlay.BuildPlot(session, Plots.ShownPicture);
+            if (Plots.Session is { } session) Overlay = Plots.Relabel(ImageOverlay.BuildPlot(session, Plots.ShownPicture));
             Plots.AskLabel(null);   // the clicked label was on the picture no longer shown
             SelectTraceItem();
         };
@@ -1242,7 +1247,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             Scale.Update(null, false);
             LayerRows.Clear();
             Plots.Apply(plot.Session, plot.Assembly);
-            Overlay = ImageOverlay.BuildPlot(plot.Session, Plots.ShownPicture);
+            Overlay = Plots.Relabel(ImageOverlay.BuildPlot(plot.Session, Plots.ShownPicture));
             SelectTraceItem();
             if (plot.Session.Plots.Count == 0)
                 SetFailure("No plot was found: no rectangular axes with a grid or ticks, and no Smith or polar chart.", offersKind: true);

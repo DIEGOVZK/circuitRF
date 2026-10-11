@@ -39490,3 +39490,42 @@ does nothing and leaves the tool armed. Release, or Escape, disarms it.
 a trace (it reads as grid ink), so it proved nothing about the exclusion. A 2.5 px stroke across 90 × 30 px is read as
 a trace of its own, and it disappears once the box is drawn over it. Gate:
 `tests/Ui.Tests/PlotRecognition/PlotBoxToolTests.cs` (3 tests).
+
+## Create … from Image, PTU-7: toolbar fill, Help top right, typed labels shown, three resizable panes (2026-10-11)
+
+**`RadioButton.tool` sets no Background now.** PTU-2 made the unchecked choices transparent, after `PanelToggle`; the owner
+wanted them to look like the editors' toolbar toggles (the layout editor's snap/pin `ToggleButton`s), which take the
+ToggleButton theme's subtle `ToggleButtonBackground` unchecked. Leaving Background unset gives exactly that, and the
+theme's `:checked` fill still wins. Help moved from the bottom-left button row to the top right of the source row
+(row 0 is a `*,Auto` grid; Help sits outside the source `ContentControl`, so it shows before a picture is loaded too).
+
+**A typed tick label did not change on the canvas.** The overlay is `ImageOverlay.BuildPlot` of the reading, so it showed
+what the reader read (`2.n`) — and with only ONE value typed, `Blocked()` stops the re-read entirely, so nothing would
+ever have redrawn it. `PlotSessionViewModel.Relabel` now lays each axis row's pairs over the overlay: a tick or unread-word
+item whose `PlotAxisLabels.Find` pixel matches a pair (< 1 px) shows the typed value (number only unless the picture's
+label carried `Hz`) and loses its amber. It runs on every `BuildPlot` the dialog makes and on the new
+`AxisTextChanged` event (a commit, or the axis row edited). `ImageOverlay.WithItems` is the one Design-side addition.
+
+**The right column is three panes** — Plots, the selected plot's Traces, and Output (matrix, grid, refusal, report) —
+each its own `ScrollViewer`, star rows 1:2:1 with `GridSplitter`s and a drawn grip bar between them. The traces table
+lists `ShownTraces`/`ShownGroups`, filtered by `SelectedFrame`; `Traces`/`Groups` stay complete because the canvas link,
+`TraceRow` and the assembly read them. Choosing a plot shows its picture; a trace chosen on another plot (canvas) selects
+its plot; showing another picture selects that picture's first plot. `Apply` holds the plot by number across a re-read.
+`BringSelectedIntoView` still uses `Scroller`, which is now the traces pane's own. Gates:
+`PlotAxisLabelClickTests.ATypedValue_ShowsOnTheCanvas_BeforeAnyReading`, `PlotTraceSelectionTests.ThePlotChosen_ListsItsTraces`.
+
+**The port count (PTU-7, second half).** The file's ports were only ever the highest port any trace named, and every
+entry combo offered S11 … S44 — so one trace read (or picked) as S41 made a 2-port plot a 4-port file whose missing
+entries nobody could supply. `TouchstoneAssemblyOptions.Ports` (CLI `--ports n`, MCP `ports`) fixes it; a trace naming a
+port beyond it is an `unassigned` refusal that names the trace and its entry. In the dialog, **Ports** sits in the Traces
+header: empty means `AutoPorts` (the highest port read, at least 2, shown as the placeholder), and an illegible value is a
+`Blocked()` sentence plus `TextBox.invalid`, never a silent fallback.
+
+**Lowering the ports clears nothing.** The entry combos bind `EntryChoice` (a string) over ONE shared
+`ObservableCollection` (`EntryChoices`) that `SyncChoices` edits in place; `EntryIndex` still indexes the full 18-item
+`Entries` list. An entry the list leaves out reads `null`, so the combo shows `EntryPlaceholder` (`S41 · beyond 2 ports`)
+and the assignment survives until it is changed or the ports raised. A null written back by the combo (its item was
+removed) is ignored for that reason. **Undo** (header button, Cmd/Ctrl+Z outside a text box) pops an
+`AssignmentState` — the user's `_assign` overrides and `PortsText` — pushed before each change that alters either; a
+group combo's batch is one step. A new, removed or replaced picture forgets the stack, because trace names are renumbered.
+Gate: `tests/Ui.Tests/PlotRecognition/PlotPortsTests.cs`.

@@ -98,6 +98,11 @@ public sealed record TouchstoneAssemblyOptions
     /// <summary>The grid; null is the stated default (R-im14-9).</summary>
     public AssemblyGrid? Grid { get; init; }
 
+    /// <summary>The file's ports, 1 to <see cref="TouchstoneAssembly.MaxPorts"/>; null is the highest port any trace names.
+    /// A trace naming a port beyond it waits, as an unassigned one does (PTU-7: a picture's misread label made a 2-port
+    /// plot a 4-port file nobody could finish).</summary>
+    public int? Ports { get; init; }
+
     public MatrixFormat Format { get; init; } = MatrixFormat.DB;
 }
 
@@ -163,6 +168,14 @@ public static class TouchstoneAssembly
         if (traces.Count == 0) return Refuse("empty", "no trace was read that could be written", "--trace", "the traces table");
 
         int ports = traces.Max(t => Math.Max(t.Assignment.I, t.Assignment.J));
+        if (o.Ports is { } given)
+        {
+            if (traces.FirstOrDefault(t => Math.Max(t.Assignment.I, t.Assignment.J) > given) is { } beyond)
+                return Refuse("unassigned", $"{beyond.Name} (plot {beyond.Plot}, {beyond.Curve.Hex} {beyond.Curve.StyleName}) is "
+                                            + $"{beyond.Assignment.Entry}, beyond the file's {given} port{(given == 1 ? "" : "s")}",
+                              $"--trace \"{beyond.Name}=S21:db\"", $"the entry of {beyond.Name} in the traces table, or Ports");
+            ports = given;
+        }
         if (ports > MaxPorts)
             return Refuse("unassigned", $"a trace names port {ports}; a Touchstone from plots is up to {MaxPorts} ports", "--trace", "the traces table");
 

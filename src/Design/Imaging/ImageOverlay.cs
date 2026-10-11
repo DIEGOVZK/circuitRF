@@ -82,6 +82,11 @@ public sealed partial class ImageOverlay
 
     public static ImageOverlay Empty { get; } = new([], null, [], [], null);
 
+    /// <summary>This overlay with <paramref name="items"/> in place of its items — a label the user typed shown in place of
+    /// what was read (PTU-7).</summary>
+    public ImageOverlay WithItems(IReadOnlyList<ImageOverlayItem> items) =>
+        new(items, Clusters, IgnoredClusters, UnmappedClusters, Frame, PixelAnchors) { Legend = Legend };
+
     public IReadOnlyList<ImageOverlayItem> Items { get; }
 
     /// <summary>The picture's colours — the canvas hatches the ignored ones and flashes a hovered layer row's.</summary>

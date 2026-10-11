@@ -6,200 +6,275 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:rec="using:CircuitRF.Ui.Recognition"
              x:Class="CircuitRF.Ui.Recognition.PlotTracesPanel"
+             xmlns:mi="using:Material.Icons.Avalonia"
              x:DataType="rec:PlotSessionViewModel">
-    <ScrollViewer x:Name="Scroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="10" Margin="0,0,6,0">
+    <!-- Undo from the keyboard when the focus is not in a text box, which keeps its own. -->
+    <UserControl.KeyBindings>
+        <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}"/>
+        <KeyBinding Gesture="Meta+Z" Command="{Binding UndoCommand}"/>
+    </UserControl.KeyBindings>
+    <UserControl.Styles>
+        <!-- A pane's scrolling area, framed so the three read as panels. -->
+        <Style Selector="Border.pane">
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
+            <Setter Property="CornerRadius" Value="3"/>
+        </Style>
+        <!-- The gripper between two panes: a short bar centred on the splitter's strip, which takes the drag. -->
+        <Style Selector="Border.grip">
+            <Setter Property="Width" Value="32"/>
+            <Setter Property="Height" Value="3"/>
+            <Setter Property="CornerRadius" Value="1.5"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="IsHitTestVisible" Value="False"/>
+            <Setter Property="Background" Value="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+        </Style>
+    </UserControl.Styles>
+    <!-- Three panes, each scrolling on its own, resized by the grippers between them (PTU-7): the plots, the selected
+         plot's traces, and the output — the matrix, the grid, what the Touchstone waits for and the report. -->
+    <Grid Margin="0,0,6,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" MinHeight="70"/>
+            <RowDefinition Height="10"/>
+            <RowDefinition Height="2*" MinHeight="90"/>
+            <RowDefinition Height="10"/>
+            <RowDefinition Height="*" MinHeight="70"/>
+        </Grid.RowDefinitions>
 
-            <!-- ── Plots: each read or left out, its calibration, its typed axes ──────────── -->
-            <Border Classes="slot" Classes.wants="{Binding HighlightFrames}" Padding="0">
-                <StackPanel Spacing="4">
-                    <TextBlock Text="Plots" FontWeight="SemiBold" FontSize="12"/>
-                    <ItemsControl ItemsSource="{Binding Frames}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate DataType="rec:PlotFrameRowViewModel">
-                                <StackPanel Spacing="2" Margin="0,0,0,4">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <CheckBox IsChecked="{Binding Include}" Content="{Binding Title}"
-                                                  ToolTip.Tip="Read this plot. Left out, it is drawn on the canvas and not read."/>
-                                    </StackPanel>
-                                    <SelectableTextBlock Text="{Binding Calibration}" FontSize="11" Opacity="0.75" Margin="28,0,0,0"/>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="28,0,0,0" IsVisible="{Binding ShowsX}">
-                                        <TextBlock Text="x axis" FontSize="12" VerticalAlignment="Center" Width="44"/>
-                                        <TextBox Text="{Binding XAxisText}" Width="220" PlaceholderText="Click two x labels on the picture"
-                                                 ToolTip.Tip="Two pixel positions along the x axis and the values there, with units: 120px=1GHz,900px=5GHz. A label clicked on the picture and given its value writes one pair here."/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="28,0,0,0" IsVisible="{Binding ShowsY}">
-                                        <TextBlock Text="y axis" FontSize="12" VerticalAlignment="Center" Width="44"/>
-                                        <TextBox Text="{Binding YAxisText}" Width="220" PlaceholderText="Click two y labels on the picture"
-                                                 ToolTip.Tip="Two pixel positions along the y axis and the values there, in the axis's own units: 80px=0,560px=-40. A label clicked on the picture and given its value writes one pair here."/>
-                                    </StackPanel>
+        <!-- ── Plots: each read or left out, its calibration, its typed axes ──────────── -->
+        <!-- A list of its own, scrolling on its own (PTU-7): choosing a plot lists its traces below and shows its picture. -->
+        <Border Grid.Row="0" Classes="slot" Classes.wants="{Binding HighlightFrames}" Padding="0">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="Plots" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,4"/>
+                <ListBox x:Name="FramesList" ItemsSource="{Binding Frames}" SelectedItem="{Binding SelectedFrame}"
+                         SelectionMode="Single" BorderThickness="1"
+                         BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" CornerRadius="3"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <ListBox.ItemContainerTheme>
+                        <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                            <Setter Property="Padding" Value="4,2"/>
+                        </ControlTheme>
+                    </ListBox.ItemContainerTheme>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="rec:PlotFrameRowViewModel">
+                            <StackPanel Spacing="2" Margin="0,0,0,4">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <CheckBox IsChecked="{Binding Include}" Content="{Binding Title}"
+                                              ToolTip.Tip="Read this plot. Left out, it is drawn on the canvas and not read."/>
                                 </StackPanel>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-            </Border>
+                                <SelectableTextBlock Text="{Binding Calibration}" FontSize="11" Opacity="0.75" Margin="28,0,0,0"/>
+                                <StackPanel Orientation="Horizontal" Spacing="6" Margin="28,0,0,0" IsVisible="{Binding ShowsX}">
+                                    <TextBlock Text="x axis" FontSize="12" VerticalAlignment="Center" Width="44"/>
+                                    <TextBox Text="{Binding XAxisText}" Width="220" PlaceholderText="Click two x labels on the picture"
+                                             ToolTip.Tip="Two pixel positions along the x axis and the values there, with units: 120px=1GHz,900px=5GHz. A label clicked on the picture and given its value writes one pair here."/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="6" Margin="28,0,0,0" IsVisible="{Binding ShowsY}">
+                                    <TextBlock Text="y axis" FontSize="12" VerticalAlignment="Center" Width="44"/>
+                                    <TextBox Text="{Binding YAxisText}" Width="220" PlaceholderText="Click two y labels on the picture"
+                                             ToolTip.Tip="Two pixel positions along the y axis and the values there, in the axis's own units: 80px=0,560px=-40. A label clicked on the picture and given its value writes one pair here."/>
+                                </StackPanel>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
 
-            <!-- ── Traces ─────────────────────────────────────────────────────────────────── -->
-            <Border Classes="slot" Classes.wants="{Binding HighlightTraces}" Padding="0">
-                <StackPanel Spacing="4">
-                    <!-- Simple lists one row per colour group, Detailed one per piece the reader returned (R-ptu5-3). -->
-                    <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="Traces" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
-                        <StackPanel Grid.Column="1" Classes="Toolbar" Orientation="Horizontal" Spacing="2">
-                            <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="tracesView"
-                                         Content="Simple" FontSize="12" IsChecked="{Binding Simple}"
-                                         ToolTip.Tip="One row per curve colour: the pieces of one curve are assigned together."/>
-                            <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="tracesView"
-                                         Content="Detailed" FontSize="12" IsChecked="{Binding Detailed}"
-                                         ToolTip.Tip="One row per piece the reading returned, each assigned on its own."/>
+        <GridSplitter Grid.Row="1" ResizeDirection="Rows" Background="Transparent"/>
+        <Border Grid.Row="1" Classes="grip"/>
+
+        <!-- ── Traces: the selected plot's ─────────────────────────────────────────────── -->
+        <Border Grid.Row="2" Classes="slot" Classes.wants="{Binding HighlightTraces}" Padding="0">
+            <DockPanel>
+                <!-- Simple lists one row per colour group, Detailed one per piece the reader returned (R-ptu5-3). The port count
+                     sets what the entry combos offer; Undo puts back the last change to the assignments or the ports (PTU-7). -->
+                <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,4">
+                    <TextBlock Text="Traces" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"/>
+                    <StackPanel Grid.Column="1" Classes="row" Orientation="Horizontal" Spacing="6" Margin="14,0,0,0">
+                        <TextBlock Text="Ports" FontSize="12" Opacity="0.8"/>
+                        <TextBox Text="{Binding PortsText}" Width="44" Height="24" MinHeight="0" Padding="4,0" FontSize="12"
+                                 VerticalContentAlignment="Center" PlaceholderText="{Binding AutoPortsText}"
+                                 Classes.invalid="{Binding PortsInvalid}"
+                                 ToolTip.Tip="How many ports the file has, 1 to 4. Empty: the highest port a trace names, at least 2. The entry lists offer S11 up to this; an entry beyond it is kept and waits until it is changed or the ports raised."/>
+                        <StackPanel Classes="Toolbar" Orientation="Horizontal">
+                            <Button Command="{Binding UndoCommand}" Padding="6,3"
+                                    ToolTip.Tip="Undo — put back the trace assignments and the ports as they were before the last change (Cmd/Ctrl+Z).">
+                                <mi:MaterialIcon Kind="Undo" Width="16" Height="16"/>
+                            </Button>
                         </StackPanel>
-                    </Grid>
-                    <!-- Simple: one row per colour group (R-ptu5-2). Choosing in its combos assigns every piece. -->
-                    <ListBox x:Name="GroupsList" ItemsSource="{Binding Groups}" SelectedItem="{Binding SelectedGroup}"
-                             Background="Transparent" SelectionMode="Single" IsVisible="{Binding Simple}"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                        <ListBox.ItemsPanel>
-                            <ItemsPanelTemplate><StackPanel/></ItemsPanelTemplate>
-                        </ListBox.ItemsPanel>
-                        <ListBox.ItemContainerTheme>
-                            <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-                                <Setter Property="Padding" Value="4,2"/>
-                            </ControlTheme>
-                        </ListBox.ItemContainerTheme>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate DataType="rec:PlotTraceGroupViewModel">
-                                <StackPanel Spacing="2" Margin="0,0,0,4" Opacity="{Binding RowOpacity}">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <Ellipse Width="8" Height="8" Fill="{Binding Confidence}" VerticalAlignment="Center"/>
-                                        <Rectangle Width="14" Height="14" Fill="{Binding Swatch}" Stroke="#808080" StrokeThickness="1"
-                                                   VerticalAlignment="Center" ToolTip.Tip="The colour the curve was read in."/>
-                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"
-                                                   ToolTip.Tip="{Binding Names}"/>
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="30,0,0,0">
-                                        <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Entries}" SelectedIndex="{Binding EntryIndex}"
-                                                  MinWidth="104" PlaceholderText="mixed"
-                                                  ToolTip.Tip="Which entry of the matrix this curve is — every piece of it. Unassigned: the Touchstone waits for it."/>
-                                        <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Quantities}" SelectedIndex="{Binding QuantityIndex}"
-                                                  MinWidth="96" PlaceholderText="mixed"
-                                                  ToolTip.Tip="What the curve plots: dB, linear magnitude, phase, real or imaginary part, the complex value of a chart, VSWR, return or insertion loss."/>
-                                    </StackPanel>
-                                    <!-- A chart trace is a group of its own: its frequency row (R-im14-8 (3)). -->
-                                    <Border Classes="slot" Classes.wants="{Binding First.NeedsFrequency}" Margin="26,0,0,0" IsVisible="{Binding IsChart}">
-                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <TextBlock Text="Start" FontSize="12" VerticalAlignment="Center"/>
-                                            <TextBox Text="{Binding First.StartText}" Width="84" PlaceholderText="1 GHz"
-                                                     ToolTip.Tip="The frequency at the trace's first point. Spread along the trace by the angle it sweeps about the chart's centre — exact for a uniform line."/>
-                                            <TextBlock Text="Stop" FontSize="12" VerticalAlignment="Center"/>
-                                            <TextBox Text="{Binding First.StopText}" Width="84" PlaceholderText="5 GHz"
-                                                     ToolTip.Tip="The frequency at the trace's last point. Markers on the trace combine with it."/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Classes="Toolbar" Orientation="Horizontal" Spacing="2">
+                        <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="tracesView"
+                                     Content="Simple" FontSize="12" IsChecked="{Binding Simple}"
+                                     ToolTip.Tip="One row per curve colour: the pieces of one curve are assigned together."/>
+                        <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="tracesView"
+                                     Content="Detailed" FontSize="12" IsChecked="{Binding Detailed}"
+                                     ToolTip.Tip="One row per piece the reading returned, each assigned on its own."/>
+                    </StackPanel>
+                </Grid>
+                <Border Classes="pane">
+                    <ScrollViewer x:Name="Scroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <!-- Simple: one row per colour group (R-ptu5-2). Choosing in its combos assigns every piece. -->
+                            <ListBox x:Name="GroupsList" ItemsSource="{Binding ShownGroups}" SelectedItem="{Binding SelectedGroup}"
+                                     Background="Transparent" SelectionMode="Single" IsVisible="{Binding Simple}"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                <ListBox.ItemsPanel>
+                                    <ItemsPanelTemplate><StackPanel/></ItemsPanelTemplate>
+                                </ListBox.ItemsPanel>
+                                <ListBox.ItemContainerTheme>
+                                    <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                        <Setter Property="Padding" Value="4,2"/>
+                                    </ControlTheme>
+                                </ListBox.ItemContainerTheme>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="rec:PlotTraceGroupViewModel">
+                                        <StackPanel Spacing="2" Margin="0,0,0,4" Opacity="{Binding RowOpacity}">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <Ellipse Width="8" Height="8" Fill="{Binding Confidence}" VerticalAlignment="Center"/>
+                                                <Rectangle Width="14" Height="14" Fill="{Binding Swatch}" Stroke="#808080" StrokeThickness="1"
+                                                           VerticalAlignment="Center" ToolTip.Tip="The colour the curve was read in."/>
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center"
+                                                           ToolTip.Tip="{Binding Names}"/>
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="30,0,0,0">
+                                                <ComboBox ItemsSource="{Binding EntryChoices}" SelectedItem="{Binding EntryChoice}"
+                                                          MinWidth="104" PlaceholderText="{Binding EntryPlaceholder}"
+                                                          ToolTip.Tip="Which entry of the matrix this curve is — every piece of it. Unassigned: the Touchstone waits for it."/>
+                                                <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Quantities}" SelectedIndex="{Binding QuantityIndex}"
+                                                          MinWidth="96" PlaceholderText="mixed"
+                                                          ToolTip.Tip="What the curve plots: dB, linear magnitude, phase, real or imaginary part, the complex value of a chart, VSWR, return or insertion loss."/>
+                                            </StackPanel>
+                                            <!-- A chart trace is a group of its own: its frequency row (R-im14-8 (3)). -->
+                                            <Border Classes="slot" Classes.wants="{Binding First.NeedsFrequency}" Margin="26,0,0,0" IsVisible="{Binding IsChart}">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="Start" FontSize="12" VerticalAlignment="Center"/>
+                                                    <TextBox Text="{Binding First.StartText}" Width="84" PlaceholderText="1 GHz"
+                                                             ToolTip.Tip="The frequency at the trace's first point. Spread along the trace by the angle it sweeps about the chart's centre — exact for a uniform line."/>
+                                                    <TextBlock Text="Stop" FontSize="12" VerticalAlignment="Center"/>
+                                                    <TextBox Text="{Binding First.StopText}" Width="84" PlaceholderText="5 GHz"
+                                                             ToolTip.Tip="The frequency at the trace's last point. Markers on the trace combine with it."/>
+                                                </StackPanel>
+                                            </Border>
                                         </StackPanel>
-                                    </Border>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                    <!-- Detailed. A ListBox for the parts table's selected-row look (R-ptu3-1). It never scrolls itself — the
-                         column's ScrollViewer does, and the code-behind brings the selected row into it. -->
-                    <ListBox x:Name="TracesList" ItemsSource="{Binding Traces}" SelectedItem="{Binding SelectedTrace}"
-                             Background="Transparent" SelectionMode="Single" IsVisible="{Binding Detailed}"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                        <ListBox.ItemsPanel>
-                            <ItemsPanelTemplate><StackPanel/></ItemsPanelTemplate>
-                        </ListBox.ItemsPanel>
-                        <ListBox.ItemContainerTheme>
-                            <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-                                <Setter Property="Padding" Value="4,2"/>
-                            </ControlTheme>
-                        </ListBox.ItemContainerTheme>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate DataType="rec:PlotTraceRowViewModel">
-                                <StackPanel Spacing="2" Margin="0,0,0,4">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <Ellipse Width="8" Height="8" Fill="{Binding Confidence}" VerticalAlignment="Center"
-                                                 ToolTip.Tip="{Binding Evidence}"/>
-                                        <Rectangle Width="14" Height="14" Fill="{Binding Swatch}" Stroke="#808080" StrokeThickness="1"
-                                                   VerticalAlignment="Center" ToolTip.Tip="The colour the curve was read in."/>
-                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" Width="26"/>
-                                        <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Entries}" SelectedIndex="{Binding EntryIndex}"
-                                                  MinWidth="104" ToolTip.Tip="Which entry of the matrix this trace is. Unassigned: the Touchstone waits for it."/>
-                                        <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Quantities}" SelectedIndex="{Binding QuantityIndex}"
-                                                  MinWidth="96" ToolTip.Tip="What the trace plots: dB, linear magnitude, phase, real or imaginary part, the complex value of a chart, VSWR, return or insertion loss."/>
-                                    </StackPanel>
-                                    <SelectableTextBlock FontSize="11" Opacity="0.75" Margin="30,0,0,0" TextWrapping="Wrap">
-                                        <Run Text="{Binding RangeText}"/><Run Text=" · "/><Run Text="{Binding Points}"/><Run Text=" points · "/><Run Text="{Binding ResolutionText}"/><Run Text=" per pixel · plot "/><Run Text="{Binding Plot}"/>
-                                    </SelectableTextBlock>
-                                    <SelectableTextBlock Text="{Binding FrequencyEvidence}" FontSize="11" Opacity="0.75" Margin="30,0,0,0"
-                                                         IsVisible="{Binding IsChart}"/>
-                                    <!-- The frequency row of a chart trace (R-im14-8 (3)): never pre-filled. -->
-                                    <Border Classes="slot" Classes.wants="{Binding NeedsFrequency}" Margin="26,0,0,0" IsVisible="{Binding IsChart}">
-                                        <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <TextBlock Text="Start" FontSize="12" VerticalAlignment="Center"/>
-                                            <TextBox Text="{Binding StartText}" Width="84" PlaceholderText="1 GHz"
-                                                     ToolTip.Tip="The frequency at the trace's first point. Spread along the trace by the angle it sweeps about the chart's centre — exact for a uniform line."/>
-                                            <TextBlock Text="Stop" FontSize="12" VerticalAlignment="Center"/>
-                                            <TextBox Text="{Binding StopText}" Width="84" PlaceholderText="5 GHz"
-                                                     ToolTip.Tip="The frequency at the trace's last point. Markers on the trace combine with it."/>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <!-- Detailed. A ListBox for the parts table's selected-row look (R-ptu3-1). It never scrolls itself — the
+                                 pane's ScrollViewer does, and the code-behind brings the selected row into it. -->
+                            <ListBox x:Name="TracesList" ItemsSource="{Binding ShownTraces}" SelectedItem="{Binding SelectedTrace}"
+                                     Background="Transparent" SelectionMode="Single" IsVisible="{Binding Detailed}"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                <ListBox.ItemsPanel>
+                                    <ItemsPanelTemplate><StackPanel/></ItemsPanelTemplate>
+                                </ListBox.ItemsPanel>
+                                <ListBox.ItemContainerTheme>
+                                    <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                        <Setter Property="Padding" Value="4,2"/>
+                                    </ControlTheme>
+                                </ListBox.ItemContainerTheme>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate DataType="rec:PlotTraceRowViewModel">
+                                        <StackPanel Spacing="2" Margin="0,0,0,4">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <Ellipse Width="8" Height="8" Fill="{Binding Confidence}" VerticalAlignment="Center"
+                                                         ToolTip.Tip="{Binding Evidence}"/>
+                                                <Rectangle Width="14" Height="14" Fill="{Binding Swatch}" Stroke="#808080" StrokeThickness="1"
+                                                           VerticalAlignment="Center" ToolTip.Tip="The colour the curve was read in."/>
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" Width="26"/>
+                                                <ComboBox ItemsSource="{Binding EntryChoices}" SelectedItem="{Binding EntryChoice}"
+                                                          MinWidth="104" PlaceholderText="{Binding EntryPlaceholder}"
+                                                          ToolTip.Tip="Which entry of the matrix this trace is. Unassigned: the Touchstone waits for it."/>
+                                                <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Quantities}" SelectedIndex="{Binding QuantityIndex}"
+                                                          MinWidth="96" ToolTip.Tip="What the trace plots: dB, linear magnitude, phase, real or imaginary part, the complex value of a chart, VSWR, return or insertion loss."/>
+                                            </StackPanel>
+                                            <SelectableTextBlock FontSize="11" Opacity="0.75" Margin="30,0,0,0" TextWrapping="Wrap">
+                                                <Run Text="{Binding RangeText}"/><Run Text=" · "/><Run Text="{Binding Points}"/><Run Text=" points · "/><Run Text="{Binding ResolutionText}"/><Run Text=" per pixel · plot "/><Run Text="{Binding Plot}"/>
+                                            </SelectableTextBlock>
+                                            <SelectableTextBlock Text="{Binding FrequencyEvidence}" FontSize="11" Opacity="0.75" Margin="30,0,0,0"
+                                                                 IsVisible="{Binding IsChart}"/>
+                                            <!-- The frequency row of a chart trace (R-im14-8 (3)): never pre-filled. -->
+                                            <Border Classes="slot" Classes.wants="{Binding NeedsFrequency}" Margin="26,0,0,0" IsVisible="{Binding IsChart}">
+                                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                                    <TextBlock Text="Start" FontSize="12" VerticalAlignment="Center"/>
+                                                    <TextBox Text="{Binding StartText}" Width="84" PlaceholderText="1 GHz"
+                                                             ToolTip.Tip="The frequency at the trace's first point. Spread along the trace by the angle it sweeps about the chart's centre — exact for a uniform line."/>
+                                                    <TextBlock Text="Stop" FontSize="12" VerticalAlignment="Center"/>
+                                                    <TextBox Text="{Binding StopText}" Width="84" PlaceholderText="5 GHz"
+                                                             ToolTip.Tip="The frequency at the trace's last point. Markers on the trace combine with it."/>
+                                                </StackPanel>
+                                            </Border>
                                         </StackPanel>
-                                    </Border>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </StackPanel>
-            </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Border>
+            </DockPanel>
+        </Border>
 
-            <!-- ── The matrix grid: where every entry came from ──────────────────────────── -->
-            <Border Classes="slot" Classes.wants="{Binding HighlightMatrix}" Padding="0" IsVisible="{Binding HasMatrix}">
-                <StackPanel Spacing="4">
-                    <TextBlock Text="Matrix" FontWeight="SemiBold" FontSize="12"/>
-                    <ItemsControl ItemsSource="{Binding Matrix}">
+        <GridSplitter Grid.Row="3" ResizeDirection="Rows" Background="Transparent"/>
+        <Border Grid.Row="3" Classes="grip"/>
+
+        <!-- ── The output pane ──────────────────────────────────────────────────────────── -->
+        <Border Grid.Row="4" Classes="pane">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="10" Margin="4">
+
+                    <!-- ── The matrix grid: where every entry came from ──────────────────────────── -->
+                    <Border Classes="slot" Classes.wants="{Binding HighlightMatrix}" Padding="0" IsVisible="{Binding HasMatrix}">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Matrix" FontWeight="SemiBold" FontSize="12"/>
+                            <ItemsControl ItemsSource="{Binding Matrix}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="rec:PlotMatrixCellViewModel">
+                                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,3">
+                                            <TextBlock Text="{Binding Entry}" FontWeight="SemiBold" FontSize="12" Width="30" VerticalAlignment="Center"/>
+                                            <SelectableTextBlock Text="{Binding Source}" FontSize="12" Width="130" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                                                 ToolTip.Tip="{Binding Rule}"/>
+                                            <ComboBox ItemsSource="{Binding Choices}" SelectedIndex="{Binding SelectedIndex}" MinWidth="150"
+                                                      IsVisible="{Binding HasChoices}"
+                                                      ToolTip.Tip="{Binding Rule}"/>
+                                            <TextBox Text="{Binding DelayText}" Width="80" PlaceholderText="250 ps" IsVisible="{Binding AsksDelay}"
+                                                     ToolTip.Tip="The delay the linear phase is given."/>
+                                            <TextBlock Text="estimated" FontSize="11" Opacity="0.75" VerticalAlignment="Center" IsVisible="{Binding Estimated}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ── The output grid and format ─────────────────────────────────────────────── -->
+                    <Border Classes="slot" Classes.wants="{Binding HighlightGrid}" Padding="0">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Output" FontWeight="SemiBold" FontSize="12"/>
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBox Text="{Binding GridStartText}" Width="78" PlaceholderText="start"
+                                         ToolTip.Tip="The grid's start, with its unit. Empty: the traces' common range, at the densest trace's resolution, rounded to a 1-2-5 step."/>
+                                <TextBox Text="{Binding GridStopText}" Width="78" PlaceholderText="stop" ToolTip.Tip="The grid's stop, with its unit."/>
+                                <TextBox Text="{Binding GridPointsText}" Width="58" PlaceholderText="points" ToolTip.Tip="The number of points."/>
+                                <CheckBox Content="log" IsChecked="{Binding GridLog}" ToolTip.Tip="Points spaced logarithmically."/>
+                                <ComboBox ItemsSource="{x:Static rec:PlotSessionViewModel.Formats}" SelectedIndex="{Binding FormatIndex}" MinWidth="72"
+                                          ToolTip.Tip="How the Touchstone writes each entry: dB and angle, magnitude and angle, or real and imaginary."/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- ── What the Touchstone waits for, and the report ──────────────────────────── -->
+                    <SelectableTextBlock Text="{Binding Refusal}" Classes="error" TextWrapping="Wrap"
+                                         IsVisible="{Binding Refusal, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    <ItemsControl ItemsSource="{Binding ReportLines}">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate DataType="rec:PlotMatrixCellViewModel">
-                                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,0,0,3">
-                                    <TextBlock Text="{Binding Entry}" FontWeight="SemiBold" FontSize="12" Width="30" VerticalAlignment="Center"/>
-                                    <SelectableTextBlock Text="{Binding Source}" FontSize="12" Width="130" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                                                         ToolTip.Tip="{Binding Rule}"/>
-                                    <ComboBox ItemsSource="{Binding Choices}" SelectedIndex="{Binding SelectedIndex}" MinWidth="150"
-                                              IsVisible="{Binding HasChoices}"
-                                              ToolTip.Tip="{Binding Rule}"/>
-                                    <TextBox Text="{Binding DelayText}" Width="80" PlaceholderText="250 ps" IsVisible="{Binding AsksDelay}"
-                                             ToolTip.Tip="The delay the linear phase is given."/>
-                                    <TextBlock Text="estimated" FontSize="11" Opacity="0.75" VerticalAlignment="Center" IsVisible="{Binding Estimated}"/>
-                                </StackPanel>
+                            <DataTemplate x:DataType="x:String">
+                                <SelectableTextBlock Text="{Binding}" FontSize="11" Opacity="0.8" TextWrapping="Wrap" Margin="0,0,0,2"/>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </StackPanel>
-            </Border>
-
-            <!-- ── The output grid and format ─────────────────────────────────────────────── -->
-            <Border Classes="slot" Classes.wants="{Binding HighlightGrid}" Padding="0">
-                <StackPanel Spacing="4">
-                    <TextBlock Text="Output" FontWeight="SemiBold" FontSize="12"/>
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBox Text="{Binding GridStartText}" Width="78" PlaceholderText="start"
-                                 ToolTip.Tip="The grid's start, with its unit. Empty: the traces' common range, at the densest trace's resolution, rounded to a 1-2-5 step."/>
-                        <TextBox Text="{Binding GridStopText}" Width="78" PlaceholderText="stop" ToolTip.Tip="The grid's stop, with its unit."/>
-                        <TextBox Text="{Binding GridPointsText}" Width="58" PlaceholderText="points" ToolTip.Tip="The number of points."/>
-                        <CheckBox Content="log" IsChecked="{Binding GridLog}" ToolTip.Tip="Points spaced logarithmically."/>
-                        <ComboBox ItemsSource="{x:Static rec:PlotSessionViewModel.Formats}" SelectedIndex="{Binding FormatIndex}" MinWidth="72"
-                                  ToolTip.Tip="How the Touchstone writes each entry: dB and angle, magnitude and angle, or real and imaginary."/>
-                    </StackPanel>
-                </StackPanel>
-            </Border>
-
-            <!-- ── What the Touchstone waits for, and the report ──────────────────────────── -->
-            <SelectableTextBlock Text="{Binding Refusal}" Classes="error" TextWrapping="Wrap"
-                                 IsVisible="{Binding Refusal, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-            <ItemsControl ItemsSource="{Binding ReportLines}">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="x:String">
-                        <SelectableTextBlock Text="{Binding}" FontSize="11" Opacity="0.8" TextWrapping="Wrap" Margin="0,0,0,2"/>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </StackPanel>
-    </ScrollViewer>
+            </ScrollViewer>
+        </Border>
+    </Grid>
 </UserControl>

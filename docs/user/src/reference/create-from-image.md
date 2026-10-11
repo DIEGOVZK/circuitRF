@@ -81,7 +81,7 @@ nothing else changes.
 With a picture, the top of the dialog is the picture and what to do with it; below it is the body the
 [artwork dialog](artwork-to-schematic.html) has &mdash; target, options, parts table, report and **Create** &mdash;
 with the picture itself taking the left two-thirds. The buttons along the top are glyphs, each named in its tooltip:
-**Replace** and **Paste** read another picture in its place, and **Help**, bottom left, opens this page at the section
+**Replace** and **Paste** read another picture in its place, and **Help**, at the top right, opens this page at the section
 for what is on screen.
 
 {{ui: image-dialog-layout-picture}}
@@ -328,10 +328,20 @@ values you give replace what was read. Each value is written into the plot's **x
 position and its value, `120px=1GHz,900px=5GHz`, and the row can be typed directly in that form. A logarithmic axis is
 read as one from its labels.
 
+The right column has three panes, each scrolling on its own; drag the grip between two panes to give one more room.
+**Plots** is at the top: choosing a plot lists its traces in **Traces** below and shows its picture, and choosing a
+trace on the canvas chooses its plot. **Output** at the bottom holds the matrix, the output grid and the report.
+
 **Traces.** Each row is one curve: its colour, its range, its points and its resolution per pixel. **Entry** and
 **quantity** say what it is &mdash; S21 in dB, S11 as phase, a chart's complex value, VSWR, return loss and so on
 &mdash; taken from a legend entry in its colour, a label along it, the y axis's title or the plot's title, and the dot
 says how sure that is. A curve nothing names is **Unassigned**, and the Touchstone waits for you to say which entry it is.
+
+**Ports**, in the Traces heading, is how many ports the file has, 1 to 4. Left empty it is the highest port any trace
+names, at least 2, shown faintly in the box. The entry lists offer S11 up to that many ports. Lowering it clears no
+assignment: a trace already given an entry beyond it shows `S41 · beyond 2 ports` and the Touchstone waits until the
+entry is changed or the ports raised. **Undo** beside it (Cmd/Ctrl+Z) puts back the assignments and the ports as they
+were before the last change, one step at a time.
 
 A curve is often read in pieces &mdash; it breaks where it crosses a grid line, a marker or another curve. **Simple**,
 at the right of the Traces heading, lists one row per curve colour, `Red · 4 pieces · 2.3–2.6 GHz`: choosing its entry

@@ -21,6 +21,7 @@ public partial class PlotTracesPanel : UserControl
         // (R-ptu3-2). Tunnelling, so it is heard before they take it.
         TracesList.AddHandler(PointerPressedEvent, OnRowPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         GroupsList.AddHandler(PointerPressedEvent, OnRowPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
+        FramesList.AddHandler(PointerPressedEvent, OnRowPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -38,6 +39,7 @@ public partial class PlotTracesPanel : UserControl
         {
             case PlotTraceRowViewModel row: _vm.SelectedTrace = row; break;
             case PlotTraceGroupViewModel group: _vm.SelectedGroup = group; break;
+            case PlotFrameRowViewModel frame: _vm.SelectedFrame = frame; break;
         }
     }
 

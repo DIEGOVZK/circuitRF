@@ -57,12 +57,11 @@
         <Setter Property="HorizontalContentAlignment" Value="Left"/>
     </Style>
 
-    <!-- A choice in a toolbar (brief-ptu-2 R-ptu2-1): a radio button drawn as a toolbar toggle — flat while unchecked,
-         the theme's checked fill when chosen. ToggleButton.PanelToggle's treatment, restated for RadioButton because a
-         type selector matches its type exactly. The flat background is a STYLE value, never a local one: a local value
-         would beat the theme's :checked fill and the choice would never look chosen. -->
+    <!-- A choice in a toolbar (brief-ptu-2 R-ptu2-1): a radio button drawn as a toolbar toggle — the theme's subtle
+         button fill while unchecked, as the layout editor's snap and pin toggles have (PTU-7: a flat unchecked choice did
+         not read as a button), and the theme's checked fill when chosen. No Background is set here at all: the
+         ToggleButton theme supplies both, and any value set would have to lose to :checked. -->
     <Style Selector="RadioButton.tool">
-        <Setter Property="Background" Value="Transparent"/>
         <Setter Property="BorderThickness" Value="0"/>
         <Setter Property="Padding" Value="6,3"/>
         <Setter Property="MinWidth" Value="0"/>

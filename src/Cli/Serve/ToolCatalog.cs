@@ -302,6 +302,8 @@ internal static class ToolCatalog
         new("prefer",      "--prefer",       OptKind.Str,    "Plots: of two traces of one entry, which is written: S11=chart|rect|T3."),
         new("grid",        "--grid",         OptKind.Str,    "Plots: the Touchstone's grid, <start>..<stop>/<points>[log] (1GHz..5GHz/81)."),
         new("format",      "--format",       OptKind.Str,    "Plots: db (default), ma or ri."),
+        new("ports",       "--ports",        OptKind.Integer,
+            "Plots: the file's ports, 1-4 (default: the highest port any trace names). A trace naming a port beyond it waits."),
         new("csv",         "--csv",          OptKind.Path,   "Plots: also write the raw digitised traces as CSV, in each plot's own units. Never waits."),
         new("keepSources", "--keep-sources", OptKind.Str,    "Plots: on (default) or off — keep the source pictures beside the Touchstone."),
     ];

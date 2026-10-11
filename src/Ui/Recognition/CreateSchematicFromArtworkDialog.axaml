@@ -28,43 +28,51 @@
          row after the first carries its own top margin instead. -->
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto" Margin="12">
 
-        <!-- ── The source ────────────────────────────────────────────────────────────────── -->
-        <ContentControl Grid.Row="0" Content="{Binding}" IsVisible="{Binding HasSource}">
-            <ContentControl.DataTemplates>
-                <DataTemplate DataType="rec:ImageSourceViewModel">
-                    <rec:ImageSourcePane/>
-                </DataTemplate>
-                <!-- Artwork: the scope (D11) and the companion files. -->
-                <DataTemplate DataType="rec:CreateSchematicFromArtworkViewModel">
-                    <StackPanel Spacing="8">
-                        <StackPanel Classes="row" Orientation="Horizontal" Spacing="10">
-                            <TextBlock Classes="label" Text="Scope" Width="70"/>
-                            <RadioButton GroupName="scope" Content="Selection" IsChecked="{Binding ScopeSelection}"
-                                         IsEnabled="{Binding SelectionAvailable}"
-                                         ToolTip.Tip="Read only the copper inside the layout's selection; a line the outline cuts becomes a port."/>
-                            <RadioButton GroupName="scope" Content="Whole layout" IsChecked="{Binding ScopeWhole}"/>
-                        </StackPanel>
-                        <WrapPanel Classes="row" Orientation="Horizontal">
-                            <TextBlock Classes="label" Text="Files" Width="70" Margin="0,0,10,0"/>
-                            <Button Content="BOM…" Command="{Binding PickBomCommand}" Margin="0,0,6,0"
-                                    ToolTip.Tip="A bill of materials: values, part numbers and kinds by designator."/>
-                            <TextBox Text="{Binding BomPath}" Width="240" Margin="0,0,16,0" PlaceholderText="No bill of materials"/>
-                            <Button Content="Placement…" Command="{Binding PickPlacementCommand}" Margin="0,0,6,0"
-                                    ToolTip.Tip="A placement file: where each designator sits."/>
-                            <TextBox Text="{Binding PlacementPath}" Width="240" Margin="0,0,8,0" PlaceholderText="No placement file"/>
-                            <StackPanel Classes="row" Orientation="Horizontal" Spacing="6" Margin="0,0,8,0" IsVisible="{Binding PlacementNeedsOrigin}">
-                                <TextBlock Classes="label" Text="Origin"/>
-                                <ComboBox ItemsSource="{x:Static rec:CreateSchematicFromArtworkViewModel.PlacementOriginLabels}"
-                                          SelectedIndex="{Binding PlacementOriginIndex}" MinWidth="200"
-                                          PlaceholderText="Choose…"
-                                          ToolTip.Tip="The file does not say which point of each part its coordinates are; it is not guessed."/>
+        <!-- ── The source, and Help at the top right of its toolbar (PTU-7: at the bottom left nobody saw it) ──────── -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+            <ContentControl Grid.Column="0" Content="{Binding}" IsVisible="{Binding HasSource}">
+                <ContentControl.DataTemplates>
+                    <DataTemplate DataType="rec:ImageSourceViewModel">
+                        <rec:ImageSourcePane/>
+                    </DataTemplate>
+                    <!-- Artwork: the scope (D11) and the companion files. -->
+                    <DataTemplate DataType="rec:CreateSchematicFromArtworkViewModel">
+                        <StackPanel Spacing="8">
+                            <StackPanel Classes="row" Orientation="Horizontal" Spacing="10">
+                                <TextBlock Classes="label" Text="Scope" Width="70"/>
+                                <RadioButton GroupName="scope" Content="Selection" IsChecked="{Binding ScopeSelection}"
+                                             IsEnabled="{Binding SelectionAvailable}"
+                                             ToolTip.Tip="Read only the copper inside the layout's selection; a line the outline cuts becomes a port."/>
+                                <RadioButton GroupName="scope" Content="Whole layout" IsChecked="{Binding ScopeWhole}"/>
                             </StackPanel>
-                            <SelectableTextBlock Text="{Binding CompanionError}" Classes="error"/>
-                        </WrapPanel>
-                    </StackPanel>
-                </DataTemplate>
-            </ContentControl.DataTemplates>
-        </ContentControl>
+                            <WrapPanel Classes="row" Orientation="Horizontal">
+                                <TextBlock Classes="label" Text="Files" Width="70" Margin="0,0,10,0"/>
+                                <Button Content="BOM…" Command="{Binding PickBomCommand}" Margin="0,0,6,0"
+                                        ToolTip.Tip="A bill of materials: values, part numbers and kinds by designator."/>
+                                <TextBox Text="{Binding BomPath}" Width="240" Margin="0,0,16,0" PlaceholderText="No bill of materials"/>
+                                <Button Content="Placement…" Command="{Binding PickPlacementCommand}" Margin="0,0,6,0"
+                                        ToolTip.Tip="A placement file: where each designator sits."/>
+                                <TextBox Text="{Binding PlacementPath}" Width="240" Margin="0,0,8,0" PlaceholderText="No placement file"/>
+                                <StackPanel Classes="row" Orientation="Horizontal" Spacing="6" Margin="0,0,8,0" IsVisible="{Binding PlacementNeedsOrigin}">
+                                    <TextBlock Classes="label" Text="Origin"/>
+                                    <ComboBox ItemsSource="{x:Static rec:CreateSchematicFromArtworkViewModel.PlacementOriginLabels}"
+                                              SelectedIndex="{Binding PlacementOriginIndex}" MinWidth="200"
+                                              PlaceholderText="Choose…"
+                                              ToolTip.Tip="The file does not say which point of each part its coordinates are; it is not guessed."/>
+                                </StackPanel>
+                                <SelectableTextBlock Text="{Binding CompanionError}" Classes="error"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </DataTemplate>
+                </ContentControl.DataTemplates>
+            </ContentControl>
+            <StackPanel Grid.Column="1" Classes="Toolbar" Orientation="Horizontal" VerticalAlignment="Top" Margin="10,0,0,0">
+                <Button Click="OnHelpClick" Padding="6,3"
+                        ToolTip.Tip="Help — the reference page for what this dialog is reading.">
+                    <mi:MaterialIcon Kind="HelpCircleOutline" Width="16" Height="16"/>
+                </Button>
+            </StackPanel>
+        </Grid>
 
         <!-- ── Target (D4, D14) ──────────────────────────────────────────────────────────── -->
         <rec:RecognitionTargetRow Grid.Row="1" Margin="0,8,0,0" IsVisible="{Binding TargetApplies}"/>
@@ -100,15 +108,9 @@
         </StackPanel>
 
         <!-- ── Buttons ───────────────────────────────────────────────────────────────────── -->
-        <!-- Help at the left, opposite Cancel / Create (brief-ptu-2 R-ptu2-3); the parts table's file buttons beside it,
-             toolbar-style. -->
+        <!-- The parts table's file buttons at the left, toolbar-style, opposite Cancel / Create. -->
         <Grid Grid.Row="6" ColumnDefinitions="Auto,Auto,*,Auto,Auto" Margin="0,8,0,0">
             <StackPanel Grid.Column="0" Classes="Toolbar" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-                <Button Click="OnHelpClick" Padding="6,3"
-                        ToolTip.Tip="Help — the reference page for what this dialog is reading.">
-                    <mi:MaterialIcon Kind="HelpCircleOutline" Width="16" Height="16"/>
-                </Button>
-                <Border Classes="sep" IsVisible="{Binding PartsApply}"/>
                 <Button Command="{Binding ExportPartsCommand}" Padding="6,3" IsVisible="{Binding PartsApply}"
                         ToolTip.Tip="Export Parts — write the parts table as CSV: the file circuitrf recognize --parts reads.">
                     <mi:MaterialIcon Kind="TableExport" Width="16" Height="16"/>
