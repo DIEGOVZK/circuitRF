@@ -7,7 +7,7 @@
              xmlns:rec="using:CircuitRF.Ui.Recognition"
              x:Class="CircuitRF.Ui.Recognition.PlotTracesPanel"
              x:DataType="rec:PlotSessionViewModel">
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+    <ScrollViewer x:Name="Scroller" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="10" Margin="0,0,6,0">
 
             <!-- ── Plots: each read or left out, its calibration, its typed axes ──────────── -->
@@ -44,14 +44,27 @@
             <Border Classes="slot" Classes.wants="{Binding HighlightTraces}" Padding="0">
                 <StackPanel Spacing="4">
                     <TextBlock Text="Traces" FontWeight="SemiBold" FontSize="12"/>
-                    <ItemsControl ItemsSource="{Binding Traces}">
-                        <ItemsControl.ItemTemplate>
+                    <!-- A ListBox for the parts table's selected-row look (R-ptu3-1). It never scrolls itself — the column's
+                         ScrollViewer does, and the code-behind brings the selected row into it. -->
+                    <ListBox x:Name="TracesList" ItemsSource="{Binding Traces}" SelectedItem="{Binding SelectedTrace}"
+                             Background="Transparent" SelectionMode="Single"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate><StackPanel/></ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemContainerTheme>
+                            <ControlTheme TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                <Setter Property="Padding" Value="4,2"/>
+                            </ControlTheme>
+                        </ListBox.ItemContainerTheme>
+                        <ListBox.ItemTemplate>
                             <DataTemplate DataType="rec:PlotTraceRowViewModel">
-                                <StackPanel Spacing="2" Margin="0,0,0,6">
+                                <StackPanel Spacing="2" Margin="0,0,0,4">
                                     <StackPanel Orientation="Horizontal" Spacing="6">
                                         <Ellipse Width="8" Height="8" Fill="{Binding Confidence}" VerticalAlignment="Center"
                                                  ToolTip.Tip="{Binding Evidence}"/>
-                                        <Rectangle Width="16" Height="3" Fill="{Binding Swatch}" VerticalAlignment="Center"/>
+                                        <Rectangle Width="14" Height="14" Fill="{Binding Swatch}" Stroke="#808080" StrokeThickness="1"
+                                                   VerticalAlignment="Center" ToolTip.Tip="The colour the curve was read in."/>
                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" Width="26"/>
                                         <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Entries}" SelectedIndex="{Binding EntryIndex}"
                                                   MinWidth="104" ToolTip.Tip="Which entry of the matrix this trace is. Unassigned: the Touchstone waits for it."/>
@@ -76,8 +89,8 @@
                                     </Border>
                                 </StackPanel>
                             </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </StackPanel>
             </Border>
 

@@ -39385,3 +39385,25 @@ Auto's face lost its "Auto (layout)" word; the tooltip leads with it (a `MultiBi
 so nothing the view model says changed. Help is `ImageSourceViewModel.HelpAnchor(kind, photoCorners)` — `plots`,
 `schematic`, `photos` (Auto read a board photo, or a layout set square on its corners), else `dialog`; the artwork
 flavour opens `artwork-to-schematic.html`. Gate: `tests/Ui.Tests/PlotRecognition/RecognitionDialogHelpTests.cs`.
+
+## Create … from Image, PTU-3: one trace selection, and an overlay that leaves the colour visible (2026-10-11)
+
+`PlotSessionViewModel.SelectedTrace` and `ImageSourceViewModel.SelectedItem` are one selection, synced under the same
+`_syncingSelection` guard the parts table uses. The trace name comes from the overlay ID (`trace:T3`, `gap:T3:17`),
+read by `PlotTraceLink` on the Ui side. A gap is redirected to its whole trace. A row whose trace is on another
+picture switches `ShownPicture` first. After a re-read the selection is kept by name, as the user's choices are,
+because the rows are new objects.
+
+**Trace items are now hit-tested on their stroke, not their bounding box** (`ImageOverlay.HitTest`, beside `Line` and
+`Wire`). Two traces across one plot share nearly the whole box, so a box test always picked whichever was smaller,
+however far the click was from it. With the stroke test, a click off every curve lands on the plot frame.
+
+The traces table is a `ListBox` (the parts table's selected-row look) with a plain `StackPanel` panel and its own
+scrolling disabled. The column's `ScrollViewer` scrolls, so the code-behind sets its `Offset` directly rather than
+relying on `BringIntoView` getting past the inner one. A tunnelling, `handledEventsToo` press handler makes a click on
+a row's combo or `SelectableTextBlock` select the row as well. Those controls take the press themselves (see the PTU-1
+entry on `SelectableTextBlock`).
+
+On the canvas a trace is never amber now: unselected, it is 1 px, dashed and neutral; selected, it is the accent at
+2 px, and only its label is drawn (`T2 · S11 · dB`, the reader's label with ` · ` between words). The CLI's
+`--overlay` picture (`ImageOverlay.Picture.cs`) is unchanged. Gate: `tests/Ui.Tests/PlotRecognition/PlotTraceSelectionTests.cs`.

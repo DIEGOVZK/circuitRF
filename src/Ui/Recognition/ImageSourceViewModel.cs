@@ -158,7 +158,9 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         {
             OnPropertyChanged(nameof(Raster));
             if (Plots.Session is { } session) Overlay = ImageOverlay.BuildPlot(session, Plots.ShownPicture);
+            SelectTraceItem();
         };
+        Plots.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(PlotSessionViewModel.SelectedTrace)) OnTraceSelected(); };
 
         if (source is not null) Accept(source);
         EndConstruction(_defaultName ?? "", targetOwn: OwnTargetOffered);
@@ -889,10 +891,18 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     partial void OnSelectedItemChanged(ImageOverlayItem? value)
     {
         if (_syncingSelection) return;
+        // A bridged gap belongs to its trace: the whole trace is what is selected (R-ptu3-1).
+        if (PlotTraceLink.TraceName(value) is { } name && PlotTraceLink.ItemFor(Overlay, name) is { } whole && !ReferenceEquals(whole, value))
+        {
+            SelectedItem = whole;
+            return;
+        }
         _syncingSelection = true;
         try
         {
-            if (value?.PartKey is { } key)
+            if (IsPlotPicture)
+                Plots.SelectedTrace = Plots.TraceRow(PlotTraceLink.TraceName(value));
+            else if (value?.PartKey is { } key)
                 SelectedRow = Rows.FirstOrDefault(r => string.Equals(r.BoardRefdes, key, StringComparison.OrdinalIgnoreCase));
             else if (value is not null) SelectedRow = null;
         }
@@ -908,6 +918,26 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     }
 
     public override void SelectAnchor(RecognitionAnchor anchor) => SelectedItem = Overlay.ItemForAnchor(anchor);
+
+    /// <summary>A row of the traces table was chosen: the canvas shows that trace, on its own picture (R-ptu3-2).</summary>
+    private void OnTraceSelected()
+    {
+        if (_syncingSelection) return;
+        if (Plots.SelectedTrace is { } row && Plots.PictureOf(row) is var picture and >= 0 && picture != Plots.ShownPicture)
+        {
+            Plots.ShownPicture = picture;   // re-builds the overlay, then selects through SelectTraceItem
+            return;
+        }
+        SelectTraceItem();
+    }
+
+    /// <summary>The canvas's selection set to the traces table's, without the table hearing it back.</summary>
+    private void SelectTraceItem()
+    {
+        _syncingSelection = true;
+        try { SelectedItem = PlotTraceLink.ItemFor(Overlay, Plots.SelectedTrace?.Name); }
+        finally { _syncingSelection = false; }
+    }
 
     // ── failure on the picture (R-im5-8, D16) ───────────────────────────────────────────────────────
 
@@ -1100,6 +1130,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             LayerRows.Clear();
             Plots.Apply(plot.Session, plot.Assembly);
             Overlay = ImageOverlay.BuildPlot(plot.Session, Plots.ShownPicture);
+            SelectTraceItem();
             if (plot.Session.Plots.Count == 0)
                 SetFailure("No plot was found: no rectangular axes with a grid or ticks, and no Smith or polar chart.", offersKind: true);
             RefreshCreate();

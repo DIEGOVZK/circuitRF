@@ -118,7 +118,10 @@ public sealed partial class ImageOverlay
                 _ => 3,
             };
             double area = rank * 1e12 + Math.Max(1, item.Bounds.Width * item.Bounds.Height);
-            if (item.Class is ImageOverlayClass.Line or ImageOverlayClass.Wire && item.Circle is null && DistanceToPaths(item, x, y) > tolerancePx) continue;
+            // A line, a wire or a plot's trace is hit on its stroke, not anywhere in its box: two traces across one plot
+            // share nearly the whole box (R-ptu3-1).
+            if (item.Class is ImageOverlayClass.Line or ImageOverlayClass.Wire or ImageOverlayClass.Trace && item.Circle is null
+                && DistanceToPaths(item, x, y) > tolerancePx) continue;
             if (area < bestArea) { bestArea = area; best = item; }
         }
         return best;

@@ -36,6 +36,9 @@ public sealed class ImageOverlayCanvas : Control
     private static readonly Color Amber = Rgb(ImageOverlay.Colours.Amber);
     private static readonly Color Accent = Rgb(ImageOverlay.Colours.Accent);
     private static readonly Color PortColour = Rgb(ImageOverlay.Colours.Port);
+    // A read trace not selected (R-ptu3-3): thin, dashed and neutral, so the picture's own curve — whose colour says
+    // which trace it is — shows through and beside it.
+    private static readonly Color TraceNeutral = Color.FromArgb(0xD0, 0x40, 0x40, 0x40);
 
     private ImageSourceViewModel? _vm;
     private RasterImage? _rasterShown;
@@ -199,8 +202,14 @@ public sealed class ImageOverlayCanvas : Control
         }
 
         double px = 1 / _zoom;
+        string? selectedTrace = PlotTraceLink.TraceName(vm.SelectedItem);
         foreach (var item in overlay.Items)
         {
+            if (item.Class == ImageOverlayClass.Trace)
+            {
+                DrawTrace(context, item, selectedTrace is not null && PlotTraceLink.TraceName(item) == selectedTrace, px);
+                continue;
+            }
             bool unknownShown = item.Unknown && vm.ShowUnknowns;
             if (!vm.Shows(item.Class) && !unknownShown) continue;
             bool selected = ReferenceEquals(item, vm.SelectedItem);
@@ -229,9 +238,7 @@ public sealed class ImageOverlayCanvas : Control
                     context.DrawEllipse(new ImmutableSolidColorBrush(Colors.White, 0.6), pen, new Point(c.X, c.Y), c.R * px * 1.2, c.R * px * 1.2);
                     break;
                 case ImageOverlayClass.Annotation:
-                case ImageOverlayClass.Trace when item.Id.StartsWith(ImageOverlay.GapPrefix, StringComparison.Ordinal):
-                    // A bridged gap, an annotation stroke (IMF-3): dashed, so what was interpolated or set aside is told
-                    // from what was read as line work.
+                    // An annotation stroke (IMF-3): dashed, so what was set aside is told from what was read as line work.
                     context.DrawGeometry(null, new Pen(pen.Brush, pen.Thickness, new ImmutableDashStyle([3, 3], 0)), GeometryOf(item));
                     break;
                 case ImageOverlayClass.Crossing when item.Circle is { } c:
@@ -254,13 +261,29 @@ public sealed class ImageOverlayCanvas : Control
             }
             if (item.Label is { Length: > 0 } label
                 && item.Class is ImageOverlayClass.Part or ImageOverlayClass.Line or ImageOverlayClass.Text
-                              or ImageOverlayClass.Plot or ImageOverlayClass.Trace or ImageOverlayClass.Marker or ImageOverlayClass.Annotation)
+                              or ImageOverlayClass.Plot or ImageOverlayClass.Marker or ImageOverlayClass.Annotation)
                 DrawLabel(context, item, label, selected ? Accent : colour, px);
         }
 
         if (vm.ScopeRect is { } s)
             context.DrawRectangle(new Pen(new ImmutableSolidColorBrush(Accent), 1.5 * px, new ImmutableDashStyle([4, 3], 0)),
                                   new Rect(s.Left, s.Top, s.Right - s.Left, s.Bottom - s.Top));
+    }
+
+    /// <summary>
+    /// A read trace, or one of its bridged gaps (R-ptu3-3). Unselected: 1 px, dashed, neutral — never amber and never
+    /// the trace's own colour, so the curve under it can be seen and its colour judged; whether it is assigned is the
+    /// table's to say. Selected: the accent at 2 px, with its label, so the user sees which pixels the row means.
+    /// </summary>
+    private void DrawTrace(DrawingContext context, ImageOverlayItem item, bool selected, double px)
+    {
+        bool gap = item.Id.StartsWith(ImageOverlay.GapPrefix, StringComparison.Ordinal);
+        var pen = selected
+            ? new Pen(new ImmutableSolidColorBrush(Accent), 2 * px, gap ? new ImmutableDashStyle([2, 2], 0) : null)
+            : new Pen(new ImmutableSolidColorBrush(TraceNeutral), px, new ImmutableDashStyle(gap ? [1, 4] : [3, 3], 0));
+        context.DrawGeometry(null, pen, GeometryOf(item));
+        if (selected && !gap && item.Label is { Length: > 0 } label)
+            DrawLabel(context, item, string.Join(" · ", label.Split(' ', StringSplitOptions.RemoveEmptyEntries)), Accent, px);
     }
 
     private static Color ColourOf(ImageOverlayItem item) => Rgb(ImageOverlay.ColourOf(item with { Unknown = false }));

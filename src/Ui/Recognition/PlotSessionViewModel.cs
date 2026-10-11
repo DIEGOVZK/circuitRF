@@ -280,6 +280,17 @@ public sealed partial class PlotSessionViewModel : ObservableObject
     /// <summary>The picture the canvas draws, 0-based.</summary>
     [ObservableProperty] private int _shownPicture;
 
+    /// <summary>The trace chosen in the table or on the canvas — one selection, shown on both (R-ptu3-1, R-ptu3-2).</summary>
+    [ObservableProperty] private PlotTraceRowViewModel? _selectedTrace;
+
+    /// <summary>The row of the trace called <paramref name="name"/>, or null.</summary>
+    public PlotTraceRowViewModel? TraceRow(string? name) =>
+        name is null ? null : Traces.FirstOrDefault(t => string.Equals(t.Name, name, StringComparison.Ordinal));
+
+    /// <summary>The 0-based picture a trace was read on, or −1.</summary>
+    public int PictureOf(PlotTraceRowViewModel row) =>
+        Session is { } s && row.Plot >= 1 && row.Plot <= s.Plots.Count ? s.Plots[row.Plot - 1].Picture : -1;
+
     [ObservableProperty] private string _smithZ0Text = "";
     [ObservableProperty] private string _gridStartText = "";
     [ObservableProperty] private string _gridStopText = "";
@@ -317,6 +328,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         _phase.Clear();
         Session = null;
         Assembly = null;
+        SelectedTrace = null;
         Frames.Clear();
         Traces.Clear();
         Matrix.Clear();
@@ -479,12 +491,15 @@ public sealed partial class PlotSessionViewModel : ObservableObject
             Frames.Add(new PlotFrameRowViewModel(p, !_excluded.Contains(p.Number), _axis.GetValueOrDefault((p.Number, 'x'), ""),
                                                  _axis.GetValueOrDefault((p.Number, 'y'), ""), () => OnFrameEdited(p.Number)));
 
+        // The selection is held by name across a re-read, as the choices are: the rows are new objects.
+        string? chosen = SelectedTrace?.Name;
         Traces.Clear();
         foreach (var t in session.Traces)
         {
             var (start, stop) = _freq.GetValueOrDefault(t.Name, ("", ""));
             Traces.Add(new PlotTraceRowViewModel(t, session.Plots[t.Plot - 1], start, stop, OnTraceEdited));
         }
+        SelectedTrace = TraceRow(chosen);
 
         Matrix.Clear();
         foreach (var c in assembly.Matrix)
@@ -585,6 +600,25 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         OnPropertyChanged(nameof(HasSmith));
         OnPropertyChanged(nameof(HasTraces));
     }
+}
+
+/// <summary>How an overlay item names its trace (R-ptu3-1): <c>trace:T3</c> is T3, and a bridged gap <c>gap:T3:17</c> is
+/// T3's too. The reader builds the ids (ImageOverlay.BuildPlot); this side only reads them.</summary>
+internal static class PlotTraceLink
+{
+    public static string? TraceName(ImageOverlayItem? item)
+    {
+        if (item is not { Class: ImageOverlayClass.Trace }) return null;
+        if (item.Id.StartsWith(ImageOverlay.TracePrefix, StringComparison.Ordinal)) return item.Id[ImageOverlay.TracePrefix.Length..];
+        if (!item.Id.StartsWith(ImageOverlay.GapPrefix, StringComparison.Ordinal)) return null;
+        string rest = item.Id[ImageOverlay.GapPrefix.Length..];
+        int colon = rest.LastIndexOf(':');
+        return colon > 0 ? rest[..colon] : null;
+    }
+
+    /// <summary>The whole trace's item on <paramref name="overlay"/>, or null when it is not drawn there.</summary>
+    public static ImageOverlayItem? ItemFor(ImageOverlay overlay, string? name) =>
+        name is null ? null : overlay.Items.FirstOrDefault(i => i.Class == ImageOverlayClass.Trace && i.Id == ImageOverlay.TracePrefix + name);
 }
 
 /// <summary>A plot's calibration in words, as the matrix grid and the frames list show it.</summary>
