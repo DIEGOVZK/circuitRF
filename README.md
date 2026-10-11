@@ -357,12 +357,16 @@ If you want to contribute to any of the above, please contact me.
 The user documentation — Quick Start, New User's Guide and Reference Guide — is published at
 **<https://potatobeanradio.github.io/circuitRF/>**. It lives in `docs/user/`, is what
 **Help ▸ circuitRF Documentation** opens, and is served online straight from this repository,
-so the web pages and the shipped pages are the same bytes. **It is generated, not hand-edited.** One
-command rebuilds every page and every figure from the live application:
+so the web pages and the shipped pages are the same bytes. **It is generated, not hand-edited.** By
+default a run rebuilds every page and leaves every figure as committed; recapturing figures from the
+live application is opt-in, because it is nearly all of a full run's time:
 
 ```bash
-dotnet run --project tools/DocGen -- --out docs/user
-dotnet run --project tools/DocGen -- --page docs/user/src/reference/wbond.md   # just this page, in seconds (prose edits only; no figures)
+dotnet run --project tools/DocGen -- --out docs/user                           # every page; figures as committed
+dotnet run --project tools/DocGen -- --out docs/user --figures                 # ...and the figures of pages whose .md changed
+dotnet run --project tools/DocGen -- --out docs/user --figure layout-editor    # ...and these figures, by name
+dotnet run --project tools/DocGen -- --out docs/user --all-figures             # ...and every figure (minutes)
+dotnet run --project tools/DocGen -- --page docs/user/src/reference/wbond.md   # just this page, in seconds
 ```
 
 Prose is authored as Markdown under `docs/user/src/`; the pages under `docs/user/` are the output and
@@ -371,7 +375,7 @@ any edit to one is reverted by the next run. Figures are **vector captures of th
 they cannot drift from the application. Component parameter tables come from the live registry for
 the same reason. There are no screenshots in this documentation and there are not meant to be.
 
-`tools/DocGen/check-docs-current.sh` regenerates and diffs, and fails if the committed output is not
+`tools/DocGen/check-docs-current.sh` regenerates everything, figures included, and diffs, and fails if the committed output is not
 what the generator produces. Run it after a UI change that moves a figure. The design note is
 [`docs/design/user-docs-factory.md`](docs/design/user-docs-factory.md).
 

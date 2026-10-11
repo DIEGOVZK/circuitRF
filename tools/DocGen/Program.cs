@@ -11,7 +11,9 @@ namespace CircuitRF.DocGen;
 /// user-doc page from the live application.
 ///
 /// <code>
-///   dotnet run --project tools/DocGen -- --out docs/user          figures + fonts + HTML
+///   dotnet run --project tools/DocGen -- --out docs/user          HTML + fonts (figures as committed)
+///   dotnet run --project tools/DocGen -- --out docs/user --figures      + figures of pages whose .md changed
+///   dotnet run --project tools/DocGen -- --out docs/user --all-figures  + every figure (the CI check)
 ///   dotnet run --project tools/DocGen -- --slides docs/slides     landscape PDF decks
 ///   dotnet run --project tools/DocGen -- --page docs/user/src/reference/wbond.md   one page, seconds
 /// </code>
@@ -28,10 +30,29 @@ public static class Program
     private const string Usage = """
         circuitRF User-Docs Factory
 
-          dotnet run --project tools/DocGen -- --out <docs-dir>        regenerate figures, fonts and pages
+          dotnet run --project tools/DocGen -- --out <docs-dir>        regenerate pages and fonts (no figures)
+          dotnet run --project tools/DocGen -- --out <d> --figures     ...and the figures of pages whose .md changed
+          dotnet run --project tools/DocGen -- --out <d> --figure <id> ...and these figures, by name
+          dotnet run --project tools/DocGen -- --out <d> --all-figures ...and every figure (minutes; the CI check)
           dotnet run --project tools/DocGen -- --slides <out-dir>      regenerate the landscape PDF decks
           dotnet run --project tools/DocGen -- --out <d> --slides <s>  both
           dotnet run --project tools/DocGen -- --page <src.md>[,...]   only these pages (seconds)
+
+        Figure options (with --out)
+          A run captures NO figures unless asked: the pages inline the SVGs already on disk, so
+          symbols, figures and toolbars stay byte-for-byte as committed. Capturing drives the live
+          application headlessly for every figure and is what makes a full run take minutes.
+          --figures           recapture the figures, symbols, glyphs and toolbars cited by a page
+                              whose .md changed since the last capture (docs/user/src/
+                              _figure-stamps.txt records each page's hash), plus any cited figure
+                              missing on disk. A figure only unchanged pages cite is left alone.
+          --figure <id>[,<id>] recapture these too, by name, light and dark. An id is a FigureCatalog
+                              id (layout-editor) or a toolbar as toolbar-<id> (toolbar-layout);
+                              repeatable. An unknown id is an error that lists the real ones.
+          --all-figures       recapture everything. The only mode that catches a UI change moving a
+                              figure whose page did not change, so check-docs-current.sh uses it.
+          --mark-figures-current  capture nothing; record every page as captured, for after a full
+                              capture made some other way.
 
         Page options
           --page <p>[,<p>]    regenerate ONLY these pages' HTML, plus the search index. Each is a
@@ -56,7 +77,7 @@ public static class Program
           --lint-diagnostic   write figures even when the dropped-paint lint fires, so the offending
                               file can be opened. Never use for a real regeneration: the lint is
                               blocking precisely because a wrong figure does not announce itself.
-          --rebuild-static    also rebuild the figures the catalog marks Static - the antenna
+          --rebuild-static    with --figures, also rebuild the figures the catalog marks Static - the antenna
                               patterns, which are committed pictures of a simulation the docs
                               build does not re-run. Each says what it needs if it cannot.
 
@@ -70,7 +91,8 @@ public static class Program
     {
         string? outDir = null, slidesDir = null;
         List<string>? pages = null;
-        bool lintDiag = false, rebuildStatic = false;
+        bool lintDiag = false, rebuildStatic = false, changedFigures = false, allFigures = false, markCurrent = false;
+        HashSet<string>? figureIds = null;
         HashSet<string>? decks = null;
         List<CircuitRF.Render.ColorVariant>? variants = null;
 
@@ -106,6 +128,13 @@ public static class Program
                         }
                     }
                     break;
+                case "--figures":     changedFigures = true; break;
+                case "--all-figures": allFigures = true; break;
+                case "--mark-figures-current": markCurrent = true; break;
+                case "--figure" when i + 1 < args.Length:
+                    figureIds ??= new HashSet<string>(StringComparer.Ordinal);
+                    foreach (var f in Split(args[++i])) figureIds.Add(f);
+                    break;
                 case "--lint-diagnostic": lintDiag = true; break;
                 case "--rebuild-static":  rebuildStatic = true; break;
                 case "-h" or "--help": Console.WriteLine(Usage); return 0;
@@ -118,11 +147,39 @@ public static class Program
 
         if (outDir is null && slidesDir is null && pages is null) { Console.WriteLine(Usage); return 2; }
 
-        // A page run captures nothing, so pairing it with a deck build or a static-figure rebuild
-        // would have it silently skip what was asked for.
-        if (pages is not null && (slidesDir is not null || rebuildStatic))
+        // A page run captures nothing, so pairing it with a deck build or any figure capture would
+        // have it silently skip what was asked for.
+        bool capturing = changedFigures || allFigures || figureIds is not null;
+        if (pages is not null && (slidesDir is not null || rebuildStatic || capturing || markCurrent))
         {
-            Console.Error.WriteLine("--page regenerates pages only; it cannot be combined with --slides or --rebuild-static.\n");
+            Console.Error.WriteLine("--page regenerates pages only; it cannot be combined with --slides, any figure flag or --rebuild-static.\n");
+            Console.Error.WriteLine(Usage);
+            return 2;
+        }
+
+        // Figures are captured into --out; asking for them on a run that writes no docs, or for the
+        // static ones on a run that captures nothing, would silently do nothing.
+        if ((capturing || markCurrent) && outDir is null)
+        {
+            Console.Error.WriteLine("The figure flags work on the docs tree; pass --out <docs-dir>.\n");
+            Console.Error.WriteLine(Usage);
+            return 2;
+        }
+        if (allFigures && (figureIds is not null || changedFigures))
+        {
+            Console.Error.WriteLine("--all-figures already recaptures everything; drop it, or drop --figures/--figure.\n");
+            Console.Error.WriteLine(Usage);
+            return 2;
+        }
+        if (markCurrent && capturing)
+        {
+            Console.Error.WriteLine("--mark-figures-current captures nothing; it cannot be combined with a capture.\n");
+            Console.Error.WriteLine(Usage);
+            return 2;
+        }
+        if (rebuildStatic && !capturing)
+        {
+            Console.Error.WriteLine("--rebuild-static rebuilds figures; it needs --figures or --figure.\n");
             Console.Error.WriteLine(Usage);
             return 2;
         }
@@ -159,7 +216,12 @@ public static class Program
         try
         {
             string docs = outDir ?? DefaultDocsRoot();
-            var run = new DocGenRun(docs) { RebuildStatic = rebuildStatic, OnlyPages = pages };
+            var run = new DocGenRun(docs)
+            {
+                RebuildStatic = rebuildStatic, OnlyPages = pages,
+                Capture = allFigures ? FigureMode.All : changedFigures ? FigureMode.ChangedPages : FigureMode.None,
+                OnlyFigures = figureIds, MarkFiguresCurrent = markCurrent,
+            };
             run.Run(slidesOnly: outDir is null && pages is null, slidesOut: slidesDir, decks: decks, variants: variants);
             Console.WriteLine(run.Report);
             return 0;

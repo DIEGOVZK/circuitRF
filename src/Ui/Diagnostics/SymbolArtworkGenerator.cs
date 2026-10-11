@@ -222,7 +222,7 @@ public static class SymbolArtworkGenerator
     /// Returns the list of files written. The Avalonia asset loader must already be initialized
     /// (the caller runs <c>BuildAvaloniaApp().SetupWithoutStarting()</c> first).
     /// </summary>
-    public static IReadOnlyList<string> GenerateAll(string outDir)
+    public static IReadOnlyList<string> GenerateAll(string outDir, Func<string, bool>? include = null)
     {
         Directory.CreateDirectory(outDir);
         var light = SchematicRenderTheme.FromTheme(ColorTheme.BuiltIn, ColorVariant.Light);
@@ -231,6 +231,7 @@ public static class SymbolArtworkGenerator
         var written = new List<string>();
         foreach (var (kind, file, ports) in Catalog)
         {
+            if (include is not null && !include(file)) continue;
             var symbol  = SymbolFor(kind, ports);
             var caption = ComponentTypeRegistry.DisplayName(kind, ports);
             written.Add(RenderOne(kind, symbol, caption, Path.Combine(outDir, file + ".svg"),      light));

@@ -55,10 +55,11 @@ public static class InlineGlyphArtwork
 
     /// <summary>Write every snap glyph, light and dark, into <paramref name="outDir"/>.</summary>
     /// <returns>The paths written.</returns>
-    public static IEnumerable<string> GenerateSnapGlyphs(string outDir)
+    public static IEnumerable<string> GenerateSnapGlyphs(string outDir, Func<string, bool>? include = null)
     {
         Directory.CreateDirectory(outDir);
         foreach (var (id, kind) in SnapGlyphs)
+            if (include is null || include(id))
             foreach (var variant in (ColorVariant[])[ColorVariant.Light, ColorVariant.Dark])
             {
                 string stem = UiArtworkGenerator.FileStem(SnapGlyphStem + id, variant);

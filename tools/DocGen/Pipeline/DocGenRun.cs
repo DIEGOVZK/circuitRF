@@ -12,9 +12,9 @@ using CircuitRF.Ui.Theming;
 namespace CircuitRF.DocGen.Pipeline;
 
 /// <summary>
-/// One full docs regeneration, in the order the steps depend on each other:
-/// symbols and figures first (pages inline them), then the toolbars and their manifests, then the
-/// pages, then the fonts (which are chosen from what the figures turned out to reference), then the
+/// One docs regeneration, in the order the steps depend on each other:
+/// symbols and figures first (pages inline them) WHEN <see cref="Capture"/> asks for them,
+/// then the toolbars and their manifests, then the pages, then the fonts (which are chosen from what the figures turned out to reference), then the
 /// stylesheet's generated font block, and finally the report.
 /// </summary>
 public sealed class DocGenRun
@@ -67,6 +67,27 @@ public sealed class DocGenRun
 
     private readonly List<string> _staleOthers = [];
 
+    /// <summary>Which figures a run recaptures. See <see cref="FigureMode"/>.</summary>
+    public FigureMode Capture { get; set; } = FigureMode.None;
+
+    /// <summary>Recapture these too, whatever <see cref="Capture"/> says — FigureCatalog ids, or a
+    /// toolbar as <c>toolbar-&lt;id&gt;</c>. Null for none.</summary>
+    public IReadOnlySet<string>? OnlyFigures { get; set; }
+
+    /// <summary>Capture nothing, but record every page's source as current — for after a full capture
+    /// made some other way, so the next <see cref="FigureMode.ChangedPages"/> run starts from it.</summary>
+    public bool MarkFiguresCurrent { get; set; }
+
+    private readonly List<string> _captured = [];
+    private readonly List<string> _changedPages = [];
+    private bool _noStamps;
+
+    /// <summary>
+    /// Where each page's source hash was recorded the last time its figures were captured. Beside
+    /// <c>_nav.txt</c>, under <c>src/</c>, and excluded from the application bundle like the sources.
+    /// </summary>
+    private string StampsPath => Path.Combine(_docsRoot, "src", "_figure-stamps.txt");
+
     public void Run(bool slidesOnly = false, string? slidesOut = null,
                     IReadOnlySet<string>? decks = null,
                     IReadOnlyList<ColorVariant>? variants = null)
@@ -99,10 +120,15 @@ public sealed class DocGenRun
 
         if (!slidesOnly)
         {
-            Symbols(symbols);
-            InlineGlyphs(figures);
-            Figures(figures);
-            Toolbars(figures);
+            ValidateOnlyFigures();
+            var sel = SelectFigures(figures, symbols);
+            if (!sel.IsEmpty)
+            {
+                Symbols(symbols, sel);
+                InlineGlyphs(figures, sel);
+                Figures(figures, sel);
+                Toolbars(figures, sel);
+            }
         }
 
         var families = Pages(slidesOnly, slidesOut);
@@ -110,6 +136,10 @@ public sealed class DocGenRun
         if (!slidesOnly)
         {
             long fontBytes = Fonts(families);
+
+            // LAST, once every page and figure is written: a run that failed part-way must leave the
+            // old stamps, or the pages it did not reach would be recorded as captured.
+            if (Capture != FigureMode.None || MarkFiguresCurrent) WriteStamps();
             Summarise(clock.Elapsed, fontBytes);
         }
         else
@@ -135,25 +165,35 @@ public sealed class DocGenRun
 
     // ── Symbols ───────────────────────────────────────────────────────────────
 
-    private void Symbols(string outDir)
+    private void Symbols(string outDir, FigureSelection sel)
     {
-        foreach (var f in SymbolArtworkGenerator.GenerateAll(outDir))
+        if (sel.Symbols.Count == 0 && !sel.All) return;
+        foreach (var f in SymbolArtworkGenerator.GenerateAll(outDir, sel.All ? null : sel.Symbols.Contains))
+        {
             _written.Add(f);
+            _captured.Add(f);
+        }
     }
 
     // ── Inline glyphs (table cells, not figures) ──────────────────────────────
 
-    private void InlineGlyphs(string outDir)
+    private void InlineGlyphs(string outDir, FigureSelection sel)
     {
-        foreach (var f in InlineGlyphArtwork.GenerateSnapGlyphs(outDir))
+        if (sel.Glyphs.Count == 0 && !sel.All) return;
+        foreach (var f in InlineGlyphArtwork.GenerateSnapGlyphs(outDir, sel.All ? null : sel.Glyphs.Contains))
+        {
             _written.Add(f);
+            _captured.Add(f);
+        }
     }
 
     // ── Captured UI figures ───────────────────────────────────────────────────
 
-    private void Figures(string outDir)
+    private void Figures(string outDir, FigureSelection sel)
     {
         foreach (var row in FigureCatalog.Catalog)
+        {
+            if (!sel.All && !sel.Ui.Contains(row.Id)) continue;
             foreach (var variant in (ColorVariant[])[ColorVariant.Light, ColorVariant.Dark])
             {
                 string path = Path.Combine(outDir, UiArtworkGenerator.FileStem(row.Id, variant) + ".svg");
@@ -177,15 +217,150 @@ public sealed class DocGenRun
                 UiArtworkGenerator.RenderScene(scene, row.Width, row.Height, variant, path,
                                                row.Chrome, row.MustContainPopup);
                 Account(path);
+                _captured.Add(path);
             }
+        }
+    }
+
+    /// <summary>An unknown <c>--figure</c> id is an error naming the real ones — never a run that
+    /// reports success having captured nothing. A Static figure asked for by name without
+    /// <c>--rebuild-static</c> is refused for the same reason: it would only be checked, not rebuilt.</summary>
+    private void ValidateOnlyFigures()
+    {
+        if (OnlyFigures is null) return;
+        var figures  = FigureCatalog.Catalog.ToDictionary(r => r.Id, StringComparer.Ordinal);
+        var toolbars = ToolbarCatalog.Catalog.Select(r => "toolbar-" + r.Id).ToHashSet(StringComparer.Ordinal);
+
+        var unknown = OnlyFigures.Where(id => !figures.ContainsKey(id) && !toolbars.Contains(id)).ToList();
+        if (unknown.Count > 0)
+            throw new InvalidOperationException(
+                $"--figure: no figure named {string.Join(", ", unknown.Select(u => "'" + u + "'"))}. "
+              + $"Figures: {string.Join(", ", figures.Keys)}. Toolbars: {string.Join(", ", toolbars)}.");
+
+        var staticAsked = OnlyFigures.Where(id => figures.TryGetValue(id, out var r) && r.Static && !_rebuildStatic).ToList();
+        if (staticAsked.Count > 0)
+            throw new InvalidOperationException(
+                $"--figure: {string.Join(", ", staticAsked)} {(staticAsked.Count == 1 ? "is a" : "are")} STATIC "
+              + "figure(s), which a capture leaves as committed. Add --rebuild-static to rebuild them.");
+    }
+
+    // ── Which figures to capture ──────────────────────────────────────────────
+
+    /// <summary>What one run recaptures: everything, or these ids of each kind.</summary>
+    private sealed class FigureSelection
+    {
+        public bool All;
+        public readonly HashSet<string> Ui = new(StringComparer.Ordinal);
+        public readonly HashSet<string> Toolbars = new(StringComparer.Ordinal);
+        public readonly HashSet<string> Symbols = new(StringComparer.Ordinal);
+        public readonly HashSet<string> Glyphs = new(StringComparer.Ordinal);
+        public bool IsEmpty => !All && Ui.Count + Toolbars.Count + Symbols.Count + Glyphs.Count == 0;
+    }
+
+    /// <summary>The placeholders that inline a captured file. Read from the SOURCE, not the
+    /// expansion, so a page's citations are known before anything is captured.</summary>
+    private static readonly Regex Cite = new(
+        @"\{\{\s*(?<kind>ui|toolbar|symbol|snapglyph)\s*:\s*(?<arg>[^}|]+?)\s*(\|[^}]*)?\}\}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The figures this run recaptures. <see cref="FigureMode.All"/> is everything. Otherwise:
+    /// <list type="bullet">
+    /// <item>with <see cref="FigureMode.ChangedPages"/>, every figure cited by a page whose source
+    /// differs from the hash recorded at the last capture — a figure cited only by unchanged pages
+    /// is left exactly as committed;</item>
+    /// <item>with any capture at all, every cited figure that is MISSING on disk, since a page cannot
+    /// be built without it;</item>
+    /// <item>and every <see cref="OnlyFigures"/> id, named explicitly.</item>
+    /// </list>
+    /// </summary>
+    private FigureSelection SelectFigures(string figures, string symbols)
+    {
+        var sel = new FigureSelection();
+        if (Capture == FigureMode.All) { sel.All = true; return sel; }
+
+        foreach (var id in OnlyFigures ?? (IEnumerable<string>)[])
+        {
+            if (id.StartsWith("toolbar-", StringComparison.Ordinal) && !FigureCatalog.Catalog.Any(r => r.Id == id))
+                sel.Toolbars.Add(id["toolbar-".Length..]);
+            else sel.Ui.Add(id);
+        }
+        if (Capture == FigureMode.None) return sel;
+
+        var stamps = ReadStamps();
+        _noStamps = stamps is null;
+        foreach (var (rel, hash, text) in Sources())
+        {
+            bool changed = stamps is null || !stamps.TryGetValue(rel, out var old) || old != hash;
+            if (changed) _changedPages.Add(rel);
+
+            foreach (Match m in Cite.Matches(text))
+            {
+                string kind = m.Groups["kind"].Value, arg = m.Groups["arg"].Value.Trim();
+                var (set, dir, stem) = kind switch
+                {
+                    "ui"      => (sel.Ui,       figures, arg),
+                    "toolbar" => (sel.Toolbars, figures, "toolbar-" + arg + "-indexed"),
+                    "symbol"  => (sel.Symbols,  symbols, arg),
+                    _         => (sel.Glyphs,   figures, InlineGlyphArtwork.SnapGlyphStem + arg),
+                };
+                bool missing = !File.Exists(Path.Combine(dir, stem + ".svg"))
+                            || !File.Exists(Path.Combine(dir, stem + "-dark.svg"));
+                if (changed || missing) set.Add(arg);
+            }
+        }
+        return sel;
+    }
+
+    /// <summary>Every Markdown source: its path relative to <c>src/</c>, the hash of its text with
+    /// line endings normalised (a Windows checkout must not read as a change), and the text.</summary>
+    private IEnumerable<(string Rel, string Hash, string Text)> Sources()
+    {
+        string src = Path.Combine(_docsRoot, "src");
+        if (!Directory.Exists(src)) yield break;
+        foreach (var path in Directory.EnumerateFiles(src, "*.md", SearchOption.AllDirectories)
+                                      .OrderBy(p => p, StringComparer.Ordinal))
+        {
+            string text = File.ReadAllText(path);
+            string rel  = Path.GetRelativePath(src, path).Replace(Path.DirectorySeparatorChar, '/');
+            string hash = Convert.ToHexStringLower(
+                System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text.Replace("\r\n", "\n"))));
+            yield return (rel, hash, text);
+        }
+    }
+
+    private Dictionary<string, string>? ReadStamps()
+    {
+        if (!File.Exists(StampsPath)) return null;
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var line in File.ReadAllLines(StampsPath))
+        {
+            if (line.Length == 0 || line.StartsWith('#')) continue;
+            int sp = line.IndexOf("  ", StringComparison.Ordinal);
+            if (sp > 0) map[line[(sp + 2)..]] = line[..sp];
+        }
+        return map;
+    }
+
+    /// <summary>Record every page as captured. Only reached by a run that captured every figure a
+    /// changed page cites (or was told to mark them current), so the record is true.</summary>
+    private void WriteStamps()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("# Written by tools/DocGen. One line per page: the hash of its Markdown source when its\n");
+        sb.Append("# figures were last captured. `--figures` recaptures only what changed pages cite.\n");
+        foreach (var (rel, hash, _) in Sources()) sb.Append(hash).Append("  ").Append(rel).Append('\n');
+        string text = sb.ToString();
+        if (!File.Exists(StampsPath) || File.ReadAllText(StampsPath) != text) File.WriteAllText(StampsPath, text);
+        _written.Add(StampsPath);
     }
 
     // ── Toolbars: figure, indexed figure, manifest ────────────────────────────
 
-    private void Toolbars(string outDir)
+    private void Toolbars(string outDir, FigureSelection sel)
     {
         foreach (var row in ToolbarCatalog.Catalog)
         {
+            if (!sel.All && !sel.Toolbars.Contains(row.Id)) continue;
             IReadOnlyList<ToolbarCatalog.Entry>? manifest = null;
 
             foreach (var variant in (ColorVariant[])[ColorVariant.Light, ColorVariant.Dark])
@@ -198,6 +373,7 @@ public sealed class DocGenRun
                 string p1 = Path.Combine(outDir, UiArtworkGenerator.FileStem("toolbar-" + row.Id, variant) + ".svg");
                 UiArtworkGenerator.RenderScene(new FigureScene(plain.Panel), row.Width, row.Height, variant, p1);
                 Account(p1);
+                _captured.Add(p1);
 
                 var indexed = DocFixtures.Toolbar(row.Id);
                 var callouts = ToolbarCatalog.WithCallouts(
@@ -571,6 +747,16 @@ public sealed class DocGenRun
         long total = _written.Where(File.Exists).Sum(f => new FileInfo(f).Length);
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"Files written .............. {_written.Distinct().Count()}");
+        if (Capture == FigureMode.ChangedPages)
+            sb.AppendLine($"Pages changed since capture  {_changedPages.Count}"
+                        + (_noStamps ? " (no stamp file yet, so every page counts as changed)" : "")
+                        + (_changedPages.Count is > 0 and <= 12 ? ": " + string.Join(", ", _changedPages) : ""));
+        sb.AppendLine(_captured.Count == 0
+            ? "Figures captured ........... 0 (every figure left as committed)"
+            : $"Figures captured ........... {_captured.Count} files"
+              + (Capture == FigureMode.All ? " (--all-figures: everything)" : ""));
+        if (MarkFiguresCurrent)
+            sb.AppendLine("Figure stamps .............. every page marked current; nothing captured");
         sb.AppendLine($"Total emitted bytes ........ {total:N0} (of which fonts {fontBytes:N0})");
         sb.AppendLine($"SVG before post-pass ....... {_bytesBefore:N0}");
         sb.AppendLine($"SVG after  post-pass ....... {_bytesAfter:N0}"
@@ -601,4 +787,17 @@ public sealed class DocGenRun
         }
         Report = sb.ToString();
     }
+}
+
+/// <summary>Which figures a docs run recaptures from the live application.</summary>
+public enum FigureMode
+{
+    /// <summary>None: every page inlines the SVG already on disk. The default, and seconds.</summary>
+    None,
+    /// <summary><c>--figures</c>: only the figures cited by pages whose Markdown changed since the last
+    /// capture, plus any cited figure missing on disk.</summary>
+    ChangedPages,
+    /// <summary><c>--all-figures</c>: every figure, symbol, glyph and toolbar — the CI check's mode, and
+    /// the only one that catches a UI change moving a figure whose page did not change.</summary>
+    All,
 }

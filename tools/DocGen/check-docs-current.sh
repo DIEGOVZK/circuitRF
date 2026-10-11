@@ -32,7 +32,10 @@ if ! git diff --quiet || [ -n "$(git status --porcelain)" ]; then
 fi
 
 echo "Regenerating docs/user from the live application..."
-dotnet run -c Release --project tools/DocGen -- --out docs/user
+# --all-figures: an ordinary run leaves every figure as committed, and --figures only
+# recaptures what changed pages cite - exactly the staleness this check exists to
+# catch - so it alone always recaptures everything.
+dotnet run -c Release --project tools/DocGen -- --out docs/user --all-figures
 
 status=0
 

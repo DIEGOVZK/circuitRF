@@ -4,14 +4,19 @@
              xmlns:rec="using:CircuitRF.Ui.Recognition"
              x:Class="CircuitRF.Ui.Recognition.RecognitionTargetRow"
              x:DataType="rec:RecognitionSessionViewModel">
+    <!-- NO GroupName on the two radios: they are siblings, so Avalonia groups them by this panel.
+         A NAMED group is scoped to the window, and a control not yet in one - which is every radio
+         during a dialog's constructor - joins a process-wide group of that name. A second dialog
+         then shared "target" with the first one's radios, each bound to its own view model, and the
+         two unchecked each other forever: the docs run hung on the second capture of this row. -->
     <StackPanel Classes="row" Orientation="Horizontal" Spacing="10">
         <TextBlock Classes="label" Text="Target" Width="70"/>
-        <RadioButton GroupName="target" Content="New cell" IsChecked="{Binding TargetNewCell}"
+        <RadioButton Content="New cell" IsChecked="{Binding TargetNewCell}"
                      ToolTip.Tip="{Binding NewCellTip}"/>
         <TextBox Text="{Binding NewCellName}" Width="220" IsEnabled="{Binding TargetNewCell}"
                  Classes.invalid="{Binding NameError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
         <TextBlock Text="{Binding NameError}" Classes="error" MaxWidth="360"/>
-        <RadioButton GroupName="target" Content="{Binding OwnTargetLabel}" IsChecked="{Binding TargetOwn}"
+        <RadioButton Content="{Binding OwnTargetLabel}" IsChecked="{Binding TargetOwn}"
                      IsVisible="{Binding OwnTargetOffered}"
                      ToolTip.Tip="{Binding OwnTargetTip}"/>
     </StackPanel>

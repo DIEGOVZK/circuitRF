@@ -315,7 +315,7 @@
                                 figures exclusion above; named here so the reason is on the record.
     -->
     <None Include="../../docs/user/**/*.*"
-          Exclude="../../docs/user/**/*.md;../../docs/user/assets/figures/**/*.*">
+          Exclude="../../docs/user/**/*.md;../../docs/user/src/_figure-stamps.txt;../../docs/user/assets/figures/**/*.*">
       <Link>docs/user/%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

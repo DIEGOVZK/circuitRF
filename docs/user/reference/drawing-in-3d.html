@@ -652,11 +652,13 @@ makes one group of the selection, named <code>Group1</code>, <code>Group2</code>
 objects, instances or groups — in the view or with <strong>Shift</strong>/<strong>Ctrl</strong>-click in the tree; with one thing selected
 (a single object, or a group on its own) it is greyed out, and its tooltip says why. Placed cells can be members too, and so can other groups: a group
 inside a group stays a group of its own.</li>
-<li><strong>A click in the view on any member selects the whole group</strong> — the outermost one it is in — and every
+<li><strong>A click in the view on any member selects the whole group</strong> — the outermost one it is in. Hovering a member
+highlights the whole group too, and the hover line names it first: <em>PA (group) — Q1</em>. Every
 Object-mode command acts on all of it: Move, Rotate, Mirror, Duplicate, Array, Align (which lines the group up by
 its own box and moves it as one), Order, Hide, Isolate, Delete, a material, and a boolean — whose panel lists
 every member, so the Blank is chosen there as usual; the result stays in its Blank's group. To pick one member out
-of a group, click its row in the tree, or press <strong>B</strong> in the view.</li>
+of a group, <strong>double-click</strong> it in the view, click its row in the tree, or press <strong>B</strong> in the view. A member that is
+a boolean is entered by double-clicking it again.</li>
 <li><strong>In the object tree</strong> groups are listed first, under <strong>Groups</strong>; open one to see the groups and then the objects
 and instances inside it. A member is listed there and nowhere else. The tick beside a group shows or hides all of it.</li>
 <li><strong>Properties</strong> shows a group as one thing: its <strong>Name</strong> (rename it there), one <strong>Material</strong> and one <strong>Role</strong> for
@@ -1138,7 +1140,9 @@ housing's designer and a CAD package all read and write it. circuitRF reads its 
 and writes a 3D view — or a layout — <strong>out as one</strong>. The geometry kernel does both, so without it both
 commands are disabled with the reason.</p>
 <p><strong>Import STEP…</strong> (<em>File ▸ Import ▸ STEP…</em>) reads the file, off the editor's thread
-and cancellable, and opens a table of its parts:</p>
+and cancellable, and opens a table of its parts. A part that is one solid is one row. A part made of
+<strong>several solids</strong> — a package's leads and its body, say — is one row <strong>per solid</strong>, because each solid
+becomes its own object with its own material:</p>
 <ul>
 <li><strong>Units.</strong> The first line says what the file is in and that it is imported exactly — <em>File is in
 inches; imported exactly</em> — because a STEP file states its own unit and every coordinate is converted,
@@ -1149,22 +1153,97 @@ whose name is a material of the technology takes it; failing that, a part whose 
 takes that one. The <strong>⇉</strong> button on a row — <strong>Map all of this colour</strong> — gives every part of the row's
 colour the row's material: a connector's brass parts in one gesture. <strong>(no material)</strong> imports a part
 that is drawn and ignored by the solver, and <code>check</code> names it.</li>
+<li><strong>A part of several solids</strong> has a <strong>header row</strong> with its name and how many solids it has, and its solids
+listed beneath it. The header's check box checks or unchecks every solid under it, and its material box gives
+every solid under it that material. Each solid row has its own name, colour and material, and <em>Map all of this
+colour</em> reaches every solid in the file of that colour, so a package's leads, which share one colour, take
+copper in one action. A solid whose faces carry several colours shows <strong>mixed</strong>: it has no colour to match by,
+so give it a material by hand. A solid that is not closed is listed, unchecked and disabled with its reason;
+the rest of its part imports.</li>
+<li><strong>Group.</strong> When the import makes more than one object, they are gathered in one
+<a href="#groups">group</a>, named in the field above the table. It starts as the file's name, made unique among the
+view's groups. Empty the field to import the objects loose; a name another group already has is refused there.
+In a file of several parts, a part of several solids is a group of its own inside the file's.</li>
 <li><strong>What is not imported, and why.</strong> Only a closed solid can be solved, so a surface, a wire body or an
 open shell is listed, unchecked and disabled, with its reason on its row. Dimensions, tolerances and
 datums (product manufacturing information) are counted in the notes and not imported: they describe
 how to make a part, not what it is.</li>
 <li><strong>Import</strong> copies the file <strong>into the 3D view's own folder</strong> — so the workspace carries it, and a copy
 that holds the same bytes is reused rather than duplicated — and adds one <strong>Step</strong> object per checked
-part, selected, ready to Move. It is one undo entry, and undoing it removes the copy at the next save.
+row, gathered in the group and selected as one, ready to Move. It is one undo entry, and undoing it
+removes the objects, the group with them, and the copy at the next save.
 The part lands exactly where its file puts it: the file's assembly transform is applied, the object's
 own placement starts at nothing.</li>
 </ul>
+<p>The imported package is one row in the tree and <strong>one click in the view</strong>: a click on any piece selects the
+whole group, and Move, Rotate, Mirror, Duplicate, Delete, Hide and a material act on all of it. To give <strong>one
+piece</strong> its own material, expand the group's row in the tree and use the piece's row: its right-click
+<strong>Material</strong> submenu, or Properties with the row selected. In the view, <strong>B</strong> steps through what lies under
+the cursor, which reaches a single piece. Setting a material on the group's own row sets every piece.</p>
 <p>A Step object is a solid like any other: it takes a material, moves, and is a boolean operand or a fillet's
 target. Its faces are <code>face1</code>, <code>face2</code> … as the file's shape numbers them, and they mean something only for
 those bytes — which is why the object records the file's <strong>Hash</strong>. When the source file changes (a new
-revision from the maker), <strong>Reload from Source</strong> on the object's menu reads it again and re-matches every
-port, boundary and fillet on it <strong>by geometry</strong>, then says what moved; a part the new file no longer has is
-said by name. A part the new file adds is offered in the import table, unchecked.</p>
+revision from the maker), <strong>Reload from Source</strong> on the object's menu (or <em>3D ▸ STEP</em>) reads it again and
+re-matches every boundary, probe, plot, image and fillet on it <strong>by geometry</strong>, then says what moved; a part the
+new file no longer has is said by name. A part the new file adds is offered in the import table, unchecked.</p>
+<h3 id="split-solids">Split into Solids</h3>
+<p>A Step object can hold a <strong>whole part of several solids</strong> as one object — a package whose leads and body share
+one material because they are one object. <code>check</code> names such an object: a <strong>warning</strong> when its solids' colours
+differ, since they are probably different materials, and a note otherwise. <code>explain x.c3d --object &lt;name&gt;</code> lists
+its solids with each one's colour, face count and volume.</p>
+<p><strong>Split into Solids</strong> (the object's right-click menu, or <em>3D ▸ STEP ▸ Split into Solids</em>) turns it into what an
+import makes of such a part: <strong>one Step object per solid</strong>, gathered in a <a href="#groups">group</a> named after the
+object, in the place the object had in the tree and in construction order. A click in the view still takes the
+whole package; each piece then takes its own material from its row.</p>
+<ul>
+<li><strong>What it keeps.</strong> Each piece keeps the object's placement, material, role, appearance, transparency, visibility
+and Model setting, and names the same copied file, so nothing moves and no file is written. A piece is named
+after its solid when the file names it, and <code>&lt;object&gt;_&lt;k&gt;</code> otherwise.</li>
+<li><strong>References follow, by geometry.</strong> Every face boundary, probe, field plot, face image and thermal boundary on
+the object moves to the face of the piece that coincides with it. The Messages panel lists each one.</li>
+<li><strong>What it refuses</strong>, every reason at once, in Messages: an object that is an operand of a boolean, fillet or
+chamfer (split it before it is combined); a reference to the <strong>whole</strong> object — a port's conductor, a heat
+source or probe over its volume, a contact resistance, a static setup's terminal — which no single piece can
+stand for; a face reference that coincides with no piece's face, or with several; and a piece name the
+document already uses. A solid of the part that is not closed is left out only after you confirm it.</li>
+</ul>
+<p>The command is enabled for one selected Step object with no <code>Solid</code> whose part has more than one solid. Its
+tooltip says which condition failed otherwise. It is one undo entry.</p>
+<p>From the command line there is no split verb: the pieces are written as Step objects with <code>Solid</code> 1 … n (the
+numbers <code>explain</code> lists), and <code>check</code> names any reference that no longer lands.</p>
+<h3 id="step-piece-edit">Editing an imported piece</h3>
+<p>A Step piece moves, rotates, takes a material and is a boolean operand, but its dimensions are not parameters:
+the face and vertex editor edits a box, a prism or a polyhedron. Three commands on a piece's right-click menu
+(and <em>3D ▸ STEP</em>) turn it into one of those, so a lead can be lengthened to meet its pad, a body thinned, or a
+detailed body replaced by a plain block that meshes smaller.</p>
+<ul>
+<li><strong>Replace with Prism</strong> — offered when the piece is an extrusion along x, y or z: two opposite flat caps with the
+same outline, and every other face flat and square to them. A slot through it is kept as a hole, and a gull-wing
+lead counts, its bends cut into facets as below. The outline and the length are then ordinary parameters.</li>
+<li><strong>Replace with Box…</strong> — offered for any piece: its bounding box in its own frame. Unless the piece is exactly
+a box, it first says what changes, for example <em>'body' is replaced by its bounding box: 6.10 × 9.80 × 1.27 mm,
++7.4 % volume</em>, and replaces it only when you agree.</li>
+<li><strong>Convert to Polyhedron</strong> — offered for any piece of one solid, so you can move a face along its normal or drag
+a vertex. Flat faces, including faces with holes, keep their names, <code>face1</code>, <code>face2</code> …. Each curved face, such as
+a lead's bend, is cut into flat facets that each turn at most 15°, named <code>face9.1</code>, <code>face9.2</code> …. When a piece has
+curved faces, the command first states how many facets and the volume change, for example <em>its 4 cylindrical
+faces are cut into 22 flat facets, each turning at most 15°, −0.1 % volume</em>, and converts only when you agree.</li>
+</ul>
+<p>A model's faces and vertices often disagree by a micrometre or two (the file's own tolerance). The conversion
+puts every vertex on its flat faces, so a body with only flat faces still converts exactly.</p>
+<p>Some package models draw a lead's plated end as a <strong>zero-thickness fin</strong> up the side of the mould: two faces of the
+solid back to back on one plane, with a top that is only a line. A fin has no volume, so it cannot be part of a
+polyhedron or a prism. Convert to Polyhedron and Replace with Prism cut the fin out of the solid and keep it as a
+sheet of the same material, named after the piece (<em>DFN_10_sheet</em>). The solid's volume does not change. The new
+object and the sheet go in a new group named after the piece, inside the piece's own group. The command says this
+first and converts only when you agree.</p>
+<p>Each keeps the piece's name, material, group, placement, appearance and transparency, so nothing moves, and each
+is one undo entry. The copied STEP file is not touched. Every face boundary, probe, field plot, face image and
+thermal boundary on the piece moves to the face of the new object that coincides with it. A reference with no
+such face, such as a box face that the piece's chamfer cut back, stops the command with the reason in Messages;
+it is never moved to the nearest face; a reference on a curved face is refused this way too, since no single
+facet is it. A command that does not apply is disabled, and its tooltip says why: an outline that is not an
+extrusion, for Prism, and a piece of several solids, which needs <strong>Split into Solids</strong> first.</p>
 <p><strong>Export STEP…</strong> (<em>File ▸ Export ▸ STEP…</em>) writes the active 3D view or layout:</p>
 <ul>
 <li><strong>Structure</strong>: <strong>Flattened</strong> writes one product per solid; <strong>As assembly</strong> writes each placed cell as a
@@ -1196,6 +1275,9 @@ face-mode highlights stay, because it is still the editor. A <a href="#simulate"
 ordinary view unless you choose otherwise (see <a href="#realistic-fields">Field plots in the realistic view</a>). An object's stated <a href="#transparency">transparency</a> still applies;
 a dielectric's ordinary see-through look does not, because the appearance's <code>Transmission</code> decides that here.
 <em>Copy</em> and <em>Export Picture…</em> draw the realistic view without the hover or the selection.</p>
+<p>A new 3D view is created with a <code>Look</code> that brings all of that chrome back except the air box: its <code>ShowEdges</code>,
+<code>ShowGrid</code>, <code>ShowOverlays</code>, <code>ShowPorts</code>, <code>ShowBoundaries</code> and <code>ShowImages</code> are <code>true</code>. Untick any of them in the
+<a href="#look-panel">Look panel</a>. A <code>.c3d</code> with no <code>Look</code> block hides them all.</p>
 <p><strong>The <code>Look</code> block.</strong> How the scene is lit is saved in the <code>.c3d</code>, so a picture can be made again later. Every key is
 optional; an omitted key takes the default shown:</p>
 <pre><code class="language-json">&quot;Look&quot;: {
@@ -1644,21 +1726,34 @@ every trace, where its fringing field runs.</li>
 edge matters. The whole rule, and how it differs from a planar setup's laterally infinite dielectric, is
 in <a href="em-3d.html#dielectrics">3D EM ▸ How far the dielectric reaches</a>.</p>
 <h2 id="wires">Bond wires</h2>
-<p><strong>Shift+A W</strong> (or <em>3D ▸ Draw ▸ Wire</em>). A wire runs between two metal objects: click the one it starts on
+<p><strong>W</strong> (or <strong>Shift+A W</strong>, or <em>3D ▸ Draw ▸ Wire</em>; <strong>W</strong> again puts the tool away). A wire runs between two metal objects: click the one it starts on
 (any face — it lands on that object's <strong>top</strong>, above the point clicked), then the one it ends on, then move
 to set the <strong>loop height</strong> and click, or type it. The toolbar sets the diameter, the metal, each end's bond
-(<strong>ball</strong> or <strong>wedge</strong>) and the section. Across hierarchy is the usual case: the example's wires start on
+(<strong>ball</strong> or <strong>wedge</strong>) and the section; the diameter, the metal and the points per wire start from <em>Settings ▸
+Wirebonds</em>, as in the layout view. Across hierarchy is the usual case: the example's wires start on
 the die's pads, inside U1, and end on the package's leads, which a <code>.wBond</code> cannot do because it belongs to
 one layout.</p>
 <ul>
 <li><strong>The loop height you type is the one the wire measures</strong>, the assembly way: from the top of the lower
 pad to the top of the wire at its highest point. The example's are <strong>8 mil</strong>, typed.</li>
-<li>In Vertex mode a wire's centre-line points are handles; <strong>G</strong> moves one, and the feet are put back on the
-pads when you let go. Properties lists every point, editable.</li>
+<li><strong>From Top view</strong> the loop height can't be seen or set with the mouse, so once the second end is placed the
+loop-height box opens by itself, showing what <strong>Enter</strong> takes. That height is at least 150 µm above the
+<em>higher</em> pad, raised if needed until the wire clears everything between the pads, and rounded up to 0.1 mil
+(1 µm in metric units). Enter or a third click takes it; typing a number replaces it.</li>
+<li><strong>A wire that passes through another part is named</strong>: while you set the height the prompt says what it
+goes through and that stretch of the preview is red, and placing it anyway says so on the status line.</li>
+<li>In Vertex mode a wire's centre-line points are handles: drag one to move it, or select it and press <strong>G</strong>.
+It moves at its own depth, and the feet are put back on the pads when you let go. <strong>Esc</strong> leaves Vertex
+mode. Properties lists every point, editable.</li>
 <li>Properties also takes a wire's <strong>loop height</strong> and <strong>span</strong>, as a wBond or Layout wire does: a loop height
 scales the wire's rise above its feet and keeps every x and y; a span moves the end foot along the wire's
 direction, the start staying put, and the end must land on a pad. Its <strong>diameter</strong> is in the display unit,
 like every other length there.</li>
+<li>Type a <strong>variable or an expression</strong> into loop height or span (<code>h_loop</code>, <code>2*pitch</code>) and the wire holds
+it: change the variable and the wire reshapes to match. A number sets it once. Clear the field to let go;
+the wire keeps the shape it has. A name that isn't defined is refused and the field keeps its value, as in
+every Inspector field: add the variable in Variables first. While a span is held, only the start's x and y can hold an expression;
+while a loop height is held, the points between the ends can't have an expression in z.</li>
 <li><strong>A wire does not follow its pad.</strong> Re-routing would change its inductance without telling you, so a
 wire whose pad has moved is drawn red, flagged in the tree, and refused by a run. <em>Re-Seat Wire Ends</em>
 puts each end back on the pad now under it.</li>
@@ -1924,12 +2019,16 @@ edges and <code>Hash</code> are in <a href="file-formats.html#c3d-operations">Fi
 <td>Box, Sheet, polyGon, polyLine, cYlinder, Port, Wire, Heat source, Temperature probe, Mesh region</td>
 </tr>
 <tr>
+<td><strong>W</strong></td>
+<td>The Wire tool; again puts it away</td>
+</tr>
+<tr>
 <td>digits, <strong>Tab</strong>, <strong>Enter</strong></td>
 <td>Type a dimension instead of clicking</td>
 </tr>
 <tr>
 <td><strong>Esc</strong></td>
-<td>Back one step: the typed box, the shape, the tool, the selection</td>
+<td>Back one step: the typed box, the shape, the tool, Face/Vertex/Edge mode, the selection</td>
 </tr>
 <tr>
 <td><strong>G</strong>, <strong>R</strong>, <strong>X/Y/Z</strong></td>
@@ -2143,7 +2242,7 @@ conductor and Z0. Right-click the port for <em>Set Reference</em> (any conductor
 terminal's conductor swaps it with the reference), <em>Model</em> and <em>Delete</em>; with a terminal's arrow selected, the
 same menu adds <em>Flip</em> and <em>Z0…</em> for that terminal. <em>Flip</em> reverses the terminal's arrow; the reference stays
 the reference.</li>
-<li><strong>Bond wires</strong> (<strong>W</strong> in the Shift+A popup, or <em>3D ▸ Draw ▸ Wire</em>). A wire runs between two metal
+<li><strong>Bond wires</strong> (<strong>W</strong>, <strong>W</strong> in the Shift+A popup, or <em>3D ▸ Draw ▸ Wire</em>). A wire runs between two metal
 objects or sheets — a die's pad inside a placed cell to a lead in the package is the usual case, which a <code>.wBond</code>
 cannot do because it belongs to one layout. Click any face of the object the wire starts on: each end attaches to
 its object's <strong>top</strong>, above the point you clicked (a side face lands just inside the top's edge; a snapped corner or

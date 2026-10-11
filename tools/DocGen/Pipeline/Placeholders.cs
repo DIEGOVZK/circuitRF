@@ -363,13 +363,25 @@ public sealed class Placeholders
                 """;
     }
 
+    /// <summary>The <c>--figure</c> id that captures this file: its stem, without the theme suffix.
+    /// A toolbar's indexed figure is captured by its toolbar's id.</summary>
+    private static string FigureIdOf(string relPath)
+    {
+        string stem = Path.GetFileNameWithoutExtension(relPath);
+        if (stem.EndsWith("-dark", StringComparison.Ordinal)) stem = stem[..^5];
+        if (stem.StartsWith("toolbar-", StringComparison.Ordinal) && stem.EndsWith("-indexed", StringComparison.Ordinal))
+            stem = stem[..^8];
+        return stem;
+    }
+
     private string ReadInline(string relPath)
     {
         string abs = Path.Combine(_docsRoot, relPath);
         if (!File.Exists(abs))
             throw new InvalidOperationException(
-                $"the figure file '{relPath}' has not been generated. Figures are produced before pages, " +
-                "so this means the catalog row exists but its capture did not run.");
+                $"the figure file '{relPath}' has not been generated. An ordinary run captures no figures " +
+                "and inlines what is on disk, so a new catalog row needs one capture first: add " +
+                $"--figure {FigureIdOf(relPath)} (--figures also captures every cited figure that is missing).");
 
         string svg = File.ReadAllText(abs);
 

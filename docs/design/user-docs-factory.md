@@ -371,7 +371,10 @@ Note this is a *build tool*, like `IconGen` — not one of the deliberately-inde
 **Invocation.** One command, mirroring the existing one:
 
 ```
-dotnet run --project tools/DocGen -- --out docs/user            # HTML + figures + fonts
+dotnet run --project tools/DocGen -- --out docs/user            # HTML + fonts; figures as committed
+dotnet run --project tools/DocGen -- --out docs/user --figures  # ...and figures cited by pages whose .md changed
+dotnet run --project tools/DocGen -- --out docs/user --all-figures   # ...and every figure
+dotnet run --project tools/DocGen -- --out docs/user --figure <id>[,<id>]   # ...and only these
 dotnet run --project tools/DocGen -- --slides docs/slides       # every deck, light and dark
 dotnet run --project tools/DocGen -- --slides docs/slides --deck overview            # one deck
 dotnet run --project tools/DocGen -- --slides docs/slides --deck overview --theme dark

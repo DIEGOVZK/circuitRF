@@ -672,3 +672,33 @@ import, the real Create and real S-parameter runs into it; `Cleanup` deletes the
 - **Two size-to-content dialogs and a panel were measured**, not chosen: rendered tall, the last row of ink found,
   the dialog's 16 px bottom margin added (scope prompt 162, drill prompt 394, Tuning panel 88).
 - Two separate capture processes produced byte-identical SVGs for all fourteen rows, both variants.
+
+## DocGen: figures are opt-in and gated on the page's source; the image-dialog hang (2026-10-11)
+
+**A docs run captures no figures unless asked.** `--out docs/user` alone expands every page against
+the SVGs already on disk — 1.4 s Release. `--figures` recaptures only what a CHANGED page cites
+(`{{ui:}}`, `{{toolbar:}}`, `{{symbol:}}`, `{{snapglyph:}}`, read from the Markdown, not the
+expansion), plus any cited figure missing on disk; "changed" is against
+`docs/user/src/_figure-stamps.txt`, a SHA-256 per page (CRLF normalised) written only at the END of
+a successful capturing run, so a run that fails part-way leaves the old stamps. `--figure <id>` names
+figures explicitly; `--all-figures` is the old full capture and is what `check-docs-current.sh` runs,
+because it is the only mode that sees a UI change moving a figure whose page did not change. The
+first `--figures` run measured 81 s for eight changed pages (276 files, 216 of them symbols).
+The stamps file was seeded from `2a1b890c`'s sources, the last full regeneration; it is excluded
+from the app bundle in `CircuitRF.Ui.csproj` like the `.md` sources.
+
+**The full run hung, forever, on `image-dialog-empty`'s DARK capture** (100% CPU, no output, 20+ min;
+`dotnet-stack` showed `CreateSchematicFromArtworkDialog..ctor` → `set_DataContext` →
+`RadioButtonGroupManager.OnCheckedChanged` → `TargetNewCell`/`TargetOwn` on every sample). The two
+Target radios in `RecognitionTargetRow` carried `GroupName="target"`. A named group is scoped to the
+window, and a control not yet in one — every radio during a dialog's constructor — joins a
+process-wide group of that name, so the second dialog's radios shared a group with the first's, each
+bound to a different view model, and they unchecked each other without end. The light capture (the
+first instance) was fine. Fixed by dropping the GroupName: the radios are siblings, so Avalonia
+groups them by their panel. **Any `GroupName` on a control that is constructed more than once per
+process can do this**; sibling radios should not carry one.
+
+**Still open, found on the same run:** `settings-3d-em` races the gmsh probe — one run captured
+"Checking…" in the light variant and the found path in the dark — and the committed figure bakes in
+the generating machine's gmsh path. `workspace-overview`'s light and dark variants draw different
+documents (the dark one has the layout editor in front; 179 vs 137 text runs), as committed.

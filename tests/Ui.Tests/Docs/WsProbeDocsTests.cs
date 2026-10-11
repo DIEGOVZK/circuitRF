@@ -330,7 +330,7 @@ public class WsProbeDocsTests
                 $"The WSProbe chapter cites the figure '{id}', which is in no FigureCatalog row.");
             foreach (string suffix in new[] { ".svg", "-dark.svg" })
                 Assert.True(File.Exists(Path.Combine(DocsOut(), "assets", "figures", id + suffix)),
-                    $"{id}{suffix} has not been generated. " + Regenerate);
+                    $"{id}{suffix} has not been generated. " + Regenerate + " --figure " + id);
         }
     }
 

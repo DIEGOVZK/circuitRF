@@ -30,10 +30,10 @@ dotnet run --project src/Ui -- --generate-symbols docs/user/assets/symbols
 No GUI window opens. This is also run for you as one step of a full documentation regeneration:
 
 ```
-dotnet run --project tools/DocGen -- --out docs/user
+dotnet run --project tools/DocGen -- --out docs/user --all-figures
 ```
 
-which additionally captures the UI figures, the toolbars and their manifests, extracts the fonts and
+(without `--all-figures` the run rebuilds the pages only and leaves every symbol as committed), which additionally captures the UI figures, the toolbars and their manifests, extracts the fonts and
 rebuilds every page. See `docs/design/user-docs-factory.md`.
 
 ## Documenting a new component

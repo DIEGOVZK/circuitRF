@@ -94,7 +94,7 @@ public class DocsFactoryTests
         Assert.True(offenders.Count == 0,
             "These generated documents still carry Skia's trailing separator on a per-glyph x/y list, "
           + "so their text renders unreadably in Firefox — regenerate with "
-          + "`dotnet run --project tools/DocGen -- --out docs/user`: "
+          + "`dotnet run --project tools/DocGen -- --out docs/user --all-figures`: "
           + string.Join(", ", offenders.Take(12)) + (offenders.Count > 12 ? $" (+{offenders.Count - 12} more)" : ""));
     }
 
@@ -132,7 +132,7 @@ public class DocsFactoryTests
     private static void AssertFigure(string path)
     {
         Assert.True(File.Exists(path),
-            $"{Path.GetFileName(path)} has not been generated. Run: dotnet run --project tools/DocGen -- --out docs/user");
+            $"{Path.GetFileName(path)} has not been generated. Run: dotnet run --project tools/DocGen -- --out docs/user --all-figures");
 
         var svg = File.ReadAllText(path);
         Assert.True(svg.Length > 0, $"{Path.GetFileName(path)} is empty.");
