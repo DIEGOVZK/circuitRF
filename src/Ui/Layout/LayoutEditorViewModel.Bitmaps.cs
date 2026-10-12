@@ -24,7 +24,7 @@ public sealed partial class LayoutEditorViewModel
     /// a Messages note when the file can't be decoded — insertion never silently fails.</summary>
     private (long W, long H) ComputeBitmapPlacementSize(string path, double viewportWidthDbu)
     {
-        double longEdge = Math.Max(1.0, viewportWidthDbu * 0.25);
+        double longEdge = Math.Max(1.0, viewportWidthDbu * Clipboard.PictureClipboard.LayoutPlacementViewportFraction);
 
         if (BitmapCache.TryGetPixelSize(path) is { } px && px.Width > 0 && px.Height > 0)
         {
@@ -66,6 +66,18 @@ public sealed partial class LayoutEditorViewModel
         if (string.IsNullOrEmpty(path)) return;
         var (w, h) = ComputeBitmapPlacementSize(path, viewportWidthDbu);
         PlaceBitmap(path, centerX - w / 2.0, centerY - h / 2.0, viewportWidthDbu);
+    }
+
+    /// <summary>Pictures copied in a schematic, pasted here: the same image files, sized by this editor's
+    /// placement rule (<see cref="Clipboard.PictureClipboard.ToLayout"/>) on the current layer, and
+    /// placed with the ordinary paste ghost so they follow the cursor like any other paste.</summary>
+    public bool BeginSchematicPicturePaste(IReadOnlyList<EditableBitmap> pictures, double centerX, double centerY,
+                                           double viewportWidthDbu)
+    {
+        var shapes = Clipboard.PictureClipboard.ToLayout(pictures, CurrentLayerKey, centerX, centerY, viewportWidthDbu);
+        if (shapes.Count == 0) return false;
+        BeginPastePlacement(shapes, (long)Math.Round(centerX), (long)Math.Round(centerY));
+        return true;
     }
 
     // ── Right-click: Resolve Path… / Refresh Cache ────────────────────────────────────────────────

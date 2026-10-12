@@ -15,8 +15,8 @@ namespace CircuitRF.Ui.ViewModels;
 /// command through the schematic's own stack. A field the selected pictures disagree on is blank, and typing into it
 /// sets all of them.
 ///
-/// <para>Width and height keep the picture's aspect while <see cref="KeepAspect"/> is on (the default), as the canvas
-/// gripper does: a picture stretched by accident is the usual way one ends up wrong. There is no rotation row because a
+/// <para>Width and height keep the picture's aspect while <see cref="KeepAspect"/> is on (the default):
+/// a picture stretched by accident is the usual way one ends up wrong. There is no rotation row because a
 /// schematic bitmap is drawn unrotated, and no lock row because a locked schematic bitmap cannot be clicked at all — a
 /// lock set here could not be cleared here.</para>
 /// </summary>
@@ -36,7 +36,20 @@ public sealed partial class SchematicPictureInspectorViewModel : ObservableObjec
     [ObservableProperty] private string _widthText = "";
     [ObservableProperty] private string _heightText = "";
     [ObservableProperty] private string _opacityText = "";
-    [ObservableProperty] private bool _keepAspect = true;
+    private bool _keepAspectUnbound = true;
+
+    /// <summary>The schematic's own <see cref="SchematicViewModel.KeepPictureAspect"/> — ONE setting, so the
+    /// checkbox here governs the canvas's scale handles too, rather than the two disagreeing.</summary>
+    public bool KeepAspect
+    {
+        get => _vm?.KeepPictureAspect ?? _keepAspectUnbound;
+        set
+        {
+            if (KeepAspect == value) return;
+            if (_vm is not null) _vm.KeepPictureAspect = value; else _keepAspectUnbound = value;
+            OnPropertyChanged();
+        }
+    }
     [ObservableProperty] private string? _error;
 
     public bool HasError => Error is not null;
@@ -54,17 +67,28 @@ public sealed partial class SchematicPictureInspectorViewModel : ObservableObjec
         {
             _vm.Selection.Changed -= OnChanged;
             _vm.EditModel.Changed -= OnChanged;
+            _vm.PropertyChanged -= OnViewModelPropertyChanged;
         }
         _vm = vm;
         if (_vm is not null)
         {
             _vm.Selection.Changed += OnChanged;
             _vm.EditModel.Changed += OnChanged;
+            _vm.PropertyChanged += OnViewModelPropertyChanged;
         }
+        OnPropertyChanged(nameof(KeepAspect));
         Refresh();
     }
 
     private void OnChanged(object? sender, EventArgs e) => Refresh();
+
+    /// <summary>A move or a scale-handle drag changes the picture live and commits only on release, and what
+    /// it pushes each tick is a new overlay — so the fields follow the drag from that, as the layout
+    /// inspector follows its own. Escape restores the picture and pushes one more, which reads it back.</summary>
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (IsActive && e.PropertyName == nameof(SchematicViewModel.Overlay)) Refresh();
+    }
 
     private List<EditableBitmap> Selected()
     {

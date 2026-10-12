@@ -1480,7 +1480,15 @@ public partial class LayoutEditorView : UserControl
         if (await PasteWithWiresAsync(clipboard)) return;
 
         var payload = await LayoutClipboard.PasteAsync(clipboard);
-        if (payload is null) return;   // no marker, or nothing on the clipboard — a clean no-op
+        if (payload is null)
+        {
+            // Not layout content: pictures copied in a schematic paste here as pictures of the same
+            // files. Anything else — no marker, or nothing on the clipboard — is a clean no-op.
+            if (await PictureClipboard.SchematicPicturesAsync(clipboard) is { Count: > 0 } pictures
+                && LayoutCanvasCtrl.PasteSchematicPictures(pictures))
+                LayoutCanvasCtrl.Focus();
+            return;
+        }
 
         var rescale = vm.RescaleFragment(payload);
         var mapping = vm.ProposeFragmentLayerMapping(rescale.Shapes, payload.Layers);

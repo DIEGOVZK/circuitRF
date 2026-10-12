@@ -1167,6 +1167,18 @@ public sealed class LayoutCanvas : Control
         InvalidateVisual();
     }
 
+    /// <summary>Pictures copied in a schematic, pasted into this layout about the viewport centre — see
+    /// <c>LayoutEditorViewModel.BeginSchematicPicturePaste</c>.</summary>
+    public bool PasteSchematicPictures(IReadOnlyList<EditableBitmap> pictures)
+    {
+        if (_viewModel is null) return false;
+        var vp = CurrentViewport;
+        bool began = _viewModel.BeginSchematicPicturePaste(pictures,
+            (vp.VisibleMinX + vp.VisibleMaxX) / 2.0, (vp.VisibleMinY + vp.VisibleMaxY) / 2.0, ViewportWidthDbu());
+        InvalidateVisual();
+        return began;
+    }
+
     // ── Shape context menu: edge conversion + delete-vertex (L1d §4/§3) + L1e booleans/offset/
     // repair/flatten (docs/sonnet-briefs/brief-L1e-clipper-operations.md §3/§4/§5) ─────────────────
     //

@@ -364,6 +364,22 @@
                             <Button Grid.Column="2" Content="Browse…" Click="OnBitmapBrowseClick" FontSize="11" Padding="6,2"/>
                         </Grid>
                         <Grid ColumnDefinitions="56,*,56,*" ColumnSpacing="4">
+                            <TextBlock Grid.Column="0" Text="X" VerticalAlignment="Center" FontSize="11"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                       ToolTip.Tip="Where the picture's centre is."/>
+                            <TextBox Grid.Column="1" Text="{Binding BitmapXText}" Tag="BitmapX"
+                                      Classes.error="{Binding HasBitmapXError}" ToolTip.Tip="{Binding BitmapXError}"
+                                      GotFocus="OnFieldGotFocus" LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"
+                                      FontSize="11" Padding="4,2"/>
+                            <TextBlock Grid.Column="2" Text="Y" VerticalAlignment="Center" FontSize="11"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                       ToolTip.Tip="Where the picture's centre is."/>
+                            <TextBox Grid.Column="3" Text="{Binding BitmapYText}" Tag="BitmapY"
+                                      Classes.error="{Binding HasBitmapYError}" ToolTip.Tip="{Binding BitmapYError}"
+                                      GotFocus="OnFieldGotFocus" LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"
+                                      FontSize="11" Padding="4,2"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="56,*,56,*" ColumnSpacing="4">
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Width" VerticalAlignment="Center" FontSize="11"
                                        Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                             <TextBox Grid.Column="1" Text="{Binding BitmapWidthText}" Tag="BitmapWidth"
@@ -376,6 +392,11 @@
                                       Classes.error="{Binding HasBitmapHeightError}" ToolTip.Tip="{Binding BitmapHeightError}"
                                       GotFocus="OnFieldGotFocus" LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"
                                       FontSize="11" Padding="4,2"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="56,*">
+                            <CheckBox Grid.Column="1" IsChecked="{Binding BitmapKeepAspect, Mode=TwoWay}" FontSize="11"
+                                      Content="Keep aspect ratio"
+                                      ToolTip.Tip="Changing the width changes the height with it, and the other way round."/>
                         </Grid>
                         <Grid ColumnDefinitions="56,*">
                             <TextBlock Grid.Column="0" Text="Opacity" VerticalAlignment="Center" FontSize="11"

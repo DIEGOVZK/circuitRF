@@ -193,6 +193,8 @@ public sealed partial class LayoutShapePropertiesViewModel : ObservableObject
             case "RectX":        CommitRectXText(text); break;
             case "RectY":        CommitRectYText(text); break;
             case "BitmapPath":    CommitBitmapPathText(text); break;
+            case "BitmapX":       CommitBitmapXText(text); break;
+            case "BitmapY":       CommitBitmapYText(text); break;
             case "BitmapWidth":   CommitBitmapWidthText(text); break;
             case "BitmapHeight":  CommitBitmapHeightText(text); break;
             case "BitmapOpacity": CommitBitmapOpacityText(text); break;
@@ -246,6 +248,8 @@ public sealed partial class LayoutShapePropertiesViewModel : ObservableObject
             case "RectHeight":   RectHeightError = null; break;
             case "RectX":        RectXError = null; break;
             case "RectY":        RectYError = null; break;
+            case "BitmapX":       BitmapXError = null; break;
+            case "BitmapY":       BitmapYError = null; break;
             case "BitmapWidth":   BitmapWidthError = null; break;
             case "BitmapHeight":  BitmapHeightError = null; break;
             case "BitmapOpacity": BitmapOpacityError = null; break;
@@ -992,6 +996,20 @@ public sealed partial class LayoutShapePropertiesViewModel : ObservableObject
     [ObservableProperty] private string _bitmapPathText = "";
     [ObservableProperty] private bool _bitmapIsBroken;
 
+    // Position: X/Y is the picture's CENTRE, as the schematic's picture inspector shows it — the model
+    // stores the lower-left corner, so each field converts per picture (a typed centre moves each
+    // selected picture so its own centre lands there; the size is untouched).
+    [ObservableProperty] private string _bitmapXText = "";
+    [ObservableProperty] private string? _bitmapXError;
+    public bool HasBitmapXError => BitmapXError is not null;
+
+    [ObservableProperty] private string _bitmapYText = "";
+    [ObservableProperty] private string? _bitmapYError;
+    public bool HasBitmapYError => BitmapYError is not null;
+
+    private static long BitmapCenterX(BitmapShape b) => b.X + b.W / 2;
+    private static long BitmapCenterY(BitmapShape b) => b.Y + b.H / 2;
+
     [ObservableProperty] private string _bitmapWidthText = "";
     [ObservableProperty] private string? _bitmapWidthError;
     public bool HasBitmapWidthError => BitmapWidthError is not null;
@@ -1016,6 +1034,65 @@ public sealed partial class LayoutShapePropertiesViewModel : ObservableObject
         RefreshFromVm();
     }
 
+    public void CommitBitmapXText(string text)
+    {
+        if (DragBlocksEdits() || _vm is null) return;
+        if (!LayoutUnits.TryParse(text, _vm.DisplayUnit, _vm.Model.DbuPerMicron, out var x))
+        { BitmapXError = "Invalid value"; return; }
+        BitmapXError = null;
+        ApplyToEach<long>("X", s => BitmapCenterX((BitmapShape)s),
+            (s, v) => ((BitmapShape)s).X = v - ((BitmapShape)s).W / 2, x, s => s is BitmapShape);
+        RefreshFromVm();
+    }
+
+    public void CommitBitmapYText(string text)
+    {
+        if (DragBlocksEdits() || _vm is null) return;
+        if (!LayoutUnits.TryParse(text, _vm.DisplayUnit, _vm.Model.DbuPerMicron, out var y))
+        { BitmapYError = "Invalid value"; return; }
+        BitmapYError = null;
+        ApplyToEach<long>("Y", s => BitmapCenterY((BitmapShape)s),
+            (s, v) => ((BitmapShape)s).Y = v - ((BitmapShape)s).H / 2, y, s => s is BitmapShape);
+        RefreshFromVm();
+    }
+
+    private bool _bitmapKeepAspectUnbound = true;
+
+    /// <summary>The editor's own <see cref="LayoutEditorViewModel.KeepBitmapAspect"/> — one setting, so this
+    /// checkbox governs the canvas's side scale handles on a bitmap too, as the schematic's does.</summary>
+    public bool BitmapKeepAspect
+    {
+        get => _vm?.KeepBitmapAspect ?? _bitmapKeepAspectUnbound;
+        set
+        {
+            if (BitmapKeepAspect == value) return;
+            if (_vm is not null) _vm.KeepBitmapAspect = value; else _bitmapKeepAspectUnbound = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Sets each selected bitmap's width or height; with <see cref="BitmapKeepAspect"/> on, the other
+    /// follows from that bitmap's OWN aspect, so a multi-selection of differently-shaped pictures stays
+    /// undistorted. One undo entry.</summary>
+    private void ApplyBitmapSize(long value, bool width)
+    {
+        if (_vm is null) return;
+        IUiCommand? combined = null;
+        foreach (var bmp in _selected.OfType<BitmapShape>())
+        {
+            long w = width ? value : BitmapKeepAspect && bmp.H > 0 ? Math.Max(1, (long)Math.Round((double)value * bmp.W / bmp.H)) : bmp.W;
+            long h = width ? (BitmapKeepAspect && bmp.W > 0 ? Math.Max(1, (long)Math.Round((double)value * bmp.H / bmp.W)) : bmp.H) : value;
+            var captured = bmp;
+            foreach (var cmd in new IUiCommand?[]
+                     {
+                         w != bmp.W ? new SetShapeFieldCommand<long>(_vm.Model, "Width",  bmp.W, w, v => captured.W = v) : null,
+                         h != bmp.H ? new SetShapeFieldCommand<long>(_vm.Model, "Height", bmp.H, h, v => captured.H = v) : null,
+                     })
+                if (cmd is not null) combined = combined is null ? cmd : new CompositeCommand(combined, cmd);
+        }
+        if (combined is not null) _vm.Execute(combined);
+    }
+
     public void CommitBitmapWidthText(string text)
     {
         if (DragBlocksEdits() || _vm is null) return;
@@ -1023,7 +1100,7 @@ public sealed partial class LayoutShapePropertiesViewModel : ObservableObject
         { BitmapWidthError = "Invalid value"; return; }
         if (w <= 0) { BitmapWidthError = "Width must be greater than 0"; return; }
         BitmapWidthError = null;
-        ApplyToEach<long>("Width", s => ((BitmapShape)s).W, (s, v) => ((BitmapShape)s).W = v, w, s => s is BitmapShape);
+        ApplyBitmapSize(w, width: true);
         RefreshFromVm();
     }
 
@@ -1034,7 +1111,7 @@ public sealed partial class LayoutShapePropertiesViewModel : ObservableObject
         { BitmapHeightError = "Invalid value"; return; }
         if (h <= 0) { BitmapHeightError = "Height must be greater than 0"; return; }
         BitmapHeightError = null;
-        ApplyToEach<long>("Height", s => ((BitmapShape)s).H, (s, v) => ((BitmapShape)s).H = v, h, s => s is BitmapShape);
+        ApplyBitmapSize(h, width: false);
         RefreshFromVm();
     }
 
@@ -2462,6 +2539,7 @@ public sealed partial class LayoutShapePropertiesViewModel : ObservableObject
         _vm = vm;
         if (_vm is not null) { _vm.PropertyChanged += OnVmPropertyChanged; _vm.Model.Changed += OnModelChanged; }
         OnPropertyChanged(nameof(AvailableLayers));
+        OnPropertyChanged(nameof(BitmapKeepAspect));
         RefreshFromVm();
     }
 
@@ -2695,6 +2773,8 @@ public sealed partial class LayoutShapePropertiesViewModel : ObservableObject
             BitmapIsBroken = bmps.Count == 1
                 && (string.IsNullOrEmpty(bmps[0].ImagePathRef) || !System.IO.File.Exists(bmps[0].ImagePathRef));
 
+            SetTextIfNotFocused("BitmapX", FormatSharedDbu(bmps.Select(b => (long?)BitmapCenterX(b))), () => BitmapXText, v => BitmapXText = v);
+            SetTextIfNotFocused("BitmapY", FormatSharedDbu(bmps.Select(b => (long?)BitmapCenterY(b))), () => BitmapYText, v => BitmapYText = v);
             SetTextIfNotFocused("BitmapWidth", FormatSharedDbu(bmps.Select(b => (long?)b.W)), () => BitmapWidthText, v => BitmapWidthText = v);
             SetTextIfNotFocused("BitmapHeight", FormatSharedDbu(bmps.Select(b => (long?)b.H)), () => BitmapHeightText, v => BitmapHeightText = v);
 

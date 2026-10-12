@@ -249,17 +249,27 @@ public sealed partial class LayoutEditorViewModel
         }
 
         bool horizontal = _scaleDragHandleIndex is 1 or 3; // right/left side handles move along X
+        // Keep aspect (the bitmap inspector's checkbox): on a selection of bitmaps only, a side handle
+        // scales the other axis with its own — the schematic picture's handles do the same.
+        bool keepAspect = SideDragKeepsAspect;
         if (horizontal)
         {
             double f = Math.Abs(dHandleX) > 1e-9 ? Math.Max(dCurX / dHandleX, minFactor) : 1.0;
-            return (f, 1.0);
+            return (f, keepAspect ? f : 1.0);
         }
         else
         {
             double f = Math.Abs(dHandleY) > 1e-9 ? Math.Max(dCurY / dHandleY, minFactor) : 1.0;
-            return (1.0, f);
+            return (keepAspect ? f : 1.0, f);
         }
     }
+
+    /// <summary>Keep a bitmap's aspect when it is resized — the bitmap inspector's checkbox, held here so the
+    /// canvas's side handles obey it too (a corner is always uniform). On by default.</summary>
+    public bool KeepBitmapAspect { get; set; } = true;
+
+    private bool SideDragKeepsAspect =>
+        KeepBitmapAspect && _scaleDragOriginals.Count > 0 && _scaleDragOriginals.All(s => s is BitmapShape);
 
     /// <summary>Typed override mid-drag (§2.1, mirrors L1b's typed Rect W/H commit exactly) — text
     /// that parses as a bare number is a FACTOR; text that parses as a dimension (via
@@ -294,6 +304,11 @@ public sealed partial class LayoutEditorViewModel
         else
         {
             return; // unparseable — leave the drag exactly as it was, never throw
+        }
+
+        if (_scaleDragKind == ScaleDragKind.Side && SideDragKeepsAspect)
+        {
+            if (_scaleDragHandleIndex is 1 or 3) fy = fx; else fx = fy;
         }
 
         CommitScaleDrag(fx, fy);

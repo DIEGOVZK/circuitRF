@@ -59,6 +59,10 @@ public static class SchematicRenderer
     private const float PortBoxHalf = 8f;   // world units; chosen so zoom=1 → 8px (matches prior clamped appearance)
     private const float ConnDotHalf = 4f;
 
+    /// <summary>A picture's scale handle, in screen pixels — the layout editor's handle size, so the
+    /// two editors' handles look and grab alike. The view model hit-tests against the same constant.</summary>
+    public const float ScaleHandleSizePixels = 8f;
+
     // Label layout aliases — authoritative values live on SchematicComponent; these keep the
     // renderer readable without repeating the magic numbers.
     private const double LabelBaseOffsetX = SchematicComponent.LabelBaseOffsetX;
@@ -1437,20 +1441,15 @@ public static class SchematicRenderer
         }
 
         // Canvas-object selection boxes and resize gripper.
+        // Picture selection — the layout editor's bitmap selection: a thin solid outline on the picture's
+        // own edge (no padding, no fill), and 8 filled square scale handles when it is the sole selection.
         if (!isLod && overlay.SelectedCanvasObjIds.Count > 0)
         {
-            using var bmSelDash = SKPathEffect.CreateDash([6f, 4f], 0f);
             using var bmSelStroke = new SKPaint
             {
                 IsAntialias = true, Style = SKPaintStyle.Stroke,
-                StrokeWidth = (float)Math.Max(1.0, zoom * 3),
+                StrokeWidth = 2f,
                 Color       = theme.SelectionBox,
-                PathEffect  = bmSelDash,
-            };
-            using var bmSelFill = new SKPaint
-            {
-                IsAntialias = false, Style = SKPaintStyle.Fill,
-                Color       = theme.SelectionFill,
             };
 
             foreach (var bm in model.Bitmaps)
@@ -1463,33 +1462,25 @@ public static class SchematicRenderer
                 else
                     (wx, wy, ww, wh) = (bm.X, bm.Y, bm.Width, bm.Height);
 
-                const float bmPad = 2f;
                 var (ax, ay) = ToPixel(wx,      wy,      panX, panY, zoom);
                 var (bx, by) = ToPixel(wx + ww, wy + wh, panX, panY, zoom);
-                var rect = SKRect.Create(ax - bmPad, ay - bmPad, bx - ax + bmPad * 2, by - ay + bmPad * 2);
-                canvas.DrawRect(rect, bmSelFill);
-                canvas.DrawRectDashSafe(rect, bmSelStroke);
+                canvas.DrawRect(SKRect.Create(ax, ay, bx - ax, by - ay), bmSelStroke);
             }
         }
 
-        // Resize gripper handle — small filled accent square at bottom-right of single selected bitmap.
-        if (!isLod && overlay.CanvasObjectGripperPos is { } grip)
+        if (!isLod && overlay.CanvasObjectScaleBox is { } box)
         {
-            var (ghx, ghy) = ToPixel(grip.X, grip.Y, panX, panY, zoom);
-            float gs = (float)Math.Max(4f, zoom * 6.0);
-            using var gripFill = new SKPaint
+            const float half = ScaleHandleSizePixels / 2f;
+            using var handleFill = new SKPaint
             {
-                IsAntialias = false, Style = SKPaintStyle.Fill,
+                IsAntialias = true, Style = SKPaintStyle.Fill,
                 Color       = theme.SelectionBox,
             };
-            using var gripStroke = new SKPaint
+            foreach (var h in SchematicScaleHandles.Build(box.X, box.Y, box.W, box.H))
             {
-                IsAntialias = false, Style = SKPaintStyle.Stroke,
-                StrokeWidth = 1f,   Color = theme.Background,
-            };
-            var gripRect = SKRect.Create(ghx - gs * 0.5f, ghy - gs * 0.5f, gs, gs);
-            canvas.DrawRect(gripRect, gripFill);
-            canvas.DrawRect(gripRect, gripStroke);
+                var (hx, hy) = ToPixel(h.X, h.Y, panX, panY, zoom);
+                canvas.DrawRect(new SKRect(hx - half, hy - half, hx + half, hy + half), handleFill);
+            }
         }
 
         // Rubber-band — solid outline for window (L→R), dashed for crossing (R→L)

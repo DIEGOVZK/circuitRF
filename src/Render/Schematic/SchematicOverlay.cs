@@ -137,10 +137,12 @@ public sealed record class SchematicOverlay
     public IReadOnlyDictionary<string, (double X, double Y, double W, double H)>? CanvasObjectDragPositions { get; init; }
 
     /// <summary>
-    /// World position of the resize gripper handle (bottom-right corner) for the single selected bitmap.
-    /// Non-null only when exactly one bitmap canvas object is selected and the Select tool is active.
+    /// The rect (TopLeftX, TopLeftY, Width, Height) whose 8 scale handles are drawn — the selected
+    /// picture's, live during a resize. Non-null only when the selection is exactly one bitmap and the
+    /// Select tool is active; the handles are <see cref="SchematicScaleHandles.Build"/>'s, the same set
+    /// the layout editor shows on a bitmap.
     /// </summary>
-    public (double X, double Y)? CanvasObjectGripperPos { get; init; }
+    public (double X, double Y, double W, double H)? CanvasObjectScaleBox { get; init; }
 
     // ── R-dup-1: the Alt duplicate drag (docs/design/pcell-parameter-handles.md's sibling rule for
     //    the schematic; the layout editor's own half rides its paste-ghost channel) ────────────────

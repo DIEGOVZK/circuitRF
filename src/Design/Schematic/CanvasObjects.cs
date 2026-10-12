@@ -35,7 +35,7 @@ public abstract class EditableCanvasObject
 /// <summary>
 /// Bitmap canvas object (§3.1.1).
 /// Persists only the file path; pixels are reloaded on open.
-/// Aspect-locked resize via bottom-left gripper.
+/// Resized by the layout bitmap's 8 scale handles (SchematicScaleHandles).
 /// </summary>
 public sealed class EditableBitmap : EditableCanvasObject
 {

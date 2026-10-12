@@ -274,10 +274,17 @@ public sealed partial class SchematicViewModel : ObservableObject
     private double _wireSlideMinDx = double.NegativeInfinity, _wireSlideMaxDx = double.PositiveInfinity;
     private double _wireSlideMinDy = double.NegativeInfinity, _wireSlideMaxDy = double.PositiveInfinity;
 
-    // Canvas-object resize-gripper state
+    // Picture scale-handle drag state — the layout editor's bbox scale gesture on one picture: the
+    // handle pressed, and the anchor it scales about (the opposite handle, or the centre with Alt).
     private bool   _isObjResizing;
     private string? _resizeObjId;
     private double  _resizeObjOrigX, _resizeObjOrigY, _resizeObjOrigW, _resizeObjOrigH;
+    private SchematicScaleHandle _resizeHandle;
+    private double  _resizeAnchorX, _resizeAnchorY;
+
+    /// <summary>Keep a picture's aspect when it is resized — the Picture inspector's checkbox, held here so
+    /// the canvas's side handles obey it too (a corner is always uniform). On by default.</summary>
+    public bool KeepPictureAspect { get; set; } = true;
 
     // Rubber-band state
     private bool   _isRubberBanding;
@@ -580,16 +587,9 @@ public sealed partial class SchematicViewModel : ObservableObject
         var selObjs  = Selection.GetSelectedCanvasObjectIds(EditModel).ToHashSet();
         var selSegs  = Selection.GetSelectedSegments(EditModel).ToHashSet();
 
-        // Resize gripper: bottom-right corner of single selected bitmap (idle select only).
-        (double X, double Y)? gripperPos = null;
-        if (!_isDragging && !_isObjResizing && !_isRubberBanding
-            && ActiveTool == Tool.Select && selObjs.Count == 1)
-        {
-            var selId = selObjs.First();
-            var obj   = EditModel.FindCanvasObject(selId);
-            if (obj is EditableBitmap)
-                gripperPos = (obj.X + obj.Width / 2, obj.Y + obj.Height / 2);
-        }
+        // Shown through a move drag as well, as the layout shows a bitmap's: a gate on "not dragging"
+        // here also hid them after the release, because the commit rebuilds before the drag is cleared.
+        var scaleBox = PictureScaleBox(selComps, selWires, selObjs);
 
         Overlay = new SchematicOverlay
         {
@@ -606,8 +606,20 @@ public sealed partial class SchematicViewModel : ObservableObject
             LabelDragOffsets        = ActiveTool == Tool.MoveLabels && _moveLabelPhase == MoveLabelPhase.Moving
                 ? Overlay.LabelDragOffsets
                 : null,
-            CanvasObjectGripperPos  = gripperPos,
+            CanvasObjectScaleBox    = scaleBox,
         };
+    }
+
+    /// <summary>The rect whose scale handles show: the picture's, when the selection is exactly one
+    /// picture and the Select tool is active — the layout editor's rule for a bitmap, whose bbox
+    /// handles are its only handles. Anything else selected with it suppresses them, as an instance
+    /// mixed into a layout selection does. A locked picture still shows them; it just won't scale.</summary>
+    private (double X, double Y, double W, double H)? PictureScaleBox(
+        IReadOnlyCollection<string> selComps, IReadOnlyCollection<string> selWires, IReadOnlyCollection<string> selObjs)
+    {
+        if (ActiveTool != Tool.Select || selObjs.Count != 1 || selComps.Count != 0 || selWires.Count != 0) return null;
+        if (EditModel.FindCanvasObject(selObjs.First()) is not EditableBitmap bm) return null;
+        return (bm.X - bm.Width / 2.0, bm.Y - bm.Height / 2.0, bm.Width, bm.Height);
     }
 
     // ── Tool selection ────────────────────────────────────────────────────────
@@ -875,7 +887,8 @@ public sealed partial class SchematicViewModel : ObservableObject
         bool shift = modifiers.HasFlag(KeyModifiers.Shift);
         switch (ActiveTool)
         {
-            case Tool.Select:     HandleSelectPress(worldX, worldY, shift, screenX, screenY); break;
+            case Tool.Select:     HandleSelectPress(worldX, worldY, shift, screenX, screenY,
+                                                    modifiers.HasFlag(KeyModifiers.Alt)); break;
             case Tool.Wire:       HandleWirePress(worldX, worldY);       break;
             case Tool.Place:      HandlePlacePress(worldX, worldY);      break;
             case Tool.ZoomBox:    HandleZoomBoxPress(worldX, worldY);    break;
@@ -905,38 +918,43 @@ public sealed partial class SchematicViewModel : ObservableObject
 
     // ── Select tool ───────────────────────────────────────────────────────────
 
-    // Returns true when (wx,wy) is within the canvas-object gripper handle.
-    private bool HitTestCanvasObjectGripper(double wx, double wy)
+    /// <summary>Begins a picture scale drag when (wx,wy) is on one of the selected picture's 8 handles
+    /// — the layout editor's <c>TryBeginScaleDrag</c>: the anchor is the opposite handle, or the centre
+    /// when <paramref name="anchorAtCenter"/> (Alt); a locked picture shows its handles but never scales.</summary>
+    private bool TryBeginPictureScale(double wx, double wy, bool anchorAtCenter)
     {
-        if (Overlay.CanvasObjectGripperPos is not { } h) return false;
-        double halfSize = 7.0 / Math.Max(CanvasZoom, 1e-6);
-        return Math.Abs(wx - h.X) <= halfSize && Math.Abs(wy - h.Y) <= halfSize;
+        if (Overlay.CanvasObjectScaleBox is not { } box) return false;
+        var handles = SchematicScaleHandles.Build(box.X, box.Y, box.W, box.H);
+        double tol  = SchematicRenderer.ScaleHandleSizePixels / Math.Max(CanvasZoom, 1e-6);
+        if (SchematicScaleHandles.HitTest(handles, wx, wy, tol) is not { } h) return false;
+
+        var selObjs = Selection.GetSelectedCanvasObjectIds(EditModel);
+        if (selObjs.Count != 1 || EditModel.FindCanvasObject(selObjs.First()) is not EditableBitmap bm) return false;
+        if (bm.IsLocked || bm.Width < 1e-9 || bm.Height < 1e-9) return false;
+
+        _isObjResizing  = true;
+        _resizeObjId    = bm.Id;
+        _resizeObjOrigX = bm.X;
+        _resizeObjOrigY = bm.Y;
+        _resizeObjOrigW = bm.Width;
+        _resizeObjOrigH = bm.Height;
+        _resizeHandle   = h;
+        if (anchorAtCenter) (_resizeAnchorX, _resizeAnchorY) = (bm.X, bm.Y);
+        else
+        {
+            var opposite = SchematicScaleHandles.Opposite(handles, h);
+            (_resizeAnchorX, _resizeAnchorY) = (opposite.X, opposite.Y);
+        }
+        RebuildOverlay();
+        return true;
     }
 
-    private void HandleSelectPress(double wx, double wy, bool shift, double sx, double sy)
+    private void HandleSelectPress(double wx, double wy, bool shift, double sx, double sy, bool alt = false)
     {
         if (RenderModel is null || SpatialIndex is null) return;
 
-        // Check canvas-object resize gripper FIRST when a single bitmap is selected.
-        if (!shift)
-        {
-            var selObjs = Selection.GetSelectedCanvasObjectIds(EditModel);
-            if (selObjs.Count == 1 && HitTestCanvasObjectGripper(wx, wy))
-            {
-                var bm = EditModel.FindCanvasObject(selObjs.First()) as EditableBitmap;
-                if (bm is not null)
-                {
-                    _isObjResizing   = true;
-                    _resizeObjId     = bm.Id;
-                    _resizeObjOrigX  = bm.X;
-                    _resizeObjOrigY  = bm.Y;
-                    _resizeObjOrigW  = bm.Width;
-                    _resizeObjOrigH  = bm.Height;
-                    RebuildOverlay();
-                    return;
-                }
-            }
-        }
+        // A selected picture's scale handles come FIRST — they sit on and just outside its edge.
+        if (!shift && TryBeginPictureScale(wx, wy, alt)) return;
 
         // Cyclic click-through: build the top→bottom stack (labels excluded — B9) and pick the next
         // object under the cursor when the current single selection is already in the stack; otherwise
@@ -1093,24 +1111,16 @@ public sealed partial class SchematicViewModel : ObservableObject
         var obj = EditModel.FindCanvasObject(_resizeObjId) as EditableBitmap;
         if (obj is null) return;
 
-        // Top-left anchor stays fixed; we move the bottom-right corner.
-        double anchorX = _resizeObjOrigX - _resizeObjOrigW / 2.0;
-        double anchorY = _resizeObjOrigY - _resizeObjOrigH / 2.0;
-        if (_resizeObjOrigW < 1e-9 || _resizeObjOrigH < 1e-9) return;
-
-        // Aspect-locked scale: use the smaller of |sx|,|sy| (mirrors SymbolGeometry.ScaleBy for bitmaps).
-        double sx = (wx - anchorX) / _resizeObjOrigW;
-        double sy = (wy - anchorY) / _resizeObjOrigH;
-        double s  = Math.Max(Math.Min(Math.Abs(sx), Math.Abs(sy)), 1e-3);
-
-        // Snap W to author grid; derive H from exact aspect ratio.
-        double newW = Math.Max(EditModel.SnapToAuthorGrid(_resizeObjOrigW * s), EditModel.AuthorGridSize);
-        double newH = newW / _resizeObjOrigW * _resizeObjOrigH;
-
-        obj.Width  = newW;
-        obj.Height = newH;
-        obj.X      = anchorX + newW / 2.0;
-        obj.Y      = anchorY + newH / 2.0;
+        // The layout editor's scale: a corner is uniform, a side stretches its own axis, and the
+        // anchor stays put — the centre is scaled about it like every other point of the picture.
+        var (fx, fy) = SchematicScaleHandles.Factors(_resizeHandle, _resizeAnchorX, _resizeAnchorY, wx, wy);
+        // Keep aspect: a side handle scales the other axis with its own, about the same anchor.
+        if (KeepPictureAspect && _resizeHandle.Kind == ScaleHandleKind.Side)
+            fx = fy = _resizeHandle.Index is 1 or 3 ? fx : fy;
+        obj.Width  = _resizeObjOrigW * fx;
+        obj.Height = _resizeObjOrigH * fy;
+        obj.X      = _resizeAnchorX + (_resizeObjOrigX - _resizeAnchorX) * fx;
+        obj.Y      = _resizeAnchorY + (_resizeObjOrigY - _resizeAnchorY) * fy;
 
         UpdateDragOverlay();
     }
@@ -2439,6 +2449,11 @@ public sealed partial class SchematicViewModel : ObservableObject
             LivePortConnected        = liveConn.Port,
             LiveWireEndpointConnected = liveConn.Endpoint,
             CanvasObjectDragPositions = objOverrides,
+            // Moves and resizes change the picture live, so its handles follow it from the model.
+            CanvasObjectScaleBox      = PictureScaleBox(
+                                            Selection.GetSelectedComponentIds(EditModel),
+                                            Selection.GetSelectedWireIds(EditModel),
+                                            Selection.GetSelectedCanvasObjectIds(EditModel)),
             DuplicateGhosts           = dupGhosts,
             DuplicateGhostWires       = dupGhostWires,
             DuplicateGhostRects       = dupGhostRects,
@@ -5065,7 +5080,7 @@ public sealed partial class SchematicViewModel : ObservableObject
 
         // Size to the image's native aspect ratio (fit ~300 world units on the long edge)
         // so non-3:2 images are not skewed. Falls back to 300×200 if the file can't be decoded.
-        const double fit = 300.0;
+        const double fit = Clipboard.PictureClipboard.SchematicPlacementLongEdge;
         double w = 300.0, h = 200.0;
         if (SchematicRenderer.TryGetBitmapPixelSize(path) is { } px && px.Width > 0 && px.Height > 0)
         {
@@ -5171,7 +5186,12 @@ public sealed partial class SchematicViewModel : ObservableObject
         Overlay = Overlay with { RubberBand = null, WirePreview = null, Ghost = null,
                                  ComponentDragPositions = null, WireDragPoints = null,
                                  LabelDragOffsets = null, CanvasObjectDragPositions = null,
-                                 SelectedWireSegments = SchematicOverlay.EmptySegments };
+                                 SelectedWireSegments = SchematicOverlay.EmptySegments,
+                                 // A cancelled scale drag's handles go back to the restored picture.
+                                 CanvasObjectScaleBox = PictureScaleBox(
+                                     Selection.GetSelectedComponentIds(EditModel),
+                                     Selection.GetSelectedWireIds(EditModel),
+                                     Selection.GetSelectedCanvasObjectIds(EditModel)) };
     }
 
     // ── Clipboard ─────────────────────────────────────────────────────────────
@@ -5216,6 +5236,15 @@ public sealed partial class SchematicViewModel : ObservableObject
     /// <summary>Pastes from the system clipboard into the schematic (undoable).</summary>
     public async Task ClipboardPasteAsync(IClipboard clipboard)
     {
+        // Pictures copied in a layout paste here as pictures of the same files, sized as a schematic
+        // sizes a dropped picture. Only the pictures come across — nothing else in a layout has a
+        // schematic counterpart — and a layout copy with none falls through to the paths below.
+        if (await Clipboard.PictureClipboard.LayoutPicturesAsync(clipboard) is { Count: > 0 } layoutPictures)
+        {
+            PasteFragment([], [], [.. Clipboard.PictureClipboard.ToSchematic(layoutPictures)], EditModel.GridSize);
+            return;
+        }
+
         var result = await SchematicClipboard.PasteAsync(clipboard);
         if (result is null)
         {
