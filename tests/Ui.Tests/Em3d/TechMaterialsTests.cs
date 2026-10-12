@@ -193,7 +193,6 @@ public sealed class TechMaterialsTests(ITestOutputHelper output) : IDisposable
             "CircuitRF.Design.Layout.TechPersistence",
             "CircuitRF.Design.Layout.TechValidation",
             "CircuitRF.Ui.Layout.StackupLayerRowViewModel",
-            "CircuitRF.Ui.Controls.StackupInlineEditor",
             "CircuitRF.Design.Layout.Em3d.Em3dGenerator",   // brief-em3d-3: the tensor only it carries
             // brief-em3d-42: the same two reads, moved with the geometry half the generator was split into.
             "CircuitRF.Design.Layout.Em3d.Em3dLayoutSolids",
@@ -206,6 +205,8 @@ public sealed class TechMaterialsTests(ITestOutputHelper output) : IDisposable
             // AA (agent authoring): `reference technologies` REPORTS each stack entry's material name, which is what an
             // author writes back; the electrical numbers beside it are the loader's resolved ones, never re-picked.
             "CircuitRF.Cli.Reference",
+            // 2026-10-12: a Gerber import names the copper it defaulted — the name read only to leave a stated one alone.
+            "CircuitRF.Design.Layout.Interchange.PcbStackupMapping",
         ];
 
         var readers = new List<string>();
@@ -317,7 +318,7 @@ public sealed class TechMaterialsTests(ITestOutputHelper output) : IDisposable
     // ── The stackup editor (R-em3d2-5c) ─────────────────────────────────────────────────────────
 
     [Fact]
-    public void Editor_NamingAMaterialLocksWhatItStates_AndNoneKeepsTheValuesShowing()
+    public void Editor_NamingAMaterialSetsWhatItStates_AndNoneKeepsTheValuesShowing()
     {
         var tech = Shipped();
         tech.Materials.Add(new TechMaterial { Name = "Sub", Epsr = 4.4 });
@@ -326,18 +327,57 @@ public sealed class TechMaterialsTests(ITestOutputHelper output) : IDisposable
 
         row.SelectedMaterial = "Sub";
         row = vm.StackupLayers.First(r => r.IsDielectric);                // rows rebuild on commit
-        Assert.True(row.EpsrLocked);
-        Assert.False(row.TanDLocked);                                     // the material leaves tanδ to the entry
+        Assert.True(row.EpsrFromMaterial);
+        Assert.False(row.TanDFromMaterial);                               // the material leaves tanδ to the entry
         Assert.Equal("4.4", row.StagedEpsr);
-
-        row.StagedEpsr = "9";
-        row.CommitEpsr();                                                 // refused: the material's value
-        Assert.Equal(4.4, vm.Working.Stackup.Layers.First(l => l.Kind == StackupKind.Dielectric).Epsr);
 
         row.SelectedMaterial = StackupLayerRowViewModel.MaterialNone;
         row = vm.StackupLayers.First(r => r.IsDielectric);
-        Assert.False(row.EpsrLocked);
+        Assert.False(row.EpsrFromMaterial);
         Assert.Equal("4.4", row.StagedEpsr);
+    }
+
+    /// <summary>The default technology's substrate names a laminate, so a board imported onto it
+    /// showed εr and tanδ as read-only while its thickness took typing. A typed value goes into an edited
+    /// copy the row then names — never "(none)", which would shed what only a material carries — and the
+    /// next value on that row edits the same copy. One Undo takes the value and the copy back.</summary>
+    [Fact]
+    public void Editor_TypingADifferentValueWritesAnEditedCopy_AndUndoRemovesIt()
+    {
+        var tech = Shipped();
+        var sub0 = tech.Stackup.Layers.First(l => l.Kind == StackupKind.Dielectric);
+        tech.Materials.Add(new TechMaterial { Name = "Sub", Epsr = 3.66, TanD = 0.0037, Mur = 1,
+                                              EpsrTensor = [3.66, 3.66, 3.5], ThermalK = 0.69 });
+        sub0.Material = "Sub";
+        TechPersistence.ResolveMaterials(tech);
+        var vm  = new TechEditorViewModel(Path.Combine(_tmp, "t.ctech"), tech);
+        var row = vm.StackupLayers.First(r => r.IsDielectric);
+        int materials = vm.Working.Materials.Count;
+
+        row.CommitEpsr();                                                 // its own value: no copy
+        Assert.Equal(materials, vm.Working.Materials.Count);
+
+        row.StagedEpsr = "4.4";
+        row.CommitEpsr();
+        row = vm.StackupLayers.First(r => r.IsDielectric);
+        row.StagedTanD = "0.02";
+        row.CommitTanD();                                                 // the same copy, edited in place
+
+        var sub  = vm.Working.Stackup.Layers.First(l => l.Kind == StackupKind.Dielectric);
+        var copy = vm.Working.FindMaterial("Sub (edited)")!;
+        Assert.Equal("Sub (edited)", sub.Material);
+        Assert.Equal("Sub (edited)", vm.StackupLayers.First(r => r.IsDielectric).SelectedMaterial);
+        Assert.Equal(materials + 1, vm.Working.Materials.Count);
+        Assert.Equal((4.4, 0.02, 0.69), (copy.Epsr!.Value, copy.TanD!.Value, copy.ThermalK!.Value));
+        Assert.Null(copy.EpsrTensor);                                     // would contradict the typed εr
+        Assert.Equal((4.4, 0.02), (sub.Epsr, sub.TanD));
+        var original = vm.Working.FindMaterial("Sub")!;
+        Assert.Equal((3.66, 0.0037), (original.Epsr!.Value, original.TanD!.Value));
+
+        vm.UndoRedo.Undo();
+        vm.UndoRedo.Undo();
+        Assert.Null(vm.Working.FindMaterial("Sub (edited)"));
+        Assert.Equal("Sub", vm.Working.Stackup.Layers.First(l => l.Kind == StackupKind.Dielectric).Material);
     }
 
     // ── fixtures ────────────────────────────────────────────────────────────────────────────────

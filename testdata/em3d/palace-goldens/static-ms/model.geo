@@ -14,7 +14,7 @@ s0[] = {v};
 // air: Air, Air, order 2
 v = newv; Box(v) = {-3000, -4000, 543, 9000, 8000, 3035};
 s1[] = {v};
-// Top Copper (1 oz)/A: Conductor, Top Copper (1 oz), order 3
+// Top Copper (1 oz)/A: Conductor, Copper, order 3
 cl[] = {};
 p = newp;
 Point(p + 0) = {0, 500, 543};
@@ -32,7 +32,7 @@ s = news; Plane Surface(s) = {cl[]};
 bs[] = {s};
 ex[] = Extrude {0, 0, 35} { Surface{bs[]}; };
 s2[] = {ex[1]};
-// Top Copper (1 oz)/B: Conductor, Top Copper (1 oz), order 4
+// Top Copper (1 oz)/B: Conductor, Copper, order 4
 cl[] = {};
 p = newp;
 Point(p + 0) = {0, -1000, 543};

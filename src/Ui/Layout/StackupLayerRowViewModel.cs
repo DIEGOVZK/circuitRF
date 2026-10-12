@@ -45,7 +45,35 @@ public sealed partial class StackupLayerRowViewModel : ObservableObject
     private readonly TechEditorViewModel _owner;
     private bool _isRefreshing;
 
-    internal StackupLayer Layer { get; }
+    internal StackupLayer Layer { get; private set; }
+
+    /// <summary>
+    /// Points this row at <paramref name="layer"/> — the same entry in the snapshot a commit, undo or
+    /// redo just produced — and refreshes it, so the card list keeps its row VMs and the ListBox its
+    /// items. Replacing them made the virtualizing panel re-lay the viewport from its size estimates,
+    /// which moved the cards under the user on every committed value (designer report, 2026-10-12).
+    /// The caller guarantees the KIND is unchanged; everything the card shows is re-read.
+    /// </summary>
+    internal void Rebind(StackupLayer layer)
+    {
+        Layer = layer;
+        RefreshFromModel();
+    }
+
+    /// <summary>
+    /// Replaces a combo's item list only when its CONTENT changed. A rebound row re-reads every list
+    /// on each commit, and handing a ComboBox a new list instance — even an equal one — drops the
+    /// selection it holds (Avalonia clears a selection on an ItemsSource change), so an unchanged
+    /// list keeps its instance and the combo never notices. When it does change, the caller raises
+    /// the selection again after it, so the combo resolves the selection against the NEW items.
+    /// </summary>
+    private bool Restate(ref IReadOnlyList<string>? field, IReadOnlyList<string> next, string name)
+    {
+        if (field is not null && field.SequenceEqual(next, StringComparer.Ordinal)) return false;
+        field = next;
+        OnPropertyChanged(name);
+        return true;
+    }
 
     public StackupKind Kind => Layer.Kind;
     public bool IsDielectric => Kind == StackupKind.Dielectric;
@@ -189,10 +217,16 @@ public sealed partial class StackupLayerRowViewModel : ObservableObject
     // ── brief-em3d-2 R-em3d2-5c — the named material ─────────────────────────────────────────
     //
     // The technology's own Materials, plus "(none)". While one is named, each of this row's numbers
-    // that the material STATES shows the material's value and is read-only, with a tooltip naming
-    // the material; a number the material leaves unstated stays the entry's own and stays editable
-    // (R-em3d2-2c). Choosing "(none)" makes them editable again and keeps the values that were
-    // showing, so a save always writes numbers equal to the material's.
+    // that the material STATES shows the material's value, with a tooltip naming the material; a
+    // number the material leaves unstated stays the entry's own (R-em3d2-2c). Choosing "(none)" keeps
+    // the values that were showing, so a save always writes numbers equal to the material's.
+    //
+    // Those numbers are NOT read-only. They were, and a user who imported a board onto the default
+    // technology — whose substrate names a laminate — could change its height but not its εr or tanδ,
+    // with nothing on the box itself saying that "(none)" in the combo above was the way out. Typing a
+    // different value now writes it into an EDITED COPY of the material, which the row then names
+    // (TechEditorViewModel.MaterialToEdit) — not "(none)", which would also shed the thermal values and
+    // εr tensor only a material carries.
     //
     // The values reach the row through TechPersistence.ResolveMaterials — the loader's own rule,
     // applied once more — never by this file copying numbers: one door.
@@ -205,9 +239,11 @@ public sealed partial class StackupLayerRowViewModel : ObservableObject
     /// does NOT define — that name too. Without it the combo cannot show the selection it is given, and
     /// a write-back of null would clear the name and hide <c>tech.material.unknown</c>.
     /// </summary>
-    public IReadOnlyList<string> MaterialChoices
+    public IReadOnlyList<string> MaterialChoices => _materialChoices ??= ComputeMaterialChoices();
+    private IReadOnlyList<string>? _materialChoices;
+
+    private IReadOnlyList<string> ComputeMaterialChoices()
     {
-        get
         {
             var names = _owner.Working.ResolvedMaterials.Select(m => m.Name)
                                                 .Where(n => n is { Length: > 0 })
@@ -246,9 +282,9 @@ public sealed partial class StackupLayerRowViewModel : ObservableObject
     /// locks nothing: its numbers are the entry's own, which is what the loader used.</summary>
     private TechMaterial? NamedMaterial => _owner.Working.FindMaterial(Layer.Material);
 
-    /// <summary>Whether <paramref name="field"/> shows the named material's value and is therefore
-    /// read-only. Also what the inline editor on the cross-section asks before opening a box.</summary>
-    internal bool IsLockedByMaterial(StackupField field)
+    /// <summary>Whether <paramref name="field"/> shows the named material's value — so committing a
+    /// different one goes into an edited copy of that material (<see cref="WriteToMaterial"/>).</summary>
+    internal bool IsSetByMaterial(StackupField field)
     {
         if (NamedMaterial is not { } m) return false;
         return field switch
@@ -261,22 +297,43 @@ public sealed partial class StackupLayerRowViewModel : ObservableObject
         };
     }
 
-    public bool EpsrLocked  => IsLockedByMaterial(StackupField.Epsr);
-    public bool TanDLocked  => IsLockedByMaterial(StackupField.TanD);
-    public bool MurLocked   => IsLockedByMaterial(StackupField.Mur);
-    public bool SigmaLocked => IsLockedByMaterial(StackupField.Sigma);
-    public bool SigmaPresetEnabled => !SigmaLocked;
+    public bool EpsrFromMaterial  => IsSetByMaterial(StackupField.Epsr);
+    public bool TanDFromMaterial  => IsSetByMaterial(StackupField.TanD);
+    public bool MurFromMaterial   => IsSetByMaterial(StackupField.Mur);
+    public bool SigmaFromMaterial => IsSetByMaterial(StackupField.Sigma);
 
-    private string LockedTip(StackupField field)
-        => $"Set by material \"{NamedMaterial?.Name}\" in this technology. Choose (none) as the " +
-           "material to type a value of the entry's own.";
+    private string MaterialTip(StackupField field)
+        => $"Set by material \"{NamedMaterial?.Name}\" in this technology. Typing a different value " +
+           "writes it into an edited copy of the material, which this entry then uses; the original is unchanged.";
 
-    /// <summary>The tooltip each box shows: the material that sets it when locked, else the
-    /// readiness hint it always showed.</summary>
-    public string? EpsrTip  => EpsrLocked  ? LockedTip(StackupField.Epsr)  : EpsrNeeds;
-    public string? TanDTip  => TanDLocked  ? LockedTip(StackupField.TanD)  : TanDNeeds;
-    public string? MurTip   => MurLocked   ? LockedTip(StackupField.Mur)   : MurNeeds;
-    public string? SigmaTip => SigmaLocked ? LockedTip(StackupField.Sigma) : SigmaFieldTip;
+    /// <summary>The tooltip each box shows: the material that sets it, else the readiness hint it
+    /// always showed.</summary>
+    public string? EpsrTip  => EpsrFromMaterial  ? MaterialTip(StackupField.Epsr)  : EpsrNeeds;
+    public string? TanDTip  => TanDFromMaterial  ? MaterialTip(StackupField.TanD)  : TanDNeeds;
+    public string? MurTip   => MurFromMaterial   ? MaterialTip(StackupField.Mur)   : MurNeeds;
+    public string? SigmaTip => SigmaFromMaterial ? MaterialTip(StackupField.Sigma) : SigmaFieldTip;
+
+    /// <summary>
+    /// When <paramref name="field"/> is one the row's material sets, writes <paramref name="value"/> into
+    /// the record <see cref="TechEditorViewModel.MaterialToEdit"/> picks — the material's edited copy — and
+    /// returns how the undo entry should end. Null when the material does not set the field, so the caller
+    /// writes the entry's own number as before. The entry's own field is written either way by the caller.
+    /// </summary>
+    private string? WriteToMaterial(StackupField field, double value)
+    {
+        if (!IsSetByMaterial(field)) return null;
+        var (m, copiedFrom) = _owner.MaterialToEdit(Layer);
+        switch (field)
+        {
+            // A typed scalar would contradict a tensor or a σ(T) table left standing beside it (check warns
+            // on the table, and a 3D solve reads the tensor over the scalar), so the copy sheds them.
+            case StackupField.Epsr:  m.Epsr = value; m.EpsrTensor = null; break;
+            case StackupField.TanD:  m.TanD = value; break;
+            case StackupField.Mur:   m.Mur  = value; break;
+            case StackupField.Sigma: m.Sigma20 = value; m.SigmaVsTemp = null; break;
+        }
+        return copiedFrom is null ? $" in {m.Name}" : $" as {m.Name}, a copy of {copiedFrom}";
+    }
 
     /// <summary>The σ box's standing tooltip, which predates the material picker.</summary>
     internal const string SigmaFieldTip =
@@ -287,13 +344,11 @@ public sealed partial class StackupLayerRowViewModel : ObservableObject
 
     private void RaiseMaterialViews()
     {
-        OnPropertyChanged(nameof(MaterialChoices));
         OnPropertyChanged(nameof(HasMaterialChoices));
-        OnPropertyChanged(nameof(EpsrLocked));
-        OnPropertyChanged(nameof(TanDLocked));
-        OnPropertyChanged(nameof(MurLocked));
-        OnPropertyChanged(nameof(SigmaLocked));
-        OnPropertyChanged(nameof(SigmaPresetEnabled));
+        OnPropertyChanged(nameof(EpsrFromMaterial));
+        OnPropertyChanged(nameof(TanDFromMaterial));
+        OnPropertyChanged(nameof(MurFromMaterial));
+        OnPropertyChanged(nameof(SigmaFromMaterial));
         OnPropertyChanged(nameof(EpsrTip));
         OnPropertyChanged(nameof(TanDTip));
         OnPropertyChanged(nameof(MurTip));
@@ -379,7 +434,10 @@ public sealed partial class StackupLayerRowViewModel : ObservableObject
     // already persisted, already validated — and shown nowhere.
 
     /// <summary>Conductor names, the only legal values for a span end. "(none)" is index 0.</summary>
-    public IReadOnlyList<string> SpanChoices =>
+    public IReadOnlyList<string> SpanChoices => _spanChoices ??= ComputeSpanChoices();
+    private IReadOnlyList<string>? _spanChoices;
+
+    private IReadOnlyList<string> ComputeSpanChoices() =>
         [SpanNone, .. _owner.Working.Stackup.Layers
                           .Where(l => l.Kind == StackupKind.Conductor)
                           .Select(l => l.Name)];
@@ -505,9 +563,11 @@ public sealed partial class StackupLayerRowViewModel : ObservableObject
     // whose name a conductor already carries is left out rather than listed twice: picking it would
     // store a string that resolves to the conductor, so the second row would be a choice that does
     // not do what it says.
-    public IReadOnlyList<string> PresentWithChoices
+    public IReadOnlyList<string> PresentWithChoices => _presentWithChoices ??= ComputePresentWithChoices();
+    private IReadOnlyList<string>? _presentWithChoices;
+
+    private IReadOnlyList<string> ComputePresentWithChoices()
     {
-        get
         {
             var conductors = _owner.Working.Stackup.Layers
                 .Where(l => l.Kind == StackupKind.Conductor && !l.IsGroundReference)
@@ -640,25 +700,40 @@ public sealed partial class StackupLayerRowViewModel : ObservableObject
         StagedSigmaSm        = Layer.SigmaSm.ToString("0.###e+0", Inv);
         SelectedConductorMaterial = ConductorMaterials.Match(Layer.SigmaSm)?.Name ?? ConductorMaterials.Custom;
         // An unknown name shows as itself rather than as "(none)": the row must not claim a state
-        // the file does not hold. check reports it (tech.material.unknown). The list is raised FIRST,
+        // the file does not hold. check reports it (tech.material.unknown). The list is stated FIRST,
         // so the combo holds the item before it is asked to select it.
-        OnPropertyChanged(nameof(MaterialChoices));
+        bool materialsChanged = Restate(ref _materialChoices, ComputeMaterialChoices(), nameof(MaterialChoices));
         SelectedMaterial     = Layer.Material is { Length: > 0 } mat
             ? (NamedMaterial?.Name ?? mat) : MaterialNone;
+        if (materialsChanged) OnPropertyChanged(nameof(SelectedMaterial));
         RaiseMaterialViews();
         IsGroundReference    = Layer.IsGroundReference;
         SelectedSheetAt      = Layer.SheetAt ?? ConductorSheetSurface.Bottom;
+        bool presentChanged  = Restate(ref _presentWithChoices, ComputePresentWithChoices(), nameof(PresentWithChoices));
         SelectedPresentWith  = Layer.PresentWithLayer is { Length: > 0 } p ? p : SpanNone;
-        OnPropertyChanged(nameof(PresentWithChoices));
+        if (presentChanged) OnPropertyChanged(nameof(SelectedPresentWith));
 
-        DrawingLayerOptions.Clear();
-        foreach (var l in _owner.Working.Layers)
-            DrawingLayerOptions.Add(new DrawingLayerCheckItem(l.Key, l.Name, Layer.DrawingLayers.Contains(l.Key), this));
+        // The drawing-layer lists are rebuilt only when the technology's drawing layers changed; a
+        // rebound row otherwise keeps its items and updates their ticks in place, so neither the combo
+        // nor the picker grid below it is handed a new list (see Rebind).
+        bool layersChanged = DrawingLayerChoices.Count != _owner.Working.Layers.Count + 1 ||
+            !DrawingLayerChoices.Skip(1).Select(c => (c.Key, c.Name))
+                .SequenceEqual(_owner.Working.Layers.Select(l => (l.Key, l.Name)));
+        if (layersChanged)
+        {
+            DrawingLayerOptions.Clear();
+            foreach (var l in _owner.Working.Layers)
+                DrawingLayerOptions.Add(new DrawingLayerCheckItem(l.Key, l.Name, Layer.DrawingLayers.Contains(l.Key), this));
 
-        DrawingLayerChoices.Clear();
-        DrawingLayerChoices.Add(DrawingLayerChoice.None);
-        foreach (var l in _owner.Working.Layers)
-            DrawingLayerChoices.Add(new DrawingLayerChoice(l.Key, l.Name));
+            DrawingLayerChoices.Clear();
+            DrawingLayerChoices.Add(DrawingLayerChoice.None);
+            foreach (var l in _owner.Working.Layers)
+                DrawingLayerChoices.Add(new DrawingLayerChoice(l.Key, l.Name));
+        }
+        else
+        {
+            foreach (var o in DrawingLayerOptions) o.IsChecked = Layer.DrawingLayers.Contains(o.Key);
+        }
 
         // The single-select face shows whatever the model actually holds. A row that (legally, from a
         // hand-edited file) carries more than one while its kind allows one shows the FIRST rather
@@ -672,18 +747,19 @@ public sealed partial class StackupLayerRowViewModel : ObservableObject
 
         if (IsVia)
         {
+            bool spansChanged   = Restate(ref _spanChoices, ComputeSpanChoices(), nameof(SpanChoices));
             SelectedSpanFrom    = Layer.SpanFromLayer is { Length: > 0 } f ? f : SpanNone;
             SelectedSpanTo      = Layer.SpanToLayer   is { Length: > 0 } t ? t : SpanNone;
+            if (spansChanged) { OnPropertyChanged(nameof(SelectedSpanFrom)); OnPropertyChanged(nameof(SelectedSpanTo)); }
             SelectedFill        = Layer.Fill ?? ViaFillKind.Plated;
             OnPropertyChanged(nameof(IsPlated));
             StagedWallThickness = Layer.WallThicknessDbu is { } w ? LengthText(w) : "";
-            OnPropertyChanged(nameof(SpanChoices));
             OnPropertyChanged(nameof(IsPlatedVia));
         }
 
         _isRefreshing = false;
 
-        ApplyDrawingLayerFilter();
+        if (layersChanged) ApplyDrawingLayerFilter();
         OnPropertyChanged(nameof(DrawingLayerSummary));
         RaiseReadiness();
     }
@@ -837,49 +913,49 @@ public sealed partial class StackupLayerRowViewModel : ObservableObject
 
     public void CommitEpsr()
     {
-        if (EpsrLocked) { RefreshFromModel(); return; }   // the material's value; see R-em3d2-5c
         if (!NumericText.TryParseDouble(StagedEpsr, out var v))
         { RefreshFromModel(); return; }
-        if (System.Math.Abs(v - Layer.Epsr) < 1e-12) return;
+        if (System.Math.Abs(v - Layer.Epsr) < 1e-12) return;   // the value it already has: no copy
         var before = _owner.SnapshotJson();
+        string? inMaterial = WriteToMaterial(StackupField.Epsr, v);
         Layer.Epsr = v;
-        _owner.CommitEdit(before, $"Set εr of {Layer.Name}");
+        _owner.CommitEdit(before, $"Set εr of {Layer.Name}{inMaterial}");
         RaiseReadiness();
     }
 
     public void CommitTanD()
     {
-        if (TanDLocked) { RefreshFromModel(); return; }   // the material's value; see R-em3d2-5c
         if (!NumericText.TryParseDouble(StagedTanD, out var v))
         { RefreshFromModel(); return; }
-        if (System.Math.Abs(v - Layer.TanD) < 1e-15) return;
+        if (System.Math.Abs(v - Layer.TanD) < 1e-15) return;   // the value it already has: no copy
         var before = _owner.SnapshotJson();
+        string? inMaterial = WriteToMaterial(StackupField.TanD, v);
         Layer.TanD = v;
-        _owner.CommitEdit(before, $"Set tanδ of {Layer.Name}");
+        _owner.CommitEdit(before, $"Set tanδ of {Layer.Name}{inMaterial}");
         RaiseReadiness();
     }
 
     public void CommitMur()
     {
-        if (MurLocked) { RefreshFromModel(); return; }   // the material's value; see R-em3d2-5c
         if (!NumericText.TryParseDouble(StagedMur, out var v))
         { RefreshFromModel(); return; }
-        if (System.Math.Abs(v - Layer.Mur) < 1e-12) return;
+        if (System.Math.Abs(v - Layer.Mur) < 1e-12) return;   // the value it already has: no copy
         var before = _owner.SnapshotJson();
+        string? inMaterial = WriteToMaterial(StackupField.Mur, v);
         Layer.Mur = v;
-        _owner.CommitEdit(before, $"Set µr of {Layer.Name}");
+        _owner.CommitEdit(before, $"Set µr of {Layer.Name}{inMaterial}");
         RaiseReadiness();
     }
 
     public void CommitSigmaSm()
     {
-        if (SigmaLocked) { RefreshFromModel(); return; }   // the material's value; see R-em3d2-5c
         if (!NumericText.TryParseDouble(StagedSigmaSm, out var v))
         { RefreshFromModel(); return; }
-        if (System.Math.Abs(v - Layer.SigmaSm) < 1e-6) return;
+        if (System.Math.Abs(v - Layer.SigmaSm) < 1e-6) return;   // the value it already has: no copy
         var before = _owner.SnapshotJson();
+        string? inMaterial = WriteToMaterial(StackupField.Sigma, v);
         Layer.SigmaSm = v;
-        _owner.CommitEdit(before, $"Set σ of {Layer.Name}");
+        _owner.CommitEdit(before, $"Set σ of {Layer.Name}{inMaterial}");
         RaiseReadiness();
     }
 

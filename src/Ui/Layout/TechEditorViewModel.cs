@@ -239,14 +239,14 @@ public sealed partial class TechEditorViewModel : ObservableObject
     private void ApplyStackupFilterCore()
     {
         var q = StackupFilter.Trim();
-        FilteredStackupLayers.Clear();
+        var listed = new List<StackupLayerRowViewModel>(StackupLayers.Count);
 
         // Cleared on EVERY row first, not just the listed ones: a header left set on a row the filter
         // has excluded reappears the moment the filter is cleared, in the wrong place.
         foreach (var r in StackupLayers) r.ShowsViaGroupHeader = false;
 
         foreach (var r in StackupLayers)
-            if (r.Layer.Kind != StackupKind.Via && Matches(r.Layer.Name, q)) FilteredStackupLayers.Add(r);
+            if (r.Layer.Kind != StackupKind.Via && Matches(r.Layer.Name, q)) listed.Add(r);
 
         bool firstVia = true;
         foreach (var r in StackupLayers)
@@ -254,7 +254,16 @@ public sealed partial class TechEditorViewModel : ObservableObject
             if (r.Layer.Kind != StackupKind.Via || !Matches(r.Layer.Name, q)) continue;
             r.ShowsViaGroupHeader = firstVia;
             firstVia = false;
-            FilteredStackupLayers.Add(r);
+            listed.Add(r);
+        }
+
+        // Untouched when it already lists these rows in this order: a rebound stackup (RebuildStackup)
+        // keeps its row VMs, and clearing and refilling the collection with the same ones would be a
+        // Reset to the ListBox — the re-layout the rebind exists to avoid.
+        if (!FilteredStackupLayers.SequenceEqual(listed))
+        {
+            FilteredStackupLayers.Clear();
+            foreach (var r in listed) FilteredStackupLayers.Add(r);
         }
 
         OnPropertyChanged(nameof(StackupFilterSummary));
@@ -944,9 +953,25 @@ public sealed partial class TechEditorViewModel : ObservableObject
         StackupCardsExpanded   = Working.Stackup.CardPaneExpanded   ?? true;
         _suppressPaneCommit = false;
 
-        StackupLayers.Clear();
-        foreach (var sl in Working.Stackup.Layers)
-            StackupLayers.Add(new StackupLayerRowViewModel(sl, this));
+        // REBOUND, not rebuilt, whenever the entries are the same kinds in the same order — which is
+        // every value edit, rename, undo and redo of one (designer report, 2026-10-12: committing an εr
+        // moved the card list). New row VMs are new ListBox items, and the virtualizing panel lays a
+        // replaced item out again from its own size ESTIMATES around the unchanged offset: measured
+        // headlessly, the card being typed in moved 66 px while Offset read the same number, and an
+        // offset correction afterwards still left 1 px seams where estimated positions rounded apart.
+        // Kept items are never re-laid, so nothing moves. A non-virtualizing panel also held still and
+        // was ten times slower per commit. An add, remove or kind-changing move still rebuilds.
+        var layers = Working.Stackup.Layers;
+        if (StackupLayers.Count == layers.Count && StackupLayers.Select(r => r.Kind).SequenceEqual(layers.Select(l => l.Kind)))
+        {
+            for (int i = 0; i < layers.Count; i++) StackupLayers[i].Rebind(layers[i]);
+        }
+        else
+        {
+            StackupLayers.Clear();
+            foreach (var sl in layers)
+                StackupLayers.Add(new StackupLayerRowViewModel(sl, this));
+        }
 
         RaiseStackHeightViews();
     }

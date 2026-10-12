@@ -139,6 +139,52 @@ public sealed partial class TechEditorViewModel
         return uses;
     }
 
+    // ── a stackup number typed over its material: the edited copy ─────────────────────────────
+
+    private static readonly System.Text.RegularExpressions.Regex EditedSuffix =
+        new(@"^(?<base>.*) \(edited(?: \d+)?\)$", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// The material record a value typed on <paramref name="layer"/>'s stackup card is written into, and the
+    /// layer pointed at it. Typing over a number the layer's material states used to make the box read-only
+    /// and then, briefly, to drop the material to "(none)" — which also dropped everything a stackup number
+    /// cannot carry: the thermal k, density and heat capacity a thermal run looks up BY NAME, an εr tensor,
+    /// the name itself in the 3D view and its exports.
+    ///
+    /// <para>So the material is COPIED, as <c>"&lt;name&gt; (edited)"</c> in this technology's own list,
+    /// with every other value it states; the original is never touched, because it may be a library's or
+    /// shared by other entries. A copy this rule made, in the own list, that nothing but this layer uses is
+    /// edited IN PLACE, so typing three values makes one copy rather than three. A renamed copy no longer
+    /// reads as one and is copied again — the name is the only mark there is, and editing a record the
+    /// user named in place would change what that name means.</para>
+    ///
+    /// <para>Returns the copy's name when one was made, null when the record was edited in place. The
+    /// caller writes the field and commits; this runs between its snapshot and its <c>CommitEdit</c>, so
+    /// the copy and the value are one undo entry.</para>
+    /// </summary>
+    internal (TechMaterial Material, string? CopiedFrom) MaterialToEdit(StackupLayer layer)
+    {
+        var current = Working.FindMaterial(layer.Material)!;
+        bool own   = Working.Materials.Any(m => ReferenceEquals(m, current));
+        bool copy  = EditedSuffix.IsMatch(current.Name);
+        bool alone = UsesOf(current.Name).Count == 1;
+        if (own && copy && alone) return (current, null);
+
+        string stem = EditedSuffix.Match(current.Name) is { Success: true } m0 ? m0.Groups["base"].Value : current.Name;
+        var taken = new HashSet<string>(Working.ResolvedMaterials.Select(x => x.Name), StringComparer.OrdinalIgnoreCase);
+        string name = $"{stem} (edited)";
+        for (int i = 2; taken.Contains(name); i++) name = $"{stem} (edited {i})";
+
+        var made = MaterialsTableViewModel.TechPersistenceClone(current);
+        made.Name   = name;
+        made.Source = current.Source is { Length: > 0 } src
+            ? $"{current.Name}, edited on the Stackup tab. {current.Name}: {src}"
+            : $"{current.Name}, edited on the Stackup tab.";
+        Working.Materials.Add(made);
+        layer.Material = name;
+        return (made, current.Name);
+    }
+
     // ── library references: each ONE technology undo entry ───────────────────────────────────
 
     /// <summary><i>Add Library…</i> — names an existing <c>.cmat</c>. Refused for a file that is not one, or one

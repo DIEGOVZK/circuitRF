@@ -10,12 +10,7 @@
 		"R3": {}
 	},
 	"PCellSnapshots": {
-		"smt-0402@N_da6fd8853933": {
-			"GeneratorId": "smt:0402@N",
-			"Parameters": {},
-			"TechIdentity": "tech/pcb-2layer_RO4350B_20mil_1oz.ctech"
-		},
-		"smt-0402@N_39f5146aabe4": {
+		"smt-0402@N_23d6a1a986ad": {
 			"GeneratorId": "smt:0402@N",
 			"Parameters": {},
 			"TechIdentity": "tech/pcb-2layer_RO4350B_20mil_1oz.ctech"
@@ -145,7 +140,7 @@
 	],
 	"Instances": [
 		{
-			"CellRef": "../../.generated-cells/smt-0402@N_39f5146aabe4",
+			"CellRef": "../../.generated-cells/smt-0402@N_23d6a1a986ad",
 			"X": 1016000,
 			"Y": -400000,
 			"Rot": "R270",
@@ -166,7 +161,7 @@
 			"LabelDy": -1045000
 		},
 		{
-			"CellRef": "../../.generated-cells/smt-0402@N_39f5146aabe4",
+			"CellRef": "../../.generated-cells/smt-0402@N_23d6a1a986ad",
 			"X": 2540000,
 			"Y": 0,
 			"Rot": "R0",
@@ -185,7 +180,7 @@
 			}
 		},
 		{
-			"CellRef": "../../.generated-cells/smt-0402@N_39f5146aabe4",
+			"CellRef": "../../.generated-cells/smt-0402@N_23d6a1a986ad",
 			"X": 4064000,
 			"Y": -400000,
 			"Rot": "R270",

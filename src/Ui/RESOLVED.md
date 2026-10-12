@@ -39563,3 +39563,59 @@ are that command's. The button is hidden when the command cannot execute (automa
 Both openers pass the command — Help ▸ Release Notes… and the launch-time showing in `App.axaml.cs`.
 Gate: `ReleaseNotesLatestTests.TheNewerReleaseIsTheOneTheUpdaterWouldOffer`. Not checked on screen
 (the GUI cannot be launched from the agent's shell).
+
+## Stackup tab: εr/tanδ of a material-bound substrate could not be typed (designer report, 2026-10-12)
+
+A designer imported a Gerber set and could change the substrate's thickness on the Stackup tab but not its
+εr or tanδ. Cause: the Gerber dialog defaults to the workspace's technology when it has two conductors, and
+the default workspace technology (`ShippedTechnologies.DefaultId`, a 2-layer laminate board) names its
+dielectric's material. brief-em3d-2 R-em3d2-5c made every number a named material states **read-only**,
+with "(none)" in the Material combo above as the only way out — said only in a tooltip on the box. Thickness
+is never material-governed, so it alone took typing, which is exactly what was reported.
+
+Now the boxes stay typeable, and a value that differs from the row's goes into an **edited copy** of the
+material — `"<name> (edited)"` in the technology's own Materials list — which the row then names
+(`TechEditorViewModel.MaterialToEdit`, called from `StackupLayerRowViewModel.WriteToMaterial`). A first cut
+dropped the row to "(none)" instead; that looked alarming and, worse, shed everything only a material
+carries: a thermal run finds k / density / heat capacity BY MATERIAL NAME (`ThermalMaterials.Find`), so a
+"(none)" substrate is refused there, and the εr tensor and the name in the 3D view go too. The copy keeps all
+of it; the original is never touched (it may be a library's, or shared). A copy this rule made, in the own
+list, used by nothing but this row, is edited in place, so three typed values make one copy — the name
+suffix is the only mark, so a RENAMED copy is copied again rather than having the user's name change
+meaning. A typed εr drops the copy's `EpsrTensor` and a typed σ its `SigmaVsTemp`, either of which would
+otherwise contradict it. Copy and value are one undo entry (the tab's commits are whole-technology
+snapshots), so Undo removes the copy. The cross-section's inline editor no longer declines those labels.
+`EpsrLocked`/… became `EpsrFromMaterial`/… (they still drive the tooltip); `SigmaPresetEnabled` is gone.
+Gate: `TechMaterialsTests.Editor_TypingADifferentValueWritesAnEditedCopy_AndUndoRemovesIt`. Not checked on
+screen (the GUI cannot be launched from the agent's shell).
+
+## Stackup tab: committing a value moved the card list (designer report, 2026-10-12)
+
+Committing εr (or any value) on a stackup card shifted the cards under the pointer. Every commit, undo and redo
+goes through `ApplySnapshot`, which replaced every row VM, and `ApplyStackupFilterCore` cleared and refilled
+`FilteredStackupLayers` — a Reset to the ListBox. The default `VirtualizingStackPanel` re-lays a replaced
+item from its own size ESTIMATES around the unchanged offset. Measured with a headless harness (the real
+`TechEditorView` in an `Avalonia.Headless` window, scratchpad only): the card being typed in moved **66 px
+with `ScrollViewer.Offset` reading the same number before and after**, so "restore the offset" is not a fix.
+
+Three fixes were measured before the one kept:
+- **Replace by index instead of Clear** — the same 66 px; the panel re-estimates a replaced realised item too.
+- **Note an anchor card before, correct the offset after** — exact for the anchor, but neighbouring cards
+  landed **1 px apart** (estimated positions round differently), and done in `LayoutUpdated` it painted one
+  wrong frame first (done synchronously it did not).
+- **A plain `StackPanel` items panel** — pixel-exact, but ~320 ms per commit on the 6-layer board against
+  ~28 ms, because every card is laid out on every commit.
+
+Kept: **the row VMs are REBOUND, not rebuilt** (`StackupLayerRowViewModel.Rebind`, from
+`TechEditorViewModel.RebuildStackup`) whenever the entries are the same kinds in the same order — every value
+edit, rename, and their undo/redo — and the filtered collection is left untouched when it already lists the
+same rows. No item changes, so nothing is re-laid; a commit costs ~1-2 ms. An add, remove or kind-changing
+move still rebuilds (the cards genuinely change). **The trap a rebind opens**: Avalonia drops a ComboBox's
+selection when its `ItemsSource` changes, and a rebound row used to hand every combo a NEW list on each
+refresh (computed `MaterialChoices`/`SpanChoices`/`PresentWithChoices`, cleared-and-refilled drawing-layer
+collections) — harmless for a fresh container, a blank combo for a kept one. Those lists are now cached and
+replaced only when their content changes (`Restate`), with the selection re-raised after; the drawing-layer
+items are rebuilt only when the technology's layers change, else their ticks are updated in place. Harness
+result over three shipped technologies and the whole scroll range: 217 εr/thickness commits pixel-identical
+after one layout pass, settled, and after Undo; no blank combo; Undo restores the exact JSON. Gate:
+`StackupSelectionTests.ACommittedValueLeavesTheCardListsItemsAlone`.

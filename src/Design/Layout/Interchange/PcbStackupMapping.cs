@@ -23,6 +23,60 @@ public static class PcbStackupMapping
     /// </summary>
     public static double DefaultCopperConductivitySm => ConductorMaterials.Copper.SigmaSm;
 
+    /// <summary>The material a defaulted conductor names — the record every shipped technology carries.</summary>
+    public const string CopperMaterialName = "Copper";
+
+    /// <summary>
+    /// Names <see cref="CopperMaterialName"/> on every conductor entry of <paramref name="tech"/> that names no
+    /// material and carries exactly <see cref="DefaultCopperConductivitySm"/> — the copper an import defaulted —
+    /// adding the shipped generic library's Copper record when the technology has none (owner request,
+    /// 2026-10-12: an imported board's copper read "(none)" in the Material combo). The material is what a
+    /// thermal run looks up k, density and heat capacity by, and what the 3D view and its exports call the
+    /// metal; a bare σ carries none of it.
+    ///
+    /// <para><b>No conductor's electrical answer moves</b>: the record's σ₂₀ IS that default, and nothing is named
+    /// where it would not be — a conductor with another σ, or a technology whose own "Copper" states another
+    /// σ₂₀, is left as it was.</para>
+    ///
+    /// <para><b>A conductive via entry the import made is named too, and that one DOES move an answer</b>
+    /// (owner decision, 2026-10-12: match the shipped technologies, whose plated vias name Copper at 5.8e7).
+    /// An import leaves a via's σ at 0, which every solver reads as a PERFECT barrel — zero barrel impedance
+    /// in the planar fill, zero resistance at its DC point, PEC in Palace — and a thermal run finds no k for
+    /// it by name. Named, the barrel is copper: a few milliohms of barrel resistance per via (negligible in
+    /// an S-parameter, real in a DC IR drop) and a via a thermal run can conduct heat through. A
+    /// non-plated hole (no fill, or <see cref="StackupLayer.Plated"/> false) is a hole and is left alone,
+    /// and so is a via that already states a σ or a material.</para>
+    /// </summary>
+    /// <returns>How many stackup entries now name it.</returns>
+    public static int NameDefaultedCopper(Technology tech)
+    {
+        var conductors = tech.Stackup.Layers
+            .Where(l => l.Material is not { Length: > 0 } &&
+                        ((l.Kind == StackupKind.Conductor && l.SigmaSm == DefaultCopperConductivitySm) ||
+                         (l.Kind == StackupKind.Via && l.Fill is not null && l.Plated != false && l.SigmaSm == 0)))
+            .ToList();
+        if (conductors.Count == 0) return 0;
+
+        if (tech.FindMaterial(CopperMaterialName) is { } stated)
+        {
+            if (stated.Sigma20 != DefaultCopperConductivitySm) return 0;
+        }
+        else
+        {
+            var copper = MaterialLibraries.LoadGeneric()
+                .FirstOrDefault(m => string.Equals(m.Name, CopperMaterialName, StringComparison.Ordinal));
+            if (copper?.Sigma20 != DefaultCopperConductivitySm) return 0;
+            tech.Materials.Add(copper);
+        }
+
+        foreach (var l in conductors)
+        {
+            l.Material = CopperMaterialName;
+            l.SigmaSm  = DefaultCopperConductivitySm;   // what resolve-on-read would write on the next load
+        }
+        return conductors.Count;
+    }
+
     public sealed record Result(Stackup? Stackup, IReadOnlyList<string> Messages);
 
     /// <summary>

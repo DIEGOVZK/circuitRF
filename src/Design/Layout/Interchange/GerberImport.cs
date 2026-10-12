@@ -1842,6 +1842,9 @@ public static class GerberImport
                 "depths, so an S-parameter run is insensitive to it; a thermal one is not. Change it on " +
                 "the Technology editor's Stackup tab.");
 
+        // The defaulted copper as the Copper material, not a bare σ — see PcbStackupMapping.NameDefaultedCopper.
+        PcbStackupMapping.NameDefaultedCopper(tech);
+
         return tech;
     }
 

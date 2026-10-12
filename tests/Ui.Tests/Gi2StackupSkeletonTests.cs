@@ -144,6 +144,22 @@ public class Gi2StackupSkeletonTests : IDisposable
         Assert.All(electrical.Where(l => l.Kind == StackupKind.Conductor),
                    l => Assert.Equal(PcbStackupMapping.DefaultCopperConductivitySm, l.SigmaSm));
 
+        // ...and NAMED as the Copper material, which this technology carries with that very σ₂₀ — so the
+        // Material combo reads "Copper" rather than "(none)", and a thermal run finds copper's k by the name.
+        var named = tech.FindMaterial(PcbStackupMapping.CopperMaterialName);
+        Assert.NotNull(named);
+        Assert.Equal(PcbStackupMapping.DefaultCopperConductivitySm, named!.Sigma20);
+        Assert.NotNull(named.ThermalK);
+        Assert.All(electrical.Where(l => l.Kind == StackupKind.Conductor),
+                   l => Assert.Equal(PcbStackupMapping.CopperMaterialName, l.Material));
+
+        // A conductive via the import made is a copper barrel as on the shipped technologies — not σ = 0, which
+        // every solver reads as a perfect one.
+        var vias = tech.Stackup.Layers.Where(l => l.Kind == StackupKind.Via && l.Fill is not null).ToList();
+        Assert.NotEmpty(vias);
+        Assert.All(vias, v => Assert.Equal((PcbStackupMapping.CopperMaterialName, PcbStackupMapping.DefaultCopperConductivitySm),
+                                           (v.Material, v.SigmaSm)));
+
         // Every quantity that describes the SUBSTRATE is FILLED IN, from the one generic board
         // (owner, 2026-09-08). Outer copper is the first and last conductor in the top-to-bottom
         // order; the four between them are inner foil.

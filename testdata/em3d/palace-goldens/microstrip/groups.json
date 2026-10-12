@@ -25,7 +25,7 @@
       "Kind": "Conductor",
       "Expected": 1,
       "AtLeast": true,
-      "Material": "Top Copper (1 oz)"
+      "Material": "Copper"
     },
     {
       "Attribute": 4,

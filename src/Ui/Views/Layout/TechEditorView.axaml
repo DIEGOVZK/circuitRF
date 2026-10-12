@@ -1047,9 +1047,10 @@
                                                  thickness should be"). The Spans row answers it. -->
                                             <!-- brief-em3d-2 R-em3d2-5c. The technology's named materials.
                                                  While one is named, every number it states shows the
-                                                 material's value and is read-only (the loader's own
-                                                 resolve-on-read rule, applied again); "(none)" keeps
-                                                 the values showing and makes them editable. Hidden when
+                                                 material's value (the loader's own resolve-on-read rule,
+                                                 applied again); typing a different one writes it into
+                                                 an edited copy the row then names, and "(none)" keeps the
+                                                 values showing. Hidden when
                                                  the technology defines no materials, since "(none)"
                                                  alone is not a choice. -->
                                             <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding HasMaterialChoices}">
@@ -1057,7 +1058,7 @@
                                                 <ComboBox Classes="cell" MinWidth="120"
                                                           ItemsSource="{Binding MaterialChoices}"
                                                           SelectedItem="{Binding SelectedMaterial, Mode=TwoWay}"
-                                                          ToolTip.Tip="One of this technology's named materials. While one is named, the values it states are this entry's values, for every solver, and cannot be typed here; (none) keeps the values showing and makes them editable again."/>
+                                                          ToolTip.Tip="One of this technology's named materials. While one is named, the values it states are this entry's values, for every solver. Typing a different value into one of them writes it into an edited copy of the material, which this entry then uses; the original is unchanged."/>
                                             </StackPanel>
 
                                             <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding !IsVia}">
@@ -1088,11 +1089,9 @@
                                                 <TextBox Classes="cell compact" Width="60" Tag="Sigma"
                                                          Classes.needsvalue="{Binding SigmaNeedsValue}"
                                                          Text="{Binding StagedSigmaSm}"
-                                                         IsReadOnly="{Binding SigmaLocked}"
                                                          ToolTip.Tip="{Binding SigmaTip}"
                                                          LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"/>
                                                 <ComboBox Classes="cell" MinWidth="96"
-                                                          IsEnabled="{Binding SigmaPresetEnabled}"
                                                           ItemsSource="{Binding ConductorMaterialChoices}"
                                                           SelectedItem="{Binding SelectedConductorMaterial, Mode=TwoWay}"
                                                           ToolTip.Tip="Fills the conductivity field with a metal's bulk value at 20 °C — copper 5.8e7, silver 6.3e7, gold 4.1e7, aluminium 3.77e7, nickel 1.43e7 S/m. A shortcut only: the field beside it stays typeable and is what gets saved, and a value matching none of these shows as Custom. Real plated or alloyed metal runs below the handbook figure, so lower it if your process states one."/>
@@ -1150,7 +1149,6 @@
                                                     <TextBlock Text="εr:" FontSize="11" VerticalAlignment="Center"/>
                                                     <TextBox Classes="cell compact" Width="60" Tag="Epsr" Text="{Binding StagedEpsr}"
                                                              Classes.needsvalue="{Binding EpsrNeedsValue}"
-                                                             IsReadOnly="{Binding EpsrLocked}"
                                                              ToolTip.Tip="{Binding EpsrTip}"
                                                              LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"/>
                                                 </StackPanel>
@@ -1158,7 +1156,6 @@
                                                     <TextBlock Text="tanδ:" FontSize="11" VerticalAlignment="Center"/>
                                                     <TextBox Classes="cell compact" Width="70" Tag="TanD" Text="{Binding StagedTanD}"
                                                              Classes.needsvalue="{Binding TanDNeedsValue}"
-                                                             IsReadOnly="{Binding TanDLocked}"
                                                              ToolTip.Tip="{Binding TanDTip}"
                                                              LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"/>
                                                 </StackPanel>
@@ -1166,7 +1163,6 @@
                                                     <TextBlock Text="µr:" FontSize="11" VerticalAlignment="Center"/>
                                                     <TextBox Classes="cell compact" Width="60" Tag="Mur" Text="{Binding StagedMur}"
                                                              Classes.needsvalue="{Binding MurNeedsValue}"
-                                                             IsReadOnly="{Binding MurLocked}"
                                                              ToolTip.Tip="{Binding MurTip}"
                                                              LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"/>
                                                 </StackPanel>

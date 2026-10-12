@@ -14,7 +14,7 @@ s0[] = {v};
 // air: Air, Air, order 2
 v = newv; Box(v) = {-37474.05725, -38024.05725, 543, 84948.1145, 76048.1145, 37509.05725};
 s1[] = {v};
-// Top Copper (1 oz)/1: Conductor, Top Copper (1 oz), order 3
+// Top Copper (1 oz)/1: Conductor, Copper, order 3
 cl[] = {};
 p = newp;
 Point(p + 0) = {0, -550, 543};

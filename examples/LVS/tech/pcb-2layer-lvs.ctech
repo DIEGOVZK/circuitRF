@@ -119,6 +119,7 @@
         "Kind": "Conductor",
         "Name": "Top Copper (1 oz)",
         "ThicknessDbu": 35000,
+        "Material": "Copper",
         "Epsr": 1,
         "TanD": 0,
         "Mur": 1,
@@ -146,6 +147,7 @@
         "Kind": "Conductor",
         "Name": "Bottom Copper (1 oz)",
         "ThicknessDbu": 35000,
+        "Material": "Copper",
         "Epsr": 1,
         "TanD": 0,
         "Mur": 1,
@@ -162,6 +164,7 @@
         "Kind": "Via",
         "Name": "Plated Through-Hole",
         "ThicknessDbu": 0,
+        "Material": "Copper",
         "Epsr": 1,
         "TanD": 0,
         "Mur": 1,
@@ -220,6 +223,55 @@
       },
       "ValueDbu": 150000,
       "Severity": "Error"
+    }
+  ],
+  "Materials": [
+    {
+      "Name": "Copper",
+      "Sigma20": 58000000,
+      "Alpha20": 0.0039,
+      "SigmaVsTemp": [
+        { "TempC": 20, "Value": 58000000 },
+        { "TempC": 25.05, "Value": 56881363 },
+        { "TempC": 26.85, "Value": 56493001 },
+        { "TempC": 76.85, "Value": 47435387 },
+        { "TempC": 85, "Value": 46223798 },
+        { "TempC": 125, "Value": 41074715 },
+        { "TempC": 126.85, "Value": 40864183 },
+        { "TempC": 226.85, "Value": 31896596 },
+        { "TempC": 326.85, "Value": 26061139 },
+        { "TempC": 426.85, "Value": 21934006 },
+        { "TempC": 526.85, "Value": 18842573 },
+        { "TempC": 626.85, "Value": 16430800 },
+        { "TempC": 726.85, "Value": 14486181 },
+        { "TempC": 826.85, "Value": 12883060 },
+        { "TempC": 926.85, "Value": 11532521 },
+        { "TempC": 1026.85, "Value": 10376532 },
+        { "TempC": 1084.45, "Value": 9788442 }
+      ],
+      "ThermalK": 401.404,
+      "ThermalKVsTemp": [
+        { "TempC": 20, "Value": 401.404 },
+        { "TempC": 25.05, "Value": 401 },
+        { "TempC": 26.85, "Value": 401 },
+        { "TempC": 76.85, "Value": 396 },
+        { "TempC": 85, "Value": 395.511 },
+        { "TempC": 125, "Value": 393.111 },
+        { "TempC": 126.85, "Value": 393 },
+        { "TempC": 226.85, "Value": 386 },
+        { "TempC": 326.85, "Value": 379 },
+        { "TempC": 426.85, "Value": 373 },
+        { "TempC": 526.85, "Value": 366 },
+        { "TempC": 626.85, "Value": 359 },
+        { "TempC": 726.85, "Value": 352 },
+        { "TempC": 826.85, "Value": 346 },
+        { "TempC": 926.85, "Value": 339 },
+        { "TempC": 1026.85, "Value": 332 },
+        { "TempC": 1084.45, "Value": 328 }
+      ],
+      "DensityKgM3": 8960,
+      "SpecificHeat": 385,
+      "Appearance": { "BaseColor": "#FAD1C2", "Metallic": 1, "Roughness": 0.35 }
     }
   ]
 }

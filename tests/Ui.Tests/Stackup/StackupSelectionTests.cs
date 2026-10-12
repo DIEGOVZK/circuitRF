@@ -56,9 +56,10 @@ public class StackupSelectionTests
 
     /// <summary>
     /// <b>The test that pins the whole design decision.</b> <c>ApplySnapshot</c> assigns
-    /// <c>Working</c> a freshly deserialized technology and rebuilds every row VM, so every object
-    /// identity in the stackup is destroyed on every committed edit, undo and redo. A selection held
-    /// as a <c>StackupLayer</c> or a row-VM reference fails this outright; a name survives it.
+    /// <c>Working</c> a freshly deserialized technology, so every <c>StackupLayer</c> is replaced on
+    /// every committed edit, undo and redo, and every row VM too whenever entries are added, removed
+    /// or reordered across kinds. A selection held as a <c>StackupLayer</c> fails this outright, and
+    /// one held as a row-VM reference fails the first add; a name survives both.
     /// </summary>
     [Fact]
     public void TheSelectionSurvivesACommittedEditOnADifferentEntry()
@@ -75,13 +76,41 @@ public class StackupSelectionTests
 
         Assert.Equal(name, vm.SelectedStackupLayerName);
 
-        // …and it still RESOLVES: the row VM it points at is one of the ones that exist now, not the
-        // dead one selection was made against.
+        // …and it still RESOLVES, to an entry of the technology that exists now. A value edit keeps the
+        // row VMs and rebinds them (so the card list does not move — StackupLayerRowViewModel.Rebind),
+        // but the StackupLayer under them is the new snapshot's, not the one the selection was made on.
         Assert.NotNull(vm.SelectedStackupLayerRow);
         Assert.Equal(name, vm.SelectedStackupLayerRow!.Layer.Name);
         Assert.Contains(vm.SelectedStackupLayerRow, vm.StackupLayers);
-        Assert.DoesNotContain(conductor, vm.StackupLayers);
+        Assert.Same(vm.Working.Stackup.Layers.First(l => l.Name == name), vm.SelectedStackupLayerRow.Layer);
         Assert.True(vm.SelectedStackupLayerRow.IsSelected);
+    }
+
+    /// <summary>
+    /// A committed VALUE leaves the card list's items alone — no CollectionChanged at all, on the
+    /// commit or its undo — because a replaced item is laid out again from the virtualizing panel's
+    /// size estimates and the cards move under the user (designer report, 2026-10-12: 66 px measured
+    /// headlessly). An added entry still changes the list.
+    /// </summary>
+    [Fact]
+    public void ACommittedValueLeavesTheCardListsItemsAlone()
+    {
+        var vm    = Editor();
+        var rows  = vm.FilteredStackupLayers.ToList();
+        int changes = 0;
+        vm.FilteredStackupLayers.CollectionChanged += (_, _) => changes++;
+
+        var sub = vm.StackupLayers.First(r => r.IsDielectric);
+        sub.StagedEpsr = "3.9";
+        sub.CommitEpsr();
+        vm.UndoRedo.Undo();
+
+        Assert.Equal(0, changes);
+        Assert.Equal(rows, vm.FilteredStackupLayers);
+        Assert.Same(vm.Working.Stackup.Layers.First(l => l.Kind == StackupKind.Dielectric), sub.Layer);
+
+        vm.AddConductorLayerCommand.Execute(null);
+        Assert.NotEqual(0, changes);
     }
 
     [Fact]

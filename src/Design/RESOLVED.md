@@ -19608,3 +19608,51 @@ pads carry `%TO.P`/`%TO.N`). What was wrong, and what changed:
   four-layer set's non-plated drill-file refusal was round 17's `NotVias` fix, already in.
 - The pad attributes carry the whole netlist; reading them in recognition is `brief-artsch-12-declared-pads-netlist.md`.
 - Gate: `tests/Ui.Tests/DesignerRound18Tests.cs`.
+
+## Shipped and example technologies name their conductor metals (owner request, 2026-10-12)
+
+A board imported onto the default technology showed "(none)" as the Material of its copper layers: every
+shipped `.ctech` named a material on its plated vias only, and its conductors carried a bare σ. Now every
+conductor in the six shipped technologies and in the ten example technologies that lacked one names its metal
+— Copper where σ is 5.8e7 S/m, Gold where it is 4.1e7 (the GaAs process). Each technology already carried that
+record with exactly that σ₂₀, so **no planar answer moves**; the six example technologies with no metal record
+at all (Klopfenstein Taper, Patch Antenna, Power Rail, LVS's board, both Artwork to Schematic boards) gained the
+shipped Copper record verbatim. Edited as TEXT, one inserted line per conductor in the place a plated via
+already carries its `Material`: only 4 of 22 files round-trip byte-identically through `TechPersistence`, so a
+model round trip would have reformatted the rest.
+
+What naming changes is the 3D path (`Em3dLayoutSolids.ConductorMaterial`): σ is evaluated at the setup's
+operating temperature through α₂₀ (identical at the 20 °C default, and no edited example states another),
+solids are made of `Copper`/`Gold` rather than of an entry named `Top Copper (1 oz)`, the "names no material …
+unknown temperature" note no longer appears for them, and a thermal run finds the metal's k, density and heat
+capacity by that name. The generator dumps and Palace goldens under `testdata/em3d/` were re-recorded
+(`CRF_WRITE_GENERATOR_DUMPS=1`, `CRF_WRITE_PALACE_GOLDENS=1`); every changed line is a material name, a
+material-source line or the dropped note — σ values and geometry identical. `testdata/` technologies are
+fixtures and were left as they are.
+
+**The trap: a technology's content is part of every generated cell's NAME** (`GeneratedCellStore.BuildCellName`
+→ `TechnologyContentKey`, deliberately an exclusion list). Naming a metal renamed the generated cells of the
+two examples that place them, and `HierarchyExampleTests.UpdateLayoutFromSchematic_AgainChangesNothing` saw
+every instance as "updated". Their `.clay` references were re-recorded by `GeneratedCellsLifecycle.RegenerateAll`
+— the application's own open — run on scratch copies with the PDK PCells kit allowed (Hierarchy taken as written,
++4/−9 and +4/−12, including one stale unreferenced snapshot entry per file the writer drops; SpiralResonator's one
+renamed MIM-cap cell substituted as text, because the writer re-indented that file). A second run on fresh copies
+repoints nothing. Users' workspaces are unaffected: each holds its own copy of its technology.
+`Em3dGeneratorDumpTests`' SpiralResonator case reads the placed MIM capacitor from the example's git-ignored
+`.generated-cells/` without running the kit, so on a checkout whose cache was never built that golden differs
+(pre-existing; it only showed here because the local cache still held the old name).
+
+**A Gerber import that MINTS its technology names the copper too** (owner request, same day):
+`PcbStackupMapping.NameDefaultedCopper`, called at the end of `GerberImport.MintTechnology`, names `Copper` on every
+conductor carrying exactly the defaulted σ and, when the technology has no Copper record (a minted one never does),
+adds the shipped generic library's. It refuses rather than guesses: another σ, or a technology "Copper" stating a
+different σ₂₀, is left alone. **Its conductive via entries are named Copper too, at 5.8e7** (owner decision: match the
+shipped technologies' plated vias) — and that one does move an answer, on purpose: an import used to leave a via at σ = 0,
+which every solver reads as a PERFECT barrel (`PlanarSurfaceImpedance.Barrel` → 0, `PlanarDcSolve.ViaResistance` → 0,
+`PalaceConfigWriter` → PEC), and a thermal run found no k for it by name. A copper barrel is milliohms — invisible in an
+S-parameter, real in a DC IR drop — and conducts heat. A non-plated hole (no fill, or `Plated: false`) stays a hole. The
+committed Gerber-made examples (both Artwork to Schematic boards) were brought into line the same way, and four example
+technologies whose vias already carried 5.8e7 gained only the name. An import INTO a chosen technology (R-gt) is
+untouched, and so is board-file import, which grafts onto the workspace's own technology. Gate: `Gi2StackupSkeletonTests`.
+**Left as found, pending an owner decision**: the GaAs process's backside via and metal posts are σ = 0 and unnamed in the
+shipped technology and its three example copies — naming them Gold would add barrel loss to every MMIC result.
