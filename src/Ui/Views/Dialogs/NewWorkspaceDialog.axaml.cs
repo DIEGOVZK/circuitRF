@@ -1,8 +1,10 @@
 using System.IO;
 using System.Linq;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using CircuitRF.Ui.Layout;
 using CircuitRF.Ui.Schematic;
@@ -147,6 +149,41 @@ public partial class NewWorkspaceDialog : Window
         return "Untitled-Workspace";
     }
 
+    // A name that collides with an existing folder renders "already exists" as a link that opens
+    // that folder in the platform's file manager, so the user can see what is already there.
+    private void ShowValidationMessage(string? message, string name, string? existingFolder)
+    {
+        ValidationMessage.Inlines?.Clear();
+        ValidationMessage.Text      = null;
+        ValidationMessage.IsVisible = message is not null;
+        if (message is null) return;
+
+        if (existingFolder is null)
+        {
+            ValidationMessage.Text = message;
+            return;
+        }
+
+        var link = new TextBlock
+        {
+            Text            = "already exists",
+            FontSize        = ValidationMessage.FontSize,
+            TextDecorations = TextDecorations.Underline,
+            Cursor          = new Cursor(StandardCursorType.Hand),
+        };
+        ToolTip.SetTip(link, FileReveal.Label);
+        link.PointerReleased += (_, e) =>
+        {
+            FileReveal.Reveal(existingFolder);
+            e.Handled = true;
+        };
+
+        ValidationMessage.Inlines ??= new InlineCollection();
+        ValidationMessage.Inlines.Add(new Run($"A workspace folder named '{name}' "));
+        ValidationMessage.Inlines.Add(new InlineUIContainer(link) { BaselineAlignment = BaselineAlignment.TextBottom });
+        ValidationMessage.Inlines.Add(new Run(" here."));
+    }
+
     private void UpdateView()
     {
         var name      = NameBox.Text?.Trim() ?? "";
@@ -156,6 +193,7 @@ public partial class NewWorkspaceDialog : Window
         LocationBox.Text = _parentDir ?? "";
 
         string? message = null;
+        string? existingFolder = null;
         if (isNested)
         {
             message = "A workspace cannot be created within another workspace. Select new Location.";
@@ -167,11 +205,13 @@ public partial class NewWorkspaceDialog : Window
         else if (_parentDir is not null && name.Length > 0)
         {
             if (Directory.Exists(Path.Combine(_parentDir, name)))
+            {
                 message = $"A workspace folder named '{name}' already exists here.";
+                existingFolder = Path.Combine(_parentDir, name);
+            }
         }
 
-        ValidationMessage.Text      = message;
-        ValidationMessage.IsVisible = message is not null;
+        ShowValidationMessage(message, name, existingFolder);
 
         OkButton.IsEnabled = _parentDir is not null
                           && name.Length > 0

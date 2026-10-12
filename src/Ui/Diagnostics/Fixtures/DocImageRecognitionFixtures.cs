@@ -91,9 +91,9 @@ public static class DocImageRecognitionFixtures
     {
         var vm = Open(BoardPhoto(), makeSchematic: false, out _);
         vm.Recognition.GetAwaiter().GetResult();
-        if (vm.ReadKind?.Kind != DrawingKind.BoardPhoto)
-            throw new InvalidOperationException($"The board photo was read as {vm.ReadKind?.Kind} "
-                + $"({string.Join("; ", vm.ReadKind?.Evidence.Select(e => $"{e.Name} {e.Value}") ?? [])}), so the figure would not show a board photo.");
+        // Create Layout from Image opens on Layout and never classifies, so the photo is read as a layout as taken.
+        if (!vm.IsLayoutPicture || vm.HasFailure)
+            throw new InvalidOperationException($"The board photo was not read as a layout ({vm.FailureText}), so the figure would not show a board photo.");
         vm.Scale.SelectedChoice = vm.Scale.Choices.First(c => c.Kind == ImageScaleChoiceKind.Corners);
         for (int k = 0; k < 4; k++) vm.Scale.MoveCorner(k, PhotoCorners[k]);
         vm.Scale.SizeText = "60 mm × 40 mm";

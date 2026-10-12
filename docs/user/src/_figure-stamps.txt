@@ -1,17 +1,17 @@
 # Written by tools/DocGen. One line per page: the hash of its Markdown source when its
 # figures were last captured. `--figures` recaptures only what changed pages cite.
 2e3dfc9093eed0639a2601878598a475c7cb1faad58b1f0fbd4a87843c23290f  app-notes/an01-ports-and-coupling.md
-6c52707dc3a7f1108533953ea4b97441f3c2249cb232ab2db5577e0865565e9e  app-notes/an02-gerber-import.md
+34fa73b00044dbf23a9ac6c923ac9279ac20125ba88da7da34e7aebba21ab562  app-notes/an02-gerber-import.md
 4da7c62dc5145b80436ec208b09a9890ed847150da469ba5ee54d44bec674277  app-notes/index.md
 3cca75403b40e65b661013b2a76b4ed265b0d838095fe30b1978ab041ecb7b23  index.md
 a9728be341f3e6acf92774920cc4d6283702546de74eafa2d0e0080d4a7aba2b  new-user-guide/index.md
 07ee73e7c2f298f02e3d50d6b5bd4946323e384910ca5f28160d9799be9c9c2e  quick-start/index.md
 2559d264921f2bf15ed8dc3faaaa46468fb8c7350ea31888279cbdf58b548505  reference/ai-agents.md
 afe40bdecd0ebda416af280f10e4e1255a5f2dcda4b327f1cccaaa927c47f8d5  reference/antennas.md
-ed0ab2843f56782f413a84d6a23dad5d9c759e9f262ff296770a8a4fce87a972  reference/artwork-to-schematic.md
+567e435777155a1578249e58252ddfbb5d6847e6165b6bac032465859ed8fbf9  reference/artwork-to-schematic.md
 f432a310ad9b50d34eda22d1429c6b46798ee14fc5df996622e1f1e4b8289909  reference/cli.md
 7fbab83a84d7ceb65b89ccc12e6a8d407f43871fe32323aa363a704a45dcddf4  reference/components.md
-cf3393b868d304c27fa3402d75bdaab719282c87c7527060d33e5329b1461b9b  reference/create-from-image.md
+c6d1ab679a3a4460118d6c2a670784d2a65ea27ce4fb1a8aeed162bff7d33161  reference/create-from-image.md
 75d0436ba3dc0d9a91acda4f2870c6afd089c07bc3c1a2951f2e3d464e0a03ba  reference/data-display.md
 a9c94ebec3533f2623c1bfb4533437d8e5e83a914813caaac87190a2c8a36e79  reference/derived-metrics.md
 d5607a1200c0ace382cf3c4292c0d33fc727031e27600fdf9234b79960218edd  reference/drawing-in-3d.md
