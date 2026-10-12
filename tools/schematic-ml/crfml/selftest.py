@@ -78,6 +78,11 @@ def test_units() -> None:
             check(ok, f"units example {text!r} reads as {ex['si']} {ex['dims']} (got {got})")
     for text in units["rejects"]:
         check(values.parse_value_word(text) is None, f"{text!r} is not a value")
+    # circuitRF draws a shown parameter as `Name = value unit`; a label's value text is read with its spaces closed up.
+    for text in ("R = 50 Ohm", "C = 2.62 pF", "L = 0.56 nH", "Z = 50 Ω", "W = 0.5 mm", "F = 2.4 GHz", "R = 4.7 kΩ"):
+        check(values.read_value_text(text) is not None, f"circuitRF's own spelling {text!r} reads as a value")
+    for text in ("Num = 1", 'File = "amp.s2p"'):
+        check(values.read_value_text(text) is None, f"{text!r} is not a value")
 
 
 # ── the fixtures, and the validator's findings on broken copies of one ──────────────────────────────────────────────

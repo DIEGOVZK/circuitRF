@@ -93,6 +93,29 @@ otherwise); every referenced text exists; and every value text reads under circu
 `crfml/values.py` is a Python port of `ValueGrammar`, built on `units.json`, and
 `tests/Ui.Tests/Vision/UnitsTableTests` holds that file to the C# side.
 
+## Generating pictures of circuitRF's own schematics
+
+The generator is C#, not Python: it draws with circuitRF's own renderer. From the repository root:
+
+```bash
+dotnet run --project tools/SchematicSynth -- crf --count 30000 --seed 1 --out $CRF_ML_DATA/synth/crf/batch-001 --preview 24
+```
+
+- **The same seed gives the same bytes**, whatever `--threads` is. A new batch is a new seed, not a re-run.
+- **It is resumable.** A picture whose `.mllabel.json` exists is skipped, so an interrupted run carries on where it
+  stopped. To regenerate a picture, delete its label.
+- **It refuses an `--out` inside the repository.**
+- Each picture writes the picture (`.png` or `.jpg`), its four masks, its `.cnl` netlist truth and its label. Every
+  label passes the checks `crfml.validate` makes before it is written, and every drawing has already been extracted
+  and compared with its netlist.
+- At the end it prints a class histogram: how many pictures hold each class. A class circuitRF draws that falls under
+  1 % is marked. Classes circuitRF never draws are marked as such; they come from the style packs (IML-3).
+- `--preview 24` writes `preview.png` in the batch folder: the first 24 pictures with their labels drawn over them.
+  **Look at it before training on a batch.** `--count 0 --preview 24` draws the sheet for a batch already made.
+
+About 30 pictures a second on ten cores, so 30,000 take a quarter of an hour. How the pictures and labels are made,
+and why: `docs/design/schematic-vision.md` §4.
+
 ## The self-test
 
 ```bash

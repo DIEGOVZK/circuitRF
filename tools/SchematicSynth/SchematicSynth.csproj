@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>CircuitRF.SchematicSynth</AssemblyName>
+    <RootNamespace>CircuitRF.SchematicSynth</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The class list the labels name, embedded so a label can never name a class the list does not have. -->
+    <EmbeddedResource Include="../schematic-ml/classes.json" LogicalName="classes.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Core/CircuitRF.Core.csproj" />
+    <ProjectReference Include="../../src/Design/CircuitRF.Design.csproj" />
+    <ProjectReference Include="../../src/Render/CircuitRF.Render.csproj" />
+  </ItemGroup>
+
+</Project>

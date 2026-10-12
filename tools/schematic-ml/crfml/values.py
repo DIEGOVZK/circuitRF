@@ -212,3 +212,21 @@ def parse_value_word(text: str) -> Value | list[LineParameter] | None:
     if not t:
         return None
     return read_value(t) or read_line_parameters(t) or read_named_value(t)
+
+
+_AROUND_EQUALS = re.compile(r"\s*=\s*")
+_BEFORE_UNIT = re.compile(r"(?<=\d)\s+(?=[A-Za-zΩµ°])")
+
+
+def read_value_text(text: str) -> Value | list[LineParameter] | None:
+    """A label's value text as circuitRF draws one — `R = 50 Ohm`, `Z = 50 Ω` — read under the grammar: as drawn, then
+    with the spaces round its `=` closed up, then with the space before its unit closed up too. The text stays as drawn
+    in the label; the reader closes it up the same way before the grammar reads it (docs/design/schematic-vision.md §4).
+    """
+    t = text.strip()
+    closed = _AROUND_EQUALS.sub("=", t)
+    for candidate in (t, closed, _BEFORE_UNIT.sub("", closed)):
+        if (v := parse_value_word(candidate)) is not None:
+            return v
+    return None
+

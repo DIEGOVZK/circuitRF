@@ -5,7 +5,7 @@
 `src/Design/Schematic/Recognition/` (the reader) · **Handbook:** `tools/schematic-ml/README.md` · **Builds on:** Create
 from Image (`docs/design/image-to-circuit.md`), whose back half (emit, drawing, paste, dialog, `recognize`) stays.
 
-This note says what the system is, what each of its contracts is, and why each is shaped as it is. IML-1 wrote §1–§3;
+This note says what the system is, what each of its contracts is, and why each is shaped as it is. IML-1 wrote §1–§3, IML-2 §4;
 each later phase adds its own section.
 
 ---
@@ -112,7 +112,9 @@ and every coordinate is in that picture's own pixels, origin top-left, y down. W
 - **Pixels, not normalised coordinates.** Labels are drawn, reviewed and overlaid on the picture they describe. A
   pixel coordinate can be checked against the picture by eye, and the trainer normalises whenever it resamples.
 - **A part is a class, an orientation, a body box and named pins.** The body box is what IML-8 measures a picture's
-  part size from, so it is the part's ink *including* its leads up to the pins. Pins are named with the class's own
+  part size from, so it is the part's drawing *without* the straight leads that end on its pins — `GlyphBody`'s rule
+  (§4.3), the same one IML-4's labelling guide and IML-8 use; a pin may therefore sit outside the box, at the end of
+  its lead. Lead length is an editor's convention, not the part's. Pins are named with the class's own
   pin names, so IML-7 can map them onto circuitRF's pins by name. `orientation` is `{turn, mirror}` relative to the
   class's canonical drawing: mirror `x ↦ 1−x` first, then turn clockwise by 0, 90, 180 or 270 degrees. That is a
   rotation and a reflection, as `SymbolRotation` and `MirrorX` are in the schematic model.
@@ -192,3 +194,116 @@ layouts:
 `power-port` (the end of a net, or a named rail) → `Pin`, because both are a name on a net, not a source. `source-ac` →
 `P1Tone` and `source-dc` → `Vdc`, as decided in IMF O1. `fet-n`/`fet-p` → the Curtice FETs, the reader's existing
 choice. `via` → `ViaGnd`, because a via on a schematic is almost always a via to ground. `mstep` → `Mtaper`.
+
+## 4. Generated pictures of circuitRF's own schematics (IML-2)
+
+`tools/SchematicSynth` (C#, in `circuitrf.slnx`, so an API change breaks its build rather than its next run):
+
+```bash
+dotnet run --project tools/SchematicSynth -- crf --count 30000 --seed 1 --out $CRF_ML_DATA/synth/crf/batch-001 --preview 24
+```
+
+Each picture `crf-<seed>-<index>` writes `<id>.png|.jpg`, four masks (`<id>.wire.png`, `.symbol.png`, `.text.png`,
+`.annotation.png`, 8-bit 0/255), `<id>.cnl` (the netlist truth) and `<id>.mllabel.json`, written last through a
+temporary name: a label on disk means the picture is complete, which is what makes a batch resumable. Picture `k` of
+seed `s` draws only from its own random stream, so a batch is the same bytes whatever the thread count (checked:
+8 threads against 1, 420 files identical). About 30 pictures a second on ten cores. `--out` inside the repository is
+refused (L1).
+
+### 4.1 Circuits
+
+`CircuitGenerator` chains weighted recipes between a source (a port mostly, a one-tone or current source sometimes)
+and a load: LC ladders (low-, high-, band-pass, 2–9 sections), pi and tee pads, L-sections, matching networks
+(series/shunt L and C, open and shorted TLIN stubs, quarter-wave lines), microstrip networks (MLIN, MTEE, MCROSS,
+MBEND, MTAPER, stubs ending open, on a via or on a capacitor), an amplifier stage (BJT or FET, bias divider or gate
+supply, RF choke, DC blocks, supply and decoupling, now and then a protection diode), a detector or limiter, a chain
+of system blocks (amplifier, filter, attenuator, SPST and SPDT switch, circulator, coupler, balun, mixer with its LO),
+an S-parameter block of 2–4 ports, and mixtures of two to four of these. Now and then a VAR block.
+
+**It writes `.cnl` text and reads it** with `CnlReader`, so the truth is exactly what circuitRF's own reader makes of
+it. Two consequences worth knowing: the system blocks bind each port as a (+, −) pair (`Amp:AMP1 in 0 out 0`), and
+the reader knows `Ohm`, `kOhm`, `uH`, `um` but not `Ω`. The palette spells units `Ω`, `kΩ`, `µH`, `µm`, so after
+drawing, 70 % of parts have their units turned to the palette's spelling; the comparison treats the two as one.
+
+Designators are the palette prefix and the next free number (`R3`, `TL2`, `Term1`, `AMP1`). Some shown parameters
+are hidden, some hidden ones shown, now and then a type label is turned off.
+
+### 4.2 Drawings
+
+- **Tidy** (≈ 42 %): `NetlistSchematic.Build`. It labels every net; a random share of the labels is taken off again,
+  and put back if the drawing then extracts to a different circuit (a label can be the only thing joining two runs).
+- **Hand-placed** (≈ 43 %): each part at a random grid position, turn (R0 half the time) and sometimes mirrored,
+  never overlapping another's glyph and label block; a ground symbol on each grounded pin, out along its lead and
+  turned away from the part; wired by `SchematicAutoRouter` (Design grants the generator its internals for exactly
+  this); a terminal the router cannot reach is joined by net labels, and about a third of the wired nets carry
+  their name. The router's own rules produce the non-connecting crossings.
+- **Authored** (≈ 15 %): the repository's `.csch` files whose every part has a class (15 of the 40 today), with
+  their placed pictures and free texts removed — an example built from an image keeps that image under its drawing,
+  parts and words included, and nothing would label them. One to three parts move one grid step with their wires
+  following (a move that changes the circuit is undone), and lumped values are re-drawn. Their truth is their own
+  extraction.
+
+**Every drawing is extracted with `NetExtractor` and compared with its truth before a picture is made of it**
+(R-iml2-6): same instances by name and type, the same parameters, and each pin on corresponding nets under one
+consistent renaming, ground kept ground. A drawing that fails is re-drawn Tidy, then a new circuit is drawn.
+
+**Classes.** `ClassList.OfKind` maps each kind circuitRF draws to its class; a circuit that would draw a kind with
+no class is never generated, because unlabelled ink teaches a detector that a part is background. A TLIN with one
+end open is labelled `stub-open`, its one pin at the connected end. circuitRF's DC source *is* a battery, so its
+`source-dc` parts carry the `battery` variant. Classes circuitRF never draws — `capacitor-polarised`, `power-port`,
+`op-amp`, `ic-box`, `stub-short` (circuitRF draws a TLIN and a ground symbol), `transformer`, and the annotation
+classes but `controller` (VAR blocks) — are IML-3's. On 300 pictures every class circuitRF draws appears in at least
+1 % of them; the batch prints the histogram at its end and marks any class under 1 %.
+
+### 4.3 Pictures, labels and masks
+
+**Every pixel is `SchematicRenderer`'s.** The view is random: the shipped theme light (60 %) or dark, grid on (60 %)
+or off; a zoom at which a resistor's body spans 12–300 device pixels, log-uniform; a canvas of 480–1400 × 360–1000
+logical pixels, or one shrunk to the drawing; a crop centred near a random part when the drawing is bigger than the
+window (a uniformly random window over a big drawing at high zoom was mostly empty canvas), and a deliberate offset
+that cuts parts at the edge 20 % of the time; a selection 8 %, a placed picture underneath 5 % (drawn by the
+generator, `.underlay/` in the batch folder). The renderer draws its grid as lines only, so there are no dot grids;
+it has no hover outline, so there are none either.
+
+**Screenshot conditions** (`Screenshot`): Retina 2× (40 %) by scaling the canvas, so a one-pixel line becomes two as
+it does on screen; chrome bands half the time — toolbar, status bar, scroll bars, a side panel — flat shapes with no
+text and no real application's artwork, each an `annotation` of kind `chrome`; a downscale (50 %) by 0.5–0.95 with
+nearest, linear, cubic or area filtering; blur 15 %; JPEG at quality 40–95 (45 %), otherwise PNG, posterised 12 % of
+the time. Chrome and rescale apply to the masks too; blur, compression and palette are the picture's alone.
+
+**Labels come from the model and the renderer, never from pixels.** A part's `body` is `GlyphBody.Of` — the glyph
+without the straight leads ending on its pins (a `LinePrimitive` with an end on a pin; a polyline's first or last
+segment when it starts or ends on one; text is not body; curves bounded tightly by sampling) — through the instance
+transform and the view. `GlyphBody` lives in `src/Design/Schematic` because IML-8 measures with the same rule. Pins
+are the symbol's pins, named as the kind names them (which is the class's pin names, `ClassListTests`). `turn` is
+the instance's `SymbolRotation`, `mirror` its `MirrorX`: the class's canonical drawing IS circuitRF's.
+
+**Word quads come from the renderer.** `SchematicRenderer.MeasureTexts` runs `Draw` onto an `SKNoDrawCanvas`, and
+each draw site reports the string it just drew with the font, origin and turn it drew it with — so a quad cannot be
+somewhere the text is not. It is read-only and changes nothing the application draws. The quad is the line box,
+ascent to descent and origin to advance width. A word cut by the canvas edge goes to `ignore`, not `texts`. Roles:
+instance name → `designator`; a shown parameter → `value` when the grammar reads it, else `other` (`Num = 1`,
+`File = "amp.s2p"`); net label → `net`; text inside a glyph → `pin-number` if digits, `pin-name` for
+RF/LO/IF/TX/RX, else `other`; type name → `other`. A polarity mark (`+`, `−`) is drawn as text but is part of the
+glyph — another editor draws it with strokes — so it is symbol ink and not a word. A hidden parameter is never
+drawn, so never measured, so never a word.
+
+**circuitRF draws a value as `R = 50 Ohm`, and the grammar does not read that.** `ValueGrammar` reads `R=50 Ohm`
+and `Z=50Ohm`. The label keeps the string as drawn — the text net must learn to read what is on the screen — and
+`crfml.values.read_value_text` (and the generator's `ValueText`) closes up the spaces round the `=` and before the
+unit before the grammar reads it. **IML-7's assembly must do the same.** The validator calls it for every value
+text, and also accepts a wire ending on a chrome band's edge, which is where a screenshot's canvas ends.
+
+**Masks are the renderer drawing filtered copies of the model** — wires only (wires, junction dots, open-end
+marks); symbols only (each glyph's drawing and polarity marks, port markers, no labels or words); words only
+(labels, net labels, a glyph's words) — each thresholded against the theme's background, and the annotation mask is
+the chrome bands plus whatever a selection changed. A filtered copy hands each component its glyph as its own
+per-instance symbol, the path the renderer already takes for one, and every pass is a new model instance.
+
+**Checks before writing.** `LabelChecks` is the validator's structural checks ported to C# (classes, pins, ids,
+references, values, charset, bodies inside or `cut`, wire ends), plus one only a generator can make: each pin is on
+ink in the *symbol* mask. A picture with an error is not written. Gates: `tests/Ui.Tests/Vision/SchematicSynthTests`
+(three seeds, the checks, the netlist round trip by `Netlists.Same` and independently by `NetlistShape.SameTopology`,
+hidden parameters are not words, and a seed is the same bytes twice; about a second) and `GlyphBodyTests` (R, L, C,
+ground, port, one-tone source and BJT: rendered, leads rubbed out, the remaining ink is the body box within a pen).
+

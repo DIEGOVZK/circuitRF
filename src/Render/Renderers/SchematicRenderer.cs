@@ -88,7 +88,8 @@ public static class SchematicRenderer
         SchematicRenderTheme theme,
         SchematicOverlay? overlay = null,
         bool useTransparentBackground = false,
-        bool excludeGrid = false)
+        bool excludeGrid = false,
+        Action<SchematicPlacedText>? texts = null)
     {
         canvas.Clear(useTransparentBackground ? SKColors.Transparent : theme.Background);
 
@@ -310,12 +311,12 @@ public static class SchematicRenderer
             {
                 DrawSymbol(canvas, c.CellRefPrimitives,
                     cx, cy, c.Rotation, c.MirrorX, panX, panY, zoom, theme,
-                    applyForceReadable: true);
+                    applyForceReadable: true, texts: texts, componentId: c.Id);
             }
             else if (c.CellRefState is CellSymbolState.NotFound)
             {
                 DrawCellRefNotFoundGlyph(canvas, cx, cy, panX, panY, zoom,
-                    warnStrokePaint, warnFillPaint, instNamePaint);
+                    warnStrokePaint, warnFillPaint, instNamePaint, texts, c.Id);
             }
             else if (c.CellRefState is CellSymbolState.PrimaryMissing)
             {
@@ -325,7 +326,7 @@ public static class SchematicRenderer
             {
                 DrawSymbol(canvas, c.InstanceSymbol.Primitives,
                     cx, cy, c.Rotation, c.MirrorX, panX, panY, zoom, theme,
-                    applyForceReadable: true);
+                    applyForceReadable: true, texts: texts, componentId: c.Id);
             }
             else
             {
@@ -335,7 +336,7 @@ public static class SchematicRenderer
                 // so the separate ForSymbolPlusSegments path is gone.
                 DrawSymbol(canvas, BuiltInSymbols.Primitives(c.Symbol, PortCountOf(c)).Primitives,
                     cx, cy, c.Rotation, c.MirrorX, panX, panY, zoom, theme,
-                    applyForceReadable: true);
+                    applyForceReadable: true, texts: texts, componentId: c.Id);
                 DrawVariadicPortLeads(canvas, c, cx, cy, panX, panY, zoom, bodyPaint);
             }
 
@@ -344,21 +345,21 @@ public static class SchematicRenderer
             // whether or not it resolves: a broken external reference most needs to say which
             // project it was supposed to come from, which "Not Found" alone never does.
             if (c.ExternalAlias is { Length: > 0 } alias && !isLod)
-                DrawExternalAliasTag(canvas, alias, c, cx, cy, panX, panY, zoom, textFont, instNamePaint);
+                DrawExternalAliasTag(canvas, alias, c, cx, cy, panX, panY, zoom, textFont, instNamePaint, texts);
 
             // SL3 R-sl3-9 — the referenced cell's published interface changed since this instance was
             // placed. CHROME ONLY, R36 without exception: the glyph above is the librarian's new
             // symbol and it is the truth (R-sl3-1) — what is in doubt is whether the WIRES still mean
             // what they did, and that is exactly what a surround around the instance says.
             if (c.InterfaceChanged && !isLod)
-                DrawInterfaceChangedMark(canvas, c, panX, panY, zoom, textFont, warnStrokePaint);
+                DrawInterfaceChangedMark(canvas, c, panX, panY, zoom, textFont, warnStrokePaint, texts);
 
             // TM2 R-tm2-12/-14 — the reference resolved through a forwarding record: the cell is
             // somewhere else now and this file still spells the old place. A TAG and nothing more, in
             // the ordinary instance-name paint rather than the warning one, because everything about
             // what is drawn here is correct. R36 holds: the geometry is untouched.
             if (c.MovedThroughRedirect && !isLod)
-                DrawMovedMark(canvas, c, panX, panY, zoom, textFont, instNamePaint);
+                DrawMovedMark(canvas, c, panX, panY, zoom, textFont, instNamePaint, texts);
 
             // DisableState overlay (drawn on top of body)
             if (c.DisableState != DisableState.None && !isLod)
@@ -367,14 +368,14 @@ public static class SchematicRenderer
             if (!isSimplified)
             {
                 DrawPortMarkers(canvas, c, cx, cy, panX, panY, zoom, unconnPaint, connPinPaint, liveDotKeys, model.GridSize, livePortConn);
-                DrawPinNames(canvas, c, cx, cy, panX, panY, zoom, pinNameFont, pinNamePaint);
+                DrawPinNames(canvas, c, cx, cy, panX, panY, zoom, pinNameFont, pinNamePaint, texts);
                 (double DX, double DY)? lblDrag = null;
                 if (overlay?.LabelDragOffsets is { } ldo && ldo.TryGetValue(c.Id, out var ld))
                     lblDrag = ld;
                 IReadOnlyDictionary<int, string>? tuned = null;
                 overlay?.TunedLabels?.TryGetValue(c.Id, out tuned);
                 DrawLabels(canvas, c, cx, cy, panX, panY, zoom, textFont,
-                    compNamePaint, instNamePaint, paramNamePaint, lblDrag, tuned, tunedPaint);
+                    compNamePaint, instNamePaint, paramNamePaint, lblDrag, tuned, tunedPaint, texts);
             }
         }
 
@@ -407,6 +408,7 @@ public static class SchematicRenderer
                     lwy < vpMinY - 50  || lwy > vpMaxY + 50) continue;
                 var (lx, ly) = ToPixel(lwx, lwy, panX, panY, zoom);
                 canvas.DrawText(lbl.Name, lx, ly, SKTextAlign.Left, netLabelFont, netLabelPaint);
+                Place(texts, lbl.Name, SchematicTextRole.NetLabel, lbl.Id, -1, netLabelFont, 0f, 0f, 0.0, lx, ly, SKTextAlign.Left);
             }
         }
 
@@ -433,7 +435,9 @@ public static class SchematicRenderer
         double panX, double panY, double zoom,
         SchematicRenderTheme theme,
         SKPaint? overridePaint = null,
-        bool applyForceReadable = false)      // true only for schematic component instances
+        bool applyForceReadable = false,      // true only for schematic component instances
+        Action<SchematicPlacedText>? texts = null,
+        string? componentId = null)
     {
         // Rotation in degrees for angle-bearing primitives (Arc, Sine).
         double rotDeg = rotation switch
@@ -447,8 +451,9 @@ public static class SchematicRenderer
         (float X, float Y) LP(double lx, double ly) =>
             LocalToPixel(lx, ly, compX, compY, rotation, mirrorX, panX, panY, zoom);
 
-        foreach (var prim in primitives)
+        for (int primIndex = 0; primIndex < primitives.Count; primIndex++)
         {
+            var prim = primitives[primIndex];
             // Bitmap — skip in ghost mode; otherwise load and draw with component transform.
             if (prim is BitmapPrimitive bmp)
             {
@@ -577,6 +582,8 @@ public static class SchematicRenderer
                 canvas.RotateDegrees((float)netDeg);
                 canvas.DrawText(txt.Content, 0f, baselineDy, SKTextAlign.Center, font, tPaint);
                 canvas.RestoreToCount(save);
+                Place(texts, txt.Content, SchematicTextRole.SymbolText, componentId, primIndex, font,
+                      cxp, cyp, netDeg, 0f, baselineDy, SKTextAlign.Center);
                 continue;
             }
 
@@ -977,7 +984,7 @@ public static class SchematicRenderer
         SKCanvas canvas, SchematicComponent c,
         double compX, double compY,
         double panX, double panY, double zoom,
-        SKFont font, SKPaint paint)
+        SKFont font, SKPaint paint, Action<SchematicPlacedText>? texts = null)
     {
         if (font.Size < 4f) return;
 
@@ -1000,8 +1007,9 @@ public static class SchematicRenderer
         // name runs along. Drawn on it, every name reads as struck through.
         double lift = (-fm.Ascent + fm.Descent) * 0.62 / zoom;
 
-        foreach (var port in c.Ports)
+        for (int portIndex = 0; portIndex < c.Ports.Count; portIndex++)
         {
+            var port = c.Ports[portIndex];
             if (!port.ShowName || port.Name.Length == 0) continue;
 
             // NameAlign names the EDGE of the body this pin is on, in the symbol's own local frame, so
@@ -1041,6 +1049,8 @@ public static class SchematicRenderer
             canvas.RotateDegrees((float)netDeg);
             canvas.DrawText(port.Name, 0f, baselineDy, SKTextAlign.Center, font, paint);
             canvas.RestoreToCount(save);
+            Place(texts, port.Name, SchematicTextRole.PinName, c.Id, portIndex, font,
+                  px, py, netDeg, 0f, baselineDy, SKTextAlign.Center);
         }
     }
 
@@ -1056,7 +1066,8 @@ public static class SchematicRenderer
         SKFont font,
         SKPaint compNamePaint, SKPaint instNamePaint, SKPaint paramNamePaint,
         (double DX, double DY)? dragDelta = null,
-        IReadOnlyDictionary<int, string>? tuned = null, SKPaint? tunedPaint = null)
+        IReadOnlyDictionary<int, string>? tuned = null, SKPaint? tunedPaint = null,
+        Action<SchematicPlacedText>? texts = null)
     {
         // All anchors are computed via the canonical helper so the renderer and hit-test
         // can never drift — SchematicComponent.LabelRowGeometry is the single source of truth.
@@ -1076,6 +1087,9 @@ public static class SchematicRenderer
                 paint = tunedPaint;
             }
             canvas.DrawText(label, lx, ly, SKTextAlign.Left, font, paint);
+            Place(texts, label,
+                  i == 0 ? SchematicTextRole.ComponentType : i == 1 ? SchematicTextRole.InstanceName : SchematicTextRole.Parameter,
+                  c.Id, i, font, 0f, 0f, 0.0, lx, ly, SKTextAlign.Left);
         }
     }
 
@@ -1130,12 +1144,13 @@ public static class SchematicRenderer
     private static void DrawExternalAliasTag(
         SKCanvas canvas, string alias, SchematicComponent c,
         double cx, double cy, double panX, double panY, double zoom,
-        SKFont font, SKPaint paint)
+        SKFont font, SKPaint paint, Action<SchematicPlacedText>? texts = null)
     {
         _ = cx; _ = cy;
         float x = (float)((c.GlyphBbMinX + panX) * zoom);
         float y = (float)((c.GlyphBbMinY + panY) * zoom) - 3f;
         canvas.DrawText($"[{alias}]", x, y, SKTextAlign.Left, font, paint);
+        Place(texts, $"[{alias}]", SchematicTextRole.Chrome, c.Id, -1, font, 0f, 0f, 0.0, x, y, SKTextAlign.Left);
     }
 
     /// <summary>
@@ -1147,7 +1162,8 @@ public static class SchematicRenderer
     /// </summary>
     private static void DrawInterfaceChangedMark(
         SKCanvas canvas, SchematicComponent c,
-        double panX, double panY, double zoom, SKFont font, SKPaint warnPaint)
+        double panX, double panY, double zoom, SKFont font, SKPaint warnPaint,
+        Action<SchematicPlacedText>? texts = null)
     {
         float pad  = (float)(zoom * 40);
         float left = (float)((c.GlyphBbMinX + panX) * zoom) - pad;
@@ -1167,6 +1183,8 @@ public static class SchematicRenderer
 
         using var textPaint = new SKPaint { IsAntialias = true, Color = warnPaint.Color };
         canvas.DrawText("interface changed", right, bottom + font.Size, SKTextAlign.Right, font, textPaint);
+        Place(texts, "interface changed", SchematicTextRole.Chrome, c.Id, -1, font, 0f, 0f, 0.0,
+              right, bottom + font.Size, SKTextAlign.Right);
     }
 
     /// <summary>
@@ -1184,18 +1202,22 @@ public static class SchematicRenderer
     /// </summary>
     private static void DrawMovedMark(
         SKCanvas canvas, SchematicComponent c,
-        double panX, double panY, double zoom, SKFont font, SKPaint paint)
+        double panX, double panY, double zoom, SKFont font, SKPaint paint,
+        Action<SchematicPlacedText>? texts = null)
     {
         float left   = (float)((c.GlyphBbMinX + panX) * zoom);
         float bottom = (float)((c.GlyphBbMaxY + panY) * zoom);
         canvas.DrawText("moved", left, bottom + font.Size, SKTextAlign.Left, font, paint);
+        Place(texts, "moved", SchematicTextRole.Chrome, c.Id, -1, font, 0f, 0f, 0.0,
+              left, bottom + font.Size, SKTextAlign.Left);
     }
 
     private static void DrawCellRefNotFoundGlyph(
         SKCanvas canvas,
         double cx, double cy,
         double panX, double panY, double zoom,
-        SKPaint strokePaint, SKPaint fillPaint, SKPaint textPaint)
+        SKPaint strokePaint, SKPaint fillPaint, SKPaint textPaint,
+        Action<SchematicPlacedText>? texts = null, string? componentId = null)
     {
         float hw = (float)(zoom * 160);
         float hh = (float)(zoom * 60);
@@ -1207,6 +1229,8 @@ public static class SchematicRenderer
         float fontSize = (float)Math.Max(6.0, zoom * 40);
         using var font  = new SKFont(SkiaFonts.PlexRegular, fontSize);
         canvas.DrawText("Not Found", px, py + font.Size * 0.4f, SKTextAlign.Center, font, textPaint);
+        Place(texts, "Not Found", SchematicTextRole.Chrome, componentId, -1, font, 0f, 0f, 0.0,
+              px, py + font.Size * 0.4f, SKTextAlign.Center);
     }
 
     /// <summary>
@@ -1624,6 +1648,58 @@ public static class SchematicRenderer
                 canvas.DrawBitmap(skBmp, new SKRect(px0, py0, px1, py1), paint);
             }
         }
+    }
+
+    // ── Placed text (brief-iml-2 R-iml2-4) ───────────────────────────────────
+
+    /// <summary>
+    /// Every string <see cref="Draw"/> would draw for these arguments, with the box it occupies — read-only.
+    ///
+    /// <para><b>It IS <see cref="Draw"/></b>, onto a canvas that discards everything: each draw site reports
+    /// the string it has just drawn, from the font, origin and turn it drew it with, so a box can never be
+    /// somewhere the text is not. What the training labels of the schematic picture reader say a word's
+    /// quad is comes from here (IML-2); nothing about how the application draws depends on it.</para>
+    /// </summary>
+    public static IReadOnlyList<SchematicPlacedText> MeasureTexts(
+        (double W, double H) canvasSize,
+        SchematicModel? model,
+        SchematicSpatialIndex? index,
+        double panX, double panY, double zoom,
+        SchematicRenderTheme theme,
+        SchematicOverlay? overlay = null)
+    {
+        var placed = new List<SchematicPlacedText>();
+        using var canvas = new SKNoDrawCanvas(Math.Max(1, (int)Math.Ceiling(canvasSize.W)),
+                                              Math.Max(1, (int)Math.Ceiling(canvasSize.H)));
+        Draw(canvas, canvasSize, model, index, panX, panY, zoom, theme, overlay,
+             useTransparentBackground: true, excludeGrid: true, texts: placed.Add);
+        return placed;
+    }
+
+    /// <summary>
+    /// Reports one drawn string: drawn with <paramref name="font"/> at (<paramref name="x"/>, <paramref name="y"/>)
+    /// and <paramref name="align"/>, after the canvas was translated to (<paramref name="ox"/>, <paramref name="oy"/>)
+    /// and turned <paramref name="deg"/> degrees — exactly the arguments the draw call beside it used.
+    /// </summary>
+    private static void Place(
+        Action<SchematicPlacedText>? sink, string text, SchematicTextRole role, string? componentId, int index,
+        SKFont font, float ox, float oy, double deg, float x, float y, SKTextAlign align)
+    {
+        if (sink is null || string.IsNullOrEmpty(text)) return;
+        font.GetFontMetrics(out var fm);
+        float w = font.MeasureText(text);
+        float left = align switch
+        {
+            SKTextAlign.Center => x - w * 0.5f,
+            SKTextAlign.Right  => x - w,
+            _                  => x,
+        };
+        float top = y + fm.Ascent, bottom = y + fm.Descent;
+        double r = deg * Math.PI / 180.0;
+        float cos = (float)Math.Cos(r), sin = (float)Math.Sin(r);
+        (float X, float Y) T(float px, float py) => (ox + px * cos - py * sin, oy + px * sin + py * cos);
+        sink(new SchematicPlacedText(text, role, componentId, index,
+            T(left, top), T(left + w, top), T(left + w, bottom), T(left, bottom)));
     }
 
     // ── Transform helpers ─────────────────────────────────────────────────────

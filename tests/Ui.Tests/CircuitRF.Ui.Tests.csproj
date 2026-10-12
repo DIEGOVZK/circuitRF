@@ -54,6 +54,8 @@
   -->
   <ItemGroup>
     <ProjectReference Include="..\..\src\Cli\CircuitRF.Cli.csproj" />
+    <!-- The schematic picture generator (brief-iml-2): SchematicSynthTests generate pictures in-process. -->
+    <ProjectReference Include="..\..\tools\SchematicSynth\SchematicSynth.csproj" />
   </ItemGroup>
 
   <ItemGroup>

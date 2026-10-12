@@ -21,7 +21,7 @@ from jsonschema import Draft202012Validator
 from PIL import Image
 
 from .data import SCHEMA_PATH, DataHomeError, load_classes, resolve_data_home
-from .values import parse_value_word
+from .values import read_value_text
 
 LABEL_SUFFIX = ".mllabel.json"
 DEFAULT_PEN = 2.0
@@ -156,21 +156,27 @@ def check_label(label_path: Path, classes: dict | None = None, schema: Draft2020
             if ref not in texts:
                 err(f"part {pid}: text {ref} does not exist")
         for ref in p.get("values", []):
-            if ref in texts and parse_value_word(texts[ref]["string"]) is None:
+            if ref in texts and read_value_text(texts[ref]["string"]) is None:
                 err(f"part {pid}: value text {ref} ({texts[ref]['string']!r}) does not read as a value")
 
-    # wire ends: a pin, a junction, another wire, the picture's edge
+    # wire ends: a pin, a junction, another wire, the picture's edge — or the edge of window chrome, where a screenshot's
+    # canvas ends inside the picture
     junctions = label.get("junctions", [])
     wires = label["wires"]
+    chrome = [a["box"] for a in label.get("annotations", []) if a["kind"] == "chrome"]
+
+    def on_chrome(x: float, y: float) -> bool:
+        return any(b[0] - reach <= x <= b[2] + reach and b[1] - reach <= y <= b[3] + reach for b in chrome)
+
     for wi, w in enumerate(wires):
         for end in (w["points"][0], w["points"][-1]):
             x, y = end
-            if (min(x, y) <= reach or x >= W - 1 - reach or y >= H - 1 - reach
+            if (min(x, y) <= reach or x >= W - 1 - reach or y >= H - 1 - reach or on_chrome(x, y)
                     or any(math.hypot(x - a, y - b) <= reach for a, b in pins_all)
                     or any(math.hypot(x - a, y - b) <= reach for a, b in junctions)
                     or any(_dist_to_polyline(end, o["points"]) <= reach for oi, o in enumerate(wires) if oi != wi)):
                 continue
-            warn(f"wire {wi}: its end at ({x:g}, {y:g}) reaches no pin, junction, other wire or picture edge")
+            warn(f"wire {wi}: its end at ({x:g}, {y:g}) reaches no pin, junction, other wire, picture edge or chrome")
 
     return out
 
