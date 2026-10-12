@@ -16,7 +16,7 @@ interchange with **Gerber + Excellon**, **GDSII**, **DXF** and `.kicad_pcb` boar
 electromagnetic solver** over the layout's own substrate stackup. **3D editor** for FEM / FDTD EM solutions (using Palace
 / openEMS), and a built-in FEM **thermal solver**.  Supports command line and MCP.
 
-**[circuitRF overview video](https://www.youtube.com/watch?v=s6teobulr_A)**
+**🎬 [circuitRF overview video](https://www.youtube.com/watch?v=s6teobulr_A)**
 
 **📖 [Read the user documentation online](https://potatobeanradio.github.io/circuitRF/)**
 
