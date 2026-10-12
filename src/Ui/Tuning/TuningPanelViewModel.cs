@@ -111,7 +111,13 @@ public sealed partial class TuningPanelViewModel : ObservableObject, ITuningSurf
     {
         Add           = new TuningAddViewModel(this);
         ScopeSettings = new TuningScopeViewModel(this);
-        Rows.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasRows));
+        // Start needs a row: ticking Tune on the schematic already in the panel adds the first one
+        // without any focus change, so the button must be told here or it stays disabled.
+        Rows.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasRows));
+            StartCommand.NotifyCanExecuteChanged();
+        };
     }
 
     public event EventHandler? Changed;

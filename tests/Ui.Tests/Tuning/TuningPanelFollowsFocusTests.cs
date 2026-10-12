@@ -51,6 +51,20 @@ public sealed class TuningPanelFollowsFocusTests
     }
 
     [Fact]
+    public void TickingTheFirstTune_OnTheSchematicAlreadyShown_EnablesStart()
+    {
+        var f = new TuningPanelFixture();
+        f.Panel.CreateSession = (_, _) => null;
+        int raised = 0;
+        f.Panel.StartCommand.CanExecuteChanged += (_, _) => raised++;
+
+        f.Panel.SetTuned("R1.R", true);                 // no focus change: only the row appears
+
+        Assert.True(raised > 0);
+        Assert.True(f.Panel.StartCommand.CanExecute(null));
+    }
+
+    [Fact]
     public void SwitchingSchematic_StopsTheSession()
     {
         var f = new TuningPanelFixture();
