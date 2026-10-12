@@ -74,7 +74,11 @@ public static class PortDiscovery
 
     private sealed record Candidate(
         int Priority, PortSource Source, long X, long Y, LayerKey Layer, int Island,
-        int? StatedNumber, string? Name, string? Refdes, Complex Z0);
+        int? StatedNumber, string? Name, string? Refdes, Complex Z0)
+    {
+        /// <summary>The pad's pin, for a multi-pin part's port — its ports take their numbers in pin order (AS-12).</summary>
+        public string? Pin { get; init; }
+    }
 
     internal static List<RecognizedPort> Discover(PortContext ctx, out List<RecognitionAnchor> notOnSignal)
     {
@@ -121,6 +125,11 @@ public static class PortDiscovery
 
         // ── 3 and 4: a multi-pin part's pads, a connector's pads ─────────────────────────────────────
         var placedRefdes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        // A pin name two connectors share (each SMA's `In`) names neither alone.
+        var sharedNames = ctx.PinNames.Where(kv => IsConnectorRefdes(kv.Key[..Math.Max(0, kv.Key.IndexOf('.'))]))
+                             .GroupBy(kv => kv.Value, StringComparer.OrdinalIgnoreCase)
+                             .Where(g => g.Select(kv => kv.Key[..kv.Key.IndexOf('.')]).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)
+                             .Select(g => g.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
         foreach (var part in ctx.Placed.Where(p => p.Refdes is { Length: > 0 }).GroupBy(p => p.Refdes!, StringComparer.OrdinalIgnoreCase))
         {
             placedRefdes.Add(part.Key);
@@ -132,8 +141,14 @@ public static class PortDiscovery
                 if (!InScope(pad.X, pad.Y)) continue;
                 // A pad on ground joins ground; a pad on no signal copper is left open (D9).
                 if (Land(pad.X, pad.Y, pad.Layer) is not { } at || !ctx.SignalIsland[at.Island]) continue;
+                // A pad on ground-tied copper is a ground pin — a connector's shell tab — not a port.
+                if (ctx.IsGroundTied(at.Island)) continue;
+                // A pin the artwork names (`J1,1,In`) names its port: a connector's by the name, a device's by part and name.
+                string name = ctx.PinNames.TryGetValue($"{part.Key}.{pad.Pin}", out string? pinName)
+                    ? connector && !sharedNames.Contains(pinName) ? pinName : $"{part.Key}.{pinName}"
+                    : $"{part.Key}.{pad.Pin}";
                 found.Add(new Candidate(connector ? 4 : 3, source, pad.X, pad.Y, at.Layer, at.Island,
-                                        null, $"{part.Key}.{pad.Pin}", part.Key, z50));
+                                        null, name, part.Key, z50) { Pin = pad.Pin });
             }
         }
 
@@ -155,7 +170,8 @@ public static class PortDiscovery
         {
             for (int p = 0; p < board.Pieces.Count; p++)
             {
-                if (ctx.IslandOf[p] is not (var island and >= 0) || !ctx.SignalIsland[island] || ctx.SeparatePour[island]) continue;
+                if (ctx.IslandOf[p] is not (var island and >= 0) || !ctx.SignalIsland[island] || ctx.SeparatePour[island]
+                    || ctx.IsGroundTied(island)) continue;
                 var b = board.Pieces.BoundsOfPiece(p);
                 var paths = board.Pieces.PathsOfPiece(p);
                 var layer = board.Pieces.LayerOfPiece(p);
@@ -208,6 +224,10 @@ public static class PortDiscovery
             }
         }
 
+        // A connector's pad is the launch of the island it is on: an edge port on that island is the same port.
+        var launched = found.Where(c => c.Source == PortSource.Connector).Select(c => c.Island).ToHashSet();
+        found.RemoveAll(c => c.Source == PortSource.BoardEdge && launched.Contains(c.Island));
+
         return Number(Merge(found, ctx.Options.PortMergeMicrons * board.DbuPerMicron));
     }
 
@@ -232,6 +252,14 @@ public static class PortDiscovery
         var pins = accepted.Where(c => c.StatedNumber is null && c.Source == PortSource.LayoutPin).ToList();
         var rest = accepted.Where(c => c.StatedNumber is null && c.Source != PortSource.LayoutPin)
                            .OrderBy(c => c.X).ThenByDescending(c => c.Y).ToList();
+        // One multi-pin part's ports keep the places they take among the rest, in its pin order.
+        foreach (var part in rest.Where(c => c.Source == PortSource.MultiPinPart && c.Pin is not null && c.Refdes is not null)
+                                 .GroupBy(c => c.Refdes!, StringComparer.OrdinalIgnoreCase).ToList())
+        {
+            var slots = part.Select(c => rest.IndexOf(c)).Order().ToList();
+            var inPinOrder = part.OrderBy(c => c.Pin!, PartsTable.NaturalOrder).ToList();
+            for (int k = 0; k < slots.Count; k++) rest[slots[k]] = inPinOrder[k];
+        }
 
         var used = new HashSet<int>(stated.Select(c => c.StatedNumber!.Value));
         int next = 1, cut = 0;
@@ -265,4 +293,14 @@ public static class PortDiscovery
 internal sealed record PortContext(
     BoardCopper Board, BoardCopper Whole, bool[] Body, int[] IslandOf, bool[] SignalIsland, bool[] SeparatePour,
     LayoutView View, EmSetup? Setup, IReadOnlyList<PlacedPin> Placed, PlacementTable? Placement,
-    Paths64? Scope, Bbox Outline, RecognitionOptions Options);
+    Paths64? Scope, Bbox Outline, RecognitionOptions Options)
+{
+    /// <summary>Pin names the artwork declares, keyed <c>J1.1</c> (AS-12).</summary>
+    public IReadOnlyDictionary<string, string> PinNames { get; init; } = new Dictionary<string, string>();
+
+    /// <summary>Per island: a via joins it straight to ground and its net is a ground net the artwork names — ground
+    /// copper the ground reading did not take as ground, so neither a pad nor an edge on it is a port.</summary>
+    public bool[] GroundTied { get; init; } = [];
+
+    public bool IsGroundTied(int island) => island >= 0 && island < GroundTied.Length && GroundTied[island];
+}

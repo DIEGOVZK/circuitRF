@@ -153,7 +153,14 @@ make its island a node by itself (D9): a bias pad on a pad of its own is left op
    designator is J, P or X **followed by a digit** (so `PS1`, a power supply, is not one) — on a signal island;
 5. a crossing of the scope's boundary, centred on the cut, named `X1`, `X2`, ….
 
-A port within `PortMergeMicrons` (1 mm) of a higher-priority port on the same island is that port. Ports from labels
+A connector's pad is the launch of its island: an edge port on an island a connector pad lands on is dropped (AS-12 —
+an edge SMA's centre pin and the line's edge are one port, often more than 1 mm apart). A part or connector pad, or an edge, on
+ground-tied copper is no port: an island a via joins straight to ground whose own shapes name a ground net (the chosen
+ground's name or `GND`/`AGND`/`0`) and no other — a shell tab, a ground strip at the edge. Shape names, because the
+partition names nets galvanically and the via has already joined the island's net to the plane's. Unnamed copper tied
+by a via keeps its ports (an RF line with a shorted stub); a board tool names such a line as ground, so there it loses
+them — the known limit. A multi-pin part's ports take their numbers in its pin
+order within the places they hold. A port within `PortMergeMicrons` (1 mm) of a higher-priority port on the same island is that port. Ports from labels
 keep the number they state; every other port takes the lowest free number, pins first, then left to right and top to
 bottom. Names are `P<n>`, a label's own text where it is not a bare number, a pin's name, `<Refdes>.<pin>` for a part's
 pad, or `X<k>`. A port label, pin or connector that lands on no signal copper is reported, not a port. No port in scope
@@ -213,6 +220,19 @@ case=land;value=bom;pn=bom;model=file`):
    the gap are each within 20 %, at 0° or 90°; smallest RMS error wins; a different case within 5 points is the
    runner-up, named in the row's notes. Candidates resolve best fit first; a pad is in one part at most. A third pad of
    the same size continuing the pair's line with the pair's own gap (±10 %) makes the pair two pins of a package row.
+2½. **Declared pads** (AS-12, `DeclaredPads.cs`) — copper shapes whose `Pin` carries a Gerber `%TO.P` (`C1,1`,
+   `J1,1,In`; a bare pin takes the shape's `Component`). Grouped by refdes, one pad per pin on the pin's topmost
+   copper layer, shapes of one pin that touch merged and ones that do not kept as separate pads (a connector's ground
+   tabs all declare one pin). Pads are in natural pin order, so `SeriesTerminals` gives pin 1 first. A declared part
+   named by an instance is the instance's; one standing on a differently named instance's pad is dropped and
+   reported (`DeclaredRefdesDisagrees`). A placement row over declared pads of another name renames them — placement
+   is the stronger source for the designator — with the same finding. A land pattern whose two outlines are one
+   declared two-pad part's pads gives it its case and makes no part; one touching any declared pad makes none. The
+   declared pads join the instance pads for signal-island marking and port discovery; a declared pin name names a
+   connector's port (`J1.In` when two connectors share it). It is not an `IPartEvidenceSource`: that seam names
+   parts the reading already found, and declared pads form them. The declared NETS are a check only
+   (`DeclaredPads.CrossCheck`): ground copper and every island a via joins straight to ground is one node; a node with
+   two nets is `DeclaredNetsShorted`, a net on two nodes `DeclaredNetsOpen`, else one `DeclaredNetsAgree` line.
 4. **The silkscreen** (AS-10, §9), then any further `IPartEvidenceSource`: each source's `PartClaim`s are given to the
    unnamed parts one to one by `RefdesAssociation` — never to a part a stronger source named, never a designator a
    stronger source already gave.

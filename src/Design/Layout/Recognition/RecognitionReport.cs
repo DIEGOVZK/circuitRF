@@ -82,6 +82,23 @@ public enum RecognitionFindingClass
     /// <summary>Parts named by the silkscreen (AS-10).</summary>
     PartsFromSilkscreen,
 
+    // ── AS-12: the netlist the artwork declares (R-as12-5 … R-as12-7) ─────────────────────────────
+
+    /// <summary>Parts formed from pads the artwork declares (<c>%TO.P</c>).</summary>
+    PartsFromDeclaredPads,
+
+    /// <summary>A placed part or placement row naming declared pads differently; the stronger source was taken.</summary>
+    DeclaredRefdesDisagrees,
+
+    /// <summary>Copper carrying two declared nets — a short, or an import artefact.</summary>
+    DeclaredNetsShorted,
+
+    /// <summary>A declared net on copper that does not join — an open.</summary>
+    DeclaredNetsOpen,
+
+    /// <summary>The declared nets agree with the copper. Said once.</summary>
+    DeclaredNetsAgree,
+
     /// <summary>Parts found from land patterns alone, given generated designators.</summary>
     PartsFromLandPatternOnly,
 

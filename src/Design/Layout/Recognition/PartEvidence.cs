@@ -17,6 +17,9 @@ public enum PartEvidenceSource
     /// <summary>A placement file's row, landed on the board's pads.</summary>
     Placement,
 
+    /// <summary>Pads the artwork declares as one part's pins — a Gerber set's <c>%TO.P</c> attributes (AS-12).</summary>
+    DeclaredPads,
+
     /// <summary>A bill of materials row.</summary>
     Bom,
 
@@ -84,6 +87,7 @@ public static class PartEvidenceText
     {
         PartEvidenceSource.Instance => "instance",
         PartEvidenceSource.Placement => "placement",
+        PartEvidenceSource.DeclaredPads => "declared",
         PartEvidenceSource.Bom => "bom",
         PartEvidenceSource.LandPattern => "land",
         PartEvidenceSource.Silkscreen => "silk",

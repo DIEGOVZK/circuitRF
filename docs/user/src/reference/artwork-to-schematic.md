@@ -167,6 +167,20 @@ edits in it, and
 **Import Parts…** reads an edited one back &mdash; the same file `circuitrf recognize --parts` reads, so a table
 can be corrected in a spreadsheet or by an agent and brought back.
 
+### Parts the Gerber files declare {#declared}
+
+Gerber files written by a board tool often name, on every pad, the part and pin it belongs to (`C1`, pin `1`)
+and the net it is on. When they do, each part is read from its own pads: the parts land on the board with
+their designators, and a two-pad part is wired the way round the file says, pin 1 first. Kind comes from the
+designator's prefix and value from a bill of materials, as for any other part. A connector pin the file names
+&mdash; an SMA's `In` &mdash; becomes a port of that name; when two connectors share a pin name, each port is
+named after its connector too (`J1.In`, `J3.In`). A placed footprint or a placement file still names a part
+first, and where one disagrees with the pads, the report says so.
+
+The nets the pads name are checked against the copper, never used in its place. Two named nets on one piece
+of copper (a short) or one net on copper that does not join (an open) is a line in the report, with the
+places; when they all agree, the report says that in one line.
+
 ### Designators on the silkscreen {#silkscreen}
 
 When nothing else names a part &mdash; no placed footprint, no placement file &mdash; the designator printed
@@ -250,13 +264,16 @@ then place in the schematic by writing it.
 ### Where the ports go {#ports}
 
 Ports are found in this order: the ports of the layout's EM setup; then port labels and pins you placed on the
-layout; then every line that reaches the board's edge. To put a port where a connector lands &mdash; an SMA's centre
+layout; then every line that reaches the board's edge, or a connector's pin where the board's files name one
+(a pin or edge on copper that a via joins straight to ground and that the artwork names as ground &mdash; a
+connector's shell tab, a ground strip at the edge &mdash; is never a port). To put a port where a connector lands &mdash; an SMA's centre
 pin, say &mdash; place a port label on the copper there before you run the command.
 
 ## The report {#report}
 
 After **Create**, the schematic opens focused and the report goes to **Messages**, one line per kind of finding
-with its count: the ground chosen, vias dropped and kept, ports and where they came from, parts by source,
+with its count: the ground chosen, vias dropped and kept, ports and where they came from, parts by source (including those from the pads the Gerber files declare, and
+whether the nets they declare agree with the copper),
 silkscreen text read and designators that named no part, unknown kinds and values, `TLIN` fallbacks by reason, coupled pairs, copper read as nothing, and lines left out because
 they reach no port and no part. A line about
 places on the board has a toggle that expands it to them; **double-click** one to select and zoom the artwork

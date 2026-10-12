@@ -266,7 +266,16 @@ public static partial class ArtworkRecognition
         token.ThrowIfCancellationRequested();
 
         // ── which islands are the circuit's nodes ────────────────────────────────────────────────────
-        var placed = PlacedPadsOf(input, tech);
+        var instancePads = PlacedPadsOf(input, tech);
+        // AS-12: the parts the artwork's pad attributes declare, after a placed instance — its pads are pads like an
+        // instance's for which copper is a node and where a connector's port is.
+        var declaredInScope = DeclaredPads.Read(input.Shapes, tech)
+            .Select(d => d with { Pads = [.. d.Pads.Where(p => scope is null || Regions.Contains(scope, p.X, p.Y))] })
+            .Where(d => d.Pads.Count > 0).ToList();
+        var declared = DeclaredBesideInstances(declaredInScope, instancePads, report, fmt);
+        var placed = instancePads.Concat(declared.SelectMany(d => d.Pads).Select(p => p.ToPlaced())).ToList();
+        var pinNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in declared.SelectMany(d => d.Pads)) if (p.Name is { } name) pinNames.TryAdd($"{p.Refdes}.{p.Pin}", name);
         var pinsOn = new List<PlacedPin>[islandCount];
         for (int i = 0; i < islandCount; i++) pinsOn[i] = [];
         var partSize = placed.Where(p => p.Refdes is { Length: > 0 })
@@ -295,10 +304,19 @@ public static partial class ArtworkRecognition
         for (int i = 0; i < islandCount; i++)
             signal[i] = !isPadGround[i] && (signal[i] || lineShaped[i] || separatePour[i]);
 
+        // Galvanically ground: a ground pad's own island, and an island a via joins straight to ground (a shorted line).
+        var joinedToGround = Enumerable.Range(0, islandCount).Select(i => isPadGround[i] || shorted[i]).ToArray();
+        // Ground copper by every account: joined to ground by a via AND drawn in a ground net the artwork names on its
+        // own shapes — a connector's shell tab, a ground strip at the board's edge. A via alone does not say so: an RF
+        // line with a shorted stub on it is joined to ground the same way and is still the line a port belongs on. The
+        // partition's net names are no help — the via joins the line's net to the plane's, so it reads by shape.
+        var groundTied = GroundTied(scopedShapes, board, islandOf, shorted, ground.NetName);
+
         // ── ports ────────────────────────────────────────────────────────────────────────────────────
         control?.BeginStage("Finding ports");
         var portCtx = new PortContext(board, whole, body, islandOf, signal, separatePour, input.View, input.EmSetup,
-                                      placed, input.Placement, scope, Outline(whole, input.Shapes, tech), options);
+                                      placed, input.Placement, scope, Outline(whole, input.Shapes, tech), options)
+                      { PinNames = pinNames, GroundTied = groundTied };
         var ports = PortDiscovery.Discover(portCtx, out var notOnSignal);
         foreach (var port in ports) signal[port.Island] = !isPadGround[port.Island];
         ReportPorts(ports, notOnSignal, report, fmt);
@@ -333,6 +351,7 @@ public static partial class ArtworkRecognition
                         { Pieces = piecesOf[i] });
         }
         var graph = new BoardGraph(ground, islands, vias, ports, dbu) { Copper = board.Pieces, IslandOfPiece = islandOf };
+        DeclaredPads.CrossCheck([.. declaredInScope.SelectMany(d => d.Pads)], board, islandOf, joinedToGround, report, fmt);
 
         // ── parts (AS-4): every evidence source, then the user's table laid over them ─────────────────
         control?.BeginStage("Reading parts");
@@ -345,7 +364,8 @@ public static partial class ArtworkRecognition
         }
         var parts = PartReading.Read(new PartReadingContext
         {
-            Input = input, Board = graph, Copper = board, Shapes = scopedShapes, Scope = scope, PlacedPads = placed,
+            Input = input, Board = graph, Copper = board, Shapes = scopedShapes, Scope = scope, PlacedPads = instancePads,
+            DeclaredParts = declared,
             TraceRuns = () => Review().Layers.SelectMany(l => l.Traces).ToList(),
             Format = fmt,
         }, report);
@@ -462,6 +482,55 @@ public static partial class ArtworkRecognition
         for (int i = 0; i < pads.Count; i++)
             result.Add(i < origins.Count ? pads[i] with { Layer = origins[i].Layer } : pads[i]);
         return result;
+    }
+
+    /// <summary>Per island: joined to ground by a via, and its own shapes name a ground net and no other.</summary>
+    private static bool[] GroundTied(IReadOnlyList<LayoutShape> shapes, BoardCopper board, int[] islandOf, bool[] shorted, string? groundName)
+    {
+        int count = shorted.Length;
+        var named = new bool[count];
+        var other = new bool[count];
+        if (!shorted.Any(x => x)) return named;
+        bool IsGround(string net) => string.Equals(net, groundName, StringComparison.OrdinalIgnoreCase)
+                                     || BoardGround.GroundNames.Contains(net, StringComparer.OrdinalIgnoreCase);
+        foreach (var shape in shapes)
+        {
+            if (shape is ViaShape or LabelShape or BitmapShape || shape.Net is not { Length: > 0 } net) continue;
+            var box = LayoutGeometry.BboxOf(shape);
+            int piece = board.Pieces.IndexAt((box.MinX + box.MaxX) / 2, (box.MinY + box.MaxY) / 2, shape.Layer);
+            if (piece < 0 || piece >= islandOf.Length || islandOf[piece] is not (var i and >= 0) || !shorted[i]) continue;
+            if (IsGround(net)) named[i] = true; else other[i] = true;
+        }
+        for (int i = 0; i < count; i++) named[i] &= !other[i];
+        return named;
+    }
+
+    /// <summary>
+    /// R-as12-6: the declared parts a placed instance does not already claim. A declared part with an instance's own
+    /// designator is that instance's; one whose pads a differently-named instance stands on is reported and left
+    /// to the instance, the stronger source.
+    /// </summary>
+    private static List<DeclaredPart> DeclaredBesideInstances(
+        List<DeclaredPart> declared, IReadOnlyList<PlacedPin> instancePads, RecognitionReport report, RailLengthFormat fmt)
+    {
+        if (instancePads.Count == 0) return declared;
+        var instances = instancePads.Where(p => p.Refdes is { Length: > 0 }).Select(p => p.Refdes!).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var kept = new List<DeclaredPart>();
+        var disagree = new List<(DeclaredPart Part, string Instance)>();
+        foreach (var part in declared)
+        {
+            if (instances.Contains(part.Refdes)) continue;
+            var under = instancePads.FirstOrDefault(i => i.Refdes is { Length: > 0 } && part.Pads.Any(
+                p => (i.Layer is null || i.Layer == p.Layer) && p.Bounds.Contains(i.X, i.Y)));
+            if (under.Refdes is { } other) disagree.Add((part, other));
+            else kept.Add(part);
+        }
+        report.Add(RecognitionFindingClass.DeclaredRefdesDisagrees, disagree.Count,
+            $"{Plural(disagree.Count, "part the artwork's pads declare stands", "parts the artwork's pads declare stand")} where a placed part " +
+            $"of another name is, and the placed part was taken: {string.Join(", ", disagree.Take(12).Select(d => $"{d.Part.Refdes} (placed {d.Instance})"))}" +
+            $"{(disagree.Count > 12 ? ", …" : "")}.",
+            [.. disagree.Select(d => new RecognitionAnchor(d.Part.Pads[0].X, d.Part.Pads[0].Y, d.Part.Pads[0].Layer))]);
+        return kept;
     }
 
     // ── the scope ───────────────────────────────────────────────────────────────────────────────────

@@ -43,6 +43,23 @@ public sealed class PortDiscoveryTests
         Assert.Equal(["P1", "P2"], ports.Select(p => p.Name));
     }
 
+    /// <summary>A strip a via ties to the plane reaches the edge: in the ground net the artwork names it is ground copper
+    /// and no port; unnamed it may be an RF line with a shorted stub, and keeps its edge ports (AS-12).</summary>
+    [Fact]
+    public void AnEdgeOnGroundTiedCopperIsNoPort()
+    {
+        LayoutView Board(string? net)
+        {
+            var view = PlaneAndLine();
+            foreach (var s in view.Shapes) s.Net = net;
+            view.Shapes.Add(ViaAt(20_000, 5_000));
+            return view;
+        }
+
+        Assert.DoesNotContain(Recognize(Board("GND"), TwoLayer()).Board!.Ports, p => p.Source == PortSource.BoardEdge);
+        Assert.Equal(2, Recognize(Board(null), TwoLayer()).Board!.Ports.Count(p => p.Source == PortSource.BoardEdge));
+    }
+
     /// <summary>A scope rectangle cutting a line makes X1 and X2 at the cuts, and says it cut the plane.</summary>
     [Fact]
     public void AScopeRectangleCuttingALineMakesX1AndX2()

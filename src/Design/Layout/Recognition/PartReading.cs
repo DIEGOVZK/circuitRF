@@ -4,6 +4,8 @@
 // THE EVIDENCE, STRONGEST FIRST, EACH FIELD RECORDING WHERE IT CAME FROM:
 //   1. placed footprint instances — designator, PartKind, the `smt-<case>@<density>` cell, their pads;
 //   2. a placement file landed on the board's pads, and a bill of materials by designator;
+//   2½. pads the artwork declares as one part's pins (AS-12, DeclaredPads) — after the placement file for the
+//      designator, ahead of everything else, because the file says which pads form a part;
 //   3. land patterns — two pads matching a case's generated lands, from the mask or paste openings where
 //      the technology has those layers, else from pad-shaped copper and the trace review's "pad" ends;
 //   4. silkscreen designators (AS-10, Silkscreen/), and any IPartEvidenceSource — each source's designators given
@@ -43,6 +45,9 @@ internal sealed class PartReadingContext
 
     /// <summary>Every placed part's pads, each on the layer its land is on.</summary>
     public required IReadOnlyList<PlacedPin> PlacedPads { get; init; }
+
+    /// <summary>The parts the artwork's pad attributes declare that no placed instance claims (AS-12).</summary>
+    public IReadOnlyList<DeclaredPart> DeclaredParts { get; init; } = [];
 
     /// <summary>The trace review's runs over the artwork in scope — asked for only when a side has no
     /// mask or paste openings to read pads from.</summary>
@@ -104,6 +109,17 @@ public static class PartReading
             drafts.Add(d);
         }
 
+        // ── 2½. the parts the artwork's pad attributes declare, their pads in pin order ──────────────
+        var declared = new List<Draft>();
+        foreach (var part in ctx.DeclaredParts)
+        {
+            if (drafts.Any(d => string.Equals(d.Refdes, part.Refdes, StringComparison.OrdinalIgnoreCase))) continue;
+            var d = new Draft { Refdes = part.Refdes, RefdesSource = PartEvidenceSource.DeclaredPads, PadSource = PartEvidenceSource.DeclaredPads, Body = part.Body };
+            d.Pads.AddRange(part.Pads.Select(p => p.ToPlaced()));
+            drafts.Add(d);
+            declared.Add(d);
+        }
+
         // ── 3. land patterns on the copper no instance claims ──────────────────────────────────────
         var outlines = Outlines(ctx, report);
         var claimed = ctx.PlacedPads;
@@ -112,6 +128,21 @@ public static class PartReading
         {
             var a = outlines[c.A];
             var b = outlines[c.B];
+            // A land on declared pads gives that part its case; it makes no part of its own.
+            Draft? OnDeclared(PadOutline o) => declared.FirstOrDefault(
+                d => d.Pads.Any(p => Grow(o.Bounds, o.Width / 10, o.Height / 10).Contains(p.X, p.Y)));
+            Draft? da = OnDeclared(a), db = OnDeclared(b);
+            if (da is not null || db is not null)
+            {
+                if (da is not null && ReferenceEquals(da, db) && da.Pads.Count == 2 && da.LandCase is null)
+                {
+                    da.LandCase = c.Best.Case;
+                    da.Land = c;
+                    if (c.RunnersUp.Count > 0)
+                        da.Notes.Add($"land pattern {c.Best.Case.Code} or {string.Join(" or ", c.RunnersUp.Select(r => r.Case.Code))}");
+                }
+                continue;
+            }
             var d = new Draft { PadSource = PartEvidenceSource.LandPattern, LandCase = c.Best.Case, Land = c, Body = a.Bounds.Union(b.Bounds) };
             d.Pads.Add(new PlacedPin(null, "1", null, a.CentreX, a.CentreY, PinSource.Artwork) { Layer = a.Layer });
             d.Pads.Add(new PlacedPin(null, "2", null, b.CentreX, b.CentreY, PinSource.Artwork) { Layer = b.Layer });
@@ -124,6 +155,7 @@ public static class PartReading
         var byRefdes = new Dictionary<string, Draft>(StringComparer.OrdinalIgnoreCase);
         foreach (var d in drafts) if (d.Refdes is { } r) byRefdes[r] = d;
         var placementMissed = new List<PlacementRow>();
+        var placementRenamed = new List<(string Declared, PlacementRow Row)>();
         if (input.Placement is { Refusal: null } placement)
         {
             foreach (var row in placement.Rows)
@@ -142,6 +174,17 @@ public static class PartReading
                     ? drafts.Where(d => d.Refdes is null && (box.Contains(d.X, d.Y) || d.Pads.Any(p => box.Contains(p.X, p.Y))))
                             .OrderBy(d => Dist(d.X, d.Y, row.X, row.Y)).FirstOrDefault()
                     : null;
+                // Declared pads under a placement row of another name: the placement file is the stronger source for
+                // the designator, and the disagreement is reported (R-as12-6).
+                if (hit is null && body is { } under
+                    && declared.Where(d => d.RefdesSource == PartEvidenceSource.DeclaredPads && d.Pads.Any(p => under.Contains(p.X, p.Y)))
+                               .OrderBy(d => Dist(d.X, d.Y, row.X, row.Y)).FirstOrDefault() is { } renamed)
+                {
+                    placementRenamed.Add((renamed.Refdes!, row));
+                    renamed.Notes.Add($"its pads declare {renamed.Refdes}; the placement file names it {row.Refdes}, which was taken");
+                    byRefdes.Remove(renamed.Refdes!);
+                    hit = renamed;
+                }
                 if (hit is null) { placementMissed.Add(row); continue; }
                 hit.Refdes = row.Refdes;
                 hit.RefdesSource = PartEvidenceSource.Placement;
@@ -219,6 +262,10 @@ public static class PartReading
 
         // ── what the reading says about itself (R-as4-9) ─────────────────────────────────────────
         Report(ctx, rows, bom, byRefdes, placementMissed, wrongDimension, report);
+        report.Add(RecognitionFindingClass.DeclaredRefdesDisagrees, placementRenamed.Count,
+            $"{Plural(placementRenamed.Count, "placement row names", "placement rows name")} pads the artwork declares as another part, and " +
+            $"the placement file's designator was taken: {string.Join(", ", placementRenamed.Take(12).Select(r => $"{r.Row.Refdes} (declared {r.Declared})"))}" +
+            $"{(placementRenamed.Count > 12 ? ", …" : "")}.", [.. placementRenamed.Select(r => new RecognitionAnchor(r.Row.X, r.Row.Y))]);
         ReportSilkscreen(ctx, silk, unassociated, report);
         return new PartsTable(rows, fmt, baseDir);
     }
@@ -350,7 +397,7 @@ public static class PartReading
 
         // ── confidence ────────────────────────────────────────────────────────────────────────────
         var confidence =
-            d.PadSource == PartEvidenceSource.Instance || (bomRows.Count > 0 && d.Placed) ? PartConfidence.High
+            d.PadSource is PartEvidenceSource.Instance or PartEvidenceSource.DeclaredPads || (bomRows.Count > 0 && d.Placed) ? PartConfidence.High
             : d.PadSource == PartEvidenceSource.LandPattern && !named && kind == PartKind.Unknown ? PartConfidence.Low
             : PartConfidence.Medium;
 
@@ -716,6 +763,9 @@ public static class PartReading
         var placed = bySource.GetValueOrDefault(PartEvidenceSource.Placement) ?? [];
         Add(RecognitionFindingClass.PartsFromPlacement, placed,
             $"{Plural(placed.Count, "part was", "parts were")} named by the placement file on land patterns found on the board: {Names(placed)}.");
+        var declared = bySource.GetValueOrDefault(PartEvidenceSource.DeclaredPads) ?? [];
+        Add(RecognitionFindingClass.PartsFromDeclaredPads, declared,
+            $"{Plural(declared.Count, "part", "parts")} from pad attributes declared in the artwork: {Names(declared)}.");
         var silk = bySource.GetValueOrDefault(PartEvidenceSource.Silkscreen) ?? [];
         Add(RecognitionFindingClass.PartsFromSilkscreen, silk,
             $"{Plural(silk.Count, "part was", "parts were")} named by the silkscreen: {Names(silk)}.");

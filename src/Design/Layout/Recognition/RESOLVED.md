@@ -499,3 +499,23 @@ nothing (the dialog looked as if it kept the first region), and a region whose e
 activated the tab already open on it, which held the model it had read. The written files now go through the reload a
 history restore uses (`ReloadChangedDocuments`): the tab is closed, its edit session discarded, and it is reopened in
 place.
+
+## AS-12 — the netlist a Gerber set declares (2026-10-11)
+
+Field board: a two-layer LNA's Gerbers with `%TO.P`/`%TO.N` on every pad, eighteen parts. Three things only the real
+board showed:
+
+- **One pin, several pads.** An edge-launch connector's four ground tabs all declare pin 2. Keying pads by (refdes, pin)
+  merged them into one box whose centre sat on the signal pad, so the connector read as "bridged" and the leftover tabs
+  became made-up land-pattern parts (`C_A1`… and a silkscreen-named `N1`). Shapes of one pin are one pad only where they
+  touch; a through-hole pin's other-layer copies are dropped by taking the pin's topmost layer.
+- **A ground pad joined by a trace and a via is not on ground copper.** C4's GND pad runs a short trace to its own via;
+  that island is a signal island shorted to ground, not a `PadGround` one, so the net check called GND open. Ground
+  copper and every island a via joins straight to ground are one node for the check.
+- **An edge SMA gave two ports, and its shell tab a third.** The centre pin's connector port and the line's edge port
+  were more than the 1 mm merge radius apart, and one ground tab sat on a ground-shorted island read as signal. A
+  connector port now drops the edge port on its island, and neither a pad nor an edge on ground-tied copper is a port
+  (that also removed `P6`, an edge port on a GND strip, which the board got with or without the attributes).
+  **Ground-tied needs the shapes' own net names, not the partition's.** The first try used "joined to ground by a via"
+  alone, then the island's partition net name — both are galvanic, so an unnamed RF line with a shorted stub read as
+  ground and lost its edge ports (`PortDiscoveryTests.AnEdgeOnGroundTiedCopperIsNoPort` holds both halves).
