@@ -21,6 +21,7 @@ from jsonschema import Draft202012Validator
 from PIL import Image
 
 from .data import SCHEMA_PATH, DataHomeError, load_classes, resolve_data_home
+from .geometry import picture_ink
 from .values import read_value_text
 
 LABEL_SUFFIX = ".mllabel.json"
@@ -39,15 +40,9 @@ def _load_schema() -> Draft202012Validator:
 
 
 def ink_mask(path: Path) -> np.ndarray:
-    """Pixels that differ from the picture's background — the commonest colour on its border."""
-    with Image.open(path) as img:
-        rgb = np.asarray(img.convert("RGB"), dtype=np.int16)
-    border = np.concatenate([rgb[0], rgb[-1], rgb[:, 0], rgb[:, -1]])
-    quant = border // 16
-    keys, counts = np.unique(quant[:, 0] * 256 + quant[:, 1] * 16 + quant[:, 2], return_counts=True)
-    k = keys[np.argmax(counts)]
-    bg = border[(quant[:, 0] * 256 + quant[:, 1] * 16 + quant[:, 2]) == k].mean(axis=0)
-    return np.abs(rgb - bg).max(axis=2) > 48
+    """Pixels that differ from the picture's background — the commonest colour on its border. A transparent picture is
+    laid on white first (``geometry.load_rgb``): read as plain RGB, its transparent paper is black, like its ink."""
+    return picture_ink(path)
 
 
 def _near_ink(mask: np.ndarray, x: float, y: float, r: float) -> bool:
@@ -156,14 +151,15 @@ def check_label(label_path: Path, classes: dict | None = None, schema: Draft2020
             if ref not in texts:
                 err(f"part {pid}: text {ref} does not exist")
         for ref in p.get("values", []):
-            if ref in texts and read_value_text(texts[ref]["string"]) is None:
+            if ref in texts and texts[ref]["string"] is not None and read_value_text(texts[ref]["string"]) is None:
                 err(f"part {pid}: value text {ref} ({texts[ref]['string']!r}) does not read as a value")
 
     # wire ends: a pin, a junction, another wire, the picture's edge — or the edge of window chrome, where a screenshot's
     # canvas ends inside the picture
     junctions = label.get("junctions", [])
     wires = label["wires"]
-    chrome = [a["box"] for a in label.get("annotations", []) if a["kind"] == "chrome"]
+    # an ignore box is a part nobody could label (or one the class list lacks): a wire may end on it
+    chrome = [a["box"] for a in label.get("annotations", []) if a["kind"] == "chrome"] + list(label.get("ignore", []))
 
     def on_chrome(x: float, y: float) -> bool:
         return any(b[0] - reach <= x <= b[2] + reach and b[1] - reach <= y <= b[3] + reach for b in chrome)
@@ -176,16 +172,17 @@ def check_label(label_path: Path, classes: dict | None = None, schema: Draft2020
                     or any(math.hypot(x - a, y - b) <= reach for a, b in junctions)
                     or any(_dist_to_polyline(end, o["points"]) <= reach for oi, o in enumerate(wires) if oi != wi)):
                 continue
-            warn(f"wire {wi}: its end at ({x:g}, {y:g}) reaches no pin, junction, other wire, picture edge or chrome")
+            warn(f"wire {wi}: its end at ({x:g}, {y:g}) reaches no pin, junction, other wire, picture edge, chrome or ignore box")
 
     return out
 
 
 def _labels_in(paths: list[Path]) -> list[Path]:
+    """The labels named, and every label under the folders named — a pre-labeller's draft is not a label."""
     found = []
     for p in paths:
         if p.is_dir():
-            found.extend(sorted(p.rglob("*" + LABEL_SUFFIX)))
+            found.extend(f for f in sorted(p.rglob("*" + LABEL_SUFFIX)) if not f.name.endswith(".draft" + LABEL_SUFFIX))
         else:
             found.append(p)
     return found

@@ -118,12 +118,30 @@ def test_validator_findings() -> None:
         ("size", lambda l: l.update({"width": 201}), "error", "the label says"),
         ("dangling", lambda l: l["wires"].append({"points": [[120, 150], [120, 170]], "pen": 2}), "warning", "reaches no pin"),
     ]
+    clean = [
+        # an unreadable value keeps its role with no string (brief-iml-4 R-iml4-5)
+        ("unread-value", lambda l: l["texts"][1].update({"string": None})),
+    ]
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
         for name, mutate, severity, phrase in cases:
             findings = _mutated(base, mutate, tmp, name)
             check(any(f.severity == severity and phrase in f.message for f in findings),
                   f"validator: {name} gives a {severity} saying {phrase!r} (got {[f.message for f in findings]})")
+        for name, mutate in clean:
+            findings = _mutated(base, mutate, tmp, name)
+            check(not findings, f"validator: {name} validates clean (got {[f.message for f in findings]})")
+
+
+# ── the netlist truth ──────────────────────────────────────────────────────────────────────────────────────────────
+
+def test_label_to_cnl() -> None:
+    from .label_to_cnl import convert
+    for lp in sorted(FIXTURES.glob("*" + LABEL_SUFFIX)):
+        name = lp.name[: -len(LABEL_SUFFIX)]
+        committed = (FIXTURES / f"{name}.cnl").read_text(encoding="utf-8")
+        got = convert(json.loads(lp.read_text(encoding="utf-8")), name=name)
+        check(got == committed, f"label_to_cnl: {name}.cnl is what its label gives (rerun crfml.label_to_cnl on the fixtures)")
 
 
 # ── the importer ────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -235,7 +253,7 @@ def test_importer() -> None:
 
 
 def main() -> int:
-    tests = [test_classes, test_units, test_fixtures, test_validator_findings, test_importer]
+    tests = [test_classes, test_units, test_fixtures, test_validator_findings, test_label_to_cnl, test_importer]
     for t in tests:
         n = len(FAILURES)
         try:

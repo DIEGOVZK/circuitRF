@@ -5,7 +5,7 @@
 `src/Design/Schematic/Recognition/` (the reader) · **Handbook:** `tools/schematic-ml/README.md` · **Builds on:** Create
 from Image (`docs/design/image-to-circuit.md`), whose back half (emit, drawing, paste, dialog, `recognize`) stays.
 
-This note says what the system is, what each of its contracts is, and why each is shaped as it is. IML-1 wrote §1–§3, IML-2 §4, IML-3 §5;
+This note says what the system is, what each of its contracts is, and why each is shaped as it is. IML-1 wrote §1–§3, IML-2 §4, IML-3 §5, IML-4 §6;
 each later phase adds its own section.
 
 ---
@@ -466,3 +466,57 @@ under a mirror). `SchematicSynthTests.EveryKind_ItsPinsTurnedBack_SitWhereTheCla
 turned back, to the sides `classes.json` puts its class's pins on; it fails on `Pin` without the fix. The 969 labels
 were regenerated (deleted and re-run: the batch is resumable); their pictures came out byte-identical, only `turn`
 changed.
+
+## 6. The real pictures' labels (IML-4)
+
+The real pictures are few, so each label counts — above all for measuring: the held-out ones are the only honest
+score the models get. The rules are `tools/schematic-ml/LABELLING.md`; the tools are in the handbook. Every label
+here was drafted by an agent and corrected by looking at the picture (O3); the owner reviews contact sheets.
+
+### 6.1 Decisions the rules make
+
+- **Body boxes follow `GlyphBody`'s rule** (§4.3): the drawing without the straight leads that end on pins. Words
+  are never body, even inside a box; a polarity mark beside a symbol is neither body nor a word.
+- **A pin is where the part's drawing ends and the wire begins**: on the editor's pin mark (a square, a dot, a
+  colour change) when it draws one — several families do — else on the body's edge where the line leaves it. A
+  generated picture's pin is always at its lead's end; a real picture's lead and wire are often indistinguishable, and
+  the edge is the only point two labellers would both pick.
+- **Junctions are listed at every connection of three or more**, dot or not (as §5.3 does for generated pictures);
+  crossings are the non-connecting ones.
+- **A value the grammar does not read is `other`**, its number in the part's `params` (as §5.3). An unreadable word is
+  `"string": null` with its role kept — the schema's one change in this phase (`string` may be null), which every
+  existing label still passes, so the format stays version 1.
+- **A part the class list lacks gets an `ignore` box** and a note in `review.json`, collected for the next class-list
+  revision rather than forced into a near class.
+- **A picture that is no schematic** has no parts and no wires; IML-6 scores the reader on refusing it.
+- **An inline current probe is a `probe`** with one pin; `label_to_cnl` treats it as a short across everything its body
+  and pin reach, which is what it is in the circuit.
+
+### 6.2 The netlist truth
+
+`crfml.label_to_cnl` writes the truth by the **reader's own rules** rather than new ones, because the corpus's
+hand-written `answer.cnl` files already follow them and the derived netlists must agree with those: a terminal is a
+port to ground unless its name is a supply (`PortWords.IsSupply`, ported); a name that calls a net an input or
+output gets a port (D13); a power port is only a name; one name on two wires joins them; a box's grounded pins fold
+into its S-parameter reference and its unwired pins are left out; the system blocks bind each port with ground as
+its minus. Element types come from `cnl-types.json`, which `LabelToCnlTests` holds to
+`ComponentTypeRegistry.EngineReference`; it also says the two things a type needs beyond its pins — a ground via
+names ground as its second net, and an SPDT is the switch with `Throws=2` — both found by running `circuitrf check`
+over every kind.
+
+Gates: `tests/Ui.Tests/Vision/LabelToCnlTests` (the fixtures' netlists read and are the circuits drawn; a crossing
+without a dot does not connect and a dot-less T-join does — the `crossing` fixture now draws both; the type table;
+and, when the data home is present, every corpus label's `<id>.derived.cnl` is `NetlistShape.SameTopology` with its
+truth) and `crfml.selftest` (each fixture's committed `.cnl` is exactly what `label_to_cnl` gives).
+
+### 6.3 Two findings
+
+- **A transparent PNG has black paper.** Several web pictures store black ink on transparent paper; read as plain RGB
+  their paper and ink are the same colour, and the validator's ink mask was all ink or none. Every kit tool now reads
+  pictures through `geometry.load_rgb`, which lays them on white first. IML-6's loader must do the same.
+- **The kit's CLI is the newer build.** A Release build left from an old packaging run (an older version) would
+  otherwise shadow today's Debug build; `crfml.cli` takes the newer of the two, or `$CRF_CLI`.
+
+### 6.4 The labelled set
+
+<!-- filled from `crfml.contact_sheet --summary` once every picture is labelled -->

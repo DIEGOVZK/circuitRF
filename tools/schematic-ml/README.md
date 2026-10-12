@@ -45,7 +45,8 @@ Every command below runs from `tools/schematic-ml` with that environment (`.venv
 
 ```
 manifest.json                 every real picture: id, family, sha256, size, split, imported-from (local only)
-real/<family>/<id>.<ext>      the picture, renamed; <id>.mllabel.json beside it once labelled
+real/<family>/<id>.<ext>      the picture, renamed; <id>.mllabel.json and its netlist truth <id>.cnl once labelled
+review.json, review/          the reviewer's verdict on each label, and the contact sheets
 synth/<generator>/<batch>/    generated pictures + labels — regenerable, safe to delete
 fonts/                        open-licensed fonts for generated text (fetch_fonts), each family with its licence; index.json
 runs/<run-id>/                checkpoints, logs, metrics.json
@@ -144,6 +145,40 @@ of drawing a class is one more `"<class>.<style>"` entry there. Both folders are
 new pack is in `--packs all`. Then run `dotnet test tests/Ui.Tests --filter FullyQualifiedName~Vision.StylePackTests`:
 it holds every glyph's pins to its strokes and to its class's pin names, every class to three packs, and generates
 three pictures from every pack. The fields are explained in `docs/design/schematic-vision.md` §5.
+
+## Labelling the real pictures
+
+The real pictures are labelled once, by hand, and kept in the data home beside each picture (IML-4). The rules —
+what a part's body box is, where a pin sits, which role a word has — are [`LABELLING.md`](LABELLING.md); read it
+before labelling anything. The tools, in the order they are used:
+
+```bash
+.venv/bin/python -m crfml.prelabel                        # drafts: <id>.draft.mllabel.json for every unlabelled picture
+.venv/bin/python -m crfml.annotate                        # the annotation page, http://127.0.0.1:8765 (--open opens it)
+.venv/bin/python -m crfml.label_to_cnl --check            # netlist truth <id>.cnl for every label, checked by circuitRF
+.venv/bin/python -m crfml.contact_sheet --family family-c # review sheets in <data>/review/
+.venv/bin/python -m crfml.contact_sheet --mark <id> ok    # or: redo --note "what is wrong"
+.venv/bin/python -m crfml.contact_sheet --status          # labelled / valid / reviewed, per family
+.venv/bin/python -m crfml.contact_sheet --summary         # the counts design note §6 records
+```
+
+- **`prelabel`** reads each picture with circuitRF's own reader (`circuitrf recognize --json`), so once the trained
+  models are wired into the reader the drafts come from them with no change here. The reader's JSON carries no wire
+  geometry, so the draft's wires are traced from the picture's ink. A draft is never trained on or scored.
+- **`annotate`** serves one page from Python's standard library on 127.0.0.1 only; it fetches nothing from the
+  network. It opens a picture's label, else its draft, else a blank one. Keyboard-first: the key list is on the page.
+  It validates in place (the findings are clickable and show where on the picture), snaps a wire onto the ink's
+  centreline (`c`) and fits a part's body to its ink by the guide's rule (`f`). Saving writes `<id>.mllabel.json`,
+  keeps the previous one as `.bak`, and writes the netlist truth.
+- **`label_to_cnl`** follows the reader's own rules for nets and ports (`LABELLING.md`, *The netlist truth*). For a
+  corpus picture, whose truth came with it, the derived netlist is `<id>.derived.cnl`, and
+  `tests/Ui.Tests/Vision/LabelToCnlTests` checks it is topologically the truth whenever the data home is present.
+- **`contact_sheet`** puts each labelled picture, with its label drawn over it, beside circuitRF's own drawing of its
+  netlist (`circuitrf netlist --to-schematic`, then `render`) — six pictures a page. Verdicts live in
+  `<data>/review.json`; a label is done when it validates and its verdict is `ok`.
+
+The label tools run the circuitRF command line built in this repository (`dotnet build src/Cli`; the newer of the
+Debug and Release builds), or the one `$CRF_CLI` names.
 
 ## The self-test
 

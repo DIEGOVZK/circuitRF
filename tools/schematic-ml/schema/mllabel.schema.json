@@ -90,7 +90,7 @@
       "properties": {
         "id": { "type": "string", "minLength": 1 },
         "quad": { "type": "array", "items": { "$ref": "#/$defs/point" }, "minItems": 4, "maxItems": 4, "description": "Corners in reading order: top-left, top-right, bottom-right, bottom-left of the line as read." },
-        "string": { "type": "string" },
+        "string": { "type": ["string", "null"], "description": "The line as drawn, characters in reading order, sub- and superscripts inline; null when it cannot be read (the role is kept)." },
         "role": { "enum": ["designator", "value", "net", "port", "pin-number", "pin-name", "title", "other"] }
       }
     },

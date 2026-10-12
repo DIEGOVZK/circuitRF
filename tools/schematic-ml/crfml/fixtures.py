@@ -144,7 +144,8 @@ def rc_port() -> Sheet:
 
 
 def crossing() -> Sheet:
-    """A battery and a diode whose wires cross without a dot — a crossing that does not connect."""
+    """A battery and a diode whose wires cross without a dot — a crossing that does not connect — and the battery's
+    minus wired into the middle of the diode's ground wire with no dot — a T-join, which does."""
     s = Sheet("crossing", 200, 200)
     s.d.line([(32, 70), (32, 76)], fill=INK, width=PEN)
     s.d.line([(20, 76), (44, 76)], fill=INK, width=PEN)
@@ -163,8 +164,7 @@ def crossing() -> Sheet:
            designator=s.text("t2", (116, 128), "D1", "designator"))
     s.wire((100, 150), (100, 170))
     s.part("p3", "ground", s.ground(100, 170), [("1", 100, 170)])
-    s.wire((32, 90), (32, 110))
-    s.part("p4", "ground", s.ground(32, 110), [("1", 32, 110)])
+    s.wire((32, 90), (32, 160), (100, 160))
     return s
 
 
