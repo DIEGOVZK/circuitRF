@@ -731,6 +731,8 @@ public static class GerberImport
         // learns how many conductors there are.
         PromoteAnsweredCopper(rows, keyByFile, identities, allIdentities, copperTopToBottom,
                               sourceLayers, proposal.ConductorOffer, messages);
+        PromoteMappedCopper(rows, mappingTech, keyByFile, identities, allIdentities, copperTopToBottom,
+                            sourceLayers, messages);
 
         if (rows.Count > 0) messages.Add("Layers: " + LayoutLayerMapping.SummarizeMapping(rows, mappingTech));
 
@@ -823,8 +825,10 @@ public static class GerberImport
             for (int ri = 0; ri < reads.Count; ri++)
             {
                 if (reads[ri].Read.Composited) continue;
+                // Holes are not a pour: a Gerber drawing of the drill program keeps its strokes as drawn.
+                if (string.Equals(identities[ri].Purpose, GerberLayerCascade.DrillPurpose, StringComparison.Ordinal)) continue;
                 var (start, count) = artworkByRead[ri];
-                if (count < LayoutRasterFillCoalesce.MinStrokesPerRegion) continue;
+                if (count < LayoutRasterFillCoalesce.MinStrokesPerPaintedRegion) continue;
 
                 string layerName = identities[ri].LayerName;
                 var candidates = new List<LayoutRasterFillCoalesce.Candidate>(count);
@@ -840,7 +844,7 @@ public static class GerberImport
                         layerName));
                 }
 
-                var plan = LayoutRasterFillCoalesce.Build(candidates, coalesceTol);
+                var plan = LayoutRasterFillCoalesce.Build(candidates, coalesceTol, perRegion: true);
                 if (!plan.IsEmpty) coalescedByRead[ri] = plan;
             }
 
@@ -1128,7 +1132,12 @@ public static class GerberImport
             // NOT said about a layer R-rf3 has just coalesced: the Merge it asks for has already
             // happened, and telling someone to perform an action the import performed for them is the
             // one way this advice becomes noise.
-            else if (read.StrokeCount >= VectorFillStrokeThreshold)
+            //
+            // Nor about a layer that is not copper (a silkscreen's text and a drill map's legend are
+            // hundreds of strokes and no pour), nor when coalescing ran and found nothing to merge: then
+            // the strokes overlap too little to be a fill, and they are the layer's tracks (designer
+            // report, round 18 — every layer of a four-layer set was told it was a "vector-filled pour").
+            else if (!coalesceRasterFill && identity.IsConductor && read.StrokeCount >= VectorFillStrokeThreshold)
                 messages.Add(
                     $"{identity.LayerName} arrived as {read.StrokeCount:N0} separate strokes — that is a " +
                     "vector-filled pour, which is correct artwork but is neither editable copper nor " +
@@ -2341,6 +2350,89 @@ public static class GerberImport
             $". The copper order, top to bottom, is now: " +
             string.Join(", ", copperTopToBottom.Select(c => c.LayerName)) + ".");
     }
+
+    /// <summary>
+    /// A file the cascade could not name, mapped in the table onto a layer that a CONDUCTOR of the
+    /// technology binds, is copper at that conductor's rank.
+    /// </summary>
+    /// <remarks>
+    /// Mapping a file onto "Top Copper" is the ordinary way to say it is the top copper, and before
+    /// this it moved the file's shapes onto that layer while the stackup went on believing the set had
+    /// no copper at all: into a chosen technology the import was refused for "0 copper files", and into
+    /// a minted one the stackup came out EMPTY with every layer correctly mapped (designer report,
+    /// round 18 — a two-layer set named <c>TOP-COP</c>/<c>BTM-COP</c>). The rank is the conductor's
+    /// own, read off the technology the row was mapped against, so two files mapped onto two
+    /// conductors stack in the technology's order and not in the table's (which lists by shape count)
+    /// or the alphabet's (which puts <c>BTM</c> above <c>TOP</c>).
+    /// </remarks>
+    private static void PromoteMappedCopper(
+        IReadOnlyList<LayerMappingRow> rows,
+        Technology? mappingTech,
+        IReadOnlyDictionary<string, LayerKey> keyByFile,
+        List<GerberLayerIdentity> identities,
+        List<GerberLayerIdentity> allIdentities,
+        List<GerberLayerIdentity> copperTopToBottom,
+        List<LayerDef> sourceLayers,
+        List<string> messages)
+    {
+        if (mappingTech is null) return;
+        var conductors = mappingTech.Stackup.Layers.Where(l => l.Kind == StackupKind.Conductor).ToList();
+        int RankOf(LayerKey key) => conductors.FindIndex(c => c.DrawingLayers.Contains(key));
+
+        var promoted = new List<(int Rank, GerberLayerIdentity Identity)>();
+        foreach (var row in rows)
+        {
+            if (row.Stackup is { AsCopper: true }) continue;   // answered explicitly — PromoteAnsweredCopper's
+            if (row.Choice.Action != LayoutFragment.LayerReconciliationAction.MapToExisting ||
+                row.Choice.MapTarget is not { } target) continue;
+            int rank = RankOf(target);
+            if (rank < 0) continue;
+
+            foreach (var identity in identities)
+                if (identity.Rung == GerberLayerRung.Unidentified && !identity.IsConductor &&
+                    keyByFile[identity.FilePath] == row.Source)
+                    promoted.Add((rank, identity));
+        }
+        if (promoted.Count == 0) return;
+
+        foreach (var (rank, identity) in promoted.OrderBy(p => p.Rank))
+        {
+            var conductor = identity with { Purpose = GerberLayerCascade.ConductorPurpose };
+            int at = identities.IndexOf(identity);
+            if (at >= 0) identities[at] = conductor;
+            int all = allIdentities.IndexOf(identity);
+            if (all >= 0) allIdentities[all] = conductor;
+
+            // Before the first copper already in the order that the technology ranks BELOW this one;
+            // copper the technology does not rank stays where the cascade put it.
+            int insertAt = copperTopToBottom.FindIndex(c =>
+                RankOf(MappedKeyOf(rows, keyByFile[c.FilePath])) is var r && r > rank);
+            copperTopToBottom.Insert(insertAt < 0 ? copperTopToBottom.Count : insertAt, conductor);
+        }
+
+        for (int i = 0; i < copperTopToBottom.Count; i++)
+        {
+            var key = keyByFile[copperTopToBottom[i].FilePath];
+            foreach (var layer in sourceLayers)
+            {
+                if (layer.Key != key) continue;
+                layer.ZOrder = CopperZOrder(i, copperTopToBottom.Count);
+                layer.Purpose = GerberLayerCascade.ConductorPurpose;
+            }
+        }
+
+        messages.Add(
+            $"{promoted.Count} unclassified file(s) were mapped onto copper layers of '{mappingTech.Name}' and are " +
+            "conductors in this stackup: " +
+            string.Join(", ", promoted.OrderBy(p => p.Rank).Select(p => p.Identity.FileName)) +
+            ". The copper order, top to bottom, is now: " +
+            string.Join(", ", copperTopToBottom.Select(c => c.FileName)) + ".");
+    }
+
+    private static LayerKey MappedKeyOf(IReadOnlyList<LayerMappingRow> rows, LayerKey source) =>
+        rows.FirstOrDefault(r => r.Source == source) is { Choice: { Action: LayoutFragment.LayerReconciliationAction.MapToExisting, MapTarget: { } t } }
+            ? t
+            : source;
 
     private static int IndexOfFile(IReadOnlyList<GerberLayerIdentity> list, string filePath)
     {

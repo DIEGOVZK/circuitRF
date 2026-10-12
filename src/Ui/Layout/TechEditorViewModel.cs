@@ -696,6 +696,32 @@ public sealed partial class TechEditorViewModel : ObservableObject
         Layers.Clear();
         foreach (var l in Working.Layers)
             Layers.Add(new LayerRowViewModel(l, this));
+        RebuildUndefinedLayers();
+    }
+
+    /// <summary>
+    /// The layers open layouts draw under this technology that it does not define (an import kept them
+    /// as its own, say). Listed so they can be hidden and locked — for the session only, through
+    /// <see cref="UndefinedLayerSession"/>; nothing here edits <see cref="Working"/>. A layer the
+    /// technology comes to define (an Add Layer with its number) leaves this list and takes the
+    /// technology's own row.
+    /// </summary>
+    public ObservableCollection<UndefinedLayerRowViewModel> UndefinedLayers { get; } = [];
+
+    public bool HasUndefinedLayers => UndefinedLayers.Count > 0;
+
+    internal void RebuildUndefinedLayers()
+    {
+        var defined = Working.Layers.Select(l => l.Key).ToHashSet();
+        var entries = UndefinedLayerSession.For(FilePath).Where(e => !defined.Contains(e.Key)).ToList();
+        if (entries.Count == UndefinedLayers.Count &&
+            entries.Zip(UndefinedLayers).All(p => p.First.Key == p.Second.Key &&
+                                                  p.First.Visible == p.Second.Visible &&
+                                                  p.First.Selectable == p.Second.Selectable))
+            return;
+        UndefinedLayers.Clear();
+        foreach (var e in entries) UndefinedLayers.Add(new UndefinedLayerRowViewModel(FilePath, e));
+        OnPropertyChanged(nameof(HasUndefinedLayers));
     }
 
     private IReadOnlyList<string>? _fillPatternChoices;

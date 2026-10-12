@@ -706,6 +706,9 @@ public static partial class TraceImpedanceAnalysis
                 ct.ThrowIfCancellationRequested();
                 control?.BeginStage($"{tag}: finding traces");
                 var lw = prep.FindLayer(key, name, band, options, ct);
+                var declaredPads = DeclaredPads(key, shapes, tech);
+                if (declaredPads.Count > 0)
+                    lw = lw with { Chains = [.. lw.Chains.Where(c => !InsideDeclaredPad(c, declaredPads))] };
 
                 // The scope, BEFORE cutting, so an out-of-scope trace is never cut or solved — that is
                 // the solve time saved, not just the rows. It selects TRACES, never COPPER: the chains
@@ -1766,6 +1769,46 @@ public static partial class TraceImpedanceAnalysis
     /// <summary>A chain's two end points as its <see cref="TraceRun"/> reports them, DBU — the first
     /// piece's start and the last piece's end, walked in chain order. What an acceptance's key is made of,
     /// for a trace in scope and one left out alike.</summary>
+    /// <summary>
+    /// The pads on <paramref name="key"/> that the artwork declares as a component's pin (a Gerber
+    /// <c>%TO.P</c>, carried as <see cref="LayoutShape.Pin"/>), each with its bounds.
+    /// </summary>
+    private static List<(Paths64 Paths, Rect64 Box)> DeclaredPads(LayerKey key, IReadOnlyList<LayoutShape> shapes, Technology tech)
+    {
+        var pads = new List<(Paths64, Rect64)>();
+        foreach (var shape in shapes)
+        {
+            if (shape.Pin is not { Length: > 0 } || shape.Layer != key || shape is LabelShape or ViaShape) continue;
+            var paths = LayoutClipper.ToClipperPaths(shape, LayoutFlattener.ResolveTolDbu(shape, tech));
+            if (paths.Count > 0) pads.Add((paths, Clipper.GetBounds(paths)));
+        }
+        return pads;
+    }
+
+    /// <summary>
+    /// Whether a chain lies wholly inside ONE declared pad (<see cref="DeclaredPads"/>). Such copper is a
+    /// pad whatever its aspect: an edge-launch connector's centre pad is several times longer than wide,
+    /// so it passed for a trace and failed at 38.7 Ω (designer report, round 18). Both ends and every
+    /// joint must be in it.
+    /// </summary>
+    private static bool InsideDeclaredPad(ChainWork chain, List<(Paths64 Paths, Rect64 Box)> pads)
+    {
+        var points = new List<Point64>(chain.Pieces.Count + 1);
+        var (sx, sy, _, _) = ChainEnds(chain);
+        points.Add(new Point64(sx, sy));
+        foreach (var (piece, reversed) in chain.Pieces)
+            points.Add(reversed ? new Point64((long)Math.Round(piece.Ax), (long)Math.Round(piece.Ay))
+                                : new Point64((long)Math.Round(piece.Bx), (long)Math.Round(piece.By)));
+
+        foreach (var (paths, box) in pads)
+        {
+            if (points.Any(p => p.X < box.left || p.X > box.right || p.Y < box.top || p.Y > box.bottom)) continue;
+            if (points.All(p => paths.Any(path => Clipper.PointInPolygon(p, path) != PointInPolygonResult.IsOutside)))
+                return true;
+        }
+        return false;
+    }
+
     private static (long X0, long Y0, long X1, long Y1) ChainEnds(ChainWork chain)
     {
         var first = chain.Pieces[0]; var last = chain.Pieces[^1];

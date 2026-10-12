@@ -324,6 +324,10 @@ public static class TechValidation
                 if (sl.SpanToLayer is not { Length: > 0 } || !conductorNames.Contains(sl.SpanToLayer))
                     problems.Add(new(TechProblemArea.Stackup,
                         $"Via stackup layer \"{sl.Name}\" spans an unknown conductor layer \"{sl.SpanToLayer}\"."));
+                if (sl.SpanFromLayer is { Length: > 0 } same && same == sl.SpanToLayer)
+                    problems.Add(new(TechProblemArea.Stackup,
+                        $"Via stackup layer \"{sl.Name}\" spans from \"{same}\" to \"{same}\" — a via joins two " +
+                        "different conductors, and this one connects nothing. Set its other end on the Stackup tab."));
                 if (sl.Fill == ViaFillKind.Plated && sl.WallThicknessDbu is not > 0)
                     problems.Add(new(TechProblemArea.Stackup,
                         $"Via stackup layer \"{sl.Name}\" is Plated with no wall thickness."));

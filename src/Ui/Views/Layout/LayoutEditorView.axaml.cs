@@ -204,7 +204,12 @@ public partial class LayoutEditorView : UserControl
         base.OnDetachedFromVisualTree(e);
         SubscribeToPanelVisibility(null);
         ThemeService.ThemeChanged -= OnActiveThemeChanged;
+        UndefinedLayerSession.Changed -= OnUndefinedLayerSessionChanged;
     }
+
+    /// <summary>A layer the technology does not define was hidden or locked from the technology
+    /// editor's session rows — repaint, since the canvas draws <c>DrawTechnology</c>.</summary>
+    private void OnUndefinedLayerSessionChanged(string techPath) => LayoutCanvasCtrl.InvalidateVisual();
 
     /// <summary>
     /// A different THEME was selected (not a light/dark flip) — re-resolve the wire palette and
@@ -230,6 +235,8 @@ public partial class LayoutEditorView : UserControl
         // Unsubscribe first: a re-attach must not stack a second handler on a static event.
         ThemeService.ThemeChanged -= OnActiveThemeChanged;
         ThemeService.ThemeChanged += OnActiveThemeChanged;
+        UndefinedLayerSession.Changed -= OnUndefinedLayerSessionChanged;
+        UndefinedLayerSession.Changed += OnUndefinedLayerSessionChanged;
         ApplyCanvasOverlay();   // the theme may have moved while this view was out of the tree
     }
 

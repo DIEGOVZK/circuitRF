@@ -39529,3 +39529,19 @@ removed) is ignored for that reason. **Undo** (header button, Cmd/Ctrl+Z outside
 `AssignmentState` — the user's `_assign` overrides and `PortsText` — pushed before each change that alters either; a
 group combo's batch is one step. A new, removed or replaced picture forgets the stack, because trace names are renumbered.
 Gate: `tests/Ui.Tests/PlotRecognition/PlotPortsTests.cs`.
+
+## Layers a technology does not define could not be hidden; via combos allowed one conductor at both ends (designer report, round 18, 2026-10-11)
+
+- **Undefined layers.** An import into a chosen technology keeps a file it has no layer for (paste stencils) on a
+  key of its own. Drawn through `FallbackPalette` (always visible), and absent from the technology editor's Layers
+  tab, so it could not be hidden — reported as "solder mask doesn't go away". Now `UndefinedLayerSession` (static,
+  UI-thread, keyed by the technology's full path) records layers open layouts draw that their technology lacks
+  (`LayoutEditorViewModel.ApplyTechResolution` scans; `ReportUnknownLayers` adds), the tech editor lists them under
+  **Not in this technology** with Vis/Sel, and toggles write ONLY to the session. The canvas and the hit test read
+  `LayoutEditorViewModel.DrawTechnology` — the technology plus fallback-look defs for the toggled layers, cached on
+  (technology reference, session version), and the SAME instance when nothing is toggled. Everything that saves,
+  exports or installs a technology keeps reading `Technology`, which is how the session rows cannot reach a file.
+  Both views subscribe to the static `Changed` event only while attached.
+- **Via span combos.** Picking, for one end, the conductor the other end is on now makes the ends trade places. A
+  plain refusal was tried first and broke `StackupDragTests`' combo-vs-drag comparison — and with it the ordinary way
+  to move a via down a conductor with the two boxes (From onto the old To, then To onto the next).

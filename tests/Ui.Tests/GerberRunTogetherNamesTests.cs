@@ -89,21 +89,23 @@ public class GerberRunTogetherNamesTests : IDisposable
     ///
     /// <para>"solderstopmask" is a real spelling and it ends the word "stop" with the letters "top".
     /// Any rule that matched a three-letter side word inside a word would read a side off this file,
-    /// which states none — so it must come out side-neutral. This is the assertion that stops someone
-    /// "simplifying" the fix into the bug it replaced.</para>
+    /// which states none — so it must be identified exactly as a mask whose name has no such letters
+    /// is. (A mask naming no side is the component side's, as a guess — designer report, round 18 —
+    /// so both come out "Soldermask Top"; the point is that "stop" is not why.) This is the assertion
+    /// that stops someone "simplifying" the fix into the bug it replaced.</para>
     /// </summary>
     [Fact]
-    public void ASolderStopMask_IsGivenNoSide_BecauseStopEndsInTop()
+    public void ASolderStopMask_TakesNoSideFromStop_BecauseStopEndsInTop()
     {
         var dir = Folder("stopmask");
         File.WriteAllText(Path.Combine(dir, "board-solderstopmask.gdo"), Artwork(1.0));
+        var plain = Folder("plainmask");
+        File.WriteAllText(Path.Combine(plain, "board-soldermask.gdo"), Artwork(1.0));
 
-        var layer = Import(dir, "stopmask").Layers.Single(l => l.FileName == "board-solderstopmask.gdo");
+        var stop = Import(dir, "stopmask").Layers.Single(l => l.FileName == "board-solderstopmask.gdo");
+        var mask = Import(plain, "plainmask").Layers.Single(l => l.FileName == "board-soldermask.gdo");
 
-        // Unidentified, and therefore asked about — NOT quietly given a side. Asserted on the RUNG
-        // rather than on the name, because the name a rung-4 file gets is its own stem, which contains
-        // the letters this test is about.
-        Assert.Equal(GerberLayerRung.Unidentified, layer.Rung);
+        Assert.Equal((mask.Rung, mask.LayerName), (stop.Rung, stop.LayerName));
     }
 
     // ══════════════════════════════════════════════════════════════════════════════════════════

@@ -53,6 +53,24 @@ public static class LayoutRasterFillCoalesce
     public const int MinStrokesPerRegion = 50;
 
     /// <summary>
+    /// The fewest strokes a region painted with a FAT pen may have and still count as painted — the
+    /// other way a pour is drawn rather than filled: a handful of nested outlines stroked with an
+    /// aperture wider than the step between them, so each band overlaps the next and the whole is solid
+    /// (a two-layer test board's bottom plane: about twenty rectangles). The count is far below
+    /// <see cref="MinStrokesPerRegion"/>, so the region must also show the fat pen's other signature,
+    /// <see cref="MinPaintCoverage"/>.
+    /// </summary>
+    public const int MinStrokesPerPaintedRegion = 8;
+
+    /// <summary>
+    /// How many times over a region's strokes must cover it, area for area, to count as painted when they
+    /// are too few for <see cref="MinStrokesPerRegion"/>. Traces meeting end to end overlap only at their
+    /// joints and cover their union barely more than once; a fat-pen fill's bands overlap their
+    /// neighbours by design.
+    /// </summary>
+    public const double MinPaintCoverage = 1.5;
+
+    /// <summary>
     /// The flattening tolerance R-rf3-5 requires be STATED and carried — 0.1 µm at whatever resolution
     /// the document is in. It is what a round end cap's arc is flattened to on the way into the union,
     /// and therefore the only place the result is not exact.
@@ -159,13 +177,15 @@ public static class LayoutRasterFillCoalesce
     ///
     /// <para>Non-<see cref="PathShape"/> candidates are ignored: a flash is not a scanline, and leaving
     /// the pads alone is also what keeps via pairing able to find them. A group smaller than
-    /// <see cref="MinStrokesPerRegion"/> is rejected without computing its union at all — it could not
-    /// pass, since a union is at least one region — which is what keeps this free on an ordinary
-    /// board.</para>
+    /// <see cref="MinStrokesPerPaintedRegion"/> is rejected without computing its union at all — it could
+    /// not pass, since a painted region has at least that many strokes.</para>
     /// </summary>
-    public static Plan Build(IReadOnlyList<Candidate> candidates, long toleranceDbu)
+    /// <param name="perRegion">Also decide region by region when the group as a whole does not collapse
+    /// (<see cref="PaintedRegions"/>). The Gerber import asks for it — a photoplot file is where a plane is
+    /// painted beside its own legend; a board file's pours arrive as zones.</param>
+    public static Plan Build(IReadOnlyList<Candidate> candidates, long toleranceDbu, bool perRegion = false)
     {
-        if (candidates.Count < MinStrokesPerRegion) return Nothing;
+        if (candidates.Count < (perRegion ? MinStrokesPerPaintedRegion : MinStrokesPerRegion)) return Nothing;
 
         // Deterministic: groups are visited in first-appearance order, never in hash order (R-L1c-1's
         // determinism discipline — two runs of one import must produce the same .clay bytes).
@@ -189,10 +209,15 @@ public static class LayoutRasterFillCoalesce
         foreach (string key in order)
         {
             var group = groups[key];
-            if (group.Count < MinStrokesPerRegion) continue;
+            if (group.Count < (perRegion ? MinStrokesPerPaintedRegion : MinStrokesPerRegion)) continue;
 
+            var perStroke = new Paths64[group.Count];
             var outlines = new Paths64();
-            foreach (var p in group) outlines.AddRange(LayoutClipper.ToClipperPaths(p, toleranceDbu, toleranceDbu));
+            for (int i = 0; i < group.Count; i++)
+            {
+                perStroke[i] = LayoutClipper.ToClipperPaths(group[i], toleranceDbu, toleranceDbu);
+                outlines.AddRange(perStroke[i]);
+            }
             if (outlines.Count == 0) continue;
 
             int strokeVertices = 0;
@@ -206,6 +231,8 @@ public static class LayoutRasterFillCoalesce
             int regionVertices = 0;
             foreach (var r in regions) regionVertices += VertexCount(r);
 
+            string layerName = names.TryGetValue(key, out string? n) ? n : "";
+
             // R-rf3-4's two counted conditions. Neither is a heuristic about what the artwork MEANS.
             //
             //  1. The strokes genuinely collapse: this is the one that separates a painted region from
@@ -216,17 +243,44 @@ public static class LayoutRasterFillCoalesce
             //     brief's literal wording compares against the strokes' STORED vertices, which is a
             //     two-point centreline against a capped outline: that comparison can never be won and
             //     would switch the whole tier off. See src/Design/RESOLVED.md.)
-            if (group.Count < MinStrokesPerRegion * regions.Count) continue;
-            if (regionVertices > strokeVertices) continue;
-
-            foreach (var r in regions)
+            if (group.Count >= MinStrokesPerRegion * regions.Count && regionVertices <= strokeVertices)
             {
-                r.Component = group[0].Component;
-                r.Pin = group[0].Pin;
+                foreach (var r in regions)
+                {
+                    r.Component = group[0].Component;
+                    r.Pin = group[0].Pin;
+                }
+                replacements.Add(new Replacement(layerName, [.. group], regions, strokeVertices, regionVertices));
+                continue;
             }
-            replacements.Add(new Replacement(
-                names.TryGetValue(key, out string? n) ? n : "",
-                [.. group], regions, strokeVertices, regionVertices));
+
+            // The whole file did not collapse — but a REGION of it may have. One file commonly carries a
+            // painted plane AND a legend drawn beside it, or a raster-filled pour AND the traces that leave
+            // it; counted over the file, the legend's hundred glyph islands or the traces' nets outvote the
+            // plane and nothing was coalesced (designer report, round 18: a bottom ground plane painted
+            // with twenty concentric fat-pen rectangles read as rings). Decided per region with the same
+            // two conditions, plus the one a fat pen leaves when it does not leave a count: its strokes
+            // cover the region several times over, which traces meeting at their ends never do.
+            if (perRegion && PaintedRegions(group, perStroke, regions) is { Count: > 0 } painted)
+            {
+                var replaced = new List<LayoutShape>();
+                var kept = new List<LayoutShape>();
+                int sv = 0, rv = 0;
+                foreach (var (region, members, memberVertices) in painted)
+                {
+                    region.Component = group[members[0]].Component;
+                    region.Pin = group[members[0]].Pin;
+                    foreach (int m in members) replaced.Add(group[m]);
+                    kept.Add(region);
+                    sv += memberVertices;
+                    rv += VertexCount(region);
+                }
+                // In document order, so RegionsByFirstReplaced keys on the region's first stroke.
+                var order2 = new Dictionary<LayoutShape, int>(ReferenceEqualityComparer.Instance);
+                for (int i = 0; i < group.Count; i++) order2[group[i]] = i;
+                replaced.Sort((a, b) => order2[a].CompareTo(order2[b]));
+                replacements.Add(new Replacement(layerName, replaced, kept, sv, rv));
+            }
         }
 
         return replacements.Count == 0 ? Nothing : new Plan(replacements, toleranceDbu);
@@ -246,6 +300,75 @@ public static class LayoutRasterFillCoalesce
         var tree = new PolyTree64();
         Clipper.BooleanOp(ClipType.Union, outlines, new Paths64(), tree, LayoutClipper.Rule);
         return LayoutClipper.FromClipperTree(tree, layer, net);
+    }
+
+    /// <summary>
+    /// The regions of a union that are painted, each with the strokes that formed it (indices into
+    /// <paramref name="group"/>) and those strokes' outline vertex count. A region is painted when it
+    /// absorbed <see cref="MinStrokesPerRegion"/> strokes, or at least <see cref="MinStrokesPerPaintedRegion"/>
+    /// whose outlines cover it <see cref="MinPaintCoverage"/> times over — and in either case is no more
+    /// complex than the outlines it replaces.
+    /// </summary>
+    private static List<(PolygonShape Region, List<int> Members, int MemberVertices)> PaintedRegions(
+        List<PathShape> group, Paths64[] perStroke, IReadOnlyList<LayoutShape> regions)
+    {
+        var rings = new List<(PolygonShape Shape, Path64 Outer, List<Path64> Holes, Rect64 Box)>(regions.Count);
+        foreach (var r in regions)
+        {
+            if (r is not PolygonShape p) continue;
+            var outer = RingPath(p.Xy);
+            rings.Add((p, outer, p.Holes?.Select(RingPath).ToList() ?? [], Clipper.GetBounds(outer)));
+        }
+
+        // Each stroke belongs to the region its first centre-line vertex is in: a stroke of positive
+        // width covers its own centre line, so that point is inside exactly one region of the union.
+        var members = new List<int>?[rings.Count];
+        for (int i = 0; i < group.Count; i++)
+        {
+            if (group[i].Xy.Length < 2) continue;
+            var pt = new Point64(group[i].Xy[0], group[i].Xy[1]);
+            for (int k = 0; k < rings.Count; k++)
+            {
+                var (_, outer, holes, box) = rings[k];
+                if (pt.X < box.left || pt.X > box.right || pt.Y < box.top || pt.Y > box.bottom) continue;
+                if (Clipper.PointInPolygon(pt, outer) == PointInPolygonResult.IsOutside) continue;
+                if (holes.Any(h => Clipper.PointInPolygon(pt, h) == PointInPolygonResult.IsInside)) continue;
+                (members[k] ??= []).Add(i);
+                break;
+            }
+        }
+
+        var painted = new List<(PolygonShape, List<int>, int)>();
+        for (int k = 0; k < rings.Count; k++)
+        {
+            if (members[k] is not { Count: >= MinStrokesPerPaintedRegion } m) continue;
+
+            int memberVertices = 0;
+            foreach (int i in m) foreach (var path in perStroke[i]) memberVertices += path.Count;
+            if (VertexCount(rings[k].Shape) > memberVertices) continue;
+
+            if (m.Count < MinStrokesPerRegion)
+            {
+                double regionArea = Math.Abs(Clipper.Area(rings[k].Outer)) - rings[k].Holes.Sum(h => Math.Abs(Clipper.Area(h)));
+                double covered = 0;
+                foreach (int i in m)
+                {
+                    // Each stroke's own outline, unioned with itself so a closed or self-crossing stroke
+                    // is counted once — only coverage BY OTHER STROKES is the evidence.
+                    foreach (var path in Clipper.Union(perStroke[i], LayoutClipper.Rule)) covered += Clipper.Area(path);
+                }
+                if (regionArea <= 0 || Math.Abs(covered) < MinPaintCoverage * regionArea) continue;
+            }
+            painted.Add((rings[k].Shape, m, memberVertices));
+        }
+        return painted;
+    }
+
+    private static Path64 RingPath(long[] xy)
+    {
+        var path = new Path64(xy.Length / 2);
+        for (int i = 0; i + 1 < xy.Length; i += 2) path.Add(new Point64(xy[i], xy[i + 1]));
+        return path;
     }
 
     private static int VertexCount(LayoutShape shape)

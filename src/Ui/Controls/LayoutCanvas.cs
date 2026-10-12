@@ -500,7 +500,7 @@ public sealed class LayoutCanvas : Control
         }
 
         var hits = LayoutHitTest.HitInstanceStack(
-            _viewModel.Model, _viewModel.Technology, _viewModel.InstanceBaseDir,
+            _viewModel.Model, _viewModel.DrawTechnology, _viewModel.InstanceBaseDir,
             (long)Math.Round(wx), (long)Math.Round(wy), tolDbu);
         if (hits.Count == 0) return;
 
@@ -565,7 +565,7 @@ public sealed class LayoutCanvas : Control
         };
 
         context.Custom(new LayoutDrawOperation(
-            new Rect(Bounds.Size), _viewModel?.Model, _viewModel?.Technology, vp, opts, _canvasOverlay,
+            new Rect(Bounds.Size), _viewModel?.Model, _viewModel?.DrawTechnology, vp, opts, _canvasOverlay,
             r => Dispatcher.UIThread.Post(() =>
             {
                 FrameUnknownLayers?.Invoke(r.UnknownLayers);

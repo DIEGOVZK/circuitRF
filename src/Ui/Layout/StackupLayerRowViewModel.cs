@@ -721,6 +721,20 @@ public sealed partial class StackupLayerRowViewModel : ObservableObject
     private void CommitSpan(bool from, string value)
     {
         string? v = value == SpanNone ? null : value;
+        // A via joins two DIFFERENT conductors. Both ends on one conductor is a barrel of no length that
+        // connects nothing, and the two combo boxes were the only way to draw one — the canvas drag keeps
+        // its ends a conductor apart (designer report, round 18). Picking the conductor the OTHER end is
+        // on makes the ends trade places instead: refusing it would also refuse the ordinary way to move
+        // a via down one conductor with these boxes (From onto the old To, then To onto the next).
+        if (v is not null && v == (from ? Layer.SpanToLayer : Layer.SpanFromLayer))
+        {
+            CommitSpanPair(
+                from ? v : Layer.SpanToLayer,
+                from ? Layer.SpanFromLayer : v,
+                $"Set {Layer.Name} span");
+            RefreshFromModel();
+            return;
+        }
         CommitSpanPair(
             from ? v : Layer.SpanFromLayer,
             from ? Layer.SpanToLayer : v,

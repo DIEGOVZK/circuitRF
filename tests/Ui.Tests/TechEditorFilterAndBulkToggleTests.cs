@@ -342,14 +342,15 @@ public class TechEditorFilterAndBulkToggleTests
     {
         var axaml = Axaml();
 
-        // Three copies of the layer column list now: filter row, header row, item template.
+        // Four copies of the layer column list now: filter row, header row, item template, and the rows for
+        // layers an open layout draws that the technology does not define (designer report, round 18).
         int copies = 0;
         for (int i = axaml.IndexOf("<ColumnDefinition Width=\"30\"/>", StringComparison.Ordinal); i >= 0;
                  i = axaml.IndexOf("<ColumnDefinition Width=\"30\"/>", i + 1, StringComparison.Ordinal))
             copies++;
 
         // Two 30 px columns (Vis, Sel) per copy of the list.
-        Assert.Equal(6, copies);
+        Assert.Equal(8, copies);
     }
 
     // Bubbling would let the ListBox move its (invisible) selection first and swallow the key.

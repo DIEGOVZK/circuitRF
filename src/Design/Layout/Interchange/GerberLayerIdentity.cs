@@ -363,7 +363,16 @@ public static class GerberLayerCascade
     // guessed and its bottom layers dropped to the mapping dialog — an asymmetry no one would choose
     // and nothing announced.
     private static readonly string[] TopWords = ["top", "front"];
-    private static readonly string[] BotWords = ["bottom", "bot", "back"];
+    private static readonly string[] BotWords = ["bottom", "bot", "btm", "back"];
+
+    // The abbreviated spellings of three functions, once each: "slk" for the silkscreen, "sm" and (beside a
+    // side word) "sld" for the solder mask, "cop" for copper. All are short, so ContainsWord reads them as
+    // whole words only. A set written entirely in these (TOP-COP, BTM-COP, TOP-SLD) identified nothing, so
+    // its stackup had no copper and came out EMPTY (designer report, round 18).
+    private static readonly string[] SilkWords = ["silk", "legend", "slk"];
+    private static readonly string[] MaskWords = ["mask", "sm"];
+    private static readonly string[] SidedMaskWords = ["mask", "sm", "sld"];
+    private static readonly string[] CopperWords = ["copper", "cop"];
 
     // Ordered: the FIRST match wins, so the more specific rows come first. "solder mask top" must be
     // tested before "top", and "paste" before "mask", because a paste file's name commonly says both.
@@ -372,14 +381,22 @@ public static class GerberLayerCascade
         // A drill DRAWING is a dimensioned fabrication sheet with a tool legend beside the board, not
         // drill data — so it must not land on the layer the actual hits go to, where its legend table
         // extends the drill layer far outside the board outline. Ahead of the plain "drill" row.
-        new([["drill"], ["drawing", "map", "legend", "chart"]], "Drill Map", UnidentifiedPurpose, null),
+        new([["drill", "hole", "holes"], ["drawing", "map", "legend", "chart"]], "Drill Map", UnidentifiedPurpose, null),
         new([["drill"]], "Drill", DrillPurpose, null),
+        // A Gerber file of the holes, named for them ("HOLE.GBR"): a flash per hole, which is what the
+        // drill-purpose artwork path builds its via entry from (designer feedback 02's fix).
+        new([["hole", "holes"]], "Drill", DrillPurpose, null),
         new([["paste"], TopWords], "Paste Top", UnidentifiedPurpose, "Top"),
         new([["paste"], BotWords], "Paste Bottom", UnidentifiedPurpose, "Bot"),
-        new([["mask"], TopWords], "Soldermask Top", UnidentifiedPurpose, "Top"),
-        new([["mask"], BotWords], "Soldermask Bottom", UnidentifiedPurpose, "Bot"),
-        new([["silk", "legend"], TopWords], "Silk Top", UnidentifiedPurpose, "Top"),
-        new([["silk", "legend"], BotWords], "Silk Bottom", UnidentifiedPurpose, "Bot"),
+        new([SidedMaskWords, TopWords], "Soldermask Top", UnidentifiedPurpose, "Top"),
+        new([SidedMaskWords, BotWords], "Soldermask Bottom", UnidentifiedPurpose, "Bot"),
+        new([SilkWords, TopWords], "Silk Top", UnidentifiedPurpose, "Top"),
+        new([SilkWords, BotWords], "Silk Bottom", UnidentifiedPurpose, "Bot"),
+        // A silkscreen or mask that names no side is the component side's: a set with one of each
+        // prints it there (SLK-NS / SM-NS on a four-layer set with parts on top only). A guess, and
+        // reported as one like every rung-3 answer.
+        new([SilkWords], "Silk Top", UnidentifiedPurpose, "Top"),
+        new([MaskWords], "Soldermask Top", UnidentifiedPurpose, "Top"),
 
         // THE ASSEMBLY AND FABRICATION DRAWINGS. Both are declared file functions this file's own
         // KindNames table already names ("AssemblyDrawing" -> "Assembly", "FabricationDrawing" ->
@@ -409,6 +426,7 @@ public static class GerberLayerCascade
         new([["keepout"]], "Outline", UnidentifiedPurpose, null),
         new([["edge"], ["cut", "cuts"]], "Outline", UnidentifiedPurpose, null),
         new([["board"], ["shape"]], "Outline", UnidentifiedPurpose, null),
+        new([["frame"]], "Outline", UnidentifiedPurpose, null),
         new([["mechanical"]], "Mechanical", UnidentifiedPurpose, null),
         // The score lines a panel is broken along. It has a FileFunction of its own (KindNames spells
         // it "V-Cut"), so the name here is that one — a set declaring it and a set merely naming it
@@ -416,8 +434,8 @@ public static class GerberLayerCascade
         // the spellings that separate the letter, which Signature has already split apart.
         new([["vcut", "vscore"]], "V-Cut", UnidentifiedPurpose, null),
         new([["v"], ["cut", "score", "groove"]], "V-Cut", UnidentifiedPurpose, null),
-        new([["copper"], TopWords], "Top Copper", ConductorPurpose, "Top"),
-        new([["copper"], BotWords], "Bottom Copper", ConductorPurpose, "Bot"),
+        new([CopperWords, TopWords], "Top Copper", ConductorPurpose, "Top"),
+        new([CopperWords, BotWords], "Bottom Copper", ConductorPurpose, "Bot"),
         new([TopWords, ["layer"]], "Top Copper", ConductorPurpose, "Top"),
         new([BotWords, ["layer"]], "Bottom Copper", ConductorPurpose, "Bot"),
         new([["copper"], ["inner"]], "Inner Copper", ConductorPurpose, "Inr"),

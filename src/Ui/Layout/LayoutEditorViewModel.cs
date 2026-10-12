@@ -166,6 +166,43 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
     /// Lets the workspace know which open documents to refresh when that file changes.</summary>
     internal string? ResolvedTechPath { get; private set; }
 
+    /// <summary>
+    /// <see cref="Technology"/> as the canvas DRAWS and hit-tests it: with the session's toggles for
+    /// the layers this layout draws that the technology does not define (<see cref="UndefinedLayerSession"/>).
+    /// The same instance as <see cref="Technology"/> until someone hides or locks such a layer. Only
+    /// drawing and picking read it — anything that saves, exports or installs a technology reads
+    /// <see cref="Technology"/>, so the session's rows can never reach a file.
+    /// </summary>
+    internal Technology? DrawTechnology
+    {
+        get
+        {
+            var tech = Technology;
+            if (tech is null || ResolvedTechPath is not { } path) return tech;
+            int version = UndefinedLayerSession.Version;
+            if (ReferenceEquals(_drawTechSource, tech) && _drawTechVersion == version) return _drawTech;
+            _drawTech = UndefinedLayerSession.WithSessionLayers(tech, path);
+            _drawTechSource = tech;
+            _drawTechVersion = version;
+            return _drawTech;
+        }
+    }
+
+    private Technology? _drawTech, _drawTechSource;
+    private int _drawTechVersion = -1;
+
+    /// <summary>Records every layer the document's own shapes use that <paramref name="tech"/> does not
+    /// define, so the technology editor can list them.</summary>
+    private void RecordUndefinedLayers(Technology? tech, string? techPath)
+    {
+        if (tech is null || techPath is null) return;
+        var defined = tech.Layers.Select(l => l.Key).ToHashSet();
+        var undefined = new HashSet<LayerKey>();
+        foreach (var shape in Model.Shapes)
+            if (!defined.Contains(shape.Layer)) undefined.Add(shape.Layer);
+        if (undefined.Count > 0) UndefinedLayerSession.Seen(techPath, undefined);
+    }
+
     public string TechNameText => Technology?.Name ?? "No technology";
 
     public string LayerCountText => Technology is null ? "fallback colors" : $"{Technology.Layers.Count} layers";
@@ -205,6 +242,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
     {
         ResolvedTechPath = resolution.ResolvedPath;
         Technology        = resolution.Tech;
+        RecordUndefinedLayers(resolution.Tech, resolution.ResolvedPath);
 
         // R-lbl-1 (docs/sonnet-briefs/brief-layout-label-fix-and-text-flatten.md): seed the label-
         // height default from the technology exactly once — the first time a technology resolves for
@@ -688,6 +726,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
     {
         foreach (var key in keys)
         {
+            if (ResolvedTechPath is { } path) UndefinedLayerSession.Seen(path, [key]);
             if (!_warnedUnknownLayers.Add(key)) continue;
             _messageSink?.Warning($"Layer {key.Layer}/{key.Datatype} is not defined in '{TechNameText}' — using a generated fallback color.");
         }
@@ -1388,7 +1427,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
 
     private LayerDef ResolveLayerDef(LayerKey key)
     {
-        if (Technology is { } tech)
+        if (DrawTechnology is { } tech)
             foreach (var l in tech.Layers)
                 if (l.Key == key) return l;
         return FallbackPalette.For(key);
@@ -1656,7 +1695,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         // Ports first, in their own relative order, exactly as R-rul-11 puts a ruler above the
         // artwork it lies over. Nothing becomes unreachable: a second press at the same point cycles
         // down the stack to whatever is underneath, which is what the cycle is for.
-        var shapes = LayoutHitTest.HitStack(Model, Technology, px, py, tolDbu, PortMarkerRegion);
+        var shapes = LayoutHitTest.HitStack(Model, DrawTechnology, px, py, tolDbu, PortMarkerRegion);
         foreach (int i in shapes)
             if (i >= 0 && i < Model.Shapes.Count && Model.Shapes[i] is LabelShape { IsPort: true })
                 picks.Add(new LayoutPick(LayoutPickKind.Shape, i));
@@ -1665,7 +1704,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
                 picks.Add(new LayoutPick(LayoutPickKind.Shape, i));
 
         if (shapes.Count == 0)
-            foreach (int i in LayoutHitTest.HitInstanceStack(Model, Technology, InstanceBaseDir, px, py, tolDbu))
+            foreach (int i in LayoutHitTest.HitInstanceStack(Model, DrawTechnology, InstanceBaseDir, px, py, tolDbu))
                 picks.Add(new LayoutPick(LayoutPickKind.Instance, i));
 
         return picks;

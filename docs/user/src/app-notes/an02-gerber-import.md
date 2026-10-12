@@ -75,8 +75,10 @@ Each artwork file's identity comes from the strongest source the set offers, in 
 2. the file's own **X2 attributes** (`%TF.FileFunction`), which also give a copper layer's position in the stack;
 3. a **Gerber suffix** in your workspace technology that matches the file's extension;
 4. a **name heuristic** — copper top, bottom, inner or numbered from the top (`MET-1` … `MET-4`), mask, silk,
-   paste, outline, drill;
-5. the **layer-mapping dialog**, for anything still unnamed.
+   paste, outline, drill, including the short spellings (`TOP-COP`, `BTM-COP`, `TOP-SLD`, `SLK`, `SM`, `HOLE`,
+   `PCB FRAME`). A silkscreen or mask whose name gives no side is taken as the top one;
+5. the **layer-mapping dialog**, for anything still unnamed. Mapping an unnamed file onto a copper layer of the
+   technology makes it that conductor in the stackup.
 
 This board's job file names all three Gerber files, so the first rung settles every one of them. The files carry
 X2 attributes as well, but the job file is asked first. The [import summary](#result) says so, file by file:
@@ -105,7 +107,9 @@ board lands in, and the table under it shows where each file goes in that techno
   the files say. Your workspace technology is read for layer names and never changed.
 - **A technology you already have** — any `.ctech` in the workspace, or a built-in one — is **used**: every file is
   mapped onto that technology's own layers, nothing is added to it, nothing in it changes, and no `.ctech` is
-  written. A built-in technology is copied into `tech/` when you press **Continue**.
+  written. A built-in technology is copied into `tech/` when you press **Continue**. A file the technology has no
+  layer for (a paste stencil, say) keeps a layer of its own; the technology editor's **Layers** tab lists it under
+  **Not in this technology**, where it can be hidden or locked until circuitRF closes.
 
 Changing the row re-proposes the table for that technology at once, without reading the files again. A
 technology is offered only when its stackup has as many conductors as the set has copper files, counting the

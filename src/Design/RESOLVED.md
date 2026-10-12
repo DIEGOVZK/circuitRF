@@ -19569,3 +19569,42 @@ corpus:
   round blob touching a region at one place" rule.
 - The whole screenshot (two circuits, bold serif ZL / 50 Ω, ticks across leads) still reads wrong; results swing between
   a 400 px and a 420 px crop of the same circuit.
+
+## Gerber import: an empty stackup, a plane read as rings, and a pad read as a trace (designer report, round 18, 2026-10-11)
+
+Four Gerber sets (a two-layer test board with abbreviated names, two four-layer sets, a two-layer LNA board whose
+pads carry `%TO.P`/`%TO.N`). What was wrong, and what changed:
+
+- **Abbreviated names identified nothing → empty stackup.** `TOP-COP`, `BTM-COP`, `TOP-SLD`, `HOLE`, `PCB FRAME`
+  matched no rung-3 row, so the set had no copper; a minted technology came out with an EMPTY stackup and an import
+  into a two-layer technology was refused for "0 copper files". New words, all whole-word only (ContainsWord's floor):
+  `cop` (copper), `btm` (bottom), `sld` (mask, beside a side word only), `slk` (silk), `sm` (mask), `hole(s)` (Drill —
+  a Gerber hole drawing, which the drill-purpose artwork path builds its via entry from), `frame` (Outline). A silk
+  or mask naming NO side is now "… Top", as a reported guess (`SLK-NS`/`SM-NS` on a parts-on-top four-layer set).
+  This changed `GerberRunTogetherNamesTests`' solder-stop-mask case from "unidentified" to "identified exactly as a
+  plain side-less mask is" — its real claim (no side read from the letters of "stop") is kept.
+- **A file mapped by hand onto "Top Copper" stayed artwork.** `PromoteMappedCopper` (after `PromoteAnsweredCopper`):
+  an unidentified file mapped onto a layer a CONDUCTOR of the mapping technology binds is copper at that conductor's
+  rank — the technology's order, not the table's (shape count) or the alphabet's (`BTM` above `TOP`).
+- **A fat-pen plane beside its legend never coalesced.** The bottom plane was ~20 concentric rectangles stroked with
+  0.2–0.4" round apertures (each band overlapping the next), in the SAME file as ~100 legend glyph islands. R-rf3's
+  file-wide ratio (≥ 50 strokes per region) failed, nothing merged, and the translucent overlaps drew as rings — the
+  designer read it as "no ground plane". `LayoutRasterFillCoalesce.Build(perRegion: true)` (Gerber import only; the
+  board-file import keeps the old rule) falls back to deciding PER REGION: a region absorbing ≥ 50 strokes, or ≥ 8
+  whose own outlines cover it ≥ 1.5× (`MinPaintCoverage` — end-to-end traces cover their union ~1.1×), and no more
+  complex than its outlines. Strokes are assigned to regions by their first centre-line vertex. Drill-purpose files
+  are never coalesced. This also merges a raster-filled pour that shares a file with traces (a numbered-metal set's
+  top layer).
+- **"Vector-filled pour" said about every busy layer.** The R-L4g-16 note fired on silkscreen text, drill maps and a
+  layer of ordinary tracks. Now only for a conductor imported with coalescing OFF — with it on, unmerged strokes
+  overlap too little to be fill.
+- **A tagged connector pad failed as a trace.** An edge-launch connector's centre pad (5 mm × 1.5 mm) passed the
+  aspect test and failed at 38.7 Ω. `TraceImpedanceAnalysis`: a chain lying wholly inside ONE shape carrying a `Pin`
+  (a `%TO.P`) on that layer is dropped as a pad.
+- **A via spanning one conductor was accepted.** `TechValidation` now flags `SpanFromLayer == SpanToLayer` on a
+  plated via. (The stackup card's combos made it possible; see `src/Ui/RESOLVED.md`.) A one-copper Gerber set's minted
+  via spans its only conductor to itself and is flagged too — accurately.
+- Not bugs: the LNA board's "weird" bottom silk is constellation artwork (filled circles joined by thin regions); the
+  four-layer set's non-plated drill-file refusal was round 17's `NotVias` fix, already in.
+- The pad attributes carry the whole netlist; reading them in recognition is `brief-artsch-12-declared-pads-netlist.md`.
+- Gate: `tests/Ui.Tests/DesignerRound18Tests.cs`.
