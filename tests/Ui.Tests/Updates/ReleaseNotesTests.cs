@@ -1089,4 +1089,44 @@ public class ReleaseNotesLatestTests
         Assert.Equal(ReleaseNotesOutcome.NotPublished, none.Outcome);
         Assert.Equal(Browse, none.BrowseUrl);
     }
+
+    /// <summary>
+    /// A release newer than the running build is one the user has not installed, so its notes are
+    /// not listed — and a prerelease of the running version is older than it, so it is.
+    /// </summary>
+    [Fact]
+    public void NothingNewerThanTheRunningVersion()
+    {
+        ReleaseInfo[] feed =
+        [
+            Release("v1.0.11",       "eleven"),
+            Release("v1.0.10",       "ten"),
+            Release("v1.0.10-beta.1", "ten beta"),
+            Release("v1.0.9",        "nine"),
+        ];
+
+        Assert.Equal(["1.0.10", "1.0.10-beta.1", "1.0.9"],
+                     ReleaseNotesFetcher.SelectLatest(feed, Browse, running: "1.0.10")
+                                        .Sections.Select(x => x.Version).ToArray());
+    }
+
+    /// <summary>
+    /// The download button's version is the updater's own choice: strictly newer, never a draft,
+    /// a prerelease only on the beta channel, and nothing on the newest build.
+    /// </summary>
+    [Fact]
+    public void TheNewerReleaseIsTheOneTheUpdaterWouldOffer()
+    {
+        ReleaseInfo[] feed =
+        [
+            Release("v1.0.12", "draft", draft: true),
+            Release("v1.0.12-beta.1", "beta"),
+            Release("v1.0.11", "eleven"),
+            Release("v1.0.10", "ten"),
+        ];
+
+        Assert.Equal("1.0.11",        ReleaseNotesFetcher.NewerRelease(feed, "1.0.10", includeBetas: false));
+        Assert.Equal("1.0.12-beta.1", ReleaseNotesFetcher.NewerRelease(feed, "1.0.10", includeBetas: true));
+        Assert.Equal("",              ReleaseNotesFetcher.NewerRelease(feed, "1.0.11", includeBetas: false));
+    }
 }

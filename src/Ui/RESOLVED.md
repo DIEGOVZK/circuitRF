@@ -39545,3 +39545,21 @@ Gate: `tests/Ui.Tests/PlotRecognition/PlotPortsTests.cs`.
 - **Via span combos.** Picking, for one end, the conductor the other end is on now makes the ends trade places. A
   plain refusal was tried first and broke `StackupDragTests`' combo-vs-drag comparison — and with it the ordinary way
   to move a via down a conductor with the two boxes (From onto the old To, then To onto the next).
+
+## Help ▸ Release Notes showed releases newer than the running build; a download button for a newer one (owner, 2026-10-11)
+
+Owner report: on 1.0.10, Help ▸ Release Notes… showed 1.0.11's notes, a version not yet installed.
+`ReleaseNotesFetcher.SelectLatest` took the newest five published releases with no upper bound — its
+doc comment called "not anchored to the running version" a feature. It now skips anything newer than
+the running version (`FetchLatestAsync(AppVersion.Display)`); a prerelease of the running version still
+counts as older, as semantic versions order it. Gate: `ReleaseNotesLatestTests.NothingNewerThanTheRunningVersion`.
+
+Owner request in the same session: when a newer release exists, a **Download circuitRF x.y.z** button at
+the top right of the dialog. **It reuses, it does not re-implement**: the version is
+`UpdateSelector.SelectRelease` over the feed the notes were fetched from (`ReleaseNotesFetcher.NewerRelease`
+→ `ReleaseNotesResult.NewerVersion`), and the click runs `WorkspaceViewModel.CheckForUpdatesCommand`, so
+the download, its Cancel in the Messages panel, the notify-only link line and the Relaunch announcement
+are that command's. The button is hidden when the command cannot execute (automatic updates off).
+Both openers pass the command — Help ▸ Release Notes… and the launch-time showing in `App.axaml.cs`.
+Gate: `ReleaseNotesLatestTests.TheNewerReleaseIsTheOneTheUpdaterWouldOffer`. Not checked on screen
+(the GUI cannot be launched from the agent's shell).

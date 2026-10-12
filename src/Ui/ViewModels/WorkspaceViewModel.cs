@@ -4358,7 +4358,8 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
 
     /// <summary>
     /// Help ▸ Release Notes… — the last <see cref="Updates.ReleaseNotesFetcher.LatestCount"/>
-    /// published releases, fetched when the user asks rather than when a version changes.
+    /// published releases up to the running version, fetched when the user asks rather than when a
+    /// version changes.
     ///
     /// <para><b>Nothing is recorded as seen here.</b> The automatic showing is the running version's
     /// notes once (<see cref="Updates.ReleaseNotesGate"/>); a user who opened this menu item on an
@@ -4394,13 +4395,13 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
             // what is happening rather than leaving the menu looking inert, exactly as Check for
             // Updates… does.
             Messages.Info($"Fetching the latest {Updates.UpdateApp.Name} release notes...");
-            result = await Updates.ReleaseNotesFetcher.FetchLatestAsync().ConfigureAwait(true);
+            result = await Updates.ReleaseNotesFetcher.FetchLatestAsync(AppVersion.Display).ConfigureAwait(true);
         }
 
         // Modeless and owned, like the launch-time showing: it belongs over this window and follows
         // it, and Activate() raises it above the application's other windows, which Show(owner) alone
         // does not do.
-        var dialog = new Views.Dialogs.ReleaseNotesDialog(result, offerOptOut: false);
+        var dialog = new Views.Dialogs.ReleaseNotesDialog(result, offerOptOut: false, CheckForUpdatesCommand);
         dialog.Show(resolved);
         dialog.Activate();
     }

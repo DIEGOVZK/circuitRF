@@ -31,8 +31,17 @@
 
     <!-- Which version these notes are for. Always shown, including on the two failure forms, because
          "we could not fetch them" is only actionable if you know what was being asked for. -->
-    <TextBlock Grid.Row="0" Name="HeadingText" Text="Release Notes"
-               FontSize="18" FontWeight="Bold" Margin="0,0,0,10"/>
+    <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+      <TextBlock Grid.Column="0" Name="HeadingText" Text="Release Notes"
+                 FontSize="18" FontWeight="Bold" VerticalAlignment="Center"/>
+
+      <!-- Only when a newer release than the running build is out. It runs Help ▸ Check for
+           Updates… itself, so the download, its Cancel in the Messages panel and the Relaunch
+           announcement are that command's, not a second copy of them. -->
+      <Button Grid.Column="1" Name="DownloadButton" FontSize="12" IsVisible="False"
+              VerticalAlignment="Center" Click="OnDownloadClicked"
+              ToolTip.Tip="Downloads the update in the background. It can be cancelled in the Messages panel."/>
+    </Grid>
 
     <Border Grid.Row="1"
             BorderBrush="{DynamicResource ThemeBorderMidBrush}"

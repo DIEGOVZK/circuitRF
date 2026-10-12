@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Interactivity;
@@ -32,6 +33,9 @@ public partial class ReleaseNotesDialog : Window
 
     private string _browseUrl = "";
 
+    /// <summary>Help ▸ Check for Updates…'s own command, which the download button runs.</summary>
+    private readonly ICommand? _checkForUpdates;
+
     /// <summary>
     /// The populate guard, for the same reason <c>UpdateSettingsView</c> has one: setting
     /// <c>IsChecked</c> raises <c>IsCheckedChanged</c>, so without it opening the dialog would write
@@ -58,9 +62,16 @@ public partial class ReleaseNotesDialog : Window
     /// who has ever turned the automatic one off, on a dialog that is plainly showing. Settings ▸
     /// Updates is where it lives for them.</para>
     /// </param>
-    public ReleaseNotesDialog(ReleaseNotesResult result, bool offerOptOut = true)
+    /// <param name="checkForUpdates">
+    /// Help ▸ Check for Updates…'s command. The download button is shown only when the result names a
+    /// newer release AND this command can run — it is disabled when automatic updates are off, and a
+    /// button offering a download that will not happen would be worse than none.
+    /// </param>
+    public ReleaseNotesDialog(ReleaseNotesResult result, bool offerOptOut = true,
+                              ICommand? checkForUpdates = null)
     {
         InitializeComponent();
+        _checkForUpdates = checkForUpdates;
         Render(result, offerOptOut);
     }
 
@@ -80,6 +91,12 @@ public partial class ReleaseNotesDialog : Window
 
         string subject = Subject(result.Version);
         HeadingText.Text = subject;
+
+        if (result.NewerVersion.Length > 0 && _checkForUpdates?.CanExecute(null) == true)
+        {
+            DownloadButton.Content   = $"Download {UpdateApp.Name} {result.NewerVersion}";
+            DownloadButton.IsVisible = true;
+        }
 
         // Hidden rather than disabled, and the preference is not even read: on the requested form it
         // is not a control the user may not use, it is a question this window is not asking.
@@ -220,6 +237,18 @@ public partial class ReleaseNotesDialog : Window
                 Process.Start(new ProcessStartInfo("xdg-open", _browseUrl) { UseShellExecute = false });
         }
         catch (Exception) { /* no browser, no association — the URL is on screen either way */ }
+    }
+
+    /// <summary>
+    /// Starts the download through Check for Updates…, whose progress row in the Messages panel
+    /// carries the Cancel. The button stays on screen, disabled, saying where the download went.
+    /// </summary>
+    private void OnDownloadClicked(object? sender, RoutedEventArgs e)
+    {
+        if (_checkForUpdates?.CanExecute(null) != true) return;
+        _checkForUpdates.Execute(null);
+        DownloadButton.IsEnabled = false;
+        DownloadButton.Content   = "Downloading — see Messages";
     }
 
     private void OnCloseClicked(object? sender, RoutedEventArgs e) => Close();

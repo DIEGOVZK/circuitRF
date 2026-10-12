@@ -373,7 +373,8 @@ public partial class App : Application
             // Shown rather than ShowDialog: it belongs over the workspace window and follows it, but
             // a modal that arrives seconds after launch would seize a window the user is already
             // working in.
-            var dialog = new Views.Dialogs.ReleaseNotesDialog(result);
+            var dialog = new Views.Dialogs.ReleaseNotesDialog(
+                result, checkForUpdates: (owner.DataContext as WorkspaceViewModel)?.CheckForUpdatesCommand);
             dialog.Show(owner);
 
             // AND BROUGHT TO THE FRONT, which Show(owner) alone does not do (owner request,
