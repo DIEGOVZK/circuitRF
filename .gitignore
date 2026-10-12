@@ -19,6 +19,11 @@ TestResults/
 # Field pictures for Create from Image (brief-img-12): pictures users bring, never committed. Only the folder's
 # README.md is, which says what goes in each picture folder.
 /testdata/image-sources/*/
+# The schematic-picture training data home (brief-iml-1 R-iml1-1) lives OUTSIDE the repository, and every tool in
+# tools/schematic-ml refuses one inside it. This guards the case of someone pointing CRF_ML_DATA in here anyway.
+**/circuitRF-ml-data/
+# The training kit's Python environment, created per developer by its README's setup step.
+tools/schematic-ml/.venv/
 
 # R-L5g-10 (brief-L5-followups-2.md §4): a workspace's .generated-cells/ folder is a pure, deletable,
 # rebuildable-from-the-layout PCell regeneration cache (GeneratedCellStore/LayoutView.PCellSnapshots) —
