@@ -15,7 +15,7 @@
         "Metal": "Metal1"
       }
     },
-    "KIT_MIMCAP_160d5d1ad668": {
+    "KIT_MIMCAP_84c6fc521264": {
       "GeneratorId": "KIT_MIMCAP",
       "Parameters": {
         "W": 6E-05,
@@ -70,7 +70,7 @@
       "PitchY": 0
     },
     {
-      "CellRef": "../../.generated-cells/KIT_MIMCAP_160d5d1ad668",
+      "CellRef": "../../.generated-cells/KIT_MIMCAP_84c6fc521264",
       "X": -255000,
       "Y": -46000,
       "Rot": "R0",

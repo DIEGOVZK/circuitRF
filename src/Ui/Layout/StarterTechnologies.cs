@@ -286,6 +286,7 @@ public static class StarterTechnologies
                     new StackupLayer
                     {
                         Kind = StackupKind.Via, Name = "Backside Via",
+                        SigmaSm = ConductorMaterials.Gold.SigmaSm,   // a gold barrel, as the shipped .ctech's (σ = 0 read as perfect)
                         DrawingLayers = [backsideVia],
                         Fill = ViaFillKind.Plated, WallThicknessDbu = Um(3),
                         SpanFromLayer = "Metal1", SpanToLayer = "Backside Metal",
@@ -296,6 +297,7 @@ public static class StarterTechnologies
                         // through the air gap, electroplated solid rather than a hollow barrel (unlike
                         // the backside via, which genuinely traverses 100 µm of substrate).
                         Kind = StackupKind.Via, Name = "Metal1-Metal2 Post",
+                        SigmaSm = ConductorMaterials.Gold.SigmaSm,
                         DrawingLayers = [via],
                         Fill = ViaFillKind.Solid,
                         SpanFromLayer = "Metal1", SpanToLayer = "Metal2",
@@ -306,6 +308,7 @@ public static class StarterTechnologies
                         // (MIM-1) rather than a point via — a plate connection is a patch nearly as
                         // large as the plate, not a barrel.
                         Kind = StackupKind.Via, Name = "MIM Via",
+                        SigmaSm = ConductorMaterials.Gold.SigmaSm,
                         DrawingLayers = [mimVia],
                         Fill = ViaFillKind.Solid,
                         SpanFromLayer = "MIM Metal", SpanToLayer = "Metal2",

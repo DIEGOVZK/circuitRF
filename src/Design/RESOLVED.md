@@ -19654,5 +19654,11 @@ S-parameter, real in a DC IR drop — and conducts heat. A non-plated hole (no f
 committed Gerber-made examples (both Artwork to Schematic boards) were brought into line the same way, and four example
 technologies whose vias already carried 5.8e7 gained only the name. An import INTO a chosen technology (R-gt) is
 untouched, and so is board-file import, which grafts onto the workspace's own technology. Gate: `Gi2StackupSkeletonTests`.
-**Left as found, pending an owner decision**: the GaAs process's backside via and metal posts are σ = 0 and unnamed in the
-shipped technology and its three example copies — naming them Gold would add barrel loss to every MMIC result.
+**The GaAs process followed (owner decision, same day)**: its Backside Via, Metal1-Metal2 Post and MIM Via were σ = 0 and
+unnamed — perfect barrels — in the shipped `mmic-GaAs_2LM_100um.ctech`, its LVS and PDK PCells example copies, and the
+code twin `StarterTechnologies.MmicGaAs()` that New Technology… → MMIC builds from. All now name Gold at 4.1e7 (the
+starter states the σ only, as its PCB via already did with copper — it carries no material list). This DOES change MMIC
+answers: a backside via to ground is now a lossy gold barrel in the planar fill, its DC point and Palace. Re-recorded:
+the two PDK PCells generator dumps (the posts' solids are Gold instead of a σ = 0 entry-named material; geometry
+identical) and SpiralResonator's MIM-cap generated-cell reference. 75 test classes that build on the starter or these
+files pass unchanged. The 3D Package example's own `mmic-gaas.ctech` already named its vias.

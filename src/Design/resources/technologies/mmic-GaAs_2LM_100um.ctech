@@ -337,10 +337,11 @@
         "Kind": "Via",
         "Name": "Backside Via",
         "ThicknessDbu": 0,
+        "Material": "Gold",
         "Epsr": 1,
         "TanD": 0,
         "Mur": 1,
-        "SigmaSm": 0,
+        "SigmaSm": 41000000,
         "DrawingLayers": [
           {
             "Layer": 8,
@@ -357,10 +358,11 @@
         "Kind": "Via",
         "Name": "Metal1-Metal2 Post",
         "ThicknessDbu": 0,
+        "Material": "Gold",
         "Epsr": 1,
         "TanD": 0,
         "Mur": 1,
-        "SigmaSm": 0,
+        "SigmaSm": 41000000,
         "DrawingLayers": [
           {
             "Layer": 3,
@@ -376,10 +378,11 @@
         "Kind": "Via",
         "Name": "MIM Via",
         "ThicknessDbu": 0,
+        "Material": "Gold",
         "Epsr": 1,
         "TanD": 0,
         "Mur": 1,
-        "SigmaSm": 0,
+        "SigmaSm": 41000000,
         "DrawingLayers": [
           {
             "Layer": 10,
