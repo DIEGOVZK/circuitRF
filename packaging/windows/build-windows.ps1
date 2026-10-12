@@ -796,6 +796,13 @@ $($components.ToString().TrimEnd())
     }
 }
 
+# wix writes a .wixpdb (debug symbols for the installer) beside every .msi. Nothing ships or reads
+# them, so they are removed rather than left in dist/ among the files a release is collected from.
+# The whole folder is swept, so ones left behind by an earlier, failed run go too.
+if (Test-Path $dist) {
+    Get-ChildItem -Path $dist -Filter '*.wixpdb' -File | Remove-Item -Force
+}
+
 Write-Host ''
 Write-Host "=== Done. $($built.Count) file(s) in $dist"
 foreach ($f in $built) { Write-Host "    $(Split-Path -Leaf $f)" }
