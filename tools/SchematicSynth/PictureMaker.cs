@@ -20,6 +20,9 @@ public sealed record PictureFiles(
 
     /// <summary>The drawing the picture is of — what the netlist round trip extracts.</summary>
     public Drawing? Drawing { get; init; }
+
+    /// <summary>Every drawing in the picture: one, or two side by side (brief-iml3 R-iml3-3).</summary>
+    public IReadOnlyList<Drawing> Drawings { get; init; } = [];
 }
 
 /// <summary>

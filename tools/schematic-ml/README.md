@@ -47,7 +47,7 @@ Every command below runs from `tools/schematic-ml` with that environment (`.venv
 manifest.json                 every real picture: id, family, sha256, size, split, imported-from (local only)
 real/<family>/<id>.<ext>      the picture, renamed; <id>.mllabel.json beside it once labelled
 synth/<generator>/<batch>/    generated pictures + labels — regenerable, safe to delete
-fonts/                        open-licensed fonts for generated text, with LICENSES/
+fonts/                        open-licensed fonts for generated text (fetch_fonts), each family with its licence; index.json
 runs/<run-id>/                checkpoints, logs, metrics.json
 exports/<model>-<version>/    .onnx, .crfnn, probe, model card draft
 ```
@@ -109,12 +109,41 @@ dotnet run --project tools/SchematicSynth -- crf --count 30000 --seed 1 --out $C
   label passes the checks `crfml.validate` makes before it is written, and every drawing has already been extracted
   and compared with its netlist.
 - At the end it prints a class histogram: how many pictures hold each class. A class circuitRF draws that falls under
-  1 % is marked. Classes circuitRF never draws are marked as such; they come from the style packs (IML-3).
+  1 % is marked. Classes circuitRF never draws are marked as such; they come from the style packs (below).
 - `--preview 24` writes `preview.png` in the batch folder: the first 24 pictures with their labels drawn over them.
   **Look at it before training on a batch.** `--count 0 --preview 24` draws the sheet for a batch already made.
 
 About 30 pictures a second on ten cores, so 30,000 take a quarter of an hour. How the pictures and labels are made,
 and why: `docs/design/schematic-vision.md` §4.
+
+## Generating pictures in other editors' conventions
+
+The same circuits, drawn again through **style packs** — one convention per JSON file (IML-3). First fetch the fonts,
+once per data home:
+
+```bash
+cd tools/schematic-ml && .venv/bin/python -m crfml.fetch_fonts     # open-licensed faces into $CRF_ML_DATA/fonts
+cd ../.. && dotnet run --project tools/SchematicSynth -- foreign --packs all --count 60000 --seed 1 \
+    --out $CRF_ML_DATA/synth/foreign/batch-001 --preview 52
+dotnet run --project tools/SchematicSynth -- packs                 # the packs, their medium, families and classes
+```
+
+- `--packs all` or a comma list (`--packs textbook-serif,iec-boxes`). A pack's `weight` sets its share.
+- Same determinism, resumability, refusals and histogram as `crf`, plus a per-pack table. Every label carries
+  `"style": "<pack>"`, so IML-6 can score each pack and leave one out.
+- **Fonts.** `fetch_fonts` downloads a pinned list and checks every file's SHA-256 before keeping it; the faces and
+  their licence files stay in the data home and are never committed. Without them a batch still runs on circuitRF's own
+  shipped faces, and its log names every style it had to fall back for. Run `fetch_fonts` before a real batch.
+- `--preview N` writes `preview.png` (the first pictures of each pack, labels drawn over them) **and**
+  `preview-real.png` (real pictures from the families the packs were written from). Look at the two side by side.
+- About 40 pictures a second on ten cores.
+
+**Adding a convention is adding a file, not code.** A pack is `tools/SchematicSynth/StylePacks/<name>.json`, named by
+what it looks like (never by a tool's name). Its glyphs come from the library in `StylePacks/glyphs/*.json`; a new way
+of drawing a class is one more `"<class>.<style>"` entry there. Both folders are compiled in by glob — rebuild and the
+new pack is in `--packs all`. Then run `dotnet test tests/Ui.Tests --filter FullyQualifiedName~Vision.StylePackTests`:
+it holds every glyph's pins to its strokes and to its class's pin names, every class to three packs, and generates
+three pictures from every pack. The fields are explained in `docs/design/schematic-vision.md` §5.
 
 ## The self-test
 

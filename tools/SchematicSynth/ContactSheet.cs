@@ -32,6 +32,42 @@ public static class ContactSheet
         File.WriteAllBytes(path, data.ToArray());
     }
 
+    /// <summary>A sheet of real pictures from <paramref name="families"/> (the data home's <c>real/&lt;family&gt;</c> folders),
+    /// taken in turn from each, unlabelled — what a pack's preview is compared with by eye. Returns how many it drew.</summary>
+    public static int WriteReal(string dataHome, IReadOnlyList<string> families, int count, string path)
+    {
+        var lists = families.Select(f => Path.Combine(dataHome, "real", f)).Where(Directory.Exists)
+            .Select(d => Directory.EnumerateFiles(d).Where(f => f.EndsWith(".png", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase))
+                                  .Order(StringComparer.Ordinal).ToList()).Where(l => l.Count > 0).ToList();
+        var files = new List<string>();
+        for (int k = 0; files.Count < count && lists.Any(l => l.Count > k); k++)
+            foreach (var l in lists) if (l.Count > k && files.Count < count) files.Add(l[k]);
+        if (files.Count == 0) return 0;
+
+        int rows = (files.Count + Columns - 1) / Columns;
+        using var sheet = new SKBitmap(Columns * (TileW + Gap) + Gap, rows * (TileH + Caption + Gap) + Gap);
+        using (var c = new SKCanvas(sheet))
+        {
+            c.Clear(new SKColor(30, 30, 34));
+            using var font = new SKFont(SKTypeface.Default, 11);
+            using var ink = new SKPaint { IsAntialias = true, Color = new SKColor(220, 220, 220) };
+            for (int k = 0; k < files.Count; k++)
+            {
+                float x = Gap + k % Columns * (TileW + Gap), y = Gap + k / Columns * (TileH + Caption + Gap);
+                using var bmp = SKBitmap.Decode(files[k]);
+                if (bmp is null) continue;
+                float s = Math.Min(TileW / (float)bmp.Width, TileH / (float)bmp.Height);
+                using (var img = SKImage.FromBitmap(bmp))
+                    c.DrawImage(img, new SKRect(x, y, x + bmp.Width * s, y + bmp.Height * s), new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
+                c.DrawText($"{Path.GetFileName(Path.GetDirectoryName(files[k]))}  {bmp.Width}×{bmp.Height}", x, y + TileH + 13, SKTextAlign.Left, font, ink);
+            }
+        }
+        using var image = SKImage.FromBitmap(sheet);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+        File.WriteAllBytes(path, data.ToArray());
+        return files.Count;
+    }
+
     private static void Tile(SKCanvas c, string dir, string id, SKRect cell)
     {
         using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, id + ".mllabel.json")));

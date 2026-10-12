@@ -5,7 +5,7 @@
 `src/Design/Schematic/Recognition/` (the reader) · **Handbook:** `tools/schematic-ml/README.md` · **Builds on:** Create
 from Image (`docs/design/image-to-circuit.md`), whose back half (emit, drawing, paste, dialog, `recognize`) stays.
 
-This note says what the system is, what each of its contracts is, and why each is shaped as it is. IML-1 wrote §1–§3, IML-2 §4;
+This note says what the system is, what each of its contracts is, and why each is shaped as it is. IML-1 wrote §1–§3, IML-2 §4, IML-3 §5;
 each later phase adds its own section.
 
 ---
@@ -307,3 +307,162 @@ ink in the *symbol* mask. A picture with an error is not written. Gates: `tests/
 hidden parameters are not words, and a seed is the same bytes twice; about a second) and `GlyphBodyTests` (R, L, C,
 ground, port, one-tone source and BJT: rendered, leads rubbed out, the remaining ink is the body box within a pen).
 
+
+## 5. Generated pictures in other editors' conventions (IML-3)
+
+```bash
+cd tools/schematic-ml && .venv/bin/python -m crfml.fetch_fonts
+dotnet run --project tools/SchematicSynth -- foreign --packs all --count 60000 --seed 1 --out $CRF_ML_DATA/synth/foreign/batch-001 --preview 52
+```
+
+IML-2's circuits and drawings (Tidy, hand-placed, authored — §4.1, §4.2) drawn again by a **style-pack renderer**:
+the same placement, wires, dots and net names, with every part redrawn in the pack's glyph for its class and every
+word in the pack's face, stack and spelling. Each picture is `fgn-<seed>-<index>` and writes the same files as a `crf`
+picture; its label's `style` is the pack's name. About 40 pictures a second on ten cores.
+
+### 5.1 A style pack
+
+`tools/SchematicSynth/StylePacks/<name>.json`, named by what it looks like (L2). Every field is a choice — one value,
+a list, or an object of weights — or a `[lo, hi]` range. **A picture draws ONE choice from each**, so it is consistent
+within itself the way an editor is, and a batch spans the pack.
+
+| Field | What it says |
+|---|---|
+| `families` | the real families that motivated it, ids only |
+| `medium` | `screen` (window chrome, Retina 2×, window crops), `document` (a PDF or web figure: captions, no chrome) or `paper` (printed and scanned: grain, uneven light, a tint, a turn up to 2°) |
+| `palettes` | paper, grid, wire, symbol, text, type-line, fill and accent colours **as a set** — real pictures combine them (pink wires and blue symbols on grey; green wires and dark-red symbols on ivory) |
+| `canvas` | grid (`dots`, `lines`, `none`) and pitch in grid steps; how often a page border and a title block appear |
+| `pens` | wire and symbol pens as a share of a grid step, never under `minPx` device pixels (an editor draws a 1 px line at any zoom; a figure's pen scales); caps; how often anti-aliased; `symbolScale` |
+| `text` | face **styles** (`sans`, `serif-italic`, `mono-bold`, `condensed`, `ui`…, never a family), size in grid steps, how often bold, the label **stacks** (`type` / `designator` / `values` / `value`, a line each, or designator and value in one `row`), placement, how often rotated, value spellings, `=` spaced, `Ω`/`Ohm`/none, `µ`/`u`, subscripts, tuning tags, and what a net's name becomes (`text`, `power-port`, `terminal`) |
+| `junctions` | dot shape (`circle`, `square`, `diamond`, `none`) and size, pin markers at pin ends, how often crossings hop |
+| `glyphs` | per class, the library glyphs it draws with, weighted (`"resistor.box*3"`) or inline |
+| `substitute` | how often a part is drawn as a class circuitRF never draws but means the same (§5.4) |
+| `distractors` | how often each distractor appears (§5.5), `twoCircuits` and `chrome` among them |
+
+### 5.2 Glyphs: the stroke language
+
+`StylePacks/glyphs/*.json` holds the shared library, `"<class>.<style>": glyph`; every class has a `.plain`, which a
+pack falls back to when it does not draw that class. A glyph is strokes in **schematic units, y down, the class's
+canonical orientation**, with its pins named as `classes.json` names them and placed where circuitRF places that
+class's pins — so a glyph drops onto a circuitRF placement. Strokes: `line`, `poly` (`close`, `fill`), `rect`, `circle`,
+`arc` (Skia's angles), and the generated `zigzag`, `coil` (half-ellipse bumps, or loops that cross back with `loop` >
+0), `sine`, `arrow` (filled or `open`), `plus`, `minus`; each may set a `pen` multiple, a `dash` and an `ink` (`symbol`,
+`fill` for a grey-filled amplifier, `paper`). A `"frame": "box"` glyph (block, IC, op-amp, analysis box) is drawn in the
+unit square and stretched over the part's body; `inset` keeps part of it for an icon.
+
+- **Placement.** A glyph's pins are fitted onto the circuitRF part's pins — a scale and an offset per axis, then the
+  part's turn and mirror. Drawn smaller than circuitRF's (`symbolScale`), it shrinks about its body centre when every
+  pin is in line with it, and the gap to the wire's end is drawn as lead. A box glyph's pins are joined by a lead run
+  inward until it meets a stroke — an op-amp's slanted side — or the body's edge.
+- **The body is GlyphBody's rule** (§4.3): the strokes are handed to `GlyphBody.Of` as the symbol primitives they are,
+  so a straight lead ending on a pin is not body, and IML-8 measures a foreign part with the rule it measures circuitRF's.
+- **Orientation** is the part's own; circuitRF's `Pin` is drawn a quarter turn from the class's canonical terminal (its
+  pin is on the right, the class's on top), so the renderer turns the glyph first and the label's turn says so.
+
+### 5.3 Words
+
+A stack's lines are **separate texts with separate roles** (the trap the brief names): the type line is `other`, the
+designator `designator`, each shown parameter `value` when the grammar reads it, else `other`. Spellings: named
+(`R=5 kOhm`, `C = 1 pF`), bare (`2.62 pF`, `50Ω`), compact (`10k`, `18p`, `0.01µ`), letter-as-point (`4k7`, `2p2`) — the
+circuit's value is never changed, only written differently. A resistor written `100` does not read; its text is
+`other` and the part carries `"params": {"R": "100"}`. A designator may be drawn with its digits as a subscript; the text
+is still `R1`. **A trailing tuning tag** (`L=0.56 nH {o}`, `{t}`) is dropped before the grammar reads a value — in
+`ValueText` and in `crfml.values.read_value_text` alike — and **IML-7's assembly must drop it too.** Every quad is the
+line box from the face's own metrics, through the same matrix the text is drawn with.
+
+**Junctions** are listed at every connection, dot drawn or not: a pack with no dots still draws one where four wires
+meet, because a crossing with no dot is otherwise ambiguous. **Pin markers** (squares or circles at pin ends) are symbol
+ink, never junctions — they connect nothing by themselves.
+
+### 5.4 Substitutions: classes circuitRF never draws
+
+A class circuitRF never draws is drawn only where it means what the circuit already holds, so **the netlist truth never
+changes** (the gate extracts every drawing and compares it with its netlist):
+
+| Drawn as | Where | Why it is the same circuit |
+|---|---|---|
+| `capacitor-polarised` | a capacitor | same kind |
+| `ic-box` | an S-parameter block, pin numbers outside, pin names (`pin-name`) inside, now and then an unused pin with a `no-connect` mark | same kind; the unused pin is not one of the block's pins |
+| `op-amp` | a three-port block | same kind |
+| `stub-short` | a TLIN whose grounded end meets a ground symbol pin to pin, or by one wire nothing else touches | the class's `grounded: ["2"]`; the ground symbol, its wire and the dot circuitRF puts where two pins meet are dropped |
+| `power-port` | a supply-like net's name | a name on a net |
+| `terminal` | a net's name | a name on a net |
+| `probe` | touching a wire | `ignore` |
+| `controller` | analysis, variable, equation and substrate blocks; circuitRF's own VAR | `ignore` |
+
+**`transformer` has glyphs but is not drawn in pictures yet**: no recipe puts two coupled inductors side by side, and
+drawing one over two separately placed inductors would change the drawing's meaning. A recipe for it is the way to
+close this; until then the transformer is learned from IML-4's real labels.
+
+### 5.5 Distractors and media
+
+| Distractor | Labelled as |
+|---|---|
+| analysis / variable / equation / substrate boxes | `controller` part; title and rows `other` |
+| dot directives (`.tran 3`, `.ac dec 100 …`) | texts `other`, annotation `other` |
+| titles, figure captions `(a)` `(b)`, `Fig. N. …` | texts `title`, annotation `title` |
+| notes | texts `other`, annotation `other` |
+| dashed sub-circuit frames, DUT boxes, page border and title block | annotation `frame` (a border as its four sides) |
+| current, voltage and dimension arrows | annotation `arrow`, their words `other` |
+| a ring drawn round a part, a mouse cursor, a selection rectangle | annotation `other` |
+| window chrome: title bar, menu of ordinary words, toolbar, palette, scroll bars, status line with coordinates, task bar | annotation `chrome`, whole bands; its words are not texts |
+| two circuits in one picture | both labelled; the netlist holds both, the second's names prefixed `b_` |
+
+Chrome and every word in it are generic — no application's name, artwork or icons. **The view** (§4.3's ideas, wider):
+the whole circuit with a margin; a window over part of it (screens only — a document figure is not cropped mid-part); a
+**small** picture, the whole circuit in 240–420 px; a **large** one up to 7,000 × 5,000; otherwise at most 2,600 ×
+1,900, the starting set's usual size. Then rescale, blur, JPEG (quality 15–40 now and then) or PNG, posterised, and on
+paper the print conditions; anti-aliasing is the pen's. A batch of a seed is the same bytes on every run: a foreign
+picture's random stream is seeded through a SplitMix64 mix of (seed, index), because `Random`s seeded from neighbouring
+integers start with correlated draws — which, before the mix, made two-circuit pictures several times commoner than the
+packs asked.
+
+**Fonts** (R-iml3-5): `crfml.fetch_fonts` puts pinned, SHA-256-checked open-licensed families in
+`$CRF_ML_DATA/fonts` with their licences and an `index.json` of face → styles; circuitRF's own shipped faces are always
+there too. A style no face carries falls back — fewer modifiers, then the shipped sans — and the batch log says so.
+
+### 5.6 The packs
+
+| Pack | Medium | Conventions | Families |
+|---|---|---|---|
+| `pink-wire-blue-symbol` | screen | magenta wires, dark-blue symbols, type / name / parameter stacks, pin squares, small zig-zags and loop coils, box-and-zig-zag ports, analysis blocks with an icon, tuning tags | family-a |
+| `blue-symbol-cyan-canvas` | screen | the same zoomed in on cyan or lilac-grey paper, large words, filled-square junctions | family-a |
+| `green-wire-red-symbol` | screen | green wires and dots, dark-red box resistors, teal monospaced words, open-triangle grounds, supply flags, polarised capacitors, IC boxes, transistors in circles, title block, chrome | family-b |
+| `navy-on-grey-zigzag` | screen | thin navy ink on grey, big zig-zags, loopy coils, big open-triangle grounds, ± circle sources, filled-square junctions, large bold words, dot directives, blue titles | family-c |
+| `navy-spice-white` | screen | the same on white with a dot grid, coloured net flags, row stacks | family-c |
+| `blue-on-cream` | screen | heavier navy pen on cream with dots, box resistors, thick plates, sine-circle ports under a small box, slanted microstrip, `Ω`, framed analysis and equation blocks | family-d |
+| `dark-canvas-zigzag` | screen | dark canvases, coloured wires, pale symbols, line or dot grids, dark chrome | family-b, family-c |
+| `mono-grid-lines` | screen | line grid, monospaced words, row stacks, page border and title block | family-b, corpus-web |
+| `textbook-serif` | paper | scaling black pen, serif italic words with subscripts, open-circle terminals, captions, two circuits side by side, hops | family-e, corpus-web |
+| `paper-figure-bold` | paper | heavy pen, bold words, block diagrams with triangles, circulators, couplers, baluns, captions | family-e |
+| `datasheet-hairline` | document | hairline pen, small words, IC boxes with numbered and named pins, curved plates, open-circle terminals, supply arrows, hops, notes, dimension arrows, dashed frames | corpus-ds |
+| `datasheet-blue-type` | document | blue words, grey-filled amplifier, coaxial connectors, open pin markers, current arrows | corpus-ds, corpus-web |
+| `iec-boxes` | document | box resistors, filled-box inductors, flat and chassis grounds, oblique and condensed faces, `22R`/`4n7`, hairline to heavy pens | corpus-web, family-e |
+
+**IMF-1's committed style pictures are ported** (R-iml3-2): the IEC schematic (hollow box resistor, filled box inductor,
+circle terminals, oblique/condensed words, `22R`) → `iec-boxes`; `ds-rf-amp` (hairline, IC box with numbered and named
+pins, coil, filled-dot connectors, supply arrow, hop) and `ds-regulator`/`ds-ldo` (bold labels, curved plates, filled
+diodes, variable resistor, open-circle terminals, dimension arrow) → `datasheet-hairline`; `ds-gain-block` (blue words,
+grey triangle, coax connectors, open pin markers, current arrow) → `datasheet-blue-type`; `ds-test-circuit` (dashed
+fixture, solid DUT box) → the `frame` and `dut` distractors; the web pictures' heavy IEC pen, textbook zig-zag, serif
+designators with subscripts, diamond junctions, looped coils and terminal pairs → `iec-boxes` and `textbook-serif`.
+
+### 5.7 Gates
+
+`tests/Ui.Tests/Vision/StylePackTests` (≈ 2.5 s, no data, no fetched fonts): every pack parses and names its families
+by id only; every library glyph's pins lie on its strokes and carry its class's pin names, its body is a real box, and
+every class has a `.plain`; every class in `classes.json` has a glyph in three packs or more; a missing font falls back
+to a shipped face and says so; three seeds per pack generate and pass `LabelChecks` with each pin on its symbol's ink,
+bodies inside the picture or cut, and each drawing extracting to its netlist; a seed is the same bytes twice. The
+generator is compiled optimised even in Debug — batches run through `dotnet run`, and the per-pixel passes are several
+times slower unoptimised.
+
+**A fix to IML-2's labels.** IML-2 labelled a circuitRF `Pin` (class `terminal`) with `turn` = its rotation, but
+circuitRF draws a pin with its connection on the right and the class's canonical terminal has it on top, so those labels
+were a quarter turn off (only the authored schematics hold `Pin`s: 969 of batch-001's 30,000 pictures).
+`ClassList.CanonicalTurn` now says how far circuitRF's drawing of a kind is turned from its class's — 90° for `Pin`, 0
+for every other kind — and both generators take a label's turn through `ClassList.Turn` (the pre-turn is subtracted
+under a mirror). `SchematicSynthTests.EveryKind_ItsPinsTurnedBack_SitWhereTheClassPutsThem` holds every kind's pins,
+turned back, to the sides `classes.json` puts its class's pins on; it fails on `Pin` without the fix. The 969 labels
+were regenerated (deleted and re-run: the batch is resumable); their pictures came out byte-identical, only `turn`
+changed.

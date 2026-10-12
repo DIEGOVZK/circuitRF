@@ -133,14 +133,14 @@ public static class Screenshot
 
     // ── chrome, drawn generically ────────────────────────────────────────────
 
-    private static SKColor Muted(Random r, bool light, int spread = 40)
+    internal static SKColor Muted(Random r, bool light, int spread = 40)
     {
         int b = light ? r.Next(150, 215) : r.Next(70, 130);
         return new SKColor((byte)Math.Clamp(b + r.Next(-spread, spread), 0, 255), (byte)Math.Clamp(b + r.Next(-spread, spread), 0, 255),
                            (byte)Math.Clamp(b + r.Next(-spread, spread), 0, 255));
     }
 
-    private static void Toolbar(SKCanvas c, SKRectI band, bool light, double dpr, Random r)
+    internal static void Toolbar(SKCanvas c, SKRectI band, bool light, double dpr, Random r)
     {
         using var fill = new SKPaint { Color = light ? new SKColor(240, 240, 242) : new SKColor(50, 52, 56), IsAntialias = true };
         c.DrawRect(band, fill);
@@ -161,7 +161,7 @@ public static class Screenshot
         }
     }
 
-    private static void StatusBar(SKCanvas c, SKRectI band, bool light, double dpr, Random r)
+    internal static void StatusBar(SKCanvas c, SKRectI band, bool light, double dpr, Random r)
     {
         using var fill = new SKPaint { Color = light ? new SKColor(232, 232, 236) : new SKColor(44, 46, 50) };
         c.DrawRect(band, fill);
@@ -175,7 +175,7 @@ public static class Screenshot
         }
     }
 
-    private static void ScrollBar(SKCanvas c, SKRectI band, bool light, bool vertical, Random r)
+    internal static void ScrollBar(SKCanvas c, SKRectI band, bool light, bool vertical, Random r)
     {
         using var track = new SKPaint { Color = light ? new SKColor(246, 246, 246) : new SKColor(40, 40, 42) };
         c.DrawRect(band, track);
@@ -189,7 +189,7 @@ public static class Screenshot
         c.DrawRoundRect(rect, across * 0.3f, across * 0.3f, thumb);
     }
 
-    private static void SidePanel(SKCanvas c, SKRectI band, bool light, double dpr, Random r)
+    internal static void SidePanel(SKCanvas c, SKRectI band, bool light, double dpr, Random r)
     {
         using var fill = new SKPaint { Color = light ? new SKColor(236, 236, 240) : new SKColor(46, 48, 52) };
         c.DrawRect(band, fill);
@@ -205,7 +205,7 @@ public static class Screenshot
 
     // ── mask geometry ────────────────────────────────────────────────────────
 
-    private static byte[] Pad(byte[] m, int pw, int ph, int tw, int th, int left, int top)
+    internal static byte[] Pad(byte[] m, int pw, int ph, int tw, int th, int left, int top)
     {
         if (tw == pw && th == ph) return (byte[])m.Clone();
         var o = new byte[tw * th];
@@ -214,7 +214,7 @@ public static class Screenshot
     }
 
     /// <summary>A mask downscaled by coverage: a final pixel is on when a quarter of its footprint was.</summary>
-    private static byte[] Shrink(byte[] m, int w, int h, int fw, int fh)
+    internal static byte[] Shrink(byte[] m, int w, int h, int fw, int fh)
     {
         var o = new byte[fw * fh];
         double sx = w / (double)fw, sy = h / (double)fh;
@@ -239,7 +239,7 @@ public static class Screenshot
 
     // ── encoding ─────────────────────────────────────────────────────────────
 
-    private static void Posterize(SKBitmap bmp, int levels)
+    internal static void Posterize(SKBitmap bmp, int levels)
     {
         var span = bmp.GetPixelSpan();
         var px = new byte[span.Length];
@@ -251,7 +251,7 @@ public static class Screenshot
         System.Runtime.InteropServices.Marshal.Copy(px, 0, bmp.GetPixels(), px.Length);
     }
 
-    private static byte[] Encode(SKBitmap bmp, SKEncodedImageFormat format, int quality)
+    internal static byte[] Encode(SKBitmap bmp, SKEncodedImageFormat format, int quality)
     {
         using var img = SKImage.FromBitmap(bmp);
         using var data = img.Encode(format, quality);

@@ -13,7 +13,11 @@ public sealed record LabelPin(string Name, Px At);
 
 public sealed record LabelPart(
     string Id, string Class, string? Variant, int Turn, bool Mirror, double[] Body, IReadOnlyList<LabelPin> Pins,
-    string? Designator, IReadOnlyList<string> Values, bool Cut);
+    string? Designator, IReadOnlyList<string> Values, bool Cut)
+{
+    /// <summary>Values the picture states in a word the grammar does not read (<c>100</c> for a resistor), in base SI.</summary>
+    public IReadOnlyDictionary<string, string>? Params { get; init; }
+}
 
 public sealed record LabelWire(IReadOnlyList<Px> Points, double Pen);
 
@@ -72,6 +76,12 @@ public sealed record MlLabel(
                 w.WriteStartArray("values");
                 foreach (var id in p.Values) w.WriteStringValue(id);
                 w.WriteEndArray();
+                if (p.Params is { Count: > 0 } ps)
+                {
+                    w.WriteStartObject("params");
+                    foreach (var (k, val) in ps.OrderBy(x => x.Key, StringComparer.Ordinal)) w.WriteString(k, val);
+                    w.WriteEndObject();
+                }
                 if (p.Cut) w.WriteBoolean("cut", true);
                 w.WriteEndObject();
             }
@@ -159,21 +169,26 @@ public sealed record MlLabel(
 /// <summary>
 /// What a value text is under circuitRF's value grammar. circuitRF draws a shown parameter as <c>R = 50 Ohm</c>: the
 /// grammar reads <c>R=50 Ohm</c> and <c>Z=50Ohm</c>, so the spaces round the <c>=</c> and before the unit are closed
-/// up first. The text the label carries is the string as DRAWN — the text net learns to read what is on the screen;
+/// up first, and a trailing tuning tag (<c>{t}</c>, <c>{o}</c>) dropped. The text the label carries is the string as DRAWN — the text net learns to read what is on the screen;
 /// IML-7's assembly closes the spaces up the same way before the grammar reads it.
 /// </summary>
 public static class ValueText
 {
     private static readonly Regex AroundEquals = new(@"\s*=\s*", RegexOptions.CultureInvariant);
     private static readonly Regex BeforeUnit = new(@"(?<=\d)\s+(?=[A-Za-zΩµ°])", RegexOptions.CultureInvariant);
+    /// <summary>A trailing tuning or optimisation tag some editors draw after a value: <c>L=0.56 nH {o}</c>, <c>{t}</c>.</summary>
+    private static readonly Regex Tag = new(@"\s*\{-?[a-z]\}\s*$", RegexOptions.CultureInvariant);
 
-    public static string Closed(string text) => BeforeUnit.Replace(AroundEquals.Replace(text.Trim(), "="), "");
+    public static string Untagged(string text) => Tag.Replace(text, "");
+
+    public static string Closed(string text) => BeforeUnit.Replace(AroundEquals.Replace(Untagged(text).Trim(), "="), "");
 
     /// <summary>Whether the grammar reads <paramref name="text"/> as a value or a set of line parameters, drawn as it is
     /// or with its spaces closed up.</summary>
     public static bool Reads(string text)
     {
-        foreach (string t in new[] { text, AroundEquals.Replace(text.Trim(), "="), Closed(text) })
+        string u = Untagged(text);
+        foreach (string t in new[] { u, AroundEquals.Replace(u.Trim(), "="), Closed(text) })
             if (ValueGrammar.Parse(t) is { Class: WordClass.Value or WordClass.LineParameters }) return true;
         return false;
     }

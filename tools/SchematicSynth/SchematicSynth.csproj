@@ -9,11 +9,18 @@
     <AssemblyName>CircuitRF.SchematicSynth</AssemblyName>
     <RootNamespace>CircuitRF.SchematicSynth</RootNamespace>
     <IsPackable>false</IsPackable>
+    <!-- Optimised in Debug too: batches run through `dotnet run` (a Debug build), tens of thousands of pictures at a time,
+         and the per-pixel passes (masks, rescale, print conditions) are several times slower unoptimised. -->
+    <Optimize>true</Optimize>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- The class list the labels name, embedded so a label can never name a class the list does not have. -->
     <EmbeddedResource Include="../schematic-ml/classes.json" LogicalName="classes.json" />
+    <!-- The style packs and the glyph library (brief-iml3): data, compiled in so a batch is the packs it was built with.
+         A new pack or glyph file is picked up by these globs — no code. -->
+    <EmbeddedResource Include="StylePacks/*.json" LogicalName="StylePacks.%(Filename).json" />
+    <EmbeddedResource Include="StylePacks/glyphs/*.json" LogicalName="Glyphs.%(Filename).json" />
   </ItemGroup>
 
   <ItemGroup>

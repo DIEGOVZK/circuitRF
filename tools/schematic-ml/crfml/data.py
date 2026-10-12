@@ -9,7 +9,7 @@ Layout::
     manifest.json                 every real picture: id, family, sha256, size, split, imported-from (local only)
     real/<family>/<id>.<ext>      the picture, renamed; <id>.mllabel.json beside it once labelled
     synth/<generator>/<batch>/    generated pictures + labels — regenerable, safe to delete
-    fonts/                        open-licensed fonts for generated text, with LICENSES/
+    fonts/                        open-licensed fonts for generated text (fetch_fonts), with their licences; index.json
     runs/<run-id>/                checkpoints, logs, metrics.json
     exports/<model>-<version>/    .onnx, .crfnn, probe, model card draft
 """

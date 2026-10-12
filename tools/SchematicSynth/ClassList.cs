@@ -43,6 +43,24 @@ public static class ClassList
         [SymbolKind.Var] = "controller", [SymbolKind.Meas] = "controller",
     };
 
+    /// <summary>
+    /// How far circuitRF's own drawing of a kind is turned from its class's canonical drawing, clockwise. Zero for every
+    /// kind but <c>Pin</c>: circuitRF draws a pin with its connection on the right, the <c>terminal</c> class with it on
+    /// top.
+    /// </summary>
+    public static int CanonicalTurn(SymbolKind kind) => kind == SymbolKind.Pin ? 90 : 0;
+
+    /// <summary>
+    /// A placed part's label orientation: its rotation, plus <paramref name="pre"/> — a quarter turn applied to the
+    /// class's canonical drawing before the part's mirror and rotation. A turn commutes with no mirror, so under a mirror
+    /// it is subtracted: R·M·T(p) = R·T(−p)·M.
+    /// </summary>
+    public static int Turn(SymbolRotation rotation, bool mirror, int pre)
+    {
+        int turn = rotation switch { SymbolRotation.R90 => 90, SymbolRotation.R180 => 180, SymbolRotation.R270 => 270, _ => 0 };
+        return ((turn + (mirror ? -pre : pre)) % 360 + 360) % 360;
+    }
+
     /// <summary>The variant a circuitRF kind's glyph IS: circuitRF's DC source is drawn as a battery.</summary>
     public static string? VariantOf(SymbolKind kind) => kind == SymbolKind.Vdc ? "battery" : null;
 

@@ -70,6 +70,42 @@ public sealed class SchematicSynthTests : IDisposable
         foreach (var t in label.Texts) Assert.Contains(t.String, drawnWords);
     }
 
+    /// <summary>
+    /// A label's <c>turn</c> is measured from the class's canonical drawing, and IML-2 takes it from the part's own
+    /// rotation — right only where circuitRF's drawing of a kind IS the class's canonical one, turned by
+    /// <see cref="ClassList.CanonicalTurn"/>. For every kind circuitRF draws, its pins, turned back by that, must sit on
+    /// the sides of the body that classes.json puts the class's pins on. (circuitRF's Pin, its pin on the right where the
+    /// terminal class has it on top, was a quarter turn off until CanonicalTurn said so.)
+    /// </summary>
+    [Fact]
+    public void EveryKind_ItsPinsTurnedBack_SitWhereTheClassPutsThem()
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(ClassListTests.KitDir(), "classes.json")));
+        var canonical = doc.RootElement.GetProperty("classes").EnumerateArray()
+            .Where(c => c.GetProperty("pins").ValueKind == System.Text.Json.JsonValueKind.Array)
+            .ToDictionary(c => c.GetProperty("name").GetString()!,
+                          c => c.GetProperty("pins").EnumerateArray().ToDictionary(p => p.GetProperty("name").GetString()!,
+                                   p => (U: p.GetProperty("at")[0].GetDouble(), V: p.GetProperty("at")[1].GetDouble())));
+        var wrong = new List<string>();
+        foreach (var (kind, cls) in ClassList.OfKind)
+        {
+            if (!canonical.TryGetValue(cls, out var pins)) continue;   // a perimeter class, or no pins
+            var symbol = BuiltInSymbols.Primitives(kind, SymbolPortDefs.For(kind).Length);
+            var body = GlyphBody.Of(kind, symbol.PortCount);
+            int back = (360 - ClassList.CanonicalTurn(kind)) % 360;
+            foreach (var p in symbol.Pins)
+            {
+                double x = p.LocalX - body.CenterX, y = p.LocalY - body.CenterY;
+                // A quarter turn clockwise on a y-down page is (x, y) → (−y, x).
+                for (int k = 0; k < back / 90; k++) (x, y) = (-y, x);
+                var (u, v) = pins[p.Name];
+                if ((u < 0.4 && x > -1) || (u > 0.6 && x < 1) || (v < 0.4 && y > -1) || (v > 0.6 && y < 1))
+                    wrong.Add($"{kind} pin {p.Name}: at ({x:0}, {y:0}) from the body centre, canonically ({u}, {v})");
+            }
+        }
+        Assert.True(wrong.Count == 0, string.Join("\n", wrong));
+    }
+
     [Fact]
     public void ASeed_GivesTheSameBytes()
     {

@@ -82,7 +82,7 @@ public static class Labels
             var pins = c.Ports.Select(p => new LabelPin(p.Name, Local(p.LocalX, p.LocalY))).ToList();
             if (!Overlaps(box, cv) && !pins.Any(p => Inside(p.At))) continue;
 
-            int turn = c.Rotation switch { SymbolRotation.R90 => 90, SymbolRotation.R180 => 180, SymbolRotation.R270 => 270, _ => 0 };
+            int turn = ClassList.Turn(c.Rotation, c.MirrorX, ClassList.CanonicalTurn(c.Symbol));
 
             // A TLIN with one end left open is an open stub: its one drawn pin is the class's pin 1, wherever it sits.
             if (c.Symbol == SymbolKind.Tline && open.TryGetValue(c.InstanceName, out var openPins) && openPins.Count == 1)
@@ -128,7 +128,7 @@ public static class Labels
     }
 
     /// <summary>Per instance, the pins (by index) whose net reaches no other pin — an open end.</summary>
-    private static Dictionary<string, HashSet<int>> OpenPins(TestBench tb)
+    internal static Dictionary<string, HashSet<int>> OpenPins(TestBench tb)
     {
         var count = new Dictionary<string, int>(StringComparer.Ordinal);
         foreach (var i in tb.Instances)
@@ -167,19 +167,19 @@ public static class Labels
 
     // ── geometry ─────────────────────────────────────────────────────────────
 
-    private static double[] Box(IEnumerable<Px> pts)
+    internal static double[] Box(IEnumerable<Px> pts)
     {
         var l = pts.ToList();
         return [l.Min(p => p.X), l.Min(p => p.Y), l.Max(p => p.X), l.Max(p => p.Y)];
     }
 
-    private static bool Overlaps(double[] a, double[] b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+    internal static bool Overlaps(double[] a, double[] b) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
 
-    private static double[] Clip(double[] a, double[] b) =>
+    internal static double[] Clip(double[] a, double[] b) =>
         [Math.Max(a[0], b[0]), Math.Max(a[1], b[1]), Math.Min(a[2], b[2]), Math.Min(a[3], b[3])];
 
     /// <summary>A polyline cut to the canvas: the pieces inside it, each ending on the edge where it leaves.</summary>
-    private static List<List<Px>> ClipPolyline(List<Px> pts, double[] r)
+    internal static List<List<Px>> ClipPolyline(List<Px> pts, double[] r)
     {
         var pieces = new List<List<Px>>();
         List<Px>? cur = null;

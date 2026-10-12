@@ -216,14 +216,16 @@ def parse_value_word(text: str) -> Value | list[LineParameter] | None:
 
 _AROUND_EQUALS = re.compile(r"\s*=\s*")
 _BEFORE_UNIT = re.compile(r"(?<=\d)\s+(?=[A-Za-zΩµ°])")
+_TAG = re.compile(r"\s*\{-?[a-z]\}\s*$")
 
 
 def read_value_text(text: str) -> Value | list[LineParameter] | None:
     """A label's value text as circuitRF draws one — `R = 50 Ohm`, `Z = 50 Ω` — read under the grammar: as drawn, then
-    with the spaces round its `=` closed up, then with the space before its unit closed up too. The text stays as drawn
-    in the label; the reader closes it up the same way before the grammar reads it (docs/design/schematic-vision.md §4).
+    with the spaces round its `=` closed up, then with the space before its unit closed up too. A trailing tuning tag
+    some editors draw after a value (`L=0.56 nH {o}`, `{t}`) is dropped first. The text stays as drawn in the label; the
+    reader closes it up the same way before the grammar reads it (docs/design/schematic-vision.md §4, §5).
     """
-    t = text.strip()
+    t = _TAG.sub("", text).strip()
     closed = _AROUND_EQUALS.sub("=", t)
     for candidate in (t, closed, _BEFORE_UNIT.sub("", closed)):
         if (v := parse_value_word(candidate)) is not None:
