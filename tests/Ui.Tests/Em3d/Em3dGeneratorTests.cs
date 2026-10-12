@@ -304,6 +304,64 @@ public sealed class Em3dGeneratorTests
         Assert.All(p.Solids.Where(sd => sd.Role == Em3dRole.Dielectric), sd => Assert.NotNull(bores.Carved(sd)));
     }
 
+    /// <summary>A Gerber or DXF drill file imports as CIRCLES on the drill layer, not vias. A plated one is a barrel with an
+    /// air core exactly as a via is, so the 3D view carves the substrate around it; as an extruded polygon it was a solid
+    /// copper rod whose caps z-fought the pads it ends in (owner report, 2026-10-12).</summary>
+    [Fact]
+    public void APlatedDrillCircle_IsABarrelWithAnAirCore_AsAViaIs()
+    {
+        var (setup, source) = Microstrip();
+        source.View.Shapes.Add(new CircleShape { Cx = 5_000_000, Cy = 0, R = 152_400, Layer = new LayerKey(7, 0) });
+
+        var r = Em3dGenerator.Generate(setup, source, source.Technology!);
+        Assert.True(r.Ok, r.Refusal);
+        var p = r.Problem!;
+        Assert.Equal(152.4e-6, Assert.IsType<Em3dCylinder>(p.Solids.Single(sd => sd.Name == "via/1").Primitive).Radius, 1e-12);
+        Assert.Equal(Em3dRole.Air, p.Solids.Single(sd => sd.Name == "via/1/fill").Role);
+        var bores = CircuitRF.Render.Scene3D.Scene3DBores.Of(p)!;
+        Assert.All(p.Solids.Where(sd => sd.Role == Em3dRole.Dielectric), sd => Assert.NotNull(bores.Carved(sd)));
+    }
+
+    /// <summary>A Gerber outline is strokes, merged into a thin ring: the board is the ring's hole, not the ring. A ring
+    /// inside that hole is a cutout, and a corner mark's tiny enclosed gap is no board. A filled shape stays as drawn.</summary>
+    [Fact]
+    public void AnOutlineDrawnAsALine_BoundsTheBoardItEncloses()
+    {
+        static List<EmPoint> Sq(double c, double h) => [new(c - h, c - h), new(c + h, c - h), new(c + h, c + h), new(c - h, c + h)];
+        const double Mm = 1e-3;
+        var gap = new List<EmPoint> { new(-25.8 * Mm, -25.8 * Mm), new(-25.3 * Mm, -25.8 * Mm), new(-25.8 * Mm, -25.3 * Mm) };
+        var line = new PlanarPolygon(Sq(0, 26 * Mm), [Sq(0, 25 * Mm), gap]);
+        var cutout = new PlanarPolygon(Sq(0, 5.1 * Mm), [Sq(0, 5 * Mm)]);
+        var filled = new PlanarPolygon(Sq(40 * Mm, 1 * Mm));
+
+        var board = Em3dLayoutSolids.Builder.BoardRegions([line, cutout, filled], out int lines);
+
+        Assert.Equal(2, lines);
+        Assert.Equal(2, board.Count);
+        Assert.Same(filled, board[0]);
+        Assert.Equal((50 * 50 - 10.2 * 10.2) * Mm * Mm, board[1].Area(), 1e-12);
+        Assert.True(board[1].Contains(20 * Mm, 20 * Mm));
+        Assert.False(board[1].Contains(0, 0));
+    }
+
+    /// <summary>A fabricator's target: a disc on the outline layer with a drill of its own size through it. It is no board — as
+    /// substrate it was a solid disc over the barrel whose facets striped through the copper wall (owner report, 2026-10-12).</summary>
+    [Fact]
+    public void AnOutlineDiscNoLargerThanItsDrill_IsDrilledAway()
+    {
+        var (setup, source) = Microstrip();
+        source.View.Shapes.Add(new CircleShape { Cx = 20_000_000, Cy = 0, R = 1_054_100, Layer = new LayerKey(8, 0) });
+        source.View.Shapes.Add(new CircleShape { Cx = 20_000_000, Cy = 0, R = 1_054_100, Layer = new LayerKey(7, 0) });
+        var r = Em3dGenerator.Generate(setup, source, source.Technology!);
+        Assert.True(r.Ok, r.Refusal);
+        Assert.Contains(r.Notes, n => n.Contains("no larger than the hole drilled through", StringComparison.Ordinal));
+
+        const double Mm = 1e-3;
+        var disc = new PlanarPolygon([.. Enumerable.Range(0, 24).Select(k => new EmPoint(Math.Cos(k * Math.PI / 12) * Mm, Math.Sin(k * Math.PI / 12) * Mm))]);
+        Assert.True(Em3dLayoutSolids.Builder.WithinDrill(disc, (0, 0, 1 * Mm)));
+        Assert.False(Em3dLayoutSolids.Builder.WithinDrill(disc, (0, 0, 0.9 * Mm)));
+    }
+
     // ── A return plane that stops short of the line's end ───────────────────────────────────────
 
     /// <summary>A plane drawn to a line's end by hand can stop a few µm short of it. Within a tenth of

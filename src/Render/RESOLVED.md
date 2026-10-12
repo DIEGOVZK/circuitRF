@@ -5097,3 +5097,26 @@ B-rep's edges, each with its two faces packed as before. A seam (one face on bot
 skipped it. A hand-built shape with no edges keeps the mesh path. On the owner's piece this went from 13 edges to 16,
 including the top. Gate: `KernelEdgeTests`: a box whose top face has no triangles draws all twelve edges. Without the fix
 it draws eight.
+
+## Realistic + perspective: streaks over a board's copper that moved with the camera (owner report, 2026-10-12)
+
+An imported 50 mm board, Realistic view, perspective: dark streaks across the top copper that shifted while orbiting
+down; orthographic was clean. **Cause:** the live view sizes the depth range from the scene's BOUNDS, which include
+the EM air box (here a sphere of radius 103 mm around a board 0.58 mm thick). A close look at the board puts the eye
+inside that sphere, and `Camera3D.DepthRange` then took near = far × 1e-4 (0.018 mm). A standard-Z float buffer
+resolves about z² · 2⁻²⁴ / near — tens of µm across the board — which is the 35 µm between the copper's top and the
+substrate under it. The occlusion prepass flipped between the two, and the horizon pass read that as relief and
+darkened it. Orthographic depth is linear, so it never showed there. Round 9 noted this limit and left it.
+
+**Fix:** `Camera3D.NearFloor`, set by `Scene3DFramePlan.DepthCamera` on the copy a frame is drawn with: the eye's
+distance to the box of what that frame DRAWS (visible objects, minus chrome the realistic Look leaves out — the air
+box — plus array elements and a drag's preview copies), times the cosine of the frustum's corner-ray angle, times
+0.9. No drawn point can be nearer along the view than that. On the owner's framing the near plane went from 0.018 mm
+to 38 mm. A frame showing a solver overlay (mesh, mesh section, grid) keeps the sphere's rule, since those reach the
+air box's walls; so does a default-view frame that draws the air box, which still includes it in the box. Verified
+on the Metal device with the owner's own document opened through `C3dEditorViewModel`: the streaks reproduced at the
+owner's framing before the fix and were gone after. Gate:
+`EditorRound2ViewportTests.Perspective_InsideTheAirBoxSphere_TheNearPlaneIsTheDrawnBoardsDistance`.
+
+Reversed-Z would remove the limit for every case, including an eye inside a drawn air box; it touches all three
+backends and the CPU mirror, so it was not done here.

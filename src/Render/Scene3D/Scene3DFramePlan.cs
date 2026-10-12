@@ -465,7 +465,7 @@ public sealed class Scene3DFramePlan
         // brief-em3d-107 R-em3d107-5b — a transparent PICTURE: cleared to (0, 0, 0, 0), no backdrop. Never the live view (its alpha stays 1).
         Transparent = quiet && transparent;
         uint flags = view.Clip.Enabled ? FlagClip | FlagCapBackFaces : 0;
-        var cam = DepthCamera(scene, view);
+        var cam = DepthCamera(scene, view, width, height);
         Fill(Uniforms, view, cam, width, height, flipY, -1, -1, flags, quiet: quiet);
         if (real) FillLook(Uniforms.AsSpan(LookAt, LookFloats), view, cam, width, height, flipY);
         else Uniforms.AsSpan(LookAt, LookFloats).Clear();
@@ -1409,36 +1409,78 @@ public sealed class Scene3DFramePlan
     /// the scene is not yet — so an object dragged past the sphere's rim was cut by the near or far plane and its live
     /// ghost looked clipped beyond some distance. The sphere is grown for this frame only; the view's camera is not
     /// written, so nothing accumulates once the drag ends.
+    /// <para>And in perspective, a floor under the near plane (<see cref="Camera3D.NearFloor"/>) from the box of what this frame
+    /// draws — an object hidden, or chrome the realistic Look leaves out (the air box), is not in it; a preview copy is. Every point
+    /// of that box is at least its distance from the eye, and a point inside the frustum lies at most the corner ray's angle off the
+    /// view's axis, so none is nearer along the view than that distance times the angle's cosine. A solver overlay (the mesh, its
+    /// section, the grid) can reach the air box's walls, so a frame showing one keeps the sphere's rule alone.</para>
     /// </summary>
-    public static Camera3D DepthCamera(Scene3DModel scene, Viewer3DViewState view)
+    public static Camera3D DepthCamera(Scene3DModel scene, Viewer3DViewState view, int width = 0, int height = 0)
     {
         var cam = view.Camera;
-        if (view.Preview is not { } p || p.Copies.Length == 0) return cam;
-        var lo = cam.SceneCentre - new Vector3(cam.SceneRadius);
-        var hi = cam.SceneCentre + new Vector3(cam.SceneRadius);
-        bool grew = false;
-        int n = Math.Min(p.Moving.Length, scene.Objects.Length);
-        int copies = Math.Min(p.Copies.Length, MaxPreviewCopies);
-        for (int i = 0; i < n; i++)
+        var lo = new Vector3(float.MaxValue);
+        var hi = new Vector3(float.MinValue);
+        bool real = view.DrawsRealistic;
+        for (int i = 0; i < scene.Objects.Length; i++)
         {
-            if (!p.Moving[i]) continue;
             var o = scene.Objects[i];
-            for (int k = 0; k < copies; k++)
-                for (int c = 0; c < 8; c++)
-                {
-                    var corner = new Vector3((c & 1) == 0 ? o.Min.X : o.Max.X, (c & 2) == 0 ? o.Min.Y : o.Max.Y, (c & 4) == 0 ? o.Min.Z : o.Max.Z);
-                    var q = Vector3.Transform(corner, p.Copies[k]);
-                    if (!float.IsFinite(q.X) || !float.IsFinite(q.Y) || !float.IsFinite(q.Z)) continue;
-                    lo = Vector3.Min(lo, q);
-                    hi = Vector3.Max(hi, q);
-                    grew = true;
-                }
+            if (!view.IsVisible(o.Id)) continue;
+            if (real && ChromeOfObject(scene, o) is { } row && !view.Look.Shows(row)) continue;
+            lo = Vector3.Min(lo, o.Min);
+            hi = Vector3.Max(hi, o.Max);
         }
-        if (!grew) return cam;
-        cam.SceneCentre = (lo + hi) * 0.5f;
-        cam.SceneRadius = MathF.Max(cam.SceneRadius, (hi - lo).Length() * 0.5f);
+        // An array's elements past its prototype are drawn from the prototype's triangles, offset: bound each one.
+        foreach (var el in scene.Elements)
+        {
+            var g = scene.Groups[el.Group];
+            lo = Vector3.Min(lo, g.Min + el.Offset);
+            hi = Vector3.Max(hi, g.Max + el.Offset);
+        }
+        if (view.Preview is { } p && p.Copies.Length > 0)
+        {
+            var slo = cam.SceneCentre - new Vector3(cam.SceneRadius);
+            var shi = cam.SceneCentre + new Vector3(cam.SceneRadius);
+            bool grew = false;
+            int n = Math.Min(p.Moving.Length, scene.Objects.Length);
+            int copies = Math.Min(p.Copies.Length, MaxPreviewCopies);
+            for (int i = 0; i < n; i++)
+            {
+                if (!p.Moving[i]) continue;
+                var o = scene.Objects[i];
+                for (int k = 0; k < copies; k++)
+                    for (int c = 0; c < 8; c++)
+                    {
+                        var corner = new Vector3((c & 1) == 0 ? o.Min.X : o.Max.X, (c & 2) == 0 ? o.Min.Y : o.Max.Y, (c & 4) == 0 ? o.Min.Z : o.Max.Z);
+                        var q = Vector3.Transform(corner, p.Copies[k]);
+                        if (!float.IsFinite(q.X) || !float.IsFinite(q.Y) || !float.IsFinite(q.Z)) continue;
+                        slo = Vector3.Min(slo, q); shi = Vector3.Max(shi, q);
+                        lo = Vector3.Min(lo, q); hi = Vector3.Max(hi, q);
+                        grew = true;
+                    }
+            }
+            if (grew)
+            {
+                cam.SceneCentre = (slo + shi) * 0.5f;
+                cam.SceneRadius = MathF.Max(cam.SceneRadius, (shi - slo).Length() * 0.5f);
+            }
+        }
+        cam.NearFloor = 0;
+        if (cam.Projection != Projection3D.Orthographic && lo.X <= hi.X && !(view.ShowMesh || view.ShowMeshSection || view.ShowGrid))
+        {
+            var eye = cam.Eye;
+            float d = Vector3.Distance(eye, Vector3.Clamp(eye, lo, hi));
+            float ty = MathF.Tan((cam.FovY > 0 && cam.FovY < MathF.PI ? cam.FovY : Camera3D.DefaultFovY) * 0.5f);
+            float tx = ty * MathF.Max(1, width) / MathF.Max(1, height);
+            // A frame of unknown shape is taken as wide as the clamp allows: the corner ray's angle only grows with the aspect.
+            if (width <= 0 || height <= 0) tx = ty * 20;
+            cam.NearFloor = NearFloorMargin * d / MathF.Sqrt(1 + tx * tx + ty * ty);
+        }
         return cam;
     }
+
+    /// <summary>The share of the drawn box's bound the near plane is put at (<see cref="DepthCamera"/>): what float rounding of a
+    /// vertex's depth cannot cross.</summary>
+    private const float NearFloorMargin = 0.9f;
 
     private static void Fill(float[] u, Viewer3DViewState view, in Camera3D cam, int w, int h, bool flipY, float px, float py, uint flags, int pickSize = 1,
                              bool quiet = false)

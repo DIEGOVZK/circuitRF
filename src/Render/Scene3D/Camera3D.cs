@@ -48,6 +48,15 @@ public struct Camera3D
     public float SceneRadius;
     public Vector3 SceneCentre;
 
+    /// <summary>
+    /// The nearest a perspective frame's near plane need be, or 0 for the sphere's rule alone: no drawn point is nearer the eye, along
+    /// the view, than this. <see cref="Scene3DFramePlan.DepthCamera"/> sets it on the copy a frame is drawn with, from what that frame
+    /// draws. Without it, an eye inside the scene's sphere took a near plane of far × 1e-4 — an EM air box puts a close look at a
+    /// board inside it — and the depth buffer resolved only tens of µm across the board, so the occlusion prepass flipped between
+    /// the copper's top and the substrate 35 µm under it and painted streaks that moved as the camera did.
+    /// </summary>
+    public float NearFloor;
+
     /// <summary>A camera framing <paramref name="min"/>..<paramref name="max"/> from the iso view.</summary>
     public static Camera3D Fit(Vector3 min, Vector3 max, float aspect, Projection3D projection = Projection3D.Perspective)
     {
@@ -204,7 +213,7 @@ public struct Camera3D
         float r = MathF.Max(SceneRadius, 1e-9f) * 1.05f;
         float far = MathF.Max(along + r, Distance * 0.01f + r);
         if (Projection == Projection3D.Orthographic) return (along - r, far);
-        float near = MathF.Max(along - r, far * 1e-4f);
+        float near = MathF.Max(MathF.Max(along - r, far * 1e-4f), MathF.Min(NearFloor, far * 0.5f));
         return (near, far);
     }
 

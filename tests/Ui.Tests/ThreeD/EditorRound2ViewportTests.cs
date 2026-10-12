@@ -81,6 +81,34 @@ public sealed class EditorRound2ViewportTests : IDisposable
         v.View.Preview = null;
     }
 
+    /// <summary>A close perspective look at a board, from inside the air box's sphere with the air box not drawn (the realistic
+    /// Look's default): the near plane sits at the board's distance, not at far × 1e-4 — where the depth buffer resolved tens of µm
+    /// and the occlusion painted moving streaks over the copper (owner report, 2026-10-12). Nothing drawn is nearer than it.</summary>
+    [Fact]
+    public void Perspective_InsideTheAirBoxSphere_TheNearPlaneIsTheDrawnBoardsDistance()
+    {
+        var vm = Open(Write([Box("b", "Gold", 0, 0, 0, 50_000, 50_000, 500)]));
+        var v = vm.Viewer;
+        var o = vm.SceneObject("b")!;
+        foreach (var hidden in v.Scene.Objects.Where(x => x.Kind is Scene3DKind.Air or Scene3DKind.Boundary)) v.View.Visible[hidden.Id - 1] = false;
+        var cam = v.View.Camera;
+        cam.Projection = Projection3D.Perspective;
+        (cam.Target, cam.Yaw, cam.Pitch, cam.Distance) = ((o.Min + o.Max) * 0.5f, -MathF.PI / 2, 0.6f, 0.04f);
+        v.View.Camera = cam;
+        Assert.True(Vector3.Distance(cam.Eye, cam.SceneCentre) < cam.SceneRadius, "the eye is not inside the scene's sphere");
+        Assert.Equal(cam.DepthRange().Far * 1e-4f, cam.DepthRange().Near, 1e-9);
+
+        var frame = Scene3DFramePlan.DepthCamera(v.Scene, v.View, (int)W, (int)H);
+        float height = cam.Eye.Z - o.Max.Z;
+        Assert.True(frame.DepthRange().Near > 0.5f * height, $"near {frame.DepthRange().Near} for an eye {height} above the board");
+        for (int c = 0; c < 8; c++)
+        {
+            var p = new Vector3((c & 1) == 0 ? o.Min.X : o.Max.X, (c & 2) == 0 ? o.Min.Y : o.Max.Y, (c & 4) == 0 ? o.Min.Z : o.Max.Z);
+            var (sx, sy, _) = frame.Project(p, W, H);
+            if (sx is >= 0 and <= W && sy is >= 0 and <= H) Assert.True(frame.ViewDepth(p) >= frame.DepthRange().Near);
+        }
+    }
+
     /// <summary>While the camera is dragged nothing is hovered or snapped, and a pick read back from before the drag is
     /// dropped; the release hovers again.</summary>
     [Fact]

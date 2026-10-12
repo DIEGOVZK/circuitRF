@@ -383,9 +383,25 @@ public static class Em3dLayoutSolids
 
             // ── Board outline (R-em3d3-5c) ────────────────────────────────────────────────────
             if (outlineShapes.Count > 0)
+            {
+                var drawnOutline = new List<PlanarPolygon>();
                 foreach (var (shape, _) in PlanarExtractor.MergeOverlapping(
                              [.. outlineShapes.Select(s => (s, 0))], tech, out _, out _))
-                    _outline.AddRange(PlanarExtractor.ToPolygons(shape, tech, _perDbu));
+                    drawnOutline.AddRange(PlanarExtractor.ToPolygons(shape, tech, _perDbu));
+                var drills = _viaSpans.Select(v => Drill(v.Shape)).Concat(_holeSpans.Select(h => Drill(h.Shape)))
+                                      .OfType<(double X, double Y, double R)>().ToList();
+                int drilledAway = 0;
+                var regions = BoardRegions(drawnOutline, out int lines);
+                foreach (var region in regions)
+                    if (drills.Any(d => WithinDrill(region, d))) drilledAway++;
+                    else _outline.Add(region);
+                if (lines > 0)
+                    Notes.Add($"{lines} shape(s) on the board-outline layer are a line drawn around the board (a Gerber " +
+                              "outline's strokes, merged): the board is the region the line encloses, not the line.");
+                if (drilledAway > 0)
+                    Notes.Add($"{drilledAway} shape(s) on the board-outline layer are no larger than the hole drilled through " +
+                              "them (a fabricator's target), so there is no board there.");
+            }
 
             // ── Which bands are in the problem, and each dielectric's z after absorption ──────
             _inProblem = bands.Where(b => !pecFloor || b.BottomM >= floorZ - 1e-15).ToList();
@@ -657,11 +673,10 @@ public static class Em3dLayoutSolids
                 string name = $"via/{viaN}";
                 // A via is on its own net when it names one, else on the nets of the metal it lands on.
                 var viaNets = shape.Net is { Length: > 0 } vn ? [vn] : ViaLandingNets(shape, top, bottom);
-                if (shape is ViaShape v)
+                if (Drill(shape) is var (x, y, r))
                 {
-                    double r = (v.DrillSize > 0 ? v.DrillSize : v.PadSize) * _perDbu / 2;
-                    var a = new Point3(v.X * _perDbu, v.Y * _perDbu, z0);
-                    var e = new Point3(v.X * _perDbu, v.Y * _perDbu, z1);
+                    var a = new Point3(x, y, z0);
+                    var e = new Point3(x, y, z1);
                     solids.Add(Origin(new Em3dSolid(name, material, Em3dRole.Conductor, new Em3dCylinder(a, e, r), ++order),
                                       Em3dObjectKind.Via, entry.Name, shape.Layer));
                     foreach (string n in viaNets) Net(name, n);
@@ -692,12 +707,10 @@ public static class Em3dLayoutSolids
             {
                 string name = $"hole/{++holeN}";
                 double z0 = bottom.BottomM, z1 = top.TopM;
-                if (shape is ViaShape v)
+                if (Drill(shape) is var (x, y, r))
                 {
-                    double r = (v.DrillSize > 0 ? v.DrillSize : v.PadSize) * _perDbu / 2;
                     solids.Add(Origin(new Em3dSolid(name, AirMaterialName(), Em3dRole.Air,
-                                                    new Em3dCylinder(new Point3(v.X * _perDbu, v.Y * _perDbu, z0),
-                                                                     new Point3(v.X * _perDbu, v.Y * _perDbu, z1), r), ++order),
+                                                    new Em3dCylinder(new Point3(x, y, z0), new Point3(x, y, z1), r), ++order),
                                       Em3dObjectKind.Air, entry.Name, shape.Layer));
                 }
                 else
@@ -1008,6 +1021,19 @@ public static class Em3dLayoutSolids
             return Add(new Em3dMaterial(Em3dGenerator.AirMaterial, 1, null, 0, 1, 0), "built in (free space)");
         }
 
+        /// <summary>
+        /// A round drill's centre and radius, metres: a via, or a CIRCLE drawn on a via or hole layer — which is what a
+        /// Gerber or DXF drill file imports as. Drawn as an extruded polygon, a plated circle was a solid copper rod: no
+        /// air core, so nothing carved the pads or substrate it passes through, and its caps lay in the pads' own faces
+        /// and z-fought them. Null for any other shape, which keeps its drawn footprint.
+        /// </summary>
+        private (double X, double Y, double R)? Drill(LayoutShape shape) => shape switch
+        {
+            ViaShape v    => (v.X * _perDbu, v.Y * _perDbu, (v.DrillSize > 0 ? v.DrillSize : v.PadSize) * _perDbu / 2),
+            CircleShape c => (c.Cx * _perDbu, c.Cy * _perDbu, c.R * _perDbu),
+            _             => null,
+        };
+
         private IEnumerable<PlanarPolygon> ViaFootprint(LayoutShape shape)
         {
             if (shape is ViaShape v)
@@ -1018,6 +1044,67 @@ public static class Em3dLayoutSolids
             }
             return PlanarExtractor.ToPolygons(shape, tech, _perDbu);
         }
+
+        /// <summary>
+        /// The board an outline layer's merged shapes describe. A closed region is the board, as drawn. A LINE is not: a
+        /// Gerber outline is strokes, and merged they are a thin ring whose hole is the board — read as a region, a
+        /// 50 mm board was a 0.13 mm sliver of substrate around its own edge. A shape is a line when it has a hole and
+        /// its width (2·area / perimeter) is under <see cref="OutlineLineFraction"/> of its smaller extent. A line's holes
+        /// are the board, even-odd: a line inside another line's hole (a cutout drawn round) cuts that hole out, and the
+        /// holes of a line nested once more are islands again. A hole under <see cref="OutlineGapFraction"/> of its
+        /// line's largest is a gap between corner marks, not a board.
+        /// </summary>
+        internal static List<PlanarPolygon> BoardRegions(IReadOnlyList<PlanarPolygon> drawn, out int lines)
+        {
+            var regions = new List<PlanarPolygon>();
+            var ink = new List<PlanarPolygon>();
+            foreach (var p in drawn) (IsLine(p) ? ink : regions).Add(p);
+            lines = ink.Count;
+            if (ink.Count == 0) return regions;
+
+            static bool Encloses(IReadOnlyList<EmPoint> ring, IReadOnlyList<EmPoint> other)
+                => new PlanarPolygon(ring).Contains(other[0].X, other[0].Y);
+
+            var boards = new List<(IReadOnlyList<EmPoint> Outer, List<IReadOnlyList<EmPoint>> Cutouts)>();
+            var cutouts = new List<IReadOnlyList<EmPoint>>();
+            foreach (var p in ink)
+            {
+                int depth = ink.Count(q => !ReferenceEquals(q, p) && Encloses(q.Outer, p.Outer));
+                if (depth % 2 == 1) { cutouts.Add(p.Outer); continue; }
+                double largest = p.HoleRings.Max(h => new PlanarPolygon(h).Area());
+                foreach (var h in p.HoleRings)
+                    if (new PlanarPolygon(h).Area() >= OutlineGapFraction * largest) boards.Add((h, []));
+            }
+            foreach (var c in cutouts)
+                foreach (var b in boards)
+                    if (Encloses(b.Outer, c)) { b.Cutouts.Add(c); break; }
+            regions.AddRange(boards.Select(b => new PlanarPolygon(b.Outer, b.Cutouts.Count > 0 ? b.Cutouts : null)));
+            return regions;
+
+            static bool IsLine(PlanarPolygon p)
+            {
+                if (p.HoleRings.Count == 0) return false;
+                var (x0, y0, x1, y1) = p.Bounds();
+                return CharacteristicWidth(p) < OutlineLineFraction * Math.Min(x1 - x0, y1 - y0);
+            }
+        }
+
+        /// <summary>
+        /// Whether <paramref name="region"/> lies within drill <paramref name="d"/> (metres), to a thousandth of its radius: an outline
+        /// disc the size of its own hole is drilled away. Drawn, it was a full disc of substrate over the barrel, and its faceted wall
+        /// and the barrel's interleaved, so the substrate showed through the copper in stripes at some zooms.
+        /// </summary>
+        internal static bool WithinDrill(PlanarPolygon region, (double X, double Y, double R) d)
+        {
+            double reach = d.R * 1.001;
+            return region.Outer.All(p => (p.X - d.X) * (p.X - d.X) + (p.Y - d.Y) * (p.Y - d.Y) <= reach * reach);
+        }
+
+        /// <summary>A holed outline shape narrower than this fraction of its smaller extent is a line (<see cref="BoardRegions"/>).</summary>
+        internal const double OutlineLineFraction = 0.05;
+
+        /// <summary>A line's hole smaller than this fraction of its largest hole is not a board (<see cref="BoardRegions"/>).</summary>
+        internal const double OutlineGapFraction = 0.01;
 
         private static Em3dExtrudedPolygon Extrude(PlanarPolygon p, double z0, double z1)
             => new(Ring(p.Outer), [.. p.HoleRings.Select(Ring)], z0, z1);

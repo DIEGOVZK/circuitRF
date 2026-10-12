@@ -19662,3 +19662,38 @@ answers: a backside via to ground is now a lossy gold barrel in the planar fill,
 the two PDK PCells generator dumps (the posts' solids are Gold instead of a σ = 0 entry-named material; geometry
 identical) and SpiralResonator's MIM-cap generated-cell reference. 75 test classes that build on the starter or these
 files pass unchanged. The 3D Package example's own `mmic-gaas.ctech` already named its vias.
+
+## A Gerber board in 3D: drill circles as copper rods, and the outline line read as the board (owner report, 2026-10-12)
+
+Four 3D-view complaints on one imported evaluation board, which came down to two causes in `Em3dLayoutSolids`.
+
+**Drill circles were solid copper rods.** A Gerber or DXF drill file imports as `CircleShape`s on the drill layer, not
+`ViaShape`s, and the via loop sent anything but a `ViaShape` to the extruded-polygon branch: no air core. With no air
+cylinder, `Scene3DBores` (render side) carves nothing, so (1) the pads and the substrate showed no hole and nothing could
+be seen through a via; (2) the realistic view showed no via in the top copper at all, since the rod's top cap lay flush
+in the pour; and (3) that cap, a full disc in the pour's own plane, z-fought it. Round 9's via tie was tuned for the
+carved case (the tube's thin top ring on a holed pad) and does not hold a 2.4 mm disc steady across two different
+triangulations of one plane, which is why the four large corner holes flickered most. **Fix:** `Builder.Drill` gives a
+via or a circle the same centre and radius, and both the plated-via and the non-plated-hole branches build a cylinder
+(plus the air core for a plated barrel with a wall) from it. A non-circle on a via layer (a slot, an MMIC via polygon)
+keeps its drawn footprint, as before. This changes the solver problem too, deliberately: a plated circle is now the
+same tube a plated `ViaShape` already was.
+
+**The outline was a ring.** A Gerber outline is strokes; round 18's fat-pen coalescing merges them into one polygon
+whose hole is the board, and the 3D builder took that polygon as the board, so the substrate was a 0.13 mm sliver
+around the edge. `Builder.BoardRegions` now reads a holed outline shape whose width (2·area / perimeter) is under 5 %
+of its smaller extent as a LINE: its holes are the board, even-odd (a line nested in a board's hole cuts it out), and
+a hole under 1 % of that line's largest is a gap between corner marks rather than a board. A filled outline shape is
+the board as drawn, unchanged. The hole is the board's inside edge, half a stroke inside the true edge: copper drawn
+to the edge can overhang it by that much. Gates: `Em3dGeneratorTests.APlatedDrillCircle_IsABarrelWithAnAirCore_AsAViaIs`
+and `AnOutlineDrawnAsALine_BoundsTheBoardItEncloses`.
+
+**A fabricator's target was a solid disc of substrate.** The same board's three registration targets sit outside it,
+each a disc on the outline layer with a drill of exactly its own radius. The disc became substrate the barrel's size;
+`Scene3DBores` could not carve it (the flattened circle's clearance is a hair under the radius), so its top covered the
+bore and its facets interleaved with the barrel's, striping the copper wall with substrate at some zooms. An outline
+region that lies within a drill through it (`Builder.WithinDrill`, to a thousandth of the radius) is now drilled away
+and noted. Gate: `Em3dGeneratorTests.AnOutlineDiscNoLargerThanItsDrill_IsDrilledAway`.
+
+Not changed: the import also places a drill-drawing's text (strokes on the drill layer) outside the board, and it is
+drawn in 3D as what that layer binds to, copper.
