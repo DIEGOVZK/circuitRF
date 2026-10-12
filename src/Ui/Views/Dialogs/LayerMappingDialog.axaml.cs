@@ -104,7 +104,7 @@ public sealed partial class LayerMappingRowViewModel : ObservableObject
 
         // R-rail27-1b. ARTWORK FIRST and selected, so an import nobody reads behaves exactly as it
         // does now; the copper positions after it, in stack order, which is a question with a small
-        // and complete answer set.
+        // and complete answer set; then "vias", for a Gerber drawing of the plated holes.
         if (row.StackupConductors is { } conductors)
         {
             StackupOptions.Add(new LayerStackupItem(LayerStackupChoice.Artwork, "artwork"));
@@ -113,6 +113,7 @@ public sealed partial class LayerMappingRowViewModel : ObservableObject
             for (int i = 0; i < conductors.Count; i++)
                 StackupOptions.Add(new LayerStackupItem(
                     new LayerStackupChoice(true, i), $"copper, after {conductors[i]}"));
+            StackupOptions.Add(new LayerStackupItem(LayerStackupChoice.Vias, "vias"));
 
             _selectedStackup = StackupOptions[0];
         }
@@ -248,7 +249,7 @@ public partial class LayerMappingDialog : Window
             ? (request.Target.IsUse ? request.Repropose(null) : request.Rows)
             : request.Repropose(choice.Technology);
         var answered = _rowVms
-            .Where(r => r.ShowStackupCombo && r.SelectedStackup is { Choice.AsCopper: true })
+            .Where(r => r.ShowStackupCombo && r.SelectedStackup is { Choice.AsCopper: true } or { Choice.AsVias: true })
             .GroupBy(StackupKey)
             .ToDictionary(g => g.Key, g => g.First().SelectedStackup!.Choice);
         ShowTable("Gerber", choice.Technology ?? _workspaceTech, rows, choice.AllowsAddToTechnology, answered);
@@ -289,7 +290,7 @@ public partial class LayerMappingDialog : Window
             ? "This import creates its own technology, so there is nothing to map these layers onto. "
             + "What it cannot work out for itself is which of these files is COPPER — only a conductor "
             + "enters the stackup, and nothing on it is priced, extracted or usable as a reference "
-            + "until it is one."
+            + "until it is one — and which is the VIAS."
             : sourceTechName is { Length: > 0 }
                 ? $"Moving from '{sourceTechName}' to '{destTech.Name}'. Confirm where each layer goes."
                 : $"Moving to '{destTech.Name}'. Confirm where each layer goes.";

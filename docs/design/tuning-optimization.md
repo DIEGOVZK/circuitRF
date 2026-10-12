@@ -459,8 +459,14 @@ snapped point** — the continuous one is not a design anyone can build. The con
 complex values included) are then re-optimized from the best snapped point with the snapped ones held —
 Levenberg–Marquardt, or Minimax under `cost=minimax` — over the sub-box of those coordinates.
 `OptimizationResult.Snap` holds the cost before, at the snap and after the polish, and a note says the same
-(`opt.snap.report`). The snap runs after any end but Stop, a goals-met continuous point included; the
-polish only within the limits. Gate: an L-section optimized continuously, snapped to E24 C and E12 L, ends
+(`opt.snap.report`). The snap runs after any end but Stop, a goals-met continuous point included — and
+after a Stop too when any variable is on a standard series (E6…E96 or `preferred`), whose continuous best
+is not a value the row allows; the panel keeps no paused best that lies between rungs
+(`OptimizationRun.BestOffSeries`). Every algorithm whose `NeedsGradients` is false — except the trust-region
+model, which fits a smooth surface and stalls on a staircase — and Auto's CMA-ES stage search a series row ON
+its series (`SearchesOnSeries`: the snapped decode throughout, as Discrete's), so for them the snap finds the
+point already on its rungs and only polishes. The polish runs only within
+the limits, and never after a Stop. Gate: an L-section optimized continuously, snapped to E24 C and E12 L, ends
 on the pair the closed-form cost ranks best of its four neighbours.
 
 **Auto (R-to8-5).** CMA-ES for 50(n + 1) evaluations, or half of `maxevals` when that is fewer; then

@@ -1934,11 +1934,11 @@ under it, and a label on the top silk:
 **How big is it, so I can write a window?** In base SI, with the unit and the scale named.
 
 <pre><code class="cmd"><span class="prompt">$ </span>circuitrf explain Amp/Stage1/layout/Stage1.clay --extents
-<span class="output">  extents      0 -0.003 .. 0.02 0.00376719  (0.02 x 0.00676719 m, scale 1E-06)
-               --window 0um,-3000um,20000um,3767.188um
+<span class="output">  extents      0 -0.003 .. 0.02 0.00393846  (0.02 x 0.00693846 m, scale 1E-06)
+               --window 0um,-3000um,20000um,3938.462um
     Top Copper           0 0 .. 0.02 0.0029   --window 0um,0um,20000um,2900um
     Bottom Copper        0.002 -0.003 .. 0.018 -0.001   --window 2000um,-3000um,18000um,-1000um
-    Silk Top             0.0004 0.00338437 .. 0.00234306 0.00376719   --window 400um,3384.375um,2343.062um,3767.188um</span></code></pre>
+    Silk Top             0.0004 0.00336154 .. 0.00331941 0.00393846   --window 400um,3361.538um,3319.414um,3938.462um</span></code></pre>
 
 The line is 20 mm long and 2.9 mm wide, on `Top Copper` — and the `--window` line beside each box is
 already in the spelling the next command takes. Now the left 6 mm of it, that layer only:
@@ -2349,11 +2349,11 @@ and ignored.
 <h3 id="explain-extents"><code>--extents</code> — how big is it?</h3>
 
 <pre><code class="cmd"><span class="prompt">$ </span>circuitrf explain Stage1.clay --extents
-<span class="output">  extents      0 -0.003 .. 0.02 0.00376719  (0.02 x 0.00676719 m, scale 1E-06)
-               --window 0um,-3000um,20000um,3767.188um
+<span class="output">  extents      0 -0.003 .. 0.02 0.00393846  (0.02 x 0.00693846 m, scale 1E-06)
+               --window 0um,-3000um,20000um,3938.462um
     Top Copper           0 0 .. 0.02 0.0029   --window 0um,0um,20000um,2900um
     Bottom Copper        0.002 -0.003 .. 0.018 -0.001   --window 2000um,-3000um,18000um,-1000um
-    Silk Top             0.0004 0.00338437 .. 0.00234306 0.00376719   --window 400um,3384.375um,2343.062um,3767.188um</span></code></pre>
+    Silk Top             0.0004 0.00336154 .. 0.00331941 0.00393846   --window 400um,3361.538um,3319.414um,3938.462um</span></code></pre>
 
 **In base SI, with the unit *and* the scale named** — the rule `--analysis` already follows, for the
 reason it follows it: reading a mark without its scale has already produced a run at 2 Hz that looked

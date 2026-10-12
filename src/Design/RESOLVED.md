@@ -19697,3 +19697,53 @@ and noted. Gate: `Em3dGeneratorTests.AnOutlineDiscNoLargerThanItsDrill_IsDrilled
 
 Not changed: the import also places a drill-drawing's text (strokes on the drill layer) outside the board, and it is
 drawn in 3D as what that layer binds to, copper.
+
+## Designer report, round 20 — scanline pours drawn as stripes, a three-layer set with no stackup (2026-10-12)
+
+**A scanline pour at a pitch just under its pen stayed strokes.** A numbered-metal four-layer set paints three pours on
+its top copper with a 10-mil round pen at a 9.1-mil pitch — about thirty lines and the outline stroked round them per
+pour. Round 18's per-region rule wants ≥ 50 strokes, or ≥ 8 covering the region ≥ 1.5×; these cover it ~1.1× (the
+lines overlap by 0.9 mil), so all three drew as stripes while the larger centre plane beside them coalesced.
+`LayoutRasterFillCoalesce.PaintedRegions` now also takes a region whose BREADTH — 2·area / perimeter, holes in both —
+is at least `MinBreadthPerPen` (4) times its widest member's pen. Traces are about one pen broad however many meet,
+and a hatched pour's real gaps add their perimeter and keep it thin, so neither moves. On the field board MET-1 went
+from 234 strokes / 2 regions to 348 / 5. The pinhole left where one pour's last scanline, an angled trace and its pad
+nearly meet is in the artwork (the uncoalesced strokes leave it too). Gate:
+`DesignerRound20Tests.AScanlinePourAtAPitchJustUnderThePen_IsOneRegion_AndTracesStayStrokes`.
+
+**A three-layer set named `Signal_01..03` / `Via_1_2_3` / `SP_Top` identified nothing**, so the stackup was EMPTY,
+and the via file was a drawing layer — the designer's earlier copy of the board had its conductors and its via entry
+added by hand. Three rung-3 rows: `signal` numbered from the top like `met` (`OneIsTop`; `NameBottomConductor`
+renames the last), `via`/`vias` as a drill-purpose file (whole word, so it reaches the existing drill-as-Gerber via
+entry), and `sp` beside a side word as paste (the letters `FunctionSideFamily` already reads in `.spt`).
+`GerberLayerCascade.SpanFromName` reads the span a via file's name states — the first and last numbers after "via" —
+when no FileFunction gives one, so `Via_1_2` is a blind via from the top to the first inner layer. The board's own
+legend states its real stackup (0.2 mm / 0.8 mm, εr 4.8); legend text is not evidence the import reads, so the
+dielectrics still take the FR-4 defaults and the import says so. Gates: `DesignerRound20Tests.NumberedSignalLayersAndAViaFile_…`
+and `AViaFilesName_StatesItsSpan`.
+
+**An unrecognised via file can be answered "vias"** (owner request). `LayerStackupChoice.AsVias` (`LayerStackupChoice.Vias`),
+the last entry of the dialog's "In the stackup as" combo; `GerberImport.PromoteAnsweredVias` turns the file's identity
+and source layer drill-purpose right after the copper promotions, so the drill-as-Gerber step gives it the plated via
+entry (span from its name, else through) and coalescing leaves it alone. It also withdraws the "No drill data was
+read" note, which is written before the answer is applied. A re-proposed table keeps a "vias" answer as it keeps a
+copper one. Gate: `DesignerRound20Tests.AFileAnsweredVias_IsAPlatedViaLayerThroughTheBoard`; the AN-02 figure
+`an02-layer-mapping-unidentified` was recaptured (the open combo lists "vias").
+
+**A stopped run over an E-series row kept values off the series.** The search was continuous by design and a finished
+run ended with the snap, but Stop skipped it (`end.Kind != Stopped`), and Lock in / Push / Send to Tuning were enabled
+while PAUSED — both kept a best between rungs, which reads exactly as "the series was only a label". Now a run with any
+standard-series row (`OptimizationRun.SeriesRows`, E6…E96 or `preferred`) snaps after a Stop too (the polish already
+gives way to `_stop`), and the panel's keep commands are disabled while paused with a best between rungs
+(`BestOffSeries` → `CanKeepValues`); Snap and polish and Sensitivity stay available. Gates:
+`DesignerRound20Tests.AStoppedRun_OverAnESeriesRow_EndsOnTheSeries` and
+`PausedBetweenRungs_TheBestCannotBePushed_UntilStopPutsItOnARung`.
+
+**Owner decision: a derivative-free algorithm searches a series row ON the series.** `OptimizationRun.SearchesOnSeries`
+turns on the snapped decode (`_snapPreferred`, until then only Discrete's) for every algorithm whose
+`NeedsGradients` is false, and for Auto's CMA-ES stage; Auto's polish and the gradient algorithms keep the continuous
+search plus the snap, since a rung has no derivative. Points that decode to the same rungs hit the cache, so a plateau
+costs no simulation. **The trust-region model is excluded** although it estimates no derivative: it fits a smooth
+surface, and on an E12 L-section's staircase it stalled at 8.2 nH / 1.5 pF (cost 0.258) after 11 evaluations, where
+simplex, pattern, random, DE, PSO, CMA-ES, Bayesian and Auto all reached the Discrete grid's best, 15 nH / 1.2 pF
+(0.0041). Gate: `DesignerRound20Tests.ADerivativeFreeAlgorithm_SimulatesOnlySeriesValues_AGradientOneStillSnaps`.

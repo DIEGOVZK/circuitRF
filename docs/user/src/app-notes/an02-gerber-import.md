@@ -74,9 +74,11 @@ Each artwork file's identity comes from the strongest source the set offers, in 
    carry the stackup;
 2. the file's own **X2 attributes** (`%TF.FileFunction`), which also give a copper layer's position in the stack;
 3. a **Gerber suffix** in your workspace technology that matches the file's extension;
-4. a **name heuristic** — copper top, bottom, inner or numbered from the top (`MET-1` … `MET-4`), mask, silk,
-   paste, outline, drill, including the short spellings (`TOP-COP`, `BTM-COP`, `TOP-SLD`, `SLK`, `SM`, `HOLE`,
-   `PCB FRAME`). A silkscreen or mask whose name gives no side is taken as the top one;
+4. a **name heuristic** — copper top, bottom, inner or numbered from the top (`MET-1` … `MET-4`,
+   `Signal_01` … `Signal_03`), mask, silk, paste, outline, drill, including the short spellings (`TOP-COP`,
+   `BTM-COP`, `TOP-SLD`, `SLK`, `SM`, `SP_Top`, `HOLE`, `PCB FRAME`). A Gerber file of the vias (`Via_1_2_3`)
+   is a drill layer, and the numbers after "via" are the copper layers it joins. A silkscreen or mask whose
+   name gives no side is taken as the top one;
 5. the **layer-mapping dialog**, for anything still unnamed. Mapping an unnamed file onto a copper layer of the
    technology makes it that conductor in the stackup.
 
@@ -140,8 +142,10 @@ The same row on a six-copper set, and its choices:
 
 **A file nothing could identify is asked where it goes in the stackup.** Only a conductor enters the stackup, so
 an unnamed file that is really a plane has to be told so, or it will be imported as drawing-only artwork and
-nothing will treat it as copper. Its row gets an **In the stackup as** column: *artwork*, the default, or *copper*
-at a position in the copper order.
+nothing will treat it as copper. Its row gets an **In the stackup as** column: *artwork*, the default, *copper*
+at a position in the copper order, or *vias* — a Gerber drawing of the plated holes, a flash per hole. A file
+answered *vias* becomes a drill layer with a plated via entry in the stackup, through the whole board unless
+its name states the copper layers it joins.
 
 {{ui: an02-layer-mapping-unidentified}}
 

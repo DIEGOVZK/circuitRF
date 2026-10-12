@@ -447,13 +447,18 @@ public sealed partial class OptimizerPanelViewModel
 
     private bool CanKeep() => (IsPaused || IsFinished) && _bestValues is { Count: > 0 };
 
+    /// <summary>Whether the best values may be WRITTEN somewhere (Lock in, Push, Send to Tuning). Not while
+    /// paused with a standard-series row between its rungs — a gradient algorithm searches continuously —
+    /// until Stop (or Snap and polish) puts it on them (designer report, round 20).</summary>
+    private bool CanKeepValues() => CanKeep() && !(IsPaused && _run?.BestOffSeries == true);
+
     /// <summary>The best values as Lock in, Push and Send to Tuning write them: to the panel's digits,
     /// the figures the rows show.</summary>
     private IReadOnlyDictionary<string, string>? KeptValues()
         => _bestValues is { } values ? TuningDigits.Round(values, Digits) : null;
 
     /// <summary>Lock in (TO-5): the best values as a new preset, with the cost they scored.</summary>
-    [RelayCommand(CanExecute = nameof(CanKeep))]
+    [RelayCommand(CanExecute = nameof(CanKeepValues))]
     private void LockIn()
     {
         if (_tuned is null || KeptValues() is not { } values) return;
@@ -464,7 +469,7 @@ public sealed partial class OptimizerPanelViewModel
 
     /// <summary>Push (TO-4 R-to4-8): the best values into the documents that own them, one undo step
     /// per document.</summary>
-    [RelayCommand(CanExecute = nameof(CanKeep))]
+    [RelayCommand(CanExecute = nameof(CanKeepValues))]
     private void Push()
     {
         if (_tuned is null || KeptValues() is not { } values || Catalog is not { } catalog) return;
@@ -528,7 +533,7 @@ public sealed partial class OptimizerPanelViewModel
     }
 
     /// <summary>Loads the best values into the Tuning session so the user hand-tunes from there.</summary>
-    [RelayCommand(CanExecute = nameof(CanKeep))]
+    [RelayCommand(CanExecute = nameof(CanKeepValues))]
     private void SendToTuning()
     {
         if (KeptValues() is not { } values || SendToTuningTarget is null) return;

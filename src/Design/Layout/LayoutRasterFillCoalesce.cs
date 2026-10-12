@@ -71,6 +71,17 @@ public static class LayoutRasterFillCoalesce
     public const double MinPaintCoverage = 1.5;
 
     /// <summary>
+    /// How many times wider than its widest pen a region must be — its breadth taken as twice its area over
+    /// its perimeter — to count as painted when its strokes neither number <see cref="MinStrokesPerRegion"/>
+    /// nor overlap to <see cref="MinPaintCoverage"/>. A pour painted with abutting scanlines at a pitch just
+    /// under the pen covers itself barely more than once (designer report, round 20: a 10-mil pen at a
+    /// 9.1-mil pitch, about thirty lines per pour, 1.1× coverage), but it is as broad as the pour; drawn
+    /// traces, however many meet, are one pen wide, and a hatched pour's real gaps put their perimeter into
+    /// the sum and keep it thin too.
+    /// </summary>
+    public const double MinBreadthPerPen = 4;
+
+    /// <summary>
     /// The flattening tolerance R-rf3-5 requires be STATED and carried — 0.1 µm at whatever resolution
     /// the document is in. It is what a round end cap's arc is flattened to on the way into the union,
     /// and therefore the only place the result is not exact.
@@ -306,8 +317,9 @@ public static class LayoutRasterFillCoalesce
     /// The regions of a union that are painted, each with the strokes that formed it (indices into
     /// <paramref name="group"/>) and those strokes' outline vertex count. A region is painted when it
     /// absorbed <see cref="MinStrokesPerRegion"/> strokes, or at least <see cref="MinStrokesPerPaintedRegion"/>
-    /// whose outlines cover it <see cref="MinPaintCoverage"/> times over — and in either case is no more
-    /// complex than the outlines it replaces.
+    /// that make it <see cref="MinBreadthPerPen"/> pens broad or whose outlines cover it
+    /// <see cref="MinPaintCoverage"/> times over — and in every case is no more complex than the outlines it
+    /// replaces.
     /// </summary>
     private static List<(PolygonShape Region, List<int> Members, int MemberVertices)> PaintedRegions(
         List<PathShape> group, Paths64[] perStroke, IReadOnlyList<LayoutShape> regions)
@@ -350,6 +362,14 @@ public static class LayoutRasterFillCoalesce
             if (m.Count < MinStrokesPerRegion)
             {
                 double regionArea = Math.Abs(Clipper.Area(rings[k].Outer)) - rings[k].Holes.Sum(h => Math.Abs(Clipper.Area(h)));
+                double perimeter = Perimeter(rings[k].Outer) + rings[k].Holes.Sum(Perimeter);
+                double pen = m.Max(i => (double)group[i].Width);
+                if (regionArea > 0 && perimeter > 0 && 2 * regionArea / perimeter >= MinBreadthPerPen * pen)
+                {
+                    painted.Add((rings[k].Shape, m, memberVertices));
+                    continue;
+                }
+
                 double covered = 0;
                 foreach (int i in m)
                 {
@@ -362,6 +382,18 @@ public static class LayoutRasterFillCoalesce
             painted.Add((rings[k].Shape, m, memberVertices));
         }
         return painted;
+    }
+
+    private static double Perimeter(Path64 ring)
+    {
+        double p = 0;
+        for (int i = 0; i < ring.Count; i++)
+        {
+            var a = ring[i];
+            var b = ring[(i + 1) % ring.Count];
+            p += Math.Sqrt((double)(b.X - a.X) * (b.X - a.X) + (double)(b.Y - a.Y) * (b.Y - a.Y));
+        }
+        return p;
     }
 
     private static Path64 RingPath(long[] xy)

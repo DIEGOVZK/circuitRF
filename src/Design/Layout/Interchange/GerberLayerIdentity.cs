@@ -373,6 +373,9 @@ public static class GerberLayerCascade
     private static readonly string[] MaskWords = ["mask", "sm"];
     private static readonly string[] SidedMaskWords = ["mask", "sm", "sld"];
     private static readonly string[] CopperWords = ["copper", "cop"];
+    // "sp" beside a side word is the paste stencil — the same two letters FunctionSideFamily already reads
+    // off an extension (".spt"), here written into the name ("SP_Top").
+    private static readonly string[] PasteWords = ["paste", "sp"];
 
     // Ordered: the FIRST match wins, so the more specific rows come first. "solder mask top" must be
     // tested before "top", and "paste" before "mask", because a paste file's name commonly says both.
@@ -386,8 +389,13 @@ public static class GerberLayerCascade
         // A Gerber file of the holes, named for them ("HOLE.GBR"): a flash per hole, which is what the
         // drill-purpose artwork path builds its via entry from (designer feedback 02's fix).
         new([["hole", "holes"]], "Drill", DrillPurpose, null),
-        new([["paste"], TopWords], "Paste Top", UnidentifiedPurpose, "Top"),
-        new([["paste"], BotWords], "Paste Bottom", UnidentifiedPurpose, "Bot"),
+        // A Gerber file of the VIAS, named for them ("Via_1_2_3" — a flash per via, and the copper layers it
+        // joins). Unread, a three-layer set's vias stayed a drawing layer and the stackup had no via entry to
+        // make a barrel of them (designer report, round 20). The span the numbers state is read by
+        // SpanFromName. "via" is three letters, so ContainsWord takes it as a whole word only.
+        new([["via", "vias"]], "Drill", DrillPurpose, null),
+        new([PasteWords, TopWords], "Paste Top", UnidentifiedPurpose, "Top"),
+        new([PasteWords, BotWords], "Paste Bottom", UnidentifiedPurpose, "Bot"),
         new([SidedMaskWords, TopWords], "Soldermask Top", UnidentifiedPurpose, "Top"),
         new([SidedMaskWords, BotWords], "Soldermask Bottom", UnidentifiedPurpose, "Bot"),
         new([SilkWords, TopWords], "Silk Top", UnidentifiedPurpose, "Top"),
@@ -460,7 +468,35 @@ public static class GerberLayerCascade
         // report, round 17). Two rows because the number is read after one exact word.
         new([["met"]], "Inner Copper", ConductorPurpose, "Inr", IndexAfter: "met", IndexOffset: -1, OneIsTop: true),
         new([["metal"]], "Inner Copper", ConductorPurpose, "Inr", IndexAfter: "metal", IndexOffset: -1, OneIsTop: true),
+        // A NUMBERED SIGNAL LAYER — "Signal_01" … "Signal_03" — numbers the whole copper stack the same way,
+        // planes included: a three-layer set named this way identified no copper at all and its stackup came
+        // out EMPTY (designer report, round 20).
+        new([["signal"]], "Inner Copper", ConductorPurpose, "Inr", IndexAfter: "signal", IndexOffset: -1, OneIsTop: true),
     ];
+
+    /// <summary>
+    /// The copper layers a via file's NAME says it joins — the first and last of the numbers that follow the
+    /// word "via": <c>Via_1_2_3</c> is 1 to 3, <c>Via_2-3</c> is 2 to 3. Null when the name states fewer
+    /// than two, which leaves the span to the file's own FileFunction or the through-hole default. Numbers
+    /// count the copper stack from the top, as the numbered copper rows above read them.
+    /// </summary>
+    public static (int From, int To)? SpanFromName(string filePath)
+    {
+        string signature = Signature(Path.GetFileNameWithoutExtension(filePath));
+        int at = signature.IndexOf(" via ", StringComparison.Ordinal);
+        if (at < 0) at = signature.IndexOf(" vias ", StringComparison.Ordinal);
+        if (at < 0) return null;
+
+        var numbers = new List<int>();
+        foreach (string word in signature[(at + 1)..].Split(' ', StringSplitOptions.RemoveEmptyEntries).Skip(1))
+        {
+            if (!word.All(char.IsAsciiDigit)) break;
+            if (int.TryParse(word, out int n) && n >= 1) numbers.Add(n);
+        }
+        if (numbers.Count < 2) return null;
+        int from = numbers.Min(), to = numbers.Max();
+        return from < to ? (from, to) : null;
+    }
 
     private static GerberLayerIdentity? Heuristic(string filePath)
     {

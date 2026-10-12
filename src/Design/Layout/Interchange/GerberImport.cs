@@ -733,6 +733,7 @@ public static class GerberImport
                               sourceLayers, proposal.ConductorOffer, messages);
         PromoteMappedCopper(rows, mappingTech, keyByFile, identities, allIdentities, copperTopToBottom,
                             sourceLayers, messages);
+        PromoteAnsweredVias(rows, keyByFile, identities, allIdentities, sourceLayers, messages);
 
         if (rows.Count > 0) messages.Add("Layers: " + LayoutLayerMapping.SummarizeMapping(rows, mappingTech));
 
@@ -1806,6 +1807,10 @@ public static class GerberImport
                 continue;
             }
 
+            // No FileFunction span: the one a via file's name states ("Via_1_2_3"), if it states one.
+            if ((from is null || to is null) && GerberLayerCascade.SpanFromName(identity.FilePath) is { } named)
+                (from, to) = (named.From, named.To);
+
             var spans = new Dictionary<string, DrillSpan>(StringComparer.Ordinal);
             if (from is not null && to is not null)
                 spans[identity.FilePath] = new DrillSpan(from.Value, to.Value, kind ?? "PTH", plated);
@@ -2430,6 +2435,48 @@ public static class GerberImport
             string.Join(", ", promoted.OrderBy(p => p.Rank).Select(p => p.Identity.FileName)) +
             ". The copper order, top to bottom, is now: " +
             string.Join(", ", copperTopToBottom.Select(c => c.FileName)) + ".");
+    }
+
+    /// <summary>
+    /// A file the cascade could not name, answered "vias" in the layer-mapping table, is a drill layer: the
+    /// drill-as-Gerber step then gives it a plated via entry in the stackup, spanning what its name states or
+    /// the whole board, exactly as a file the cascade names "Via…" or "HOLE" gets one. Without the answer the
+    /// entry had to be added by hand on the Stackup tab (designer report, round 20).
+    /// </summary>
+    private static void PromoteAnsweredVias(
+        IReadOnlyList<LayerMappingRow> rows,
+        IReadOnlyDictionary<string, LayerKey> keyByFile,
+        List<GerberLayerIdentity> identities,
+        List<GerberLayerIdentity> allIdentities,
+        List<LayerDef> sourceLayers,
+        List<string> messages)
+    {
+        var promoted = new List<GerberLayerIdentity>();
+        foreach (var row in rows)
+        {
+            if (row.Stackup is not { AsVias: true }) continue;
+            foreach (var identity in identities)
+                if (identity.Rung == GerberLayerRung.Unidentified && keyByFile[identity.FilePath] == row.Source)
+                    promoted.Add(identity);
+        }
+        if (promoted.Count == 0) return;
+
+        foreach (var identity in promoted)
+        {
+            var drill = identity with { Purpose = GerberLayerCascade.DrillPurpose };
+            int at = identities.IndexOf(identity);
+            if (at >= 0) identities[at] = drill;
+            int all = allIdentities.IndexOf(identity);
+            if (all >= 0) allIdentities[all] = drill;
+            foreach (var layer in sourceLayers)
+                if (layer.Key == keyByFile[identity.FilePath]) layer.Purpose = GerberLayerCascade.DrillPurpose;
+        }
+
+        // Said before the answer was applied, and no longer true.
+        messages.RemoveAll(m => m.StartsWith("No drill data was read", StringComparison.Ordinal));
+        messages.Add(
+            $"{promoted.Count} unclassified file(s) were answered as VIAS in the layer-mapping table and are " +
+            "drill layers: " + string.Join(", ", promoted.Select(p => p.FileName)) + ".");
     }
 
     private static LayerKey MappedKeyOf(IReadOnlyList<LayerMappingRow> rows, LayerKey source) =>

@@ -512,7 +512,10 @@ cannot be scored at the starting values — the status line says why. While it r
   drawn dimmed until the run ends.
 
 **⏸ Pause** finishes the simulations in flight, then holds; press it again to resume. A paused run
-continues exactly as if it had never paused. **■ Stop** ends the run and keeps its best point.
+continues exactly as if it had never paused. **■ Stop** ends the run and keeps its best point. With a
+standard-value variable, Stop still snaps the best point onto its series. Under an algorithm that moves
+it continuously, a paused best between two standard values cannot be locked in, pushed or sent to
+Tuning until Stop has snapped it.
 
 When the run ends, the best point is simulated once more with every enabled analysis and saved as the
 schematic's results, so every plot is current.
@@ -558,7 +561,14 @@ A variable can take only some values: an **integer** parameter (a finger count),
 - **Preferences ladder** — the value's own list from the Smith Chart's **Preferred Values** dialog:
   capacitors for F, inductors for H, resistors for Ω. Written `discrete=preferred`.
 
-Most algorithms move such a value continuously. **Snap and polish** then:
+**Standard values are searched on their series** by every algorithm that needs no derivatives —
+Simplex, Pattern search, Random, Differential evolution, Particle swarm, CMA-ES and Bayesian, and the
+first stage of **Auto**: every point they simulate, and every value the rows show while they run, is on
+the series. Two points that land on the same values are simulated once.
+
+Gradient (Levenberg–Marquardt), Quasi-Newton, Minimax and the Trust-region model — and Auto's second
+stage — move such a value continuously, because they need a smooth response to follow. **Snap and
+polish** then:
 
 1. tries the allowed values either side of where each one ended — every combination, for up to six of
    them; beyond six, the nearest — and keeps the best;
@@ -566,9 +576,9 @@ Most algorithms move such a value continuously. **Snap and polish** then:
 
 From then on the best point is the snapped one, because the continuous one is not a design anyone can
 build. Every run with a standard-value variable ends with a snap and polish, whichever algorithm it
-used, so its result is always on the series; **Auto** does the same for integers and steps too. The
-toolbar button runs it on a finished run — after a Stop, which ends the run without one, or for an
-integer or a step under another algorithm. **Discrete** searches the allowed values directly when every
+used and however it ended — a Stop included, which snaps without the polish — so its result is always
+on the series; **Auto** does the same for integers and steps too. The toolbar button runs it on a
+finished run — to polish after a Stop, or for an integer or a step under another algorithm. **Discrete** searches the allowed values directly when every
 variable has them. A part of a complex value is always continuous.
 
 **Sensitivity** (in the toolbar) simulates once more per variable around the best point and shows, on

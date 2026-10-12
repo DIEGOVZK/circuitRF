@@ -73,11 +73,18 @@ public sealed record LayerMappingRow(
 /// every plane separation, every mounting loop and every cavity mode, all silently. It is the
 /// zero-based position, in the conductor list the row was offered, that this layer goes AFTER;
 /// <c>-1</c> is "above the top".</para>
+///
+/// <para><see cref="AsVias"/> answers the other thing a file's name may fail to say: that it is a
+/// Gerber drawing of the VIAS, a flash per plated hole. It becomes a drill layer with a via entry in
+/// the stackup, spanning what its name states or the whole board (designer report, round 20).</para>
 /// </remarks>
-public sealed record LayerStackupChoice(bool AsCopper, int AfterIndex)
+public sealed record LayerStackupChoice(bool AsCopper, int AfterIndex, bool AsVias = false)
 {
     /// <summary>Today's behaviour, and the default for every row.</summary>
     public static readonly LayerStackupChoice Artwork = new(false, -1);
+
+    /// <summary>The file is the board's vias.</summary>
+    public static readonly LayerStackupChoice Vias = new(false, -1, AsVias: true);
 
     /// <summary>The position meaning "above the top conductor".</summary>
     public const int AboveTheTop = -1;

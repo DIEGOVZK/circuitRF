@@ -567,15 +567,15 @@ public sealed class OptimizationRun
             }
             else
             {
-                _snapPreferred = AlgorithmId == Discrete.AlgorithmId;
+                _snapPreferred = SearchesOnSeries(AlgorithmId);
                 var alg = Create(AlgorithmId, Variables.Start, sub: null);
                 var end = RunStage(alg, null, null, null, firstOfRun: true, ct);
                 if (end.Refusal is { } r) return Refused(r);
                 reason = end.Reason;
                 // A standard-value row is searched continuously and must still END on a rung, whatever the
                 // algorithm: a result between rungs is not the value the row asked for.
-                bool snap = _options.SnapAndPolish || Variables.Coordinates.Any(c => c.Preferred);
-                if (snap && AlgorithmId != Discrete.AlgorithmId && end.Kind != StageEnd.Stopped
+                bool snap = _options.SnapAndPolish || SeriesRows;
+                if (snap && AlgorithmId != Discrete.AlgorithmId && (end.Kind != StageEnd.Stopped || SeriesRows)
                     && _bestIndex >= 0 && Variables.DiscreteCoordinates.Any())
                     reason = SnapStage(ct) ?? reason;
             }
@@ -623,6 +623,35 @@ public sealed class OptimizationRun
 
     private enum StageEnd { GoalsMet, Finished, Budget, Stalled, Limit, Stopped }
 
+    /// <summary>
+    /// Whether any row asked for a standard series (E6…E96 or the preferred ladder). Such a run snaps even
+    /// when STOPPED: its search is continuous, so the best point at a Stop lies between rungs, and Push
+    /// would write a value the row never allowed (designer report, round 20 — the series showed as a label
+    /// and the values kept were not on it). The snap alone runs; its polish already gives way to the Stop.
+    /// </summary>
+    private bool SeriesRows => Variables!.Coordinates.Any(c => c.Preferred);
+
+    /// <summary>
+    /// Whether an algorithm searches a standard-series row ON its series — every point it simulates has that
+    /// row on a rung — rather than continuously with the snap at the end. Every algorithm that estimates no
+    /// derivative does (owner decision, designer report round 20: the series should be what the run uses, not
+    /// a label on its result); one that estimates derivatives cannot, since a rung has none, and keeps the
+    /// continuous search and the snap. So does the trust-region MODEL, which estimates no derivative but fits a
+    /// smooth surface to the points it has: on a series' staircase the fit is flat and it stalled where it
+    /// started (an E12 L-section: 8.2 nH / 1.5 pF at cost 0.258, where every other algorithm found 15 nH /
+    /// 1.2 pF at 0.0041). Integers and steps are on their grid for every algorithm already.
+    /// </summary>
+    /// <summary>Whether the best point so far has a standard-series row BETWEEN its rungs — true only while a
+    /// continuous search is under way (a gradient algorithm, or Auto's polish); a finished or stopped run is
+    /// snapped. What the Optimizer asks before it lets a paused best be kept.</summary>
+    public bool BestOffSeries =>
+        Variables is not null && SeriesRows && _bestIndex >= 0 && _bestIndex < _log.Count &&
+        Variables.Decode(_log[_bestIndex].Point, snapPreferred: true).CacheKey != _log[_bestIndex].Decoded.CacheKey;
+
+    internal static bool SearchesOnSeries(string algorithmId) =>
+        algorithmId == Discrete.AlgorithmId ||
+        algorithmId != TrustRegionModel.AlgorithmId && OptimizerAlgorithms.Find(algorithmId) is { NeedsGradients: false };
+
     private sealed record StageOutcome(StageEnd Kind, string Reason, Diagnostic? Refusal = null)
     {
         /// <summary>Whether the run ends here, whatever stages remain.</summary>
@@ -653,11 +682,14 @@ public sealed class OptimizationRun
         long budget = 50L * (n + 1) * EvaluationsPerPoint;
         if (_settings.MaxEvaluations is { } me) budget = Math.Min(budget, Math.Max(1, me / 2));
 
-        _snapPreferred = false;
+        _snapPreferred = SearchesOnSeries(CmaEs.AlgorithmId);
         var global = RunStage(Create(CmaEs.AlgorithmId, Variables.Start, null), null, OptimizationStages.Global,
                               budget, firstOfRun: true, ct);
         if (global.Refusal is { } r) return ("refused", r);
         var last = global;
+        // The polish estimates derivatives, which a value held on its series does not have: it moves every value
+        // continuously again, and the snap below brings the series values back.
+        _snapPreferred = false;
 
         if (!global.EndsRun && global.Kind != StageEnd.GoalsMet && _bestIndex >= 0)
         {
@@ -668,7 +700,7 @@ public sealed class OptimizationRun
         }
 
         string reason = last.Reason;
-        if (last.Kind != StageEnd.Stopped && _bestIndex >= 0 && Variables.DiscreteCoordinates.Any())
+        if ((last.Kind != StageEnd.Stopped || SeriesRows) && _bestIndex >= 0 && Variables.DiscreteCoordinates.Any())
             reason = SnapStage(ct) ?? reason;
         return (reason, null);
     }
