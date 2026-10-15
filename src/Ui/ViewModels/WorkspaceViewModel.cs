@@ -8843,7 +8843,8 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
             catch (Exception ex) { Messages.Error($"The 3D view {cemThreeD} cannot be read: {ex.Message}"); return false; }
             string c3dPath = cemThreeD!;
             run = (s, control, root) => EmRunService.RunThreeDView(s, threeD, c3dPath, CircuitRF.Design.Workspace.WorkspaceRootFinder.FindAncestorCws(Path.GetDirectoryName(c3dPath)), root, default, control,
-                                                                  EmSolveCorePreference.Preferred, ConfirmEmMemory, fromCem: true);
+                                                                  EmSolveCorePreference.Preferred, ConfirmEmMemory, fromCem: true,
+                                                                  device: EmPalaceDevicePreference.Preferred);
         }
         var source = run is null ? ResolveEmLayout(vm.FilePath, vm.Working.LayoutRef) : null;
 
@@ -8958,7 +8959,8 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
                 // UI side that owns the preferences file, and handed to the run service as an
                 // argument. EmRunService itself lives in CircuitRF.Design and cannot reach it.
                 result = await Task.Run(() => run is not null ? run(setup, control, resultsRoot) : EmRunService.Run(
-                    setup, source, resultsRoot, default, control, EmSolveCorePreference.Preferred, ConfirmEmMemory));
+                    setup, source, resultsRoot, default, control, EmSolveCorePreference.Preferred, ConfirmEmMemory,
+                    EmPalaceDevicePreference.Preferred));
             }
             catch (Exception ex)
             {

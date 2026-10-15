@@ -373,17 +373,8 @@
       "Kind": "text"
     },
     {
-      "Index": 36,
-      "Slot": 49,
-      "Id": "",
-      "Tooltip": "",
-      "Icon": "combo",
-      "Command": null,
-      "Kind": "combo"
-    },
-    {
       "Index": 0,
-      "Slot": 50,
+      "Slot": 49,
       "Id": "",
       "Tooltip": "",
       "Icon": "separator",

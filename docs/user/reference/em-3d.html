@@ -179,7 +179,8 @@ it like a Palace on this computer. Gmsh and openEMS run natively.
 <a href="em-setup.html#palace-windows">EM Setup ▸ Palace on Windows</a> has what each missing piece's message says.</p>
 <p><strong>By hand.</strong> If you prefer to build the solvers yourself, circuitRF finds them on <code>PATH</code>, in a Spack
 install tree, in a conda environment, or where you name them in <strong>Settings ▸ Solvers</strong>. It runs only the
-versions it has validated. The exact validated versions and the three build problems met on macOS are in
+Palace and openEMS versions it has validated; any Gmsh runs, with a warning when it is not a version circuitRF
+has tested. The exact versions and the three build problems met on macOS are in
 <a href="em-setup.html#install-3d-solvers">EM Setup ▸ Installing the 3D solvers by hand</a>.</p>
 <p><strong>Removing them.</strong> <strong>Uninstall …</strong> in <strong>Settings ▸ Solvers</strong>, or <code>circuitrf solver remove palace --yes</code>.
 circuitRF removes only what it installed, and never touches your documents or results. See
@@ -700,7 +701,7 @@ board edge, coupling across it, or a board much larger than its copper. The copp
 guess at the board. The outline is the board itself. How a placed layout comes into a 3D view is in
 <a href="drawing-in-3d.html#layout-dielectric">Drawing in 3D ▸ A placed layout's dielectric</a>.</p>
 <h2 id="example">Walking through the example</h2>
-<p><strong>Tools ▸ Examples ▸ 3D EM</strong> copies a workspace with three cells to a folder you choose and opens it.
+<p><strong>File ▸ New ▸ Examples ▸ 3D EM</strong> copies a workspace with three cells to a folder you choose and opens it.
 Each cell is something a planar solver cannot do, or can do only as a comparison. Every setup runs in
 minutes on a 16 GB laptop. Its <code>README.md</code> opens first and carries the same numbers as this section. The
 numbers also live in <code>expected-numbers.json</code> beside it, which circuitRF's own tests re-run against, so the

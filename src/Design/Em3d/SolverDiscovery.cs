@@ -33,6 +33,14 @@ public enum SolverCapability
 
     /// <summary>brief-em3d-23 R-em3d23-1a — an eigenmode solve: the eigensolver (SLEPc or ARPACK).</summary>
     Eigenmode,
+
+    /// <summary>
+    /// brief-em3d-136 R-em3d136-3a — a solve on a GPU: a build compiled with GPU support that finds at least one GPU
+    /// here. Asked ONLY when the run's device is <see cref="PalaceDevice.Gpu"/>, never by a CPU run, a Settings row of
+    /// a CPU user or an install check (<see cref="Install.SolverInstaller.CapabilitiesToCheck"/>): circuitRF's own
+    /// recipes build for the CPU, and a GPU is the user's own build on the user's own hardware.
+    /// </summary>
+    Gpu,
 }
 
 /// <summary>
@@ -98,7 +106,11 @@ public sealed record SolverInstallation(
 }
 
 /// <summary>What a capability probe answered, and whether the answer came from the cache.</summary>
-public sealed record SolverCapabilityVerdict(SolverCapability Capability, bool Available, string Detail, bool FromCache);
+/// <param name="Devices">brief-em3d-136 R-em3d136-3c — for <see cref="SolverCapability.Gpu"/>, how many GPUs Palace
+/// reported (its <c>Detected N … device(s)</c> line); null when it printed none (a CPU build, or a probe that did not
+/// get that far) and for every other capability. A GPU run reads its process count from here, with no second probe.</param>
+public sealed record SolverCapabilityVerdict(SolverCapability Capability, bool Available, string Detail, bool FromCache,
+                                             int? Devices = null);
 
 /// <summary>
 /// Everything circuitRF knows about one program before a run: what was found, why each other candidate
@@ -282,13 +294,17 @@ public sealed partial class SolverDiscovery
     /// brief-em3d-23 — wave ports when a port is one, the eigensolver for an eigenmode problem
     /// (R-em3d23-1c: asked here, so a build without it is refused before Gmsh starts).
     /// </summary>
-    public static IReadOnlySet<SolverCapability> CapabilitiesFor(SolverTool tool, EmSetup? setup)
+    /// <param name="device">brief-em3d-136 R-em3d136-3a — a GPU run also needs <see cref="SolverCapability.Gpu"/>; a CPU
+    /// run asks nothing new.</param>
+    public static IReadOnlySet<SolverCapability> CapabilitiesFor(SolverTool tool, EmSetup? setup,
+                                                                 PalaceDevice device = PalaceDevice.Cpu)
     {
         var set = new HashSet<SolverCapability>();
         if (tool != SolverTool.Palace) return set;
         set.Add(SolverCapability.DrivenLumpedPorts);
         if (setup is { HasWavePorts3D: true } && !setup.IsStatic3D) set.Add(SolverCapability.WavePorts);
         if (setup?.Problem3D == Engine.Em3d.Em3dProblemType.Eigenmode) set.Add(SolverCapability.Eigenmode);
+        if (device == PalaceDevice.Gpu) set.Add(SolverCapability.Gpu);
         return set;
     }
 
@@ -299,8 +315,9 @@ public sealed partial class SolverDiscovery
     public static IReadOnlyList<SolverReadiness> ReadinessFor(Em3dSolver solver) => ReadinessFor(solver, null);
 
     /// <inheritdoc cref="ReadinessFor(Em3dSolver)"/>
-    public static IReadOnlyList<SolverReadiness> ReadinessFor(Em3dSolver solver, EmSetup? setup)
-        => ToolsFor(solver).Select(t => For(t).Check(CapabilitiesFor(t, setup))).ToList();
+    public static IReadOnlyList<SolverReadiness> ReadinessFor(Em3dSolver solver, EmSetup? setup,
+                                                              PalaceDevice device = PalaceDevice.Cpu)
+        => ToolsFor(solver).Select(t => For(t).Check(CapabilitiesFor(t, setup, device))).ToList();
 
     // ── per-instance data ────────────────────────────────────────────────────────────────────
 
@@ -726,16 +743,47 @@ public sealed partial class SolverDiscovery
     /// <summary>The refusal for a build that lacks something the setup needs (R-em3d6-3c).</summary>
     public string DescribeMissingCapability(SolverInstallation installation, SolverCapabilityVerdict verdict)
     {
+        if (verdict.Capability == SolverCapability.Gpu) return DescribeNoGpu(installation, verdict);
         var (what, option) = Describe(verdict.Capability);
         return $"{Name} at '{installation.Where}' cannot run {what}, which this 3D setup needs: {verdict.Detail} " +
                $"{option}";
     }
+
+    /// <summary>
+    /// brief-em3d-136 R-em3d136-3d — a GPU run refused before anything is meshed: a build without GPU support (which
+    /// given <c>"GPU"</c> would print a warning and quietly solve on the CPU), a GPU build that sees no GPU, or a probe
+    /// that could not tell. Each names the path, says what Device to choose instead, and where a GPU build comes from.
+    /// </summary>
+    private string DescribeNoGpu(SolverInstallation installation, SolverCapabilityVerdict verdict)
+    {
+        string instead = "Choose CPU under Device in the EM Setup panel (headless: --device cpu)";
+        string elsewhere = $"point circuitRF at a GPU build of {Name} in Settings ▸ Solvers or with {EnvironmentVariable} " +
+                           $"(see “{GpuSection}” in the EM Setup reference, {GpuPage})";
+        if (verdict.Devices == 0)
+            return $"{Name} at '{installation.Where}' supports GPUs but found none on this machine, so this run cannot use " +
+                   $"one. {instead}, or make a GPU visible to {Name} here.";
+        if (verdict.Detail == GpuNotBuiltDetail)
+            return $"{Name} at '{installation.Where}' was built without GPU support, so it would run on the CPU. {instead}, " +
+                   $"or {elsewhere}.";
+        return $"Whether {Name} at '{installation.Where}' can run on a GPU could not be checked: {verdict.Detail} {instead}, " +
+               $"or {elsewhere}.";
+    }
+
+    /// <summary>The GPU section's title and page, as the GPU refusals cite them.</summary>
+    public const string GpuSection = "Palace on a GPU";
+    public const string GpuPage    = "reference/em-setup.html#palace-gpu";
+
+    /// <summary>The probe's detail for a build that printed its banner without a GPU line.</summary>
+    internal const string GpuNotBuiltDetail = "the one-element solve printed no GPU line, so this build has no GPU support.";
 
     /// <summary>What a capability is, in words, and the build option that provides it.</summary>
     internal static (string What, string BuildOption) Describe(SolverCapability capability) => capability switch
     {
         SolverCapability.Eigenmode => ("eigenmode solves",
             EigensolverBuildOption),
+        SolverCapability.Gpu => ("solves on a GPU",
+            "GPU support is chosen when Palace is compiled; circuitRF's own installs build it for the CPU. See “" +
+            GpuSection + "” in the EM Setup reference (" + GpuPage + ")."),
         SolverCapability.WavePorts => ("wave ports",
             "A wave port's mode comes from Palace's eigensolver, and its impedance — which the S-parameters are " +
             "renormalised from — needs GSLIB. " + EigensolverBuildOption + " GSLIB is the +gslib variant, also on by " +
@@ -769,6 +817,9 @@ public sealed partial class SolverDiscovery
         SolverCapability.Eigenmode =>
             "a dry run of an eigenmode setup (at 0.18.1 no Palace build lacks an eigensolver, so the dry run's " +
             "schema check is the whole question)",
+        SolverCapability.Gpu =>
+            "a one-element electrostatic solve with Device GPU, read for the line in which Palace reports how many GPUs " +
+            "it found (only a GPU build prints it, and only on a solve: the banner comes after a dry run exits)",
         _ => "a dry run of a driven setup with a lumped port",
     };
 
@@ -821,8 +872,9 @@ public sealed partial class SolverDiscovery
         SolverCapability capability, Action<string, string> write, Func<IReadOnlyList<string>, ProbeRun> run,
         Func<string, bool> exists)
     {
-        write("probe.json", ProbeConfig(capability));
         write("probe.msh", ProbeMesh);
+        if (capability == SolverCapability.Gpu) return GpuProbe(write, run);
+        write("probe.json", ProbeConfig(capability));
 
         var dry = run(["--serial", "--dry-run", "probe.json"]);
         if (dry.Failure is { } failure)
@@ -854,6 +906,65 @@ public sealed partial class SolverDiscovery
             : $"a dry run of {what} passed, but a one-element solve with a field probe failed (exit {solve.ExitCode}): " +
               $"{TellingLine(solve.Output)}.", false), true);
     }
+
+    /// <summary>
+    /// brief-em3d-136 R-em3d136-3b — the one-element electrostatic solve with <c>"Device": "GPU"</c>, read for Palace's
+    /// banner. A GPU build prints <c>Detected N &lt;backend&gt; device(s)</c>; a CPU build prints no such line, and given
+    /// "GPU" warns and reverts to the CPU rather than failing (Palace 0.18.1 <c>main.cpp</c>), which is exactly why the
+    /// answer has to be read rather than inferred from the exit code. The banner's later <c>Device configuration:</c>
+    /// line is what says the banner was printed at all, so a probe that died before it is "could not tell", not "no".
+    /// </summary>
+    private static (SolverCapabilityVerdict Verdict, bool Definitive) GpuProbe(Action<string, string> write,
+                                                                              Func<IReadOnlyList<string>, ProbeRun> run)
+    {
+        const SolverCapability Me = SolverCapability.Gpu;
+        write("gpu.json", GpuProbeConfig);
+        var solve = run(["--serial", "gpu.json"]);
+        if (solve.Failure is { } failure)
+            return (new SolverCapabilityVerdict(Me, false, $"the one-element solve did not complete ({failure}).", false), false);
+        return ReadGpuProbe(solve.ExitCode, solve.Output);
+    }
+
+    /// <summary>The GPU probe's verdict from what the solve printed — the parse, apart, so it is testable on canned
+    /// output. Definitive only on a clean exit, so a "yes" from a solve that then failed is not cached.</summary>
+    internal static (SolverCapabilityVerdict Verdict, bool Definitive) ReadGpuProbe(int exitCode, string output)
+    {
+        const SolverCapability Me = SolverCapability.Gpu;
+        string failed = exitCode == 0 ? "" : $" The solve itself then failed (exit {exitCode}): {TellingLine(output)}.";
+        if (ParseGpuCount(output) is { } n)
+            return (new SolverCapabilityVerdict(Me, n > 0, n > 0
+                ? $"the one-element solve reported {n} GPU{(n == 1 ? "" : "s")}.{failed}"
+                : $"the one-element solve reported no GPU on this machine.{failed}", false, n), exitCode == 0);
+        bool bannerPrinted = output.Contains("Device configuration:", StringComparison.Ordinal)
+                          || output.Contains("reverting to CPU", StringComparison.Ordinal);
+        return bannerPrinted
+            ? (new SolverCapabilityVerdict(Me, false, GpuNotBuiltDetail, false), true)
+            : (new SolverCapabilityVerdict(Me, false,
+                $"the one-element solve printed no device lines (exit {exitCode}): {TellingLine(output)}.", false), false);
+    }
+
+    /// <summary>
+    /// The GPU count in Palace's banner, or null when it printed no such line. <b>Matches any backend word</b>
+    /// (<c>\S+</c>): the count is the question, and naming a backend here would put a vendor's name in this repo.
+    /// </summary>
+    internal static int? ParseGpuCount(string output)
+        => GpuBanner.Match(output.Replace("\r", "")) is { Success: true } m
+           && int.TryParse(m.Groups[1].Value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int n)
+            ? n : null;
+
+    private static readonly Regex GpuBanner = new(@"^\s*Detected (\d+) \S+ devices?\b", RegexOptions.Multiline);
+
+    /// <summary>The probe tetrahedron as an electrostatic problem (face 2 a terminal, the rest the natural boundary)
+    /// solved on a GPU. No field probe: that would also ask for GSLIB, which is a different question.</summary>
+    private const string GpuProbeConfig = """
+        {
+          "Problem": { "Type": "Electrostatic", "Output": "postpro" },
+          "Model": { "Mesh": "probe.msh", "L0": 1.0e-3 },
+          "Domains": { "Materials": [ { "Attributes": [1], "Permeability": 1.0, "Permittivity": 1.0 } ] },
+          "Boundaries": { "Terminal": [ { "Index": 1, "Attributes": [2] } ] },
+          "Solver": { "Order": 2, "Device": "GPU", "Electrostatic": {} }
+        }
+        """;
 
     private static string ProbeConfig(SolverCapability capability) => capability switch
     {
@@ -1227,6 +1338,9 @@ public sealed partial class SolverDiscovery
             public string Capability { get; set; } = "";
             public bool   Available  { get; set; }
             public string Detail     { get; set; } = "";
+            // brief-em3d-136 R-em3d136-3c — the GPU count, so a cached GPU verdict still sets a run's process count.
+            [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+            public int?   Devices    { get; set; }
         }
 
         private sealed class FileShape
@@ -1240,7 +1354,7 @@ public sealed partial class SolverDiscovery
             {
                 var e = Load(file).Entries.FirstOrDefault(x => x.Path == path && x.Capability == capability.ToString());
                 return e is not null && e.Stamp == stamp
-                    ? new SolverCapabilityVerdict(capability, e.Available, e.Detail, true)
+                    ? new SolverCapabilityVerdict(capability, e.Available, e.Detail, true, e.Devices)
                     : null;
             }
         }
@@ -1254,7 +1368,7 @@ public sealed partial class SolverDiscovery
                 shape.Entries.Add(new Entry
                 {
                     Path = path, Stamp = stamp, Capability = verdict.Capability.ToString(),
-                    Available = verdict.Available, Detail = verdict.Detail,
+                    Available = verdict.Available, Detail = verdict.Detail, Devices = verdict.Devices,
                 });
                 try
                 {

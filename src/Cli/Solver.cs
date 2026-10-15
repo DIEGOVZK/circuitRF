@@ -54,7 +54,7 @@ internal static class Solver
 
     private static int Usage()
     {
-        Console.Error.WriteLine("usage: circuitrf solver list");
+        Console.Error.WriteLine("usage: circuitrf solver list [--capability gpu]");
         Console.Error.WriteLine("       circuitrf solver install <palace|gmsh|openems> [--version <v>] [--yes]");
         Console.Error.WriteLine("       circuitrf solver remove <palace|gmsh|openems> [--version <v>] [--yes]");
         Console.Error.WriteLine("       circuitrf solver remove --all [--yes]");
@@ -64,21 +64,34 @@ internal static class Solver
     // ── solver list ───────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Each tool, as its Settings row shows it: found or not, where, by which route, the version,
-    /// whether it is validated, what its build can do, and what would install it here.</summary>
+    /// whether it is validated, what its build can do, and what would install it here. brief-em3d-136 R-em3d136-4c —
+    /// <c>--capability gpu</c> also asks Palace whether it solves on a GPU, and how many it sees: a one-element solve,
+    /// so only when asked, as the Settings row asks only for a user who chose GPU.</summary>
     private static int List(string[] args)
     {
-        if (args.Length > 0) return JsonRun.Fail(CliDiagnostics.SolverUnknownOption("list", args[0]));
+        bool gpu = false;
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "--capability" && i + 1 < args.Length)
+            {
+                string asked = args[++i];
+                if (!string.Equals(asked, "gpu", StringComparison.OrdinalIgnoreCase))
+                    return JsonRun.Fail(CliDiagnostics.SolverUnknownCapability(asked));
+                gpu = true;
+            }
+            else return JsonRun.Fail(CliDiagnostics.SolverUnknownOption("list", args[i]));
+        }
 
         var report = new List<SolverJson>();
         foreach (var tool in Enum.GetValues<SolverTool>())
         {
-            var s = SolverStatus.Of(tool);
+            var s = SolverStatus.Of(tool, gpu: gpu);
             string state = s.Found is null ? "not found" : s.InstalledByCircuitRf ? "installed by circuitRF" : "found";
             report.Add(new SolverJson(
                 SolverHomes.ToolId(tool), s.Name, state, s.Summary,
                 s.Found?.Where, s.Found?.Version, s.Found is { } f ? Route(f.HowFound) : null, s.Found?.Validated,
                 [.. s.Capabilities.Select(c => new SolverCapabilityJson(CapabilityId(c.Capability), Describe(c.Capability),
-                                                                        c.Available, c.Detail))],
+                                                                        c.Available, c.Detail) { Devices = c.Devices })],
                 s.OfferInstall ? $"circuitrf solver install {SolverHomes.ToolId(tool)}" : null));
             Console.WriteLine($"{s.Name}: {(s.Found is null ? "not found" : s.InstalledByCircuitRf ? "installed by circuitRF" : "found")}");
             Console.WriteLine($"  {s.Summary}");
@@ -90,6 +103,7 @@ internal static class Solver
             }
             foreach (var c in s.Capabilities)
                 Console.WriteLine($"  {Describe(c.Capability)}: {(c.Available ? "yes" : "no")} — {c.Detail}");
+            if (s.GpuLine is { } gpuLine) Console.WriteLine($"  {gpuLine}");
             // brief-em3d-25 — only what circuitRF installed has a remove command; the rest is the user's.
             foreach (var home in new SolverUninstaller().Installed(tool))
                 Console.WriteLine($"  installed by circuitRF: {home.Version} at {home.Home}" +
@@ -121,6 +135,7 @@ internal static class Solver
     {
         SolverCapability.DrivenLumpedPorts => "driven",
         SolverCapability.WavePorts         => "wave-ports",
+        SolverCapability.Gpu               => "gpu",
         _                                  => "eigenmode",
     };
 
@@ -128,6 +143,7 @@ internal static class Solver
     {
         SolverCapability.DrivenLumpedPorts => "driven solves with lumped ports",
         SolverCapability.WavePorts         => "wave ports",
+        SolverCapability.Gpu               => "solves on a GPU",
         _                                  => "eigenmode solves",
     };
 

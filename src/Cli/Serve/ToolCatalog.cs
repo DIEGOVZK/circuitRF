@@ -537,6 +537,11 @@ internal static class ToolCatalog
                          "The .cws paths resolve against. Default: the nearest one above the .cem."),
                      new("solver", "--solver", OptKind.Str,
                          "A 3D setup's solver for this run only: palace, openems or both. Default: the .cem's Solver3D."),
+                     // brief-em3d-136 R-em3d136-4d — `em --device`, through the CLI's own parsing and refusals.
+                     new("device", "--device", OptKind.Str,
+                         "Where Palace solves: cpu (default) or gpu. gpu needs a Palace built with GPU support and runs one "
+                       + "process per GPU it finds; a Palace that cannot is refused before meshing, saying why. 'solver' "
+                       + "with capability=gpu asks first."),
                      new("component", "--component", OptKind.Str,
                          "Extract one built-in component's drawn part instead of a .cem: its type and parameters as on a "
                        + ".cnl instance line, e.g. \"SPIRAL N=3 W=10 um S=8 um Din=100 um\". Port n is terminal n. "
@@ -611,6 +616,8 @@ internal static class ToolCatalog
                             "Which view of a cell folder: schematic, symbol or layout. Spelled as render spells it."),
                         new("setup",   "--setup",   OptKind.Str,
                             "Which of a 3D view's (.c3d's) embedded setups to explain, by name. Needed when it embeds several."),
+                        new("device",  "--device",  OptKind.Str,
+                            "A 3D setup's report as a run with this device would see it: cpu (default) or gpu."),
                     ],
                     ""),
             ]),
@@ -1282,11 +1289,13 @@ internal static class ToolCatalog
         // is the PERSON's to give, and a tool call is not that person.
         new("solver",
             "Which external 3D solvers (Palace, Gmsh, openEMS) are installed here and what each build can do: "
-          + "driven solves, wave ports, eigenmode solves. Ask before writing a 3D setup that needs one. "
-          + "Reads no file and writes nothing.",
+          + "driven solves, wave ports, eigenmode solves, and with capability=gpu whether Palace solves on a GPU and "
+          + "how many it finds. Ask before writing a 3D setup that needs one. Reads no file and writes nothing.",
             null, null,
             [
-                new("", [ "solver", "list" ], [], [], ""),
+                new("", [ "solver", "list" ], [],
+                    [new("capability", "--capability", OptKind.Str,
+                         "gpu: also ask whether Palace solves on a GPU (a one-element solve, so only when asked).")], ""),
             ]),
 
         new("reference",

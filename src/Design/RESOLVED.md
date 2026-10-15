@@ -19851,3 +19851,42 @@ replays the committed tables through `CheckEntities` and requires a passing READ
   arm64, 3.8 / 3.0 / 3.1 min, and one on Debian 12 arm64, 3.3 min; 33 MB each, no failure, and both installed
   programs passed the whole corpus. The prerequisite refusal, run first on a bare image, names the one
   `apt-get` line (`testdata/em3d/f0/README.md` §Install rows 16-19).
+
+## brief-em3d-136: Palace's Device setting — CPU or GPU, for a user's own GPU build (2026-10-15)
+
+**Per machine, an argument.** `PalaceDevice { Cpu, Gpu }` (`Em3d/PalaceDevice.cs`) reaches `Em3dRunService.Run` beside
+`maxCores`, from `EmPalaceDevicePreference` (`em_palace_device`, absent = CPU) in the GUI and `em --device` headless. It is
+not a `PalaceSettings` field and enters no hash.
+
+- **The mesh is reused across a device switch with no change.** `PalaceRun.Mesh` keys reuse on `model.geo.sha256`, the
+  geometry script alone; `config.json` is rewritten every solve and hashed nowhere. R-em3d136-1d needed nothing.
+- **The writer writes `Device` once, in `WriteDevice`**, called from the driven/eigenmode block and the static block, and
+  writes no `PartialAssemblyOrder` and no `Backend` (Palace 0.18.1 partially assembles at every order ≥ 1 by default).
+- **`SolverCapability.Gpu` must stay out of `SolverInstaller.CapabilitiesToCheck`.** That list was
+  `Enum.GetValues<SolverCapability>()`, so a new member silently became a requirement of every install check and every
+  Settings row: every circuitRF-built Palace would have failed its install as "cannot solve on a GPU". It is now asked only
+  when the run's device is GPU, by `SolverStatus.Of(gpu: true)` (Settings, for a user who chose GPU) or by
+  `solver list --capability gpu`.
+- **The probe is a solve, not a dry run.** Palace prints its banner after the `--dry-run` exit, and only a GPU build prints
+  `Detected N <backend> device(s)`. `ReadGpuProbe` matches `\S+` for the backend, so no vendor word is in the repo. The
+  later `Device configuration:` line tells "the banner was printed without a GPU line" (a CPU build: definitive) from "the
+  solve died first" (cannot tell: not cached, refused with the probe's own detail). The probe drops the GSLIB probe's field
+  probe, so a GPU build without GSLIB is not reported as having no GPU. The verdict carries the count (`Devices`), and the
+  capability cache stores it, so a cached "yes" still sets the process count. The count is cached per binary like every
+  other "yes"; a GPU added or removed later is caught by the post-run log check, not by re-probing.
+- **The subsystem probe needed nothing.** `RunPalaceProbeInSubsystem` already goes through the shared `PalaceProbe`, so the
+  GPU probe runs inside the distribution, where a run would.
+- **Process count.** GPU: one per GPU, `min(gpus, Cores)`. `PalaceRankRefusal` applies `RankRefusal` on a GPU run only when
+  the Cores setting sets the count (it is below the GPU count), so two GPUs on a one-core machine are not refused.
+- **After the run**, `PalaceRun.RanOnCpu` reads `palace.log`: `reverting to CPU` anywhere, or a `Device configuration:` line
+  whose first backend is `cpu`, is a Warning. A log with neither line warns nothing.
+- **R-em3d136-5b: a failure already carried Palace's stderr.** `RunProcess` puts both streams in the 60-line tail that
+  `Quote` reads. The gap was the shape of a device error: the line with "error" in it names the call that failed and ends in
+  a colon, and the reason (`out of memory`) is on the next line, which `Quote` dropped. A marked line ending in `:` now brings
+  the next one. `WslPalaceRunner` had its own copy of `Quote`; it now calls `PalaceRun.Quote`.
+- **`em --device gpu` on a run with no Palace is refused** (planar, thermal, openEMS-only, `--component`), not ignored. A
+  Both run notes that the device applies to Palace only.
+
+**Not run on a GPU.** No machine here has a GPU Palace supports, and this Mac had no Palace installed when the brief was
+implemented, so even the real-binary "not in this build" parse is untested here. The gates are canned output and fake
+executables (`tests/Ui.Tests/Em3d/PalaceGpuDeviceTests.cs`). The field test (R-em3d136-5c) is the discussion #10 user's.

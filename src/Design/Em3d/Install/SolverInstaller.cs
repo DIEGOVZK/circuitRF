@@ -475,9 +475,10 @@ public sealed class SolverInstaller
 
     /// <summary>What an install of <paramref name="tool"/> must prove it can do — every capability a run
     /// could ask of it, brief 23's rows included, so a build that could not run a wave port is not called
-    /// installed.</summary>
+    /// installed. <b>Except <see cref="SolverCapability.Gpu"/></b> (brief-em3d-136): every recipe builds for the CPU,
+    /// so asking it would fail every install, and a Settings row would pay a GPU solve for a user who never asked.</summary>
     public static IReadOnlyList<SolverCapability> CapabilitiesToCheck(SolverTool tool)
-        => tool == SolverTool.Palace ? Enum.GetValues<SolverCapability>() : [];
+        => tool == SolverTool.Palace ? [.. Enum.GetValues<SolverCapability>().Where(c => c != SolverCapability.Gpu)] : [];
 
     private string DescribeSuccess(SolverRecipe recipe, InstallRecord record, SolverDiscovery discovery, TimeSpan elapsed)
     {

@@ -330,8 +330,10 @@ public partial class Em3dSolverSettingsView : UserControl
             bool offer = false;
             try
             {
-                var row = SolverStatus.Of(discovery.Tool, discovery);
-                text  = row.Summary;
+                // brief-em3d-136 R-em3d136-4b — the GPU line only for a user who chose GPU: a CPU user pays no GPU solve.
+                var row = SolverStatus.Of(discovery.Tool, discovery,
+                                          gpu: CircuitRF.Ui.Layout.Em.EmPalaceDevicePreference.Preferred == PalaceDevice.Gpu);
+                text  = row.GpuLine is { } gpuLine ? row.Summary + Environment.NewLine + gpuLine : row.Summary;
                 offer = row.OfferInstall;
             }
             catch (Exception ex) { text = ex.Message; }

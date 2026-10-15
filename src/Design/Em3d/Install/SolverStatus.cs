@@ -18,14 +18,25 @@ public sealed record SolverStatus(
     /// <summary>True when the program found is one circuitRF installed — the only kind brief 25 may remove.</summary>
     public bool InstalledByCircuitRf => Found?.HowFound == SolverHowFound.Installed;
 
+    /// <summary>brief-em3d-136 R-em3d136-4b — the GPU answer as one line (<c>GPU: 2 detected</c>, <c>GPU: not in this
+    /// build</c>), or null when the GPU was not asked about.</summary>
+    public string? GpuLine => Capabilities.FirstOrDefault(c => c.Capability == SolverCapability.Gpu) is not { } v ? null
+        : v.Devices is { } n ? (n == 0 ? "GPU: none detected" : $"GPU: {n} detected")
+        : v.Detail == SolverDiscovery.GpuNotBuiltDetail ? "GPU: not in this build"
+        : $"GPU: not checked — {v.Detail}";
+
     /// <summary>Asks discovery about <paramref name="tool"/>. Starts short processes (a version question,
     /// and cached capability probes); call it off the UI thread.</summary>
-    public static SolverStatus Of(SolverTool tool, SolverDiscovery? discovery = null)
+    /// <param name="gpu">brief-em3d-136 R-em3d136-4b — also ask Palace whether it solves on a GPU. Only when the user
+    /// chose GPU (Settings) or asked (<c>solver list --capability gpu</c>): a CPU user pays nothing.</param>
+    public static SolverStatus Of(SolverTool tool, SolverDiscovery? discovery = null, bool gpu = false)
     {
         var d = discovery ?? SolverDiscovery.For(tool);
         var found = d.Find(out var rejected);
+        var asked = SolverInstaller.CapabilitiesToCheck(tool).ToList();
+        if (gpu && tool == SolverTool.Palace) asked.Add(SolverCapability.Gpu);
         var capabilities = found is not null && d.Runs(found)
-            ? SolverInstaller.CapabilitiesToCheck(tool).Select(c => d.Probe(found, c)).ToList()
+            ? asked.Select(c => d.Probe(found, c)).ToList()
             : [];
         var recipe = SolverRecipes.For(tool);
         // brief-em3d-26 — Palace on Windows has no recipe HERE; it installs into the Linux subsystem.

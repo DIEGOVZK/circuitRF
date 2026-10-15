@@ -1374,6 +1374,9 @@ static int RunEm(string[] args)
     string? input = null, output = null, workspace = null, solverName = null, setupName = null;
     Em3dSolver? solver = null;
     bool force = false;
+    // brief-em3d-136 R-em3d136-4c — where Palace solves. Headless there is no preference to read, so a build machine
+    // says what it means; the default is the CPU.
+    var device = CircuitRF.Design.Em3d.PalaceDevice.Cpu;
     var emSets = new List<(string Name, string Expr)>();
     // AA-1 — `em --component "SPIRAL N=3 W=10 um"`: one built-in component's drawn part, extracted.
     string? component = null, componentFreq = null;
@@ -1408,6 +1411,14 @@ static int RunEm(string[] args)
             case "--workspace" when i + 1 < args.Length:
                 workspace = args[++i];
                 break;
+            case "--device" when i + 1 < args.Length:
+            {
+                string deviceName = args[++i];
+                if (CircuitRF.Design.Em3d.PalaceDevices.Parse(deviceName) is not { } parsed)
+                    return JsonRun.Fail(CliDiagnostics.EmUnknownDevice(deviceName));
+                device = parsed;
+                break;
+            }
             // brief-em3d-21 R-em3d21-2b — start a Palace run whose memory estimate is past 150 % of this
             // machine's. The panel asks instead; headless there is nobody to ask.
             case "--force":
@@ -1436,6 +1447,10 @@ static int RunEm(string[] args)
         }
     }
 
+    // A GPU asked of a run that starts no Palace is refused rather than ignored: the flag would otherwise say a run
+    // used a GPU that nothing was ever going to use.
+    if (component is not null && device == CircuitRF.Design.Em3d.PalaceDevice.Gpu)
+        return JsonRun.Fail(CliDiagnostics.EmDeviceWithoutPalace("a component's drawn part, extracted by circuitRF's own planar solver"));
     if (component is not null)
         return EmComponent.Run(component, input, output, componentFreq,
                                (result, setup, path) => ReportEmRun(result, setup, path), EmProgressToStderr());
@@ -1445,7 +1460,7 @@ static int RunEm(string[] args)
     if (input is null)
     {
         int code = JsonRun.Fail(CliDiagnostics.InputRequired("em", ".cem"));
-        Console.Error.WriteLine("Usage: circuitrf em <setup.cem | view.c3d> [--setup <name>] [-o out.sNp] [--workspace <file.cws>] [--solver palace|openems|both] [--force] [--set var=expr]");
+        Console.Error.WriteLine("Usage: circuitrf em <setup.cem | view.c3d> [--setup <name>] [-o out.sNp] [--workspace <file.cws>] [--solver palace|openems|both] [--device cpu|gpu] [--force] [--set var=expr]");
         Console.Error.WriteLine("       circuitrf em [<workspace dir | .cws | .ctech>] --component \"SPIRAL N=3 W=10 um ...\" -o out.sNp [--freq start:stop:step]");
         return code;
     }
@@ -1494,6 +1509,9 @@ static int RunEm(string[] args)
     if (solver is not null && !setup.Is3D)
         return JsonRun.Fail(CliDiagnostics.EmSolverOnPlanar(solverName!, Path.GetFileName(cemPath)));
     if (solver is { } chosen) setup.Solver3D = chosen;
+    if (device == CircuitRF.Design.Em3d.PalaceDevice.Gpu && (setup.IsThermal || setup.Solver3D is not (Em3dSolver.Palace or Em3dSolver.Both)))
+        return JsonRun.Fail(CliDiagnostics.EmDeviceWithoutPalace(
+            $"'{Path.GetFileName(cemPath)}'" + (setup.IsThermal ? ", a thermal setup" : setup.Is3D ? " on openEMS" : ", a planar setup")));
 
     // R-emcli-5 — a WALK-UP, not a flag. The .cem's own ancestor .cws is what LayoutRef is relative
     // to, exactly as it is in the GUI; with no workspace above it the reference falls back to the
@@ -1578,9 +1596,9 @@ static int RunEm(string[] args)
         result = threeD is not null
             ? EmRunService.RunThreeDView(setup, threeD, threeDPath!, DocumentKinds.AncestorCws(threeDPath!), resultsRoot,
                                          RunHost.Cancellation, EmProgressToStderr(), confirmMemory: force ? _ => true : null,
-                                         fromCem: !isC3d, circuitSets: emSets)
+                                         fromCem: !isC3d, circuitSets: emSets, device: device)
             : EmRunService.Run(setup, resolution.Source, resultsRoot, RunHost.Cancellation, EmProgressToStderr(),
-                               confirmMemory: force ? _ => true : null);
+                               confirmMemory: force ? _ => true : null, device: device);
     }
     catch (Exception ex)
     {

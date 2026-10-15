@@ -296,6 +296,14 @@ public sealed class AppPreferences
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? EmMaxCores { get; set; }
 
+    // brief-em3d-136 R-em3d136-1a: where Palace solves, "cpu" or "gpu"; absent (or anything else) means the CPU. Per
+    // MACHINE for EmMaxCores' reason exactly (owner decision D1): a .cem travels with the workspace, and opening a
+    // colleague's setup must not move your run onto a GPU you do not have, or off one you do. Enters no provenance hash.
+    // See EmPalaceDevicePreference.
+    [JsonPropertyName("em_palace_device")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? EmPalaceDevice { get; set; }
+
     // brief-em3d-44 R-em3d44-5: the 3D snap's switches — the master and one per kind. Per USER, not per
     // document: how someone likes to snap is a working habit, and a .c3d from someone else must not change it.
     // Null means the shipped default (on, every kind). See Snap3DPreference.

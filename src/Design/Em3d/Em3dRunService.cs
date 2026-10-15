@@ -266,9 +266,10 @@ public static class Em3dRunService
     /// <param name="confirmMemory">brief-em3d-21 R-em3d21-2b — see <see cref="EmRunService.Run"/>.</param>
     internal static EmRunResult Run(EmSetup setup, EmLayoutSource source, string resultsRoot,
                                     CancellationToken ct, RunControl? control, int? maxCores,
-                                    Func<Em3dMemoryVerdict, bool>? confirmMemory = null)
+                                    Func<Em3dMemoryVerdict, bool>? confirmMemory = null,
+                                    PalaceDevice device = PalaceDevice.Cpu)
         => Run(setup, s => Em3dGenerator.Generate(s, source, source.Technology!), resultsRoot, ct, control, maxCores,
-               confirmMemory);
+               confirmMemory, device: device);
 
     /// <summary>
     /// brief-em3d-42 — the run, from whatever builds the problem: a <c>.cem</c>'s layout through the generator,
@@ -279,10 +280,13 @@ public static class Em3dRunService
     /// <param name="keepRecord">brief-em3d-98 R-em3d98-2 — called with a leg's solver and run directory when that leg completed
     /// (or did not converge), before its status says so: a 3D view's run keeps its inputs record there (EmRunService.RunThreeDView).
     /// Per LEG, so a Both run whose openEMS leg is cancelled still keeps Palace's.</param>
+    /// <param name="device">brief-em3d-136 — where Palace solves: a machine setting, passed in like
+    /// <paramref name="maxCores"/> and hashed nowhere. The Palace leg only; openEMS is unaffected.</param>
     internal static EmRunResult Run(EmSetup setup, Func<EmSetup, Em3dGenerationResult> build, string resultsRoot,
                                     CancellationToken ct, RunControl? control, int? maxCores,
                                     Func<Em3dMemoryVerdict, bool>? confirmMemory = null,
-                                    Action<Em3dSolver, string>? keepRecord = null)
+                                    Action<Em3dSolver, string>? keepRecord = null,
+                                    PalaceDevice device = PalaceDevice.Cpu)
     {
         var log = new RunLog();
         var memory = new MemoryGate(confirmMemory);
@@ -297,7 +301,8 @@ public static class Em3dRunService
         // ── brief 6: every program found, validated and probed, before anything else ─────────
         // brief-em3d-23 R-em3d23-1c — probed for what THIS setup needs, so a build without an eigensolver
         // is refused here, before Gmsh.
-        var readiness = SolverDiscovery.ReadinessFor(solver, setup);
+        // brief-em3d-136 R-em3d136-3d — and, for a GPU run, whether this Palace solves on a GPU and how many it sees.
+        var readiness = SolverDiscovery.ReadinessFor(solver, setup, device);
         if (readiness.FirstOrDefault(r => !r.Proceeds) is { } blocked)
         {
             var unavailable = EmDiagnostics.SolverUnavailable(blocked.Name, blocked.Refusal!, Install.SolverInstaller.OfferFor(blocked));
@@ -332,6 +337,11 @@ public static class Em3dRunService
         Em3dMemoryScope? palaceMemory = null;
         OpenEmsGridSettings? gridSettings = null;
         OpenEmsRunSettings? runSettings = null;
+        // brief-em3d-136 R-em3d136-2a — the GPUs the probe counted (a GPU run only; it was refused above if none).
+        int? gpus = device == PalaceDevice.Gpu
+            ? readiness.FirstOrDefault(r => r.Tool == SolverTool.Palace)?.Capabilities
+                       .FirstOrDefault(c => c.Capability == SolverCapability.Gpu)?.Devices
+            : null;
         if (palace)
         {
             var p = readiness.Single(r => r.Tool == SolverTool.Palace).Installation!;
@@ -359,13 +369,15 @@ public static class Em3dRunService
                 palaceStop = new(EmRunStatus.Refused, EmDiagnostics.Forwarded("palace-settings", string.Join(" ", bad)));
             // brief-em3d-21 R-em3d21-3b — an explicit core count past the physical one is refused, never
             // oversubscribed. brief-em3d-26 R-em3d26-2b — the SUBSYSTEM's cores, where Palace runs there.
-            else if (palaceStop is null && RankRefusal(maxCores, palaceRunner.Cores) is { } ranks)
+            else if (palaceStop is null && PalaceRankRefusal(device, maxCores, palaceRunner.Cores, gpus) is { } ranks)
                 palaceStop = new(EmRunStatus.Refused, EmDiagnostics.Forwarded("palace-ranks", ranks));
         }
         if (openEms)
         {
             var o = readiness.Single(r => r.Tool == SolverTool.OpenEms).Installation!;
             log.Notes.Add($"Solver: openEMS {o.DescribeVersion()} at {o.Path}.");
+            // brief-em3d-136 §6 — the device is Palace's setting; openEMS is unaffected by it.
+            if (device == PalaceDevice.Gpu) log.Notes.Add("Device GPU applies to Palace; openEMS runs on the CPU.");
             gridSettings = CemOpenEms.ResolveGrid(setup.OpenEms);
             runSettings  = CemOpenEms.ResolveRun(setup.OpenEms);
             if (gridSettings.Problems().Concat(runSettings.Problems()).ToList() is { Count: > 0 } bad)
@@ -409,7 +421,7 @@ public static class Em3dRunService
         OpenEmsPlan? openEmsPlan = null;
         if (palace && palaceStop is null)
             palacePlan = PreparePalace(problem, palaceSettings!, readiness, palaceRunner, palaceMemory, log, out palaceStop,
-                                       setup.RadiationPattern);
+                                       setup.RadiationPattern, device, gpus);
         // brief-em3d-21 R-em3d21-2 — will it fit? A warning, and past 150 % a confirmation; still no process.
         if (palacePlan is not null && palaceStop is null &&
             memory.Admit(PalaceMemoryVerdict(problem, setup, build, palaceSettings!, palaceMemory?.Bytes ?? MachineMemory.PhysicalBytes,
@@ -633,11 +645,12 @@ public static class Em3dRunService
 
     private sealed record PalacePlan(PalaceSettings Settings, GmshLowering Lowering, string ConfigJson,
                                      SolverInstallation Palace, SolverInstallation Gmsh, IPalaceRunner Runner,
-                                     Em3dMemoryScope? Memory, bool FarField = false);
+                                     Em3dMemoryScope? Memory, bool FarField = false,
+                                     PalaceDevice Device = PalaceDevice.Cpu, int? Gpus = null);
 
     private static PalacePlan? PreparePalace(Em3dProblem problem, PalaceSettings settings, IReadOnlyList<SolverReadiness> readiness,
                                              IPalaceRunner runner, Em3dMemoryScope? memoryScope, RunLog log, out Stop? stop,
-                                             bool radiationPattern = false)
+                                             bool radiationPattern, PalaceDevice device, int? gpus)
     {
         stop = null;
         var lowering = GmshGeoWriter.Write(problem, settings);
@@ -650,7 +663,7 @@ public static class Em3dRunService
             log.Notes.Add(noFarField);
             farField = false;
         }
-        var config = PalaceConfigWriter.Write(problem, lowering.Groups, settings, farField);
+        var config = PalaceConfigWriter.Write(problem, lowering.Groups, settings, farField, device);
         if (!config.Ok) { stop = new(EmRunStatus.Refused, EmDiagnostics.Forwarded("palace-lowering", config.Refusal)); return null; }
 
         // F0 Q6 — the void model is the flat-surface impedance: low by up to 10 % on a conductor whose
@@ -667,7 +680,8 @@ public static class Em3dRunService
 
         return new PalacePlan(settings, lowering, config.Json!,
                               readiness.Single(r => r.Tool == SolverTool.Palace).Installation!,
-                              readiness.Single(r => r.Tool == SolverTool.Gmsh).Installation!, runner, memoryScope, farField);
+                              readiness.Single(r => r.Tool == SolverTool.Gmsh).Installation!, runner, memoryScope, farField,
+                              device, gpus);
     }
 
     private static Leg ExecutePalace(PalacePlan plan, Em3dProblem problem, EmSetup setup, string resultsRoot, string snpBase,
@@ -711,9 +725,9 @@ public static class Em3dRunService
 
         // ── Palace ────────────────────────────────────────────────────────────────────────────
         // brief-em3d-21 R-em3d21-3a — one MPI rank per PHYSICAL core by default (Open MPI's slot count).
-        var cores = runner.Cores;
-        int processes = maxCores ?? cores.Count;
-        if (maxCores is null && !cores.Measured) log.Notes.Add($"Palace ran on {processes} process(es): {cores.How}.");
+        // brief-em3d-136 R-em3d136-2a — one per GPU on a GPU run, capped by Cores.
+        var (processes, processNote) = PalaceProcessCount(plan.Device, maxCores, runner.Cores, plan.Gpus);
+        if (processNote is not null) log.Notes.Add(processNote);
         var tracker = new PalaceStageTracker(settings.AdaptiveMaxIterations, settings.SweepAdaptiveTol, control,
                                              electrostatic: problem.Type == Em3dProblemType.Electrostatic);
         PalaceStep solved;
@@ -750,6 +764,10 @@ public static class Em3dRunService
         if (solved.MemoryNote is not null) log.Notes.Add(solved.MemoryNote);
         if (solved.Cancelled) return Cancelled();
         if (!solved.Ok) return Failed(solved.Message!);
+        // brief-em3d-136 R-em3d136-5a — what Palace actually ran on. The probe should have refused a build that would revert
+        // to the CPU; this catches a binary changed since the probe, or an environment that differs between the two.
+        if (plan.Device == PalaceDevice.Gpu && PalaceRun.RanOnCpu(Path.Combine(runDir, PalaceRun.PalaceLogFile)))
+            log.Warnings.Add(GpuRevertedWarning(runDir));
 
         control?.BeginStage(ReadingLabel);
         string post = Path.Combine(runDir, PalaceConfigWriter.OutputDirectory);
@@ -1718,6 +1736,39 @@ public static class Em3dRunService
     /// <summary>R-em3d21-5b — the <c>.sNp</c> line recording what the solve cost: it differs between two
     /// runs of one setup, as the write stamp does, so a byte comparison of two runs leaves it out.</summary>
     public const string CostProvenancePrefix = "circuitRF-EM 3D run cost: ";
+
+    /// <summary>
+    /// brief-em3d-136 R-em3d136-2a — how many Palace processes, and the note that says so. On the CPU: one per physical
+    /// core, or the Cores setting (brief-em3d-21). On a GPU: one per GPU the probe counted — Palace assigns ranks to GPUs
+    /// round-robin, so a second rank per GPU would share it — capped by the Cores setting when that is lower.
+    /// </summary>
+    internal static (int Processes, string? Note) PalaceProcessCount(PalaceDevice device, int? maxCores, PhysicalCoreReading cores,
+                                                                      int? gpus)
+    {
+        if (device == PalaceDevice.Cpu)
+        {
+            int processes = maxCores ?? cores.Count;
+            return (processes, maxCores is null && !cores.Measured ? $"Palace ran on {processes} process(es): {cores.How}." : null);
+        }
+        int n = Math.Max(1, gpus ?? 1);
+        return maxCores is { } cap && cap < n
+            ? (cap, $"Palace ran on {cap} of {n} GPUs, one process each: the Cores setting allows {cap}.")
+            : (n, $"Palace ran on {n} GPU(s), one process each.");
+    }
+
+    /// <summary>
+    /// brief-em3d-136 R-em3d136-2b — <see cref="RankRefusal"/> on the count a run would use. On a GPU run it applies only
+    /// when the Cores setting is what sets the count (it is lower than the GPU count): a count derived from GPUs is
+    /// not a core count, and two GPUs on a one-core machine are no reason to refuse.
+    /// </summary>
+    internal static string? PalaceRankRefusal(PalaceDevice device, int? maxCores, PhysicalCoreReading cores, int? gpus)
+        => device == PalaceDevice.Cpu || maxCores is { } cap && cap < Math.Max(1, gpus ?? 1)
+            ? RankRefusal(maxCores, cores)
+            : null;
+
+    /// <summary>brief-em3d-136 R-em3d136-5a — the run asked for a GPU and Palace's log says it solved on the CPU.</summary>
+    internal static string GpuRevertedWarning(string runDir)
+        => $"Palace was asked to use a GPU but ran on the CPU; see its log in {runDir}.";
 
     /// <summary>R-em3d21-3b — an explicit process count past the physical core count, refused naming it.</summary>
     internal static string? RankRefusal(int? asked, PhysicalCoreReading cores)

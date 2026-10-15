@@ -1,0 +1,11 @@
+<!-- GENERATED FILE - do not edit. Regenerate every component symbol with:
+     dotnet run ––project src/Ui –– ––generate-symbols docs/user/assets/symbols
+     (the flags above are ordinary double hyphens; XML comments cannot contain them.)
+     Source: src/Ui/Diagnostics/SymbolArtworkGenerator.cs -->
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="240" height="186" viewBox="0 0 240 186"><path fill="none" stroke="#9684FA" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" d="M69 24L171 75L69 126L69 24Z" /><path fill="none" stroke="#9684FA" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" d="M43.5 49.5L69 49.5" /><path fill="none" stroke="#9684FA" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" d="M43.5 100.5L69 100.5" /><path fill="none" stroke="#9684FA" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" d="M171 75L196.5 75" /><text fill="#9684FA" transform="translate(77.93 49.5)" font-size="9.18" font-family="IBM Plex Sans" x="-2.75" y="3.44">
+			−
+	</text><text fill="#F58C4B" transform="translate(77.93 100.5)" font-size="9.18" font-family="IBM Plex Sans" x="-2.75" y="3.44">
+			+
+	</text><rect fill="none" stroke="#F07846" stroke-width="1" stroke-miterlimit="4" x="40.5" y="97.5" width="6" height="6" /><rect fill="none" stroke="#F07846" stroke-width="1" stroke-miterlimit="4" x="40.5" y="46.5" width="6" height="6" /><rect fill="none" stroke="#F07846" stroke-width="1" stroke-miterlimit="4" x="193.5" y="72" width="6" height="6" /><text fill="#8CAEFF" font-size="15" font-weight="600" font-family="IBM Plex Sans" x="93.96, 104.64, 113.64, 123.72, 137.04" y="172.32">
+			OpAmp
+	</text></svg>

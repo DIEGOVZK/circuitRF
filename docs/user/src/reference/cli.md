@@ -451,6 +451,9 @@ names, resolves the stackup, meshes, solves the frequency plan, de-embeds, and w
 
 **It needs no other arguments.** Everything else it needs is already recorded in the files.
 
+A 3D setup's Palace solves on the CPU unless `--device gpu` says otherwise; that needs a GPU build of Palace, and
+[Palace on a GPU](em-setup.html#palace-gpu) has the details. `--device` is refused on a run that uses no Palace.
+
 A `.c3d` runs too — `circuitrf em <view.c3d> --setup <name>` — and a **thermal** setup embedded in it runs through the
 same verb with circuitRF's own thermal solver (Gmsh meshes it). It writes `<cell> <setup>.thermal.npy` and the temperature
 field beside it, and prints the probes, the measures and, when the setup asks for one, the Rth matrix. See

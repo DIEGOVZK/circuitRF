@@ -38,8 +38,10 @@ public static class PalaceConfigWriter
     /// </summary>
     /// <param name="farField">brief-em3d-31 — ask Palace for the far field (<see cref="FarFieldRefusal"/> says when
     /// it cannot be); false writes exactly the bytes written before the pattern existed.</param>
+    /// <param name="device">brief-em3d-136 — <c>Solver.Device</c>, in both Solver blocks. A machine setting the run
+    /// passes in, never a <see cref="PalaceSettings"/> field (R-em3d136-1b).</param>
     public static PalaceConfig Write(Em3dProblem problem, IReadOnlyList<Em3dGroup> groups, PalaceSettings settings,
-                                     bool farField = false)
+                                     bool farField = false, PalaceDevice device = PalaceDevice.Cpu)
     {
         ArgumentNullException.ThrowIfNull(problem);
         ArgumentNullException.ThrowIfNull(groups);
@@ -155,8 +157,8 @@ public static class PalaceConfigWriter
             }
             w.WriteEndObject();
 
-            if (problem.IsStatic) WriteStatic(w, problem, groups, settings);
-            else WriteDriven(w, problem, groups, settings, materials, farField);
+            if (problem.IsStatic) WriteStatic(w, problem, groups, settings, device);
+            else WriteDriven(w, problem, groups, settings, materials, farField, device);
 
             w.WriteEndObject();
         }
@@ -165,7 +167,8 @@ public static class PalaceConfigWriter
 
     /// <summary>The Boundaries and Solver of a driven problem: brief-em3d-7's, unchanged.</summary>
     private static void WriteDriven(Utf8JsonWriter w, Em3dProblem problem, IReadOnlyList<Em3dGroup> groups,
-                                    PalaceSettings settings, Dictionary<string, Em3dMaterial> materials, bool farField = false)
+                                    PalaceSettings settings, Dictionary<string, Em3dMaterial> materials, bool farField,
+                                    PalaceDevice device)
     {
         // ── Boundaries ─────────────────────────────────────────────────────────────────────
         var pec        = new List<int>();
@@ -329,7 +332,7 @@ public static class PalaceConfigWriter
         var f = problem.Frequency;
         w.WriteStartObject("Solver");
         w.WriteNumber("Order", settings.ElementOrder);
-        w.WriteString("Device", "CPU");
+        WriteDevice(w, device);
         if (eigen)
         {
             // R-em3d23-4a — N modes above the target, and nothing else the schema does not require.
@@ -516,7 +519,8 @@ public static class PalaceConfigWriter
     /// in either solve (Palace says so itself for the magnetostatic one), so every conductor is a
     /// perfect one here, whatever its metal.
     /// </summary>
-    private static void WriteStatic(Utf8JsonWriter w, Em3dProblem problem, IReadOnlyList<Em3dGroup> groups, PalaceSettings settings)
+    private static void WriteStatic(Utf8JsonWriter w, Em3dProblem problem, IReadOnlyList<Em3dGroup> groups, PalaceSettings settings,
+                                    PalaceDevice device)
     {
         bool es = problem.Type == Em3dProblemType.Electrostatic;
         var ground   = new List<int>();         // ES: Ground; MS: PEC
@@ -585,7 +589,7 @@ public static class PalaceConfigWriter
 
         w.WriteStartObject("Solver");
         w.WriteNumber("Order", settings.ElementOrder);
-        w.WriteString("Device", "CPU");
+        WriteDevice(w, device);
         w.WriteStartObject(es ? "Electrostatic" : "Magnetostatic");
         if (SavesFields(settings)) w.WriteNumber("Save", problem.Terminals.Count);     // R-em3d29-1a: every terminal
         w.WriteEndObject();
@@ -602,6 +606,16 @@ public static class PalaceConfigWriter
     }
 
     /// <summary>A port's direction: +R/-R for a coaxial one, +X… for an axis, else the vector.</summary>
+    /// <summary>
+    /// brief-em3d-136 R-em3d136-1c — <c>Solver.Device</c>, the one key a GPU run changes. <b>Deliberately no
+    /// <c>PartialAssemblyOrder</c> and no <c>Backend</c>.</b> Palace's GPU guidance asks for partial assembly, and
+    /// 0.18.1 already uses it at every element order not below <c>PartialAssemblyOrder</c>, whose default is 1
+    /// (<c>configfile.hpp</c>, <c>fem/bilinearform.cpp</c>) — so every order circuitRF writes (1 and 2) is already
+    /// partially assembled. <c>Backend</c> defaults to the right one for the device. Adding either would change
+    /// nothing at best and pin a choice Palace makes better at worst.
+    /// </summary>
+    private static void WriteDevice(Utf8JsonWriter w, PalaceDevice device) => w.WriteString("Device", device.ConfigValue());
+
     private static void WriteDirection(Utf8JsonWriter w, Em3dPort p)
     {
         if (p.Annulus is { } ring) w.WriteString("Direction", ring.Outward ? "+R" : "-R");

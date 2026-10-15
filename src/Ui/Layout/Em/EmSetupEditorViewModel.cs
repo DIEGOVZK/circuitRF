@@ -1775,6 +1775,24 @@ public sealed partial class EmSetupEditorViewModel : ObservableObject
         if (EmSolveCorePreference.Preferred != value.Cap) EmSolveCorePreference.Preferred = value.Cap;
     }
 
+    // ── brief-em3d-136 — where Palace solves: a machine setting beside Cores, on Cores' terms ──────────────
+    //
+    // Stored in AppPreferences (EmPalaceDevicePreference), never in the .cem: no undo entry, no dirty mark, no mesh
+    // invalidation. GPU stays selectable when this Palace cannot use one — the run's refusal says why, and a disabled
+    // item would need a note under it to explain itself.
+
+    /// <summary>The Device row's two choices.</summary>
+    public static IReadOnlyList<string> PalaceDeviceChoices { get; } = ["CPU", "GPU"];
+
+    [ObservableProperty] private string _selectedPalaceDevice =
+        EmPalaceDevicePreference.Preferred == CircuitRF.Design.Em3d.PalaceDevice.Gpu ? "GPU" : "CPU";
+
+    partial void OnSelectedPalaceDeviceChanged(string value)
+    {
+        var device = value == "GPU" ? CircuitRF.Design.Em3d.PalaceDevice.Gpu : CircuitRF.Design.Em3d.PalaceDevice.Cpu;
+        if (EmPalaceDevicePreference.Preferred != device) EmPalaceDevicePreference.Preferred = device;
+    }
+
     /// <summary>The one-line note R-emp-6 asks for: this is a machine setting, not part of the design.</summary>
     public string SolveCoresNote =>
         $"A machine setting, not part of this design — it is not saved in the .cem, and it changes no " +

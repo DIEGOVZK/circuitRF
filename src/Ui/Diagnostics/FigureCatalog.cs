@@ -507,6 +507,12 @@ public static class FigureCatalog
             WindowFrame.Titled("EM Setup"),
             "The EM Setup editor: stackup, ports and the frequency sweep."),
 
+        // brief-em3d-136 — a CROP to the Solver options group of a Palace setup (see FigureCrop): the Device row is
+        // at the bottom of a panel far taller than any window. No chrome — it is the inside of a panel.
+        new("em-setup-palace-device", DocFixtures.EmSetupPalaceDevice, 560, 190, null,
+            "The Solver options group of a Palace setup: Cores, and under it Device, set to GPU. Both are settings "
+          + "of this machine, not saved in the .cem."),
+
         // The same editor in a narrower, shorter window, for a slide.
         //
         // The width is NOT what was making it small: on a half-slide the fit is bound by HEIGHT on

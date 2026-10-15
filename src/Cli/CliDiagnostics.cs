@@ -290,6 +290,21 @@ internal static class CliDiagnostics
         "em: --solver takes palace, openems or both, not '{value}'.",
         ("value", value));
 
+    /// <summary>brief-em3d-136 R-em3d136-4c — <c>em --device</c> takes cpu or gpu.</summary>
+    public static Diagnostic EmUnknownDevice(string value) => Diagnostic.Create(
+        "cli.em.unknown-device",
+        DiagnosticSeverity.Error,
+        "em: --device takes cpu or gpu, not '{value}'.",
+        ("value", value));
+
+    /// <summary>brief-em3d-136 — <c>em --device gpu</c> on a run that starts no Palace: refused, never ignored.</summary>
+    public static Diagnostic EmDeviceWithoutPalace(string what) => Diagnostic.Create(
+        "cli.em.device-without-palace",
+        DiagnosticSeverity.Error,
+        "em: --device gpu chooses where Palace solves, and this run is {what}, which does not use Palace. Leave --device " +
+        "out, or set the setup's Solver3D to Palace or Both.",
+        ("what", what));
+
     /// <summary>brief-em3d-21 R-em3d21-6a — <c>em --solver</c> on a PLANAR setup is refused, naming the
     /// field that makes a setup 3D. It used to convert the run silently, and a demonstration that
     /// switches solvers without saying so is the wrong kind of surprise.</summary>
@@ -1499,6 +1514,11 @@ internal static class CliDiagnostics
     public static Diagnostic ExplainUnknownOption(string option) => Diagnostic.Create(
         "explain.args.unknown-option", DiagnosticSeverity.Error,
         "explain: unknown option '{option}'.", ("option", option));
+
+    /// <summary>brief-em3d-136 — <c>explain --device</c> takes cpu or gpu, as <c>em --device</c> does.</summary>
+    public static Diagnostic ExplainUnknownDevice(string value) => Diagnostic.Create(
+        "explain.args.unknown-device", DiagnosticSeverity.Error,
+        "explain: --device takes cpu or gpu, not '{value}'.", ("value", value));
 
     public static Diagnostic ExplainMultiplePaths() => new(
         "explain.args.multiple-paths", DiagnosticSeverity.Error,
@@ -4064,6 +4084,12 @@ internal static class CliDiagnostics
     public static Diagnostic SolverUnknownOption(string noun, string option) => Diagnostic.Create(
         "solver.args.unknown-option", DiagnosticSeverity.Error,
         "solver {noun}: '{option}' is not an option here.", ("noun", noun), ("option", option));
+
+    /// <summary>brief-em3d-136 — <c>solver list --capability</c> asks for the one capability not always reported.</summary>
+    public static Diagnostic SolverUnknownCapability(string value) => Diagnostic.Create(
+        "solver.args.unknown-capability", DiagnosticSeverity.Error,
+        "solver list: --capability takes gpu, not '{value}'. Driven solves, wave ports and eigenmode solves are always " +
+        "reported.", ("value", value));
 
     public static Diagnostic SolverToolRequired() => new(
         "solver.install.tool-required", DiagnosticSeverity.Error,

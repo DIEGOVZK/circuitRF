@@ -1634,7 +1634,7 @@
                 </Border>
 
                 <!-- ── Solver options ─────────────────────────────────────────────────────── -->
-                <Border Classes="group" IsVisible="{Binding ViewModel.IsNotThermalSetup}">
+                <Border Name="SolverOptionsGroup" Classes="group" IsVisible="{Binding ViewModel.IsNotThermalSetup}">
                   <StackPanel Spacing="2">
                 <TextBlock Classes="grouphdr" Text="Solver options"/>
                 <!-- Everything above Cores is the planar/cross-section kernels' own; a 3D run reads only
@@ -1721,6 +1721,17 @@
                           ToolTip.Tip="How many cores the full-wave solver may use at once. Automatic uses the whole machine. Lowering it leaves cores free for other work and makes the run slower; it never changes the answer."/>
                 <TextBlock Classes="colhdr" TextWrapping="Wrap"
                            Text="{Binding ViewModel.SolveCoresNote}"/>
+
+                <!-- ── brief-em3d-136 — where Palace solves: a MACHINE setting like Cores, stored in AppPreferences,
+                     shown only where a Palace run is possible. GPU is always selectable; a Palace that cannot use one
+                     is refused at run time, saying why. -->
+                <StackPanel Spacing="2" IsVisible="{Binding ViewModel.IsPalaceSetup}">
+                  <TextBlock Classes="colhdr" Margin="0,8,0,0" Text="Device"/>
+                  <ComboBox Name="PalaceDeviceCombo" Width="200" FontSize="11"
+                            ItemsSource="{Binding ViewModel.PalaceDeviceChoices}"
+                            SelectedItem="{Binding ViewModel.SelectedPalaceDevice}"
+                            ToolTip.Tip="Where Palace solves on this machine. GPU needs a build of Palace compiled with GPU support; circuitRF then runs one Palace process per GPU it finds. A machine setting: it is not saved in the .cem."/>
+                </StackPanel>
 
                   </StackPanel>
                 </Border>

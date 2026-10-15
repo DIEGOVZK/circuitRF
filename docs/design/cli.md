@@ -598,6 +598,12 @@ the same door — `EmRunService.Run` hands it to `Em3dRunService`, and nothing e
 exit codes are this verb's own: a refusal (a missing or unvalidated solver, a 3D problem that cannot be
 built, a mesh whose entity check fails) exits 1 with the run service's sentence, a cancellation 130.
 
+**`--device cpu|gpu`** (brief-em3d-136) says where Palace solves, defaulting to `cpu`: headless there is no
+preference file, so a build machine states it. It reaches `EmRunService.Run` as an ARGUMENT beside the core cap,
+never a `.cem` key, and enters no hash. Any other value is refused (`cli.em.unknown-device`), and `gpu` on a run
+that starts no Palace (planar, thermal, openEMS-only, `--component`) is refused rather than ignored
+(`cli.em.device-without-palace`). `explain --device` reports the device and the readiness check a run would make.
+
 **A 3D result carries its solver in its name** (em-3d.md §4.5), so running a second solver on one setup
 never overwrites the first: `<key>.palace.sNp`, the `.npy` key `<key>.palace_em`, and a run directory
 `results/<key>.palace/` that is **kept** — the `.geo` script, the mesh and its SHA-256, `groups.json`
@@ -3300,7 +3306,7 @@ the cross-section, and the question is the same one asked before the line exists
 
 ## 22. `solver` — the 3D solver install assistant, headless
 
-`circuitrf solver list` · `circuitrf solver install <palace|gmsh|openems> [--version <v>] [--yes]` ·
+`circuitrf solver list [--capability gpu]` · `circuitrf solver install <palace|gmsh|openems> [--version <v>] [--yes]` ·
 `circuitrf solver remove <palace|gmsh|openems> [--version <v>] [--yes]` · `circuitrf solver remove --all [--yes]`
 
 (brief-em3d-24 R-em3d24-7; `em-3d.md` §7.2's "a build machine installs the same way the GUI does".)

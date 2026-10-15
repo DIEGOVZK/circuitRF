@@ -715,6 +715,8 @@ actually happened is &quot;nothing it tried reached compression&quot;.</p>
 <a href="em-setup.html">EM Setup panel</a> edits — and runs it: extracts the geometry from the layout the setup
 names, resolves the stackup, meshes, solves the frequency plan, de-embeds, and writes the results.</p>
 <p><strong>It needs no other arguments.</strong> Everything else it needs is already recorded in the files.</p>
+<p>A 3D setup's Palace solves on the CPU unless <code>--device gpu</code> says otherwise; that needs a GPU build of Palace, and
+<a href="em-setup.html#palace-gpu">Palace on a GPU</a> has the details. <code>--device</code> is refused on a run that uses no Palace.</p>
 <p>A <code>.c3d</code> runs too — <code>circuitrf em &lt;view.c3d&gt; --setup &lt;name&gt;</code> — and a <strong>thermal</strong> setup embedded in it runs through the
 same verb with circuitRF's own thermal solver (Gmsh meshes it). It writes <code>&lt;cell&gt; &lt;setup&gt;.thermal.npy</code> and the temperature
 field beside it, and prints the probes, the measures and, when the setup asks for one, the Rth matrix. See
@@ -2317,8 +2319,8 @@ this out from the answer rather than from a 23 MB file.</p>
 <h3 id="render-layers">Layers and colour</h3>
 <pre><code class="cmd"><span class="prompt">$ </span>circuitrf render Stage1.clay -o top.png --layers "Top Copper,Silk Top"
 <span class="prompt">$ </span>circuitrf render Stage1.clay -o nosilk.png --hide-layers "Silk Top,Silk Bottom"</code></pre>
-<p>Layout only, mutually exclusive, and the default is every layer the resolved technology marks visible —
-which is what the editor honours, not &quot;all layers regardless&quot;.</p>
+<p>Layout only, mutually exclusive, and the default is every layer. What you have hidden in the layout
+editor's <a href="layout-editor.html#layers">Layers</a> list is yours alone and does not change a render.</p>
 <div class="callout note">
 <span class="label">Ask <code>explain --layers</code> before <code>render --layers</code></span>
 <p>A technology's layer list and the layers a <em>document</em> draws on are different sets, and only

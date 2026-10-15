@@ -24,7 +24,11 @@ namespace CircuitRF.Cli;
 internal static class ExplainEm3d
 {
     /// <summary>The report's rows for <paramref name="src"/>, which must be a 3D setup.</summary>
-    public static ExplainEm3dJson Build(Em3dSetupSource src)
+    /// <param name="device">brief-em3d-136 — the device a run would use (<c>explain --device</c>, as <c>em --device</c>).</param>
+    public static ExplainEm3dJson Build(Em3dSetupSource src, PalaceDevice device = PalaceDevice.Cpu)
+        => BuildCore(src, device) is var r && Device(src.Setup, device, r.Solvers) is { } d ? r with { Device = d } : r;
+
+    private static ExplainEm3dJson BuildCore(Em3dSetupSource src, PalaceDevice device)
     {
         var setup = src.Setup;
         string solver = setup.Solver3D switch
@@ -36,7 +40,7 @@ internal static class ExplainEm3d
         };
         var notes    = src.Generated?.Notes ?? [];
         var warnings = src.Generated?.Warnings ?? [];
-        var solvers  = Solvers(setup.Solver3D, setup);
+        var solvers  = Solvers(setup.Solver3D, setup, device);
 
         if (src.Generated?.Problem is not { } p)
             return new ExplainEm3dJson(solver, "m", 1.0, [], null, [], [], [], [], null, Size(null, setup, default), solvers, notes, warnings,
@@ -265,8 +269,8 @@ internal static class ExplainEm3d
     /// the rule. It starts version probes and, for an uncached Palace, one dry run; it never starts a
     /// mesher or a solver (gate 6 counts that).
     /// </summary>
-    private static IReadOnlyList<Em3dSolverJson> Solvers(Em3dSolver solver, EmSetup setup)
-        => SolverDiscovery.ReadinessFor(solver, setup).Select(r => new Em3dSolverJson(
+    private static IReadOnlyList<Em3dSolverJson> Solvers(Em3dSolver solver, EmSetup setup, PalaceDevice device)
+        => SolverDiscovery.ReadinessFor(solver, setup, device).Select(r => new Em3dSolverJson(
                r.Name, r.Installation is not null, r.Installation?.Path, r.Installation?.Version,
                r.Installation?.Release, r.Installation?.Validated ?? false,
                r.Installation?.HowFound switch
@@ -282,8 +286,25 @@ internal static class ExplainEm3d
                },
                r.Capabilities.Select(c => new Em3dCapabilityJson(
                    c.Capability == SolverCapability.DrivenLumpedPorts ? "driven-lumped-ports" : c.Capability.ToString(),
-                   c.Available, c.Detail, c.FromCache) { Probe = SolverDiscovery.ProbeKind(c.Capability) }).ToList(),
+                   c.Available, c.Detail, c.FromCache) { Probe = SolverDiscovery.ProbeKind(c.Capability), Devices = c.Devices }).ToList(),
                r.Rejected, r.Proceeds, r.Refusal) { Warning = r.Warning }).ToList();
+
+    /// <summary>
+    /// brief-em3d-136 R-em3d136-4c — which device a run's Palace would use and why, or null when the setup runs no Palace
+    /// (the report is then unchanged). A GPU's process count comes from the readiness check's own GPU verdict.
+    /// </summary>
+    private static Em3dDeviceJson? Device(EmSetup setup, PalaceDevice device, IReadOnlyList<Em3dSolverJson> solvers)
+    {
+        if (setup.Solver3D is not (Em3dSolver.Palace or Em3dSolver.Both)) return null;
+        if (device == PalaceDevice.Cpu)
+            return new("cpu", "the default: a headless run solves on the CPU unless --device gpu asks for a GPU (the GUI " +
+                              "uses this machine's Device setting); one Palace process per physical core, or the Cores setting.");
+        var verdict = solvers.FirstOrDefault(s => s.Tool == SolverDiscovery.Palace.Name)?.Capabilities
+                             .FirstOrDefault(c => c.Capability == nameof(SolverCapability.Gpu));
+        return new("gpu", verdict is { Available: true, Devices: { } n }
+            ? $"--device gpu: one Palace process per GPU, {n} found."
+            : "--device gpu: a run would be refused before meshing; the Palace row below says why.");
+    }
 
     /// <summary>
     /// R-em3d5-3c. Each row says which kind of number it is, and an unavailable one says why rather than
@@ -440,6 +461,7 @@ internal static class ExplainEm3d
         if (r.Refusal is { } refusal)
         {
             Console.WriteLine($"  {"",-12} the 3D problem could not be built: {refusal}");
+            PrintDevice(r.Device);
             PrintSolvers(r.Solvers);
             return;
         }
@@ -539,10 +561,16 @@ internal static class ExplainEm3d
             if (z.Refusal is { } no) Console.WriteLine($"    {"",-10} a run would stop here: {no}");
         }
 
+        PrintDevice(r.Device);
         PrintSolvers(r.Solvers);
 
         foreach (var w in r.Warnings) Console.WriteLine($"  warning: {w}");
         foreach (var n in r.Notes)    Console.WriteLine($"  note: {n}");
+    }
+
+    private static void PrintDevice(Em3dDeviceJson? device)
+    {
+        if (device is not null) Console.WriteLine($"  device: {device.Device} — {device.Why}");
     }
 
     private static void PrintSolvers(IReadOnlyList<Em3dSolverJson> solvers)

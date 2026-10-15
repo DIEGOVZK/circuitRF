@@ -224,13 +224,7 @@ internal sealed class WslPalaceRunner(WslSession session, string linuxHome, stri
                                     kill: _ => WslProcessGroup.Stop(session, pidFile, Grace), sampleMemory: false);
     }
 
-    private static string Quote(IReadOnlyList<string> tail)
-    {
-        var lines = tail.Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
-        var marked = lines.Where(l => l.Contains("rror", StringComparison.Ordinal)).TakeLast(5).ToList();
-        var chosen = marked.Count > 0 ? marked : lines.TakeLast(8).ToList();
-        return chosen.Count == 0 ? "(it printed nothing)" : "“" + string.Join(" | ", chosen) + "”";
-    }
+    private static string Quote(IReadOnlyList<string> tail) => PalaceRun.Quote(tail, "rror");
 
     /// <summary>The Linux run directories this leg staged are circuitRF's scratch space, and go with it.</summary>
     public void Dispose()

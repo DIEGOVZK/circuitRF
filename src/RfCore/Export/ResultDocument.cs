@@ -313,10 +313,16 @@ namespace RfCore.Export
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         string? Install);
 
-    /// <param name="Capability">A stable id — <c>driven</c>, <c>wave-ports</c>, <c>eigenmode</c>.</param>
+    /// <param name="Capability">A stable id — <c>driven</c>, <c>wave-ports</c>, <c>eigenmode</c>, and <c>gpu</c> when
+    /// asked for (<c>solver list --capability gpu</c>, brief-em3d-136).</param>
     /// <param name="Description">What it means, as the terminal prints it.</param>
     /// <param name="Detail">Why it is or is not available.</param>
-    public sealed record SolverCapabilityJson(string Capability, string Description, bool Available, string Detail);
+    public sealed record SolverCapabilityJson(string Capability, string Description, bool Available, string Detail)
+    {
+        /// <summary>brief-em3d-136 — for <c>gpu</c>, how many GPUs Palace reported; absent when it reported none.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? Devices { get; init; }
+    }
 
     /// <summary>
     /// What an <c>NDF=yes</c> run found (brief-wsprobe-6 R-wsp6-2): the right-half-plane pole count
@@ -2373,6 +2379,10 @@ namespace RfCore.Export
     /// <param name="Solvers">Each program the setup's solver needs and what discovery found (brief-em3d-6
     /// R-em3d6-4c) — reported even when the problem could not be built.</param>
     /// <param name="Refusal">Why the 3D problem could not be built; every other row is then empty.</param>
+    /// <param name="Device"><c>cpu</c> or <c>gpu</c>.</param>
+    /// <param name="Why">What chose it, and what it implies for the process count.</param>
+    public sealed record Em3dDeviceJson(string Device, string Why);
+
     public sealed record ExplainEm3dJson(
         string                               Solver,
         string                               LengthUnit,
@@ -2397,6 +2407,11 @@ namespace RfCore.Export
         /// null for a driven setup, so a driven report is unchanged.</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Em3dStaticJson? Static { get; init; }
+
+        /// <summary>brief-em3d-136 R-em3d136-4c — where a run's Palace would solve, and why; null when the setup runs no
+        /// Palace.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Em3dDeviceJson? Device { get; init; }
 
         /// <summary>brief-em3d-116 R-em3d116-3 — how openEMS builds each wave port (its feed, source, planes, current boxes),
         /// as sentences; null when the setup runs no wave port on openEMS, so every earlier report is unchanged.</summary>
@@ -2613,6 +2628,10 @@ namespace RfCore.Export
     /// <param name="FromCache">True when the answer was the cached one for this binary, so no probe ran.</param>
     public sealed record Em3dCapabilityJson(string Capability, bool Available, string Detail, bool FromCache)
     {
+        /// <summary>brief-em3d-136 — for the GPU capability, how many GPUs Palace reported; absent otherwise.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? Devices { get; init; }
+
         /// <summary>brief-em3d-23 R-em3d23-1b — how the capability is asked: a dry run, or a one-element solve.</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Probe { get; init; }

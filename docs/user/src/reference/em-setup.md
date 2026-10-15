@@ -511,7 +511,8 @@ early and keep what it has, so its running button reads **Cancel**, not Stop.
 it started and finished with, the unknowns, the refinement passes, the sweep's samples and the preset —
 and the `.sNp`'s header records the same (`circuitRF-EM 3D run:` and `circuitRF-EM 3D run cost:`).
 Palace runs one MPI process per **physical** core by default; a *Cores* setting above the physical count
-is refused rather than oversubscribed.
+is refused rather than oversubscribed. On a GPU it runs one process per GPU instead
+([Palace on a GPU](#palace-gpu)).
 
 ### The openEMS grid {#openems-grid}
 
@@ -936,6 +937,42 @@ per saved frequency per driven port** (127 MB inside the volume, 9.8 MB on the s
 once for Palace's error map. Palace runs one excitation per port, so a two-port setup saving twenty
 frequencies writes about **5.5 GB**. The size grows with the mesh, so a larger model or more refinement
 passes costs more. When a run finishes, its summary line states what its field files took.
+
+### Palace on a GPU {#palace-gpu}
+
+Palace can solve on a GPU, and on several at once, when it was compiled with GPU support. **Device**, under
+*Cores* in the setup panel, chooses **CPU** or **GPU** for a Palace or Both setup. Like *Cores*, it is a setting
+of this machine, not of the design: it is not saved in the `.cem` or the `.c3d`, so a setup from someone else's
+workspace runs on your machine's choice.
+
+{{ui: em-setup-palace-device}}
+
+- **It needs a GPU build of Palace, which you build yourself.** The Palace circuitRF installs is built for the
+  CPU. GPU support is chosen when Palace is compiled; Palace's own
+  [parallelism guide](https://github.com/awslabs/palace/blob/v0.18.1/docs/src/guide/parallelism.md) says how to
+  build one. Point circuitRF at it in **Settings ▸ Solvers**, or with `CIRCUITRF_PALACE`.
+- **One process per GPU.** circuitRF asks Palace how many GPUs it finds and runs one Palace process on each. A
+  *Cores* setting lower than that count caps it. The run's notes say how many were used.
+- **A Palace that cannot use a GPU is refused before anything is meshed.** Given GPU, a build without GPU support
+  does not fail: it warns and solves on the CPU. So circuitRF checks first, with a one-element solve, and refuses
+  the run if the build has no GPU support or finds no GPU. After a GPU run, it reads Palace's log, and if the
+  run used the CPU anyway it says so among the run's warnings.
+- **Memory.** The memory check before a run measures this machine's RAM. GPU memory is not estimated; if Palace
+  runs out of it, the run fails with Palace's own error message.
+- **A GPU build also runs on the CPU.** Device is chosen each run, so if the GPU does not work, set **Device**
+  to CPU (or leave out `--device gpu`) and the same Palace solves on the CPU. A GPU build needs the GPU
+  toolkit's runtime libraries to start at all, even for a CPU run. If they are missing, point
+  **Settings ▸ Solvers** at a CPU-only Palace, such as the one circuitRF installs. Both can stay installed.
+- **openEMS is unaffected.** In a Both run, the device applies to the Palace run only.
+
+Once **Device** is GPU, the Palace row in **Settings ▸ Solvers** also reports what Palace found, such as
+*GPU: 2 detected* or *GPU: not in this build*. From the command line:
+
+<pre><code class="cmd"><span class="prompt">$ </span>circuitrf solver list --capability gpu
+<span class="prompt">$ </span>circuitrf em Via.cem --device gpu</code></pre>
+
+A headless run uses the CPU unless `--device gpu` is given; it does not read the panel's setting.
+`circuitrf explain` takes `--device` too and reports which device a run would use.
 
 ## Letting circuitRF install the 3D solvers {#install-assistant}
 

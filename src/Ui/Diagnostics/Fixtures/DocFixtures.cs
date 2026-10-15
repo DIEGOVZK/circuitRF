@@ -114,6 +114,38 @@ public static class DocFixtures
         return new FigureScene(view);
     }
 
+    /// <summary>
+    /// brief-em3d-136 — the Solver options group of a Palace setup, with Device on GPU: cropped to the group,
+    /// because the row is near the bottom of a tall panel. The device is a machine preference, so it is set
+    /// through the preference's test seam (never the real preferences file) and restored afterwards.
+    /// </summary>
+    public static FigureScene EmSetupPalaceDevice()
+    {
+        bool wasActive = EmPalaceDevicePreference.TestOverrideActive;
+        var wasStored = EmPalaceDevicePreference.TestOverrideStore;
+        EmPalaceDevicePreference.TestOverrideActive = true;
+        EmPalaceDevicePreference.TestOverrideStore = CircuitRF.Design.Em3d.PalaceDevice.Gpu;
+
+        var vm = new EmSetupEditorViewModel("Via.cem", new EmSetup { Solver3D = Em3dSolver.Palace });
+        var view = new EmSetupEditorView { DataContext = new EmSetupDocument("EM Setup", vm, "Via.cem") };
+        var crop = FigureCrop.Around(
+            view, 560, 2400,
+            c => c.GetVisualDescendants().OfType<Border>().Where(b => b.Name == "SolverOptionsGroup"),
+            pad: 6,
+            describeWhatIsMissing:
+                "This figure crops to the EM Setup panel's Solver options group, by the name SolverOptionsGroup in "
+              + "EmSetupEditorView.axaml. If that group is renamed or removed, this fixture must follow it.");
+        return new FigureScene(crop.Content)
+        {
+            AfterLayout = _ => crop.Apply(),
+            Cleanup = () =>
+            {
+                EmPalaceDevicePreference.TestOverrideActive = wasActive;
+                EmPalaceDevicePreference.TestOverrideStore = wasStored;
+            },
+        };
+    }
+
     // ── wBond ─────────────────────────────────────────────────────────────────
 
     /// <summary>The wBond editor carrying the shipped default wirebond design.</summary>

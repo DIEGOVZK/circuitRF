@@ -1155,12 +1155,52 @@ public static class PalaceRun
 
     /// <summary>The program's last lines worth quoting: those carrying <paramref name="marker"/> when
     /// there are any, else its last few.</summary>
-    private static string Quote(IReadOnlyList<string> tail, string marker)
+    /// <summary>
+    /// A failed program's own words, from the last lines of its stdout AND stderr (both go into the tail): the lines
+    /// carrying <paramref name="marker"/>, else the last eight. brief-em3d-136 R-em3d136-5b — a marked line that ends in
+    /// a colon brings the line after it, because that is where a GPU error states its cause (the device library's
+    /// message names the call that failed, then gives the reason — "out of memory" — on a line of its own).
+    /// </summary>
+    internal static string Quote(IReadOnlyList<string> tail, string marker)
     {
         var lines = tail.Select(l => l.Trim()).Where(l => l.Length > 0).ToList();
-        var marked = lines.Where(l => l.Contains(marker, StringComparison.Ordinal)).TakeLast(5).ToList();
-        var chosen = marked.Count > 0 ? marked : lines.TakeLast(8).ToList();
+        var marked = new List<int>();
+        for (int i = 0; i < lines.Count; i++)
+            if (lines[i].Contains(marker, StringComparison.Ordinal))
+            {
+                marked.Add(i);
+                if (lines[i].EndsWith(':') && i + 1 < lines.Count && !lines[i + 1].Contains(marker, StringComparison.Ordinal))
+                    marked.Add(++i);
+            }
+        var chosen = marked.Count > 0 ? marked.TakeLast(5).Select(i => lines[i]).ToList() : lines.TakeLast(8).ToList();
         return chosen.Count == 0 ? "(it printed nothing)" : "“" + string.Join(" | ", chosen) + "”";
+    }
+
+    /// <summary>
+    /// brief-em3d-136 R-em3d136-5a — whether a run asked to use a GPU solved on the CPU, from Palace's log: a build
+    /// without GPU support prints a warning ending in <c>reverting to CPU!</c>, and every run's banner names the backends
+    /// it used in its <c>Device configuration:</c> line, first the one that solved. A log with neither says nothing,
+    /// so it reads as false — the check warns only on evidence.
+    /// </summary>
+    public static bool RanOnCpu(string logPath)
+    {
+        try { return File.Exists(logPath) && RanOnCpu(File.ReadLines(logPath)); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { return false; }
+    }
+
+    /// <inheritdoc cref="RanOnCpu(string)"/>
+    internal static bool RanOnCpu(IEnumerable<string> logLines)
+    {
+        const string Configuration = "Device configuration:";
+        foreach (string raw in logLines)
+        {
+            if (raw.Contains("reverting to CPU", StringComparison.Ordinal)) return true;
+            int at = raw.IndexOf(Configuration, StringComparison.Ordinal);
+            if (at < 0) continue;
+            string first = raw[(at + Configuration.Length)..].Split(',')[0].Trim();
+            return string.Equals(first, "cpu", StringComparison.OrdinalIgnoreCase);
+        }
+        return false;
     }
 
     private static void WriteText(string path, string text) => File.WriteAllText(path, text, new UTF8Encoding(false));
