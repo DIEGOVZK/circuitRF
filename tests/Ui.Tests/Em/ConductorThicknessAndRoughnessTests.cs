@@ -169,6 +169,18 @@ public sealed class ConductorThicknessAndRoughnessTests
         Assert.Contains("the port width", note);
     }
 
+    [Fact]
+    public void ANewSetup_TurnsItOn_WhileAFileThatDoesNotSayStaysOff()
+    {
+        var created = EmSetup.CreateNew("line", "line.clay");
+        Assert.True(created.ConductorThicknessCorrection);
+        Assert.True(EmSetupPersistence.Deserialize(EmSetupPersistence.Serialize(created)).ConductorThicknessCorrection);
+
+        var unsaid = EmSetupPersistence.Serialize(new EmSetup { Name = "line", LayoutRef = "line.clay" });
+        Assert.DoesNotContain("ConductorThicknessCorrection", unsaid);
+        Assert.False(EmSetupPersistence.Deserialize(unsaid).ConductorThicknessCorrection);
+    }
+
     // ── roughness ────────────────────────────────────────────────────────────────────────────────
 
     private static Technology RoughPcb(double roughnessM)

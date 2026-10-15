@@ -272,7 +272,7 @@ handed, and so changes the answer, and **Edge ports** changes what an edge port'
 described last: one of them changes the answer, and the other publishes an answer circuitRF would
 otherwise refuse to write.
 
-**Conductor thickness — "Model copper thickness"** *(off by default)*. The full-wave solver treats metal
+**Conductor thickness — "Model copper thickness"** *(on in a new setup)*. The full-wave solver treats metal
 as a **zero-thickness sheet**, so a thick strip's sidewalls, and the fringing capacitance they add, are
 missing and Z₀ reads **high**. With this on, every outline on a level whose copper has a thickness grows
 by the width at which a sheet has the **same Z₀ as the real strip**. That width is solved with the
@@ -283,6 +283,8 @@ amount, which stands in for the extra sidewall coupling of thick metal. A level 
 two conductors, or close a slot inside one, is left as drawn and the run warns you. The run's notes give
 the width added and the impedances it was matched on. One width cannot match ε_eff as well: a thick
 strip's sidewalls are partly in air, so its ε_eff is slightly lower, and the note reports both values.
+A setup file that does not mention this option runs without it, so its results stay exactly as they
+were when it was written.
 
 <div class="callout note">
 <span class="label">How much it moves</span>

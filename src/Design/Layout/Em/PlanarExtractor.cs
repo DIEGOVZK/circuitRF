@@ -1676,41 +1676,6 @@ public static class PlanarExtractor
     }
 
     /// <summary>
-    /// <b>L9d/D5 — the stackup's dielectric bands as a <see cref="LayerStack"/>, split so that every
-    /// analysis level lands exactly on an interface.</b>
-    ///
-    /// <para>That last clause is the whole job. <c>PlanarProblem.CanSolve</c> refuses a level that is
-    /// not on an interface of its own medium (L9c's first earned refusal), and a conductor band sits
-    /// BETWEEN dielectric bands rather than inside one — so the layer list is built by walking z
-    /// upward from the ground plane and cutting at every level position as well as at every material
-    /// change. A conductor band contributes no thickness: a level is a sheet at one z, exactly as
-    /// R-em-4a already established for the cross-section extractor.</para>
-    /// </summary>
-    /// <summary>
-    /// <b>CL7 — the ground plane's own metal, as the medium's floor.</b> CL4 built the termination
-    /// and CL6 gave the one-slab kernel one; this is the line that makes a run get one, and it is
-    /// the whole of the flip. Worth 21.1% of the conductor term on FR-4, ~11% on the MMIC starter
-    /// and 25.0% on a low-loss laminate (series overview §2), and on the MMIC starter the conductor
-    /// term is itself 92-99% of the line's loss.
-    ///
-    /// <para><b>Both σ and t come off the band that was CHOSEN as the return plane and off nothing
-    /// else.</b> A ground-designated conductor that was skipped over, or a conductor band that is
-    /// neither a level nor the return plane, is absorbed into a neighbouring dielectric
-    /// (<c>BuildMediumStack</c>, and the warning above says so) — those must not acquire a floor by
-    /// accident, which is why this reads one band rather than searching for metal.</para>
-    ///
-    /// <para><b>A PERFECT floor is still what a stackup with no metal under it gets</b>, and it is
-    /// returned as <see cref="Termination.Pec"/> rather than as a perfect SPELLING of a conducting
-    /// plane. The two are bit-identical in the kernel (CL4 §1, CL6 §2) and are NOT identical to
-    /// <see cref="EmSnpProvenance"/> or to record equality, so spelling "no metal" as
-    /// <c>LossyGround(0, t)</c> would invalidate every cached <c>.snp</c> in every workspace to
-    /// record a σ nobody supplied.</para>
-    ///
-    /// <para><b>There is no <c>.cem</c> key and no UI control for this</b>, per the series
-    /// overview §5: whether Maxwell's equations include Ohm's law is not a decision to put in front
-    /// of a user. The σ is the technology's, exactly as the signal metal's is.</para>
-    /// </summary>
-    /// <summary>
     /// Grows each analysis level's outlines by its sheet-equivalent width (see
     /// <see cref="PlanarThicknessCorrection"/>), holding port edges, and says what it did per level —
     /// or, per level, why it did not.
@@ -1773,6 +1738,41 @@ public static class PlanarExtractor
         }
     }
 
+    /// <summary>
+    /// <b>L9d/D5 — the stackup's dielectric bands as a <see cref="LayerStack"/>, split so that every
+    /// analysis level lands exactly on an interface.</b>
+    ///
+    /// <para>That last clause is the whole job. <c>PlanarProblem.CanSolve</c> refuses a level that is
+    /// not on an interface of its own medium (L9c's first earned refusal), and a conductor band sits
+    /// BETWEEN dielectric bands rather than inside one — so the layer list is built by walking z
+    /// upward from the ground plane and cutting at every level position as well as at every material
+    /// change. A conductor band contributes no thickness: a level is a sheet at one z, exactly as
+    /// R-em-4a already established for the cross-section extractor.</para>
+    /// </summary>
+    /// <summary>
+    /// <b>CL7 — the ground plane's own metal, as the medium's floor.</b> CL4 built the termination
+    /// and CL6 gave the one-slab kernel one; this is the line that makes a run get one, and it is
+    /// the whole of the flip. Worth 21.1% of the conductor term on FR-4, ~11% on the MMIC starter
+    /// and 25.0% on a low-loss laminate (series overview §2), and on the MMIC starter the conductor
+    /// term is itself 92-99% of the line's loss.
+    ///
+    /// <para><b>Both σ and t come off the band that was CHOSEN as the return plane and off nothing
+    /// else.</b> A ground-designated conductor that was skipped over, or a conductor band that is
+    /// neither a level nor the return plane, is absorbed into a neighbouring dielectric
+    /// (<c>BuildMediumStack</c>, and the warning above says so) — those must not acquire a floor by
+    /// accident, which is why this reads one band rather than searching for metal.</para>
+    ///
+    /// <para><b>A PERFECT floor is still what a stackup with no metal under it gets</b>, and it is
+    /// returned as <see cref="Termination.Pec"/> rather than as a perfect SPELLING of a conducting
+    /// plane. The two are bit-identical in the kernel (CL4 §1, CL6 §2) and are NOT identical to
+    /// <see cref="EmSnpProvenance"/> or to record equality, so spelling "no metal" as
+    /// <c>LossyGround(0, t)</c> would invalidate every cached <c>.snp</c> in every workspace to
+    /// record a σ nobody supplied.</para>
+    ///
+    /// <para><b>There is no <c>.cem</c> key and no UI control for this</b>, per the series
+    /// overview §5: whether Maxwell's equations include Ohm's law is not a decision to put in front
+    /// of a user. The σ is the technology's, exactly as the signal metal's is.</para>
+    /// </summary>
     private static Termination FloorFor(Band? groundBand)
     {
         if (groundBand is null) return Termination.Pec;

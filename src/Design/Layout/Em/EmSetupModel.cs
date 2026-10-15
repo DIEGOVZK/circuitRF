@@ -356,12 +356,26 @@ public sealed class EmSetup
     /// the closed-form models read 49.7-50.0 Ω). On, every conductor outline on a level whose copper is
     /// thick is grown by the width at which a sheet has the SAME Z0 as the real thick strip, found from
     /// the 2-D cross-section kernel on this technology's own stackup; port edges stay where they are
-    /// drawn. See <c>PlanarThicknessCorrection</c>. <b>Off by default</b>, so every existing result is
-    /// bit-identical — the conformal-cells precedent: flipping a default that moves every planar answer
-    /// is its own deliberate act. A cross-section (kernel A) or 3D run models real thickness already and
-    /// ignores this.
+    /// drawn. See <c>PlanarThicknessCorrection</c>. <b>Off for a setup that does not say</b> — a
+    /// <c>.cem</c> written before the key existed, or one written by hand — so every existing result is
+    /// bit-identical; <b>on in a setup the application CREATES</b> (<see cref="CreateNew"/>), so a new
+    /// design starts from the Z0 a thick strip really has. A cross-section (kernel A) or 3D run models
+    /// real thickness already and ignores this.
     /// </summary>
     public bool ConductorThicknessCorrection { get; set; }
+
+    /// <summary>
+    /// A setup as File ▸ New ▸ EM Setup and the layout editor's EM button create it: the model's own
+    /// defaults, except that <see cref="ConductorThicknessCorrection"/> is ON. The property itself stays
+    /// off when absent, because that is what an existing file means; a NEW setup has no prior result
+    /// to keep bit-identical, so it takes the more accurate answer.
+    /// </summary>
+    public static EmSetup CreateNew(string name, string layoutRef) => new()
+    {
+        Name                         = name,
+        LayoutRef                    = layoutRef,
+        ConductorThicknessCorrection = true,
+    };
 
     /// <summary>
     /// <b>LFE — what a planar EDGE port's source returns through.</b> <c>Ground</c> (the default) is

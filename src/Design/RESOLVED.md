@@ -19929,3 +19929,18 @@ executables (`tests/Ui.Tests/Em3d/PalaceGpuDeviceTests.cs`). The field test (R-e
   - The external tools' closed-form substrate for the same build was H ≈ 330 µm (εr 2.97).
   - Before blaming metal thickness for an impedance disagreement, compare the height between the line and
     its return plane.
+
+## Thickness correction is ON in a new EM setup; MCURVE's arc bulge is rounded (PR #11 follow-up, 2026-10-15)
+
+- **`EmSetup.CreateNew` is the one place a fresh setup is built**, and it turns
+  `ConductorThicknessCorrection` on. File ▸ New ▸ EM Setup and the layout editor's EM button both
+  call it. The property itself still defaults to off, so a `.cem` without the key — every file
+  written before the option existed, and any written by hand or by an agent — runs as before, bit
+  for bit. Owner's decision: a new design has no earlier result to preserve.
+- **`Math.Tan` is not correctly rounded, and it differs across platforms.** `tan(π/8)` came out
+  one ulp lower on the contributor's machine than on macOS, so MCURVE's recorded generator
+  fingerprint failed on macOS. The probe that proved it rebuilt the fingerprint with the bulge
+  nudged by ±1 ulp; −1 reproduced the recorded hash exactly. `MCurvePCell` now rounds the bulge
+  to 12 decimals, which both values reach identically. The vertices were already safe because they
+  round to DBU. Any future generator that stores a raw trig result, rather than a coordinate
+  rounded to DBU, carries the same trap.

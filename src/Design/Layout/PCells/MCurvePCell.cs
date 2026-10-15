@@ -65,7 +65,12 @@ public static class MCurvePCell
 
         var a0 = At(ro, 0); var a1 = At(ro, theta);
         var b1 = At(ri, theta); var b0 = At(ri, 0);
-        double bulge = s * Math.Tan(theta / 4.0);            // tan(sweep/4), +ve = counter-clockwise
+        // tan(sweep/4), +ve = counter-clockwise. Rounded to 12 decimals because Math.Tan is the
+        // platform's libm and is not correctly rounded: tan(pi/8) differs by one ulp between Windows
+        // and macOS, which made the artwork (and PCellGeneratorVersioningTests' fingerprint) depend on
+        // the machine. 1e-12 of bulge moves the arc by far less than a DBU; the vertices are already
+        // rounded to DBU for the same reason.
+        double bulge = Math.Round(s * Math.Tan(theta / 4.0), 12);
 
         var xy = new List<long>(); var edges = new List<LayoutEdge>();
         void Vertex((long X, long Y) p, LayoutEdge e) { xy.Add(p.X); xy.Add(p.Y); edges.Add(e); }

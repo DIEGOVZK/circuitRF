@@ -7227,7 +7227,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         try
         {
             Directory.CreateDirectory(emDir);
-            var setup = new EmSetup { Name = name, LayoutRef = layoutRef };
+            var setup = EmSetup.CreateNew(name, layoutRef);
             var path  = Path.Combine(emDir, name + EmSetupPersistence.Extension);
             if (File.Exists(path))
             {
@@ -7326,7 +7326,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         {
             Directory.CreateDirectory(emDir);
             var layoutRef = Path.GetRelativePath(workspaceDir, clayPath).Replace('\\', '/');
-            EmSetupPersistence.SaveToFile(path, new EmSetup { Name = stem, LayoutRef = layoutRef });
+            EmSetupPersistence.SaveToFile(path, EmSetup.CreateNew(stem, layoutRef));
             _factory.ProjectTreeTool?.Refresh();
             OpenOrActivateEmSetup(path);
             Messages.Success("Created EM setup", path);

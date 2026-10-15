@@ -1698,8 +1698,9 @@
                            IsVisible="{Binding ViewModel.DeembedOutsideValidityDisabledReason, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
                 <!-- ── Conductor thickness - the planar kernel's metal is a zero-thickness sheet, so a
-                     thick strip's sidewall capacitance is missing and Z0 reads high. Off by default so
-                     every existing result is unchanged; see EmSetup.ConductorThicknessCorrection. -->
+                     thick strip's sidewall capacitance is missing and Z0 reads high. On in a setup the
+                     application creates; a .cem without the key runs without it, so an existing result is
+                     unchanged. See EmSetup.ConductorThicknessCorrection and EmSetup.CreateNew. -->
                 <TextBlock Classes="colhdr" Margin="0,8,0,0" Text="Conductor thickness"/>
                 <CheckBox Name="ConductorThicknessCheck" FontSize="11"
                           Content="Model copper thickness (grow outlines to the sheet-equivalent width)"
