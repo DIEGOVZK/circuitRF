@@ -734,7 +734,9 @@ internal static class Render
         // R-rnd2-8: the selection is applied to a CLONE. TechnologyCache hands back a SHARED instance,
         // and flipping LayerDef.Visible on it would leak into the next render in the same process —
         // which is not hypothetical, because `serve` runs many calls in one. This is the class of
-        // defect that only ever appears on the SECOND call.
+        // defect that only ever appears on the SECOND call. With no layer flag, EVERY layer is drawn: a
+        // .ctech carries no visibility (brief-layout-layers-panel.md D1), so a headless picture never
+        // depends on anyone's view settings.
         var plan = ApplyLayerSelection(tech, view, baseDir, o);
         if (plan.Refusal is { } lr) return lr;
         var drawTech   = plan.DrawTech;

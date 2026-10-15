@@ -47,7 +47,7 @@ public sealed class LayoutFitVisibleLayersAndRevealTests
         // document's technology — which is where LayerDef.Visible lives.
         string src = StripComments(Src("src/Ui/Controls/LayoutCanvas.cs"));
         var fit = Regex.Match(src, @"private void ZoomToFitInternal\(\)\s*\{(?<body>[\s\S]*?)\n    \}").Groups["body"].Value;
-        Assert.Contains("DocumentExtents.LayoutFitBox(model, _viewModel.Technology", fit);
+        Assert.Contains("DocumentExtents.LayoutFitBox(model, _viewModel.DrawTechnology", fit);
         Assert.DoesNotContain("foreach (var shape in model.Shapes)", fit);
     }
 

@@ -1678,7 +1678,6 @@ internal static class Explain
             foreach (var l in layers.Layers)
                 Console.WriteLine(
                     $"    {l.Name,-20} {l.Number}/{l.Datatype,-6} {l.Color}  {l.Fill,-10}"
-                    + (l.Visible ? "" : " hidden") + (l.Selectable ? "" : " locked")
                     + (l.Purpose is { } p ? $"  purpose={p}" : "")
                     + (l.Shapes is { } n ? $"   {n} shape(s)" : "")
                     + (l.InstancesUsing is > 0 and { } u ? $", {u} instance(s)" : ""));

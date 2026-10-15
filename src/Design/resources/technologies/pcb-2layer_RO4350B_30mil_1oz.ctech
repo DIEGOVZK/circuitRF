@@ -22,8 +22,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 8,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "PcbLayerName": "F.Cu"
@@ -43,8 +41,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 7,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "PcbLayerName": "B.Cu"
@@ -64,8 +60,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 6,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "PcbLayerName": "F.Mask"
@@ -85,8 +79,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 5,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "PcbLayerName": "B.Mask"
@@ -106,8 +98,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 4,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "PcbLayerName": "F.SilkS"
@@ -127,8 +117,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 3,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "PcbLayerName": "B.SilkS"
@@ -148,8 +136,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 2,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -166,8 +152,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 1,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "PcbLayerName": "Edge.Cuts"
@@ -187,8 +171,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 9,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "PcbLayerName": "F.CrtYd"

@@ -199,7 +199,6 @@ public sealed partial class TechEditorViewModel : ObservableObject
         foreach (var r in Layers)
             if (Matches(r.Layer.Name, q)) FilteredLayers.Add(r);
         OnPropertyChanged(nameof(LayerFilterSummary));
-        NotifyBulkToggleState();
     }
 
     private void ApplyInterchangeFilter()
@@ -276,59 +275,6 @@ public sealed partial class TechEditorViewModel : ObservableObject
         foreach (var r in DrcRules)
             if (Matches(r.Rule.Name, q)) FilteredDrcRules.Add(r);
         OnPropertyChanged(nameof(DrcFilterSummary));
-    }
-
-    // ── Bulk Visible/Selectable, over the LISTED layers ────────────────────────
-    // Deliberately scoped to what the filter is currently showing, not to Working.Layers: the two
-    // coincide when no filter is set, and when one IS set "hide everything I am looking at" is the
-    // useful operation — "hide all 377 layers including the ones I filtered away" is not. The
-    // tooltips in the view say so, because the distinction is invisible otherwise.
-    //
-    // Setter-not-command so the ToggleButton's own checked state IS the answer to "is every listed
-    // layer visible?", with no second source of truth to keep in step.
-
-    public bool AllShownLayersVisible
-    {
-        get => FilteredLayers.Count > 0 && FilteredLayers.All(r => r.Layer.Visible);
-        set => SetAllShownLayerFlags(value, null);
-    }
-
-    public bool AllShownLayersSelectable
-    {
-        get => FilteredLayers.Count > 0 && FilteredLayers.All(r => r.Layer.Selectable);
-        set => SetAllShownLayerFlags(null, value);
-    }
-
-    private void NotifyBulkToggleState()
-    {
-        OnPropertyChanged(nameof(AllShownLayersVisible));
-        OnPropertyChanged(nameof(AllShownLayersSelectable));
-    }
-
-    /// <summary>One undo entry for the whole sweep, not one per layer — the coarse whole-technology
-    /// snapshot this editor already uses makes that free, and 377 undo steps to walk back out of one
-    /// click would be the alternative (the same reasoning <see cref="MergeFrom"/> records).</summary>
-    private void SetAllShownLayerFlags(bool? visible, bool? selectable)
-    {
-        var rows = FilteredLayers.ToList();
-        if (rows.Count == 0) { NotifyBulkToggleState(); return; }
-
-        var before = SnapshotJson();
-        foreach (var r in rows)
-        {
-            if (visible    is { } v) r.Layer.Visible    = v;
-            if (selectable is { } s) r.Layer.Selectable = s;
-        }
-
-        string what = rows.Count == Layers.Count ? "all layers" : $"{rows.Count} listed layers";
-        var description = visible is { } vv
-            ? (vv ? $"Show {what}"          : $"Hide {what}")
-            : (selectable is true ? $"Make {what} selectable" : $"Make {what} unselectable");
-
-        // A no-op commit rebuilds nothing (CommitEdit returns early), so the toggle's own state still
-        // has to be re-announced here or the button would stay where the click left it.
-        CommitEdit(before, description);
-        NotifyBulkToggleState();
     }
 
     public static IReadOnlyList<BoundaryCondition> BoundaryConditions { get; } = Enum.GetValues<BoundaryCondition>();
@@ -705,32 +651,6 @@ public sealed partial class TechEditorViewModel : ObservableObject
         Layers.Clear();
         foreach (var l in Working.Layers)
             Layers.Add(new LayerRowViewModel(l, this));
-        RebuildUndefinedLayers();
-    }
-
-    /// <summary>
-    /// The layers open layouts draw under this technology that it does not define (an import kept them
-    /// as its own, say). Listed so they can be hidden and locked — for the session only, through
-    /// <see cref="UndefinedLayerSession"/>; nothing here edits <see cref="Working"/>. A layer the
-    /// technology comes to define (an Add Layer with its number) leaves this list and takes the
-    /// technology's own row.
-    /// </summary>
-    public ObservableCollection<UndefinedLayerRowViewModel> UndefinedLayers { get; } = [];
-
-    public bool HasUndefinedLayers => UndefinedLayers.Count > 0;
-
-    internal void RebuildUndefinedLayers()
-    {
-        var defined = Working.Layers.Select(l => l.Key).ToHashSet();
-        var entries = UndefinedLayerSession.For(FilePath).Where(e => !defined.Contains(e.Key)).ToList();
-        if (entries.Count == UndefinedLayers.Count &&
-            entries.Zip(UndefinedLayers).All(p => p.First.Key == p.Second.Key &&
-                                                  p.First.Visible == p.Second.Visible &&
-                                                  p.First.Selectable == p.Second.Selectable))
-            return;
-        UndefinedLayers.Clear();
-        foreach (var e in entries) UndefinedLayers.Add(new UndefinedLayerRowViewModel(FilePath, e));
-        OnPropertyChanged(nameof(HasUndefinedLayers));
     }
 
     private IReadOnlyList<string>? _fillPatternChoices;
@@ -794,8 +714,6 @@ public sealed partial class TechEditorViewModel : ObservableObject
             Color       = src.Color,
             FillOpacity = src.FillOpacity,
             ZOrder      = src.ZOrder,
-            Visible     = src.Visible,
-            Selectable  = src.Selectable,
             Purpose     = src.Purpose,
         };
         if (index >= 0) Working.Layers.Insert(index + 1, clone);

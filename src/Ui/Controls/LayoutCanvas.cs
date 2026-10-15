@@ -592,12 +592,14 @@ public sealed class LayoutCanvas : Control
         // had its own second union that did not. It now asks the same function, so the picture the
         // CLI fits and the view the editor fits are one box: shapes and instances on visible layers
         // only, a label's painted text, a port's direction hint, a placement's designator, and every
-        // ruler (a Fixed one measured at the zoom the fit lands on, not the one it leaves).
+        // ruler (a Fixed one measured at the zoom the fit lands on, not the one it leaves). It is handed
+        // DrawTechnology, the technology as this view draws it: visibility is the layout's Layers list,
+        // not the .ctech (brief-layout-layers-panel.md R-lyr-5).
         var bb = Bbox.Empty;
         if (_viewModel?.Model is { } model)
         {
             string baseDir = _viewModel.InstanceBaseDir;
-            bb = DocumentExtents.LayoutFitBox(model, _viewModel.Technology, baseDir, Bounds.Width, Bounds.Height);
+            bb = DocumentExtents.LayoutFitBox(model, _viewModel.DrawTechnology, baseDir, Bounds.Width, Bounds.Height);
             // Everything switched off is not a reason to jump to the origin: frame the document anyway,
             // so the camera is at least where the content is when a layer is switched back on.
             if (bb.IsEmpty)

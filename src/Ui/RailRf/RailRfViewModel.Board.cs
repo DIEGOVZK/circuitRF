@@ -139,7 +139,7 @@ public sealed partial class RailRfViewModel
     public string EditTechnologyTip =>
         TechnologyPath is { Length: > 0 } p
             ? $"Open {System.IO.Path.GetFileName(p)} — the stackup this board is priced against, and "
-            + "where a layer's visibility is set."
+            + "where a layer's colour and fill are set."
             : "This board resolved no .ctech file.";
 
     /// <summary>What the cursor is over on the board, or null. Published by the overlay; shown on
@@ -588,8 +588,10 @@ public sealed partial class RailRfViewModel
     /// The artwork's technology has been re-resolved elsewhere — adopt it.
     /// </summary>
     /// <remarks>
-    /// <b>Why this exists</b> (owner, 2026-09-19): a layer switched to <c>Vis</c> off in the
-    /// <c>.ctech</c> went on being drawn on railRF's board. The layout editor follows a live
+    /// <b>Why this exists</b> (owner, 2026-09-19): an edit in the <c>.ctech</c> went on being drawn
+    /// the old way on railRF's board. It was a <c>Vis</c> toggle then; since
+    /// brief-layout-layers-panel.md a technology carries no visibility, and the seam carries colour,
+    /// fill and the stackup. The layout editor follows a live
     /// technology edit because the workspace pushes the re-resolved instance into every open layout
     /// document; this window held the instance it resolved once, when it opened the board, and nothing
     /// ever replaced it. The drawing is only half of it — the stackup is what the copper is PRICED
@@ -597,7 +599,7 @@ public sealed partial class RailRfViewModel
     ///
     /// <para><b>The results go, for <see cref="NotifyArtworkChanged"/>'s reason.</b> Every number here
     /// was computed against the stackup that has just been re-read, and railRF cannot tell a
-    /// visibility toggle from a copper thickness from the outside — so it says the numbers are of the
+    /// colour change from a copper thickness from the outside — so it says the numbers are of the
     /// old one rather than leaving them sitting beside a board they may no longer describe. Re-running
     /// is one keystroke.</para>
     ///
@@ -662,34 +664,17 @@ public sealed partial class RailRfViewModel
     }
 
     /// <summary>
-    /// Tells the overlay which drawing layers the technology is not drawing.
+    /// Tells the overlay which drawing layers the window is not drawing.
     /// </summary>
     /// <remarks>
     /// The maps are laid OVER the artwork, so a layer the renderer skips has to take its shading with
-    /// it — otherwise turning a layer off in the <c>.ctech</c> removes the copper and leaves the drop
-    /// map of it floating on the board (owner, 2026-09-19).
-    /// </remarks>
-    /// <remarks>
-    /// <b>And the WINDOW's own overrides are applied here</b> (R-rail20-1c), through
-    /// <see cref="RailDocument.Shows"/> — the whole of "there is exactly one hidden-layer set
-    /// reaching the overlay, not two". railRF's own layer list and the technology's <c>Vis</c> boxes
-    /// answer the same question, so they arrive at the overlay as one answer — see
-    /// <c>RailRfViewModel.Layers.cs</c>.
+    /// it — otherwise turning a layer off removes the copper and leaves the drop map of it floating on
+    /// the board (owner, 2026-09-19). The answer is <see cref="RailDocument.Shows"/>, the same one the
+    /// canvas is given (R-rail20-1c) — see <c>RailRfViewModel.Layers.cs</c>.
     /// </remarks>
     private void SyncHiddenLayers()
     {
-        var hidden = new HashSet<LayerKey>();
-        if (Board?.Technology is { } tech)
-        {
-            foreach (var layer in tech.Layers)
-                if (!_document.Shows(layer)) hidden.Add(layer.Key);
-        }
-        else
-        {
-            hidden.UnionWith(_document.HiddenLayers);
-        }
-
-        BoardOverlayLayer.HiddenLayers = hidden;
+        BoardOverlayLayer.HiddenLayers = new HashSet<LayerKey>(_document.HiddenLayers);
     }
 
     /// <summary>
@@ -697,12 +682,11 @@ public sealed partial class RailRfViewModel
     /// </summary>
     /// <remarks>
     /// <b>Why there is a signature at all.</b> Adopting a re-resolved technology has to invalidate the
-    /// numbers when the stackup moved and must NOT when it did not: a user turning a drawing layer's
-    /// visibility off is asking a question about the PICTURE, and losing the answer they just ran for
-    /// it would make the toggle cost a re-solve (owner, 2026-09-19 — that toggle is the workflow this
-    /// whole adoption exists for). Thicknesses, conductivities, dielectrics and the drawing layers each
-    /// stackup entry claims all live under <see cref="Technology.Stackup"/>; visibility, colour and
-    /// fill pattern live on the drawing-layer table beside it and are not here.
+    /// numbers when the stackup moved and must NOT when it did not: a user recolouring a drawing layer
+    /// is changing the PICTURE, and losing the answer they just ran for it would make the edit cost a
+    /// re-solve (owner, 2026-09-19). Thicknesses, conductivities, dielectrics and the drawing layers each
+    /// stackup entry claims all live under <see cref="Technology.Stackup"/>; colour and fill pattern
+    /// live on the drawing-layer table beside it and are not here.
     ///
     /// <para><b>Serialised rather than compared field by field</b>, deliberately: a stackup field added
     /// later is in the comparison the day it is added, where a hand-written list of properties would

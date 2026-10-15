@@ -545,6 +545,10 @@
                              WorkspaceWindow.axaml.cs — a NativeMenuItem is an AvaloniaObject with no
                              DataContext, so it cannot bind. -->
                         <NativeMenuItem Header="Hide Dockers" Command="{Binding HideShowDockersCommand}" Gesture="Meta+Shift+H"/>
+                        <!-- No Gesture: a native plain-L shortcut would take L from every text field. The
+                             layout view handles L itself. -->
+                        <NativeMenuItem Header="Layers List" Command="{Binding ToggleLayoutLayerListCommand}"
+                                        ToolTip="Open or close the Layers list of the active layout (L in the layout). Requires an active layout."/>
                         <NativeMenuItemSeparator/>
                         <NativeMenuItem Header="Panels">
                             <NativeMenuItem.Menu>
@@ -1544,6 +1548,14 @@
                           Command="{Binding HideShowDockersCommand}"
                           InputGesture="Ctrl+Shift+H">
                     <MenuItem.Icon><mi:MaterialIcon Kind="PageLayoutSidebarLeft" Width="16" Height="16"/></MenuItem.Icon>
+                </MenuItem>
+                <!-- The active layout's Layers list (brief-layout-layers-panel.md). L is the layout
+                     view's own key (LayoutEditorView.TryToggleLayerList); InputGesture only shows it. -->
+                <MenuItem Header="La_yers List"
+                          Command="{Binding ToggleLayoutLayerListCommand}"
+                          InputGesture="L"
+                          ToolTip.Tip="Open or close the Layers list of the active layout. Requires an active layout.">
+                    <MenuItem.Icon><mi:MaterialIcon Kind="LayersSearchOutline" Width="16" Height="16"/></MenuItem.Icon>
                 </MenuItem>
                 <Separator/>
                 <!-- Reopen a closed tool panel. Without these, closing one strands it until

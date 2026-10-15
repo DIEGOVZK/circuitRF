@@ -5,13 +5,13 @@ namespace CircuitRF.Ui.Tests;
 
 /// <summary>
 /// The .ctech editor's Layers tab is THREE grids sharing one column layout — the filter bar with its
-/// bulk toggles, the header row, and the row template — and they line up only because all three
+/// filter box, the header row, and the row template — and they line up only because all three
 /// declare the same columns in the same order.
 ///
 /// <para><b>Nothing enforces that at runtime and nothing looks wrong until you read a value off the
-/// wrong header.</b> Editing one grid and not the others leaves a table where the "Vis" heading sits
-/// over the datatype boxes and the bulk visibility toggle sweeps a column it is not above. Every one
-/// of those is a silent misread rather than a crash, which is why this is scanned.</para>
+/// wrong header.</b> Editing one grid and not the others leaves a table where the "Color" heading sits
+/// over the datatype boxes. Every one of those is a silent misread rather than a crash, which is why
+/// this is scanned.</para>
 /// </summary>
 public sealed class TechEditorLayerColumnLayoutTests
 {
@@ -20,8 +20,6 @@ public sealed class TechEditorLayerColumnLayoutTests
     private static readonly (string Header, string Width)[] Columns =
     [
         ("Name",     "Width=\"*\" MinWidth=\"110\""),
-        ("Vis",      "Width=\"30\""),
-        ("Sel",      "Width=\"30\""),
         ("Color",    "Width=\"48\""),
         ("Pattern",  "Width=\"104\""),
         ("Fill",     "Width=\"44\""),
@@ -38,16 +36,14 @@ public sealed class TechEditorLayerColumnLayoutTests
     private static readonly (string Anchor, int Column)[] Cells =
     [
         ("Tag=\"Name\"",                       0),
-        ("IsChecked=\"{Binding Visible}\"",    1),
-        ("IsChecked=\"{Binding Selectable}\"", 2),
-        ("PickColorCommand",                   3),
-        ("FillPatternChoices",                 4),
-        ("Tag=\"FillOpacity\"",                5),
-        ("Tag=\"ZOrder\"",                     6),
-        ("Tag=\"Purpose\"",                    7),
-        ("Tag=\"LayerNumber\"",                8),
-        ("Tag=\"Datatype\"",                   9),
-        ("DuplicateCommand",                  10),
+        ("PickColorCommand",                   1),
+        ("FillPatternChoices",                 2),
+        ("Tag=\"FillOpacity\"",                3),
+        ("Tag=\"ZOrder\"",                     4),
+        ("Tag=\"Purpose\"",                    5),
+        ("Tag=\"LayerNumber\"",                6),
+        ("Tag=\"Datatype\"",                   7),
+        ("DuplicateCommand",                   8),
     ];
 
     [Fact]
@@ -95,30 +91,6 @@ public sealed class TechEditorLayerColumnLayoutTests
             var columns = Regex.Matches(row[..at], @"Grid\.Column=""(\d+)""");
             Assert.True(columns.Count > 0, $"'{anchor}' is in no column");
             Assert.Equal(expected, int.Parse(columns[^1].Groups[1].Value));
-        }
-    }
-
-    /// <summary>
-    /// The two bulk toggles sit directly above the checkbox columns they sweep. Their whole reason
-    /// for being in that grid rather than in a button bar is that adjacency — a control acting on a
-    /// column several hundred pixels away is the version of this that has to be read twice.
-    /// </summary>
-    [Fact]
-    public void TheBulkTogglesSitAboveTheColumnsTheySweep()
-    {
-        string axaml = Axaml();
-
-        foreach (var (property, header) in new[]
-                 {
-                     ("AllShownLayersVisible", "Vis"),
-                     ("AllShownLayersSelectable", "Sel"),
-                 })
-        {
-            int expected = Array.FindIndex(Columns, c => c.Header == header);
-            var m = Regex.Match(axaml,
-                $@"<ToggleButton Grid\.Column=""(\d+)"" Classes=""coltoggle""\s+IsChecked=""\{{Binding ViewModel\.{property}");
-            Assert.True(m.Success, $"the {header} bulk toggle is gone");
-            Assert.Equal(expected, int.Parse(m.Groups[1].Value));
         }
     }
 
@@ -199,7 +171,7 @@ public sealed class TechEditorLayerColumnLayoutTests
 
     /// <summary>The three column lists of the Layers tab, in file order. Matched by their column
     /// COUNT: the Stackup, DRC and Interchange tabs have grids of their own and none of them has
-    /// eleven.</summary>
+    /// nine.</summary>
     private static List<List<string>> ColumnBlocks()
     {
         var blocks = new List<List<string>>();

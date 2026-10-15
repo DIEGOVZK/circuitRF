@@ -273,8 +273,6 @@ public static class ProcessTechnologyBuilder
                 FillOpacity = fill.Opacity,
                 FillPattern = fill.PatternName,
                 ZOrder      = e.Order,
-                Visible     = e.Visible,
-                Selectable  = true,
                 Purpose     = e.Purpose,
             });
         }

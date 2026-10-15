@@ -827,7 +827,7 @@ public sealed partial class LayoutEditorViewModel
         string baseDir = InstanceBaseDir;
         long px = (long)Math.Round(wx), py = (long)Math.Round(wy);
 
-        foreach (int idx in LayoutHitTest.HitInstanceStack(Model, Technology, baseDir, px, py, tolDbu))
+        foreach (int idx in LayoutHitTest.HitInstanceStack(Model, DrawTechnology, baseDir, px, py, tolDbu))
         {
             var inst = Model.Instances[idx];
             if (inst.CellRef is not { Length: > 0 } cellRef) continue;

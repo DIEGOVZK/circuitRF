@@ -147,9 +147,21 @@ public static class TechPersistence
     /// <see cref="Deserialize(string)"/> would drop it, since the file stores only the references. The
     /// library records themselves are shared: nothing edits a library through a technology (M4).
     /// </summary>
+    /// <remarks>
+    /// <b>It copies <see cref="LayerDef.Visible"/>/<see cref="LayerDef.Selectable"/> across by hand.</b>
+    /// They are view state and the writer leaves them out (brief-layout-layers-panel.md R-lyr-1b), so
+    /// the round trip alone would reset every one to <c>true</c> — silently, in the layout editor's draw
+    /// copy, <see cref="TechnologyLayerSelection"/> and every other caller. Layers are matched by
+    /// position, which the round trip preserves.
+    /// </remarks>
     public static Technology Clone(Technology tech)
     {
         var clone = DeserializeUnresolved(Serialize(tech));
+        for (int i = 0; i < tech.Layers.Count && i < clone.Layers.Count; i++)
+        {
+            clone.Layers[i].Visible    = tech.Layers[i].Visible;
+            clone.Layers[i].Selectable = tech.Layers[i].Selectable;
+        }
         clone.LibraryMaterials = tech.LibraryMaterials;
         clone.ResolvedLibraryPaths = tech.ResolvedLibraryPaths;
         clone.LibraryThermalInterfaces = tech.LibraryThermalInterfaces;

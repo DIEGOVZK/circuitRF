@@ -460,39 +460,6 @@
                         <Button Content="＋ Add Layer" Command="{Binding ViewModel.AddLayerCommand}" FontSize="11" Padding="8,3"/>
                     </StackPanel>
 
-                    <!-- Layers an open layout draws that this technology does not define. Vis and Sel here
-                         last for the session and are never saved: the technology has no layer to keep
-                         them on. Same first three columns as the table above, so the checkboxes line up. -->
-                    <StackPanel DockPanel.Dock="Bottom" Margin="4,2,4,2" Spacing="2"
-                                IsVisible="{Binding ViewModel.HasUndefinedLayers}">
-                        <TextBlock Classes="colhdr" Text="Not in this technology (this session only)"
-                                   ToolTip.Tip="Layers an open layout draws that this technology does not define. Showing, hiding and locking them lasts until circuitRF closes and is not saved; to keep them, add a layer with the same number."/>
-                        <ItemsControl ItemsSource="{Binding ViewModel.UndefinedLayers}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="lay:UndefinedLayerRowViewModel">
-                                    <Grid ColumnSpacing="4" Margin="0,1">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" MinWidth="110"/>
-                                            <ColumnDefinition Width="30"/>
-                                            <ColumnDefinition Width="30"/>
-                                            <ColumnDefinition Width="48"/>
-                                            <ColumnDefinition Width="530"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center" FontSize="11"/>
-                                        <CheckBox Grid.Column="1" HorizontalAlignment="Center" IsChecked="{Binding Visible}"/>
-                                        <CheckBox Grid.Column="2" HorizontalAlignment="Center" IsChecked="{Binding Selectable}"/>
-                                        <Border Grid.Column="3" Width="32" Height="14" CornerRadius="2" HorizontalAlignment="Center"
-                                                BorderBrush="{DynamicResource CrfTileBorderBrush}" BorderThickness="1">
-                                            <Border.Background>
-                                                <SolidColorBrush Color="{Binding SwatchColor}"/>
-                                            </Border.Background>
-                                        </Border>
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-
                     <!-- Both the header row and every item row below declare the SAME column list, so
                          a header always sits exactly above its control.
 
@@ -504,17 +471,12 @@
                          except Name holds fixed-width content already (the widths below are the ones
                          its own control declares), so pinning them loses nothing. -->
                     <Grid RowDefinitions="Auto,Auto,*">
-                        <!-- ── Filter + bulk toggles ─────────────────────────────────
+                        <!-- ── Filter ─────────────────────────────────────────────────
                              Same column list as the header and the rows below, so each control
-                             sits in the column it acts on: the search box in Name, and the two
-                             bulk toggles directly above the Vis and Sel checkbox columns they
-                             sweep. A row of buttons parked at the left, acting on a column 400 px
-                             away, is the version of this that has to be read twice. -->
+                             sits in the column it acts on: the search box in Name. -->
                         <Grid Grid.Row="0" Margin="4,4,4,2" ColumnSpacing="4" x:Name="LayerFilterColumns">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" MinWidth="110"/>
-                                <ColumnDefinition Width="30"/>
-                                <ColumnDefinition Width="30"/>
                                 <ColumnDefinition Width="48"/>
                                 <ColumnDefinition Width="104"/>
                                 <ColumnDefinition Width="44"/>
@@ -531,34 +493,11 @@
                                          ToolTip.Tip="Shows only layers whose name contains this text (case-insensitive). Clear it to show every layer again."/>
                                 <TextBlock Grid.Column="1" Classes="filtercount" Text="{Binding ViewModel.LayerFilterSummary}"/>
                             </Grid>
-
-                            <ToggleButton Grid.Column="1" Classes="coltoggle"
-                                          IsChecked="{Binding ViewModel.AllShownLayersVisible, Mode=TwoWay}"
-                                          ToolTip.Tip="Show or hide every layer currently listed. With a filter active this applies to the filtered layers only, not to the ones it hid from view.">
-                                <Panel>
-                                    <mi:MaterialIcon Kind="Eye" Width="12" Height="12"
-                                                     IsVisible="{Binding ViewModel.AllShownLayersVisible}"/>
-                                    <mi:MaterialIcon Kind="EyeOff" Width="12" Height="12"
-                                                     IsVisible="{Binding !ViewModel.AllShownLayersVisible}"/>
-                                </Panel>
-                            </ToggleButton>
-                            <ToggleButton Grid.Column="2" Classes="coltoggle"
-                                          IsChecked="{Binding ViewModel.AllShownLayersSelectable, Mode=TwoWay}"
-                                          ToolTip.Tip="Make every layer currently listed selectable or unselectable. With a filter active this applies to the filtered layers only, not to the ones it hid from view.">
-                                <Panel>
-                                    <mi:MaterialIcon Kind="SelectAll" Width="12" Height="12"
-                                                     IsVisible="{Binding ViewModel.AllShownLayersSelectable}"/>
-                                    <mi:MaterialIcon Kind="SelectOff" Width="12" Height="12"
-                                                     IsVisible="{Binding !ViewModel.AllShownLayersSelectable}"/>
-                                </Panel>
-                            </ToggleButton>
                         </Grid>
 
                         <Grid Grid.Row="1" Margin="4,4,4,2" ColumnSpacing="4" x:Name="LayerHeaderColumns">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" MinWidth="110"/>
-                                <ColumnDefinition Width="30"/>
-                                <ColumnDefinition Width="30"/>
                                 <ColumnDefinition Width="48"/>
                                 <ColumnDefinition Width="104"/>
                                 <ColumnDefinition Width="44"/>
@@ -582,15 +521,13 @@
                                     </StackPanel>
                                 </Border>
                             </Grid>
-                            <TextBlock Grid.Column="1"  Classes="colhdr" Text="Vis"       HorizontalAlignment="Center"/>
-                            <TextBlock Grid.Column="2"  Classes="colhdr" Text="Sel"       HorizontalAlignment="Center"/>
-                            <TextBlock Grid.Column="3"  Classes="colhdr" Text="Color"     HorizontalAlignment="Center"/>
-                            <TextBlock Grid.Column="4"  Classes="colhdr" Text="Pattern"   HorizontalAlignment="Center"/>
-                            <TextBlock Grid.Column="5"  Classes="colhdr" Text="Fill"      HorizontalAlignment="Center"/>
-                            <TextBlock Grid.Column="6"  Classes="colhdr" Text="Z"         HorizontalAlignment="Center"/>
-                            <TextBlock Grid.Column="7"  Classes="colhdr" Text="Purpose"   HorizontalAlignment="Center"/>
-                            <TextBlock Grid.Column="8"  Classes="colhdr" Text="Layer"     HorizontalAlignment="Center"/>
-                            <TextBlock Grid.Column="9"  Classes="colhdr" Text="Datatype"  HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="1"  Classes="colhdr" Text="Color"     HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="2"  Classes="colhdr" Text="Pattern"   HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="3"  Classes="colhdr" Text="Fill"      HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="4"  Classes="colhdr" Text="Z"         HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="5"  Classes="colhdr" Text="Purpose"   HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="6"  Classes="colhdr" Text="Layer"     HorizontalAlignment="Center"/>
+                            <TextBlock Grid.Column="7"  Classes="colhdr" Text="Datatype"  HorizontalAlignment="Center"/>
                         </Grid>
 
                         <ListBox Grid.Row="2" Classes="rows" x:Name="LayersList" ItemsSource="{Binding ViewModel.FilteredLayers}"
@@ -601,8 +538,6 @@
                                             <Grid ColumnSpacing="4" Tag="LayerRowColumns" Loaded="OnLayerRowColumnsLoaded">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" MinWidth="110"/>
-                                                    <ColumnDefinition Width="30"/>
-                                                    <ColumnDefinition Width="30"/>
                                                     <ColumnDefinition Width="48"/>
                                                     <ColumnDefinition Width="104"/>
                                                     <ColumnDefinition Width="44"/>
@@ -617,9 +552,7 @@
                                                          HorizontalAlignment="Stretch"
                                                          Text="{Binding StagedName}"
                                                          LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"/>
-                                                <CheckBox Grid.Column="1" HorizontalAlignment="Center" IsChecked="{Binding Visible}"/>
-                                                <CheckBox Grid.Column="2" HorizontalAlignment="Center" IsChecked="{Binding Selectable}"/>
-                                                <Button Grid.Column="3" Width="48" Padding="2"
+                                                <Button Grid.Column="1" Width="48" Padding="2"
                                                         Command="{Binding PickColorCommand}"
                                                         CommandParameter="{Binding $parent[Window]}">
                                                     <Border Width="32" Height="14" CornerRadius="2"
@@ -634,24 +567,24 @@
                                                      has colours, so the pattern is usually the half that tells two of them apart.
                                                      A dropdown over the technology's OWN pattern table, not a text field: a typed name
                                                      matching nothing would silently repaint the layer solid with nothing anywhere to say
-                                                     why. Commits on selection, like the visibility checkboxes — a combo has no "finished
+                                                     why. Commits on selection — a combo has no "finished
                                                      editing" moment of its own to wait for. -->
-                                                <ComboBox Grid.Column="4" FontSize="11" Padding="4,2" MinHeight="0"
+                                                <ComboBox Grid.Column="2" FontSize="11" Padding="4,2" MinHeight="0"
                                                           HorizontalAlignment="Stretch"
                                                           ItemsSource="{Binding FillPatternChoices}"
                                                           SelectedItem="{Binding SelectedFillPattern, Mode=TwoWay}"
                                                           ToolTip.Tip="Fill pattern (stipple). Layers a process gives the same colour are usually told apart by this."/>
-                                                <TextBox Grid.Column="5" Classes="cell compact" Width="44" Tag="FillOpacity"
+                                                <TextBox Grid.Column="3" Classes="cell compact" Width="44" Tag="FillOpacity"
                                                          Text="{Binding StagedFillOpacity}"
                                                          LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"/>
-                                                <StackPanel Grid.Column="6" Orientation="Horizontal" Width="70" Spacing="2">
+                                                <StackPanel Grid.Column="4" Orientation="Horizontal" Width="70" Spacing="2">
                                                     <TextBox Classes="cell compact" Width="36" Tag="ZOrder"
                                                              Text="{Binding StagedZOrder}"
                                                              LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"/>
                                                     <Button Content="↑" Padding="2,0" FontSize="10" Command="{Binding MoveUpCommand}"/>
                                                     <Button Content="↓" Padding="2,0" FontSize="10" Command="{Binding MoveDownCommand}"/>
                                                 </StackPanel>
-                                                <TextBox Grid.Column="7" Classes="cell" Tag="Purpose"
+                                                <TextBox Grid.Column="5" Classes="cell" Tag="Purpose"
                                                          Text="{Binding StagedPurpose}"
                                                          LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"/>
                                                 <!-- Layer and Datatype are small integers — 34 px holds three digits with room to spare
@@ -659,13 +592,13 @@
                                                      wide as its own header text ("Datatype" is the widest thing in that column, not the
                                                      field). The SAME 34 is used for the GDSII layer/datatype pair on the Interchange tab
                                                      — same quantity, same size. -->
-                                                <TextBox Grid.Column="8" Classes="cell compact" Width="34" HorizontalAlignment="Center" Tag="LayerNumber"
+                                                <TextBox Grid.Column="6" Classes="cell compact" Width="34" HorizontalAlignment="Center" Tag="LayerNumber"
                                                          Text="{Binding StagedLayerNumber}"
                                                          LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"/>
-                                                <TextBox Grid.Column="9" Classes="cell compact" Width="34" HorizontalAlignment="Center" Tag="Datatype"
+                                                <TextBox Grid.Column="7" Classes="cell compact" Width="34" HorizontalAlignment="Center" Tag="Datatype"
                                                          Text="{Binding StagedDatatype}"
                                                          LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"/>
-                                                <StackPanel Grid.Column="10" Orientation="Horizontal" Spacing="3">
+                                                <StackPanel Grid.Column="8" Orientation="Horizontal" Spacing="3">
                                                     <!-- The same two glyphs the analyses toolbar uses for the
                                                          same two actions, so one meaning has one icon across
                                                          the app rather than a word here and a glyph there. -->

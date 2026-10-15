@@ -65,6 +65,50 @@
         <Style Selector="Button.LayoutBreadcrumbBtn:disabled /template/ ContentPresenter">
             <Setter Property="Background" Value="Transparent"/>
         </Style>
+        <!-- ── Layers list row name (brief-layout-layers-panel.md R-lyr-2): a flat button whose
+             click makes the layer current; the current drawing layer reads bold and accented. ── -->
+        <!-- A bulk Vis/Sel toggle sized by the 24 px column it sits over, so it sheds the theme's
+             default button metrics rather than merely shrinking. -->
+        <Style Selector="ToggleButton.LayerColToggle">
+            <Setter Property="Padding" Value="2"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+            <Setter Property="Width" Value="22"/>
+            <Setter Property="Height" Value="20"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <!-- A Layers-list row; the current drawing layer's row carries the accent tint, edge to
+             edge. CornerRadius keeps the tint from reading as a hard band against the panel. -->
+        <Style Selector="Border.LayerRow">
+            <Setter Property="CornerRadius" Value="3"/>
+        </Style>
+        <Style Selector="Border.LayerRow.LayerRowCurrent">
+            <Setter Property="Background" Value="{DynamicResource CrfCurrentRowBrush}"/>
+        </Style>
+        <Style Selector="Button.LayerNameBtn">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="4,1"/>
+            <Setter Property="MinHeight" Value="0"/>
+        </Style>
+        <Style Selector="Button.LayerNameBtn /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.LayerNameBtn.LayerNameCurrent">
+            <Setter Property="Foreground" Value="{DynamicResource CrfCurrentRowTextBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <!-- Fluent's hover and press styles recolour the template's ContentPresenter, which beats the
+             Button's own Foreground — so the current layer's name lost its accent while the pointer was
+             still on it, right after it was clicked. Kept on the presenter for both states. -->
+        <Style Selector="Button.LayerNameBtn:pointerover /template/ ContentPresenter, Button.LayerNameBtn:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="Button.LayerNameBtn.LayerNameCurrent:pointerover /template/ ContentPresenter, Button.LayerNameBtn.LayerNameCurrent:pressed /template/ ContentPresenter">
+            <Setter Property="Foreground" Value="{DynamicResource CrfCurrentRowTextBrush}"/>
+        </Style>
     </UserControl.Styles>
 
     <DockPanel>
@@ -532,25 +576,41 @@
                         <Border Width="1" VerticalAlignment="Stretch" Margin="2,3"
                                 Background="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
 
-                        <TextBlock Text="Layer:" VerticalAlignment="Center" FontSize="11" Margin="4,0,0,0"/>
-                        <ComboBox ItemsSource="{Binding ActiveViewModel.AvailableLayers}"
-                                  SelectedItem="{Binding ActiveViewModel.CurrentLayerItem, Mode=TwoWay}"
-                                  FontSize="11" Padding="6,2" MinHeight="0" VerticalContentAlignment="Center"
-                                  MinWidth="120">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate x:DataType="lay:LayerPickerItem">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <Border Width="12" Height="12" CornerRadius="2"
-                                                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="1">
-                                            <Border.Background>
-                                                <SolidColorBrush Color="{Binding SwatchColor}"/>
-                                            </Border.Background>
-                                        </Border>
-                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
+                        <!-- "Layer:", its combobox and the Layers button wrap as ONE unit: as separate
+                             WrapPanel children a narrow window broke the row between the label and the
+                             box it labels. Spacing 4 is the WrapPanel's own ItemSpacing, so nothing
+                             moves when the row does not wrap. -->
+                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                            <TextBlock Text="Layer:" VerticalAlignment="Center" FontSize="11" Margin="4,0,0,0"/>
+                            <ComboBox ItemsSource="{Binding ActiveViewModel.AvailableLayers}"
+                                      SelectedItem="{Binding ActiveViewModel.CurrentLayerItem, Mode=TwoWay}"
+                                      FontSize="11" Padding="6,2" MinHeight="0" VerticalContentAlignment="Center"
+                                      VerticalAlignment="Center"
+                                      MinWidth="120">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="lay:LayerPickerItem">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Border Width="12" Height="12" CornerRadius="2"
+                                                    BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="1">
+                                                <Border.Background>
+                                                    <SolidColorBrush Color="{Binding SwatchColor}"/>
+                                                </Border.Background>
+                                            </Border>
+                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <!-- brief-layout-layers-panel.md R-lyr-2: the Layers list, beside the combobox
+                                 it stays in step with. A Button with the ToolActive lamp, as railRF's
+                                 board-pane list is opened. -->
+                            <Button x:Name="LayerListBtn" Padding="6,3"
+                                    Classes.ToolActive="{Binding ActiveViewModel.ShowLayerList}"
+                                    Command="{Binding ActiveViewModel.ToggleLayerListCommand}"
+                                    ToolTip.Tip="Layers (L) — show, hide and lock drawing layers in this view. Saved for you, not in the .ctech or the layout.">
+                                <mi:MaterialIcon Kind="LayersSearchOutline" Width="16" Height="16"/>
+                            </Button>
+                        </StackPanel>
 
                         <Border Width="1" VerticalAlignment="Stretch" Margin="2,3"
                                 Background="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
@@ -769,6 +829,126 @@
              src/Ui/CLAUDE.md for what is and is not confirmed about the reported toolbar-visibility
              issue — the Grid-vs-DockPanel choice was never actually shown to matter. -->
         <DockPanel>
+
+            <!-- ── Layers list (brief-layout-layers-panel.md R-lyr-2) ───────────────────────
+                 Docked right of the canvas and declared FIRST, so it claims the full height and
+                 the horizontal ruler spans only the canvas — railRF's board-pane list, whose look
+                 this copies. Vis, Sel, swatch and name per row; clicking a name makes it the
+                 drawing layer. Colour and order are .ctech properties and are not edited here. -->
+            <Border x:Name="LayerListPanel" DockPanel.Dock="Right"
+                    Width="{Binding ActiveViewModel.LayerListWidth}"
+                    IsVisible="{Binding ActiveViewModel.ShowLayerList}"
+                    Background="{DynamicResource SystemChromeLowColor}"
+                    BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                    BorderThickness="1,0,0,0" Padding="0,6,6,6">
+                <Grid ColumnDefinitions="6,*">
+                <!-- The width grip: drag the panel's left edge to resize it, double-click it to return
+                     to the default. The width is saved with this layout's layer choices. -->
+                <Border Grid.Column="0" x:Name="LayerListGrip" Background="Transparent"
+                        Cursor="SizeWestEast"
+                        PointerPressed="OnLayerListGripPressed"
+                        PointerMoved="OnLayerListGripMoved"
+                        PointerReleased="OnLayerListGripReleased"
+                        ToolTip.Tip="Drag to widen or narrow the Layers list. Double-click to restore its default width."/>
+                <DockPanel Grid.Column="1" Margin="2,0,0,0">
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="2">
+                        <Button Grid.Column="0" Padding="2" VerticalAlignment="Center"
+                                Command="{Binding ActiveViewModel.ToggleLayerListCommand}"
+                                ToolTip.Tip="Close the Layers list (L)">
+                            <mi:MaterialIcon Kind="ChevronRight" Width="14" Height="14"/>
+                        </Button>
+                        <TextBlock Grid.Column="1" FontSize="11" FontWeight="SemiBold" Margin="4,0,0,0"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                   Text="{Binding ActiveViewModel.LayerListHeader}"/>
+                        <!-- R-lyr-3: the one-click answer to "a click keeps picking the plane". -->
+                        <ToggleButton Grid.Column="2" x:Name="CurrentLayerOnlyToggle" Padding="5,3"
+                                      VerticalAlignment="Center"
+                                      IsChecked="{Binding ActiveViewModel.SelectCurrentLayerOnly, Mode=TwoWay}"
+                                      ToolTip.Tip="Select on the current layer only — a click, marquee or Select All picks shapes on the drawing layer and nothing else.">
+                            <mi:MaterialIcon Kind="TargetVariant" Width="14" Height="14"/>
+                        </ToggleButton>
+                        <!-- Disabled, not hidden, while nothing is off, so the way back is visible
+                             before it is needed. -->
+                        <Button Grid.Column="3" x:Name="ShowAllLayersBtn" Padding="5,3" VerticalAlignment="Center"
+                                Command="{Binding ActiveViewModel.ShowAllLayersCommand}"
+                                ToolTip.Tip="Show all — make every layer visible and selectable again.">
+                            <mi:MaterialIcon Kind="Eye" Width="14" Height="14"/>
+                        </Button>
+                    </Grid>
+                    <!-- Bulk Vis / Sel, each directly above the column it sweeps, acting on the rows
+                         the filter is SHOWING, and the filter itself beside them — one row, as the
+                         technology editor's Layers tab had it. The first two columns are the rows'
+                         own, so each toggle sits over its own boxes. A process with hundreds of layers
+                         is unworkable without the filter; Page Up/Down typed in it still page the list
+                         (PanelScrollKeys' rule). -->
+                    <Grid DockPanel.Dock="Top" ColumnDefinitions="24,24,*,Auto" RowDefinitions="Auto,Auto" Margin="0,6,0,2">
+                        <ToggleButton Grid.Row="0" Grid.Column="0" Classes="LayerColToggle" x:Name="AllListedVisibleToggle"
+                                      IsChecked="{Binding ActiveViewModel.AllListedLayersVisible, Mode=TwoWay}"
+                                      ToolTip.Tip="Show or hide every layer listed. With a filter active this applies to the filtered layers only, not to the ones it hid from view.">
+                            <Panel>
+                                <mi:MaterialIcon Kind="Eye" Width="12" Height="12"
+                                                 IsVisible="{Binding ActiveViewModel.AllListedLayersVisible}"/>
+                                <mi:MaterialIcon Kind="EyeOff" Width="12" Height="12"
+                                                 IsVisible="{Binding !ActiveViewModel.AllListedLayersVisible}"/>
+                            </Panel>
+                        </ToggleButton>
+                        <ToggleButton Grid.Row="0" Grid.Column="1" Classes="LayerColToggle" x:Name="AllListedSelectableToggle"
+                                      IsChecked="{Binding ActiveViewModel.AllListedLayersSelectable, Mode=TwoWay}"
+                                      ToolTip.Tip="Make every layer listed selectable or unselectable. With a filter active this applies to the filtered layers only, not to the ones it hid from view.">
+                            <Panel>
+                                <mi:MaterialIcon Kind="SelectAll" Width="12" Height="12"
+                                                 IsVisible="{Binding ActiveViewModel.AllListedLayersSelectable}"/>
+                                <mi:MaterialIcon Kind="SelectOff" Width="12" Height="12"
+                                                 IsVisible="{Binding !ActiveViewModel.AllListedLayersSelectable}"/>
+                            </Panel>
+                        </ToggleButton>
+                        <TextBox Grid.Row="0" Grid.Column="2" x:Name="LayerListFilterBox" Margin="6,0,6,0"
+                                 FontSize="11" Padding="4,2" MinHeight="0" VerticalAlignment="Center"
+                                 Text="{Binding ActiveViewModel.LayerListFilter, Mode=TwoWay}"
+                                 PlaceholderText="Filter by layer name..."
+                                 ToolTip.Tip="Shows only layers whose name contains this text (case-insensitive). Clear it to show every layer again."/>
+                        <TextBlock Grid.Row="0" Grid.Column="3" FontSize="10" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource SystemBaseMediumColor}"
+                                   Text="{Binding ActiveViewModel.LayerListFilterSummary}"/>
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Vis" FontSize="10" Opacity="0.7" HorizontalAlignment="Center"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="Sel" FontSize="10" Opacity="0.7" HorizontalAlignment="Center"/>
+                    </Grid>
+                    <ScrollViewer x:Name="LayerListScroll" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding ActiveViewModel.FilteredLayerRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="lay:LayoutLayerRowViewModel">
+                                    <Border Classes="LayerRow" Classes.LayerRowCurrent="{Binding IsCurrent}">
+                                    <Grid ColumnDefinitions="24,24,18,*" Margin="0,1">
+                                        <CheckBox Grid.Column="0" Padding="0" MinWidth="0" HorizontalAlignment="Center"
+                                                  IsChecked="{Binding Visible}"
+                                                  ToolTip.Tip="Draw this layer in this view"/>
+                                        <CheckBox Grid.Column="1" Padding="0" MinWidth="0" HorizontalAlignment="Center"
+                                                  IsChecked="{Binding Selectable}" IsEnabled="{Binding Visible}"
+                                                  ToolTip.Tip="Let a click, marquee or Select All pick shapes on this layer"/>
+                                        <Border Grid.Column="2" Width="12" Height="12" CornerRadius="2"
+                                                VerticalAlignment="Center" HorizontalAlignment="Center"
+                                                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                                                BorderThickness="1">
+                                            <Border.Background>
+                                                <SolidColorBrush Color="{Binding SwatchColor}"/>
+                                            </Border.Background>
+                                        </Border>
+                                        <Button Grid.Column="3" Classes="LayerNameBtn" Margin="4,0,0,0"
+                                                Classes.LayerNameCurrent="{Binding IsCurrent}"
+                                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                Command="{Binding MakeCurrentCommand}"
+                                                ToolTip.Tip="{Binding Tip}">
+                                            <TextBlock Text="{Binding Name}" FontSize="11" TextTrimming="CharacterEllipsis"/>
+                                        </Button>
+                                    </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </DockPanel>
+                </Grid>
+            </Border>
 
             <!-- Top row: corner box + horizontal ruler -->
             <DockPanel x:Name="RulerRow" DockPanel.Dock="Top" Height="22">

@@ -39642,3 +39642,65 @@ anything, and (c) where the examples were.
   `▸` search misses them, and `LvsDocumentedPageTests` asserts one).
 - The schematic context menu's **Rotate 90°** now shows its `R` accelerator, like Mirror's `M`; the reference page
   gained a **Keys at a glance** table.
+
+## The layout editor's own Layers list; visibility is view state (brief-layout-layers-panel.md, 2026-10-15)
+
+A first-time user clicking a microstrip line over a ground plane kept selecting the plane and could not stop
+it: the only switch was the `.ctech`'s Sel column, behind Technology ▾ ▸ Edit…, and flipping it dirtied a
+technology every layout shares.
+
+- **One seam: `LayoutEditorViewModel.DrawTechnology`** (`LayoutEditorViewModel.Layers.cs`). A clone of
+  `Technology` with the view's hidden/locked sets and current-layer-only folded into `Visible`/`Selectable`
+  — ANDed with what the copy already says, so an in-memory technology built with a layer off keeps it off.
+  The same instance while nothing is off. Cache key: source reference, `LayerViewVersion`, and the current
+  layer when current-layer-only is on.
+- **The reader audit.** Already on `DrawTechnology`: `ResolveLayerDef` (Select All, marquee, snap grab,
+  impedance scope), `HitStack`/`HitInstanceStack` at the click, the canvas render and double-tap. **Moved to
+  it:** `FindClipStencil`, `FindBitmapForContextMenu`, `FindBrokenInstanceForContextMenu`, both
+  `LayoutSnapQuery.FindCandidates` calls, every `LayoutConductorLookup.LookupFor` in the editor and the
+  shape-properties panel (it reads `Visible` for "what metal is on screen"), the canvas's Zoom to Fit, and
+  the clipboard picture (so a hidden layer neither paints nor sizes the page, the 2026-09-04 report). Each
+  had read `Technology`, which carried the flags until the `.ctech` stopped holding them — so each would have
+  silently stopped honouring a hidden layer. Booleans, exports, DRC/LVS/EM, 3D read `Technology`.
+- **Undefined layers** (shapes on keys the technology lacks) are rows of the list now; `UndefinedLayerSession`
+  and the technology editor's "Not in this technology" rows are gone. Under current-layer-only the draw copy
+  carries a fallback-palette row for every such key, or a click would still pick them.
+- **Storage** is the workspace's `_layoutLayerViews` (full path → `CwsLayoutLayerView`), seeded into each
+  session in `BuildLayoutSessionVm` BEFORE the technology is applied (so the default drawing layer is chosen
+  from layers the view shows), remembered on every `LayerViewChanged`, written workspace-relative.
+  **Re-keyed on a tree move, a cell rename and the primary-file rename** (`MoveLayoutLayerViews`) — the 3D
+  camera and drawing-plane maps beside it still are not, so their entries are orphaned by a move.
+- The technology editor lost its Vis/Sel columns and bulk toggles; the live `.ctech` seam carries colour and
+  fill only (`TechnologyLiveDisplayEditTests` now edits a colour).
+- **Filter and page keys** (owner follow-up, same day): `LayerListFilter` narrows `FilteredLayerRows`, which
+  is what the list binds; Show all and the header count still act on every row. Page keys follow
+  `PanelScrollKeys` through a tunnel on `LayerListPanel` (filter box and rows), and `OnViewKeyDownTunnel`
+  forwards Page Up/Down from the CANVAS while the list is open — the canvas gives them no meaning and is where
+  focus nearly always is, so without that the keys would work only after clicking into the list. Checked in a
+  headless harness on a 61-layer process: offset 0 → 556 → 0 from the box, 0 → 556 from the canvas.
+- **Bulk Vis/Sel toggles came back** (owner follow-up, same day) — the technology editor's pair, now over the
+  list's own columns: `AllListedLayersVisible`/`AllListedLayersSelectable`, setter-not-command, scoped to
+  `FilteredLayerRows` exactly as the old ones were scoped to the tech editor's filter. Show all still acts on
+  every row. One `LayerViewEdited` per sweep.
+- **The filter box shares the bulk toggles' row, and the list's width is the user's** (owner follow-up, same
+  day). A 6 px grip on the panel's left edge drags `LayerListWidth` live (measured against the view, since the
+  grip moves with the panel) and `CommitLayerListWidth` on release raises `LayerViewChanged` once; double-click
+  restores `DefaultLayerListWidth`. It is saved as `CwsLayoutLayerView.ListWidth` beside the layer choices —
+  per layout, null at the default, so an untouched layout still writes no entry. Clamped to 180–700 px and
+  never so wide the canvas drops below 200 px. Headless check: a 120 px drag took 240 → 360 with one save.
+- **Open/close: toolbar Layers button, the › in the list's header, View ▸ Layers List, and bare L** anywhere in
+  the layout view (`LayoutEditorView.TryToggleLayerList`, first thing in `OnViewKeyDownTunnel`, so it also works
+  with focus in the list). Not from a TextBox or ComboBox, nor while a label is being typed — there L is a
+  letter. Closing while the list holds focus focuses the canvas. **The native View item has no `Gesture`**: a
+  macOS native plain-L shortcut would take L from every text field in the app (the 3D Realistic View item
+  follows the same rule), so its tooltip names the key instead.
+- **The current drawing layer's row is tinted edge to edge** (`Border.LayerRow.LayerRowCurrent`), with its name
+  bold in the accent. `CrfCurrentRowBrush`/`CrfCurrentRowTextBrush` are PER THEME in `CircuitRfResources`
+  (accent at 0.16 light / 0.32 dark; text `SystemAccentColorDark1` / `Light2`) because one opacity was plain on
+  light and near-black on dark, and the bare accent as text was low-contrast on dark navy. Lighter than
+  `CrfSelectedRowBrush` so "current" never reads as "selected". **Trap:** Fluent's `:pointerover`/`:pressed`
+  recolour the template's ContentPresenter, which beats the Button's own Foreground — the name lost its accent
+  while the pointer was still on it after the click. Kept on the presenter for both states. Headless check:
+  the combobox set to Bottom Copper moved the tint there; a double-click on "Outline" moved both.
+- Three menu tests had gone stale with commit 367aa7a0 (Examples moved from Tools to File ▸ New) and IM-14
+  (Tools ▸ Digitise Plot…); their exact-order lists were updated.

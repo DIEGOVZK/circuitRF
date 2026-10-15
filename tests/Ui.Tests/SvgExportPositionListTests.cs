@@ -86,7 +86,10 @@ public class SvgExportPositionListTests(ITestOutputHelper output)
         List<LayoutShape> shapes =
         [
             new RectShape  { Layer = new LayerKey(1, 0), X1 = 0, Y1 = 0, X2 = 100_000, Y2 = 50_000 },
-            new LabelShape { Layer = new LayerKey(1, 0), X = 10_000, Y = 25_000, Height = 12_000, Text = "PORT1" },
+            // Sans, not the default stroke font: a stroke label is drawn as lines, never as an SVG
+            // <text> run, so it could not carry the defect this guards.
+            new LabelShape { Layer = new LayerKey(1, 0), X = 10_000, Y = 25_000, Height = 12_000, Text = "PORT1",
+                             Font = LabelFont.Sans },
         ];
 
         var result = LayoutClipboard.TryRenderToSvg(shapes, tech, LayoutRenderTheme.Light, transparent: true);

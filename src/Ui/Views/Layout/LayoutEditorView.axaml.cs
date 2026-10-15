@@ -86,6 +86,109 @@ public partial class LayoutEditorView : UserControl
             OnViewKeyDownTunnel,
             RoutingStrategies.Tunnel,
             handledEventsToo: true);
+
+        // Page Up/Down/Home/End over the Layers list while focus is inside it — its filter box or a
+        // row's box (brief-layout-layers-panel.md, owner follow-up 2026-10-15).
+        LayerListPanel.AddHandler(KeyDownEvent, OnLayerListScrollKeyDown, RoutingStrategies.Tunnel);
+    }
+
+    // ── Page Up / Page Down / Home / End over the Layers list ─────────────────
+    //
+    // The same rule the technology editor's Layers tab pages by (PanelScrollKeys): Page Up/Down always,
+    // Home/End only when the keystroke is not from a text field, where they move the caret.
+
+    private void OnLayerListScrollKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (PanelScrollKeys.ActionFor(e.Key, e.Source is TextBox) is not { } action) return;
+        PanelScrollKeys.Apply(action, LayerListScroll);
+        e.Handled = true;
+    }
+
+    // ── The Layers list's width grip ──────────────────────────────────────────
+    //
+    // The panel is docked right, so dragging its LEFT edge leftward widens it. Measured against this
+    // view, not the grip: the grip moves as the panel widens, so a delta read in its own coordinate
+    // space would be measuring itself. Live while dragging; committed (and so saved to the .cwsuser)
+    // on release. Double-click restores the default.
+
+    private double? _layerGripOriginX;
+    private double _layerGripBaseWidth;
+
+    private void OnLayerListGripPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not Border grip || DataContext is not LayoutDocument doc) return;
+        if (e.ClickCount >= 2)
+        {
+            _layerGripOriginX = null;
+            doc.ActiveViewModel.CommitLayerListWidth(LayoutEditorViewModel.DefaultLayerListWidth);
+            e.Pointer.Capture(null);
+            e.Handled = true;
+            return;
+        }
+        _layerGripOriginX   = e.GetPosition(this).X;
+        _layerGripBaseWidth = LayerListPanel.Bounds.Width;
+        e.Pointer.Capture(grip);
+        e.Handled = true;
+    }
+
+    private void OnLayerListGripMoved(object? sender, PointerEventArgs e)
+    {
+        if (_layerGripOriginX is not { } origin || DataContext is not LayoutDocument doc) return;
+        doc.ActiveViewModel.LayerListWidth = LayerListGripWidth(e.GetPosition(this).X - origin);
+        e.Handled = true;
+    }
+
+    private void OnLayerListGripReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_layerGripOriginX is not { } origin) return;
+        _layerGripOriginX = null;
+        e.Pointer.Capture(null);
+        if (DataContext is LayoutDocument doc)
+            doc.ActiveViewModel.CommitLayerListWidth(LayerListGripWidth(e.GetPosition(this).X - origin));
+        e.Handled = true;
+    }
+
+    /// <summary>The width a drag of <paramref name="dx"/> asks for, clamped — and never so wide that the
+    /// canvas is squeezed below 200 px.</summary>
+    private double LayerListGripWidth(double dx)
+    {
+        double max = Math.Min(LayoutEditorViewModel.MaxLayerListWidth, Math.Max(LayoutEditorViewModel.MinLayerListWidth, Bounds.Width - 200));
+        return Math.Clamp(_layerGripBaseWidth - dx, LayoutEditorViewModel.MinLayerListWidth, max);
+    }
+
+    /// <summary>
+    /// <b>L</b> opens and closes the Layers list from anywhere in this view — the canvas, the list itself,
+    /// the toolbar's buttons — so the canvas can have the whole width back and the list returns in one
+    /// key. Bare L only (the same guard D, M and S take), never from a field that types it: a text box,
+    /// a combobox's type-to-select, or a label being typed on the canvas, where L is a letter.
+    /// Closing the list while it holds focus hands focus to the canvas, or the next key would go nowhere.
+    /// </summary>
+    private bool TryToggleLayerList(KeyEventArgs e, LayoutDocument doc)
+    {
+        if (e.Key != Key.L || e.KeyModifiers != KeyModifiers.None || e.Handled) return false;
+        if (!IsKeyboardFocusWithin || e.Source is TextBox or ComboBox) return false;
+        var vm = doc.ActiveViewModel;
+        if (vm.IsTypingLabel) return false;
+
+        bool focusWasInList = LayerListPanel.IsKeyboardFocusWithin;
+        vm.ShowLayerList = !vm.ShowLayerList;
+        if (focusWasInList && !vm.ShowLayerList) LayoutCanvasCtrl.Focus();
+        e.Handled = true;
+        return true;
+    }
+
+    /// <summary>
+    /// Page Up/Down with focus on the canvas page the Layers list when it is open — the canvas gives the
+    /// two keys no meaning, and the canvas is where focus sits nearly all the time, so without this the
+    /// keys would work only after clicking into the list. Home/End are left alone here.
+    /// </summary>
+    private bool TryPageLayerList(KeyEventArgs e)
+    {
+        if (e.Key is not (Key.PageUp or Key.PageDown) || e.KeyModifiers != KeyModifiers.None) return false;
+        if (!LayerListPanel.IsVisible) return false;
+        PanelScrollKeys.Apply(PanelScrollKeys.ActionFor(e.Key, sourceIsTextInput: false)!.Value, LayerListScroll);
+        e.Handled = true;
+        return true;
     }
 
     // ── The host surface (WB39a) ──────────────────────────────────────────────
@@ -204,12 +307,7 @@ public partial class LayoutEditorView : UserControl
         base.OnDetachedFromVisualTree(e);
         SubscribeToPanelVisibility(null);
         ThemeService.ThemeChanged -= OnActiveThemeChanged;
-        UndefinedLayerSession.Changed -= OnUndefinedLayerSessionChanged;
     }
-
-    /// <summary>A layer the technology does not define was hidden or locked from the technology
-    /// editor's session rows — repaint, since the canvas draws <c>DrawTechnology</c>.</summary>
-    private void OnUndefinedLayerSessionChanged(string techPath) => LayoutCanvasCtrl.InvalidateVisual();
 
     /// <summary>
     /// A different THEME was selected (not a light/dark flip) — re-resolve the wire palette and
@@ -235,8 +333,6 @@ public partial class LayoutEditorView : UserControl
         // Unsubscribe first: a re-attach must not stack a second handler on a static event.
         ThemeService.ThemeChanged -= OnActiveThemeChanged;
         ThemeService.ThemeChanged += OnActiveThemeChanged;
-        UndefinedLayerSession.Changed -= OnUndefinedLayerSessionChanged;
-        UndefinedLayerSession.Changed += OnUndefinedLayerSessionChanged;
         ApplyCanvasOverlay();   // the theme may have moved while this view was out of the tree
     }
 
@@ -419,6 +515,7 @@ public partial class LayoutEditorView : UserControl
 
     private void OnViewKeyDownTunnel(object? sender, KeyEventArgs e)
     {
+        if (DataContext is LayoutDocument layersDoc && TryToggleLayerList(e, layersDoc)) return;
         if (!LayoutCanvasCtrl.IsKeyboardFocusWithin) return; // a toolbar text field owns its own Escape
         if (DataContext is not LayoutDocument doc) return;
 
@@ -452,6 +549,8 @@ public partial class LayoutEditorView : UserControl
             e.Handled = true;
             return;
         }
+
+        if (TryPageLayerList(e)) return;
 
         if (e.Key != Key.Escape) return;
 
@@ -1407,8 +1506,10 @@ public partial class LayoutEditorView : UserControl
         // is geometry, so the JSON payload (what circuitRF's own paste reads) deliberately carries
         // none of either. vm.Overlay.DrcMarkers is already exactly "current markers, or empty when
         // the panel's toggle is off / nothing has been checked" (LayoutEditorViewModel.Drc.cs).
+        // The graphic is drawn with DrawTechnology — what this view shows — so a layer hidden in the
+        // Layers list is neither painted nor sizes the page (brief-layout-layers-panel.md R-lyr-5).
         await LayoutClipboard.CopyAsync(
-            clipboard, payload, vm.Technology, ownerHwnd,
+            clipboard, payload, vm.DrawTechnology, ownerHwnd,
             vm.InstanceBaseDir,
             vm.ShowPlanarMesh ? vm.PlanarMeshReport : null,
             vm.ShowPlanarMesh ? vm.PlanarCurrentDensity : null,

@@ -22,8 +22,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 10,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "conductor",
       "Interchange": {
         "GerberSuffix": "GTL",
@@ -44,8 +42,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 0,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "conductor",
       "Interchange": {
         "GerberSuffix": "GBL",
@@ -66,8 +62,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 1002,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "GerberSuffix": "GTS",
@@ -88,8 +82,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 1003,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drill",
       "Interchange": {
         "GerberSuffix": "drl",

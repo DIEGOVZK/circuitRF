@@ -108,6 +108,39 @@ chrome — background, grid, rulers, selection, handles — does follow the them
 their (layer, datatype) pair, a warning is posted, and editing proceeds. The one thing it *does* block
 is an EM run, which refuses rather than inventing a stackup.
 
+## Layers {#layers}
+
+The **Layers** button beside the toolbar's **Layer:** box — or **L**, or **View ▸ Layers List** — opens
+a list of the layout's drawing layers at the right of the canvas. The same three close it again, as does
+the **›** button at its top left, giving the canvas the whole width. The list shows the technology's
+layers, then any layer this layout draws on that the technology does not define.
+
+| Column | What it does |
+|---|---|
+| **Vis** | Shows or hides the layer in this view. |
+| **Sel** | Whether a click, a marquee, Select All or a snap grab can pick a shape on the layer. Unavailable while the layer is hidden, because a hidden layer is never picked. |
+| Swatch and name | Click the name to draw on that layer — the same as choosing it in the **Layer:** box, and the two stay in step. |
+
+Drag the list's left edge to make it wider or narrower; double-click the edge to return to the default
+width. Type in the box beside the two column buttons to show only the layers whose name contains that text; the count
+beside it reads, for example, **17 of 61** while it is narrowing the list. The two buttons above the
+**Vis** and **Sel** columns turn that column on or off for every layer **listed** — with a filter typed,
+only the layers it shows, so "hide every pin layer" is a filter and one click. **Page Up** and **Page Down**
+page through the list, whether you are in the box, in the list, or on the canvas while the list is open.
+
+**Select on the current layer only** (the target button in the list's header) lets a click pick only
+shapes on the drawing layer, whatever the **Sel** column says. It is the quick way to work on a trace
+that lies on a ground plane: choose the trace's layer, turn it on, and the plane can no longer be
+picked. **Show all** makes every layer visible and selectable again.
+
+**Click again to select the next shape underneath.** A second click at the same spot moves to the next
+overlapping shape — see [Selection](#selection).
+
+**These choices are yours, not the design's.** They are not written to the `.clay` or the `.ctech`,
+changing them never marks anything unsaved, and they never affect an export, a design-rule check or a
+simulation. circuitRF keeps them, and the list's width, per layout in the workspace's `.cwsuser` file, so each layout reopens
+as you left it. A layout opened without a workspace keeps them until circuitRF closes.
+
 ## Drawing and editing {#tools}
 
 **Drawing tools:** Select · Rect · RoundedRect · Circle · Polygon · Curve · Path · Label · Port ·

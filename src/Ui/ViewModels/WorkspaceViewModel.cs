@@ -1562,6 +1562,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
             _scratchSmithCharts.Clear();
             _registry.Clear();
             _layoutRegistry.Clear();
+            _layoutLayerViews = null;   // the next workspace's .cwsuser holds its own
             ResetTechCache();
             CurrentWorkspacePath = cwsPath;
 
@@ -2062,6 +2063,8 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
             // brief-em3d-45 — each 3D editor's drawing plane, beside the cameras.
             ws.C3dDrawingPlanes = DrawingPlanesToPersist();
             ws.C3dActiveSetups = ActiveSetupsToPersist();
+            // brief-layout-layers-panel.md R-lyr-4 — each layout's Layers list, per user like the rest.
+            ws.LayoutLayerViews = LayoutLayerViewsToPersist();
 
             if (_factory.ProjectTreeTool?.FilterState is { } fs)
             {
@@ -2492,6 +2495,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         _scratchSmithCharts.Clear();
         _registry.Clear();
         _layoutRegistry.Clear();
+        _layoutLayerViews = null;   // the next workspace's .cwsuser holds its own
         ResetTechCache();
         // SL4 R-sl4-1: the outgoing workspace's advisory lock is dropped and the incoming one's taken,
         // while the OLD path is still readable. A read-only workspace takes none and needs none.
@@ -12132,6 +12136,9 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
     private LayoutEditorViewModel BuildLayoutSessionVm(LayoutView model, string absClayPath)
     {
         var vm = new LayoutEditorViewModel(model, absClayPath, messageSink: Messages);
+        // R-lyr-4 — the user's own Layers list for this layout, BEFORE the technology, so the default
+        // drawing layer is chosen from layers this view shows and lets be selected.
+        AttachLayoutLayerView(vm, absClayPath);
         vm.ApplyTechResolution(ResolveTechFor(model.TechRef, absClayPath));
         vm.SaveError += OnLayoutSaveError;
         // R-em-17 — an open .cem re-reads this layout whenever it is edited. Subscribed HERE, at the
@@ -15635,6 +15642,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
 
         try { Directory.Move(oldDir, newDir); }
         catch (Exception ex) { Messages.Error($"Rename failed: {ex.Message}"); return; }
+        MoveLayoutLayerViews(oldDir, newDir);   // R-lyr-4: the layouts' Layers lists come along
 
         // Repoint every reference that RESOLVES to the folder that just moved — including one from
         // another open workspace, which an external reference makes possible (MW2 R-mw2-15). Matching
@@ -15687,6 +15695,9 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
                     break;
 
                 case PrimaryRenameOutcome.Renamed when result.ViewType == ViewType.Layout:
+                    MoveLayoutLayerViews(
+                        Path.Combine(CellFolder.SubFolderPath(cellDir, ViewType.Layout), result.OldFileName!),
+                        Path.Combine(CellFolder.SubFolderPath(cellDir, ViewType.Layout), result.NewFileName!));
                     RenamePairedWBond(
                         workspaceDir,
                         CellFolder.SubFolderPath(cellDir, ViewType.Layout),
@@ -16364,6 +16375,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         // Same document-type gate, same fan-out — see the standing gotcha note further down: a
         // [RelayCommand(CanExecute=...)] gated on the active document is NOT re-evaluated on its own.
         ClearAllRulersCommand.NotifyCanExecuteChanged();
+        ToggleLayoutLayerListCommand.NotifyCanExecuteChanged();   // View ▸ Layers List — a layout only
 
         // Export GDSII/DXF (item 8) are enabled only when a layout document is active.
         ExportGdsiiCommand.NotifyCanExecuteChanged();

@@ -129,25 +129,28 @@ public sealed class DesignerRound18Tests : IDisposable
         Assert.Empty(declared.AllTraces);
     }
 
+    /// <summary>A layer the technology does not define (an import's paste stencil, say) is a row of the
+    /// layout's own Layers list, and hiding it leaves the technology untouched
+    /// (brief-layout-layers-panel.md R-lyr-2; it was a session-only row in the technology editor).</summary>
     [Fact]
-    public void ALayerTheTechnologyLacks_CanBeHiddenForTheSession_AndTheTechnologyIsUntouched()
+    public void ALayerTheTechnologyLacks_CanBeHiddenInTheLayout_AndTheTechnologyIsUntouched()
     {
-        UndefinedLayerSession.Reset();
         string techPath = WorkspaceCreate.InstallTechnology(_root, TwoLayerId);
         var tech = TechPersistence.LoadFromFile(techPath);
         var paste = new LayerKey(11, 0);
-        UndefinedLayerSession.Seen(techPath, [paste]);
-        var editor = new TechEditorViewModel(techPath, TechPersistence.LoadOwnFromFile(techPath));
+        var view = new LayoutView { DbuPerMicron = 1000 };
+        view.Shapes.Add(new RectShape { Layer = paste, X1 = 0, Y1 = 0, X2 = 1_000, Y2 = 1_000 });
+        var vm = new LayoutEditorViewModel(view);
+        vm.ApplyTechResolution(new TechResolution(tech, techPath, TechResolutionSource.WorkspaceDefault, []));
 
-        var row = Assert.Single(editor.UndefinedLayers);
-        Assert.Same(tech, UndefinedLayerSession.WithSessionLayers(tech, techPath));   // nothing hidden, nothing copied
+        var row = Assert.Single(vm.LayerRows, r => r.Key == paste);
+        Assert.False(row.IsDefined);
+        Assert.Same(tech, vm.DrawTechnology);                    // nothing hidden, nothing copied
         row.Visible = false;
 
-        var drawn = UndefinedLayerSession.WithSessionLayers(tech, techPath);
-        Assert.False(drawn.Layers.Single(l => l.Key == paste).Visible);
+        Assert.False(vm.DrawTechnology!.Layers.Single(l => l.Key == paste).Visible);
         Assert.DoesNotContain(tech.Layers, l => l.Key == paste);
-        Assert.False(editor.IsDirty);
-        UndefinedLayerSession.Reset();
+        Assert.False(vm.IsDirty);
     }
 
     /// <summary>Picking the conductor the other end is on makes the ends trade places, so the boxes can still

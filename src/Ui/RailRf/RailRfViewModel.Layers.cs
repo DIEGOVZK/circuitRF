@@ -14,17 +14,16 @@
 //
 // ── ONE VISIBLE SET REACHES THE DRAWING, NOT TWO ───────────────────────────────────────────────
 //
-// The window OVERRIDES the technology in either direction — `RailDocument.HiddenLayers` hides a
-// layer the `.ctech` draws, `ShownLayers` shows one it does not — and `RailDocument.Shows` is the
-// one answer both the renderer and the map overlay are given (SyncHiddenLayers). Two answers to one
-// question is how the overlay came to float a drop map over copper that was no longer drawn, which
-// is the defect SyncHiddenLayers' own comment records.
+// `RailDocument.HiddenLayers` is the whole answer, and `RailDocument.Shows` is the one question both
+// the renderer and the map overlay are given (SyncHiddenLayers). Two answers to one question is how
+// the overlay came to float a drop map over copper that was no longer drawn, which is the defect
+// SyncHiddenLayers' own comment records.
 //
-// Until 2026-09-23 the window could only HIDE: its set was unioned with the technology's, so a
-// layer whose Vis box was off in the `.ctech` was a disabled row here and the only way to see it
-// was to edit the technology — exactly the route this list was built to retire (a field report).
-// A layer the window has not decided about still follows the `.ctech`, live.
-//
+// Until brief-layout-layers-panel.md this window OVERRIDED the `.ctech`'s own Vis boxes in either
+// direction, with a "Follow the technology" button to clear its overrides. A technology carries no
+// visibility any more (that brief's D1), so every layer shows unless this window hides it, and the
+// button became "Show all".
+
 // ── AND IT NEVER RE-SOLVES ─────────────────────────────────────────────────────────────────────
 //
 // StackupSignature already draws this line and states why: a user turning a layer off is asking a
@@ -66,38 +65,28 @@ public sealed partial class RailRfViewModel
 
     private int HiddenLayerCount => BoardLayers.Count(r => !r.Visible);
 
-    /// <summary>True while this window draws any layer differently from the technology — what
-    /// <see cref="FollowTechnologyCommand"/> has to undo, and the only state in which it does
-    /// anything.</summary>
-    public bool HasLayerOverrides => _document.HiddenLayers.Count > 0 || _document.ShownLayers.Count > 0;
+    /// <summary>True while this window hides any layer — the only state in which
+    /// <see cref="ShowAllLayersCommand"/> does anything.</summary>
+    public bool HasLayerOverrides => _document.HiddenLayers.Count > 0;
 
-    /// <summary>
-    /// Clears the window's overrides, so every layer reads what the <c>.ctech</c> says now
-    /// (R-rail20-1e).
-    /// </summary>
-    /// <remarks>
-    /// <b>Without it the two drift with nothing able to reconcile them.</b> A user who has hidden
-    /// four layers has no other way to find out what the document itself states — and no way back to
-    /// it short of ticking four boxes and hoping they were the four.
-    /// </remarks>
+    /// <summary>Shows every layer again (R-rail20-1e). Disabled, not hidden, while nothing is hidden,
+    /// so the way back is visible before it is needed.</summary>
     [RelayCommand(CanExecute = nameof(HasLayerOverrides))]
-    private void FollowTechnology()
+    private void ShowAllLayers()
     {
         if (!HasLayerOverrides) return;
         _document.HiddenLayers.Clear();
-        _document.ShownLayers.Clear();
         ApplyLayerVisibility();
         RefreshDirty();
     }
 
     /// <summary>
-    /// Rebuilds the rows from the resolved technology, keeping this window's own overrides.
+    /// Rebuilds the rows from the resolved technology, keeping this window's hidden set.
     /// </summary>
     /// <remarks>
-    /// <b>The rows are SEEDED from the technology's <c>Visible</c></b> and are the window's own
-    /// thereafter. An override naming a layer the new technology does not define is dropped here
-    /// rather than kept: it cannot be shown in the list, so it would be an invisible override that
-    /// nothing could clear but "Follow the technology".
+    /// A hidden key naming a layer the new technology does not define is dropped here rather than
+    /// kept: it cannot be shown in the list, so it would be an invisible choice nothing could clear
+    /// but "Show all".
     /// </remarks>
     private void RebuildBoardLayers()
     {
@@ -106,32 +95,21 @@ public sealed partial class RailRfViewModel
         if (Board?.Technology is { } tech)
         {
             _document.HiddenLayers.RemoveWhere(k => !tech.Layers.Any(l => l.Key == k));
-            _document.ShownLayers.RemoveWhere(k => !tech.Layers.Any(l => l.Key == k));
 
             foreach (var layer in tech.Layers.OrderBy(l => l.ZOrder).ThenBy(l => l.Key.Layer)
                                              .ThenBy(l => l.Key.Datatype))
-                BoardLayers.Add(new RailLayerRowViewModel(
-                    layer, _document.Shows(layer), !layer.Visible, SetLayerVisible));
+                BoardLayers.Add(new RailLayerRowViewModel(layer, _document.Shows(layer), SetLayerVisible));
         }
 
         AnnounceLayerList();
     }
 
     /// <summary>
-    /// One row's box moved. <b>The only writer of the two override sets.</b>
+    /// One row's box moved. <b>The only writer of the hidden set.</b>
     /// </summary>
-    /// <remarks>
-    /// An override is recorded only where the box now DIFFERS from the technology — a box ticked back
-    /// to what the <c>.ctech</c> says removes the entry, so the layer follows the technology again
-    /// and "Follow the technology" has nothing left to do for it.
-    /// </remarks>
     private void SetLayerVisible(LayerKey key, bool visible)
     {
-        bool techShows = Board?.Technology.Layers.FirstOrDefault(l => l.Key == key)?.Visible ?? true;
-
-        bool changed = _document.HiddenLayers.Remove(key) | _document.ShownLayers.Remove(key);
-        if (visible != techShows)
-            changed |= (visible ? _document.ShownLayers : _document.HiddenLayers).Add(key);
+        bool changed = visible ? _document.HiddenLayers.Remove(key) : _document.HiddenLayers.Add(key);
         if (!changed) return;
 
         ApplyLayerVisibility();
@@ -152,8 +130,7 @@ public sealed partial class RailRfViewModel
         SyncHiddenLayers();
 
         foreach (var row in BoardLayers)
-            row.Refresh(row.HiddenByTechnology ? _document.ShownLayers.Contains(row.Key)
-                                               : !_document.HiddenLayers.Contains(row.Key));
+            row.Refresh(!_document.HiddenLayers.Contains(row.Key));
 
         AnnounceLayerList();
     }
@@ -162,11 +139,11 @@ public sealed partial class RailRfViewModel
     {
         OnPropertyChanged(nameof(LayerListHeader));
         OnPropertyChanged(nameof(HasLayerOverrides));
-        FollowTechnologyCommand.NotifyCanExecuteChanged();
+        ShowAllLayersCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>
-    /// What the CANVAS draws with: the board's technology where this window overrides nothing, and a
+    /// What the CANVAS draws with: the board's technology where this window hides nothing, and a
     /// clone of it with this window's visibility where it does.
     /// </summary>
     /// <remarks>
@@ -176,7 +153,7 @@ public sealed partial class RailRfViewModel
     /// cache, in the layout editor beside this window included.
     /// <see cref="TechnologyLayerSelection"/> exists for exactly this and says so at length.
     ///
-    /// <para><b>And the resolved instance where nothing is overridden</b>, deliberately: a clone per
+    /// <para><b>And the resolved instance where nothing is hidden</b>, deliberately: a clone per
     /// adoption would make <see cref="AdoptTechnology"/>'s reference test compare two copies of one
     /// technology, and it would cost a reflective copy of the whole layer table on every live
     /// <c>.ctech</c> keystroke for a picture that is not being narrowed.</para>

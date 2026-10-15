@@ -1940,8 +1940,6 @@ namespace RfCore.Export
         int     Datatype,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         string? Purpose,
-        bool    Visible,
-        bool    Selectable,
         string  Color,
         string  Fill,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

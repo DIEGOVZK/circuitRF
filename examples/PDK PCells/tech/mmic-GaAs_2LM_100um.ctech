@@ -22,8 +22,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 8,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -40,8 +38,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 9,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -58,8 +54,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 7,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -76,8 +70,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 6,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -94,8 +86,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 5,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -112,8 +102,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 4,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -130,8 +118,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 1,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -148,8 +134,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 2,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -166,8 +150,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 10,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -184,8 +166,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 3,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     }
   ],

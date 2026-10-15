@@ -533,7 +533,7 @@ public static class TechnologyMerge
     private static LayerDef Clone(LayerDef l) => new()
     {
         Key = l.Key, Name = l.Name, Color = l.Color, FillOpacity = l.FillOpacity,
-        ZOrder = l.ZOrder, Visible = l.Visible, Selectable = l.Selectable,
+        ZOrder = l.ZOrder,
         Purpose = l.Purpose, Interchange = l.Interchange,
     };
 

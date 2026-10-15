@@ -158,11 +158,6 @@ public static class RailDocumentIo
                    .OrderBy(k => k.Layer).ThenBy(k => k.Datatype)
                    .Select(k => new CrailLayerKey { Layer = k.Layer, Datatype = k.Datatype })]
             : null,
-        ShownLayers = d.ShownLayers.Count > 0
-            ? [.. d.ShownLayers
-                   .OrderBy(k => k.Layer).ThenBy(k => k.Datatype)
-                   .Select(k => new CrailLayerKey { Layer = k.Layer, Datatype = k.Datatype })]
-            : null,
         DisplayUnit = d.DisplayUnit?.ToString(),
         Rails = d.Rails.Count > 0 ? [.. d.Rails.Select(ToFile)] : null,
         // Deterministic order, so a document saved twice with no edit in between is the same bytes
@@ -351,7 +346,6 @@ public static class RailDocumentIo
         if (!doc.Panels.AnyShown) doc.Panels = new RailPanels();
 
         foreach (var k in f.HiddenLayers ?? []) doc.HiddenLayers.Add(new LayerKey(k.Layer, k.Datatype));
-        foreach (var k in f.ShownLayers ?? [])  doc.ShownLayers.Add(new LayerKey(k.Layer, k.Datatype));
 
         // Lenient, for Placement.Units' reason: a token this build does not know falls back to the
         // unseeded state, which the next board read seeds again — recoverable, where a throw would
@@ -519,9 +513,9 @@ public static class RailDocumentIo
         /// is every document written before railRF had a layer list of its own.</summary>
         public List<CrailLayerKey>? HiddenLayers { get; set; }
 
-        /// <summary>The drawing layers the window draws although the technology does not. <b>Absent
-        /// means none.</b></summary>
-        public List<CrailLayerKey>? ShownLayers { get; set; }
+        // An older document may also carry `ShownLayers` — the layers it drew although the `.ctech`
+        // hid them. It is ignored on read (an unknown key): a technology no longer hides anything
+        // (brief-layout-layers-panel.md D1), so every layer shows unless this window hides it.
 
         /// <summary>The unit this document's reports print in. Absent on every document written
         /// before it existed; the next board read seeds it.</summary>

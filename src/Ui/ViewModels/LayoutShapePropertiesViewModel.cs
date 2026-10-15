@@ -922,7 +922,7 @@ public sealed partial class LayoutShapePropertiesViewModel : ObservableObject
     {
         if (labels.Count != 1 || _vm is null) { PortWidthText = labels.Count > 1 ? "(multiple)" : ""; return; }
 
-        var lookup = LayoutConductorLookup.LookupFor(_vm.Model, _vm.Technology, _vm.InstanceBaseDir);
+        var lookup = LayoutConductorLookup.LookupFor(_vm.Model, _vm.DrawTechnology, _vm.InstanceBaseDir);
         PortWidthText = LayoutPortDirection.Resolve(lookup, labels[0]) is { } hint
             ? LayoutUnits.Format(hint.WidthDbu, _vm.Model.DisplayUnit, _vm.Model.DbuPerMicron) + " " + LayoutUnits.Suffix(_vm.Model.DisplayUnit)
             : "(not on a conductor)";
@@ -937,7 +937,7 @@ public sealed partial class LayoutShapePropertiesViewModel : ObservableObject
     {
         var lookup = _vm is null
             ? null
-            : LayoutConductorLookup.LookupFor(_vm.Model, _vm.Technology, _vm.InstanceBaseDir);
+            : LayoutConductorLookup.LookupFor(_vm.Model, _vm.DrawTechnology, _vm.InstanceBaseDir);
 
         var kinds = labels.Select(l => LayoutPortDirection.KindOf(lookup, l)).Distinct().ToList();
         PortKindValue = kinds.Count == 1 ? OptionOfKind(kinds[0]) : null;

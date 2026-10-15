@@ -1,4 +1,5 @@
 using CircuitRF.Design.Cells;
+using CircuitRF.Design.Layout;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -165,6 +166,14 @@ public sealed class CwsFile
     /// </summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<string, string>? C3dActiveSetups { get; set; }
+
+    /// <summary>
+    /// brief-layout-layers-panel.md R-lyr-4 — each layout's Layers list (what it hides and locks), keyed
+    /// by its <c>.clay</c>'s workspace-relative path. View state, so it is <b>persisted in the sibling
+    /// <c>.cwsuser</c></b>, never in the <c>.clay</c> or the <c>.ctech</c>.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, CwsLayoutLayerView>? LayoutLayerViews { get; set; }
 
     /// <summary>
     /// Documents open in the main DocumentDock when the workspace was last saved.

@@ -54,20 +54,22 @@ namespace CircuitRF.Ui.Tests.Layout;
 
 public class TechnologyLiveDisplayEditTests
 {
+    private static readonly Rgba Red = new(255, 0, 0, 255);
+
     /// <summary>
-    /// The designer's report as a test: untick <c>Vis</c>, do NOT save, and railRF stops drawing
-    /// that layer.
+    /// The designer's report as a test: change a layer's display in the <c>.ctech</c>, do NOT save,
+    /// and railRF draws the change. It was the <c>Vis</c> box then; since brief-layout-layers-panel.md
+    /// a technology carries no visibility, so the display edit the seam carries is colour and fill.
     /// </summary>
     [Fact]
-    public void AnUnsavedVisibilityEditReachesRailRf()
+    public void AnUnsavedDisplayEditReachesRailRf()
     {
         using var h = new Harness();
         var key = new LayerKey(1, 0);
 
-        h.ToggleVisible(key, false);
+        h.Recolor(key, Red);
 
-        Assert.Contains(key, h.Rail.BoardOverlayLayer.HiddenLayers);
-        Assert.False(h.Rail.BoardLayout!.Technology!.Layers.Single(l => l.Key == key).Visible);
+        Assert.Equal(Red, h.Rail.BoardLayout!.Technology!.Layers.Single(l => l.Key == key).Color);
     }
 
     /// <summary>
@@ -86,14 +88,14 @@ public class TechnologyLiveDisplayEditTests
     {
         using var h = new Harness();
 
-        h.ToggleVisible(new LayerKey(1, 0), false);
+        h.Recolor(new LayerKey(1, 0), Red);
         var afterFirst = h.Rail.Board!.Technology;
 
-        h.ToggleVisible(new LayerKey(2, 0), false);
+        h.Recolor(new LayerKey(2, 0), Red);
 
         Assert.NotSame(afterFirst, h.Rail.Board!.Technology);     // a fresh instance, not a mutation
-        Assert.Contains(new LayerKey(1, 0), h.Rail.BoardOverlayLayer.HiddenLayers);
-        Assert.Contains(new LayerKey(2, 0), h.Rail.BoardOverlayLayer.HiddenLayers);
+        Assert.Equal(Red, h.Rail.Board!.Technology.Layers.Single(l => l.Key == new LayerKey(1, 0)).Color);
+        Assert.Equal(Red, h.Rail.Board!.Technology.Layers.Single(l => l.Key == new LayerKey(2, 0)).Color);
     }
 
     /// <summary>
@@ -103,18 +105,18 @@ public class TechnologyLiveDisplayEditTests
     /// <remarks>
     /// <b>Not two seams.</b> A live edit carries the whole working copy, because that is what the
     /// layout editor beside this window is already drawing with and a second, narrower reading of
-    /// one file could disagree with it. What must not happen is a visibility toggle costing a
+    /// one file could disagree with it. What must not happen is a colour change costing a
     /// re-solve, and what must happen is a copper thickness invalidating numbers priced against the
     /// old one — railRF cannot tell the two apart from the outside, so it compares the stackup.
     /// </remarks>
     [Fact]
-    public void AVisibilityEditKeepsTheNumbersAndAStackupEditDoesNot()
+    public void ADisplayEditKeepsTheNumbersAndAStackupEditDoesNot()
     {
         using var h = new Harness();
         h.Rail.RunCommand.Execute(null);
         Assert.NotEmpty(h.Rail.ByModel);
 
-        h.ToggleVisible(new LayerKey(1, 0), false);
+        h.Recolor(new LayerKey(1, 0), Red);
         Assert.NotEmpty(h.Rail.ByModel);                          // the picture moved, not the board
 
         h.Edit(w => w.Stackup.Layers[0].ThicknessDbu += 1_000, "Thicken L1");
@@ -131,7 +133,7 @@ public class TechnologyLiveDisplayEditTests
     public void TheSavePathStillInvalidates()
     {
         using var h = new Harness();
-        h.ToggleVisible(new LayerKey(1, 0), false);
+        h.Recolor(new LayerKey(1, 0), Red);
 
         Assert.True(h.Editor.IsDirty);
         Assert.True(h.Cache.HasLiveOverride(h.TechPath));
@@ -142,8 +144,8 @@ public class TechnologyLiveDisplayEditTests
         Assert.False(h.Editor.IsDirty);
         Assert.False(h.Cache.HasLiveOverride(h.TechPath));        // Invalidate drops the override
         Assert.Contains(h.TechPath, h.Changed);                   // and the seam fired
-        Assert.False(TechPersistence.LoadFromFile(h.TechPath)
-                                    .Layers.Single(l => l.Key == new LayerKey(1, 0)).Visible);
+        Assert.Equal(Red, TechPersistence.LoadFromFile(h.TechPath)
+                                         .Layers.Single(l => l.Key == new LayerKey(1, 0)).Color);
     }
 
     /// <summary>
@@ -231,9 +233,9 @@ public class TechnologyLiveDisplayEditTests
             if (Cache.Get(path) is { } tech) Rail.AdoptTechnology(tech);
         }
 
-        /// <summary>One layer's <c>Vis</c> box, through the editor's own row and its own commit.</summary>
-        public void ToggleVisible(LayerKey key, bool visible) =>
-            Editor.Layers.Single(r => r.Layer.Key == key).Visible = visible;
+        /// <summary>One layer's colour, through the editor's own commit funnel.</summary>
+        public void Recolor(LayerKey key, Rgba color) =>
+            Edit(w => w.Layers.Single(l => l.Key == key).Color = color, "Recolor");
 
         /// <summary>Any other edit, through the same funnel a row uses.</summary>
         public void Edit(Action<Technology> write, string description)

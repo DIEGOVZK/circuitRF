@@ -84,28 +84,18 @@ public class LayoutLiveTechnologyTests
         Assert.Equal(new Rgba(9, 8, 7), h.LayoutVm.Technology!.Layers[0].Color);
     }
 
+    /// <summary>The seam carries colour and FILL — not visibility, which is the layout's own view
+    /// state since brief-layout-layers-panel.md.</summary>
     [Fact]
-    public void LiveVisibleToggle_WithoutSaving_PropagatesImmediately()
+    public void LiveFillEdit_WithoutSaving_PropagatesImmediately()
     {
         using var h = new Harness(FreshTech());
 
         var before = h.EditorVm.SnapshotJson();
-        h.EditorVm.Layers[0].Layer.Visible = false;
-        h.EditorVm.CommitEdit(before, "Toggle visible");
+        h.EditorVm.Layers[0].Layer.FillOpacity = 0.8;
+        h.EditorVm.CommitEdit(before, "Change fill");
 
-        Assert.False(h.LayoutVm.Technology!.Layers[0].Visible);
-    }
-
-    [Fact]
-    public void LiveSelectableToggle_WithoutSaving_PropagatesImmediately()
-    {
-        using var h = new Harness(FreshTech());
-
-        var before = h.EditorVm.SnapshotJson();
-        h.EditorVm.Layers[0].Layer.Selectable = false;
-        h.EditorVm.CommitEdit(before, "Toggle selectable");
-
-        Assert.False(h.LayoutVm.Technology!.Layers[0].Selectable);
+        Assert.Equal(0.8, h.LayoutVm.Technology!.Layers[0].FillOpacity);
     }
 
     // ── R-fix-1: always a deep clone, never Working itself ────────────────────

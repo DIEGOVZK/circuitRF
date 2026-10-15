@@ -187,12 +187,14 @@ public class FileMenuRestructureTests
     // workspace-scoped document alongside the technology it reads, so it belongs beside it. These
     // two lists stay EXACT and ORDERED on purpose: that is what keeps the hand-mirrored in-window
     // and macOS menus from drifting apart, so an addition updates them rather than loosening them.
+    // Examples joined LAST, after a separator (field feedback round 1, 2026-10-15) — moved here from
+    // Tools; its rows are filled in at run time from what is on disk. A separator reads as "".
     private static readonly string[] ExpectedNewSubmenuInWindow =
         ["New _Cell…", "New _Schematic", "New S_ymbol", "New _Layout", "New _3D Design…", "New _Data Display",
-         "New _Technology…", "New _EM Setup…"];
+         "New _Technology…", "New _EM Setup…", "", "_Examples"];
     private static readonly string[] ExpectedNewSubmenuNative =
         ["New Cell…", "New Schematic", "New Symbol", "New Layout", "New 3D Design…", "New Data Display",
-         "New Technology…", "New EM Setup…"];
+         "New Technology…", "New EM Setup…", "", "Examples"];
 
     [Fact]
     public void InWindowNewSubmenu_ExactOrder()

@@ -665,21 +665,7 @@ public partial class TechEditorView : UserControl
     {
         base.OnAttachedToVisualTree(e);
         FocusForScrollingDeferred(onlyIfUnclaimed: true);
-
-        // A static event: subscribed while attached only, so a closed editor is not held by it.
-        UndefinedLayerSession.Changed -= OnUndefinedLayerSessionChanged;
-        UndefinedLayerSession.Changed += OnUndefinedLayerSessionChanged;
-        (DataContext as TechDocument)?.ViewModel.RebuildUndefinedLayers();
     }
-
-    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
-    {
-        base.OnDetachedFromVisualTree(e);
-        UndefinedLayerSession.Changed -= OnUndefinedLayerSessionChanged;
-    }
-
-    private void OnUndefinedLayerSessionChanged(string techPath) =>
-        (DataContext as TechDocument)?.ViewModel.RebuildUndefinedLayers();
 
     /// <param name="onlyIfUnclaimed">Take focus only when nothing else already holds it. The
     /// activation hook may pass false because an explicit activation IS the claim; an attach may

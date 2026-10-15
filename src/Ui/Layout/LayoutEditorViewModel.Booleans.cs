@@ -269,7 +269,7 @@ public sealed partial class LayoutEditorViewModel
     public int? FindClipStencil(double wx, double wy, long tolDbu)
     {
         long px = (long)Math.Round(wx), py = (long)Math.Round(wy);
-        foreach (var idx in LayoutHitTest.HitStack(Model, Technology, px, py, tolDbu))
+        foreach (var idx in LayoutHitTest.HitStack(Model, DrawTechnology, px, py, tolDbu))
             if (LayoutBooleans.IsClipperOperand(Model.Shapes[idx])) return idx;
         return null;
     }

@@ -166,43 +166,6 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
     /// Lets the workspace know which open documents to refresh when that file changes.</summary>
     internal string? ResolvedTechPath { get; private set; }
 
-    /// <summary>
-    /// <see cref="Technology"/> as the canvas DRAWS and hit-tests it: with the session's toggles for
-    /// the layers this layout draws that the technology does not define (<see cref="UndefinedLayerSession"/>).
-    /// The same instance as <see cref="Technology"/> until someone hides or locks such a layer. Only
-    /// drawing and picking read it — anything that saves, exports or installs a technology reads
-    /// <see cref="Technology"/>, so the session's rows can never reach a file.
-    /// </summary>
-    internal Technology? DrawTechnology
-    {
-        get
-        {
-            var tech = Technology;
-            if (tech is null || ResolvedTechPath is not { } path) return tech;
-            int version = UndefinedLayerSession.Version;
-            if (ReferenceEquals(_drawTechSource, tech) && _drawTechVersion == version) return _drawTech;
-            _drawTech = UndefinedLayerSession.WithSessionLayers(tech, path);
-            _drawTechSource = tech;
-            _drawTechVersion = version;
-            return _drawTech;
-        }
-    }
-
-    private Technology? _drawTech, _drawTechSource;
-    private int _drawTechVersion = -1;
-
-    /// <summary>Records every layer the document's own shapes use that <paramref name="tech"/> does not
-    /// define, so the technology editor can list them.</summary>
-    private void RecordUndefinedLayers(Technology? tech, string? techPath)
-    {
-        if (tech is null || techPath is null) return;
-        var defined = tech.Layers.Select(l => l.Key).ToHashSet();
-        var undefined = new HashSet<LayerKey>();
-        foreach (var shape in Model.Shapes)
-            if (!defined.Contains(shape.Layer)) undefined.Add(shape.Layer);
-        if (undefined.Count > 0) UndefinedLayerSession.Seen(techPath, undefined);
-    }
-
     public string TechNameText => Technology?.Name ?? "No technology";
 
     public string LayerCountText => Technology is null ? "fallback colors" : $"{Technology.Layers.Count} layers";
@@ -231,6 +194,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         OnPropertyChanged(nameof(ViaToolAvailability));
         OnPropertyChanged(nameof(ViaToolTipText));
         RebuildAvailableLayers();
+        RebuildLayerRows();
         RebuildSnapLadderOptions();
     }
 
@@ -242,7 +206,6 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
     {
         ResolvedTechPath = resolution.ResolvedPath;
         Technology        = resolution.Tech;
-        RecordUndefinedLayers(resolution.Tech, resolution.ResolvedPath);
 
         // R-lbl-1 (docs/sonnet-briefs/brief-layout-label-fix-and-text-flatten.md): seed the label-
         // height default from the technology exactly once — the first time a technology resolves for
@@ -509,6 +472,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         RebuildSnapLadderOptions();
 
         RebuildAvailableLayers();
+        RebuildLayerRows();
 
         // Every AddShapeCommand (and future L1c/L1d mutations) fires Model.Changed; the metadata-bar
         // readouts and the empty-layout placeholder are all computed from Model.Shapes/Instances, so
@@ -724,9 +688,9 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
     /// seen for this open document — never once per shape, never inside the render loop.</summary>
     public void ReportUnknownLayers(IReadOnlyList<LayerKey> keys)
     {
+        NoteUndefinedLayers(keys);
         foreach (var key in keys)
         {
-            if (ResolvedTechPath is { } path) UndefinedLayerSession.Seen(path, [key]);
             if (!_warnedUnknownLayers.Add(key)) continue;
             _messageSink?.Warning($"Layer {key.Layer}/{key.Datatype} is not defined in '{TechNameText}' — using a generated fallback color.");
         }
@@ -991,7 +955,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         // onLayer: null — a PLACEMENT is a gesture, so it asks what VISIBLE metal is here. That is
         // what keeps a port from landing on a layer the user has switched off, and it is the moment
         // the port's own PortLayer commitment is made (LayoutPortDirection.LookupFor states the rule).
-        var conductorAt = LayoutConductorLookup.LookupFor(Model, Technology, InstanceBaseDir);
+        var conductorAt = LayoutConductorLookup.LookupFor(Model, DrawTechnology, InstanceBaseDir);
 
         // ── THE TOGGLE DECIDES, AND IT DECIDES BY MOVING THE LABEL — NOT BY REMEMBERING A MODE ────
         //
@@ -1162,7 +1126,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         // only has to be on the metal; the mesher decides which gridline it lands on.
         var (sx, sy) = LayoutSnapping.SnapPoint(wx, wy, Model.SnapDbu, suspend: false);
 
-        var conductorAt = LayoutConductorLookup.LookupFor(Model, Technology, InstanceBaseDir);
+        var conductorAt = LayoutConductorLookup.LookupFor(Model, DrawTechnology, InstanceBaseDir);
         var picked = conductorAt(sx, sy, null);
         if (picked is null)
         {
@@ -2255,7 +2219,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
     /// </summary>
     private Bbox PortMarkerRegion(LabelShape label)
     {
-        var conductorAt = LayoutConductorLookup.LookupFor(Model, Technology, InstanceBaseDir);
+        var conductorAt = LayoutConductorLookup.LookupFor(Model, DrawTechnology, InstanceBaseDir);
         var hint = LayoutPortDirection.Resolve(conductorAt, label);
 
         // The label's own type when it states one, the SAME inference the renderer makes when it
@@ -2307,7 +2271,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         if (shapeIndex < 0 || shapeIndex >= Model.Shapes.Count) return PlanarPortKind.Edge;
         if (Model.Shapes[shapeIndex] is not LabelShape { IsPort: true } port) return PlanarPortKind.Edge;
         return LayoutPortDirection.KindOf(
-            LayoutConductorLookup.LookupFor(Model, Technology, InstanceBaseDir), port);
+            LayoutConductorLookup.LookupFor(Model, DrawTechnology, InstanceBaseDir), port);
     }
 
     /// <summary>
@@ -2869,7 +2833,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         // target: the port reaches the edge along the free axis and does not budge on the locked one.
         if (_pointSnapDragActive && !_portDragIsTypedInternal && GeometrySnapEnabled)
         {
-            var portConductorAt = LayoutConductorLookup.LookupFor(Model, Technology, InstanceBaseDir);
+            var portConductorAt = LayoutConductorLookup.LookupFor(Model, DrawTechnology, InstanceBaseDir);
             long lx = _moveAnchorX + dx, ly = _moveAnchorY + dy;
             if (portConductorAt(lx, ly, null) is { } onMetal
                 && LayoutPortDirection.NearestBoundaryPoint(onMetal, lx, ly) is { } edge)
@@ -3086,7 +3050,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         }
         if (!anyPort) return null;
 
-        var conductorAt = LayoutConductorLookup.LookupFor(Model, Technology, InstanceBaseDir);
+        var conductorAt = LayoutConductorLookup.LookupFor(Model, DrawTechnology, InstanceBaseDir);
 
         IUiCommand? combined = null;
         foreach (int i in shapeIndices)
@@ -3356,6 +3320,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         if (!_seedingLayers) _chosenLayerKey = value;
         OnPropertyChanged(nameof(ViaToolAvailability));
         OnPropertyChanged(nameof(ViaToolTipText));
+        RefreshLayerRows();
     }
 
     /// <summary>Repopulates <see cref="AvailableLayers"/> from <see cref="Technology"/> (ordered by
@@ -3403,7 +3368,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
 
     /// <summary>
     /// The layer to land on when nothing has been picked (or the pick no longer exists): the topmost
-    /// CONDUCTOR in stackup order that the technology marks both visible and selectable, failing that
+    /// CONDUCTOR in stackup order that this view shows and lets be selected (the Layers list), failing that
     /// the first visible-and-selectable layer of any kind (ZOrder order), failing that simply the first.
     /// No technology, or one with no conductor, lands on those fallbacks.
     ///
@@ -3423,7 +3388,8 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         if (Technology is not { Layers.Count: > 0 } tech) return AvailableLayers.FirstOrDefault();
 
         bool Usable(LayerPickerItem item) =>
-            tech.Layers.FirstOrDefault(l => l.Key == item.Key) is { Visible: true, Selectable: true };
+            tech.Layers.FirstOrDefault(l => l.Key == item.Key) is { Visible: true, Selectable: true }
+            && IsLayerShown(item.Key) && IsLayerSelectableInList(item.Key);
 
         // "Topmost" is the STACKUP's order (top to bottom), never ZOrder: ZOrder is paint order, and a
         // board technology paints Bottom Copper beneath Top Copper — so the lowest ZOrder conductor is
@@ -4413,7 +4379,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
                 if (reseatPorts && clone is LabelShape { IsPort: true } portClone
                     && Model.Shapes[idx] is LabelShape original)
                 {
-                    portConductorAt ??= LayoutConductorLookup.LookupFor(Model, Technology, InstanceBaseDir);
+                    portConductorAt ??= LayoutConductorLookup.LookupFor(Model, DrawTechnology, InstanceBaseDir);
                     var seat = LayoutPortDirection.Reseat(portConductorAt, original, _moveLiveDx, _moveLiveDy);
                     portClone.PortDirection = seat.Direction;
                     portClone.PortLayer     = seat.Layer;

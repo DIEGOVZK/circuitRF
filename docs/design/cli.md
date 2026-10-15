@@ -1062,7 +1062,7 @@ deliberately (§11.3).
   `ReservedFolders`, below the firewall, shared with the tree's own scanner. On a cell folder it
   reports that one cell, in the same shape — which is what makes it composable with `render`.
 - **`--layers`** *(a `.clay`, a `.ctech`, a cell or a workspace)* — the resolved technology's layers,
-  each with its number/datatype pair, purpose, visibility, selectability, colour and fill, **and how
+  each with its number/datatype pair, purpose, colour and fill, **and how
   many shapes this document draws on it**. That last field is what makes this worth having (R-rnd3-5):
   a technology defines every layer a process has and a given `.clay` draws on a handful, so a caller
   told only the technology's list will ask `render --layers` for empty layers and conclude the render
@@ -1207,8 +1207,8 @@ Per §3.2, with `diagnostics` carrying the findings and `result` carrying the re
                                    "views":[{"type","primary","state","candidates","defect"}]}],
 
                          "layers":{"technology","resolvedFrom","resolvedBy","truncated",
-                                   "layers":[{"name","number","datatype","purpose","visible",
-                                              "selectable","color","fill","shapes","instancesUsing"}]},
+                                   "layers":[{"name","number","datatype","purpose",
+                                              "color","fill","shapes","instancesUsing"}]},
 
                          "extents":{"x0","y0","x1","y1","width","height","window","unit","scale",
                                     "empty","note",
@@ -1938,8 +1938,9 @@ across frames — which is what every existing export already passes.
 --grid                   default off      --no-rulers   default: whatever the document says
 ```
 
-The default is every layer the resolved technology marks visible — `LayerDef.Visible`, which is what the
-editor honours, not "all layers regardless". **The selection is applied to a CLONE of the resolved
+The default is **every layer**. A `.ctech` carries no visibility (brief-layout-layers-panel.md): which
+layers a layout shows is each user's own view state, kept in the `.cwsuser`, so a headless picture never
+depends on anyone's view settings. **The selection is applied to a CLONE of the resolved
 technology, never to the cached one**: `TechnologyCache` hands back a shared instance and flipping
 `Visible` on it would leak into the next render in the same process, which is not hypothetical because
 `serve` runs many calls in one. That is the class of defect that only appears on the second call.

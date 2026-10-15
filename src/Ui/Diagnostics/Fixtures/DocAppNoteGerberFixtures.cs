@@ -314,7 +314,8 @@ public static class DocAppNoteGerberFixtures
     {
         var result = Import(copy, use: false);
         var vm = Editor(result, out var tech);
-        foreach (var layer in tech.Layers.Where(l => l.Name != "Top")) layer.Visible = false;
+        // Hidden in the view's own Layers list — visibility is not the technology's (brief-layout-layers-panel.md D1).
+        foreach (var layer in tech.Layers.Where(l => l.Name != "Top")) vm.SetLayerVisible(layer.Key, false);
         return new FigureScene(new LayoutEditorView { DataContext = new LayoutDocument(Path.GetFileName(result.ImportDir!), vm) })
         {
             AfterLayout = root => FrameOn(root, BendTeeAndStub),

@@ -19747,3 +19747,25 @@ costs no simulation. **The trust-region model is excluded** although it estimate
 surface, and on an E12 L-section's staircase it stalled at 8.2 nH / 1.5 pF (cost 0.258) after 11 evaluations, where
 simplex, pattern, random, DE, PSO, CMA-ES, Bayesian and Auto all reached the Discrete grid's best, 15 nH / 1.2 pF
 (0.0041). Gate: `DesignerRound20Tests.ADerivativeFreeAlgorithm_SimulatesOnlySeriesValues_AGradientOneStillSnaps`.
+
+## Layer visibility and selectability left the `.ctech` (brief-layout-layers-panel.md, 2026-10-15)
+
+- **`LayerDef.Visible`/`Selectable` are `[JsonIgnore]` runtime properties now.** Never written, ignored on
+  read (an older `.ctech` with `"Visible": false` opens visible — owner's decision, no migration). Every
+  tracked `.ctech` had the keys stripped by a text-level edit (JSON verified equal minus the two keys), not
+  a re-save, so nothing else in those files churned. `LayoutLayersPanelTests` scans the tracked folders.
+- **THE TRAP: `TechPersistence.Clone` is a JSON round trip.** With the flags ignored, every clone reset them
+  to `true` — silently, in the layout editor's draw copy, `TechnologyLayerSelection` (the `render`
+  `--layers` clone) and every other caller. `Clone` copies both flags across by layer POSITION after the
+  round trip (the round trip preserves order; a key match would mis-pair duplicate keys). Fixed in `Clone`,
+  not at its ten call sites.
+- **Imports no longer hide anything.** The layer-properties import and a DXF layer that is Off or Frozen
+  used to set `Visible = false`; the layers now show, and `DxfLayerReconciliation.OffLayerNote` names the
+  DXF's off/frozen layers in the import report instead.
+- **`explain --layers` lost `visible`/`selectable`** (`ExplainLayerJson`), and the text output its
+  `hidden`/`locked` suffixes. `render` draws every layer unless a flag says otherwise.
+- **railRF:** `RailDocument.Shows` is `!HiddenLayers.Contains(key)`; `ShownLayers` is gone and an older
+  `.crail`'s list is ignored on read (an unknown key). "Follow the technology" became **Show all**.
+- **`CwsFile`/`CwsUserFile.LayoutLayerViews`** (layout path → hidden keys, locked keys, current-layer-only)
+  is the per-user store. It is in `MovedFieldNames`, `Extract`, `Merge` and `IsEmpty` — miss the first and
+  it lands in the shared `.cws`.

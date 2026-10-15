@@ -307,7 +307,6 @@ internal static class ExplainQueries
         => new(l.Name.Length > 0 ? l.Name : l.Key.ToString(),
                l.Key.Layer, l.Key.Datatype,
                l.Purpose,
-               l.Visible, l.Selectable,
                l.Color.ToHex(),
                tech?.FindFillPattern(l.FillPattern) is { } fp ? fp.Name : "solid",
                shapes, placements);

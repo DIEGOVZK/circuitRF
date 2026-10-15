@@ -1856,13 +1856,15 @@ public class RailWindowTests
     }
 
     /// <summary>
-    /// Turning a layer's visibility off <b>keeps the numbers</b> — and takes the layer off the map.
+    /// A display edit to the technology <b>keeps the numbers</b>, and hiding a layer takes it off the
+    /// map without costing them either.
     /// </summary>
     /// <remarks>
-    /// The other half of the rule above, and the half the owner's actual workflow needs: a <c>Vis</c>
-    /// box is a question about the PICTURE, so invalidating a solved rail for it would make every
-    /// toggle cost a re-run. What decides it is the STACKUP — thicknesses, conductivities, dielectrics
-    /// and the drawing layers each entry claims — and visibility is not in it.
+    /// The other half of the rule above, and the half the owner's actual workflow needs: a colour, or
+    /// a layer turned off, is a question about the PICTURE, so invalidating a solved rail for it would
+    /// make every toggle cost a re-run. What decides it is the STACKUP — thicknesses, conductivities,
+    /// dielectrics and the drawing layers each entry claims. Visibility is the window's own list since
+    /// brief-layout-layers-panel.md, not the <c>.ctech</c>'s.
     /// </remarks>
     [Fact]
     public void HidingALayerKeepsTheResultAndTakesTheLayerOffTheMap()
@@ -1871,12 +1873,14 @@ public class RailWindowTests
         vm.RunCommand.Execute(null);
         Assert.NotEmpty(vm.ByModel);
 
-        var hidden = TechWithGround();
-        hidden.Layers[0].Visible = false;
-
-        vm.AdoptTechnology(hidden);
-
+        var recolored = TechWithGround();
+        recolored.Layers[0].Color = new Rgba(255, 0, 0);
+        vm.AdoptTechnology(recolored);
         Assert.NotEmpty(vm.ByModel);                         // nothing about the copper changed
+
+        vm.BoardLayers.Single(r => r.Key == new LayerKey(1, 0)).Visible = false;
+
+        Assert.NotEmpty(vm.ByModel);
         Assert.Contains(new LayerKey(1, 0), vm.BoardOverlayLayer.HiddenLayers);
         Assert.DoesNotContain(new LayerKey(2, 0), vm.BoardOverlayLayer.HiddenLayers);
     }

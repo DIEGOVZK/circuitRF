@@ -43,14 +43,13 @@ public class RailLayerVisibilityTests
         foreach (var layer in tech.Layers)
         {
             var row = Assert.Single(vm.BoardLayers, r => r.Key == layer.Key);
-            Assert.Equal(layer.Visible, row.Visible);           // seeded from the technology
+            Assert.True(row.Visible);                           // a technology hides nothing
             Assert.Equal(layer.Name, row.Name);
-            Assert.False(row.HiddenByTechnology);
         }
 
-        // Nothing is overridden on a document nobody has hidden a layer in, so the way back is
+        // Nothing is hidden on a document nobody has hidden a layer in, so the way back is
         // offered and does nothing.
-        Assert.False(vm.FollowTechnologyCommand.CanExecute(null));
+        Assert.False(vm.ShowAllLayersCommand.CanExecute(null));
     }
 
     /// <summary>
@@ -147,7 +146,7 @@ public class RailLayerVisibilityTests
             };
 
             vm.BoardLayers[0].Visible = false;
-            vm.FollowTechnologyCommand.Execute(null);
+            vm.ShowAllLayersCommand.Execute(null);
             vm.BoardLayers[1].Visible = false;
 
             Assert.Equal(before, File.ReadAllBytes(techPath));
@@ -158,66 +157,48 @@ public class RailLayerVisibilityTests
         finally { try { Directory.Delete(dir, true); } catch { } }
     }
 
-    /// <summary>"Follow the technology" clears the window's overrides — R-rail20-1e.</summary>
+    /// <summary>"Show all" clears the window's hidden set — R-rail20-1e, renamed by
+    /// brief-layout-layers-panel.md now that a technology hides nothing.</summary>
     [Fact]
-    public void FollowTheTechnologyClearsTheWindowsOwnChoices()
+    public void ShowAllClearsTheWindowsOwnChoices()
     {
         var vm = Example();
         vm.BoardLayers[0].Visible = false;
         vm.BoardLayers[2].Visible = false;
 
         Assert.Equal(2, vm.Document.HiddenLayers.Count);
-        Assert.True(vm.FollowTechnologyCommand.CanExecute(null));
+        Assert.True(vm.ShowAllLayersCommand.CanExecute(null));
 
-        vm.FollowTechnologyCommand.Execute(null);
+        vm.ShowAllLayersCommand.Execute(null);
 
         Assert.Empty(vm.Document.HiddenLayers);
         Assert.True(vm.BoardLayers.All(r => r.Visible));
         Assert.Empty(vm.BoardOverlayLayer.HiddenLayers);
         Assert.Same(vm.Board!.Technology, vm.BoardLayout!.Technology);   // no clone once nothing is hidden
-        Assert.False(vm.FollowTechnologyCommand.CanExecute(null));
+        Assert.False(vm.ShowAllLayersCommand.CanExecute(null));
     }
 
     /// <summary>
-    /// A layer the TECHNOLOGY does not draw can be ticked ON here — the window overrides the
-    /// <c>.ctech</c> in both directions — and "Follow the technology" hides it again.
+    /// An older <c>.crail</c> that carried <c>ShownLayers</c> — the layers it drew although the
+    /// <c>.ctech</c> hid them — still loads, and the list is ignored: a technology hides nothing now
+    /// (brief-layout-layers-panel.md §7 test 8).
     /// </summary>
-    /// <remarks>
-    /// It was a disabled row until 2026-09-23 (a field report): the window's set was unioned with the
-    /// technology's, so the only way to see such a layer was to edit the <c>.ctech</c>.
-    /// </remarks>
     [Fact]
-    public void ALayerTheTechnologyHidesCanBeShownAndFollowHidesItAgain()
+    public void AnOldCrailWithShownLayersLoads_AndTheListIsIgnored()
     {
-        var tech = TwoLayerTech();
-        tech.Layers[0].Visible = false;
-        var hiddenByTech = new LayerKey(1, 0);
+        var node = System.Text.Json.Nodes.JsonNode.Parse(RailDocumentIo.Serialize(OneRail()))!;
+        node["ShownLayers"] = new System.Text.Json.Nodes.JsonArray(
+            new System.Text.Json.Nodes.JsonObject { ["Layer"] = 1, ["Datatype"] = 0 });
+        node["HiddenLayers"] = new System.Text.Json.Nodes.JsonArray(
+            new System.Text.Json.Nodes.JsonObject { ["Layer"] = 2, ["Datatype"] = 0 });
 
-        var vm = Window(OneRail());
-        vm.Board = new RailBoardInputs { Shapes = [], Technology = tech };
+        var doc = RailDocumentIo.Deserialize(node.ToJsonString());
+        var vm = Window(doc);
+        vm.Board = new RailBoardInputs { Shapes = [], Technology = TwoLayerTech() };
 
-        var row = vm.BoardLayers.Single(r => r.Key == hiddenByTech);
-        Assert.True(row.HiddenByTechnology);
-        Assert.False(row.Visible);
-        Assert.Contains(hiddenByTech, vm.BoardOverlayLayer.HiddenLayers);
-
-        row.Visible = true;
-
-        // Drawn — copper and shading together — on a clone; the shared technology still hides it.
-        Assert.True(vm.BoardLayout!.Technology!.Layers.Single(l => l.Key == hiddenByTech).Visible);
-        Assert.False(tech.Layers[0].Visible);
-        Assert.Empty(vm.BoardOverlayLayer.HiddenLayers);
-
-        // Persisted as its own set.
-        var reread = RailDocumentIo.Deserialize(RailDocumentIo.Serialize(vm.Document));
-        Assert.Equal([hiddenByTech], reread.ShownLayers);
-        Assert.Empty(reread.HiddenLayers);
-
-        vm.FollowTechnologyCommand.Execute(null);
-
-        Assert.False(row.Visible);
-        Assert.Empty(vm.Document.ShownLayers);
-        Assert.Contains(hiddenByTech, vm.BoardOverlayLayer.HiddenLayers);
+        Assert.True(vm.BoardLayers.Single(r => r.Key == new LayerKey(1, 0)).Visible);
+        Assert.False(vm.BoardLayers.Single(r => r.Key == new LayerKey(2, 0)).Visible);
+        Assert.DoesNotContain("ShownLayers", RailDocumentIo.Serialize(vm.Document), StringComparison.Ordinal);
     }
 
     // ══ helpers ══════════════════════════════════════════════════════════════════════════════════

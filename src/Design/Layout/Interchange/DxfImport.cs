@@ -82,9 +82,10 @@ public static class DxfImport
 
         // R-L4a-2-style reuse — DXF's named layers feed the SAME LayoutLayerMapping.Propose unmodified.
         // R-col-3: the file's own parsed LAYER table (reader.LayerTable) rides along so BuildSourceLayers
-        // can populate each source LayerDef's real colour/visibility instead of defaulting to black.
+        // can populate each source LayerDef's real colour instead of defaulting to black.
         var allNames = rescaled.SelectMany(s => s.Shapes.Select(sh => sh.LayerName)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var (sourceLayers, keyByName) = DxfLayerReconciliation.BuildSourceLayers(allNames, reader.LayerTable, destTech);
+        if (DxfLayerReconciliation.OffLayerNote(allNames, reader.LayerTable) is { } offNote) messages.Add(offNote);
         foreach (var s in rescaled)
             foreach (var sh in s.Shapes)
                 sh.Shape.Layer = keyByName[sh.LayerName];

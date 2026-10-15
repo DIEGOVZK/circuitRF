@@ -2,6 +2,7 @@
 // true of a fabrication process rather than of one cell (docs/design/layout-view.md §2.4).
 // The stackup and DRC rules are carried and round-tripped now, consumed later (L5b/L6).
 
+using System.Text.Json.Serialization;
 using CircuitRF.Design.Cells;
 using CircuitRF.Design.Theming;
 
@@ -91,9 +92,22 @@ public sealed class LayerDef
 
     public double FillOpacity { get; set; } = 0.35;
     public int ZOrder { get; set; }
+
+    /// <summary>
+    /// Whether a VIEW draws this layer. <b>View state, never written to a <c>.ctech</c> and ignored when
+    /// one is read</b> (brief-layout-layers-panel.md D1): a technology is a shared manufacturing
+    /// document, and using it as a display switch made one user's navigation another user's diff.
+    /// Every renderer, hit test and snap query still reads it off whatever technology it is handed, so
+    /// a view's choices reach the drawing on a CLONE (the layout editor's <c>DrawTechnology</c>,
+    /// <see cref="TechnologyLayerSelection"/>) — which is why <see cref="TechPersistence.Clone"/>
+    /// copies it across by hand.
+    /// </summary>
+    [JsonIgnore]
     public bool Visible { get; set; } = true;
 
-    /// <summary>Visible-but-locked is a distinct, useful state from Visible.</summary>
+    /// <summary>Visible-but-locked is a distinct, useful state from Visible. View state, for
+    /// <see cref="Visible"/>'s reason.</summary>
+    [JsonIgnore]
     public bool Selectable { get; set; } = true;
 
     public string? Purpose { get; set; }

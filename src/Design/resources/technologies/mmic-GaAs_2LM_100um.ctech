@@ -22,8 +22,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 8,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -40,8 +38,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 9,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -58,8 +54,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 7,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -76,8 +70,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 6,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "SheetResistanceOhmPerSq": 50
     },
@@ -95,8 +87,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 5,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -113,8 +103,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 4,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -131,8 +119,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 1,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -149,8 +135,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 2,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -167,8 +151,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 10,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -185,8 +167,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 3,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -203,8 +183,6 @@
       },
       "FillOpacity": 0.12,
       "ZOrder": 11,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -221,8 +199,6 @@
       },
       "FillOpacity": 0.12,
       "ZOrder": 12,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     }
   ],

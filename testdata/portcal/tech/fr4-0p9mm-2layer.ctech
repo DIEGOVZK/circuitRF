@@ -14,8 +14,6 @@
       "Color": { "r": 200, "g": 122, "b": 62, "a": 255 },
       "FillOpacity": 0.35,
       "ZOrder": 2,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     },
     {
@@ -24,8 +22,6 @@
       "Color": { "r": 138, "g": 80, "b": 40, "a": 255 },
       "FillOpacity": 0.35,
       "ZOrder": 1,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     }
   ],

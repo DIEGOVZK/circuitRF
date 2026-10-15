@@ -110,8 +110,9 @@ board lands in, and the table under it shows where each file goes in that techno
 - **A technology you already have** — any `.ctech` in the workspace, or a built-in one — is **used**: every file is
   mapped onto that technology's own layers, nothing is added to it, nothing in it changes, and no `.ctech` is
   written. A built-in technology is copied into `tech/` when you press **Continue**. A file the technology has no
-  layer for (a paste stencil, say) keeps a layer of its own; the technology editor's **Layers** tab lists it under
-  **Not in this technology**, where it can be hidden or locked until circuitRF closes.
+  layer for (a paste stencil, say) keeps a layer of its own; the layout editor's
+  [Layers](../reference/layout-editor.html#layers) list shows it after the technology's own layers, where it can be
+  hidden or locked like any other.
 
 Changing the row re-proposes the table for that technology at once, without reading the files again. A
 technology is offered only when its stackup has as many conductors as the set has copper files, counting the

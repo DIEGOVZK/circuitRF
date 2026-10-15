@@ -386,7 +386,7 @@ public sealed partial class LayoutEditorViewModel
 
         var counters = new SnapQueryCounters();
         var candidates = LayoutSnapQuery.FindCandidates(
-            Model, Technology, InstanceBaseDir, px, py, snapTolDbu, IncludeIntersectionsEnabled,
+            Model, DrawTechnology, InstanceBaseDir, px, py, snapTolDbu, IncludeIntersectionsEnabled,
             excludeShapes, excludeInstances, ref counters);
 
         candidates = WithWireCandidates(candidates, px, py, snapTolDbu);
@@ -567,7 +567,7 @@ public sealed partial class LayoutEditorViewModel
         {
             var counters = new SnapQueryCounters();
             var candidates = GrabbableOnly(LayoutSnapQuery.FindCandidates(
-                Model, Technology, InstanceBaseDir, px, py, snapTolDbu, IncludeIntersectionsEnabled, null, null, ref counters));
+                Model, DrawTechnology, InstanceBaseDir, px, py, snapTolDbu, IncludeIntersectionsEnabled, null, null, ref counters));
             if (candidates.Count == 0) { _snapCycleCache.Clear(); return false; }
             chosen = _snapCycleCache.Rebuild(px, py, candidates);
         }

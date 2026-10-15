@@ -151,7 +151,9 @@ internal static class DocumentSchema
         Writing one from scratch is rarely the right move: start from the copy in a workspace and
         change it. What a caller usually needs from this page is which field to change, and what a
         layer's Key means — the (Layer, Datatype) pair is the GDSII number pair, and it is the
-        identity a shape stores. Renaming a layer keeps its shapes; renumbering it does not.
+        identity a shape stores. Renaming a layer keeps its shapes; renumbering it does not. Whether a
+        layer is shown or selectable is not in a technology: that belongs to each layout's own
+        Layers list, per user, and a `Visible` or `Selectable` key is ignored on read.
 
         A minimal technology with one drawing layer. This is a whole file, and `check` passes it:
 
@@ -166,8 +168,6 @@ internal static class DocumentSchema
                   "Name": "Metal1",
                   "Color": { "r": 224, "g": 176, "b": 64, "a": 255 },
                   "ZOrder": 8,
-                  "Visible": true,
-                  "Selectable": true,
                   "Purpose": "drawing"
                 }
               ]

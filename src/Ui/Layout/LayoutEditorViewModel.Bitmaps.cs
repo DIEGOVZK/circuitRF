@@ -88,7 +88,7 @@ public sealed partial class LayoutEditorViewModel
     public (int ShapeIndex, string Path, bool IsBroken)? FindBitmapForContextMenu(double wx, double wy, long tolDbu)
     {
         long px = (long)Math.Round(wx), py = (long)Math.Round(wy);
-        foreach (var idx in LayoutHitTest.HitStack(Model, Technology, px, py, tolDbu))
+        foreach (var idx in LayoutHitTest.HitStack(Model, DrawTechnology, px, py, tolDbu))
         {
             if (Model.Shapes[idx] is not BitmapShape bmp) continue;
             bool isBroken = string.IsNullOrEmpty(bmp.ImagePathRef) || !File.Exists(bmp.ImagePathRef);

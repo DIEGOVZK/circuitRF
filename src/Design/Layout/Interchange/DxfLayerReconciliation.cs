@@ -74,11 +74,28 @@ public static class DxfLayerReconciliation
                 Key = key,
                 Name = name,
                 Color = ResolveColor(tableEntry, key),
-                Visible = !(tableEntry?.Off ?? false) && !(tableEntry?.Frozen ?? false),
+                // Never Visible = false for a layer the DXF has Off or Frozen: visibility is view state
+                // and not the technology's (brief-layout-layers-panel.md D1/D4), so an imported layer
+                // shows. DxfImport names those layers in its report instead (OffLayerNote).
             });
         }
 
         return (sourceLayers, keyByName);
+    }
+
+    /// <summary>
+    /// One report line naming the layers the DXF itself had Off or Frozen among
+    /// <paramref name="usedNames"/>, or null when there are none. They are imported visible —
+    /// visibility belongs to a layout's view, not to the technology the layers land in — so the report is
+    /// where the file's own state is still said.
+    /// </summary>
+    public static string? OffLayerNote(IReadOnlyList<string> usedNames, IReadOnlyList<DxfLayerTableEntry> layerTable)
+    {
+        var used = new HashSet<string>(usedNames, StringComparer.OrdinalIgnoreCase);
+        var off = layerTable.Where(e => (e.Off || e.Frozen) && used.Contains(e.Name))
+                            .Select(e => e.Name).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return off.Count == 0 ? null
+            : $"Off or frozen in the DXF, imported visible: {string.Join(", ", off)}. Hide them in the layout's Layers list.";
     }
 
     private static Rgba ResolveColor(DxfLayerTableEntry? entry, LayerKey key)

@@ -1,4 +1,5 @@
 using CircuitRF.Design.Cells;
+using CircuitRF.Design.Layout;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -68,6 +69,33 @@ public sealed class CwsDrawingPlane
 
     /// <summary>The offset along the plane's normal, in the document's own DBU.</summary>
     public long OffsetDbu { get; set; }
+}
+
+/// <summary>
+/// brief-layout-layers-panel.md R-lyr-4 — one layout's Layers list as one person has it set: the
+/// layers that view does not draw, the ones it will not let a click pick, and whether only the
+/// current drawing layer is pickable, and how wide the list is. View state, so it lives in the <c>.cwsuser</c>, never in the
+/// <c>.clay</c> (the shared artwork) nor the <c>.ctech</c> (the shared process).
+///
+/// <para><b>Only what is OFF is stored</b>, so a layout nobody has changed writes no entry. Layers
+/// are stored by KEY, not name, so one renamed in the technology keeps its state; a key that no
+/// longer resolves is kept rather than pruned, since switching the technology back brings it back.</para>
+/// </summary>
+public sealed class CwsLayoutLayerView
+{
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<LayerKey>? Hidden { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public List<LayerKey>? Locked { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool CurrentLayerOnly { get; set; }
+
+    /// <summary>How wide the user dragged the Layers list, in device-independent pixels. Null is the
+    /// default width, so a list nobody resized writes nothing.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? ListWidth { get; set; }
 }
 
 public sealed class CwsCamera3D
@@ -178,11 +206,17 @@ public sealed class CwsUserFile
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Dictionary<string, string>? C3dActiveSetups { get; set; }
 
+    /// <summary>brief-layout-layers-panel.md R-lyr-4 — each layout's Layers list, by its <c>.clay</c>'s
+    /// workspace-relative path. Null when no layout has a layer turned off.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, CwsLayoutLayerView>? LayoutLayerViews { get; set; }
+
     /// <summary>True when this carries nothing worth a file — the state in which no sidecar is written.</summary>
     internal bool IsEmpty =>
         DockLayout is null && TreeViewState is null && OpenDocuments is null &&
         ActiveDocumentPath is null && ColorSchemeName is null && HistoryFilter is null &&
-        Viewer3DCameras is null && C3dDrawingPlanes is null && C3dActiveSetups is null;
+        Viewer3DCameras is null && C3dDrawingPlanes is null && C3dActiveSetups is null &&
+        LayoutLayerViews is null;
 }
 
 /// <summary>
@@ -224,6 +258,7 @@ public static class WorkspaceUserPersistence
         nameof(CwsFile.Viewer3DCameras),
         nameof(CwsFile.C3dDrawingPlanes),
         nameof(CwsFile.C3dActiveSetups),
+        nameof(CwsFile.LayoutLayerViews),
     ];
 
     /// <summary>The per-user half of <paramref name="ws"/>, lifted out for the sidecar.</summary>
@@ -238,6 +273,7 @@ public static class WorkspaceUserPersistence
         Viewer3DCameras    = ws.Viewer3DCameras,
         C3dDrawingPlanes   = ws.C3dDrawingPlanes,
         C3dActiveSetups    = ws.C3dActiveSetups,
+        LayoutLayerViews   = ws.LayoutLayerViews,
     };
 
     /// <summary>
@@ -259,6 +295,7 @@ public static class WorkspaceUserPersistence
         ws.Viewer3DCameras    = user.Viewer3DCameras;
         ws.C3dDrawingPlanes   = user.C3dDrawingPlanes;
         ws.C3dActiveSetups    = user.C3dActiveSetups;
+        ws.LayoutLayerViews   = user.LayoutLayerViews;
     }
 
     /// <summary>The sidecar beside a given <c>.cws</c> path.</summary>

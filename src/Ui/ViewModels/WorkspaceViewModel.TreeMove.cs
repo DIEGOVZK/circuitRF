@@ -134,6 +134,9 @@ public partial class WorkspaceViewModel
         // reconstructed.
         RecordMoveRedirect(workspaceRoot, oldPath, newPath);
 
+        // R-lyr-4: each moved layout's Layers list follows it, before its tab reopens and reads it.
+        MoveLayoutLayerViews(oldPath, newPath);
+
         // ── R-tm1-17: reopen what was closed, at its new path ─────────────────
         foreach (var key in reopen)
             ReopenMoved(WorkspaceMove.Relocate(key, oldPath, newPath));

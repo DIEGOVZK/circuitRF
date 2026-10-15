@@ -22,8 +22,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 8,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing"
     }
   ],

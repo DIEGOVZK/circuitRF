@@ -79,7 +79,10 @@ public sealed class HarmonicaDocumentTests(ITestOutputHelper output)
         // the one entry here that opens a DOCKED DOCUMENT rather than a window of its own — the
         // Smith Chart tool has neither of the reasons the other three have (smith-chart.md §5.1).
         // It is ungated for harmonicaRF's reason too: it needs no workspace.
-        Assert.Equal(["harmonicaRF", "Match Designer", "railRF", "Smith Chart", "Examples"],
+        //
+        // "Digitise Plot…" joined with IM-14 (2026-10-11). "Examples" LEFT on 2026-10-15 for
+        // File ▸ New ▸ Examples (field feedback round 1), where FileMenuRestructureTests holds it.
+        Assert.Equal(["harmonicaRF", "Match Designer", "railRF", "Smith Chart", "Digitise Plot…"],
                      nativeEntries);
         Assert.Contains(native[0].Descendants(),
             e => ((string?)e.Attribute("Command"))?.Contains("NewHarmonicaCommand") == true);
@@ -102,7 +105,7 @@ public sealed class HarmonicaDocumentTests(ITestOutputHelper output)
             .Where(e => e.Name.LocalName == "MenuItem")
             .Select(e => (string?)e.Attribute("Header"))
             .ToList();
-        Assert.Equal(["_harmonicaRF", "_Match Designer", "_railRF", "_Smith Chart", "_Examples"],
+        Assert.Equal(["_harmonicaRF", "_Match Designer", "_railRF", "_Smith Chart", "_Digitise Plot…"],
                      inWindowEntries);
         Assert.Contains(inWindow[0].Descendants(),
             e => ((string?)e.Attribute("Command"))?.Contains("NewHarmonicaCommand") == true);

@@ -212,11 +212,18 @@ LayerDef {
     Rgba   Color;          // literal color, not a ColorRole
     double FillOpacity;    // default 0.35
     int    ZOrder;         // paint order; also the selection-cycling order
-    bool   Visible;
-    bool   Selectable;     // visible-but-locked is a distinct, useful state
     string? Purpose;       // "drawing" | "pin" | "label" | "blockage" | ...
 }
 ```
+
+**Visibility and selectability are VIEW state, not technology data** (brief-layout-layers-panel.md,
+2026-10-15). `LayerDef` still has runtime `Visible` and `Selectable` properties — every renderer, hit
+test and snap query reads them off the technology it is handed — but they are never written to a
+`.ctech` and are ignored when one is read. A layout's own choices live in its editor's **Layers** list,
+kept per user in the `.cwsuser` keyed by layout path, and reach the drawing as a clone
+(`LayoutEditorViewModel.DrawTechnology`). A technology is a shared manufacturing document; using it as a
+display switch made one user's navigation another user's diff. Anything that saves, exports, checks or
+simulates reads the technology itself, so a hidden layer is never missing from one.
 
 ### 2.2 Layer colors are literal, not roles
 

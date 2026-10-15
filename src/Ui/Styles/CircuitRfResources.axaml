@@ -166,13 +166,24 @@
              brush is the one most likely to fail: a grey chosen on white disappears on the dark tab and tree, so each
              variant states its own, and both clear 3:1 against the chrome they sit on (#F2F2F2 / #FFFFFF light; #171717 /
              #2B2B2B dark). -->
+        <!-- The CURRENT row of a list — the layout's current drawing layer in its Layers list — and its
+             name. A lighter tint than CrfSelectedRowBrush on purpose: it marks where you are, not what
+             an action will act on, and the two must not read as one state. Across the whole row so it is
+             found at a glance in a long list; the name's bold is the cue that does not depend on colour.
+             Per theme because one opacity does not serve both: 0.16 of the accent is plain on the light
+             chrome and nearly black on the dark one, and the plain accent as TEXT is low-contrast on
+             dark navy, so dark takes a stronger tint and the lighter accent for the name. -->
         <ResourceDictionary.ThemeDictionaries>
             <ResourceDictionary x:Key="Light">
+                <SolidColorBrush x:Key="CrfCurrentRowBrush"     Color="{DynamicResource SystemAccentColor}" Opacity="0.16"/>
+                <SolidColorBrush x:Key="CrfCurrentRowTextBrush" Color="{DynamicResource SystemAccentColorDark1}"/>
                 <SolidColorBrush x:Key="CrfDataDisplayCanvasBrush" Color="#FCFCFC"/>
                 <SolidColorBrush x:Key="SolveBadgeBrush"           Color="#1F5FAD"/>
                 <SolidColorBrush x:Key="SolveBadgeFadedBrush"      Color="#6F8DB3"/>
             </ResourceDictionary>
             <ResourceDictionary x:Key="Dark">
+                <SolidColorBrush x:Key="CrfCurrentRowBrush"     Color="{DynamicResource SystemAccentColor}" Opacity="0.32"/>
+                <SolidColorBrush x:Key="CrfCurrentRowTextBrush" Color="{DynamicResource SystemAccentColorLight2}"/>
                 <SolidColorBrush x:Key="CrfDataDisplayCanvasBrush" Color="#171717"/>
                 <SolidColorBrush x:Key="SolveBadgeBrush"           Color="#7DB7F5"/>
                 <SolidColorBrush x:Key="SolveBadgeFadedBrush"      Color="#6684A6"/>

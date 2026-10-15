@@ -22,8 +22,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 50,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "conductor",
       "Interchange": {
         "PcbLayerName": "F.Cu"
@@ -43,8 +41,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 40,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "conductor",
       "Interchange": {
         "PcbLayerName": "In1.Cu"
@@ -64,8 +60,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 30,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "conductor",
       "Interchange": {
         "PcbLayerName": "In2.Cu"
@@ -85,8 +79,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 20,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "conductor",
       "Interchange": {
         "PcbLayerName": "In3.Cu"
@@ -106,8 +98,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 10,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "conductor",
       "Interchange": {
         "PcbLayerName": "In4.Cu"
@@ -127,8 +117,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 0,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "conductor",
       "Interchange": {
         "PcbLayerName": "B.Cu"
@@ -148,8 +136,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 1006,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "PcbLayerName": "F.Mask"
@@ -169,8 +155,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 1007,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "PcbLayerName": "B.Mask"
@@ -190,8 +174,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 1008,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "PcbLayerName": "F.Paste"
@@ -211,8 +193,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 1012,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "PcbLayerName": "B.Paste"
@@ -232,8 +212,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 1013,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "PcbLayerName": "F.SilkS"
@@ -253,11 +231,28 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 1014,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "PcbLayerName": "B.SilkS"
+      }
+    },
+    {
+      "Key": {
+        "Layer": 9,
+        "Datatype": 0
+      },
+      "Name": "Courtyard Top",
+      "Color": {
+        "r": 198,
+        "g": 120,
+        "b": 221,
+        "a": 255
+      },
+      "FillOpacity": 0.35,
+      "ZOrder": 1015,
+      "Purpose": "drawing",
+      "Interchange": {
+        "PcbLayerName": "F.CrtYd"
       }
     },
     {
@@ -274,8 +269,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 1009,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {
         "PcbLayerName": "Edge.Cuts"
@@ -295,8 +288,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 1010,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drawing",
       "Interchange": {}
     },
@@ -314,8 +305,6 @@
       },
       "FillOpacity": 0.35,
       "ZOrder": 1011,
-      "Visible": true,
-      "Selectable": true,
       "Purpose": "drill",
       "Interchange": {
         "GerberSuffix": "drl"

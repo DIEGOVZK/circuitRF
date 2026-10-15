@@ -35,8 +35,6 @@ public sealed partial class LayerRowViewModel : ObservableObject
     [ObservableProperty] private Rgba   _color;
     [ObservableProperty] private string _stagedFillOpacity = "";
     [ObservableProperty] private string _stagedZOrder = "0";
-    [ObservableProperty] private bool   _visible;
-    [ObservableProperty] private bool   _selectable;
     [ObservableProperty] private string _stagedPurpose = "";
 
     /// <summary>The stipple this layer fills through, by name, or <see cref="NoFillPattern"/> for a
@@ -91,8 +89,6 @@ public sealed partial class LayerRowViewModel : ObservableObject
         // longer note in StackupLayerRowViewModel.RefreshFromModel).
         StagedFillOpacity  = Layer.FillOpacity.ToString("0.###", Inv);
         StagedZOrder       = Layer.ZOrder.ToString();
-        Visible            = Layer.Visible;
-        Selectable         = Layer.Selectable;
         StagedPurpose      = Layer.Purpose ?? "";
         SelectedFillPattern = Layer.FillPattern is { Length: > 0 } fp ? fp : NoFillPattern;
         StagedGdsiiLayer         = Layer.Interchange?.GdsiiLayer?.ToString() ?? "";
@@ -119,22 +115,6 @@ public sealed partial class LayerRowViewModel : ObservableObject
         var before = _owner.SnapshotJson();
         Layer.FillPattern = chosen;
         _owner.CommitEdit(before, $"Set fill pattern of {Layer.Name}");
-    }
-
-    partial void OnVisibleChanged(bool value)
-    {
-        if (_isRefreshing || value == Layer.Visible) return;
-        var before = _owner.SnapshotJson();
-        Layer.Visible = value;
-        _owner.CommitEdit(before, $"Toggle visible for {Layer.Name}");
-    }
-
-    partial void OnSelectableChanged(bool value)
-    {
-        if (_isRefreshing || value == Layer.Selectable) return;
-        var before = _owner.SnapshotJson();
-        Layer.Selectable = value;
-        _owner.CommitEdit(before, $"Toggle selectable for {Layer.Name}");
     }
 
     public void CommitName()

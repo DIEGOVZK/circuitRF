@@ -1168,3 +1168,15 @@ src/Design/Schematic/Recognition/SymbolTemplates.cs|{name}, line {lineNo}: {e.Me
 src/Design/Schematic/Recognition/SymbolTemplates.cs|{name}: no convention.
 src/Design/Schematic/Recognition/SymbolTemplates.cs|{name}: no kind.
 src/Design/Schematic/Recognition/SymbolTemplates.cs|{name}: no pin.
+#
+# Argument preconditions of the image-reading code (2026-10-15). Each guards a caller's contract,
+# not a user's input: the paths a user reaches refuse first with a coded diagnostic (the `recognize`
+# verb checks a Touchstone output's extension before TouchstoneAssembly.WriteFile is ever called), and
+# KnownWords' word list is an embedded resource that is either built in or a broken build.
+src/Design/Imaging/Perspective.cs|A homography needs at least four point pairs.
+src/Design/Imaging/Plots/MinimumPhase.cs|One magnitude per frequency.
+src/Design/Imaging/Plots/TouchstoneAssembly.cs|A {result.Ports}-port reading is written as {result.Extension}, not {System.IO.Path.GetExtension(path)}.
+src/Design/Imaging/Plots/TraceJoin.cs|Nothing to join.
+src/Design/Layout/Recognition/Image/BoardPhoto.cs|A refused reading cannot be traced.
+src/Design/Schematic/Recognition/KnownWords.cs|the embedded word list '{Resource}' is missing from {typeof(KnownWords).Assembly.GetName().Name}
+src/Design/Schematic/Recognition/SchematicPasteOutcome.cs|The reading made no circuit.

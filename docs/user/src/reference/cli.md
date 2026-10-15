@@ -1656,8 +1656,8 @@ this out from the answer rather than from a 23 MB file.
 <pre><code class="cmd"><span class="prompt">$ </span>circuitrf render Stage1.clay -o top.png --layers "Top Copper,Silk Top"
 <span class="prompt">$ </span>circuitrf render Stage1.clay -o nosilk.png --hide-layers "Silk Top,Silk Bottom"</code></pre>
 
-Layout only, mutually exclusive, and the default is every layer the resolved technology marks visible —
-which is what the editor honours, not "all layers regardless".
+Layout only, mutually exclusive, and the default is every layer. What you have hidden in the layout
+editor's [Layers](layout-editor.html#layers) list is yours alone and does not change a render.
 
 <div class="callout note">
 <span class="label">Ask <code>explain --layers</code> before <code>render --layers</code></span>

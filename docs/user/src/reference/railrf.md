@@ -92,11 +92,9 @@ choice.</p>
 <div class="callout note">
 <span class="label">Layer visibility is the window's own</span>
 <p>The <b>Layers</b> button in the board panel's toolbar opens a list of the board's drawing layers. Tick
-or untick any of them to show or hide it on this board &mdash; including a layer the technology's
-<b>Vis</b> box hides. The choice is saved in the <code>.crail</code> and nothing is written to the
-<code>.ctech</code>. A layer you have not changed follows the technology. The button at the right of the
-list's header, <b>Follow the technology</b>, clears your choices so every layer shows or hides as the
-<code>.ctech</code> says.</p>
+or untick any of them to show or hide it on this board. The choice is saved in the <code>.crail</code>
+and nothing is written to the <code>.ctech</code>. The button at the right of the list's header,
+<b>Show all</b>, shows every layer again.</p>
 </div>
 
 ## What you provide {#provide}
