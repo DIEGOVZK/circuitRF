@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
   <!--
     WiX v4 definition of the circuitRF .msi. One file for all three architectures AND both install
@@ -13,7 +12,8 @@
 
     ═══ THE TWO SCOPES, AND WHY THERE ARE TWO ═════════════════════════════════════════════════
 
-    perMachine (the default, unchanged) installs to %ProgramFiles%\circuitRF, which only a
+    perMachine (the default, unchanged) installs to %ProgramFiles%\circuitRF unless the user picks
+    another folder on the Destination Folder page. Program Files is a folder only a
     privileged process can modify — so it is the managed, machine-wide story and it is
     NOTIFY-ONLY: circuitRF checks for updates, posts one Message Panel line with a link, and
     writes nothing. That is not a limitation to work around. The only ways to update a Program
@@ -21,7 +21,8 @@
     that downloads and executes code from the internet, and the second is a genuine
     privilege-escalation surface.
 
-    perUser installs to %LOCALAPPDATA%\Programs\circuitRF and raises no UAC prompt, which is what
+    perUser installs to %LOCALAPPDATA%\Programs\circuitRF by default, or to any folder the user picks
+    that their account can write, and raises no UAC prompt, which is what
     makes a silent background update possible at all (docs/design/auto-update.md §1). Its layout is
     versioned directories behind a stub launcher:
 
@@ -90,6 +91,16 @@
     <?endif?>
   <?endif?>
 
+  <!--
+    The registry root for everything this package writes about ITSELF - the Apps-list entry, the
+    product code, and the folder it was installed to. HKCU for perUser, HKLM for perMachine.
+  -->
+  <?if $(var.Scope) = "perUser" ?>
+    <?define ArpRoot = "HKCU" ?>
+  <?else?>
+    <?define ArpRoot = "HKLM" ?>
+  <?endif?>
+
   <Package Name="circuitRF"
            Manufacturer="potatobeanradio"
            Version="$(var.Version)"
@@ -98,9 +109,26 @@
 
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- License page, install-location page, and a feature tree with the optional desktop shortcut. -->
-    <ui:WixUI Id="WixUI_FeatureTree" InstallDirectory="INSTALLFOLDER" />
+    <!--
+      Welcome, Licence, Destination Folder, the feature tree with the optional desktop shortcut,
+      Ready. The UI is circuitRF_InstallUI, defined at the end of this file.
+    -->
+    <UIRef Id="circuitRF_InstallUI" />
     <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+    <!--
+      AN UPGRADE GOES BACK TO THE FOLDER ALREADY IN USE (brief-install-location R-inst-1c).
+      MajorUpgrade removes the old product and installs the new one, and INSTALLFOLDER starts at its
+      authored default each time - so without this, a user who chose D:\Tools\circuitRF would have
+      the next release land in the default folder with no warning, its shortcuts moved and the old
+      folder left behind. AppSearch runs before the old product is removed, so the value the previous
+      install wrote (AppsEntryComp's InstallFolder) is still there to read, and the destination page
+      opens on it. Only an MSI upgrade comes through here; the perUser auto-update never runs the MSI.
+    -->
+    <Property Id="INSTALLFOLDER">
+      <RegistrySearch Id="PreviousInstallFolder" Root="$(var.ArpRoot)" Key="Software\circuitRF\circuitRF"
+                      Name="InstallFolder" Type="raw" />
+    </Property>
 
     <MajorUpgrade DowngradeErrorMessage="A newer version of circuitRF is already installed." />
 
@@ -141,7 +169,7 @@
 
     <?if $(var.Scope) = "perUser" ?>
       <!--
-        %LOCALAPPDATA%\Programs\circuitRF — the same place VS Code's User Installer and other
+        %LOCALAPPDATA%\Programs\circuitRF by default — the same place VS Code's User Installer and other
         silently-updating applications live, and for the same reason: the running user can write it.
         INSTALLFOLDER holds the stub and `current`; APPFOLDER is app-<version>, and Files.wxs is
         harvested into it rather than into INSTALLFOLDER.
@@ -401,10 +429,8 @@
       The key carries the architecture so an x86 and an x64 install on one machine keep one entry each.
     -->
     <?if $(var.Scope) = "perUser" ?>
-      <?define ArpRoot = "HKCU" ?>
       <?define ArpGuid = "6F0C2B8E-3D4A-4E59-A8C1-2B7D90E4F6A1" ?>
     <?else?>
-      <?define ArpRoot = "HKLM" ?>
       <?define ArpGuid = "C83A5E17-9B02-4F6D-B4E8-71D2A0C95F3E" ?>
     <?endif?>
     <ComponentGroup Id="AppsEntry" Directory="INSTALLFOLDER">
@@ -422,12 +448,19 @@
           <RegistryValue Name="NoRepair" Type="integer" Value="1" />
         </RegistryKey>
         <RegistryValue Root="$(var.ArpRoot)" Key="Software\circuitRF\circuitRF" Name="ProductCode" Type="string" Value="[ProductCode]" />
+        <!-- Read back by the PreviousInstallFolder search, so the next MSI installs to the same place. -->
+        <RegistryValue Root="$(var.ArpRoot)" Key="Software\circuitRF\circuitRF" Name="InstallFolder" Type="string" Value="[INSTALLFOLDER]" />
       </Component>
     </ComponentGroup>
 
     <!-- ═══ FEATURES ══════════════════════════════════════════════════════════ -->
 
-    <Feature Id="MainFeature" Title="circuitRF" Description="The circuitRF application." Level="1">
+    <!--
+      ConfigurableDirectory is what enables the feature tree's Browse... button. Without it the button
+      sits there disabled, disagreeing with the Destination Folder page one step before it.
+    -->
+    <Feature Id="MainFeature" Title="circuitRF" Description="The circuitRF application." Level="1"
+             ConfigurableDirectory="INSTALLFOLDER">
       <ComponentGroupRef Id="MainExecutable" />
       <ComponentGroupRef Id="PublishedFiles" />
       <ComponentGroupRef Id="CommandLine" />
@@ -446,4 +479,120 @@
     </Feature>
 
   </Package>
+
+  <!-- ═══ THE INSTALLER UI ══════════════════════════════════════════════════ -->
+  <!--
+    WixUI_FeatureTree with a Destination Folder page added (brief-install-location R-inst-1a):
+
+        Welcome -> Licence -> Destination Folder -> Feature tree -> Ready
+
+    and Back walks the same path the other way. A first-time Windows user could not tell where
+    circuitRF had gone and asked to choose; WixUI_FeatureTree has no destination page, and
+    WixUI_InstallDir has no feature tree, so the optional desktop shortcut would have gone with it.
+
+    COPIED FROM WiX v6.0.2's src/ext/UI/wixlib/WixUI_FeatureTree.wxs, which is byte-identical in
+    v7.0.0, with the InstallDirDlg rows taken from WixUI_InstallDir.wxs in the same release (its
+    per-architecture fragment adds the two CheckTargetPath rows, which are plain Windows Installer
+    events and need no custom action). build-windows.ps1 pins the UI extension to the wix on PATH, so
+    the dialogs referenced here come from that release; if a later WiX changes WixUI_FeatureTree, diff
+    it against this copy. Everything else - the dialogs themselves, the fonts' bitmaps, the strings -
+    still comes from the extension through WixUI_Common.
+
+    What `<ui:WixUI Id="WixUI_FeatureTree" InstallDirectory="INSTALLFOLDER"/>` used to do is exactly
+    the UIRef above plus the WIXUI_INSTALLDIR property below (WiX's UICompiler.ParseWixUIElement).
+  -->
+  <Fragment>
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+    <?if $(var.Scope) = "perUser" ?>
+      <!--
+        A PER-USER INSTALL NEEDS A FOLDER THIS ACCOUNT CAN WRITE (R-inst-1b). A perUser MSI does not
+        elevate, so choosing a folder under Program Files or Windows does not fail on this page - it
+        fails partway through the install with a Windows Installer privileges error. This refuses
+        those folders here instead, on the destination page's Next and on the Browse dialog's OK
+        (which the feature tree's Browse... button also opens).
+
+        A KNOWN-LOCATION CHECK, NOT A PROBE. Probing writability needs a compiled custom action - a
+        native DLL per architecture in the MSI's Binary table - and these are the folders a person
+        actually picks by mistake. Anything else this account cannot write still reaches the
+        installer's own error. Each test is guarded on its property being set, because "starts with
+        an empty string" would match every path (ProgramFiles64Folder is empty on 32-bit Windows).
+        INSTALLFOLDER is what both PathEdit controls edit (they edit [WIXUI_INSTALLDIR] and
+        [_BrowseProperty] indirectly, and both name INSTALLFOLDER), so it holds the choice by the
+        time either button is pressed.
+      -->
+      <?define NotUserWritable = "(ProgramFiles64Folder AND INSTALLFOLDER ~<< ProgramFiles64Folder) OR (ProgramFilesFolder AND INSTALLFOLDER ~<< ProgramFilesFolder) OR (WindowsFolder AND INSTALLFOLDER ~<< WindowsFolder)" ?>
+    <?else?>
+      <!-- perMachine elevates, so any folder will do. -->
+      <?define NotUserWritable = "0" ?>
+    <?endif?>
+
+    <UI Id="circuitRF_InstallUI">
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8" />
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12" />
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes" />
+
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal" />
+
+      <DialogRef Id="BrowseDlg" />
+      <DialogRef Id="DiskCostDlg" />
+      <DialogRef Id="ErrorDlg" />
+      <DialogRef Id="FatalError" />
+      <DialogRef Id="FilesInUse" />
+      <DialogRef Id="MsiRMFilesInUse" />
+      <DialogRef Id="PrepareDlg" />
+      <DialogRef Id="ProgressDlg" />
+      <DialogRef Id="ResumeDlg" />
+      <DialogRef Id="UserExit" />
+
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999" />
+
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="LicenseAgreementDlg" Condition="NOT Installed" />
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" Condition="Installed AND PATCH" />
+
+      <Publish Dialog="LicenseAgreementDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" />
+      <Publish Dialog="LicenseAgreementDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" Condition="LicenseAccepted = &quot;1&quot;" />
+
+      <!-- Destination Folder. Order 4 refuses a folder a perUser install cannot write; see above. -->
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="LicenseAgreementDlg" />
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="CheckTargetPath" Value="[WIXUI_INSTALLDIR]" Order="1" />
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="SetTargetPath" Value="[WIXUI_INSTALLDIR]" Order="3" />
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="SpawnDialog" Value="NotUserWritableDlg" Order="4" Condition="$(var.NotUserWritable)" />
+      <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="CustomizeDlg" Order="5" Condition="NOT ($(var.NotUserWritable))" />
+      <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Property="_BrowseProperty" Value="[WIXUI_INSTALLDIR]" Order="1" />
+      <Publish Dialog="InstallDirDlg" Control="ChangeFolder" Event="SpawnDialog" Value="BrowseDlg" Order="2" />
+
+      <Publish Dialog="CustomizeDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="1" Condition="Installed" />
+      <Publish Dialog="CustomizeDlg" Control="Back" Event="NewDialog" Value="InstallDirDlg" Order="2" Condition="NOT Installed" />
+      <Publish Dialog="CustomizeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg" />
+
+      <Publish Dialog="BrowseDlg" Control="OK" Event="CheckTargetPath" Value="[_BrowseProperty]" Order="1" />
+      <Publish Dialog="BrowseDlg" Control="OK" Event="SpawnDialog" Value="NotUserWritableDlg" Order="2" Condition="$(var.NotUserWritable)" />
+      <Publish Dialog="BrowseDlg" Control="OK" Event="SetTargetPath" Value="[_BrowseProperty]" Order="3" Condition="NOT ($(var.NotUserWritable))" />
+      <Publish Dialog="BrowseDlg" Control="OK" Event="EndDialog" Value="Return" Order="4" Condition="NOT ($(var.NotUserWritable))" />
+
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="CustomizeDlg" Order="1" Condition="NOT Installed OR WixUI_InstallMode = &quot;Change&quot;" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2" Condition="Installed AND NOT PATCH" />
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="3" Condition="Installed AND PATCH" />
+
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg" />
+
+      <Publish Dialog="MaintenanceTypeDlg" Control="ChangeButton" Event="NewDialog" Value="CustomizeDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg" />
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg" />
+
+      <!-- Shaped like WiX's own InvalidDirDlg, with circuitRF's sentence. -->
+      <Dialog Id="NotUserWritableDlg" Width="260" Height="85" Title="!(loc.InvalidDirDlg_Title)">
+        <Control Id="OK" Type="PushButton" X="102" Y="57" Width="56" Height="17" Default="yes" Cancel="yes" Text="!(loc.WixUIOK)">
+          <Publish Event="EndDialog" Value="Return" />
+        </Control>
+        <Control Id="Text" Type="Text" X="48" Y="15" Width="194" Height="36"
+                 Text="This installs circuitRF for your account only, so it needs a folder your account can write to. Choose one outside Program Files and Windows." />
+        <Control Id="Icon" Type="Icon" X="15" Y="15" Width="24" Height="24" FixedSize="yes" IconSize="32" Text="WixUI_Ico_Exclam" />
+      </Dialog>
+    </UI>
+
+    <UIRef Id="WixUI_Common" />
+  </Fragment>
 </Wix>

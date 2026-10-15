@@ -631,12 +631,20 @@ here.
 
 | Artifact | Built by | Installs to | Updates itself |
 |---|---|---|---|
-| `circuitRF-<ver>-<arch>.msi` | `build-windows.ps1` | `%ProgramFiles%\circuitRF` | notify only |
-| `circuitRF-<ver>-win-<arch>-user.msi` | `build-windows.ps1` | `%LOCALAPPDATA%\Programs\circuitRF` | **yes** |
+| `circuitRF-<ver>-<arch>.msi` | `build-windows.ps1` | `%ProgramFiles%\circuitRF` by default | notify only |
+| `circuitRF-<ver>-win-<arch>-user.msi` | `build-windows.ps1` | `%LOCALAPPDATA%\Programs\circuitRF` by default | **yes** |
 | `circuitRF-<ver>-win-<arch>.zip` | `build-windows.ps1` | — (the update payload) | — |
 | `circuitRF-<ver>-<arch>.dmg` | `build-macos.sh` | `/Applications` | **yes**, for an admin user |
 | `circuitRF-<ver>-<arch>.deb` | `build-linux.sh` | `/opt/circuitrf` | notify only |
 | `circuitRF-<ver>-linux-<arch>.tar.gz` | `build-linux.sh` | `~/.local/share/circuitRF` | **yes** |
+
+**Both Windows installers ask for the folder** on a Destination Folder page, between the licence
+and the feature tree. The defaults are the ones in the table. The chosen folder is written to
+`Software\circuitRF\circuitRF\InstallFolder` (HKCU per-user, HKLM per-machine) and read back by the
+next `.msi`, so an upgrade lands in the folder already in use instead of the default. A per-user
+install refuses a folder under Program Files or Windows on that page, because a per-user `.msi` does
+not elevate. The updater finds its own folder, so a per-user install anywhere this account can write
+still updates itself. The About box shows the install folder.
 
 **These names are a contract, not a convention.** `src/Ui/Updates/UpdateAssetNames.cs` parses exactly
 these spellings. Rename an artifact and updates stop — with no error anywhere, no log line and no user
@@ -711,6 +719,7 @@ any of it — the outcomes are dialogs that either appear or do not.
 | Windows | *Only if you have started Authenticode-signing:* **all six** PEs in the update `.zip` carry your certificate — `circuitRF.exe`, `senior_worker.exe`, `crf-model-host.dll`, `av_libglesv2.dll`, `libSkiaSharp.dll`, `libHarfBuzzSharp.dll`. Signing only the first fails the identity match, silently (design §9.1's Correction) | |
 | Windows | A per-user install updates with **no** UAC prompt and **no** SmartScreen warning | |
 | Linux | A `~/.local` install updates and the `.desktop` entry still launches afterwards | |
+| Windows | Per-user and per-machine: install to a **non-default** folder, launch, check the Start Menu and Desktop shortcuts and that `circuitrf` is on `PATH`; then run a **higher** version's `.msi`, which must open on and install into the same folder; per-user only, the auto-update stages into `<chosen>\app-<ver>`; and the Apps-list uninstall removes the chosen folder | |
 | Windows | `circuitrf --version` and `circuitrf check <workspace>` typed in **cmd and in PowerShell**, per-user and per-machine: output appears, and the prompt waits for it (that is `circuitRF.com`; a pipe cannot test it) | |
 | All | Double-click a `.csch` and a `.clay` with circuitRF closed, then again with it open: both open in the GUI, the second in the window already open — the executable being the CLI must not have changed this | |
 | All | A read-only install (`.msi` / `.deb` / standard-user macOS) is notify-only and writes nothing | |

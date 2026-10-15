@@ -5,6 +5,80 @@ symptom first, because that is what the next person will have in front of them.
 
 ---
 
+## The Windows installer offered no choice of folder, and an upgrade would have ignored one (R-inst, 2026-10-15)
+
+**Symptom:** a first-time Windows user could not tell where circuitRF had installed and asked to choose
+the folder. Per-user installs went to `%LOCALAPPDATA%\Programs\circuitRF`, which sits under a hidden
+folder, so an Explorer search does not find it.
+
+**Why there was no choice.** `WixUI_FeatureTree` has no destination page. Its only location control is
+the feature tree's **Browse...** button, which is enabled only for a `Feature` that declares
+`ConfigurableDirectory`, and `MainFeature` did not. The `.wxs` comment claimed an install-location page
+that was never there.
+
+**What ships now.** `circuitRF_InstallUI`, a copy of `WixUI_FeatureTree` (WiX v6.0.2; v7.0.0's file is
+byte-identical) with `InstallDirDlg` inserted: Welcome, Licence, Destination Folder, Feature tree, Ready,
+with Back walking the same path. `MainFeature` carries `ConfigurableDirectory="INSTALLFOLDER"` so the
+feature tree's Browse... agrees with the page. Replacing `<ui:WixUI Id="WixUI_FeatureTree"
+InstallDirectory="INSTALLFOLDER"/>` loses nothing: WiX's `UICompiler.ParseWixUIElement` turns that
+element into exactly a UI reference plus `WIXUI_INSTALLDIR=INSTALLFOLDER`.
+
+**The trap: an upgrade.** `MajorUpgrade` starts `INSTALLFOLDER` at its authored default each time, so the
+next `.msi` would have put a user's `D:\Tools\circuitRF` back in the default folder, moving the shortcuts
+and leaving the old folder behind. `AppsEntryComp` now writes `InstallFolder` beside `ProductCode` under
+`Software\circuitRF\circuitRF` (`$(var.ArpRoot)`: HKCU per-user, HKLM per-machine), and a
+`RegistrySearch` seeds `INSTALLFOLDER` from it. AppSearch runs before the old product is removed, so the
+value is still there. A version from before this change wrote no value, so its upgrade opens on the
+default, which is also where every such install already is.
+
+**Per-user and an unwritable folder: a known-location check, not a probe.** A per-user `.msi` does not
+elevate, so `C:\Program Files\...` would fail partway through with a Windows Installer privileges error.
+A real writability probe needs a compiled custom action (a native DLL per architecture in the Binary
+table) that could not be built or run off Windows. Instead, Next on the page and OK in the Browse dialog
+refuse a folder that starts with `ProgramFiles64Folder`, `ProgramFilesFolder` or `WindowsFolder`. They
+show `NotUserWritableDlg` and stay on the page. Each test is guarded on its property being set, because
+`X << ""` would match every path (`ProgramFiles64Folder` is empty on 32-bit Windows). Any other folder
+the account cannot write still reaches the installer's own error. In the per-machine build the condition
+is `0`.
+
+**Checked off Windows.** wix 6.0.2 (installed with `--tool-path`, matching the cached UI extension)
+compiles and LINKS both scopes once the macOS-only `WIX0389` directory-name errors are sidestepped in a
+throwaway copy. It stops at bind for want of `msi.dll`. Linking proves every dialog, binary and UI
+reference resolves. Building to a `.wixlib` and reading its `wix-ir.json` showed the ControlEvent rows
+in order, with the `~<<` conditions intact (a `<?define?>` holds them unescaped, since a processing
+instruction does not decode entities), and the RegLocator root as 1 (HKCU) per-user and 2 (HKLM)
+per-machine.
+
+**The updater needed nothing.** `UpdateInstallSite.Detect` derives the layout from
+`AppContext.BaseDirectory` and probes writability, so a per-user install in any writable folder updates
+itself. `PackagingScriptTests.TheUpdater_HardCodesNoDefaultInstallFolder` keeps it that way. The About box
+shows the folder through `InstallLocation`, which reuses `Detect()`'s answer. On macOS it **selects** the
+`.app` (`open -R`) rather than going through `FileReveal.Reveal`, which opens a directory, and `open` on a
+`.app` launches it.
+
+**Gate:** `PackagingScriptTests.WindowsInstaller_AsksForTheDestinationFolder_BetweenLicenceAndFeatureTree`,
+`..._SeedsTheInstallFolderFromWhatTheLastInstallWrote`, `TheUpdater_HardCodesNoDefaultInstallFolder`,
+`AboutWindowTests.TheInstallFolderIsShown_AndExists`. Ui.Tests has no Avalonia headless runtime, so the
+last one checks `InstallLocation.Folder` exists and scans the dialog's source, as its siblings do.
+
+**Windows gate, owner only (ARM64 VM; x64 and x86 cross-built there). Not yet run:**
+
+| Check | perUser | perMachine |
+|---|---|---|
+| (a) install to a non-default folder; launch; shortcuts work; `circuitrf` on `PATH` | | |
+| (b) a higher version's `.msi` opens on, and installs into, the same folder | | |
+| (c) the auto-update stages into `<chosen>\app-<ver>` | | n/a |
+| (d) the Apps-list uninstall removes the chosen folder | | |
+| per-user only: choosing `C:\Program Files\x` shows the refusal and stays on the page | | n/a |
+| per-user only, optional: with the four `NotUserWritable` rows removed, does Next refuse `C:\Program Files\x` on its own? If so, the check is redundant and can go | | n/a |
+
+The check was kept on purpose after review (2026-10-15). It is cheap, and it turns a failure partway
+through the install into a sentence on the page. The open question is whether Windows Installer's own
+`SetTargetPath` already refuses the folder. Microsoft documents that it blocks a path "not valid to be
+written to", but not which account's rights it checks. The optional row above answers that.
+
+---
+
 ## The geometry kernel ships: OpenCASCADE in `geometry-kernel/` (EM3D brief 62, 2026-09-27)
 
 **What each script does now.** Before publishing a RID in `recipe.env`'s `KERNEL_RIDS` (D2), each script

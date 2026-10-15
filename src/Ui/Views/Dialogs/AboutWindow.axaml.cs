@@ -15,6 +15,9 @@ public partial class AboutWindow : Window
         VersionText.Text  = $"Version {AppVersion.Display}";
         PlatformText.Text = AppVersion.Platform;
 
+        InstallFolderText.Text            = InstallLocation.Folder;
+        RevealInstallFolderButton.Content = FileReveal.Label;
+
         NoticesButton.IsEnabled = File.Exists(NoticesPath);
     }
 
@@ -41,6 +44,9 @@ public partial class AboutWindow : Window
         }
         catch (Exception) { /* no viewer; the file is beside the application either way */ }
     }
+
+    private void OnRevealInstallFolderClicked(object? sender, RoutedEventArgs e)
+        => InstallLocation.Reveal();
 
     private void OnOkClicked(object? sender, RoutedEventArgs e)
         => Close();

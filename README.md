@@ -132,7 +132,7 @@ executable's full path filled in, and the matching Claude Code command:
 | Platform | Command |
 |---|---|
 | macOS | `/Applications/circuitRF.app/Contents/MacOS/circuitRF serve --root ~/designs --print-config` |
-| Windows | `%LOCALAPPDATA%\Programs\circuitRF\circuitRF.exe serve --root %USERPROFILE%\designs --print-config` |
+| Windows | `circuitRF serve --root %USERPROFILE%\designs --print-config` (the installer puts circuitRF on `PATH`; **About circuitRF** shows the folder it is in) |
 | Linux | `~/.local/bin/circuitrf serve --root ~/designs --print-config` |
 
 **3. Register it with your client.** With Claude Code, run the `claude mcp add …` line it printed.

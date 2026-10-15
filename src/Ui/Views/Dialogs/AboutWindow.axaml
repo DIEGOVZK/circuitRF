@@ -42,7 +42,26 @@
                              FontSize="11"
                              HorizontalAlignment="Center"
                              Opacity="0.45"
-                             Margin="0,2,0,16"/>
+                             Margin="0,2,0,0"/>
+
+        <!-- Where this copy is installed, from InstallLocation, with the platform's reveal beside it.
+             The value alone: a user who opened About to find the folder needs nothing more. -->
+        <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,16">
+            <SelectableTextBlock x:Name="InstallFolderText"
+                                 Grid.Column="0"
+                                 Text="Folder"
+                                 FontSize="11"
+                                 Opacity="0.6"
+                                 TextWrapping="Wrap"
+                                 VerticalAlignment="Center"/>
+            <Button x:Name="RevealInstallFolderButton"
+                    Grid.Column="1"
+                    Content="Reveal"
+                    FontSize="11"
+                    Margin="8,0,0,0"
+                    VerticalAlignment="Center"
+                    Click="OnRevealInstallFolderClicked"/>
+        </Grid>
 
         <!-- Description -->
         <SelectableTextBlock Text="Lightweight RF Circuit and EM Simulator"

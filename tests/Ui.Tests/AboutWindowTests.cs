@@ -86,6 +86,22 @@ public class AboutWindowTests
     }
 
     /// <summary>
+    /// <b>The About box says where circuitRF is installed</b> (brief-install-location R-inst-2): a
+    /// first-time Windows user could not find it. The value comes from <c>InstallLocation</c>, which
+    /// takes the updater's own structural answer, and it names a folder that is really there.
+    /// </summary>
+    [Fact]
+    public void TheInstallFolderIsShown_AndExists()
+    {
+        Assert.Contains("InstallFolderText", Xaml, StringComparison.Ordinal);
+        Assert.Contains("InstallLocation.Folder", Code, StringComparison.Ordinal);
+        Assert.Contains("InstallLocation.Reveal", Code, StringComparison.Ordinal);
+
+        Assert.True(Directory.Exists(CircuitRF.Ui.InstallLocation.Folder),
+                    $"InstallLocation.Folder is '{CircuitRF.Ui.InstallLocation.Folder}', which does not exist.");
+    }
+
+    /// <summary>
     /// The spelling is the release artifacts' own, so what the About box says and what the user
     /// would go and download read the same. <c>UpdateAssetNames.ArchToken</c> is the other half.
     /// </summary>

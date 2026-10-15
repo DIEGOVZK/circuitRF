@@ -1683,4 +1683,99 @@ public class PackagingScriptTests
         foreach (var name in new[] { "gdstk 1.0.1", "Clipper 6.4.2", "Qhull 2020.2", "zlib 1.3.2", "licenses/Qhull.txt", "licenses/Zlib.txt" })
             Assert.Contains(name, notices, StringComparison.Ordinal);
     }
+
+    private static readonly XNamespace Wxs = "http://wixtoolset.org/schemas/v4/wxs";
+
+    private static XDocument InstallerWxs() =>
+        XDocument.Load(RepoFile("packaging", "windows", "circuitRF.wxs"));
+
+    /// <summary>
+    /// <b>The installer asks where to install</b> (brief-install-location R-inst-1a): a Destination
+    /// Folder page between the licence and the feature tree, reached by Next and left by Back in both
+    /// directions. WixUI_FeatureTree, which shipped before, has no such page; its only location
+    /// control was a Browse... button that MainFeature never enabled, so a first-time user could not
+    /// choose, and then could not find, the install folder.
+    /// </summary>
+    [Fact]
+    public void WindowsInstaller_AsksForTheDestinationFolder_BetweenLicenceAndFeatureTree()
+    {
+        var doc = InstallerWxs();
+
+        bool Moves(string dialog, string control, string to) =>
+            doc.Descendants(Wxs + "Publish").Any(p =>
+                (string?)p.Attribute("Dialog")  == dialog &&
+                (string?)p.Attribute("Control") == control &&
+                (string?)p.Attribute("Event")   == "NewDialog" &&
+                (string?)p.Attribute("Value")   == to);
+
+        Assert.True(Moves("LicenseAgreementDlg", "Next", "InstallDirDlg"), "Licence -> Next does not reach the Destination Folder page.");
+        Assert.True(Moves("InstallDirDlg", "Next", "CustomizeDlg"),        "Destination Folder -> Next does not reach the feature tree.");
+        Assert.True(Moves("CustomizeDlg", "Back", "InstallDirDlg"),        "Feature tree -> Back skips the Destination Folder page.");
+        Assert.True(Moves("InstallDirDlg", "Back", "LicenseAgreementDlg"), "Destination Folder -> Back does not return to the licence.");
+        Assert.False(Moves("LicenseAgreementDlg", "Next", "CustomizeDlg"), "Licence -> Next still jumps straight to the feature tree.");
+
+        Assert.Contains(doc.Descendants(Wxs + "Property"), p =>
+            (string?)p.Attribute("Id") == "WIXUI_INSTALLDIR" && (string?)p.Attribute("Value") == "INSTALLFOLDER");
+
+        var main = doc.Descendants(Wxs + "Feature").Single(f => (string?)f.Attribute("Id") == "MainFeature");
+        Assert.True((string?)main.Attribute("ConfigurableDirectory") == "INSTALLFOLDER",
+                    "MainFeature has no ConfigurableDirectory, so the feature tree's Browse... button is "
+                    + "disabled and disagrees with the Destination Folder page.");
+    }
+
+    /// <summary>
+    /// <b>An MSI upgrade installs into the folder already in use</b> (R-inst-1c). MajorUpgrade starts
+    /// INSTALLFOLDER at its authored default every time, so a user who chose D:\Tools would get the
+    /// next release in the default folder with no warning. The install writes the folder, and AppSearch
+    /// (which runs before the old product is removed) reads the SAME root, key and value back - in both
+    /// scopes, since $(var.ArpRoot) is HKCU for perUser and HKLM for perMachine.
+    /// </summary>
+    [Fact]
+    public void WindowsInstaller_SeedsTheInstallFolderFromWhatTheLastInstallWrote()
+    {
+        var doc = InstallerWxs();
+
+        var search = doc.Descendants(Wxs + "Property")
+                        .Where(p => (string?)p.Attribute("Id") == "INSTALLFOLDER")
+                        .SelectMany(p => p.Elements(Wxs + "RegistrySearch"))
+                        .SingleOrDefault();
+        Assert.True(search is not null, "INSTALLFOLDER is not seeded from a RegistrySearch.");
+
+        string root = (string)search!.Attribute("Root")!, key = (string)search.Attribute("Key")!,
+               name = (string)search.Attribute("Name")!;
+        Assert.Equal("$(var.ArpRoot)", root);
+
+        Assert.Contains(doc.Descendants(Wxs + "RegistryValue"), v =>
+            (string?)v.Attribute("Root")  == root &&
+            (string?)v.Attribute("Key")   == key  &&
+            (string?)v.Attribute("Name")  == name &&
+            (string?)v.Attribute("Value") == "[INSTALLFOLDER]");
+
+        string text = File.ReadAllText(RepoFile("packaging", "windows", "circuitRF.wxs"));
+        Assert.Matches(@"<\?if \$\(var\.Scope\) = ""perUser"" \?>\s*<\?define ArpRoot = ""HKCU"" \?>\s*<\?else\?>\s*<\?define ArpRoot = ""HKLM"" \?>", text);
+    }
+
+    /// <summary>
+    /// <b>The updater works out where it is; it never assumes</b> (R-inst-1b). A per-user install may
+    /// now be anywhere the user chose, and <c>UpdateInstallSite</c> derives the layout from
+    /// <c>AppContext.BaseDirectory</c> and probes writability. A hard-coded
+    /// <c>%LOCALAPPDATA%\Programs</c> anywhere in the updater would update the wrong folder, or none.
+    /// </summary>
+    [Fact]
+    public void TheUpdater_HardCodesNoDefaultInstallFolder()
+    {
+        var offenders = Directory.GetFiles(RepoFile("src", "Ui", "Updates"), "*.cs", SearchOption.AllDirectories)
+            .Where(f =>
+            {
+                string code = Regex.Replace(File.ReadAllText(f), @"/\*.*?\*/", "", RegexOptions.Singleline);
+                code = Regex.Replace(code, @"//[^\n]*", "");
+                return Regex.IsMatch(code, @"LOCALAPPDATA|LocalApplicationData|\bPrograms\b", RegexOptions.IgnoreCase);
+            })
+            .Select(Path.GetFileName)
+            .ToList();
+
+        Assert.True(offenders.Count == 0,
+                    "src/Ui/Updates names the default per-user install folder: " + string.Join(", ", offenders)
+                    + ". The installer lets the user choose it; detect it from AppContext.BaseDirectory.");
+    }
 }
