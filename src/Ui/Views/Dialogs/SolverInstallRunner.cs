@@ -47,7 +47,8 @@ internal static class SolverInstallRunner
         if (plan is null)
         {
             messages?.Error(refusal ?? $"circuitRF has no install recipe for {name} on this computer. Recipes exist for: " +
-                                       $"{SolverRecipes.PlatformsFor(tool)}.");
+                                       $"{SolverRecipes.PlatformsFor(tool)}." +
+                                       (SolverRecipes.ByHand(tool) is { } byHand ? " " + byHand : ""));
             return;
         }
         var (recipe, installer) = (plan.Recipe, plan.Installer);

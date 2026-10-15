@@ -1,0 +1,2 @@
+Q4 part box 0 0 0 .. 1 0.8 0.5
+Q4 volumes 2 surfaces 14 fillet-hits 0 top-hits 0

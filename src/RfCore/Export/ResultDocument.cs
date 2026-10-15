@@ -2603,7 +2603,12 @@ namespace RfCore.Export
         IReadOnlyList<string> Rejected,
         bool Proceeds,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        string? Refusal);
+        string? Refusal)
+    {
+        /// <summary>brief-em3d-135 — the warning a run proceeds with, for a Gmsh circuitRF has not tested.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Warning { get; init; }
+    }
 
     /// <param name="FromCache">True when the answer was the cached one for this binary, so no probe ran.</param>
     public sealed record Em3dCapabilityJson(string Capability, bool Available, string Detail, bool FromCache)

@@ -19769,3 +19769,85 @@ simplex, pattern, random, DE, PSO, CMA-ES, Bayesian and Auto all reached the Dis
 - **`CwsFile`/`CwsUserFile.LayoutLayerViews`** (layout path → hidden keys, locked keys, current-layer-only)
   is the per-user store. It is in `MovedFieldNames`, `Extract`, `Merge` and `IsEmpty` — miss the first and
   it lands in the shared `.cws`.
+
+## Gmsh on Linux arm64: built from source, and where the no-recipe messages point (2026-10-15)
+
+A field user on Linux arm64 (GitHub issue #9) had Palace install cleanly and then had to hunt for the
+source of the exact Gmsh circuitRF accepts, because upstream ships no Linux arm64 build and no recipe
+exists there. The rest of that request is `docs/sonnet-briefs/brief-em3d-135-gmsh-tested-versions-and-linux-arm64.md`.
+
+- **`SolverRecipes.ByHand(tool)`** is the one sentence every "no recipe here" message now ends with:
+  the GUI's *Install Gmsh…* refusal, `solver install`'s `solver.install.no-recipe`, the Settings /
+  `solver list` row (`SolverStatus.Of`, only when nothing validated was found), and the run's own
+  "Gmsh was not found" refusal (`DescribeFailure`). Its URL is built from the newest validated release,
+  so a change to the validated list moves it. Only Gmsh has one.
+- **The documented source build works, measured**: `ubuntu:24.04` arm64 container, Docker Desktop on
+  the M4, Ubuntu's own OCCT packages (7.6.3), `-DENABLE_FLTK=0 -DENABLE_OCC=1`, prefix `~/.local`
+  (already on discovery's search list, so nothing to configure). Packages 1 min 24 s; build and install
+  2 min 22 s at `-j4`; 33 MB. `gmsh --version` prints `4.15.2-git`. Source archive SHA-256
+  `be3f66f2…bdd3e`.
+- **Entity tables do not depend on OCCT's version** on circuitRF's own scripts: the four
+  `testdata/em3d/palace-goldens/*/model.geo` gave byte-identical `entities.txt` from that build
+  (OCC 7.6.3) and from the macOS Homebrew build (OCC 7.9.3).
+- **Distribution packages are other versions** (arm64, 2026-10-15): Ubuntu 24.04 4.12.1, Debian 13
+  4.13.1, Debian 12 4.8.4. Under the exact-version rule of the time an `apt install gmsh` was refused; the
+  section below lifts that rule for Gmsh.
+- **Spack is not a shortcut here**: the spack-packages commit the Palace recipe pins (`0ec478de`) offers
+  gmsh ≤ 4.15.1, and builds it without OpenCASCADE unless `+opencascade` is asked for.
+
+## brief-em3d-135: Gmsh runs any version, with a warning; the tested list and the Linux arm64 recipe (2026-10-15)
+
+**The policy.** Gmsh's `ValidatedVersions` is now a list of TESTED versions and `SolverDiscovery.UntestedRuns`
+(Gmsh only) makes any other version run with a warning instead of a refusal. Why the pin was never a finding,
+and what guards a different Gmsh instead, is the brief's §0 table: in short, `GmshGeoWriter.CheckEntities`
+refuses a run whose entity table does not add up, whatever the version. Palace and openEMS are unchanged.
+
+- **One sentence, one function**: `SolverDiscovery.DescribeUntested`. `Check` puts it in
+  `SolverReadiness.Warning`; `Em3dRunService` and `ThermalRunService` move it into the run's Warnings (never
+  Notes); `explain` prints it under *solvers* and carries it as `Em3dSolverJson.Warning`; `DescribeForSettings`
+  ends the Settings / `solver list` row with it, word for word. `check` was listed in the brief but never
+  consults discovery, so it has nothing to say here.
+- **Every reader of `Validated`, answered**: `Check` and `SolverStatus` now ask `SolverDiscovery.Runs(found)`
+  (validated, or any version of an `UntestedRuns` tool), so an untested Gmsh is probed like a tested one should
+  a capability probe ever be added. `SolverInstaller.WouldHelp` still offers *Install Gmsh…* beside an untested
+  one, because installing a tested one changes what runs. The installer's post-install check asked `Validated`, which
+  would have let a Gmsh recipe that built some other TESTED version pass (`SolverInstallTests.Gate6` fakes exactly
+  that, with 4.14.0, which is now on the list); it now requires the version the recipe names. `DescribeUnvalidated`
+  keeps a Gmsh sentence for an untested version on that path only. `Wsl/SolverDiscovery.Subsystem.cs` is Palace only. `solver list` prints
+  `tested:` for Gmsh; its JSON key stays `validated` (a contract).
+- **User-facing words**: "tested" for Gmsh (`SolverDiscovery.ListWord`), "validated" for the other two.
+
+**The evidence** is `testdata/em3d/gmsh-versions/` (README, `run.sh`, the corpus, the 4.15.2 entity tables).
+Every Gmsh from 4.11.0 to 4.15.2, all twelve releases, gave byte-identical entity tables on all 64 scripts, over
+OCC 7.6.1, 7.6.3, 7.7.2, 7.8.1 and 7.9.3, with element counts within 5.6 %. Debian 12's 4.8.4 fails (its errors
+are in the README, and they are what a Debian 12 user now sees after the warning). `SolverDiscoveryTests.Gate9`
+replays the committed tables through `CheckEntities` and requires a passing README row for each listed version.
+
+- **Corpus trap**: `testdata/thermal/**/mesh/*.geo` are the thermal REFERENCES' scripts, written by their
+  Python generators, not by circuitRF's thermal writer, and carry no entity table. The thermal writer's own
+  scripts came from the example `.c3d`s, through `ThermalLowerings.Build`.
+- **Harness traps**: the example Launch setups need the geometry kernel beside the harness's executable (copy
+  `src/Ui/bin/Debug/net10.0/geometry-kernel`), or they are skipped as needing it; two workspaces both have a
+  `Launch` cell, so names must carry the workspace.
+- **Gmsh before 4.11 on macOS** ships x86 only and did not run on the arm64 test machine; no OCCT 8 build was
+  measured (the kernel's OCCT 8.0.1 is trimmed and lacks the toolkits Gmsh's CMake requires).
+
+**The Linux arm64 recipe**, `gmsh-4.15.2-linux-arm64.json`: a CMake build of the pinned source
+(SHA-256 committed) against the distribution's OpenCASCADE, prerequisites `cmake`, `g++`, `make` and OCCT's
+`Standard_Version.hxx`.
+
+- **`-DENABLE_RPATH=0`**, added over the hand steps: Gmsh otherwise writes `<prefix>/lib` into the program, and
+  the prefix during a relocatable build is the `.partial` directory. With it off, `readelf -d` shows no
+  RPATH/RUNPATH and only system libraries NEEDED, so `relocatable` is measured, not assumed.
+- **A configure without OpenCASCADE still succeeds**, and the program then cannot read one circuitRF script, so a
+  step greps `build/src/common/GmshConfig.h` for `#define HAVE_OCC` and the recipe fails there by name.
+- The source and build trees are removed after `make install` (`/bin/rm`, inside the home): 33 MB stays.
+- **A checksum the recipe pins itself** (gmsh.info publishes none) now reads so in the consent text, through
+  its `checksumNote`; until now every `sha256` was described as upstream's.
+- **Fedora, measured** (`fedora:42` arm64): `dnf install gcc-c++ make cmake opencascade-devel` puts the header
+  at `/usr/include/opencascade/` (OCC 7.8.1) and the build takes 178 s; the packages alone took 654 s, because
+  `opencascade-devel` pulls a large tree. Not run through the assistant.
+- **Gate, measured** (Docker Desktop on the M4, 8 GB): three clean `solver install gmsh --yes` on Ubuntu 24.04
+  arm64, 3.8 / 3.0 / 3.1 min, and one on Debian 12 arm64, 3.3 min; 33 MB each, no failure, and both installed
+  programs passed the whole corpus. The prerequisite refusal, run first on a bare image, names the one
+  `apt-get` line (`testdata/em3d/f0/README.md` §Install rows 16-19).

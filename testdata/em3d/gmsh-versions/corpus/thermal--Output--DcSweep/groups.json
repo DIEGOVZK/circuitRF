@@ -1,0 +1,198 @@
+{
+  "Generator": "circuitRF brief-em3d-7: the mapping from named objects to Palace attributes",
+  "LengthUnitM": 1E-06,
+  "Groups": [
+    {
+      "Attribute": 1,
+      "Name": "mould",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Mould compound (generic)"
+    },
+    {
+      "Attribute": 2,
+      "Name": "flange",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper-molybdenum (70Mo-30Cu)"
+    },
+    {
+      "Attribute": 3,
+      "Name": "standoff",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Alumina 96%"
+    },
+    {
+      "Attribute": 4,
+      "Name": "lead",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 5,
+      "Name": "U1/SiC",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Silicon carbide (4H, semi-insulating)"
+    },
+    {
+      "Attribute": 6,
+      "Name": "U1/Die Attach/1",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold-tin solder (80/20)"
+    },
+    {
+      "Attribute": 7,
+      "Name": "U1/Pad Metal/1",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 8,
+      "Name": "U1/Pad Metal/2",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 9,
+      "Name": "*wire*:U1/wire/Out/1:start",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 10,
+      "Name": "*wire*:U1/wire/Out/1:end",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 11,
+      "Name": "*wire*:U1/wire/Out/2:start",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 12,
+      "Name": "*wire*:U1/wire/Out/2:end",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 13,
+      "Name": "*wire*:U1/wire/Out/3:start",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 14,
+      "Name": "*wire*:U1/wire/Out/3:end",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 15,
+      "Name": "*wire*:U1/wire/Out/4:start",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 16,
+      "Name": "*wire*:U1/wire/Out/4:end",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 17,
+      "Name": "*wire*:U1/wire/Out/5:start",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 18,
+      "Name": "*wire*:U1/wire/Out/5:end",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 19,
+      "Name": "*wire*:U1/wire/Out/6:start",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 20,
+      "Name": "*wire*:U1/wire/Out/6:end",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 21,
+      "Name": "flange/zmin",
+      "Dimension": 2,
+      "Kind": "FaceBoundary",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 22,
+      "Name": "U1/Pad Metal/2/side1",
+      "Dimension": 2,
+      "Kind": "FaceBoundary",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 23,
+      "Name": "U1/Pad Metal/1/side3",
+      "Dimension": 2,
+      "Kind": "FaceBoundary",
+      "Expected": 1,
+      "AtLeast": true
+    }
+  ]
+}

@@ -150,6 +150,8 @@ public static partial class ThermalRunService
                 return Stop(EmRunStatus.Refused, EmDiagnostics.SolverUnavailable(gmsh.Name, gmsh.Refusal!, Em3d.Install.SolverInstaller.OfferFor(gmsh)));
             notes.Add($"Solver: circuitRF thermal (steady conduction, second-order tetrahedra by default); mesher: Gmsh " +
                       $"{gmsh.Installation!.DescribeVersion()} at {gmsh.Installation.Path}.");
+            // brief-em3d-135 R-em3d135-1e — an untested Gmsh runs, and the run says so among its Warnings.
+            if (gmsh.Warning is { } untested) warnings.Add(untested);
 
             // ── brief-em3d-79: a setup driven from a circuit runs the circuit's HB first; its pins' currents become the ports' ──
             ThermalCircuitDrive? circuit = null;

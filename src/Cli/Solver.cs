@@ -84,7 +84,8 @@ internal static class Solver
             Console.WriteLine($"  {s.Summary}");
             if (s.Found is { } found)
             {
-                Console.WriteLine($"  route: {Route(found.HowFound)}; validated: {(found.Validated ? "yes" : "no")}");
+                // brief-em3d-135 — Gmsh's list is of TESTED versions; the JSON key stays "validated" (a contract).
+                Console.WriteLine($"  route: {Route(found.HowFound)}; {SolverDiscovery.For(tool).ListWord}: {(found.Validated ? "yes" : "no")}");
                 JsonRun.AddOutput("solver", found.Path);
             }
             foreach (var c in s.Capabilities)
@@ -157,7 +158,7 @@ internal static class Solver
         if (SolverInstallPlan.For(tool, version, out string? refusal) is not { } plan)
             return JsonRun.Fail(refusal is not null
                 ? CliDiagnostics.SolverInstallRefused(refusal)
-                : CliDiagnostics.SolverNoRecipe(display, version, Here(), SolverRecipes.PlatformsFor(tool)));
+                : CliDiagnostics.SolverNoRecipe(display, version, Here(), SolverRecipes.PlatformsFor(tool), SolverRecipes.ByHand(tool)));
         var (recipe, installer) = (plan.Recipe, plan.Installer);
         Console.Error.WriteLine(installer.Consent(recipe));
         Console.Error.WriteLine();

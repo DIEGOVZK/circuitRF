@@ -142,6 +142,27 @@ public sealed class ThermalRunTests(ITestOutputHelper output) : IDisposable
         Assert.False(File.Exists(Path.Combine(ws, "results", "Cell Hot.thermal.npy")));
     }
 
+    /// <summary>brief-em3d-135 — an untested Gmsh is run, and the run's Warnings say so; and the guard that makes that safe still
+    /// fires on it: a stub at 4.10.5 whose entity table does not add up is refused by the entity check, whatever its version.</summary>
+    [Fact]
+    public void Gate10_AnUntestedGmsh_RunsWithAWarning_AndAnEntityTableThatDoesNotAddUpIsStillRefused()
+    {
+        if (OperatingSystem.IsWindows()) return;   // the stub Gmsh is a shell script
+        string gmsh = Path.Combine(_root, "old-gmsh");
+        Directory.CreateDirectory(_root);
+        File.WriteAllText(gmsh, "#!/bin/sh\n[ \"$1\" = --version ] && { echo 4.10.5; exit 0; }\n" +
+                                "printf 'all_volumes 3\\nclassified_volumes 2\\nunclassified_single_sided 0\\n' > entities.txt\n: > model.msh\n");
+        File.SetUnixFileMode(gmsh, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+        string ws = Workspace();
+        string path = WriteC3d(ws, Doc(Setup()));
+        var (code, _, stderr) = RunCli(("CIRCUITRF_GMSH", gmsh), "em", path, "--setup", "Hot");
+        string text = stderr.Replace("\r", "").Replace("\n", " ");
+        Assert.Equal(1, code);
+        Assert.Contains($"warning: Gmsh at '{gmsh}' reports version 4.10.5, which circuitRF has not tested", text);
+        Assert.Contains("3 volume(s) were meshed and 2 belong to a named object", text);
+    }
+
     [Fact]
     public void Gate10_NoSink_AndAMaterialWithoutK_AreRefusedByName()
     {

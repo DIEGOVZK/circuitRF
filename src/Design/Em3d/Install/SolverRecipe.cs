@@ -52,7 +52,8 @@ public enum RecipeProgress
 /// <param name="Url">The upstream URL, shown in the consent text.</param>
 /// <param name="FetchedBy"><c>circuitRF</c>, or the step that fetches it.</param>
 /// <param name="File">For a circuitRF download, the file name it is saved under in <c>downloads/</c>.</param>
-/// <param name="Sha256">Upstream's own published checksum, or null.</param>
+/// <param name="Sha256">Upstream's own published checksum, or one the recipe pins itself (then
+/// <paramref name="ChecksumNote"/> says where it came from), or null.</param>
 /// <param name="ChecksumNote">Required when <paramref name="Sha256"/> is null: why ("upstream publishes
 /// none"), or how the source is pinned instead.</param>
 public sealed record RecipeSource(string? Id, string Url, string FetchedBy, string? File, string? Sha256, string? ChecksumNote);
@@ -164,6 +165,21 @@ public static class SolverRecipes
                        .Select(r => $"{Describe(r.Platform)} {Describe(r.Architecture)}")
                        .Distinct().Order(StringComparer.Ordinal).ToList();
         return names.Count == 0 ? "none" : string.Join(", ", names);
+    }
+
+    /// <summary>
+    /// What a "no recipe here" message adds about building <paramref name="tool"/> by hand, or null when it adds
+    /// nothing. Only Gmsh has it: upstream publishes no Linux arm64 build, and finding the source archive of the
+    /// exact version circuitRF validates was the hard part of a field install there, so the message names its
+    /// address. The version is the newest validated one, so the address follows the validated list.
+    /// </summary>
+    public static string? ByHand(SolverTool tool)
+    {
+        if (tool != SolverTool.Gmsh) return null;
+        string release = SolverDiscovery.Gmsh.ValidatedVersions[^1].Release;
+        return $"Gmsh {release} builds from its source, https://gmsh.info/src/gmsh-{release}-source.tgz: " +
+               $"“{SolverDiscovery.GmshFromSourceSection}” in the EM Setup reference ({SolverDiscovery.GmshFromSourcePage}) " +
+               "has the steps.";
     }
 
     public static string Describe(RecipePlatform p) => p switch

@@ -4075,10 +4075,11 @@ internal static class CliDiagnostics
 
     /// <summary>No recipe for this tool (and version) on this platform — the list of platforms that DO
     /// have one says whether the answer is "not here" or "not at all".</summary>
-    public static Diagnostic SolverNoRecipe(string tool, string? version, string here, string platforms) => Diagnostic.Create(
+    public static Diagnostic SolverNoRecipe(string tool, string? version, string here, string platforms, string? byHand = null) => Diagnostic.Create(
         "solver.install.no-recipe", DiagnosticSeverity.Error,
-        "solver install: circuitRF has no install recipe for {tool}{version} on {here}. Recipes exist for: {platforms}.",
-        ("tool", tool), ("version", version is null ? "" : " " + version), ("here", here), ("platforms", platforms));
+        "solver install: circuitRF has no install recipe for {tool}{version} on {here}. Recipes exist for: {platforms}.{byHand}",
+        ("tool", tool), ("version", version is null ? "" : " " + version), ("here", here), ("platforms", platforms),
+        ("byHand", byHand is null ? "" : " " + byHand));
 
     /// <summary>R-em3d24-2a: without --yes nothing is fetched. The consent text has already been printed
     /// above this line.</summary>

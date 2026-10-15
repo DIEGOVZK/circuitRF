@@ -166,8 +166,11 @@ public sealed class SolverInstaller
         sb.AppendLine("It fetches from these upstream sources, and from nowhere else:");
         foreach (var s in recipe.Sources)
         {
+            // brief-em3d-135 — a checksum with a note is one the recipe pins itself (upstream publishes none), and says so.
             string check = s.Sha256 is { } sha
-                ? $"checked against upstream's SHA-256 {sha[..Math.Min(12, sha.Length)]}…"
+                ? s.ChecksumNote is { } pinned
+                    ? $"checked against the SHA-256 {sha[..Math.Min(12, sha.Length)]}… this recipe pins ({pinned})"
+                    : $"checked against upstream's SHA-256 {sha[..Math.Min(12, sha.Length)]}…"
                 : s.ChecksumNote!;
             sb.AppendLine($"  • {s.Url} — fetched by {s.FetchedBy}; {check}");
         }
@@ -402,8 +405,13 @@ public sealed class SolverInstaller
                 if (!Target.TryProbe(discovery, program, out var installed, out string? why))
                     return Fail(recipe, name, "Checking the installed program", [], $"the installed program at {program} did not answer: {why}.", logPath);
                 log.WriteLine($"identified: {installed!.DescribeVersion()}");
-                if (!installed.Validated)
-                    return Fail(recipe, name, "Checking the installed program", [installed.Banner], discovery.DescribeUnvalidated(installed), logPath);
+                // brief-em3d-135 — the version the recipe NAMES, not merely one discovery would run: Gmsh runs any version,
+                // and a recipe that built some other one (even a tested one) is broken.
+                if (installed.Release != recipe.Version)
+                    return Fail(recipe, name, "Checking the installed program", [installed.Banner],
+                                installed.Validated
+                                    ? $"{name} at '{installed.Where}' reports version {installed.DescribeVersion()}, but recipe {recipe.Id} installs {recipe.Version}."
+                                    : discovery.DescribeUnvalidated(installed), logPath);
                 foreach (var capability in CapabilitiesToCheck(recipe.Tool))
                 {
                     var verdict = discovery.Probe(installed, capability);

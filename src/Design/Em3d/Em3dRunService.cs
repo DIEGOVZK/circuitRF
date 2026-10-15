@@ -337,6 +337,8 @@ public static class Em3dRunService
             var p = readiness.Single(r => r.Tool == SolverTool.Palace).Installation!;
             var g = readiness.Single(r => r.Tool == SolverTool.Gmsh).Installation!;
             log.Notes.Add($"Solver: Palace {p.DescribeVersion()} at {SpackInstalls.FoldPadding(p.Where)}; mesher: Gmsh {g.DescribeVersion()} at {g.Path}.");
+            // brief-em3d-135 R-em3d135-1e — an untested Gmsh runs, and the run says so among its Warnings.
+            if (readiness.Single(r => r.Tool == SolverTool.Gmsh).Warning is { } untested) log.Warnings.Add(untested);
             palaceSettings = PalaceSettings.Resolve(setup.Palace);
             if (p.Distribution is not null)
             {

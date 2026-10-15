@@ -283,7 +283,7 @@ internal static class ExplainEm3d
                r.Capabilities.Select(c => new Em3dCapabilityJson(
                    c.Capability == SolverCapability.DrivenLumpedPorts ? "driven-lumped-ports" : c.Capability.ToString(),
                    c.Available, c.Detail, c.FromCache) { Probe = SolverDiscovery.ProbeKind(c.Capability) }).ToList(),
-               r.Rejected, r.Proceeds, r.Refusal)).ToList();
+               r.Rejected, r.Proceeds, r.Refusal) { Warning = r.Warning }).ToList();
 
     /// <summary>
     /// R-em3d5-3c. Each row says which kind of number it is, and an unavailable one says why rather than
@@ -554,12 +554,14 @@ internal static class ExplainEm3d
                 Console.WriteLine($"    {s.Tool,-10} not found");
             else
                 Console.WriteLine($"    {s.Tool,-10} {s.Version}" +
-                                  (s.Release is not { } rel ? ", NOT validated" : rel == s.Version ? ", validated" : $" = {rel}, validated") +
+                                  (s.Release is not { } rel ? (s.Warning is null ? ", NOT validated" : ", not tested")
+                                   : (rel == s.Version ? ", " : $" = {rel}, ") + (s.Tool == SolverDiscovery.Gmsh.Name ? SolverDiscovery.Gmsh.ListWord : "validated")) +
                                   $" — {(s.Path is { } path ? SpackInstalls.FoldPadding(path) : null)} ({s.HowFound})");   // --json keeps the full path
             foreach (var c in s.Capabilities)
                 Console.WriteLine($"    {"",-10} {c.Capability}: {(c.Available ? "yes" : "no")}" +
                                   $"{(c.FromCache ? " (cached for this binary)" : "")} — {c.Detail}" +
                                   (c.Probe is { } probe ? $" Asked by {probe}." : ""));
+            if (s.Warning is { } warning) Console.WriteLine($"    {"",-10} warning: {warning}");
             Console.WriteLine($"    {"",-10} " + (s.Proceeds ? "a run would proceed past this program" : $"a run would stop here: {s.Refusal}"));
         }
     }

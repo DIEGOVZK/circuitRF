@@ -1,0 +1,139 @@
+{
+  "Generator": "circuitRF brief-em3d-7: the mapping from named objects to Palace attributes",
+  "LengthUnitM": 1E-06,
+  "Groups": [
+    {
+      "Attribute": 1,
+      "Name": "housing",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Connector alloy"
+    },
+    {
+      "Attribute": 2,
+      "Name": "bore",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "Material": "PTFE"
+    },
+    {
+      "Attribute": 3,
+      "Name": "pin",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Connector alloy"
+    },
+    {
+      "Attribute": 4,
+      "Name": "B1/Laminate",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "Material": "PTFE-glass laminate"
+    },
+    {
+      "Attribute": 5,
+      "Name": "B1/Bottom Copper",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 6,
+      "Name": "B1/Top Copper/1",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 7,
+      "Name": "background",
+      "Dimension": 3,
+      "Kind": "Background",
+      "Expected": 0,
+      "AtLeast": true,
+      "Material": "Air"
+    },
+    {
+      "Attribute": 8,
+      "Name": "port/1",
+      "Dimension": 2,
+      "Kind": "Port",
+      "Expected": 1,
+      "AtLeast": true,
+      "Port": 1
+    },
+    {
+      "Attribute": 9,
+      "Name": "port/2",
+      "Dimension": 2,
+      "Kind": "Port",
+      "Expected": 1,
+      "AtLeast": true,
+      "Port": 2
+    },
+    {
+      "Attribute": 10,
+      "Name": "airbox/xmin",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 1,
+      "AtLeast": true,
+      "Boundary": "Pec"
+    },
+    {
+      "Attribute": 11,
+      "Name": "airbox/xmax",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 1,
+      "AtLeast": true,
+      "Boundary": "Absorbing"
+    },
+    {
+      "Attribute": 12,
+      "Name": "airbox/ymin",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 1,
+      "AtLeast": true,
+      "Boundary": "Absorbing"
+    },
+    {
+      "Attribute": 13,
+      "Name": "airbox/ymax",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 1,
+      "AtLeast": true,
+      "Boundary": "Absorbing"
+    },
+    {
+      "Attribute": 14,
+      "Name": "airbox/zmin",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 1,
+      "AtLeast": true,
+      "Boundary": "Absorbing"
+    },
+    {
+      "Attribute": 15,
+      "Name": "airbox/zmax",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 1,
+      "AtLeast": true,
+      "Boundary": "Absorbing"
+    }
+  ]
+}

@@ -1,0 +1,268 @@
+{
+  "Generator": "circuitRF brief-em3d-7: the mapping from named objects to Palace attributes",
+  "LengthUnitM": 1E-06,
+  "Groups": [
+    {
+      "Attribute": 1,
+      "Name": "floor",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 2,
+      "Name": "base",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "Material": "Alumina"
+    },
+    {
+      "Attribute": 3,
+      "Name": "attach",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 4,
+      "Name": "via1",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 5,
+      "Name": "via2",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 6,
+      "Name": "via3",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 7,
+      "Name": "via4",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 8,
+      "Name": "lead1",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 9,
+      "Name": "lead2",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 10,
+      "Name": "wall_w",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 11,
+      "Name": "wall_e",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 12,
+      "Name": "wall_s",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 13,
+      "Name": "wall_n",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 14,
+      "Name": "lid",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Lid alloy"
+    },
+    {
+      "Attribute": 15,
+      "Name": "U1/GaAs",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "Material": "GaAs"
+    },
+    {
+      "Attribute": 16,
+      "Name": "U1/Backside Metal",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 17,
+      "Name": "U1/Metal1/1",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 18,
+      "Name": "w1",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 19,
+      "Name": "w1/ball/start",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 20,
+      "Name": "w2",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 21,
+      "Name": "w2/ball/start",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 22,
+      "Name": "background",
+      "Dimension": 3,
+      "Kind": "Background",
+      "Expected": 0,
+      "AtLeast": true,
+      "Material": "Air"
+    },
+    {
+      "Attribute": 23,
+      "Name": "port/1",
+      "Dimension": 2,
+      "Kind": "Port",
+      "Expected": 1,
+      "AtLeast": true,
+      "Port": 1
+    },
+    {
+      "Attribute": 24,
+      "Name": "port/2",
+      "Dimension": 2,
+      "Kind": "Port",
+      "Expected": 1,
+      "AtLeast": true,
+      "Port": 2
+    },
+    {
+      "Attribute": 25,
+      "Name": "airbox/xmin",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 0,
+      "Boundary": "Pec"
+    },
+    {
+      "Attribute": 26,
+      "Name": "airbox/xmax",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 0,
+      "Boundary": "Pec"
+    },
+    {
+      "Attribute": 27,
+      "Name": "airbox/ymin",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 0,
+      "Boundary": "Pec"
+    },
+    {
+      "Attribute": 28,
+      "Name": "airbox/ymax",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 0,
+      "Boundary": "Pec"
+    },
+    {
+      "Attribute": 29,
+      "Name": "airbox/zmin",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 0,
+      "Boundary": "Pec"
+    },
+    {
+      "Attribute": 30,
+      "Name": "airbox/zmax",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 0,
+      "Boundary": "Pec"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "$schema": "./recipe.schema.json",
-  "comment": "R-em3d24-4a. Upstream publishes Linux builds for x64 only: there is no Linux arm64 archive and no aarch64 wheel of Gmsh 4.15.2, so Linux arm64 has no recipe.",
+  "comment": "R-em3d24-4a. Upstream publishes Linux builds for x64 only: there is no Linux arm64 archive and no aarch64 wheel of Gmsh 4.15.2, so Linux arm64 builds from source instead (gmsh-4.15.2-linux-arm64.json, brief-em3d-135).",
   "id": "gmsh-4.15.2-linux-x64",
   "tool": "gmsh",
   "version": "4.15.2",

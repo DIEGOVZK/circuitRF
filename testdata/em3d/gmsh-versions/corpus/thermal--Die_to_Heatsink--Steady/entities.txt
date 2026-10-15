@@ -1,0 +1,32 @@
+# circuitRF entity table: group <attribute> <count> <volume tags lost in the fragment>
+group 1 1 0
+group 2 1 0
+group 3 1 0
+group 4 1 0
+group 5 1 0
+group 6 1 0
+group 7 1 0
+group 8 1 0
+group 9 1 0
+group 10 1 0
+group 11 1 0
+group 12 1 0
+group 13 1 0
+group 14 1 0
+group 15 1 0
+group 16 1 0
+group 17 1 0
+group 18 1 0
+group 19 1 0
+group 20 1 0
+group 21 1 0
+group 22 1 0
+group 23 1 0
+group 24 2 0
+group 25 31 0
+group 26 31 0
+all_volumes 21
+classified_volumes 21
+all_surfaces 156
+single_sided 76
+unclassified_single_sided 0

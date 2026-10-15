@@ -104,9 +104,12 @@ public sealed record SolverCapabilityVerdict(SolverCapability Capability, bool A
 /// Everything circuitRF knows about one program before a run: what was found, why each other candidate
 /// was not taken, what it can do, and the refusal — null when the run may proceed.
 /// </summary>
+/// <param name="Warning">brief-em3d-135 R-em3d135-1b — set when the run proceeds with a program circuitRF has not
+/// tested (Gmsh only, <see cref="SolverDiscovery.UntestedRuns"/>): <see cref="SolverDiscovery.DescribeUntested"/>.
+/// A run puts it in its Warnings.</param>
 public sealed record SolverReadiness(
     SolverTool Tool, string Name, SolverInstallation? Installation, IReadOnlyList<string> Rejected,
-    IReadOnlyList<SolverCapabilityVerdict> Capabilities, string? Refusal)
+    IReadOnlyList<SolverCapabilityVerdict> Capabilities, string? Refusal, string? Warning = null)
 {
     public bool Proceeds => Refusal is null;
 }
@@ -153,9 +156,10 @@ public sealed record SolverReadiness(
 ///
 /// <para><b>Found and validated are separate answers.</b> The first program that STARTS and identifies
 /// itself is the one found, whatever its version — the Settings row shows it and says it is not
-/// validated, and <see cref="Check"/> refuses to run it naming the validated list (R-em3d6-2b). Walking
-/// on past it to a validated copy elsewhere would run a different program from the one the user's own
-/// shell runs, with nothing on screen saying so.</para>
+/// validated, and <see cref="Check"/> refuses to run it naming the validated list (R-em3d6-2b), or, for a
+/// tool whose <see cref="UntestedRuns"/> is set (Gmsh), runs it with a warning naming the tested list
+/// (brief-em3d-135). Walking on past it to a validated copy elsewhere would run a different program from
+/// the one the user's own shell runs, with nothing on screen saying so.</para>
 /// </summary>
 public sealed partial class SolverDiscovery
 {
@@ -174,10 +178,11 @@ public sealed partial class SolverDiscovery
     /// Gmsh. <c>gmsh --version</c> prints one line, e.g. <c>4.15.2-git</c> (F0 §6), and the numeric part
     /// is the version.
     ///
-    /// <para><b>A newer minor version is REFUSED, not warned about.</b> R-em3d6-2b allows a warning only
-    /// if F0 found the <c>.geo</c> constructs brief 7 uses unchanged across that minor version. F0 ran
-    /// exactly one Gmsh (<c>docs/design/em-3d-f0-findings.md</c> §6) and compared it with no other, so
-    /// there is no such finding to cite, and the rule is the strict one until there is.</para>
+    /// <para><b>An untested version RUNS, with a warning</b> (brief-em3d-135, owner's call 2026-10-15). Its list
+    /// is of the versions circuitRF has TESTED, not a pin: the version-sensitive part of a mesh is the entity
+    /// table, and <see cref="GmshGeoWriter.CheckEntities"/> refuses a run whose table does not add up, whatever
+    /// the version. A version joins the list only on a measured pass over circuitRF's own scripts
+    /// (<c>testdata/em3d/gmsh-versions/README.md</c>).</para>
     /// </summary>
     public static SolverDiscovery Gmsh { get; } = Create(SolverTool.Gmsh);
 
@@ -215,9 +220,28 @@ public sealed partial class SolverDiscovery
         SolverTool.Gmsh => new(
             SolverTool.Gmsh, "Gmsh", "CIRCUITRF_GMSH", ["gmsh"],
             versionArguments: ["--version"],
-            // docs/design/em-3d-f0-findings.md §6 — the Homebrew bottle, OCC 7.9.3.
-            validated: [new SolverValidatedVersion("4.15.2", "4.15.2", null)],
-            extraDirectories: [], spackPackage: "gmsh"),
+            // TESTED versions, oldest first (SolverRecipes.For takes the newest one with a recipe). Each passed
+            // testdata/em3d/gmsh-versions/README.md's rule: exit 0 and an entities.txt byte-identical to 4.15.2's
+            // on every script of its corpus. Any other version runs, with a warning (brief-em3d-135).
+            validated: [
+                // testdata/em3d/gmsh-versions/README.md §Results — upstream's macOS arm64 archives; 4.12.1 also as
+                // Ubuntu 24.04's package and 4.13.1 as Debian 13's (arm64, OCC 7.6.3 and 7.8.1).
+                new SolverValidatedVersion("4.11.0", "4.11.0", null),
+                new SolverValidatedVersion("4.11.1", "4.11.1", null),
+                new SolverValidatedVersion("4.12.0", "4.12.0", null),
+                new SolverValidatedVersion("4.12.1", "4.12.1", null),
+                new SolverValidatedVersion("4.12.2", "4.12.2", null),
+                new SolverValidatedVersion("4.13.0", "4.13.0", null),
+                new SolverValidatedVersion("4.13.1", "4.13.1", null),
+                new SolverValidatedVersion("4.14.0", "4.14.0", null),
+                new SolverValidatedVersion("4.14.1", "4.14.1", null),
+                new SolverValidatedVersion("4.15.0", "4.15.0", null),
+                new SolverValidatedVersion("4.15.1", "4.15.1", null),
+                // docs/design/em-3d-f0-findings.md §6 — the Homebrew bottle, OCC 7.9.3: the reference every other
+                // version's entity tables are compared with; also upstream's archive and circuitRF's Linux arm64 recipe.
+                new SolverValidatedVersion("4.15.2", "4.15.2", null),
+            ],
+            extraDirectories: [], spackPackage: "gmsh", untestedRuns: true),
 
         _ => new(
             SolverTool.OpenEms, "openEMS", "CIRCUITRF_OPENEMS", ["openEMS"],
@@ -283,7 +307,7 @@ public sealed partial class SolverDiscovery
     internal SolverDiscovery(
         SolverTool tool, string name, string environmentVariable, IReadOnlyList<string> candidates,
         IReadOnlyList<string> versionArguments, IReadOnlyList<SolverValidatedVersion> validated,
-        IReadOnlyList<string> extraDirectories, string? spackPackage = null)
+        IReadOnlyList<string> extraDirectories, string? spackPackage = null, bool untestedRuns = false)
     {
         Tool                = tool;
         Name                = name;
@@ -293,6 +317,7 @@ public sealed partial class SolverDiscovery
         ValidatedVersions   = validated;
         SearchDirectories   = DefaultSearchDirectories(extraDirectories);
         SpackPackage        = spackPackage;
+        UntestedRuns        = untestedRuns;
         // brief-em3d-26 — on Windows, Palace is also looked for inside the Linux subsystem.
         Subsystem           = tool == SolverTool.Palace && OperatingSystem.IsWindows() ? new Wsl.WslExe() : null;
     }
@@ -344,8 +369,24 @@ public sealed partial class SolverDiscovery
     /// </summary>
     public IReadOnlyList<string> CondaBases { get; set; } = DefaultCondaBases();
 
-    /// <summary>The versions this tool is validated at — a short list, data in one place (R-em3d6-2a).</summary>
+    /// <summary>The versions this tool is validated at — a short list, data in one place (R-em3d6-2a). For a
+    /// tool whose <see cref="UntestedRuns"/> is set, the versions it has been TESTED at.</summary>
     public IReadOnlyList<SolverValidatedVersion> ValidatedVersions { get; }
+
+    /// <summary>
+    /// brief-em3d-135 R-em3d135-1a — whether a version off <see cref="ValidatedVersions"/> runs, with a warning,
+    /// rather than being refused. Gmsh only: what a different Gmsh could break, the entity table guards by
+    /// construction. Palace and openEMS stay strict, because a key or file read differently between their
+    /// versions gives a plausible wrong answer and nothing downstream would notice.
+    /// </summary>
+    public bool UntestedRuns { get; }
+
+    /// <summary>Whether a run would use <paramref name="installation"/>: a validated version, or any version of
+    /// a tool whose <see cref="UntestedRuns"/> is set.</summary>
+    public bool Runs(SolverInstallation installation) => installation.Validated || UntestedRuns;
+
+    /// <summary>What user-facing text calls a version on <see cref="ValidatedVersions"/>: "tested" for Gmsh.</summary>
+    public string ListWord => UntestedRuns ? "tested" : "validated";
 
     /// <summary>The path named in Settings, or null. Installed by <c>src/Ui</c>
     /// (<c>Em3dSolverPathInstaller</c>); read at the moment it is needed, so a changed setting is seen.</summary>
@@ -512,7 +553,8 @@ public sealed partial class SolverDiscovery
     /// Finds the program, checks its version, and probes the capabilities a run needs — in that order,
     /// stopping at the first refusal. An unvalidated program is not probed: what its build can do is
     /// moot when it will not be run, and a probe configuration is itself only known to mean what it
-    /// says at a validated version.
+    /// says at a validated version. An untested program of an <see cref="UntestedRuns"/> tool WILL be run,
+    /// so it goes through the rest of the check like a tested one and carries a warning (R-em3d135-1b).
     /// </summary>
     public SolverReadiness Check(IReadOnlySet<SolverCapability> required)
         => Check(required, OperatingSystem.IsWindows());
@@ -522,14 +564,15 @@ public sealed partial class SolverDiscovery
         var found = Find(out var rejected);
         if (found is null)
             return new SolverReadiness(Tool, Name, null, rejected, [], DescribeFailure(rejected, windows));
-        if (!found.Validated)
+        if (!Runs(found))
             return new SolverReadiness(Tool, Name, found, rejected, [], DescribeUnvalidated(found));
 
         var verdicts = required.Order().Select(c => Probe(found, c)).ToList();
         string? refusal = verdicts.FirstOrDefault(v => !v.Available) is { } missing
             ? DescribeMissingCapability(found, missing)
             : null;
-        return new SolverReadiness(Tool, Name, found, rejected, verdicts, refusal);
+        return new SolverReadiness(Tool, Name, found, rejected, verdicts, refusal,
+                                   found.Validated ? null : DescribeUntested(found));
     }
 
     /// <summary>
@@ -601,6 +644,8 @@ public sealed partial class SolverDiscovery
         else if (Install.SolverRecipes.For(Tool) is not null)
             sb.Append($" circuitRF can also install it for you, from its own upstream: Install {Name}… on this message or " +
                       $"in Settings ▸ Solvers, or 'circuitrf solver install {Install.SolverHomes.ToolId(Tool)}'.");
+        else if (Install.SolverRecipes.ByHand(Tool) is { } byHand)
+            sb.Append(' ').Append(byHand);
         if (rejected.Count > 0)
             sb.Append(" Tried: ").Append(string.Join("; ", rejected)).Append('.');
         return sb.ToString();
@@ -619,13 +664,17 @@ public sealed partial class SolverDiscovery
                 : $"Not found. Tried: {string.Join("; ", rejected)}.";
 
         string validity = found.Validated
-            ? "validated"
-            : $"NOT validated — a 3D run will refuse it; circuitRF runs {string.Join(", ", ValidatedVersions.Select(v => v.ToString()))}";
+            ? ListWord
+            : UntestedRuns
+                ? "not tested"
+                : $"NOT validated — a 3D run will refuse it; circuitRF runs {string.Join(", ", ValidatedVersions.Select(v => v.ToString()))}";
+        // brief-em3d-135 R-em3d135-1e — an untested Gmsh's row ends with the warning a run gives, word for word.
+        string untested = found.Validated || !UntestedRuns ? "" : " " + DescribeUntested(found);
 
         // brief-em3d-24 R-em3d24-5a — the row says which KIND each tool is: one circuitRF installed (and can
         // later remove, brief 25), or one it merely found, which it never offers to remove.
         if (found.HowFound == SolverHowFound.Installed)
-            return $"Installed by circuitRF, {found.Where}, {found.DescribeVersion()}, {validity}.";
+            return $"Installed by circuitRF, {found.Where}, {found.DescribeVersion()}, {validity}.{untested}";
 
         string how = found.HowFound switch
         {
@@ -637,18 +686,33 @@ public sealed partial class SolverDiscovery
             _                          => "in a default directory",
         };
         if (found.Distribution is not null) how += ", inside the Linux subsystem";
-        return $"{found.DescribeVersion()}, {validity}. Found at {found.Where} ({how}).";
+        return $"{found.DescribeVersion()}, {validity}. Found at {found.Where} ({how}).{untested}";
     }
 
-    /// <summary>The refusal for a program found at a version circuitRF has not validated (R-em3d6-2b).</summary>
+    /// <summary>
+    /// brief-em3d-135 R-em3d135-1c — the warning for a program an <see cref="UntestedRuns"/> tool runs although
+    /// circuitRF has not tested its version. <b>The one sentence</b> a 3D run, a thermal run, <c>explain</c>, the
+    /// Settings row and <c>solver list</c> all give, so they cannot disagree.
+    /// </summary>
+    public string DescribeUntested(SolverInstallation installation)
+        => $"{Name} at '{installation.Where}' reports version {installation.DescribeVersion()}, which circuitRF has not " +
+           $"tested; tested: {string.Join(", ", ValidatedVersions.Select(v => v.ToString()))}. circuitRF runs it anyway. " +
+           $"If meshing fails or a result looks wrong, point circuitRF at a tested {Name} in Settings ▸ Solvers or with " +
+           $"{EnvironmentVariable}.";
+
+    /// <summary>The refusal for a program found at a version circuitRF has not validated (R-em3d6-2b). For an
+    /// <see cref="UntestedRuns"/> tool no run reaches it (<see cref="DescribeUntested"/> instead); the install
+    /// assistant still does, when what a recipe built is not the version the recipe names.</summary>
     public string DescribeUnvalidated(SolverInstallation installation)
     {
         string list = string.Join(", ", ValidatedVersions.Select(v => v.ToString()));
+        if (UntestedRuns)
+            return $"{Name} at '{installation.Where}' ({installation.HowFoundText}) reports version " +
+                   $"{installation.DescribeVersion()}, which circuitRF has not tested. Tested: {list}.";
         string why = Tool switch
         {
             SolverTool.Palace => "Palace's configuration changes meaning between versions, and a key read differently " +
                                  "produces a plausible wrong answer rather than an error.",
-            SolverTool.Gmsh   => "circuitRF's geometry scripts have been verified against that version only.",
             _                 => "circuitRF writes openEMS's XML and reads its probe files as that version does, " +
                                  "and has verified no other.",
         };
@@ -711,6 +775,10 @@ public sealed partial class SolverDiscovery
     /// <summary>The manual-install section's title and page, as the refusals cite them.</summary>
     public const string ManualInstallSection = "Installing the 3D solvers by hand";
     public const string ManualInstallPage    = "reference/em-setup.html#install-3d-solvers";
+
+    /// <summary>The Gmsh source-build section's title and page, as <see cref="Install.SolverRecipes.ByHand"/> cites them.</summary>
+    public const string GmshFromSourceSection = "Building Gmsh from source";
+    public const string GmshFromSourcePage    = "reference/em-setup.html#gmsh-from-source";
 
     // ── the Palace capability probe ──────────────────────────────────────────────────────────
 

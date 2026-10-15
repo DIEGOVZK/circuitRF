@@ -1,0 +1,153 @@
+{
+  "Generator": "circuitRF brief-em3d-7: the mapping from named objects to Palace attributes",
+  "LengthUnitM": 1E-06,
+  "Groups": [
+    {
+      "Attribute": 1,
+      "Name": "floor",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Aluminium"
+    },
+    {
+      "Attribute": 2,
+      "Name": "substrate",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "Material": "PTFE-glass laminate"
+    },
+    {
+      "Attribute": 3,
+      "Name": "wall_w",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Aluminium"
+    },
+    {
+      "Attribute": 4,
+      "Name": "wall_e",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Aluminium"
+    },
+    {
+      "Attribute": 5,
+      "Name": "wall_s",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Aluminium"
+    },
+    {
+      "Attribute": 6,
+      "Name": "wall_n",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Aluminium"
+    },
+    {
+      "Attribute": 7,
+      "Name": "lid",
+      "Dimension": 2,
+      "Kind": "Conductor",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Aluminium"
+    },
+    {
+      "Attribute": 8,
+      "Name": "background",
+      "Dimension": 3,
+      "Kind": "Background",
+      "Expected": 0,
+      "AtLeast": true,
+      "Material": "Air"
+    },
+    {
+      "Attribute": 9,
+      "Name": "line",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Perfect conductor",
+      "ThicknessM": 0
+    },
+    {
+      "Attribute": 10,
+      "Name": "port/1",
+      "Dimension": 2,
+      "Kind": "Port",
+      "Expected": 1,
+      "AtLeast": true,
+      "Port": 1
+    },
+    {
+      "Attribute": 11,
+      "Name": "port/2",
+      "Dimension": 2,
+      "Kind": "Port",
+      "Expected": 1,
+      "AtLeast": true,
+      "Port": 2
+    },
+    {
+      "Attribute": 12,
+      "Name": "airbox/xmin",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 0,
+      "Boundary": "Pec"
+    },
+    {
+      "Attribute": 13,
+      "Name": "airbox/xmax",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 0,
+      "Boundary": "Pec"
+    },
+    {
+      "Attribute": 14,
+      "Name": "airbox/ymin",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 0,
+      "Boundary": "Pec"
+    },
+    {
+      "Attribute": 15,
+      "Name": "airbox/ymax",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 0,
+      "Boundary": "Pec"
+    },
+    {
+      "Attribute": 16,
+      "Name": "airbox/zmin",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 0,
+      "Boundary": "Pec"
+    },
+    {
+      "Attribute": 17,
+      "Name": "airbox/zmax",
+      "Dimension": 2,
+      "Kind": "Face",
+      "Expected": 0,
+      "Boundary": "Pec"
+    }
+  ]
+}

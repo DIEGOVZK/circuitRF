@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using CircuitRF.Design.Em3d;
 using Xunit;
 
@@ -115,6 +117,35 @@ public sealed class SolverDiscoveryTests : IDisposable
 
         // The Settings row says the same, and says the run will refuse it.
         Assert.Contains("NOT validated", d.DescribeForSettings(found, []));
+    }
+
+    /// <summary>brief-em3d-135 — Gmsh's list is of TESTED versions: an untested one runs, with one warning naming the
+    /// list, which the Settings row repeats word for word. openEMS stays strict (Palace is Gate3).</summary>
+    [Fact]
+    public void Gate3b_AnUntestedGmsh_Proceeds_WithAWarningNamingTheTestedList_AndOpenEmsIsStillRefused()
+    {
+        string older = FakePrinting("gmsh-old", "4.10.5");
+        var d = Discovery(SolverTool.Gmsh, preferred: older, env: null);
+        var readiness = d.Check(SolverDiscovery.CapabilitiesFor(SolverTool.Gmsh));
+        Assert.True(readiness.Proceeds, readiness.Refusal);
+        Assert.False(readiness.Installation!.Validated);
+        string tested = string.Join(", ", d.ValidatedVersions.Select(v => v.ToString()));
+        Assert.Contains($"'{older}' reports version 4.10.5, which circuitRF has not tested; tested: {tested}.", readiness.Warning);
+
+        string row = d.DescribeForSettings(readiness.Installation, []);
+        Assert.DoesNotContain("refuse", row);
+        Assert.EndsWith(readiness.Warning!, row);
+
+        var current = Discovery(SolverTool.Gmsh, preferred: FakePrinting("gmsh-tested", d.ValidatedVersions[^1].Identity), env: null)
+            .Check(SolverDiscovery.CapabilitiesFor(SolverTool.Gmsh));
+        Assert.True(current.Proceeds);
+        Assert.Null(current.Warning);
+
+        var openEms = Discovery(SolverTool.OpenEms, preferred: FakePrinting("openems-new", "openEMS 64bit -- version 9abcdef\nCSXCAD -- Version: dcdb62b"), env: null)
+            .Check(SolverDiscovery.CapabilitiesFor(SolverTool.OpenEms));
+        Assert.False(openEms.Proceeds);
+        Assert.Contains("not validated", openEms.Refusal);
+        Assert.Null(openEms.Warning);
     }
 
     // ── 4. banner parsing, against the banners F0 recorded ──────────────────────────────────────
@@ -294,6 +325,40 @@ public sealed class SolverDiscoveryTests : IDisposable
             Assert.True(found!.Validated, $"{tool}: {found.DescribeVersion()} at {found.Path}");
         }
     }
+
+    // ── 9. Gmsh's tested list rests on evidence that cannot rot silently ────────────────────────
+
+    /// <summary>brief-em3d-135 R-em3d135-2e — every corpus script's committed entity table (4.15.2's, which each tested version
+    /// reproduced byte for byte) passes the entity check against its own groups; with one group's line removed it is refused
+    /// naming that group, so the replay is not vacuous; and each version on the list has a passing row in the evidence table.</summary>
+    [Fact]
+    public void Gate9_GmshsTestedList_ItsCorpusReplaysThroughTheEntityCheck_AndEachVersionHasAPassingRow()
+    {
+        string dir = Path.Combine(PalaceBackendTests.RepoRoot(), "testdata", "em3d", "gmsh-versions");
+        var corpus = Directory.GetDirectories(Path.Combine(dir, "corpus"));
+        Assert.True(corpus.Length >= 20, $"{corpus.Length} corpus scripts");
+        foreach (string script in corpus)
+        {
+            var groups = Groups(File.ReadAllText(Path.Combine(script, GmshGeoWriter.GroupsFile)));
+            string table = File.ReadAllText(Path.Combine(script, GmshGeoWriter.EntitiesFile));
+            Assert.Null(GmshGeoWriter.CheckEntities(groups, GmshGeoWriter.ReadEntities(table)));
+            var first = groups[0];
+            string cut = string.Join('\n', table.Split('\n').Where(l => !l.StartsWith($"group {first.Attribute} ", StringComparison.Ordinal)));
+            Assert.Contains($"'{first.Name}' is missing from the entity table", GmshGeoWriter.CheckEntities(groups, GmshGeoWriter.ReadEntities(cut)));
+        }
+
+        string readme = File.ReadAllText(Path.Combine(dir, "README.md"));
+        foreach (var v in SolverDiscovery.Gmsh.ValidatedVersions)
+            Assert.Matches($@"\n\| {Regex.Escape(v.Release)} \|[^\n]*\| pass \|", readme);
+    }
+
+    /// <summary>groups.json read back into what <see cref="GmshGeoWriter.CheckEntities"/> reads.</summary>
+    private static List<Em3dGroup> Groups(string json)
+        => [.. JsonDocument.Parse(json).RootElement.GetProperty("Groups").EnumerateArray().Select(g => new Em3dGroup(
+               g.GetProperty("Name").GetString()!, g.GetProperty("Attribute").GetInt32(), g.GetProperty("Dimension").GetInt32(),
+               Enum.Parse<Em3dGroupKind>(g.GetProperty("Kind").GetString()!), g.GetProperty("Expected").GetInt32(),
+               g.TryGetProperty("AtLeast", out var atLeast) && atLeast.GetBoolean(),
+               Terminal: g.TryGetProperty("Terminal", out var t) ? (t.GetString() == "(ground)" ? "" : t.GetString()) : null))];
 
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────
 

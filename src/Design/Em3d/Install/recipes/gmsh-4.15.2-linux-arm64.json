@@ -1,0 +1,167 @@
+{
+  "$schema": "./recipe.schema.json",
+  "comment": "brief-em3d-135 R-em3d135-3. Upstream publishes no Linux arm64 Gmsh (no archive, no aarch64 wheel), so this builds the pinned source against the distribution's own OpenCASCADE, the steps em-setup.md's 'Building Gmsh from source' gives by hand. Spack was rejected: the spack-packages commit the Palace recipe pins offers gmsh <= 4.15.1 and builds it without OpenCASCADE unless asked.",
+  "id": "gmsh-4.15.2-linux-arm64",
+  "tool": "gmsh",
+  "version": "4.15.2",
+  "platform": "linux",
+  "architecture": "arm64",
+  "layout": "relocatable",
+  "layoutNote": "A CMake build with the Gmsh library linked into the program, OpenCASCADE taken from the distribution, and RPATH off (ENABLE_RPATH=0): the installed program names no path of its own home (readelf, measured), so the home is built in .partial and renamed into place. The source and build tree are removed once it is installed; what stays is bin/gmsh and its share/ files, about 33 MB.",
+  "sources": [
+    {
+      "id": "source",
+      "url": "https://gmsh.info/src/gmsh-4.15.2-source.tgz",
+      "fetchedBy": "circuitRF",
+      "file": "gmsh-4.15.2-source.tgz",
+      "sha256": "be3f66f225d27ba9fa014f07e83169285da8a051b0e8ab7103d88066b39bdd3e",
+      "checksumNote": "gmsh.info publishes none; this is the archive circuitRF built and tested, 2026-10-15"
+    }
+  ],
+  "prerequisites": [
+    {
+      "kind": "program",
+      "name": "cmake",
+      "search": [
+        "/usr/bin",
+        "/usr/local/bin"
+      ],
+      "remedy": {
+        "ubuntu": "sudo apt-get update && sudo apt-get install build-essential cmake libocct-foundation-dev libocct-modeling-data-dev libocct-modeling-algorithms-dev libocct-data-exchange-dev libocct-ocaf-dev libocct-visualization-dev",
+        "debian": "sudo apt-get update && sudo apt-get install build-essential cmake libocct-foundation-dev libocct-modeling-data-dev libocct-modeling-algorithms-dev libocct-data-exchange-dev libocct-ocaf-dev libocct-visualization-dev",
+        "fedora": "sudo dnf install gcc-c++ make cmake opencascade-devel",
+        "default": "install a C++ compiler, make, CMake 3.10 or newer, and OpenCASCADE's development headers and libraries (the package is usually called opencascade-devel or libocct-*-dev)"
+      },
+      "variable": "cmake"
+    },
+    {
+      "kind": "program",
+      "name": "g++",
+      "search": [
+        "/usr/bin",
+        "/usr/local/bin"
+      ],
+      "remedy": {
+        "ubuntu": "sudo apt-get update && sudo apt-get install build-essential cmake libocct-foundation-dev libocct-modeling-data-dev libocct-modeling-algorithms-dev libocct-data-exchange-dev libocct-ocaf-dev libocct-visualization-dev",
+        "debian": "sudo apt-get update && sudo apt-get install build-essential cmake libocct-foundation-dev libocct-modeling-data-dev libocct-modeling-algorithms-dev libocct-data-exchange-dev libocct-ocaf-dev libocct-visualization-dev",
+        "fedora": "sudo dnf install gcc-c++ make cmake opencascade-devel",
+        "default": "install a C++ compiler, make, CMake 3.10 or newer, and OpenCASCADE's development headers and libraries (the package is usually called opencascade-devel or libocct-*-dev)"
+      },
+      "variable": "cxx"
+    },
+    {
+      "kind": "program",
+      "name": "make",
+      "search": [
+        "/usr/bin",
+        "/usr/local/bin"
+      ],
+      "remedy": {
+        "ubuntu": "sudo apt-get update && sudo apt-get install build-essential cmake libocct-foundation-dev libocct-modeling-data-dev libocct-modeling-algorithms-dev libocct-data-exchange-dev libocct-ocaf-dev libocct-visualization-dev",
+        "debian": "sudo apt-get update && sudo apt-get install build-essential cmake libocct-foundation-dev libocct-modeling-data-dev libocct-modeling-algorithms-dev libocct-data-exchange-dev libocct-ocaf-dev libocct-visualization-dev",
+        "fedora": "sudo dnf install gcc-c++ make cmake opencascade-devel",
+        "default": "install a C++ compiler, make, CMake 3.10 or newer, and OpenCASCADE's development headers and libraries (the package is usually called opencascade-devel or libocct-*-dev)"
+      },
+      "variable": "make"
+    },
+    {
+      "kind": "file",
+      "name": "Standard_Version.hxx",
+      "search": [
+        "/usr/include/opencascade",
+        "/usr/local/include/opencascade"
+      ],
+      "remedy": {
+        "ubuntu": "sudo apt-get update && sudo apt-get install build-essential cmake libocct-foundation-dev libocct-modeling-data-dev libocct-modeling-algorithms-dev libocct-data-exchange-dev libocct-ocaf-dev libocct-visualization-dev",
+        "debian": "sudo apt-get update && sudo apt-get install build-essential cmake libocct-foundation-dev libocct-modeling-data-dev libocct-modeling-algorithms-dev libocct-data-exchange-dev libocct-ocaf-dev libocct-visualization-dev",
+        "fedora": "sudo dnf install gcc-c++ make cmake opencascade-devel",
+        "default": "install a C++ compiler, make, CMake 3.10 or newer, and OpenCASCADE's development headers and libraries (the package is usually called opencascade-devel or libocct-*-dev)"
+      }
+    }
+  ],
+  "environment": {
+    "PATH": "/usr/local/bin:/usr/bin:/bin"
+  },
+  "steps": [
+    {
+      "name": "Download Gmsh 4.15.2's source",
+      "kind": "download",
+      "source": "source"
+    },
+    {
+      "name": "Unpack the source",
+      "kind": "extract",
+      "source": "source",
+      "into": "${home}"
+    },
+    {
+      "name": "Configure the build",
+      "kind": "run",
+      "command": "${cmake}",
+      "arguments": [
+        "-S",
+        "${home}/gmsh-4.15.2-source",
+        "-B",
+        "${home}/build",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_INSTALL_PREFIX=${home}",
+        "-DCMAKE_CXX_COMPILER=${cxx}",
+        "-DENABLE_RPATH=0",
+        "-DENABLE_FLTK=0",
+        "-DENABLE_OCC=1"
+      ],
+      "comment": "ENABLE_FLTK=0 leaves out Gmsh's own window, which circuitRF never opens, and the X11 and font libraries it needs. ENABLE_RPATH=0 keeps the build directory's path out of the program, so the home can be renamed into place."
+    },
+    {
+      "name": "Check that OpenCASCADE was found",
+      "kind": "run",
+      "command": "/bin/grep",
+      "arguments": [
+        "-m",
+        "1",
+        "-x",
+        "#define HAVE_OCC",
+        "${home}/build/src/common/GmshConfig.h"
+      ],
+      "captureAs": "occ",
+      "expect": "#define HAVE_OCC",
+      "comment": "Without OpenCASCADE, CMake still configures and Gmsh still builds, and then cannot read a single circuitRF script."
+    },
+    {
+      "name": "Build Gmsh",
+      "kind": "run",
+      "command": "${make}",
+      "arguments": [
+        "-j${jobs}"
+      ],
+      "workingDirectory": "${home}/build",
+      "progress": "lines"
+    },
+    {
+      "name": "Install Gmsh",
+      "kind": "run",
+      "command": "${make}",
+      "arguments": [
+        "install"
+      ],
+      "workingDirectory": "${home}/build"
+    },
+    {
+      "name": "Remove the source and the build tree",
+      "kind": "run",
+      "command": "/bin/rm",
+      "arguments": [
+        "-rf",
+        "${home}/gmsh-4.15.2-source",
+        "${home}/build"
+      ]
+    }
+  ],
+  "program": "${home}/bin/gmsh",
+  "measured": {
+    "minutes": 3,
+    "diskGB": 0.03,
+    "source": "circuitRF container runs, Docker Desktop on an Apple M4 (8 GB), 2026-10-15: three clean installs on Ubuntu 24.04 arm64, 3.8, 3.0 and 3.1 min, and one on Debian 12 arm64, 3.3 min; 33 MB each, no failure (testdata/em3d/f0/README.md §Install rows 16-19)"
+  },
+  "knownFailures": []
+}

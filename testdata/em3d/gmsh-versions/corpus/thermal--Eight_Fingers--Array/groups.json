@@ -1,0 +1,96 @@
+{
+  "Generator": "circuitRF brief-em3d-7: the mapping from named objects to Palace attributes",
+  "LengthUnitM": 1E-06,
+  "Groups": [
+    {
+      "Attribute": 1,
+      "Name": "substrate",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Silicon carbide (4H, semi-insulating)"
+    },
+    {
+      "Attribute": 2,
+      "Name": "carrier",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper-tungsten (85W-15Cu)"
+    },
+    {
+      "Attribute": 3,
+      "Name": "f1",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 4,
+      "Name": "f2",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 5,
+      "Name": "f3",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 6,
+      "Name": "f4",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 7,
+      "Name": "f5",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 8,
+      "Name": "f6",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 9,
+      "Name": "f7",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 10,
+      "Name": "f8",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 11,
+      "Name": "carrier/zmin",
+      "Dimension": 2,
+      "Kind": "FaceBoundary",
+      "Expected": 1,
+      "AtLeast": true
+    }
+  ]
+}

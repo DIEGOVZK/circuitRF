@@ -1,0 +1,94 @@
+{
+  "Generator": "circuitRF brief-em3d-7: the mapping from named objects to Palace attributes",
+  "LengthUnitM": 1E-06,
+  "Groups": [
+    {
+      "Attribute": 1,
+      "Name": "substrate",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Silicon carbide (4H, semi-insulating)"
+    },
+    {
+      "Attribute": 2,
+      "Name": "epi",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gallium nitride"
+    },
+    {
+      "Attribute": 3,
+      "Name": "channel",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gallium nitride"
+    },
+    {
+      "Attribute": 4,
+      "Name": "passivation",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Silicon nitride"
+    },
+    {
+      "Attribute": 5,
+      "Name": "source",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 6,
+      "Name": "drain",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 7,
+      "Name": "gate",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 8,
+      "Name": "field_plate",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Gold"
+    },
+    {
+      "Attribute": 9,
+      "Name": "substrate/zmin",
+      "Dimension": 2,
+      "Kind": "FaceBoundary",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 10,
+      "Name": "passivation/zmax",
+      "Dimension": 2,
+      "Kind": "FaceBoundary",
+      "Expected": 1,
+      "AtLeast": true
+    }
+  ]
+}

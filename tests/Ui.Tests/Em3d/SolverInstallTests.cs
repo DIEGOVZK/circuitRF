@@ -239,8 +239,7 @@ public sealed class SolverInstallTests : IDisposable
 
         Assert.Equal(InstallStatus.Failed, outcome.Status);
         Assert.Equal("Checking the installed program", outcome.FailedStep);
-        Assert.Contains("4.14.0", outcome.Report);
-        Assert.Contains("not validated", outcome.Report);
+        Assert.Contains("reports version 4.14.0, but recipe", outcome.Report);   // a tested version, not the recipe's (brief-em3d-135)
         Assert.False(Directory.Exists(installer.HomeFor(recipe)));
         Assert.Null(discovery.Find(out _));
     }
@@ -412,6 +411,28 @@ public sealed class SolverInstallTests : IDisposable
         Assert.Contains("SolverStatus.Of(", cli);
         string settings = StripComments(File.ReadAllText(Path.Combine(RepoRoot(), "src/Ui/Views/Dialogs/Em3dSolverSettingsView.axaml.cs")));
         Assert.Contains("SolverStatus.Of(", settings);
+    }
+
+    // ── 12. where to build Gmsh from, by hand or by the Linux arm64 recipe ──────────────────────
+
+    /// <summary>The no-recipe sentence names the source archive of the newest tested version and a doc section that exists;
+    /// brief-em3d-135's Linux arm64 recipe builds that same archive, pinned by its checksum.</summary>
+    [Fact]
+    public void Gate12_GmshByHand_NamesTheValidatedSourceArchive_AndADocSectionThatExists()
+    {
+        string release = SolverDiscovery.Gmsh.ValidatedVersions[^1].Release;
+        string text = SolverRecipes.ByHand(SolverTool.Gmsh)!;
+        Assert.Contains($"https://gmsh.info/src/gmsh-{release}-source.tgz", text);
+        var arm64 = SolverRecipes.For(SolverTool.Gmsh, null, RecipePlatform.Linux, RecipeArchitecture.Arm64, SolverRecipes.All)!;
+        var source = Assert.Single(arm64.Sources);
+        Assert.Equal($"https://gmsh.info/src/gmsh-{release}-source.tgz", source.Url);
+        Assert.Matches("^[0-9a-f]{64}$", source.Sha256);
+        Assert.Null(SolverRecipes.ByHand(SolverTool.Palace));
+
+        string page = File.ReadAllText(Path.Combine(PalaceBackendTests.RepoRoot(), "docs", "user", "src", "reference", "em-setup.md"));
+        string anchor = SolverDiscovery.GmshFromSourcePage.Split('#')[1];
+        Assert.Contains($"{SolverDiscovery.GmshFromSourceSection} {{#{anchor}}}", page);
+        Assert.Contains($"gmsh-{release}-source.tgz", page);
     }
 
     // ── fixtures ────────────────────────────────────────────────────────────────────────────────

@@ -961,7 +961,7 @@ There are three ways to start an install, and they all do the same thing:
 | Program | macOS (Apple silicon) | Linux | Windows |
 |---|---|---|---|
 | Palace 0.18.1 | yes. It is built from source, which takes about an hour. | yes (arm64 and x64). It is built from source. | yes, inside the Linux subsystem (WSL 2), built from source there (see [Palace on Windows](em-setup.html#palace-windows)). |
-| Gmsh 4.15.2 | yes, from Gmsh's own archive, in under a minute | x64 only. Gmsh publishes no Linux arm64 build. | yes, from Gmsh's own archive |
+| Gmsh 4.15.2 | yes, from Gmsh's own archive, in under a minute | yes. x64 from Gmsh's own archive; arm64 is built from Gmsh's source against your distribution's OpenCASCADE, in about 3 minutes (Gmsh publishes no Linux arm64 build). | yes, from Gmsh's own archive |
 | openEMS 0.37.0-rc3 | yes. It is built by openEMS's own script. | yes. It is built by openEMS's own script. | yes, from openEMS's own archive |
 
 **Some installs need tools you install first.** A source build needs a compiler and some libraries.
@@ -1141,22 +1141,28 @@ the space back instead, use **Remove all 3D solvers …** in
 
 A 3D setup (one whose `Solver3D` names Palace or openEMS) runs a solver circuitRF does not include. You
 install it yourself, and circuitRF finds it — or you name it in
-{{anchor: settings.html#em3d|Settings ▸ Solvers}}. **circuitRF runs only the versions it has validated**
-and refuses any other, naming the validated ones, because a solver's input can change meaning between
-versions and the result would look plausible either way.
+{{anchor: settings.html#em3d|Settings ▸ Solvers}}. **circuitRF runs only the Palace and openEMS versions
+it has validated** and refuses any other, naming the validated ones, because a solver's input can change
+meaning between versions and the result would look plausible either way. **Gmsh is different: any version
+runs.** circuitRF lists the Gmsh versions it has tested, and a run with any other version goes ahead with a
+warning that names them. What a different Gmsh could change is which mesh entities belong to which named
+object, and every run checks that before solving, whatever the version.
 
 | Program | Validated version | What it reports |
 |---|---|---|
 | Palace | 0.18.1 | `palace --serial --version` prints `Palace version: 0dc74cd` and `Schema version: 1-7-0` — a git hash, never "0.18.1" |
-| Gmsh | 4.15.2 | `gmsh --version` prints `4.15.2` (the Homebrew build adds `-git`) |
+| Gmsh | tested: 4.11.0 to 4.15.2, every release between; any other runs with a warning | `gmsh --version` prints the version, e.g. `4.15.2` (the Homebrew build adds `-git`) |
 | openEMS | 0.37.0-rc3 | `openEMS --help` prints a banner with `version 67d3784` and `CSXCAD -- Version: dcdb62b` |
 
-Below is exactly what was done to validate them. **Only macOS on arm64 has been verified.** On
-Windows and Linux the routes are *not yet verified*; use the upstream instructions linked with each
+Below is exactly what was done to validate them. **Only macOS on arm64 has been verified**, and Gmsh on
+Linux arm64. Elsewhere the routes are *not yet verified*; use the upstream instructions linked with each
 program, and check the Settings row afterwards.
 
-**Gmsh** — macOS: `brew install gmsh`. Other platforms: *not yet verified* —
-[gmsh.info](https://gmsh.info).
+**Gmsh** — macOS: `brew install gmsh`. Linux: your distribution's own package is fine where it is a tested
+version (Ubuntu 24.04 packages 4.12.1 and Debian 13 packages 4.13.1, both tested; Debian 12's 4.8.4 cannot read
+circuitRF's scripts). On Linux arm64, **Install Gmsh…** builds 4.15.2 for you, and
+[Building Gmsh from source](#gmsh-from-source) gives the same steps by hand. Other platforms:
+*not yet verified* — [gmsh.info](https://gmsh.info).
 
 **openEMS** — macOS: install its dependencies with `brew install cmake boost hdf5 cgal vtk`, then
 
@@ -1202,8 +1208,39 @@ If you build Palace, you accept those terms. circuitRF distributes no copy of Pa
 none.</p>
 </div>
 
-When a row in Settings ▸ Solvers reads *validated*, the program is ready. `circuitrf explain` on a 3D
+When a row in Settings ▸ Solvers reads *validated* (*tested*, for Gmsh), the program is ready. `circuitrf explain` on a 3D
 `.cem` gives the same answer from the command line, under *solvers*.
+
+### Building Gmsh from source {#gmsh-from-source}
+
+Gmsh publishes no Linux build for arm64 (aarch64). On such a machine, **Install Gmsh…** in
+{{anchor: settings.html#em3d|Settings ▸ Solvers}}, or `circuitrf solver install gmsh --yes`, builds it for you
+from Gmsh's source, by the steps below. It first checks for the compiler, CMake and OpenCASCADE, and if one
+is missing it names the command that installs them. If you would rather build it yourself, these steps built
+Gmsh 4.15.2 in under three minutes on Ubuntu 24.04 arm64, and the build meshed circuitRF's own scripts
+identically to the macOS build. A distribution's own `gmsh` package also works when it is a tested version;
+see the table above.
+
+Install a compiler, CMake and OpenCASCADE, the geometry library Gmsh needs. On Ubuntu or Debian:
+
+<pre><code class="cmd"><span class="prompt">$ </span>sudo apt-get install build-essential cmake curl libocct-foundation-dev libocct-modeling-data-dev libocct-modeling-algorithms-dev libocct-data-exchange-dev libocct-ocaf-dev libocct-visualization-dev</code></pre>
+
+Then download, build and install Gmsh into your own `~/.local`:
+
+<pre><code class="cmd"><span class="prompt">$ </span>curl -fLO https://gmsh.info/src/gmsh-4.15.2-source.tgz
+<span class="prompt">$ </span>tar xzf gmsh-4.15.2-source.tgz
+<span class="prompt">$ </span>cd gmsh-4.15.2-source &amp;&amp; mkdir build &amp;&amp; cd build
+<span class="prompt">$ </span>cmake .. -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$HOME/.local" -DENABLE_FLTK=0 -DENABLE_OCC=1
+<span class="prompt">$ </span>make -j4
+<span class="prompt">$ </span>make install</code></pre>
+
+The configure step should print `Found OpenCASCADE`. If it does not, Gmsh builds without it and cannot
+read circuitRF's geometry. `-DENABLE_FLTK=0` leaves out Gmsh's own window, which circuitRF never opens,
+and with it the X11 and font libraries the window needs. Nothing needs `sudo` except the first step.
+
+circuitRF looks in `~/.local/bin` by itself, so there is nothing to set afterwards: the Gmsh row in
+Settings ▸ Solvers reads *4.15.2, tested*. To install somewhere else, change the prefix and name the
+program in Settings ▸ Solvers.
 
 ## What the layout shows after a run {#overlays}
 

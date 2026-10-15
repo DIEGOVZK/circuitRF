@@ -1,0 +1,235 @@
+{
+  "Generator": "circuitRF brief-em3d-7: the mapping from named objects to Palace attributes",
+  "LengthUnitM": 1E-06,
+  "Groups": [
+    {
+      "Attribute": 1,
+      "Name": "tim",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Thermal interface material (generic)"
+    },
+    {
+      "Attribute": 2,
+      "Name": "flange",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper-molybdenum (70Mo-30Cu)"
+    },
+    {
+      "Attribute": 3,
+      "Name": "die",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Silicon carbide (4H, semi-insulating)"
+    },
+    {
+      "Attribute": 4,
+      "Name": "B1/Laminate",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "FR-4"
+    },
+    {
+      "Attribute": 5,
+      "Name": "B1/Bottom Copper/1",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 6,
+      "Name": "B1/Top Copper/1",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 7,
+      "Name": "B1/via/1",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 8,
+      "Name": "B1/via/2",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 9,
+      "Name": "B1/via/3",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 10,
+      "Name": "B1/via/4",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 11,
+      "Name": "B1/via/5",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 12,
+      "Name": "B1/via/6",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 13,
+      "Name": "B1/via/7",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 14,
+      "Name": "B1/via/8",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 15,
+      "Name": "B1/via/9",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 16,
+      "Name": "B1/via/10",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 17,
+      "Name": "B1/via/11",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 18,
+      "Name": "B1/via/12",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 19,
+      "Name": "B1/via/13",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 20,
+      "Name": "B1/via/14",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 21,
+      "Name": "B1/via/15",
+      "Dimension": 3,
+      "Kind": "Volume",
+      "Expected": 1,
+      "AtLeast": true,
+      "Material": "Copper"
+    },
+    {
+      "Attribute": 22,
+      "Name": "fet",
+      "Dimension": 2,
+      "Kind": "Sheet",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 23,
+      "Name": "tim/zmin",
+      "Dimension": 2,
+      "Kind": "FaceBoundary",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 24,
+      "Name": "die/zmax",
+      "Dimension": 2,
+      "Kind": "FaceBoundary",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 25,
+      "Name": "flange/zmin",
+      "Dimension": 2,
+      "Kind": "FaceBoundary",
+      "Expected": 1,
+      "AtLeast": true
+    },
+    {
+      "Attribute": 26,
+      "Name": "tim/zmax",
+      "Dimension": 2,
+      "Kind": "FaceBoundary",
+      "Expected": 1,
+      "AtLeast": true
+    }
+  ]
+}

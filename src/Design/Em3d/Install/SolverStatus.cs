@@ -7,8 +7,8 @@ namespace CircuitRF.Design.Em3d.Install;
 /// <see cref="Of"/></b>, so the window and the terminal cannot disagree about a machine.
 /// </summary>
 /// <param name="Summary">The row's sentence — <see cref="SolverDiscovery.DescribeForSettings"/>.</param>
-/// <param name="Capabilities">Each capability a run could ask, probed — empty unless the program is
-/// validated (an unvalidated build is not probed, as a run does not probe it).</param>
+/// <param name="Capabilities">Each capability a run could ask, probed — empty unless a run would use the
+/// program (<see cref="SolverDiscovery.Runs"/>; an unvalidated build is not probed, as a run does not probe it).</param>
 /// <param name="Recipe">The recipe this machine would install, or null when it has none.</param>
 /// <param name="OfferInstall">Whether <i>Install …</i> is offered — <see cref="SolverInstaller.OfferFor"/>'s rule.</param>
 public sealed record SolverStatus(
@@ -24,12 +24,16 @@ public sealed record SolverStatus(
     {
         var d = discovery ?? SolverDiscovery.For(tool);
         var found = d.Find(out var rejected);
-        var capabilities = found is { Validated: true }
+        var capabilities = found is not null && d.Runs(found)
             ? SolverInstaller.CapabilitiesToCheck(tool).Select(c => d.Probe(found, c)).ToList()
             : [];
         var recipe = SolverRecipes.For(tool);
         // brief-em3d-26 — Palace on Windows has no recipe HERE; it installs into the Linux subsystem.
         bool offer = (recipe is not null || SolverInstallPlan.HasRoute(tool)) && SolverInstaller.WouldHelp(d, found);
-        return new SolverStatus(tool, d.Name, found, rejected, d.DescribeForSettings(found, rejected), capabilities, recipe, offer);
+        // With no Install … to offer, the row says where to build it from instead (Gmsh on Linux arm64).
+        string summary = d.DescribeForSettings(found, rejected);
+        if (recipe is null && !SolverInstallPlan.HasRoute(tool) && found is not { Validated: true } && SolverRecipes.ByHand(tool) is { } byHand)
+            summary += " " + byHand;
+        return new SolverStatus(tool, d.Name, found, rejected, summary, capabilities, recipe, offer);
     }
 }
