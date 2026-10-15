@@ -131,3 +131,6 @@ TK*.pdb
 
 # A kit fixture (a SPICE-dialect model folder holding corner files), linked locally — never committed.
 /testdata/kit-statistics
+
+# Written by the passive-neighbour EM test run, not an input
+/testdata/portcal/results/

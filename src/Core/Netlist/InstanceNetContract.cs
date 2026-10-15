@@ -53,7 +53,7 @@ public static class InstanceNetContract
 
         // ── Distributed and transmission-line parts ──
         TLineModel or MicrostripLineModel or CoplanarLineModel or StriplineModel or MicrostripBendModel
-            or MicrostripTaperModel or MicrostripKlopfModel                                   => 2,
+            or MicrostripCurveModel or MicrostripTaperModel or MicrostripKlopfModel           => 2,
         MicrostripTeeModel                                                                    => 3,
         // A signal via is two terminals over the implicit reference, as MLIN is. A via to ground draws
         // one pin and binds two nets, like Term: the extractor appends "0".
@@ -300,6 +300,12 @@ public static class InstanceNetContract
 
             // A coplanar line's gap is the one dimension nothing defaults; any positive length stands in.
             case "CPWG":   p["G"] = new Expressions.Value(1e-4); break;
+
+            // A curved bend refuses a zero width and a radius below half of it; any drawable pair stands in.
+            case "MCURVE":
+                p["W"]      = new Expressions.Value(1e-4);
+                p["Radius"] = new Expressions.Value(1e-3);
+                break;
 
             // The mutual element names two INDUCTORS rather than two nets, so these are the nets'
             // stand-ins: without them there is no element, and with them there are still no nets.
