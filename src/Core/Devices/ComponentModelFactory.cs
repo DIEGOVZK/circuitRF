@@ -54,6 +54,9 @@ public static class ComponentModelFactory
             // The E element's linear half. Group 2 where the VCCS is Group 1 — see VcvsModel for
             // why a controlled VOLTAGE source cannot be stamped as admittances.
             { "VCVS",  () => new VcvsModel()          },
+            // The ideal transformer, N:1. One branch current and a −N coupling at the secondary —
+            // see IdealTransformerModel. N is read at stamp time, so nothing is needed to build one.
+            { "Transformer", () => new IdealTransformerModel() },
         };
 
     // Types that require resolved parameters at construction time.
@@ -102,6 +105,9 @@ public static class ComponentModelFactory
             // The frequency-dependent pair (brief-sys-6). "Duplexer" is two "Filter" responses
             // sharing a node, so the two read the same parameter set twice over with a Tx/Rx prefix.
             "Filter", "Duplexer",
+            // The op-amp: Pins (3 or 5) sets how many nets the line binds, so it is known at
+            // construction rather than read at stamp time.
+            "OpAmp",
         };
 
     /// <summary>
@@ -133,6 +139,8 @@ public static class ComponentModelFactory
             return CreateSnpModel(parameters);
         if (typeName.Equals("Mutual", StringComparison.OrdinalIgnoreCase))
             return CreateMutualModel(parameters);
+        if (typeName.Equals("OpAmp",  StringComparison.OrdinalIgnoreCase))
+            return CreateOpAmpModel(parameters);
         if (typeName.Equals("SDD",    StringComparison.OrdinalIgnoreCase))
             return CreateSddModel(parameters, functions);
         if (typeName.Equals("Z_Port", StringComparison.OrdinalIgnoreCase))
@@ -643,6 +651,19 @@ public static class ComponentModelFactory
     // ── Z_Port ────────────────────────────────────────────────────────────────
 
     private static readonly Regex RxZEntry = new(@"^Z\[(\d+),(\d+)\]$", RegexOptions.Compiled);
+
+    private static OpAmpModel CreateOpAmpModel(IReadOnlyDictionary<string, Value> parameters)
+    {
+        int pins = 3;
+        if (parameters.TryGetValue("Pins", out var v))
+        {
+            double d = v.Kind == ValueKind.Real ? v.AsReal() : double.NaN;
+            if (d is not (3 or 5))
+                throw new DeviceRefusalException(IdealDeviceDiagnostics.OpAmpPins(v.ToString()));
+            pins = (int)d;
+        }
+        return new OpAmpModel(pins);
+    }
 
     private static ZPortModel CreateZPortModel(IReadOnlyDictionary<string, Value> parameters, IReadOnlyList<UserFunction>? functions = null)
     {

@@ -116,6 +116,7 @@ public static class NetlistSchematic
         SymbolKind.Tuner, SymbolKind.LoadTuner, SymbolKind.SourceTuner,
         SymbolKind.Mixer, SymbolKind.MixerD,
         SymbolKind.Switch, SymbolKind.SwitchD,
+        SymbolKind.OpAmp, SymbolKind.OpAmp5,
         SymbolKind.Coupler, SymbolKind.Hybrid90, SymbolKind.Hybrid180,
     ];
 

@@ -232,6 +232,26 @@ reported as an error when the design is elaborated.
 
 {{table: components/Mutual}}
 
+### Ideal Transformer (Transformer) {#transformer}
+
+{{symbol: transformer}}
+
+A lossless transformer with turns ratio `N`:1, primary to secondary:
+
+`V(p+) − V(p−) = N · (V(s+) − V(s−))`, and the secondary current is `N` times the primary's, flowing
+the other way.
+
+Four pins on the corners — the primary `p+`, `p−` on the left, the secondary `s+`, `s−` on the right —
+with the dots on `p+` and `s+`: a voltage rising at one dotted end rises at the other. Seen from the
+primary, a load on the secondary looks `N²` times larger, so `N=2` between 50 Ω ports matches a
+200 Ω source to a 50 Ω load.
+
+Being ideal, it has no winding inductance and no leakage: it passes DC as readily as RF, at every
+frequency, harmonic balance included. For a transformer whose windings have inductance — one that
+blocks DC and rolls off at low frequency — use two [inductors](#inductor) and a [Mutual](#mutual).
+
+{{table: components/Transformer}}
+
 ### Matching Network (Match) {#match}
 
 {{symbol: match}}
@@ -409,6 +429,38 @@ nothing else attached to it has no DC path to ground and the matrix is singular.
 </div>
 
 {{table: components/Vcvs}}
+
+### Operational Amplifier (OpAmp) {#opamp}
+
+{{symbol: opamp}}
+
+The op-amp of every feedback figure: a triangle with the inverting input `in−` above the
+non-inverting input `in+`, and the output `out` at its point, referenced to ground.
+
+With `A=0`, the default, it is **ideal** — infinite open-loop gain. Its inputs draw no current and are
+held at the same voltage, and the output delivers whatever current that takes, so the feedback network
+alone sets the gain: an inverting stage with `Rin` and `Rf` has a gain of exactly `−Rf/Rin`.
+
+A non-zero `A` makes it a finite-gain amplifier, `V(out) = A · (V(in+) − V(in−))`, with an output
+resistance `Rout` behind it. As `A` grows, the answers converge on the ideal ones. `Rout` acts only
+with a finite `A`.
+
+It is linear and the same at every frequency: there is no bandwidth, slew rate or output swing limit,
+so an op-amp left without negative feedback has an output nothing bounds. For a gain that rolls off,
+put the roll-off in the circuit around it.
+
+{{table: components/OpAmp}}
+
+### Operational Amplifier with supply pins (OpAmp5) {#opamp5}
+
+{{symbol: opamp5}}
+
+The same op-amp with its supply pins drawn, `V+` above and `V−` below, for schematics that wire the
+supplies. They carry no current and change nothing: the op-amp behaves exactly as the three-pin tile
+does. A supply pin left connected to nothing is a node nothing sets, so connect both, or place the
+three-pin [OpAmp](#opamp) instead.
+
+{{table: components/OpAmp5}}
 
 ## Terminals & ports
 

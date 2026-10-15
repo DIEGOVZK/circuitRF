@@ -224,6 +224,8 @@ public class LibraryCatalogTests
             // The ferrite bead is a LINEAR impedance, so it belongs here and not with the devices —
             // which is where a user looking for one goes.
             SymbolKind.Bead,
+            // The ideal transformer sits beside Mutual, the physical one.
+            SymbolKind.Transformer,
         }, kinds);
     }
 
@@ -313,7 +315,7 @@ public class LibraryCatalogTests
     [Fact]
     public void SingleCategoryItems_UnchangedByExtraCategoryFeature()
     {
-        // Lumped returns exactly R/L/C/NLC/Mutual/the nine-part RLC family/Bead — no extra-category
+        // Lumped returns exactly R/L/C/NLC/Mutual/the nine-part RLC family/Bead/Transformer — no extra-category
         // bleed from other components.
         var kinds = LibraryCatalog.ByCategory(ComponentCategory.Lumped).Select(i => i.Kind).ToHashSet();
         Assert.Equal(
@@ -323,7 +325,7 @@ public class LibraryCatalogTests
                 SymbolKind.Mutual, SymbolKind.Srlc, SymbolKind.Prlc,
                 SymbolKind.Srl, SymbolKind.Src, SymbolKind.Slc,
                 SymbolKind.Prl, SymbolKind.Prc, SymbolKind.Plc,
-                SymbolKind.Bead,
+                SymbolKind.Bead, SymbolKind.Transformer,
             },
             kinds);
     }

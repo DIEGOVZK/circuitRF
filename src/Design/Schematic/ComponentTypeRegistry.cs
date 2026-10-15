@@ -241,6 +241,26 @@ public static class ComponentTypeRegistry
             Category: ComponentCategory.Sources,
             SearchTerms: ["VCVS", "E", "voltage gain", "controlled", "dependent", "amplifier", "vcvs"],
             IsCommon: false),
+        // Op-amp / OpAmp5: ONE engine component ("OpAmp"), two tiles differing only in whether the
+        // supply pins are drawn — the Mixer/MixerD arrangement. "U" is the prefix every drawing of
+        // one uses; a schematic that swaps one tile for the other should not renumber.
+        [SymbolKind.OpAmp]         = new("OpAmp", "U",
+            Category: ComponentCategory.Devices,
+            SearchTerms: ["OpAmp", "op-amp", "op amp", "operational amplifier", "opamp", "ideal", "U",
+                          "inverting", "non-inverting", "feedback", "amplifier"],
+            IsCommon: false),
+        [SymbolKind.OpAmp5]        = new("OpAmp5", "U",
+            Category: ComponentCategory.Devices,
+            SearchTerms: ["OpAmp5", "op-amp", "op amp", "operational amplifier", "opamp", "supply",
+                          "V+", "V-", "U"],
+            IsCommon: false),
+        // The ideal transformer. "T" is the prefix drawings use; TLIN's is "TL", so the two never
+        // number into each other.
+        [SymbolKind.Transformer]   = new("Transformer", "T",
+            Category: ComponentCategory.Lumped,
+            SearchTerms: ["Transformer", "ideal transformer", "turns ratio", "N:1", "balun", "coupled",
+                          "winding", "xfmr", "T"],
+            IsCommon: false),
         // Mixer / MixerD: ONE engine component ("Mixer"), two tiles — the TermG pattern. Primary
         // category is Devices rather than Sources because a mixer is a thing you put IN the signal
         // path, not a thing that drives it; the Nonlinear filter carries it too, since it is one.
@@ -1008,6 +1028,9 @@ public static class ComponentTypeRegistry
         SymbolKind.CurrentToneSource => "I_1Tone",
         SymbolKind.Vccs          => "VCCS",
         SymbolKind.Vcvs          => "VCVS",
+        SymbolKind.OpAmp         => "OpAmp",
+        SymbolKind.OpAmp5        => "OpAmp",  // SAME engine component as OpAmp, Pins=5
+        SymbolKind.Transformer   => "Transformer",
         SymbolKind.Mixer         => "Mixer",
         SymbolKind.MixerD        => "Mixer",  // SAME engine component as Mixer — no parallel model
         // The system blocks. NONE of these resolves yet — no ComponentModelFactory entry exists for
@@ -1164,8 +1187,11 @@ public static class ComponentTypeRegistry
     /// count.</para>
     /// </summary>
     public static bool IsStructuralParameter(SymbolKind kind, string parameterName)
-        => kind is SymbolKind.Switch or SymbolKind.SwitchD
-        && parameterName.Equals("Throws", StringComparison.Ordinal);
+        => (kind is SymbolKind.Switch or SymbolKind.SwitchD
+            && parameterName.Equals("Throws", StringComparison.Ordinal))
+        // The op-amp's Pins is the same arrangement: fixed by the tile, 3 or 5.
+        || (kind is SymbolKind.OpAmp or SymbolKind.OpAmp5
+            && parameterName.Equals("Pins", StringComparison.Ordinal));
 
     /// <summary>
     /// A one-line explanation of a BUILT-IN primitive's parameter, shown as the row's tooltip, or ""
@@ -1525,6 +1551,17 @@ public static class ComponentTypeRegistry
         (SymbolKind.Coupler or SymbolKind.Hybrid90 or SymbolKind.Hybrid180, "Z0") =>
             "Reference impedance of all four ports. Each port is this resistance to its own "
           + "reference.",
+        (SymbolKind.OpAmp or SymbolKind.OpAmp5, "A") =>
+            "Open-loop voltage gain. 0, the default, is the ideal op-amp: infinite gain, so the "
+          + "inputs are held at the same voltage and the feedback network alone sets the gain.",
+        (SymbolKind.OpAmp or SymbolKind.OpAmp5, "Rout") =>
+            "Output resistance. It acts only with a finite A; the ideal op-amp has none to act against.",
+        (SymbolKind.OpAmp or SymbolKind.OpAmp5, "Pins") =>
+            "3 for the tile without supply pins, 5 for the one with them. Fixed by the tile — place "
+          + "the other one to get the other count. The supply pins carry no current.",
+        (SymbolKind.Transformer, "N") =>
+            "Turns ratio, primary to secondary: V(primary) = N × V(secondary), and the currents in "
+          + "the opposite ratio. Ideal — lossless at every frequency, DC included.",
         (SymbolKind.Switch, "State") =>
             "1 closes the switch, 0 opens it. The symbol is drawn in the position it is set to, "
           + "so a swept State reads off the schematic.",
@@ -1768,6 +1805,16 @@ public static class ComponentTypeRegistry
             // VCVS: one parameter, the voltage gain. V(out+) − V(out−) = E·(V(ctrl+) − V(ctrl−)).
             // Dimensionless, so it carries no unit at all rather than a blank one.
             case SymbolKind.Vcvs:       return [new("E", "1", "", true, UnitDimension.None)];
+            // Op-amp / OpAmp5: A=0 is the ideal op-amp (infinite gain — see OpAmpModel for why zero
+            // spells it), Rout the output resistance, and Pins the tile's own fixed count.
+            case SymbolKind.OpAmp:      return [new("A",    "0", "",  false, UnitDimension.None),
+                                                new("Rout", "0", "Ω", false, UnitDimension.Resistance),
+                                                new("Pins", "3", "",  false, UnitDimension.None)];
+            case SymbolKind.OpAmp5:     return [new("A",    "0", "",  false, UnitDimension.None),
+                                                new("Rout", "0", "Ω", false, UnitDimension.Resistance),
+                                                new("Pins", "5", "",  false, UnitDimension.None)];
+            // Transformer: the turns ratio, primary to secondary.
+            case SymbolKind.Transformer: return [new("N", "1", "", true, UnitDimension.None)];
             // Mixer / MixerD: identical parameter list, because they are the same component.
             //
             // The first two are the whole of the ideal device and they belong together: the mixing

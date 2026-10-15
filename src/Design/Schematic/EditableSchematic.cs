@@ -224,6 +224,16 @@ public static class SymbolPortDefs
             case SymbolKind.Vcvs:
                 return [("out+", 0f, -200f), ("out-", 0f, 200f),
                         ("ctrl+", -300f, -100f), ("ctrl-", -300f, 100f)];
+            // Op-amp: pins in the NET order OpAmpModel reads — in+, in−, out — though the glyph
+            // draws the inverting input on top. The five-pin tile appends the supplies, V+ above.
+            case SymbolKind.OpAmp:
+                return [("in+", -300f, 100f), ("in-", -300f, -100f), ("out", 300f, 0f)];
+            case SymbolKind.OpAmp5:
+                return [("in+", -300f, 100f), ("in-", -300f, -100f), ("out", 300f, 0f),
+                        ("V+", 0f, -200f), ("V-", 0f, 200f)];
+            // Transformer: the four corners in ± pair order, primary then secondary, dotted ends first.
+            case SymbolKind.Transformer:
+                return [("p+", -200f, -200f), ("p-", -200f, 200f), ("s+", 200f, -200f), ("s-", 200f, 200f)];
             // Mixer (single-ended): the three signal pins of the classic glyph — RF left, LO
             // bottom, IF right. The engine's other three nets (each port's −) are tied to ground by
             // NetExtractor, the same way TermG's port 2 is; they are deliberately NOT pins.

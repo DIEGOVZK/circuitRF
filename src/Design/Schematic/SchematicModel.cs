@@ -365,6 +365,21 @@ public enum SymbolKind
     /// unknown of its own.</summary>
     Vcvs,
 
+    /// <summary>Operational amplifier (engine "OpAmp"), three pins in net order — [0]=in+, [1]=in−,
+    /// [2]=out — the output referenced to ground. Ideal by default (A=0: the inputs draw nothing and
+    /// are held equal); a finite open-loop gain A and output resistance Rout when stated. See
+    /// <c>OpAmpModel</c>.</summary>
+    OpAmp,
+
+    /// <summary>The same op-amp with its supply pins drawn — [3]=V+, [4]=V− — which carry no current.
+    /// One engine component ("OpAmp", Pins=5) under a second tile: the Mixer/MixerD arrangement.</summary>
+    OpAmp5,
+
+    /// <summary>Ideal transformer N:1 (engine "Transformer"), four pins in ± pair order — [0]=p+,
+    /// [1]=p−, [2]=s+, [3]=s− — the dotted ends first. Lossless and frequency-independent; two
+    /// inductors and a Mutual are the physical one. See <c>IdealTransformerModel</c>.</summary>
+    Transformer,
+
     // ── Ideal mixer ───────────────────────────────────────────────────────────
     // TWO kinds over ONE engine component ("Mixer"), the TermG pattern rather than the BJT one:
     // nothing electrical differs between them, so there is no parallel model — only how many of the

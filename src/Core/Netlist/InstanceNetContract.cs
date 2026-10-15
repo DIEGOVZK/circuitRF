@@ -75,6 +75,10 @@ public static class InstanceNetContract
 
         // ── Controlled sources: an output pair and a control pair, two ports of two nets each ──
         VccsModel or VcvsModel                                                                => 4,
+        // The ideal transformer: the primary pair, then the secondary pair.
+        IdealTransformerModel                                                                 => 4,
+        // The op-amp: in+, in−, out, and V+, V− with Pins=5 — the model's own resolved count.
+        OpAmpModel op                                                                         => op.PinCount,
 
         // The cascade block is a two-port with an explicit reference at each end.
         ChainModel                                                                            => 4,
@@ -157,9 +161,10 @@ public static class InstanceNetContract
     /// probe is what proves it: a value that moved the count would show up as a progression rather
     /// than as a constant. <c>Match</c>'s <c>Design</c> is the EMPTY design, not a real one.</para>
     ///
-    /// <para><b><see cref="_ruleOnly"/> is the rest</b> — the four tokens no measurement can reach,
+    /// <para><b><see cref="_ruleOnly"/> is the rest</b> — the five tokens no measurement can reach,
     /// each because the rule genuinely is not a number. Three of them are <see cref="Expected"/>'s
-    /// own null arms; the fourth (<c>VerilogA</c>) is a second token over the same model.</para>
+    /// own null arms; the fourth (<c>VerilogA</c>) is a second token over the same model, and the fifth
+    /// (<c>OpAmp</c>) has two legal counts that no probe of a port count reaches.</para>
     /// </summary>
     public static NetContract ForToken(string token)
     {
@@ -216,16 +221,19 @@ public static class InstanceNetContract
         "SWITCH"   => "Throws",
         "WBOND"    => "Arrays",
         "VERILOGA" => "Pins",
+        "OPAMP"    => "Pins",
         _          => null,
     };
 
     /// <summary>
     /// The tokens whose contract is a sentence rather than a number, with the sentence.
     ///
-    /// <para>Three of the four are <see cref="Expected"/>'s own <c>null</c> arms, which is the same
+    /// <para>Three of the five are <see cref="Expected"/>'s own <c>null</c> arms, which is the same
     /// judgement stated for the same reason: a number here would be a second, wrong statement of a
     /// rule that is not a number. <c>VerilogA</c> is a second token over
-    /// <see cref="ExternalDeviceModel"/> and cannot be constructed without the file it names.</para>
+    /// <see cref="ExternalDeviceModel"/> and cannot be constructed without the file it names. <c>OpAmp</c>
+    /// answers <see cref="Expected"/> from its resolved <c>Pins</c>, 3 or 5 — two counts, not a
+    /// progression, so the catalogue states them in a sentence.</para>
     /// </summary>
     private static readonly Dictionary<string, string> _ruleOnly = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -241,6 +249,9 @@ public static class InstanceNetContract
             "its port count and does not include the internal nodes the model asked for. An " +
             "instance may state a smaller ConnectedPinCount to place a five-terminal model as a " +
             "four-pin part.",
+        ["OpAmp"] =
+            "3 nets (in+, in−, out; the output referenced to ground), or 5 with Pins=5, adding the "
+          + "supply pins V+ and V−, which carry no current.",
         ["VerilogA"] =
             "Set by the compiled model the File parameter names: one net per declared terminal, " +
             "which the module's own source states and no registry here can.",

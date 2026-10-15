@@ -69,6 +69,9 @@ public static class BuiltInSymbols
     private static readonly Symbol _iToneSrc     = BuildCurrentToneSource();
     private static readonly Symbol _vccs         = BuildVccs();
     private static readonly Symbol _vcvs         = BuildVcvs();
+    private static readonly Symbol _opAmp        = BuildOpAmp(supplies: false);
+    private static readonly Symbol _opAmp5       = BuildOpAmp(supplies: true);
+    private static readonly Symbol _transformer  = BuildTransformer();
     private static readonly Symbol _mixer        = BuildMixer();
     private static readonly Symbol _mixerD       = BuildMixerD();
     private static readonly Symbol _ground       = BuildGround();
@@ -231,6 +234,9 @@ public static class BuiltInSymbols
             case SymbolKind.CurrentToneSource: return _iToneSrc;
             case SymbolKind.Vccs:       return _vccs;
             case SymbolKind.Vcvs:       return _vcvs;
+            case SymbolKind.OpAmp:      return _opAmp;
+            case SymbolKind.OpAmp5:     return _opAmp5;
+            case SymbolKind.Transformer: return _transformer;
             case SymbolKind.Mixer:      return _mixer;
             case SymbolKind.MixerD:     return _mixerD;
             case SymbolKind.Balun:      return _balun;
@@ -941,6 +947,46 @@ public static class BuiltInSymbols
         Txt("+", -150, -100, fontSize: PolarityFontSize, colorRole: SymbolColorRole.SymbolPlus),
         Txt("−", -150, +100, fontSize: PolarityFontSize),
     ], SymbolKind.Vcvs);
+
+    // ── Op-amp — the triangle, inverting input on top ─────────────────────────
+    //
+    // The textbook drawing: a triangle pointing at its output, the two inputs on the flat side marked
+    // − above + (the inverting input on top, as most feedback figures draw it, so a feedback resistor
+    // returns over the top). The five-pin tile adds the supply leads at the slanted sides' midpoints,
+    // V+ up and V− down. Pins: in+ (−300, 100), in− (−300, −100), out (300, 0), V+ (0, −200),
+    // V− (0, 200).
+
+    private static Symbol BuildOpAmp(bool supplies) => Sym([
+        Poly(false, -200, -200,  200, 0,  -200, 200),   // body
+        L(-300, -100, -200, -100),          // in− lead
+        L(-300,  100, -200,  100),          // in+ lead
+        L( 200,    0,  300,    0),          // output lead
+        Txt("−", -165, -100, fontSize: PolarityFontSize),
+        Txt("+", -165,  100, fontSize: PolarityFontSize, colorRole: SymbolColorRole.SymbolPlus),
+        .. (supplies
+            ? (SymbolPrimitive[])[L(0, -200, 0, -100), L(0, 100, 0, 200)]   // V+ and V− leads
+            : []),
+    ], supplies ? SymbolKind.OpAmp5 : SymbolKind.OpAmp);
+
+    // ── Transformer — two windings, a core, the dots on the dotted ends ───────
+    //
+    // Primary on the left bulging toward the core, secondary on the right bulging back, iron-core
+    // bars between them, a dot at each winding's dotted end (p+ and s+, the upper pins). Pins on the
+    // corners: p+ (−200, −200), p− (−200, 200), s+ (200, −200), s− (200, 200).
+
+    private static Symbol BuildTransformer() => Sym([
+        L(-200, -200, -60, -200),  L(-60, -200, -60, -120),         // p+ lead
+        A(-60, -90, 30, -90, 180), A(-60, -30, 30, -90, 180),        // primary winding
+        A(-60,  30, 30, -90, 180), A(-60,  90, 30, -90, 180),
+        L(-60,  120, -60, 200),    L(-60, 200, -200, 200),           // p− lead
+        L( 200, -200,  60, -200),  L( 60, -200,  60, -120),          // s+ lead
+        A( 60, -90, 30, 90, 180),  A( 60, -30, 30, 90, 180),         // secondary winding
+        A( 60,  30, 30, 90, 180),  A( 60,  90, 30, 90, 180),
+        L( 60,  120,  60, 200),    L( 60, 200,  200, 200),           // s− lead
+        L(-12, -130, -12, 130),    L( 12, -130,  12, 130),           // core
+        Circ(-95, -135, 6, filled: true),                             // primary dot
+        Circ( 95, -135, 6, filled: true),                             // secondary dot
+    ], SymbolKind.Transformer);
 
     // ── Mixer — the universal circle-and-✕ ────────────────────────────────────
     // Pins: RF (-300,0) left · LO (0,+300) bottom · IF (+300,0) right.
