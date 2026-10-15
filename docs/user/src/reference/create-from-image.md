@@ -58,7 +58,6 @@ Wherever there is a picture, the command is one gesture away &mdash; and it is o
 | Where | Rows | What opens |
 |---|---|---|
 | **Design ▸ Create** | **Schematic from Image…**, **Layout from Image…** | The dialog, empty, ready for a drop, a paste or **Browse…** &mdash; every option, and the parts table to review. Enabled whenever a workspace is open; no document needs to be in front. |
-| **Edit** menu | **Paste Image as Schematic**, **Paste Image as Layout** | No dialog: the clipboard's picture is read &mdash; a schematic picture a few ways, the most plausible reading kept &mdash; and pasted into the schematic or layout in front, with the picture itself under it as an ordinary bitmap. While it reads, a row in **Messages** says so; **Esc**, that row's right-click **Cancel**, or closing the document cancels it, and nothing is pasted. The row then says in one line what was pasted. In a schematic, the parts that need a look &mdash; one of no known kind, an amplifier or block on its default parameters, a value that was not read &mdash; are selected, and the row's **Correct…** opens the dialog on the same picture with the same reading; otherwise everything pasted is selected. Nothing pasted touches anything already there, so it can be dragged into place &mdash; and in a layout, scaled as one with a corner handle or **Scale…**. Each is enabled only while a document of its own kind is in front and the clipboard holds a picture &mdash; a copied image, or one picture file copied in a file manager (two files, or a file that is not a picture, leave them greyed). The clipboard is looked at when the Edit menu opens and when you come back to the window. |
 | Right-click a picture placed in a **layout** | **Trace Image into This Layout…**, **Create Schematic from Image…** | Tracing into this layout puts the copper in this layout, over the picture, at the size the picture is placed (scale **As placed**), in this layout's technology &mdash; one undo step. **Create Schematic from Image…** makes a new cell and offers **As placed** as its scale. |
 | Right-click a picture placed in a **schematic** | **Create Schematic from Image…**, **Create Layout from Image…** | A picture of a schematic is drawn into this schematic, over the picture, at the size the picture is placed &mdash; one undo step, and what was added is selected. A picture of a layout makes a new cell; a schematic has no physical size, so **As placed** is not offered, and the scale is set in the dialog. |
 | Right-click a picture file in the **Project** panel | **Create Schematic from Image…**, **Create Layout from Image…** | The dialog, already reading that file. Offered on a Known File and on a file inside the workspace folder whose extension is one circuitRF reads. |
@@ -208,9 +207,9 @@ anything on the picture is not tried, and a large picture is read once. Stating 
 **Making a layout of it.** A schematic picture makes a schematic only. To get a layout, create the schematic, then use
 **Update Layout from Schematic**.
 
-## Pasting a circuit from a datasheet or a textbook {#pasting}
+## Reading a circuit from a datasheet or a textbook {#datasheets}
 
-**Edit ▸ Paste Image as Schematic** reads a screenshot with no questions asked, so it is worth knowing what it
+**Schematic from Image…** reads a screenshot of a datasheet or textbook circuit, so it is worth knowing what it
 reads well and what it leaves for you.
 
 **What pastes well.** An application or test circuit cropped from a datasheet, at screen resolution or on a Retina
@@ -219,8 +218,7 @@ triangles, an IC box with its pin numbers and pin names, coax connectors, small 
 bold labels, serif italic designators with subscripts (`R₁`, `C_ADJ`), zig-zag resistors and named open wire ends
 are all read.
 
-**What to expect to fix.** The paste selects these and names them in its one line in **Messages**; **Correct…**
-opens the dialog on the same reading.
+**What to expect to fix.**
 
 - **An IC's Touchstone file.** An IC box is an S-parameter block with no file; set its **File** before simulating, or
   the run stops at it.
@@ -235,9 +233,9 @@ opens the dialog on the same reading.
 capacitors drawn side by side can read as one. An IC box divided by small pin-number boxes can read as several blocks.
 A solid box drawn round a part or a module &mdash; a test fixture, a bias tee, a frame round the device under
 test &mdash; is read as one block with what it holds. A transistor drawn without its circle, and a hatched or dotted
-zig-zag, are not read. A part marked not fitted only by its colour is pasted like any other. An op-amp circuit or a
-dense evaluation board pastes its parts, but most of their connections need redrawing. A complex picture takes up to
-about twenty seconds to read; **Esc** cancels it and nothing is pasted.
+zig-zag, are not read. A part marked not fitted only by its colour is read like any other. An op-amp circuit or a
+dense evaluation board reads its parts, but most of their connections need redrawing. A complex picture takes up to
+about twenty seconds to read.
 
 ## Scale {#scale}
 
@@ -452,7 +450,7 @@ and it holds the picture alone, at the scale you set, to draw over by hand in th
 |---|---|
 | A layout drawn by a program &mdash; a board viewer, a layout editor, a die plot, a figure | **Good.** Flat colours and sharp edges trace to within half a pixel, and the circuit is then read from the copper exactly as from artwork. |
 | A schematic drawn by a program &mdash; another tool's screenshot, a circuitRF picture | **Good wiring and symbols, most values.** Values read when the type is clean and regular; one that does not read becomes a variable to tune. |
-| A circuit from a datasheet or a textbook | **Partial.** Most of the passives read, and often the ports and the amplifier or IC; expect to fix some parts and some wiring &mdash; see [Pasting a circuit from a datasheet or a textbook](#pasting). |
+| A circuit from a datasheet or a textbook | **Partial.** Most of the passives read, and often the ports and the amplifier or IC; expect to fix some parts and some wiring &mdash; see [Reading a circuit from a datasheet or a textbook](#datasheets). |
 | A picture saved as a JPEG, turned slightly, or speckled | **Good**, a little less exactly: compression smudges colour edges by about a pixel. |
 | A photograph of a real board, set square on its corners | **Partial**: lines and pads come back, fine detail does not, and pads under parts are not read. |
 | A hand-drawn schematic | **Not a goal.** It may read if it is neat. |
@@ -481,10 +479,7 @@ it as a schematic** and **Read it as a layout**, for a picture you know better t
 holds no circuit &mdash; a block diagram, a drawing &mdash; is read as a schematic and refused the same way: *No circuit: most of
 the lines in this picture curve or slant*, with the one link that reads it as a layout. A reading that finds nothing to make &mdash; no copper at the mapped
 colours with **Keep the source picture under the result** cleared, no technology &mdash; is shown the same way, with
-the control that answers it highlighted. **Paste Image as
-Schematic** refuses a picture that is not a schematic &mdash; a photograph, a shaded illustration, a page of text, or one
-whose best reading finds almost nothing a schematic has &mdash; in one sentence in **Messages**: *This picture does not
-look like a schematic: …*, and pastes nothing. **Create** stays
+the control that answers it highlighted. **Create** stays
 disabled, and its tooltip is that sentence.
 
 {{ui: image-dialog-no-drawing}}
@@ -514,7 +509,7 @@ disabled, and its tooltip is that sentence.
   board's top reads its lines and pads only once set square on its corners.
 - **Script type**, and type that is very small or slanted at a small size. A value printed in such type becomes a
   variable or, rarely, reads wrong: check values against the picture.
-- **Some datasheet drawings** &mdash; see [Pasting a circuit from a datasheet or a textbook](#pasting).
+- **Some datasheet drawings** &mdash; see [Reading a circuit from a datasheet or a textbook](#datasheets).
 - **A value printed far from its part**, other than on the line under its designator, may be given to the part nearest
   it.
 - **Dense layouts** where a trace is under about four pixels wide: widths are read, but loosely.

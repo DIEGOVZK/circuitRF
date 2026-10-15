@@ -170,8 +170,11 @@
                         <NativeMenuItem Header="Cut"        Command="{Binding CutCommand}"/>
                         <NativeMenuItem Header="Copy"       Command="{Binding CopyCommand}"/>
                         <NativeMenuItem Header="Paste"      Command="{Binding PasteCommand}"/>
+                        <!-- Paste Image as Schematic / Layout are hidden until the image reader improves; the commands
+                             (PasteImageAsSchematicCommand / PasteImageAsLayoutCommand) are kept. Uncomment to restore.
                         <NativeMenuItem Header="Paste Image as Schematic" Command="{Binding PasteImageAsSchematicCommand}" ToolTip="Read the picture on the clipboard as a schematic and paste it, selected, into the schematic in focus, with the picture under it. Enabled when a schematic is in focus and the clipboard holds a picture. Design > Create > Schematic from Image has the options."/>
                         <NativeMenuItem Header="Paste Image as Layout"    Command="{Binding PasteImageAsLayoutCommand}" ToolTip="Trace the picture on the clipboard and paste the shapes, selected, into the layout in focus, with the picture under them. Enabled when a layout is in focus and the clipboard holds a picture. Design > Create > Layout from Image has the options."/>
+                        -->
                     </NativeMenu>
                 </NativeMenuItem.Menu>
             </NativeMenuItem>
@@ -1082,9 +1085,11 @@
                           InputGesture="Ctrl+V">
                     <MenuItem.Icon><mi:MaterialIcon Kind="ContentPaste" Width="16" Height="16"/></MenuItem.Icon>
                 </MenuItem>
-                <!-- brief-img-6 R-im6-2: enabled only when the clipboard holds a picture, asked when this menu opens
+                <!-- Paste Image as Schematic / Layout are hidden until the image reader improves; the commands
+                     (PasteImageAsSchematicCommand / PasteImageAsLayoutCommand) are kept. Uncomment to restore.
+                brief-img-6 R-im6-2: enabled only when the clipboard holds a picture, asked when this menu opens
                      (SubmenuOpened on the Edit item) and when the window is activated — never polled — and only while a
-                     document of the command's own kind is in focus: each pastes INTO it, with no dialog. -->
+                     document of the command's own kind is in focus: each pastes INTO it, with no dialog.
                 <MenuItem Header="Paste _Image as Schematic"
                           Command="{Binding PasteImageAsSchematicCommand}"
                           ToolTip.Tip="Read the picture on the clipboard as a schematic and paste it, selected, into the schematic in focus, with the picture under it. Enabled when a schematic is in focus and the clipboard holds a picture. Design > Create > Schematic from Image has the options.">
@@ -1095,6 +1100,7 @@
                           ToolTip.Tip="Trace the picture on the clipboard and paste the shapes, selected, into the layout in focus, with the picture under them. Enabled when a layout is in focus and the clipboard holds a picture. Design > Create > Layout from Image has the options.">
                     <MenuItem.Icon><mi:MaterialIcon Kind="ImageEditOutline" Width="16" Height="16"/></MenuItem.Icon>
                 </MenuItem>
+                -->
             </MenuItem>
 
             <MenuItem Header="_Design" Padding="8,4">
