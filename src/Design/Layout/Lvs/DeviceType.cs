@@ -133,7 +133,7 @@ public static class DeviceTypes
     /// <c>LayoutToSchematicGenerator</c> seeded and now calls.
     /// </summary>
     /// <remarks>
-    /// Twelve entries, which is every generator that has a schematic counterpart today. R-lvs4-5c
+    /// Thirteen entries, which is every generator that has a schematic counterpart today. R-lvs4-5c
     /// completes it against <c>PCellRegistry</c> with a test that FAILS THE BUILD on a generator
     /// with no entry, rather than falling back at runtime: a silent fallback here produces two
     /// devices of "unknown" type that then match each other.
@@ -143,6 +143,7 @@ public static class DeviceTypes
         {
             ["MLIN"]   = SymbolKind.Mlin,
             ["MBEND"]  = SymbolKind.MBend,
+            ["MCURVE"] = SymbolKind.MCurve,
             ["MTEE"]   = SymbolKind.MTee,
             ["MCROSS"] = SymbolKind.MCross,
             ["MTAPER"] = SymbolKind.Mtaper,
@@ -264,7 +265,7 @@ public static class DeviceTypes
         // one kind, because the artwork does not distinguish them either — what tells a tee from a
         // cross is its terminal COUNT, which the comparison already has, and a line drawn on a layer
         // is the same line whichever model the schematic chose for it (AS-11 swaps between them).
-        SymbolKind.Mlin or SymbolKind.MBend or SymbolKind.MTee
+        SymbolKind.Mlin or SymbolKind.MBend or SymbolKind.MCurve or SymbolKind.MTee
             or SymbolKind.MCross or SymbolKind.Mtaper or SymbolKind.Mklopf
             or SymbolKind.Tline or SymbolKind.Cpwg or SymbolKind.Slin
             => DeviceKind.TransmissionLine,

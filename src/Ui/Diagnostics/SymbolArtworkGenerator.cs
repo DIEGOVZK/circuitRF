@@ -102,6 +102,7 @@ public static class SymbolArtworkGenerator
         (SymbolKind.Cpwg,            "cpwg",              2),
         (SymbolKind.Slin,            "slin",              2),
         (SymbolKind.MBend,           "mbend",             2),
+        (SymbolKind.MCurve,          "mcurve",            2),
         (SymbolKind.MTee,            "mtee",              3),
         (SymbolKind.MCross,          "mcross",            4),
         (SymbolKind.Mtaper,          "mtaper",            2),
