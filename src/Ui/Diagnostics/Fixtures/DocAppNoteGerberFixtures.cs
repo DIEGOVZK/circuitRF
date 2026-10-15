@@ -34,7 +34,7 @@ namespace CircuitRF.Ui.Diagnostics.Fixtures;
 /// <see cref="GerberImportEntry"/>, the recognition through <see cref="ArtworkRecognitionRunner"/>, the S-parameter run
 /// through <c>SchematicRunService</c> — into a temporary folder each figure deletes in its <c>Cleanup</c>. A copy,
 /// because an import and a Create both WRITE into the workspace, and the example under <c>examples/</c> is what a
-/// reader's Tools ▸ Examples hands them.
+/// reader's File ▸ New ▸ Examples hands them.
 ///
 /// <para><b>An import into that copy lands in <c>Board_2</c></b>, because the example already holds the same import,
 /// done once and with its stackup corrected, as <c>Board</c>. That is what a reader following the note sees too.</para>

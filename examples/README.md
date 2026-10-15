@@ -4,7 +4,7 @@ These are **real circuitRF workspaces**, not templates and not an archive to unp
 them here, in this folder, and edit it — that is the point of them being files.
 
 They also ship with the application. `src/Ui/CircuitRF.Ui.csproj` copies this whole tree into the
-build output, and **Tools ▸ Examples** in the running application copies one to a folder the user
+build output, and **File ▸ New ▸ Examples** in the running application copies one to a folder the user
 picks and opens it there. The user's copy is theirs; nothing writes back into this one.
 
 ## Adding an example

@@ -40,6 +40,20 @@
                                     <NativeMenuItem Header="New Data Display" Command="{Binding NewDataDisplayCommand}"       Gesture="Meta+Shift+D"/>
                                     <NativeMenuItem Header="New Technology…"  Command="{Binding NewTechnologyCommand}"        CommandParameter="{Binding $parent[Window]}"/>
                                     <NativeMenuItem Header="New EM Setup…"    Command="{Binding NewEmSetupCommand}"           CommandParameter="{Binding $parent[Window]}"/>
+                                    <NativeMenuItemSeparator/>
+                                    <!-- Examples: under File ▸ New, last, rather than a top-level
+                                         entry, so it is there for whoever looks for it and in nobody
+                                         else's way (owner, 2026-10-15). The rows are filled in by
+                                         RebuildNativeExamplesMenu, because what is shipped is read off
+                                         disk rather than listed here, and the whole item is REMOVED when
+                                         a build carries none. A NativeMenuItem is an AvaloniaObject with
+                                         no DataContext, so it cannot bind to the view model's collection
+                                         the way the in-window mirror below does. -->
+                                    <NativeMenuItem Header="Examples">
+                                        <NativeMenuItem.Menu>
+                                            <NativeMenu/>
+                                        </NativeMenuItem.Menu>
+                                    </NativeMenuItem>
                                 </NativeMenu>
                             </NativeMenuItem.Menu>
                         </NativeMenuItem>
@@ -510,17 +524,6 @@
                         <NativeMenuItem Header="Smith Chart" Command="{Binding NewSmithChartCommand}"/>
                         <!-- brief-img-14 R-im14-13: the picture dialog, empty, in plot mode. Mirrored below. -->
                         <NativeMenuItem Header="Digitise Plot…" Command="{Binding DigitisePlotCommand}" ToolTip="Read the curves of a plot picture — rectangular, Smith or polar — into a CSV, or an S-parameter plot into a Touchstone file. Requires an open workspace."/>
-                        <NativeMenuItemSeparator/>
-                        <!-- Examples: the rows are filled in by RebuildNativeExamplesMenu, because
-                             what is shipped is read off disk rather than listed here, and the whole
-                             item is REMOVED when a build carries none. A NativeMenuItem is an
-                             AvaloniaObject with no DataContext, so it cannot bind to the view
-                             model's collection the way the in-window mirror below does. -->
-                        <NativeMenuItem Header="Examples">
-                            <NativeMenuItem.Menu>
-                                <NativeMenu/>
-                            </NativeMenuItem.Menu>
-                        </NativeMenuItem>
                         <!-- wBond: WITHDRAWN FOR v1 (owner, 2026-08-17). The standalone wirebond
                              WINDOW is a v2 feature; wirebonds reach v1 through the wBond COMPONENT and
                              the wirebond CELL (WB40) — the layout editor's own wire tools, panels and
@@ -708,6 +711,17 @@
                               Command="{Binding NewEmSetupCommand}"
                               CommandParameter="{Binding $parent[Window]}">
                         <MenuItem.Icon><mi:MaterialIcon Kind="SineWave" Width="16" Height="16"/></MenuItem.Icon>
+                    </MenuItem>
+                    <Separator IsVisible="{Binding HasExamples}"/>
+                    <!-- Examples — under File ▸ New, hand-mirrored with the macOS NativeMenu above. The
+                         rows come from the view model rather than from here because what is shipped is
+                         read off disk, and a build without them hides the whole entry rather than
+                         opening an empty submenu. -->
+                    <MenuItem Header="_Examples"
+                              IsVisible="{Binding HasExamples}"
+                              ItemsSource="{Binding ExampleMenuItems}"
+                              ToolTip.Tip="Copy a reference workspace to a folder you pick, and open it. The copy is yours to edit.">
+                        <MenuItem.Icon><mi:MaterialIcon Kind="BookOpenVariant" Width="16" Height="16"/></MenuItem.Icon>
                     </MenuItem>
                 </MenuItem>
                 <MenuItem Header="New _Workspace…"
@@ -1510,16 +1524,6 @@
                           Command="{Binding DigitisePlotCommand}"
                           ToolTip.Tip="Read the curves of a plot picture — rectangular, Smith or polar — into a CSV, or an S-parameter plot into a Touchstone file. Requires an open workspace.">
                     <MenuItem.Icon><mi:MaterialIcon Kind="ChartBellCurve" Width="16" Height="16"/></MenuItem.Icon>
-                </MenuItem>
-                <Separator IsVisible="{Binding HasExamples}"/>
-                <!-- Examples — hand-mirrored with the macOS NativeMenu above. The rows come from the
-                     view model rather than from here because what is shipped is read off disk, and a
-                     build without them hides the whole entry rather than opening an empty submenu. -->
-                <MenuItem Header="_Examples"
-                          IsVisible="{Binding HasExamples}"
-                          ItemsSource="{Binding ExampleMenuItems}"
-                          ToolTip.Tip="Copy a reference workspace to a folder you pick, and open it. The copy is yours to edit.">
-                    <MenuItem.Icon><mi:MaterialIcon Kind="BookOpenVariant" Width="16" Height="16"/></MenuItem.Icon>
                 </MenuItem>
                 <!-- wBond: WITHDRAWN FOR v1 (owner, 2026-08-17) — see the NativeMenu's own note.
                      The standalone window is deferred to v2; every other wirebond surface stays.

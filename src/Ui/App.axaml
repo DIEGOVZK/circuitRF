@@ -123,7 +123,7 @@
         </DataTemplate>
         <!-- A workspace's README.md, read-only. Opened instead of the Welcome tab when a workspace
              has one and nothing else is being restored — which is what an example workspace, freshly
-             copied out of Tools ▸ Examples, always is. -->
+             copied out of File ▸ New ▸ Examples, always is. -->
         <DataTemplate DataType="{x:Type md:MarkdownDocument}">
             <cv:MarkdownDocumentView/>
         </DataTemplate>

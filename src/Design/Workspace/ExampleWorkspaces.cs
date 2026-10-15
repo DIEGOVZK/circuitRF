@@ -18,7 +18,7 @@ public sealed record ExampleWorkspace(string Folder, string Title, string Summar
 
 /// <summary>
 /// The example workspaces circuitRF ships — <b>ordinary workspace FOLDERS, copied out on request</b>
-/// (Tools ▸ Examples).
+/// (File ▸ New ▸ Examples).
 ///
 /// <h3>Why they are files and not an embedded resource</h3>
 /// <para>They are real workspaces in the repository at <c>examples/</c>, openable in place, and the

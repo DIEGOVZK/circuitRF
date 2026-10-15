@@ -13,7 +13,7 @@
 //      loud: `|---|---|` simply appears on screen. Two of the six shipped examples have a table.
 //
 //   3. EVERY SHIPPED EXAMPLE STILL HAS ONE. The README is the thing the user is shown instead of the
-//      Welcome tab when they copy an example out of Tools ▸ Examples. An example that lost its README
+//      Welcome tab when they copy an example out of File ▸ New ▸ Examples. An example that lost its README
 //      would open on an empty document area, which looks like a bug in the copy.
 // ================================================================
 

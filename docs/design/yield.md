@@ -1113,7 +1113,7 @@ C active, an inert resistor not; the line round-trips byte-stable through `.cnl`
 
 ### 18.1 The example (R-ya13-1, R-ya13-4)
 
-`examples/Yield/` — **Tools ▸ Examples ▸ Yield, Corners and Centering** — holds one test bench per question:
+`examples/Yield/` — **File ▸ New ▸ Examples ▸ Yield, Corners and Centering** — holds one test bench per question:
 
 | Cell | What it shows | The outcome at its own settings, seed 1 |
 |---|---|---|

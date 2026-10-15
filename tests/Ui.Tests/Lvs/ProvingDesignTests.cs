@@ -500,7 +500,7 @@ public sealed class ProvingDesignTests
         Assert.Contains("worst 0.2", output, StringComparison.Ordinal);
     }
 
-    // ══ 11 — it is a shipped example, offered by Tools > Examples ═══════════════════════════════
+    // ══ 11 — it is a shipped example, offered by File > New > Examples ═══════════════════════════════
 
     [Fact]
     public void TheExamplesRowResolvesAndTheFolderOpens()

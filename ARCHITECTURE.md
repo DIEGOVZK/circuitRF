@@ -171,7 +171,7 @@ circuitRF/
 ├─ docs/           PRD.md, Development_Plan.md, design/ (the "why" — start here to go deep),
 │                  skills/, sonnet-briefs/, and user/ (the shipped documentation — GENERATED;
 │                  sources in docs/user/src/)
-├─ examples/       The workspaces Tools ▸ Examples opens
+├─ examples/       The workspaces File ▸ New ▸ Examples opens
 ├─ testdata/       Golden references + regression fixtures (the five heroes live here)
 ├─ tests/          Core, Engine, Ui, RfCore, Harmonica, WBond and Firewall test projects
 ├─ VERSION         The ONE place the version number is written

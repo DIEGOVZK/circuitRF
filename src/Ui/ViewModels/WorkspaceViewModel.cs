@@ -399,7 +399,8 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         // Workspace name comes from the containing FOLDER (the file is literally ".cws", no stem).
         var dir  = value is not null ? Path.GetDirectoryName(value) : null;
         var name = dir is not null   ? Path.GetFileName(dir)         : null;
-        WindowTitle = !string.IsNullOrEmpty(name) ? $"{name} — circuitRF" : "circuitRF";
+        _windowTitleBase = !string.IsNullOrEmpty(name) ? $"{name} — circuitRF" : "circuitRF";
+        RefreshWindowTitle();
 
         // Driven from the property change rather than from each workspace-reset path, because the
         // resolver must see the NEW root: a hand-placed call ordered before this assignment would
@@ -498,6 +499,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         _factory.CloseDockableConfirm  = ConfirmCloseDockable;
         _factory.CloseDockablesConfirm = ConfirmCloseDockables; // Close all / other / left / right: one prompt
         WireDockArrangementPersistence();
+        WireDirtyWindowTitle();
         _factory.DockableClosed += (_, args) => { if (args.Dockable is not null) OnDockableClosed(args.Dockable); };
 
         // Owner report, 2026-08-14: "Document tabs did not update/render when a document was
@@ -2862,7 +2864,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
     /// has produced no documents of its own.
     ///
     /// <para>This is what a shipped example workspace is for. Someone who has just used
-    /// <b>Tools ▸ Examples</b> has a folder they did not author in front of them, and the first thing
+    /// <b>File ▸ New ▸ Examples</b> has a folder they did not author in front of them, and the first thing
     /// they need is the sentence saying what it teaches; a Welcome tab tells them nothing they did not
     /// know one second ago. The README is the file every example already ships
     /// (<c>examples/README.md</c> §Adding an example), so there is nothing new for an example to
@@ -11174,6 +11176,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
             // tree instead (SaveDataDisplayDoc), which builds the new node already asking IsNodeDirty.
             if (doc.FilePath is { } fp)
                 _factory.ProjectTreeTool?.SetFileDirty(fp, doc.ViewModel.Window.HasUnsavedChanges());
+            RefreshWindowTitle();
         };
     }
 
@@ -18825,6 +18828,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         catch (Exception ex)
         {
             Messages.Warning($"Could not reach the update server: {ex.Message}");
+            await ShowUpdateCheckOutcomeAsync(DescribeManualUpdateCheck(null, ex.Message));
             return;
         }
 
@@ -18872,6 +18876,55 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
                 Messages.Warning("Could not reach the update server. Nothing was changed.");
                 break;
         }
+
+        await ShowUpdateCheckOutcomeAsync(DescribeManualUpdateCheck(result, null));
+    }
+
+    /// <summary>
+    /// What a MANUAL check says in a dialog, or null when it says nothing (a Cancel the user just
+    /// pressed). The Message Panel lines above stay, but a panel that is closed or behind another tab
+    /// turned "is up to date" into no answer at all — field feedback, 2026-10-15: the user picked the
+    /// menu item and could not tell whether it had done anything. The background check never comes
+    /// here, so its silence on an offline machine is unchanged.
+    /// </summary>
+    /// <param name="error">The exception message when the check threw, in which case
+    /// <paramref name="result"/> is null.</param>
+    internal static (string Heading, string Text)? DescribeManualUpdateCheck(Updates.CheckResult? result, string? error)
+    {
+        string app = Updates.UpdateApp.Name;
+        const string unreachable = "The update server could not be reached. Nothing was changed.";
+
+        if (result is null)
+            return ("Could not check for updates", string.IsNullOrEmpty(error) ? unreachable : $"{unreachable}\n\n{error}");
+
+        return result.Outcome switch
+        {
+            Updates.CheckOutcome.UpToDate =>
+                ($"{app} is up to date", $"{app} {AppVersion.Display} is the latest version."),
+            Updates.CheckOutcome.Staged =>
+                ($"{app} {result.Version} has been downloaded",
+                 $"It will be used the next time {app} is relaunched."),
+            Updates.CheckOutcome.NotifyOnly =>
+                ($"{app} {result.Version} is available",
+                 $"{result.Detail} You can download it from {Updates.UpdateService.ReleasesPageUrl}".TrimStart()),
+            Updates.CheckOutcome.InsufficientSpace =>
+                ("Not enough disk space for the update",
+                 $"{app} {result.Version} needs about {Updates.UpdateSpace.FormatBytes(result.RequiredBytes)} of "
+                 + $"free disk space and there is {Updates.UpdateSpace.FormatBytes(result.AvailableBytes)} "
+                 + "available. The update was not downloaded."),
+            Updates.CheckOutcome.Disabled =>
+                ("No check was made", result.Detail.Length > 0
+                    ? result.Detail
+                    : "Automatic updates are turned off in Settings, so no check was made."),
+            Updates.CheckOutcome.Cancelled => null,
+            _ => ("Could not check for updates", unreachable),
+        };
+    }
+
+    private async Task ShowUpdateCheckOutcomeAsync((string Heading, string Text)? outcome)
+    {
+        if (outcome is not { } o || ResolveOwner(null) is not { } owner) return;
+        await TextConfirmDialog.AskAsync(owner, "Check for Updates", o.Heading, o.Text, confirmLabel: null);
     }
 
     // ---- Quit ----------------------------------------------------------------

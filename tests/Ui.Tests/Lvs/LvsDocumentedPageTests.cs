@@ -27,7 +27,7 @@
 //
 //  ── AND IT RUNS ON A COPY ─────────────────────────────────────────────────────────────────────
 //
-//  The reader's own copy of the example comes out of Tools ▸ Examples into a folder they chose, so
+//  The reader's own copy of the example comes out of File ▸ New ▸ Examples into a folder they chose, so
 //  the commands are relative and the working directory is that folder. The test copies
 //  `examples/LVS` into a temp directory and runs there — which also means a verb that wrote
 //  something it should not cannot dirty the repository. `lvs` writes nothing without `-o`, and
@@ -172,7 +172,7 @@ public sealed class LvsDocumentedPageTests(ITestOutputHelper output) : IDisposab
         Assert.Contains("reference/lvs.html", nav, StringComparison.Ordinal);
 
         string page = File.ReadAllText(ChapterPath());
-        Assert.Contains("Tools &rsaquo; Examples &rsaquo; Layout versus schematic", page, StringComparison.Ordinal);
+        Assert.Contains("File &rsaquo; New &rsaquo; Examples &rsaquo; Layout versus schematic", page, StringComparison.Ordinal);
         Assert.Contains("README.md", page, StringComparison.Ordinal);
 
         // The example it names is the one that ships, offered under that title.

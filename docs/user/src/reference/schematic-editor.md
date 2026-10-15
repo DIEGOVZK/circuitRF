@@ -195,6 +195,29 @@ menu applies when the click hit nothing, so the canvas menu carries only the one
 does — going back up a level. It is greyed out, with the reason on its tooltip, when you are already
 at the top of the schematic.
 
+## Keys at a glance {#keys}
+
+| Key | What it does |
+|---|---|
+| **S**, **W**, **Z** | Select, Wire, zoom box |
+| **F** | Zoom to fit |
+| **R**, **Shift+R** | Rotate the selection — or the part being placed — 90° counter-clockwise; clockwise |
+| **M**, **Shift+M** | Mirror horizontally; vertically |
+| **G**, **T**, **P** | Place a ground, a Term, a Pin |
+| **Q** | Disable the selection as an open circuit |
+| arrows; **Shift**+arrows | Nudge the selection one grid step; five |
+| **F5** | Move Labels |
+| **Delete** or **Backspace** | Delete the selection |
+| **Enter** | Finish the wire in progress |
+| **Esc** | Cancel the current tool, or clear the selection |
+| **Shift+G** | Cycle the snap mode |
+| **Ctrl/Cmd+A** | Select all |
+| **Ctrl/Cmd+C**, **Ctrl/Cmd+X**, **Ctrl/Cmd+V** | Copy, cut, paste |
+| **Ctrl/Cmd+=**, **Ctrl/Cmd+−** | Zoom in, out |
+| **Ctrl/Cmd+]**, **Ctrl/Cmd+[** | Push into the selected cell instance; pop out |
+
+The right-click menu shows the same keys beside **Rotate 90°** and **Mirror**.
+
 ## Hierarchy: putting one schematic inside another {#hierarchy}
 
 **Hierarchy is drawing a circuit once and using it in many places.** A bias network, a matching

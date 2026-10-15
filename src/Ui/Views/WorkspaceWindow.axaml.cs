@@ -286,7 +286,7 @@ public partial class WorkspaceWindow : Window
     }
 
     /// <summary>
-    /// Fills in the macOS Tools ▸ Examples submenu, or removes the item when this build ships none.
+    /// Fills in the macOS File ▸ New ▸ Examples submenu, or removes the item when this build ships none.
     ///
     /// <para><b>Removed rather than disabled.</b> Avalonia does not reliably sync
     /// <c>IsEnabled = false</c> back to AppKit once a menu has been shown, which is why
@@ -307,21 +307,25 @@ public partial class WorkspaceWindow : Window
 
         foreach (var top in rootMenu.Items)
         {
-            if (top is not NativeMenuItem toolsItem || toolsItem.Header != "Tools") continue;
-            if (toolsItem.Menu is null) return;
+            if (top is not NativeMenuItem fileItem || fileItem.Header != "File") continue;
+
+            NativeMenuItem? newItem = null;
+            foreach (var sub in fileItem.Menu?.Items ?? [])
+                if (sub is NativeMenuItem ni && ni.Header == "New") { newItem = ni; break; }
+            if (newItem?.Menu is not { } newMenu) return;
 
             NativeMenuItem? examplesItem = null;
-            foreach (var sub in toolsItem.Menu.Items)
+            foreach (var sub in newMenu.Items)
                 if (sub is NativeMenuItem ni && ni.Header == "Examples") { examplesItem = ni; break; }
             if (examplesItem?.Menu is not { } menu) return;
 
             if (WorkspaceViewModel.Examples.Count == 0)
             {
-                // The separator above it goes too, or the Tools menu keeps a rule with nothing under it.
-                int at = toolsItem.Menu.Items.IndexOf(examplesItem);
-                toolsItem.Menu.Items.Remove(examplesItem);
-                if (at > 0 && toolsItem.Menu.Items[at - 1] is NativeMenuItemSeparator sep)
-                    toolsItem.Menu.Items.Remove(sep);
+                // The separator above it goes too, or the New menu keeps a rule with nothing under it.
+                int at = newMenu.Items.IndexOf(examplesItem);
+                newMenu.Items.Remove(examplesItem);
+                if (at > 0 && newMenu.Items[at - 1] is NativeMenuItemSeparator sep)
+                    newMenu.Items.Remove(sep);
                 return;
             }
 

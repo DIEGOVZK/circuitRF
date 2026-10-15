@@ -22,7 +22,7 @@ the recognition turns into a variable for you to tune.
 
 ## 1. Open the artwork
 
-**Tools ▸ Examples ▸ Artwork to Schematic**, choose a folder for your copy, and open **Board ▸ Board** (its layout).
+**File ▸ New ▸ Examples ▸ Artwork to Schematic**, choose a folder for your copy, and open **Board ▸ Board** (its layout).
 
 Its technology, `Board/Board.ctech`, is the one the Gerber import wrote beside the board. The import cannot read a
 stackup out of Gerber files and guessed ordinary FR-4; the copy here carries the fabricator's numbers instead

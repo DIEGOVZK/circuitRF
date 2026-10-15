@@ -14,7 +14,7 @@ from them with **Create Schematic from Image**.
 
 ## 1. Open what was made
 
-**Tools ▸ Examples ▸ Schematic from Image**, choose a folder for your copy, and open **Matching network ▸ schematic**.
+**File ▸ New ▸ Examples ▸ Schematic from Image**, choose a folder for your copy, and open **Matching network ▸ schematic**.
 
 The picture lies under the drawing, locked and faded, so every part sits on the symbol it was read from. Select it to
 hide or fade it, as any bitmap. C1 is 1.5 pF, read from the picture. L1 has no value printed, so it arrived as the

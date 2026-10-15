@@ -39619,3 +39619,26 @@ items are rebuilt only when the technology's layers change, else their ticks are
 result over three shipped technologies and the whole scroll range: 217 εr/thickness commits pixel-identical
 after one layout pass, settled, and after Undo; no blank combo; Undo restores the exact JSON. Gate:
 `StackupSelectionTests.ACommittedValueLeavesTheCardListsItemsAlone`.
+
+## Field feedback round 1: unsaved mark in the window title, update-check answer, Examples under File ▸ New (2026-10-15)
+
+A first-time Windows user could not tell (a) that anything was unsaved, (b) whether Check for Updates had done
+anything, and (c) where the examples were.
+
+- **Window title.** Tabs and the project tree already marked unsaved work with `• `; the window title did not,
+  and that is where the user looked. `WorkspaceViewModel.DirtyTitle.cs` puts `DirtyMark` in front of the title
+  whenever `HasAnyDirtyWork()` is true — the quit prompt's own test, so the two cannot disagree. **It hangs off
+  each document's `Title` change**, subscribed through the factory's `DockableAdded`/`Docked`/`Moved`, because
+  every document type already re-titles its tab when its dirty state flips; a per-type `IsDirty` hook would be
+  a dozen subscriptions that drift. A Data Display's tab title is not live, so its `DirtyChanged` calls
+  `RefreshWindowTitle` directly.
+- **Check for Updates.** The answer went only to the Message Panel by design, so a closed or covered panel made
+  "is up to date" no answer at all. A manual check now ALSO opens a one-button dialog
+  (`DescribeManualUpdateCheck` → `TextConfirmDialog`); the panel lines stay, and the background check is
+  unchanged (still silent offline). The user's own Cancel gets no dialog.
+- **Examples moved from Tools to File ▸ New ▸ Examples**, last, after a separator — reachable for whoever looks
+  for it, in nobody else's way. Both menus moved together; `RebuildNativeExamplesMenu` now walks
+  File ▸ New on macOS. Every doc source naming the old path was rewritten (`&rsaquo;` spellings too — a plain
+  `▸` search misses them, and `LvsDocumentedPageTests` asserts one).
+- The schematic context menu's **Rotate 90°** now shows its `R` accelerator, like Mirror's `M`; the reference page
+  gained a **Keys at a glance** table.

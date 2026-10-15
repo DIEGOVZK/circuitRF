@@ -209,7 +209,7 @@ Distributed and behavioural elements are never reduced, and neither are series c
 
 ## The worked example {#example}
 
-**Tools &rsaquo; Examples &rsaquo; Layout versus schematic** ships a 3 dB attenuator whose artwork
+**File &rsaquo; New &rsaquo; Examples &rsaquo; Layout versus schematic** ships a 3 dB attenuator whose artwork
 matches its drawing, **the same board with six deliberate faults in its artwork**, and an MMIC bias
 tee. Open it and follow along.
 

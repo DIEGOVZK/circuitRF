@@ -1,5 +1,5 @@
 // ================================================================
-//  ExampleWorkspacesOpenWhereTests.cs — where Tools ▸ Examples opens the copy
+//  ExampleWorkspacesOpenWhereTests.cs — where File ▸ New ▸ Examples opens the copy
 //  (brief-examples-open-here-when-empty.md, R-ex1-1).
 //
 //  An EMPTY window — no workspace, no torn-off document window, no unsaved docked tab — takes the

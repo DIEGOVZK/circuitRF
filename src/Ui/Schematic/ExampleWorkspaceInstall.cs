@@ -15,7 +15,7 @@ public sealed record ExampleInstallResult(
     string WorkspaceDir, string CwsPath, int FileCount, IReadOnlyList<string> Failures);
 
 /// <summary>
-/// <b>Tools ▸ Examples</b> — one shipped example workspace copied to a folder the user picked, then
+/// <b>File ▸ New ▸ Examples</b> — one shipped example workspace copied to a folder the user picked, then
 /// opened.
 ///
 /// <h3>It owns no copying</h3>

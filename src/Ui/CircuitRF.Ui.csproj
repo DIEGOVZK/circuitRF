@@ -345,7 +345,7 @@
 
   <ItemGroup>
     <!--
-      The example workspaces (Tools > Examples), beside the executable.
+      The example workspaces (File > New > Examples), beside the executable.
 
       THEY ARE COPIED, NOT EMBEDDED, and that is the point. `examples/` holds REAL workspaces: the
       owner opens them in circuitRF and edits them in place, in the repository, and what ships is

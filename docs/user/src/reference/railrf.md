@@ -627,7 +627,7 @@ a passing report.
 
 ## Worked example, end to end {#example}
 
-**Tools &rsaquo; Examples &rsaquo; Power Rail Integrity** ships a four-layer board with one 3.3 V rail on
+**File &rsaquo; New &rsaquo; Examples &rsaquo; Power Rail Integrity** ships a four-layer board with one 3.3 V rail on
 it, set up for all four questions. Open it and follow along; its own README carries the full numbers.
 
 1. Open `Sensor board.crail`. The board, the stackup and the part library are already resolved, and the

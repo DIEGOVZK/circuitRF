@@ -1276,7 +1276,7 @@ public class PackagingScriptTests
     /// every cell. Windows does not infer the hidden ATTRIBUTE from a leading dot, but any tool that
     /// does leaves it set, and <c>Get-ChildItem</c> without <c>-Force</c> then skips those files in
     /// silence. The installer would ship every example's cells and none of its manifests — and the
-    /// symptom is an empty Tools ▸ Examples menu on the installed copy only, with nothing anywhere
+    /// symptom is an empty File ▸ New ▸ Examples menu on the installed copy only, with nothing anywhere
     /// saying why. That is the same shape of failure as <c>tools/pcell-python</c> shipping without
     /// its package, one layer further out.</para>
     /// </summary>

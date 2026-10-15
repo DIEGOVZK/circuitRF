@@ -37,7 +37,7 @@ you are watching the results.
 
 {{ui: tuning-panel}}
 
-The **Tuning and Optimization** example (Tools ▸ Examples) has three benches already set up for this.
+The **Tuning and Optimization** example (File ▸ New ▸ Examples) has three benches already set up for this.
 
 ## Choosing what to tune {#choosing}
 

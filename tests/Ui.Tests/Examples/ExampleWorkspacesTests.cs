@@ -1,5 +1,5 @@
 // ================================================================
-//  ExampleWorkspacesTests.cs — Tools ▸ Examples.
+//  ExampleWorkspacesTests.cs — File ▸ New ▸ Examples.
 //
 //  Three things are gated here, and each of them has failed silently in this repo before:
 //
@@ -76,7 +76,7 @@ public sealed class ExampleWorkspacesTests(ITestOutputHelper output) : IDisposab
 
         Assert.True(File.Exists(Path.Combine(beside, ExampleWorkspaces.IndexFileName)),
             $"No {ExampleWorkspaces.IndexFileName} at '{beside}'. The examples did not reach the "
-          + "build output, so an installed copy would have no Tools ▸ Examples menu — check the "
+          + "build output, so an installed copy would have no File ▸ New ▸ Examples menu — check the "
           + "None/CopyToOutputDirectory item group in src/Ui/CircuitRF.Ui.csproj.");
 
         // Searched from the output directory ONLY, with no walk-up available to rescue it: passing

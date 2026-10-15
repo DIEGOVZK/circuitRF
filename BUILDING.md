@@ -753,7 +753,7 @@ staged. Quit and relaunch — that relaunch is what the matrix is actually testi
    updater.
 6. **Walk one shipped example end to end, in the window.** Its commands are executed by tests and
    its numbers are asserted against live runs, but *that a person can follow it* is not something a
-   test can claim. **Tools &rsaquo; Examples &rsaquo; Layout versus schematic** is the one to use:
+   test can claim. **File &rsaquo; New &rsaquo; Examples &rsaquo; Layout versus schematic** is the one to use:
    open it, run LVS on `Attenuator` and read **matches**, run it on `Attenuator broken` and read the
    six findings, click one and watch the layout zoom to it. Then read the workspace's own
    `README.md` beside the report and check the two agree. It exercises the example browser, a

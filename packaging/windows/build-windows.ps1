@@ -299,7 +299,7 @@ $hostArch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } els
 # hidden ATTRIBUTE from a leading dot, but anything that has ever touched these files with a tool
 # that does (a git checkout under some shells, an extracted archive, a synced folder) leaves it set,
 # and without -Force those files are skipped in silence. The installer would then carry the example
-# workspaces' cells and none of their manifests, and Tools > Examples would be empty on the
+# workspaces' cells and none of their manifests, and File > New > Examples would be empty on the
 # installed copy with nothing anywhere saying why. The examples are the reason it is here; every
 # other published file is unaffected.
 function Add-Directory($path, $parentId) {

@@ -505,7 +505,7 @@ guess at the board. The outline is the board itself. How a placed layout comes i
 
 ## Walking through the example {#example}
 
-**Tools ▸ Examples ▸ 3D EM** copies a workspace with three cells to a folder you choose and opens it.
+**File ▸ New ▸ Examples ▸ 3D EM** copies a workspace with three cells to a folder you choose and opens it.
 Each cell is something a planar solver cannot do, or can do only as a comparison. Every setup runs in
 minutes on a 16 GB laptop. Its `README.md` opens first and carries the same numbers as this section. The
 numbers also live in `expected-numbers.json` beside it, which circuitRF's own tests re-run against, so the

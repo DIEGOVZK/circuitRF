@@ -17,7 +17,7 @@ using Dock.Model.Core;
 namespace CircuitRF.Ui.ViewModels;
 
 /// <summary>
-/// <b>Tools ▸ Examples</b> — pick a folder, get a copy of a shipped example workspace, and it opens.
+/// <b>File ▸ New ▸ Examples</b> — pick a folder, get a copy of a shipped example workspace, and it opens.
 ///
 /// <para>Kept in its own file for the same reason the revision and sharing partials are: none of it
 /// is about editing a design, and the two things that decide anything —
@@ -45,7 +45,7 @@ namespace CircuitRF.Ui.ViewModels;
 public partial class WorkspaceViewModel
 {
     /// <summary>
-    /// The examples this build ships, in index order — what the Tools ▸ Examples submenu is built
+    /// The examples this build ships, in index order — what the File ▸ New ▸ Examples submenu is built
     /// from. Empty is a supported state: the menu hides rather than showing rows that cannot work.
     /// </summary>
     public static IReadOnlyList<ExampleWorkspace> Examples { get; } = ExampleWorkspaces.All();
@@ -54,7 +54,7 @@ public partial class WorkspaceViewModel
     public static bool HasExamples => Examples.Count > 0;
 
     /// <summary>
-    /// The in-window Tools ▸ Examples rows. Built once on first use, because the shipped set cannot
+    /// The in-window File ▸ New ▸ Examples rows. Built once on first use, because the shipped set cannot
     /// change while the application is running — unlike Open Recent, which is rebuilt on every push.
     ///
     /// <para>Each row's <c>Command</c> is ASSIGNED, not bound, which is what
