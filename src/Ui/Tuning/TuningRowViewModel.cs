@@ -326,7 +326,7 @@ public sealed partial class TuningRowViewModel : ObservableObject
     }
 
     /// <summary>Keeps the range's width — its ratio on a log row, its span on a linear one — and
-    /// centres it on the current value.</summary>
+    /// centres it on the current value, never below zero for an R, L or C.</summary>
     [RelayCommand]
     private void RecentreRange()
     {
@@ -339,7 +339,7 @@ public sealed partial class TuningRowViewModel : ObservableObject
         else
         {
             double half = (Max - Min) / 2;
-            (lo, hi) = (_value - half, _value + half);
+            (lo, hi) = (TunableValue.FloorAtZero(Tunable, Min, _value - half), _value + half);
         }
         _panel.EditEntry(this, e => { e.Min = FormatValue(lo, Unit); e.Max = FormatValue(hi, Unit); }, "Re-centre tuning range");
     }

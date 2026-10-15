@@ -434,8 +434,8 @@ nothing else attached to it has no DC path to ground and the matrix is singular.
 
 {{symbol: opamp}}
 
-The op-amp of every feedback figure: a triangle with the inverting input `in−` above the
-non-inverting input `in+`, and the output `out` at its point, referenced to ground.
+A triangle with the inverting input `in−` above the non-inverting input `in+`, and the output `out`
+at its point, referenced to ground.
 
 With `A=0`, the default, it is **ideal** — infinite open-loop gain. Its inputs draw no current and are
 held at the same voltage, and the output delivers whatever current that takes, so the feedback network
@@ -459,6 +459,8 @@ The same op-amp with its supply pins drawn, `V+` above and `V−` below, for sch
 supplies. They carry no current and change nothing: the op-amp behaves exactly as the three-pin tile
 does. A supply pin left connected to nothing is a node nothing sets, so connect both, or place the
 three-pin [OpAmp](#opamp) instead.
+
+The supply pins are cosmetic only.
 
 {{table: components/OpAmp5}}
 

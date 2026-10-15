@@ -68,8 +68,10 @@ public static class TunableValue
         return [.. ladder.Select(r => r / unitScale).Where(r => r >= lo * (1 - 1e-12) && r <= hi * (1 + 1e-12)).Order()];
     }
 
+    // The optional group between the number and the unit is an SI prefix glued to the number with
+    // the unit after a space — "27k Ω", how a schematic row holds 27k typed into a column that says Ω.
     private static readonly Regex _plain = new(
-        @"^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*([A-Za-zΩµμ%°]+)?\s*$",
+        @"^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)(?:([TGMkmunpfµμ])\s+)?\s*([A-Za-zΩµμ%°]+)?\s*$",
         RegexOptions.Compiled);
 
     /// <summary>
@@ -86,14 +88,32 @@ public static class TunableValue
         if (!m.Success) return false;
         if (!double.TryParse(m.Groups[1].Value, NumberStyles.Float, CultureInfo.InvariantCulture, out number))
             return false;
+        if (m.Groups[3].Success)
+        {
+            unit = UnitNormalizer.ToEngineUnit(m.Groups[3].Value);
+            if (!Units.IsRecognizedUnit(unit)) return false;
+        }
         if (m.Groups[2].Success)
         {
-            unit = UnitNormalizer.ToEngineUnit(m.Groups[2].Value);
-            if (!Units.IsRecognizedUnit(unit)) return false;
+            // 27k Ω is 27 kΩ when that is a unit; otherwise the prefix scales the number, as it does
+            // when the engine evaluates the same text.
+            string prefix   = UnitNormalizer.ToEngineUnit(m.Groups[2].Value);
+            string combined = UnitNormalizer.ToEngineUnit(m.Groups[2].Value + m.Groups[3].Value);
+            if (unit.Length > 0 && Units.IsKnown(combined)) unit = combined;
+            else if (Units.Scale(prefix) is { } scale) number *= scale;
+            else return false;
         }
         si = number * (unit.Length == 0 ? 1.0 : Units.Scale(unit) ?? 1.0);
         return true;
     }
+
+    /// <summary>
+    /// <paramref name="lo"/> held at zero for a value that cannot be negative (<see cref="Tunable.IsNonNegative"/>)
+    /// whose range does not already reach below zero — an automatic range edit never crosses it; a typed
+    /// negative minimum is how a range opts in.
+    /// </summary>
+    public static double FloorAtZero(Tunable? t, double currentMin, double lo)
+        => t is { IsNonNegative: true } && currentMin >= 0 ? Math.Max(lo, 0) : lo;
 
     /// <summary>Value text as a number in <paramref name="unit"/>: a bare number is already in it, a
     /// number with another unit is converted (<c>2000 fF</c> in pF is 2). Null for anything else.</summary>

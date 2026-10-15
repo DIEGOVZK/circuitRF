@@ -19944,3 +19944,20 @@ executables (`tests/Ui.Tests/Em3d/PalaceGpuDeviceTests.cs`). The field test (R-e
   to 12 decimals, which both values reach identically. The vertices were already safe because they
   round to DBU. Any future generator that stores a raw trig result, rather than a coordinate
   rounded to DBU, carries the same trap.
+
+## A `27k` resistor was never tunable; Widen/Re-centre took R, L and C ranges below zero (2026-10-15)
+
+- **`TunableValue.TryParse` rejected `27k Ω`.** A schematic row holds `27k` in its expression and
+  `Ω` in its unit column, so the catalog saw `27k Ohm`: a prefix glued to the number, then a spaced
+  unit. The regex took `k` as the unit and failed on the rest, and the part dropped silently into
+  "not a plain number". Since that is the normal way to type a kΩ resistor, any such resistor was
+  missing from Tuning, Optimizer and Sensitivity. It now reads as `27 kOhm` (the prefix scales the
+  number when prefix+unit is not a unit). `TuningPush` writes the row back as `kΩ` when the row was
+  spelled with Ω.
+- **The negative capacitor ranges came from Widen, not from the default range.** A linear Widen
+  railed at Min subtracts the span (C 50–200 pF → −100–200 pF), and a linear Re-centre can do the
+  same. `Tunable.IsNonNegative` (base unit Ω, H or F; whole value or magnitude) and
+  `TunableValue.FloorAtZero` hold both at zero unless the range already reaches below zero. A
+  negative minimum TYPED by the user is still accepted — that is how a range opts in, per the
+  owner's call that research use may want one. Widen at Min on a range already at 0 is refused
+  with a message saying so.

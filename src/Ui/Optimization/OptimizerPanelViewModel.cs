@@ -359,7 +359,8 @@ public sealed partial class OptimizerPanelViewModel : ObservableObject, ITunable
     /// Widen (D17): doubles the span on the railed side — by ratio on a log range, by width on a linear
     /// one — of the entry whose range holds the value: the row's own, or the other part's it railed
     /// against (D18). One undo step. Widening only grows a range, so it is refused only when the
-    /// value's ranges already conflict.
+    /// value's ranges already conflict, or when a resistance, inductance or capacitance would cross
+    /// zero (<see cref="TunableValue.FloorAtZero"/>).
     /// </summary>
     internal void Widen(OptimizerVariableRowViewModel row)
     {
@@ -374,7 +375,14 @@ public sealed partial class OptimizerPanelViewModel : ObservableObject, ITunable
         double hi = TunableValue.InUnit(entry.Max, u) ?? TunableValue.InUnit(t.DefaultMax, u) ?? 1;
         var scale = entry.Scale == TuneScale.Auto && t.Part == ComplexPart.Phase ? TuneScale.Lin : entry.Scale;
         bool log  = TunableValue.Effective(scale, lo, hi) == TuneScale.Log && lo > 0;
+        double was = lo;
         (lo, hi) = WidenedRange(lo, hi, end, log);
+        lo = TunableValue.FloorAtZero(t, was, lo);
+        if (end == RailEnd.Min && lo == was)
+        {
+            StatusText = $"Refused: {key} cannot go below 0 — type a negative minimum to allow it.";
+            return;
+        }
 
         var next = TuningSetupEdits.WithEntry(Setup, key, t, e =>
         {

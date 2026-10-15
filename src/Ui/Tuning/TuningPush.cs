@@ -158,5 +158,9 @@ public static class TuningPush
     /// <summary>The row's own unit spelling when it means the same unit (Ω stays Ω), else the tuned one.
     /// A unit written inside the expression (<c>47pF</c>) moves to the unit column.</summary>
     private static string UnitFor(EditableParameter row, string unit)
-        => row.Unit.Length > 0 && UnitNormalizer.ToEngineUnit(row.Unit) == unit ? row.Unit : unit;
+    {
+        if (row.Unit.Length > 0 && UnitNormalizer.ToEngineUnit(row.Unit) == unit) return row.Unit;
+        // A row spelled Ω keeps the symbol when the prefix changes: 27k Ω tunes as kOhm, and writes kΩ.
+        return row.Unit.Contains('Ω') && unit.EndsWith("Ohm", StringComparison.Ordinal) ? unit[..^3] + "Ω" : unit;
+    }
 }

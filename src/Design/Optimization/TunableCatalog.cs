@@ -68,6 +68,11 @@ public sealed record Tunable(
     /// <summary>The key a value is written under — in a preset, a session request, a Push: the whole
     /// value's for a part, since a schematic holds a complex value whole.</summary>
     public string ValueKey => WholeKey ?? Key;
+
+    /// <summary>A resistance, inductance or capacitance (or a magnitude in one of those units): a
+    /// value nothing automatic — Widen, Re-centre — may move a range below zero for. A minimum typed
+    /// below zero is still taken; that is how a range opts in to negative values.</summary>
+    public bool IsNonNegative => Part is null or ComplexPart.Mag && Units.BaseUnit(Unit) is "Ohm" or "H" or "F";
 }
 
 /// <summary>
