@@ -19961,3 +19961,39 @@ executables (`tests/Ui.Tests/Em3d/PalaceGpuDeviceTests.cs`). The field test (R-e
   negative minimum TYPED by the user is still accepted — that is how a range opts in, per the
   owner's call that research use may want one. Widen at Min on a range already at 0 is refused
   with a message saying so.
+
+## An RS-274D Gerber set imported as zero shapes and reported success (2026-10-15)
+
+- **The set:** a late-1990s evaluation-board output — `.PHO` artwork with no `%FS`, `%MO` or `%AD`
+  at all, a drill file that selects `T1F2S5` and never sizes a tool, and the answers only in printed
+  reports beside them (an aperture table `Position Width Hgt/ID Shape`, a drill size table
+  `Tool Size Pltd …`). Every report was skipped as "no Gerber or drill content", every D-code was "used
+  before it was defined", every layer came out empty — and the import still wrote a cell and exited 0,
+  because `GerberReader.Build`'s no-`%FS` refusal is gated on `_objects.Count > 0` and nothing without
+  an aperture ever becomes an object.
+- **`GerberLegacyCompanions`** reads both reports as two more `GerberDeclarationForm`s (recognised by
+  their column headings, never by file name) and turns each into the HEADER its file would have
+  carried: `%FS/%MO/%AD` prepended to the artwork, an M48 tool table (plus an `INCH,LZ,00.000` line
+  when the file states no unit) prepended to the drill file. The readers are untouched. RS-274D artwork
+  with no report beside it is now a per-file refusal naming RS-274D, so a set of nothing but such files
+  imports nothing rather than an empty cell.
+- **The size is INFERRED and the import says so in one message**: inch, 2.3, leading zeros omitted
+  (one unit = one mil), report sizes as mils. That was the owner's call — show the board, let the user
+  rescale if it is wrong. On the field set it was right: the title block on the artwork itself reads
+  "all units are in 0.001 in", and 136 of 138 top-copper flashes land exactly on a hole at that scale.
+- **The drill data sat ~8.66 in × 6.65 in away from the copper** — artwork at a film position, holes
+  at board coordinates. `FindDrillOffset` votes a sample of holes against every flash/rect centre on a
+  5 µm grid, then takes the EXACT difference inside the winning cell. Rounding to the grid left the
+  shift 2 µm off, which via pairing (exact coordinate match) read as 0 of 140 vias; exact, it is 136.
+  Taken only when the extent cross-check already disagrees, at least 3 holes and half of them land on
+  a pad, and more land than without the shift — and it runs BEFORE the guessed-format alternatives,
+  because a shifted set fails the extent check under every format and an alternative could otherwise
+  "agree" by accident.
+- **The drill format lines first said "declared by the file"**, which contradicted the INFERRED size
+  message beside them: the reader saw the `INCH,LZ,00.000` line the import itself had written.
+  `AsInferred` restates the Units / Digit format / Zero suppression lines that line settled as
+  INFERRED, in both the format evidence and the diagnostics. A format the user answers in the drill
+  prompt keeps its own wording.
+- **Not addressed:** the four copper files are named `ART01..04`, which identifies nothing, so they come
+  in unclassified and the stackup stays empty; the set's layer profile is a binary word-processor
+  document circuitRF cannot read.

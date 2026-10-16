@@ -51,6 +51,14 @@ public enum GerberDeclarationForm
 
     /// <summary>A table of tool numbers, diameters and a plating column.</summary>
     ToolListing,
+
+    /// <summary>A printed aperture report: the %AD table an RS-274D artwork file does not carry. See
+    /// <see cref="GerberLegacyCompanions"/>.</summary>
+    ApertureTable,
+
+    /// <summary>A printed drill size report: the tool table a drill file that never sizes its tools
+    /// does not carry. See <see cref="GerberLegacyCompanions"/>.</summary>
+    DrillSizeTable,
 }
 
 /// <summary>What one parameter file declared. Every field is null when the file did not state it, and
@@ -127,6 +135,9 @@ public static class GerberDeclarationFile
             why = $"a drill tool listing ({rows} tool row(s), {plating} of them stating plating)";
             return GerberDeclarationForm.ToolListing;
         }
+
+        if (GerberLegacyCompanions.RecognizeApertureTable(head, out why)) return GerberDeclarationForm.ApertureTable;
+        if (GerberLegacyCompanions.RecognizeDrillSizeTable(head, out why)) return GerberDeclarationForm.DrillSizeTable;
 
         why = "";
         return GerberDeclarationForm.None;
@@ -568,6 +579,8 @@ public sealed class GerberCompanionFiles
 {
     private readonly Dictionary<string, GerberDeclaration> _drillDeclarations = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<DrillToolListing> _listings = [];
+    private readonly List<LegacyApertureTable> _apertureTables = [];
+    private readonly List<LegacyDrillSizeTable> _drillSizeTables = [];
     private readonly List<GerberDeclaration> _all = [];
     private readonly List<string> _messages = [];
 
@@ -580,6 +593,9 @@ public sealed class GerberCompanionFiles
 
     public IReadOnlyList<DrillToolListing> Listings => _listings;
 
+    /// <summary>Every printed aperture report, for RS-274D artwork (<see cref="GerberLegacyCompanions"/>).</summary>
+    public IReadOnlyList<LegacyApertureTable> ApertureTables => _apertureTables;
+
     public static GerberCompanionFiles Read(IEnumerable<GerberFileClass> declarationFiles)
     {
         var set = new GerberCompanionFiles();
@@ -587,6 +603,17 @@ public sealed class GerberCompanionFiles
 
         foreach (var file in declarationFiles.OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase))
         {
+            if (file.Form == GerberDeclarationForm.ApertureTable)
+            {
+                if (GerberLegacyCompanions.ReadApertureTable(file.Path) is { } apertures) set._apertureTables.Add(apertures);
+                continue;
+            }
+            if (file.Form == GerberDeclarationForm.DrillSizeTable)
+            {
+                if (GerberLegacyCompanions.ReadDrillSizeTable(file.Path) is { } sizes) set._drillSizeTables.Add(sizes);
+                continue;
+            }
+
             var (parameters, listing) = GerberDeclarationFile.ReadFile(file.Path);
             if (listing is not null) set._listings.Add(listing);
             if (parameters is null) continue;
@@ -683,6 +710,34 @@ public sealed class GerberCompanionFiles
 
         var matched = here.Where(l => GerberFileClassifier.StemsMatch(
                               stem, Path.GetFileNameWithoutExtension(l.Path))).ToList();
+        if (matched.Count == 1) return matched[0];
+        if (matched.Count > 1) return null;
+        return here.Count == 1 ? here[0] : null;
+    }
+
+    /// <summary>The aperture reports that speak for an RS-274D <paramref name="artworkPath"/>: those in
+    /// its own folder, the one whose stem matches first — a per-layer report beside a whole-job table,
+    /// where the two agree, is the same table twice.</summary>
+    public IReadOnlyList<LegacyApertureTable> ApertureTablesFor(string artworkPath)
+    {
+        string folder = Folder(artworkPath);
+        string stem = Path.GetFileNameWithoutExtension(artworkPath);
+        return [.. _apertureTables
+            .Where(t => string.Equals(Folder(t.Path), folder, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(t => GerberFileClassifier.StemsMatch(stem, Path.GetFileNameWithoutExtension(t.Path)) ? 0 : 1)
+            .ThenBy(t => t.Path, StringComparer.OrdinalIgnoreCase)];
+    }
+
+    /// <summary>The drill size report for a drill file that sizes none of its tools: one in its own
+    /// folder, preferring a stem match, as <see cref="ListingFor"/> chooses.</summary>
+    public LegacyDrillSizeTable? DrillSizesFor(string drillFilePath)
+    {
+        string folder = Folder(drillFilePath);
+        string stem = Path.GetFileNameWithoutExtension(drillFilePath);
+        var here = _drillSizeTables
+            .Where(t => string.Equals(Folder(t.Path), folder, StringComparison.OrdinalIgnoreCase)).ToList();
+        var matched = here.Where(t => GerberFileClassifier.StemsMatch(
+                              stem, Path.GetFileNameWithoutExtension(t.Path))).ToList();
         if (matched.Count == 1) return matched[0];
         if (matched.Count > 1) return null;
         return here.Count == 1 ? here[0] : null;

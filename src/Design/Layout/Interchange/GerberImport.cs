@@ -383,6 +383,7 @@ public static class GerberImport
 
         // ── 3. Read the artwork ─────────────────────────────────────────────────────────────────
         var reads = new List<(GerberFileClass File, GerberReadResult Read)>();
+        LegacyArtworkHeader? legacyArtwork = null;
         foreach (var file in artworkFiles)
         {
             // Ticked on ENTRY, naming the file about to be read, so the counter is "which of the N
@@ -395,7 +396,31 @@ public static class GerberImport
             try
             {
                 using var stream = File.OpenRead(file.Path);
-                using var text = new StreamReader(stream, System.Text.Encoding.UTF8);
+                using var reader = new StreamReader(stream, System.Text.Encoding.UTF8);
+                string text = reader.ReadToEnd();
+
+                // RS-274D: no format and no apertures in the file, only in a printed report beside it.
+                // The report becomes the header the file would have carried (GerberLegacyCompanions).
+                if (GerberLegacyCompanions.IsRs274D(text))
+                {
+                    var tables = companions.ApertureTablesFor(file.Path);
+                    if (tables.Count == 0)
+                    {
+                        messages.Add(
+                            $"{file.FileName}: this is RS-274D artwork — it defines no apertures of its own, " +
+                            "and no aperture report (a table of D-code, size and shape) was found beside it, " +
+                            "so nothing was imported from it.");
+                        continue;
+                    }
+                    var header = GerberLegacyCompanions.SynthesizeArtworkHeader(text, tables);
+                    text = header.Header + text;
+                    legacyArtwork ??= header;
+                    messages.Add(
+                        $"{file.FileName}: RS-274D artwork — {header.AperturesDefined} aperture(s) taken from " +
+                        $"{string.Join(", ", header.Sources)}.");
+                    foreach (string note in header.Notes) messages.Add($"{file.FileName}: {note}");
+                }
+
                 read = GerberReader.Read(text, destDbuPerMicron);
             }
             catch (IOException ex)
@@ -420,6 +445,14 @@ public static class GerberImport
             messages.Add("No artwork could be read, so nothing was imported.");
             return Nothing(messages, drillCandidates, archivePaths);
         }
+
+        // Said ONCE for the set: the size of everything above rests on it.
+        if (legacyArtwork is { } legacy)
+            messages.Add(
+                $"The RS-274D artwork states no units or coordinate format, so its size was INFERRED: read " +
+                $"as inch, {legacy.IntegerDigits}.{legacy.DecimalDigits} with " +
+                $"{(legacy.ZeroOmission == GerberZeroOmission.Leading ? "leading" : "trailing")} zeros " +
+                "omitted, and aperture sizes as mils. If the board comes out the wrong size, rescale it.");
 
         // ── 4. The technology the layers are identified against (R-gt-1) ──────────────────────
         //
@@ -459,11 +492,60 @@ public static class GerberImport
             // paths that exist because the format was uncertain.
             var declaration = companions.DrillDeclarationFor(file.Path);
 
+            // A drill file that selects its tools and sizes none of them takes its tool table from a
+            // printed drill size report beside it (GerberLegacyCompanions), handed to every read below
+            // for the reason the declaration is.
+            string? legacyDrillText = null;
+            bool legacyFormatInferred = false;
+            if (companions.DrillSizesFor(file.Path) is { } sizes)
+            {
+                try
+                {
+                    string drillText = File.ReadAllText(file.Path);
+                    if (GerberLegacyCompanions.NeedsToolSizes(drillText))
+                    {
+                        legacyDrillText = GerberLegacyCompanions.WithToolTable(drillText, sizes, out string? inferred);
+                        legacyFormatInferred = inferred is not null;
+                        messages.Add(
+                            $"{file.FileName}: sizes none of its tools, so the {sizes.Rows.Count} tool size(s) " +
+                            $"in {sizes.FileName} were used, read as mils.");
+                    }
+                }
+                catch (IOException) { }
+            }
+
+            ExcellonReadResult ReadDrill(DrillFormatOverride? overrides)
+            {
+                if (legacyDrillText is not null)
+                {
+                    var legacyRead = ExcellonReader.Read(legacyDrillText, destDbuPerMicron, overrides, declaration);
+                    return legacyFormatInferred ? GerberLegacyCompanions.AsInferred(legacyRead) : legacyRead;
+                }
+                using var stream = File.OpenRead(file.Path);
+                return ExcellonReader.Read(stream, destDbuPerMicron, overrides, declaration);
+            }
+
+            // The holes of an RS-274D-era set sit at board coordinates while its artwork sits at a
+            // film position. When one shift puts most of the holes on pads, that shift is taken.
+            void Register(ref ExcellonReadResult drill, ref DrillExtentsCheck check)
+            {
+                if (check.Agrees) return;
+                var offset = GerberLegacyCompanions.FindDrillOffset(drill, artworkForExtent, 5L * destDbuPerMicron);
+                if (offset is not { } o) return;
+                drill = GerberLegacyCompanions.Shift(drill, o.Dx, o.Dy);
+                check = ExcellonReader.CrossCheckExtents(drill, artworkExtent);
+                double mm = 1000.0 * destDbuPerMicron;
+                messages.Add(
+                    $"{file.FileName}: the holes did not sit on the artwork, so they were shifted by " +
+                    $"({(o.Dx / mm).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)} mm, " +
+                    $"{(o.Dy / mm).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)} mm), " +
+                    $"which puts {o.Matched:N0} of {o.Total:N0} on a pad.");
+            }
+
             ExcellonReadResult read;
             try
             {
-                using var stream = File.OpenRead(file.Path);
-                read = ExcellonReader.Read(stream, destDbuPerMicron, null, declaration);
+                read = ReadDrill(null);
             }
             catch (IOException ex)
             {
@@ -485,6 +567,7 @@ public static class GerberImport
             // question the user can answer with two dropdowns. The cross-check still travels to the
             // prompt as evidence whenever the prompt does appear.
             var crossCheck = ExcellonReader.CrossCheckExtents(read, artworkExtent);
+            Register(ref read, ref crossCheck);
 
             // R-L4f-1's EVIDENCE SOURCE 5, used as evidence rather than only printed. It is the
             // strongest source on the ladder and it is free here, because this is the only place that
@@ -506,8 +589,7 @@ public static class GerberImport
                     ExcellonReadResult retry;
                     try
                     {
-                        using var retryStream = File.OpenRead(file.Path);
-                        retry = ExcellonReader.Read(retryStream, destDbuPerMicron, candidate, declaration);
+                        retry = ReadDrill(candidate);
                     }
                     catch (IOException) { break; }
 
@@ -548,14 +630,14 @@ public static class GerberImport
                 }
                 if (choice.Override is { } overrides)
                 {
-                    using var stream = File.OpenRead(file.Path);
-                    read = ExcellonReader.Read(stream, destDbuPerMicron, overrides, declaration);
+                    read = ReadDrill(overrides);
                     if (read.Refusal is { } reread)
                     {
                         messages.Add($"{file.FileName}: {reread}");
                         continue;
                     }
                     crossCheck = ExcellonReader.CrossCheckExtents(read, artworkExtent);
+                    Register(ref read, ref crossCheck);
                 }
             }
 
