@@ -17,7 +17,7 @@ circuitRF in one sentence, and the shape of the tool.
 - A **cross-platform RF circuit simulator**: DC, S-parameters, harmonic balance, loadpull and sourcepull.
 - Built around the **RF design loop** — gain, match, power, efficiency, intermodulation, terminations.
 - **Not a SPICE simulator.** It does not chase time-domain transients, and it does not pretend to.
-- One design database with three views per cell — **symbol, schematic and layout** — plus a planar EM solver, a 3D bondwire kernel and an interactive load-pull bench.
+- One design database with four views per cell — **symbol, schematic, layout and 3D** — plus a planar EM solver, a 3D bondwire kernel and an interactive load-pull bench.
 
 > **The short version** — if your day is spent asking **what does this network do across frequency, and what happens when I drive it hard**, this is the tool shaped for that question.
 

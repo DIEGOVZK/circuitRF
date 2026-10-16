@@ -65,10 +65,11 @@ SPICE deck). The pieces:
 - **Library** — a collection of cells you can reuse and reference. circuitRF can reference several
   libraries at once.
 
-- **Cell** — a reusable building block with up to three views: a **Symbol** (the glyph drawn when
-  the cell is instanced, and where its ports sit), a **Schematic** (the electrical contents), and a
+- **Cell** — a reusable building block with up to four views: a **Symbol** (the glyph drawn when
+  the cell is instanced, and where its ports sit), a **Schematic** (the electrical contents), a
   **Layout** (the physical artwork, drawn against a technology and simulated by the planar
-  method-of-moments solver). A cell declares **parameters** that an instance can override — this is
+  method-of-moments solver), and a **3D view** (its solid model — packages, connectors, bond wires —
+  simulated by a full-wave 3D solver). A cell declares **parameters** that an instance can override — this is
   how hierarchy passes values top-down.
 
 - **Hierarchy** — a schematic can instance other cells as sub-cells. Push into a sub-cell to edit

@@ -32,9 +32,10 @@ that cell, live.
 Open it from *View → Open Symbol Editor* (docked or as a tear-off window), or by opening a `.csym`
 file. New scratch symbols can be created without a workspace.
 
-A cell has up to three views and each has its own editor: this one, the
-[Schematic Editor](schematic-editor.html) for the electrical contents, and the
-[Layout Editor](layout-editor.html) for the physical artwork.
+A cell has up to four views and each has its own editor: this one, the
+[Schematic Editor](schematic-editor.html) for the electrical contents, the
+[Layout Editor](layout-editor.html) for the physical artwork, and the
+[3D Editor](drawing-in-3d.html) for the solid model.
 
 ## Drawing primitives {#primitives}
 

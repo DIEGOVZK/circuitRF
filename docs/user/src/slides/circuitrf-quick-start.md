@@ -25,7 +25,7 @@ lede: For engineers who already use circuit simulators — from a blank sheet to
 ## How a project is organised
 
 - **Library** — a collection of reusable cells. Several can be referenced at once.
-- **Cell** — a building block with up to three views: **Symbol**, **Schematic**, **Layout**. It declares parameters an instance can override.
+- **Cell** — a building block with up to four views: **Symbol**, **Schematic**, **Layout**, **3D**. It declares parameters an instance can override.
 - **Hierarchy** — a schematic instances other cells. Push in to edit, pop out; an edit reaches every instance.
 - **TestBench** — what you actually simulate: a top schematic plus its analyses and measurements.
 

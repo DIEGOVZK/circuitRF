@@ -12,7 +12,7 @@ lede: Never used a circuit simulator before? Perfect — this guide starts from 
       <li><a href="#why">Why simulate? And what circuitRF does</a></li>
       <li><a href="#window">The circuitRF window</a></li>
       <li><a href="#library">The Library: your box of parts</a></li>
-      <li><a href="#cells">Cells — symbol, schematic and layout</a></li>
+      <li><a href="#cells">Cells — symbol, schematic, layout and 3D</a></li>
       <li><a href="#hierarchy">Hierarchy: circuits inside circuits</a></li>
       <li><a href="#params">Parameters &amp; editing values</a></li>
       <li><a href="#ppt">Pins, Ports, and Terms</a></li>
@@ -81,10 +81,10 @@ place one, click its tile and then click on the canvas (or drag the tile onto th
 A library is also where reusable building blocks you create yourself live — which brings us to
 cells.
 
-## 4 · Cells — symbol, schematic and layout {#cells}
+## 4 · Cells — symbol, schematic, layout and 3D {#cells}
 
 A **cell** is circuitRF's reusable building block. Think of it like a chip you can drop into a
-bigger design. A cell has up to three **views** — three ways of looking at the same block:
+bigger design. A cell has up to four **views** — four ways of looking at the same block:
 
 - A **Symbol** — the little glyph you see when you place the cell, and where its connection points
   (pins) sit. It's how the cell looks *from the outside*.
@@ -97,6 +97,11 @@ bigger design. A cell has up to three **views** — three ways of looking at the
   it is what the electromagnetic solver simulates when you want the parasitics of the real thing
   rather than the ideal components the schematic names.
 
+- A **3D view** — the solid model: boxes, cylinders, bond wires, imported STEP parts, and other cells'
+  layouts placed inside them. It is drawn in circuitRF's own [3D editor](../reference/drawing-in-3d.html)
+  and simulated by a full-wave [3D solver](../reference/em-3d.html) — for the things a flat layout
+  cannot describe, such as a package and its lid, a connector, or a bond wire's loop.
+
 **Why a symbol *and* a schematic?** Because the symbol is the convenient outside view and the
 schematic is the detailed inside view. When you use an amplifier cell ten times in a design, you want
 to see ten tidy amplifier *symbols* — not ten copies of the full transistor-level schematic
@@ -108,7 +113,12 @@ own, and none of it is in the schematic. The layout is where that behaviour come
 the artwork, and the [planar method-of-moments solver](../reference/mom-engine.html) turns it into
 S-parameters you can put back into the circuit.
 
-A cell does not need all three. A test bench is usually schematic-only; a piece of artwork imported
+**And a 3D view?** Because some structures are not flat. A planar layout is copper on layers; a
+connector, a package cavity or a bond wire arching over a die has real height and shape, and only a
+3D solve sees it. **New 3D View from Layout** on a cell's menu in the Project panel starts one from
+the cell's own layout, so the artwork you already drew becomes the floor of the 3D model.
+
+A cell does not need all four. A test bench is usually schematic-only; a piece of artwork imported
 from GDSII may be layout-only. The two are kept in step in either direction by
 **Design ▸ Update Layout from Schematic** and **Update Schematic from Layout**, which reconcile the
 components in one against the artwork in the other.

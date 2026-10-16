@@ -845,8 +845,8 @@ nothing else attached to it has no DC path to ground and the matrix is singular.
 			OpAmp
 	</text></svg></span>
 </span><figcaption>OpAmp</figcaption></figure>
-<p>The op-amp of every feedback figure: a triangle with the inverting input <code>in−</code> above the
-non-inverting input <code>in+</code>, and the output <code>out</code> at its point, referenced to ground.</p>
+<p>A triangle with the inverting input <code>in−</code> above the non-inverting input <code>in+</code>, and the output <code>out</code>
+at its point, referenced to ground.</p>
 <p>With <code>A=0</code>, the default, it is <strong>ideal</strong> — infinite open-loop gain. Its inputs draw no current and are
 held at the same voltage, and the output delivers whatever current that takes, so the feedback network
 alone sets the gain: an inverting stage with <code>Rin</code> and <code>Rf</code> has a gain of exactly <code>−Rf/Rin</code>.</p>
@@ -891,6 +891,7 @@ put the roll-off in the circuit around it.</p>
 supplies. They carry no current and change nothing: the op-amp behaves exactly as the three-pin tile
 does. A supply pin left connected to nothing is a node nothing sets, so connect both, or place the
 three-pin <a href="#opamp">OpAmp</a> instead.</p>
+<p>The supply pins are cosmetic only.</p>
 <table class="param-table">
 <thead><tr><th>Net</th><th>Terminal</th></tr></thead><tbody>
 <tr><td>1</td><td>in+</td></tr>

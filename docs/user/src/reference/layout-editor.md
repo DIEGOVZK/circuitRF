@@ -48,11 +48,12 @@ at any moment:
 
 {{ui: layout-editor}}
 
-A layout is a **view of a cell**, exactly as its schematic and its symbol are. The cell folder holds
-`schematic/`, `symbol/` and `layout/` side by side, and a cell need not have all three. The project tree
-shows them together; opening one opens a document tab. The other two views have their own editors and
-their own pages: the [Schematic Editor](schematic-editor.html) for the electrical contents, and the
-[Symbol Editor](symbol-editor.html) for the glyph an instance draws.
+A layout is a **view of a cell**, exactly as its schematic, its symbol and its 3D view are. The cell
+folder holds `schematic/`, `symbol/`, `layout/` and `3d/` side by side, and a cell need not have all four.
+The project tree shows them together; opening one opens a document tab. The other three views have their
+own editors and their own pages: the [Schematic Editor](schematic-editor.html) for the electrical
+contents, the [Symbol Editor](symbol-editor.html) for the glyph an instance draws, and the
+[3D Editor](drawing-in-3d.html) for the solid model.
 
 Coordinates are **integers in database units**, and the display unit you read them in is a separate,
 free-to-change setting. That distinction is the single most common source of early confusion and it has

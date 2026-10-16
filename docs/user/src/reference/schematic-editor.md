@@ -20,7 +20,7 @@ time in, and it is the only one an analysis runs on.
 <li><a href="#wiring">Wiring, values and labels</a></li>
 <li><a href="#context-menu">The context menu</a></li>
 <li><a href="#hierarchy">Hierarchy: putting one schematic inside another</a></li>
-<li><a href="#views">The other two views</a></li>
+<li><a href="#views">The other three views</a></li>
 <li><a href="#analyses">Simulating: an Analysis</a></li>
 <li><a href="#find">Finding a component</a></li>
 <li><a href="#toolbar">The toolbar</a></li>
@@ -301,18 +301,19 @@ Once that round trip works, everything else about hierarchy follows from it:
   you press Run on — and the hierarchy below it is flattened into that run. A cell in the middle of a
   tree has no analyses of its own.
 
-## The other two views {#views}
+## The other three views {#views}
 
-The schematic is one of a cell's three views, and each is edited in its own editor:
+The schematic is one of a cell's four views, and each is edited in its own editor:
 
 | View | Editor | What it owns |
 |---|---|---|
 | **Schematic** | this page | the electrical contents — instances, nets, values |
 | **Symbol** | [Symbol Editor](symbol-editor.html) | the glyph an instance draws, and where its pins sit |
 | **Layout** | [Layout Editor](layout-editor.html) | the physical artwork, for fab handoff and EM |
+| **3D** | [3D Editor](drawing-in-3d.html) | the solid model — packages, connectors, bond wires — for a full-wave 3D solve |
 
 The symbol is what step 4 above places; the layout is what gets manufactured. A cell need not have
-all three — the cell folder holds `schematic/`, `symbol/` and `layout/` side by side and any of them
+all four — the cell folder holds `schematic/`, `symbol/`, `layout/` and `3d/` side by side and any of them
 may be absent.
 
 Two commands under the **Design** menu move work between the schematic and the layout —

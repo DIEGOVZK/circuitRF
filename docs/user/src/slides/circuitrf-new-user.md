@@ -48,12 +48,13 @@ lede: Never used a circuit simulator before? This starts at the very beginning.
 
 {{ui: library-palette}}
 
-## Cells: symbol, schematic, layout
+## Cells: symbol, schematic, layout, 3D
 
-- A **cell** is circuitRF's reusable building block — think of it as a chip you can drop into a bigger design. It has up to three **views**.
+- A **cell** is circuitRF's reusable building block — think of it as a chip you can drop into a bigger design. It has up to four **views**.
 - **Symbol** — the glyph you see when you place the cell, and where its connection points sit. How the cell looks from the outside.
 - **Schematic** — the actual circuitry inside: the components and wires that make it work.
 - **Layout** — the physical artwork: copper, substrate stackup, vias, drawn to real dimensions against a technology.
+- **3D view** — the solid model: packages, connectors, bond wires and STEP parts, with layouts placed inside, for a full-wave 3D solve.
 
 ## Why a symbol AND a schematic?
 
@@ -67,7 +68,7 @@ lede: Never used a circuit simulator before? This starts at the very beginning.
 
 - Above a couple of gigahertz, **the wiring stops being wiring**. A 90° bend, a length of line and the gap between two traces all have electrical behaviour of their own — and none of it is in the schematic.
 - The layout is where that behaviour comes from: you draw the artwork, and the planar solver turns it into S-parameters.
-- A cell does not need all three views. A test bench is usually schematic-only; imported artwork may be layout-only.
+- A cell does not need all four views. A test bench is usually schematic-only; imported artwork may be layout-only.
 
 {{ui: layout-editor}}
 
