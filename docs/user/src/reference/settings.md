@@ -134,6 +134,10 @@ paints as thousands of abutting strokes back into the one region it paints &mdas
 meshes for EM and checks against design rules. Off, every primitive arrives exactly as it was authored. The import
 reports each layer it coalesced either way.
 
+**Default Ruler Size Mode**, Fixed by default, is the size mode a ruler starts in when it is placed. A Fixed
+ruler's readout is the same size on screen at every zoom; a Scaled one is a height in the layout and grows and
+shrinks with the artwork. Rulers already placed keep their own mode, which the Properties panel changes.
+
 ### Messages
 
 **Timestamps** — how the Messages panel stamps each line: *Time*, *Date + Time*, or *Hidden*. This one

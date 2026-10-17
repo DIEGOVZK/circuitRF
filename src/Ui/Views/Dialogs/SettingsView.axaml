@@ -242,6 +242,15 @@
                                            Content="Coalesce imported painted fill into regions" FontSize="12"
                                            IsCheckedChanged="OnCoalesceRasterFillChanged"
                                            ToolTip.Tip="Some CAM tools paint a copper pour as thousands of abutting strokes instead of one filled region. Importing Gerber or a board file turns those back into the region they paint, which is the shape that draws quickly, meshes for EM and checks against design rules. Turn it off to get the primitives exactly as they were authored — the import reports every layer it coalesces either way."/>
+                                <!-- The size mode a new ruler is placed in. Index == RulerSizeMode ordinal,
+                                     which is serialized as a number in preferences.json. -->
+                                <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                                    <TextBlock Text="Default Ruler Size Mode:" FontSize="12"
+                                               VerticalAlignment="Center"/>
+                                    <ComboBox  Name="DefaultRulerSizeModeCombo" FontSize="12" MinWidth="100"
+                                               SelectionChanged="OnDefaultRulerSizeModeChanged"
+                                               ToolTip.Tip="The size mode a ruler starts in when it is placed. Fixed: its readout is the same size on screen at every zoom. Scaled: its readout is a height in the layout and grows and shrinks with the artwork. Rulers already placed keep their own mode."/>
+                                </StackPanel>
                             </StackPanel>
                         </Grid>
 

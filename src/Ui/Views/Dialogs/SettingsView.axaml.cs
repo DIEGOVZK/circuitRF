@@ -192,6 +192,10 @@ public partial class SettingsView : Window
 
             CoalesceRasterFillCheck.IsChecked = prefs.CoalesceRasterFillOnImport ?? true;
 
+            // Index == RulerSizeMode ordinal, serialized as a number — keep these in enum order.
+            DefaultRulerSizeModeCombo.ItemsSource   = new[] { "Fixed", "Scaled" };
+            DefaultRulerSizeModeCombo.SelectedIndex = (int)(prefs.DefaultRulerSizeMode ?? RulerSizeMode.Fixed);
+
             MsgTimestampCombo.ItemsSource   = new[] { "Time", "Date + Time", "Hidden" };
             MsgTimestampCombo.SelectedIndex = (int)(prefs.MessageTimestamp ?? MessageTimestampMode.Time);
 
@@ -304,6 +308,13 @@ public partial class SettingsView : Window
     {
         if (_updatingGeneral) return;
         AppPreferencesIo.Update(p => p.CoalesceRasterFillOnImport = CoalesceRasterFillCheck.IsChecked);
+    }
+
+    private void OnDefaultRulerSizeModeChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingGeneral || DefaultRulerSizeModeCombo.SelectedIndex < 0) return;
+        var mode = (RulerSizeMode)DefaultRulerSizeModeCombo.SelectedIndex;
+        AppPreferencesIo.Update(p => p.DefaultRulerSizeMode = mode);
     }
 
     private void OnWireClearanceChanged(object? sender, NumericUpDownValueChangedEventArgs e)

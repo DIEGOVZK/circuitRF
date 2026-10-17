@@ -196,6 +196,14 @@ public sealed class AppPreferences
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? CoalesceRasterFillOnImport { get; set; }
 
+    // The size mode a newly placed layout ruler starts in. Null means Fixed (R-rul-4: the temporary
+    // measurement is the common use, and it wants to read at the same size at every zoom). Per USER
+    // for CheckDrcOnExport's own reason — a working habit, not a property of a design. Serialized as
+    // a number, like the other enums here, so RulerSizeMode's ordinals are part of this file's format.
+    [JsonPropertyName("default_ruler_size_mode")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RulerSizeMode? DefaultRulerSizeMode { get; set; }
+
     // The Instances panel's "Include sub-cells". Null means the default, which is OFF: the top level
     // is what the canvas shows, and a search that reads every cell below it is the one the user asks
     // for. Per USER for CheckDrcOnExport's own reason — a working habit, not a property of a design.

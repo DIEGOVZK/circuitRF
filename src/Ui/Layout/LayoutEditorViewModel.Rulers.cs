@@ -146,6 +146,10 @@ public sealed partial class LayoutEditorViewModel
     /// click will be, so the previewed number is the one that will be committed.</summary>
     private (long X, long Y) _rulerCursor;
 
+    /// <summary>The size mode the placement in progress will commit with — read from the preference
+    /// once, at the first click, rather than on every preview move.</summary>
+    private RulerSizeMode _rulerPlacementMode;
+
     /// <summary>True while the Ruler tool has one endpoint down — read by the main file's Escape
     /// contract so a half-placed ruler counts as an operation in progress.</summary>
     internal bool RulerPlacementInProgress => _rulerFirstPoint is not null;
@@ -162,6 +166,7 @@ public sealed partial class LayoutEditorViewModel
         {
             _rulerFirstPoint = pt;
             _rulerCursor = pt;
+            _rulerPlacementMode = DefaultRulerSizeMode;
             RebuildOverlay();
             return;
         }
@@ -175,9 +180,11 @@ public sealed partial class LayoutEditorViewModel
         var ruler = new RulerAnnotation
         {
             X1 = first.X, Y1 = first.Y, X2 = pt.X, Y2 = pt.Y,
-            // R-rul-4: Fixed, 11 pt. Purpose 1 (the temporary measurement) is the common one and the
-            // one where a bad default is immediately annoying.
-            SizeMode = RulerSizeMode.Fixed,
+            // R-rul-4: Fixed, 11 pt unless Settings ▸ General ▸ Default Ruler Size Mode says Scaled.
+            // Purpose 1 (the temporary measurement) is the common one and the one where a bad default
+            // is immediately annoying. Both sizes are stored whichever mode starts, so a switch later
+            // is reversible (§9B.7).
+            SizeMode = _rulerPlacementMode,
             TextSizePt = DefaultRulerTextSizePt,
             TextHeightDbu = DefaultRulerTextHeightDbu(),
         };
@@ -192,6 +199,12 @@ public sealed partial class LayoutEditorViewModel
     }
 
     internal const double DefaultRulerTextSizePt = 11.0;
+
+    /// <summary>The mode a newly placed ruler starts in — Settings ▸ General ▸ Layout ▸ Default Ruler
+    /// Size Mode, Fixed when unset. Captured at a placement's first click, and used by the preview as
+    /// well as the commit, so the number previewed is drawn at the size it will be committed at.</summary>
+    internal static RulerSizeMode DefaultRulerSizeMode =>
+        CircuitRF.Ui.Theming.AppPreferencesIo.Load().DefaultRulerSizeMode ?? RulerSizeMode.Fixed;
 
     /// <summary>The world height a ruler switched to <see cref="RulerSizeMode.Scaled"/> starts at —
     /// seeded from the same label-height default the Label tool uses, so a ruler and a label authored
@@ -242,7 +255,7 @@ public sealed partial class LayoutEditorViewModel
         return new RulerAnnotation
         {
             X1 = first.X, Y1 = first.Y, X2 = _rulerCursor.X, Y2 = _rulerCursor.Y,
-            SizeMode = RulerSizeMode.Fixed,
+            SizeMode = _rulerPlacementMode,
             TextSizePt = DefaultRulerTextSizePt,
             TextHeightDbu = DefaultRulerTextHeightDbu(),
         };

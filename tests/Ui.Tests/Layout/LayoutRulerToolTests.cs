@@ -59,8 +59,9 @@ public class LayoutRulerToolTests : System.IDisposable
         Assert.Equal(4_000, r.Y2);
         Assert.Equal(5_000, r.DistanceDbu);
 
-        // R-rul-4: Fixed, 11 pt.
-        Assert.Equal(RulerSizeMode.Fixed, r.SizeMode);
+        // R-rul-4: Fixed, 11 pt — unless this machine's Default Ruler Size Mode preference says
+        // otherwise; LayoutRulerDefaultSizeModeTests pins both against a redirected preferences file.
+        Assert.Equal(LayoutEditorViewModel.DefaultRulerSizeMode, r.SizeMode);
         Assert.Equal(11.0, r.TextSizePt);
 
         // R-rul-8: the tool stays armed for the next one.
