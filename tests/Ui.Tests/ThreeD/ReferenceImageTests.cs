@@ -602,6 +602,24 @@ public sealed class ReferenceImageTests : IDisposable
         Assert.Equal(new C3dPoint2(200 * Um, 150 * Um), ((C3dSheet)vm.Document.Objects[0]).Rect!.Size);
     }
 
+    /// <summary>The locked-sheet check on a document holding instances and no objects at all: Move starts rather than throwing on
+    /// object 0 (a C3dTarget's default).</summary>
+    [Fact]
+    public void Gate13_InstancesOnly_MoveStarts()
+    {
+        var (ws, dir) = Workspace();
+        string die = Path.Combine(ws, "die", "3d");
+        Directory.CreateDirectory(die);
+        C3dPersistence.SaveToFile(Path.Combine(die, "die.c3d"), new C3dDocument { Objects = [Box("chip", "Gold", 0, 0, 0, 20, 20, 5)] });
+        string path = Path.Combine(dir, "cell.c3d");
+        C3dPersistence.SaveToFile(path, new C3dDocument { Instances = [new C3dInstance { Name = "U1", CellRef = "../../die" }] });
+        var vm = Open(path);
+        vm.Viewer.SetSelection([.. vm.Viewer.Scene.Objects.Where(o => vm.InstanceOf(o) == "U1").Select(o => Scene3DItem.OfObject(o.Id))]);
+        Assert.Contains(vm.Targets(), t => t.Instance);
+        vm.StartMove();
+        Assert.NotNull(vm.Tool);
+    }
+
     // ── gate 14: the CLI ─────────────────────────────────────────────────────────────────────
 
     /// <summary><c>check</c> warns on an image file that is not there and exits 0; <c>render --iso</c> as a PROCESS writes the

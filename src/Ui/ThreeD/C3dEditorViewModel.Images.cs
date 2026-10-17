@@ -211,10 +211,12 @@ public sealed partial class C3dEditorViewModel
     public string? ImageProblemOf(C3dSheet s) => s.Image is null ? null : C3dImages.Problem(ImagePathOf(s));
 
     /// <summary>R-em3d101-1g — the refusal for a gesture that would move <paramref name="targets"/> when one is a locked image
-    /// sheet, or null.</summary>
+    /// sheet, or null. C3dTarget is a struct, so this never tests a FirstOrDefault target: its default is object 0, which a
+    /// document of instances alone does not have.</summary>
     private string? LockedRefusalOf(IEnumerable<C3dTarget> targets)
-        => targets.FirstOrDefault(t => !t.Instance && t.Index < Document.Objects.Count && Document.Objects[t.Index] is C3dSheet { Locked: true })
-           is { Instance: false } locked && Document.Objects[locked.Index] is C3dSheet { Locked: true } s ? LockedRefusal(s.Name) : null;
+        => targets.Where(t => !t.Instance && t.Index >= 0 && t.Index < Document.Objects.Count)
+                  .Select(t => Document.Objects[t.Index]).OfType<C3dSheet>().FirstOrDefault(s => s.Locked)
+           is { } s ? LockedRefusal(s.Name) : null;
 
     /// <summary>The selection's targets when none is a locked image sheet; otherwise the status line says why, and false.</summary>
     private bool HaveMovableTargets(out IReadOnlyList<C3dTarget> targets)
