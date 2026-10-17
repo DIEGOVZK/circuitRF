@@ -22,6 +22,10 @@ public static class MCurvePCell
 {
     public const string GeneratorId = "MCURVE";
 
+    /// <summary>The smallest turn an angle grip drags to. At zero the curve has no length and no
+    /// artwork, so a grip dragged there would have nothing left to hold on to.</summary>
+    public const double MinDragAngleDeg = 1.0;
+
     public static PCellResult Generate(
         IReadOnlyDictionary<string, PCellValue> parameters,
         Technology? technology,
@@ -65,12 +69,19 @@ public static class MCurvePCell
 
         var a0 = At(ro, 0); var a1 = At(ro, theta);
         var b1 = At(ri, theta); var b0 = At(ri, 0);
-        // tan(sweep/4), +ve = counter-clockwise. Rounded to 12 decimals because Math.Tan is the
+        // tan(sweep/4) of each arc, +ve = counter-clockwise. Rounded to 12 decimals because Math.Tan is the
         // platform's libm and is not correctly rounded: tan(pi/8) differs by one ulp between Windows
         // and macOS, which made the artwork (and PCellGeneratorVersioningTests' fingerprint) depend on
         // the machine. 1e-12 of bulge moves the arc by far less than a DBU; the vertices are already
         // rounded to DBU for the same reason.
-        double bulge = Math.Round(s * Math.Tan(theta / 4.0), 12);
+        //
+        // A turn past 180 deg is drawn as TWO arcs meeting at mid-turn, each under a half-turn. One
+        // arc's bulge runs to infinity as its sweep approaches 360 deg and its chord to zero, and the
+        // chord is integer DBU: by 359.99 deg a one-DBU rounding is a 0.5% radius error, and at
+        // exactly 360 deg both ends coincide and the arc has no circle at all. A 90 deg curve keeps
+        // its single arc, so the shipped artwork below 180 deg is unchanged.
+        bool split = theta > Math.PI;
+        double bulge = Math.Round(s * Math.Tan(theta / (split ? 8.0 : 4.0)), 12);
 
         var xy = new List<long>(); var edges = new List<LayoutEdge>();
         void Vertex((long X, long Y) p, LayoutEdge e) { xy.Add(p.X); xy.Add(p.Y); edges.Add(e); }
@@ -85,10 +96,12 @@ public static class MCurvePCell
         }
 
         Vertex(a0, Arc(bulge));                              // outer edge, pin 1 -> pin 2
+        if (split) Vertex(At(ro, theta / 2.0), Arc(bulge));
         Vertex(a1, line());                                  // pin 2's end cap
         if (ri >= 1.0)
         {
             Vertex(b1, Arc(-bulge));                         // inner edge, back to pin 1
+            if (split) Vertex(At(ri, theta / 2.0), Arc(-bulge));
             Vertex(b0, line());                              // pin 1's end cap
         }
         else
@@ -105,14 +118,30 @@ public static class MCurvePCell
             new PCellPin("2", p2.X, p2.Y, signalLayer, w, angleDeg),
         };
 
-        // pcell-parameter-handles.md — three grips, each on the quantity it changes:
+        // pcell-parameter-handles.md — four grips, each on the quantity it changes:
         //   W      — the outer edge at mid-turn, anchored on the centre line there, along the radius.
         //   Radius — the centre line at mid-turn, anchored on pin 1, which the radius does not move.
-        //   Angle  — pin 2, swung about the centre of curvature (its real path).
+        //   Angle  — one at EACH pin, and they are MIRROR IMAGES: grab either end and swing it round
+        //            the centre of curvature; the other end keeps its place AND its heading, so the
+        //            trace attached there stays attached. Both drive the same `Angle`.
+        //
+        //   * PIN 2 swings about the centre of curvature (0, cy), which never moves with `Angle`, and
+        //     pin 1 stays exactly where it is with no help from the host.
+        //   * PIN 1 sits at the cell origin heading +X for every `Angle` (R4), so holding pin 2 still
+        //     instead is a ROTATION of the instance, which no generator can express. The grip holds the
+        //     centre of curvature in place (KeepAnchorFixed) and pin 2's outward direction with it
+        //     (AnchorDirDeg); the host turns the instance by the angle's change and pin 1 travels round
+        //     the same circle in the other direction. Its reference axis turns with pin 2's direction,
+        //     so the bearing it reads is -Angle, a slope of one.
+        //
+        // Bounded to this curve's own turn direction: crossing zero flips the centre of curvature to
+        // the other side, where neither grip is measured from anything meaningful, and at exactly zero
+        // nothing is drawn. 360 is the generator's own limit.
         var mid = At(r, theta / 2.0); var midOuter = At(ro, theta / 2.0);
         double radialDeg = Math.Atan2(midOuter.Y - mid.Y, midOuter.X - mid.X) * 180.0 / Math.PI;
         double chordDeg = Math.Atan2(mid.Y, mid.X) * 180.0 / Math.PI;
         long cyDbu = (long)Math.Round(cy, MidpointRounding.AwayFromZero);
+        double angleMin = s > 0 ? MinDragAngleDeg : -360.0, angleMax = s > 0 ? 360.0 : -MinDragAngleDeg;
         var handles = new[]
         {
             new PCellHandle("W", mid.X, mid.Y, midOuter.X, midOuter.Y, AxisDeg: radialDeg,
@@ -120,7 +149,11 @@ public static class MCurvePCell
             new PCellHandle("Radius", 0, 0, mid.X, mid.Y, AxisDeg: chordDeg,
                 Quantity: PCellHandleQuantity.Length),
             new PCellHandle("Angle", 0, cyDbu, p2.X, p2.Y, AxisDeg: -s * 90.0,
-                Kind: PCellHandleKind.Angular, Quantity: PCellHandleQuantity.Angle),
+                Kind: PCellHandleKind.Angular, Min: angleMin, Max: angleMax,
+                Quantity: PCellHandleQuantity.Angle),
+            new PCellHandle("Angle", 0, cyDbu, 0, 0, AxisDeg: angleDeg - s * 90.0,
+                Kind: PCellHandleKind.Angular, Min: angleMin, Max: angleMax, KeepAnchorFixed: true,
+                Quantity: PCellHandleQuantity.Angle, AnchorDirDeg: angleDeg),
         };
 
         return new PCellResult([outline], pins, diagnostics, Handles: handles);

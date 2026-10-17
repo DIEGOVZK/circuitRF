@@ -250,6 +250,13 @@ origin, so without it a left-edge drag grows the cell rightwards. See `pcell-par
 R-pch-4b. Additive within version 6: a script written before the field existed omits it and behaves
 exactly as it did.
 
+`anchorDirDeg` (number, absent reads as none), with `keepAnchorFixed`, is a cell-local bearing the
+host ALSO holds still, by turning the placed instance by however far it moved and then translating so
+the anchor keeps its place. The grip's `axisDeg` turns with it, so the grip is measured in that held
+frame. It is what lets the far end of a bend be dragged while the near end keeps both its place and
+its heading — pin 1 always heads +X, so that is a rotation no generator can express. Additive within
+version 6 on the same terms.
+
 `preview` is `"auto"` (the default, and omitted when it is) or `"deferred"`: a generator that already
 knows it is too expensive to redraw per frame says so and is believed, saving the host the one full
 regeneration it otherwise spends measuring.

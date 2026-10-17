@@ -397,6 +397,14 @@ class Handle:
     #: A no-op when the anchor does not move for that parameter, so it is safe to set on every grip
     #: of a set rather than only the ones that need it.
     keep_anchor_fixed: bool = False
+    #: With ``keep_anchor_fixed``: a direction (degrees, in your cell's own frame) that circuitRF also
+    #: holds still on screen, by TURNING the placed cell. Re-emit it on every generate, like the anchor.
+    #:
+    #: Pin 1 always heads +X, so holding the OTHER end of a bend still while its angle changes is a
+    #: rotation your cell cannot express. Anchor the grip on the pivot, set this to pin 2's outward
+    #: direction, and dragging pin 1 swings it while pin 2 keeps its place and its heading. The grip's
+    #: ``axis`` turns with this direction. None (the default) only translates.
+    anchor_dir: float | None = None
     #: ``circuitrf_pcell.LENGTH``, ``ANGLE``, or None (the default).
     #:
     #: Say what the parameter IS, if you can, so circuitRF can print a readout a person can read
@@ -422,6 +430,8 @@ class Handle:
         }
         if self.keep_anchor_fixed:
             body["keepAnchorFixed"] = True
+        if self.anchor_dir is not None:
+            body["anchorDirDeg"] = float(self.anchor_dir)
         if self.quantity is not None:
             body["quantity"] = self.quantity
         if self.label is not None:

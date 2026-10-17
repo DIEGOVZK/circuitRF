@@ -734,7 +734,7 @@ public sealed class PCellParameterHandleDragTests : IDisposable
     }
 
     /// <summary>
-    /// MBend's PIN-1 angle grip. Identified by sitting on the instance's own origin, which is exact
+    /// The PIN-1 angle grip (MBend's or MCURVE's). Identified by sitting on the instance's own origin, which is exact
     /// and meaningful rather than incidental: R4 puts pin 1 at the cell origin, so this holds at any
     /// placement and after the instance has been translated by a pinned-anchor drag.
     /// </summary>
@@ -745,7 +745,7 @@ public sealed class PCellParameterHandleDragTests : IDisposable
             h => h.Label == "Angle" && h.X == inst.X && h.Y == inst.Y);
     }
 
-    /// <summary>MBend's PIN-2 angle grip — the other one.</summary>
+    /// <summary>The PIN-2 angle grip — the other one.</summary>
     private static PCellHandleMarker Pin2AngleGrip(LayoutEditorViewModel vm)
     {
         var pin1 = Pin1AngleGrip(vm);
@@ -753,8 +753,20 @@ public sealed class PCellParameterHandleDragTests : IDisposable
             h => h.Label == "Angle" && (h.X != pin1.X || h.Y != pin1.Y));
     }
 
+    /// <summary>Pin 2's heading in the world: the instance's own rotation plus the cell's `Angle`
+    /// (pin 2's outward direction in the cell). What a pin-1 drag must leave unchanged.</summary>
+    private static double Pin2Heading(LayoutEditorViewModel vm)
+        => vm.Model.Instances[0].RotationDegrees + ParametersOf(vm, 0).Real("Angle");
+
+    private static void AssertSameBearing(double expectedDeg, double actualDeg, double tolDeg = 0.05)
+    {
+        double d = actualDeg - expectedDeg;
+        d -= 360.0 * Math.Floor((d + 180.0) / 360.0);
+        Assert.InRange(d, -tolDeg, tolDeg);
+    }
+
     [Fact]
-    public void MBendDeclaresAnAngleGripAtBothPins_EachAnchoredOnWhatTheOtherOneHolds()
+    public void MBendDeclaresAnAngleGripAtBothPins_BothSwingingAboutTheCorner()
     {
         var (vm, _) = PlaceMBend();
 
@@ -762,47 +774,44 @@ public sealed class PCellParameterHandleDragTests : IDisposable
         Assert.Equal(2, angleGrips.Count);
         Assert.All(angleGrips, g => Assert.True(g.IsAngular));
 
-        // Pin 2 swings about the PIVOT; pin 1 swings about PIN 2. Pin 1 cannot swing about the pivot
-        // — its bearing from there is 180 degrees for every value of Angle — so anchoring it on the
-        // moving end is what makes the same parameter measurable from that side.
+        // Mirror images: each end swings its own arm about the same corner.
         var atPin1 = Pin1AngleGrip(vm);
-        Assert.NotEqual((0L, 0L), (atPin1.AnchorX, atPin1.AnchorY));
-        Assert.Equal((Pin2AngleGrip(vm).X, Pin2AngleGrip(vm).Y), (atPin1.AnchorX, atPin1.AnchorY));
+        var atPin2 = Pin2AngleGrip(vm);
+        Assert.Equal((atPin2.AnchorX, atPin2.AnchorY), (atPin1.AnchorX, atPin1.AnchorY));
     }
 
     [Fact]
-    public void DraggingMBendsPin1_ChangesTheAngle_AndLeavesPin2WhereItWas()
+    public void DraggingMBendsPin1_ChangesTheAngle_AndLeavesArm2WhereItWasAndHowItWasHeading()
     {
         var (vm, _) = PlaceMBend();
 
         var pin1 = Pin1AngleGrip(vm);
-        long pin2X = pin1.AnchorX, pin2Y = pin1.AnchorY;
-
-        // Swing pin 1 to a new bearing about pin 2, at roughly its current distance.
-        double r = Math.Sqrt((double)(pin1.X - pin2X) * (pin1.X - pin2X)
-                           + (double)(pin1.Y - pin2Y) * (pin1.Y - pin2Y));
-        double toBearing = Math.Atan2(pin1.Y - pin2Y, (double)(pin1.X - pin2X)) + (20.0 * Math.PI / 180.0);
-        long tx = pin2X + (long)Math.Round(r * Math.Cos(toBearing));
-        long ty = pin2Y + (long)Math.Round(r * Math.Sin(toBearing));
-
+        var pin2Before = Pin2AngleGrip(vm);
+        double headingBefore = Pin2Heading(vm);
         double angleBefore = ParametersOf(vm, 0).Real("Angle");
-        Drag(vm, pin1, toX: tx, toY: ty, tolDbu: 400_000);
-        double angleAfter = ParametersOf(vm, 0).Real("Angle");
 
-        Assert.NotEqual(angleBefore, angleAfter, precision: 1);
+        // Swing arm 1 twenty degrees clockwise about the corner: the bend tightens by twenty.
+        double r = Math.Sqrt((double)(pin1.X - pin1.AnchorX) * (pin1.X - pin1.AnchorX)
+                           + (double)(pin1.Y - pin1.AnchorY) * (pin1.Y - pin1.AnchorY));
+        double toBearing = Math.Atan2(pin1.Y - pin1.AnchorY, (double)(pin1.X - pin1.AnchorX)) - (20.0 * Math.PI / 180.0);
+        Drag(vm, pin1, toX: pin1.AnchorX + (long)Math.Round(r * Math.Cos(toBearing)),
+                       toY: pin1.AnchorY + (long)Math.Round(r * Math.Sin(toBearing)), tolDbu: 400_000);
 
-        // The end the user did NOT grab holds its world position — that is the whole point of
-        // anchoring the grip there, and it is what a pivot-anchored grip could not have given.
+        Assert.Equal(angleBefore + 20.0, ParametersOf(vm, 0).Real("Angle"), precision: 0);
+
+        // The end the user did NOT grab holds its world position and its heading, so whatever is
+        // connected there stays connected.
         var pin2After = Pin2AngleGrip(vm);
-        Assert.InRange(pin2After.X, pin2X - 3_000, pin2X + 3_000);
-        Assert.InRange(pin2After.Y, pin2Y - 3_000, pin2Y + 3_000);
+        Assert.InRange(pin2After.X, pin2Before.X - 3_000, pin2Before.X + 3_000);
+        Assert.InRange(pin2After.Y, pin2Before.Y - 3_000, pin2Before.Y + 3_000);
+        AssertSameBearing(headingBefore, Pin2Heading(vm));
     }
 
     [Fact]
-    public void BothMBendAngleGrips_DriveTheSameParameter_InTheSameDirection()
+    public void BothMBendAngleGrips_DriveTheSameParameter_AtTheSameRate()
     {
-        // Two grips, one parameter — the same rule MLIN's paired edge grips already follow. Asserted
-        // because "drag either end" is only true if both ends agree about which way is bigger.
+        // Two grips, one parameter. Opening the bend by fifteen degrees is pin 2 swung fifteen
+        // degrees counter-clockwise about the corner, or pin 1 swung fifteen degrees clockwise.
         var (vmA, _) = PlaceMBend();
         var pin2 = Pin2AngleGrip(vmA);
         double rA = Math.Sqrt((double)(pin2.X - pin2.AnchorX) * (pin2.X - pin2.AnchorX)
@@ -816,15 +825,116 @@ public sealed class PCellParameterHandleDragTests : IDisposable
         var pin1 = Pin1AngleGrip(vmB);
         double rB = Math.Sqrt((double)(pin1.X - pin1.AnchorX) * (pin1.X - pin1.AnchorX)
                             + (double)(pin1.Y - pin1.AnchorY) * (pin1.Y - pin1.AnchorY));
-        // Pin 1's bearing runs at HALF the parameter's rate, so the same 15 degrees of Angle is
-        // 7.5 degrees of grip travel. Deriving it rather than hardcoding is the point: the test would
-        // still pass if the relationship changed, and would fail if the two grips disagreed on sign.
-        double bearingB = Math.Atan2(pin1.Y - pin1.AnchorY, (double)(pin1.X - pin1.AnchorX)) + (7.5 * Math.PI / 180.0);
+        double bearingB = Math.Atan2(pin1.Y - pin1.AnchorY, (double)(pin1.X - pin1.AnchorX)) - (15.0 * Math.PI / 180.0);
         Drag(vmB, pin1, pin1.AnchorX + (long)Math.Round(rB * Math.Cos(bearingB)),
                         pin1.AnchorY + (long)Math.Round(rB * Math.Sin(bearingB)), tolDbu: 400_000);
         double fromPin1 = ParametersOf(vmB, 0).Real("Angle");
 
         Assert.Equal(fromPin2, fromPin1, precision: 0);
+    }
+
+    // ── MCURVE: a full turn, from either end ─────────────────────────────────────────────────
+
+    private (LayoutEditorViewModel Vm, string CellRef) PlaceMCurve()
+    {
+        var vm = MakeVm();
+        var defaults = SchematicToLayoutGenerator.ResolveDefaultParameters(SymbolKind.MCurve, 0);
+        string cellDir = GeneratedCellStore.GetOrCreate(
+            _workspaceDir, "MCURVE", defaults, null, null, PCellLayerSelection.Default);
+        string cellRef = Path.GetRelativePath(vm.InstanceBaseDir, cellDir);
+        vm.Model.Instances.Add(new LayoutInstance { CellRef = cellRef, Mag = 1.0 });
+        vm.SelectInstance(0);
+        return (vm, cellRef);
+    }
+
+    /// <summary>
+    /// Swings <paramref name="grip"/> about its own anchor to each bearing in turn, at its own radius,
+    /// in ONE gesture — the way a hand actually drags round a half-turn, rather than one jump that
+    /// would land on the far side without passing through it.
+    /// </summary>
+    private static void SwingThrough(LayoutEditorViewModel vm, PCellHandleMarker grip, IEnumerable<double> bearingsDeg)
+    {
+        double r = Math.Sqrt((double)(grip.X - grip.AnchorX) * (grip.X - grip.AnchorX)
+                           + (double)(grip.Y - grip.AnchorY) * (grip.Y - grip.AnchorY));
+        long x = grip.X, y = grip.Y;
+        vm.OnPointerPressed(x, y, KeyModifiers.None, hitTolDbu: 200_000);
+        foreach (double b in bearingsDeg)
+        {
+            x = grip.AnchorX + (long)Math.Round(r * Math.Cos(b * Math.PI / 180.0));
+            y = grip.AnchorY + (long)Math.Round(r * Math.Sin(b * Math.PI / 180.0));
+            vm.OnPointerMoved(x, y, leftDown: true, KeyModifiers.None, hitTolDbu: 200_000);
+        }
+        vm.OnPointerReleased(x, y, KeyModifiers.None);
+    }
+
+    private static IEnumerable<double> Steps(double fromDeg, double toDeg, double stepDeg = 10.0)
+    {
+        int n = (int)Math.Ceiling(Math.Abs(toDeg - fromDeg) / stepDeg);
+        for (int i = 1; i <= n; i++) yield return fromDeg + (toDeg - fromDeg) * i / n;
+    }
+
+    [Fact]
+    public void DraggingMCurvesPin2_PastAHalfTurn_KeepsTurning_AndStopsAtAFullTurn()
+    {
+        // Owner report: the angle glitched as soon as the grip passed 180 degrees. The grip's bearing
+        // is only defined modulo a turn and read as -179 just past it, so the solve chased the wrong
+        // end of the curve.
+        var (vm, _) = PlaceMCurve();
+        double start = ParametersOf(vm, 0).Real("Angle");
+        var pin2 = Pin2AngleGrip(vm);
+        // Pin 2's bearing about the centre of curvature is Angle - 90 for a left-hand curve.
+        SwingThrough(vm, pin2, Steps(start - 90.0, 270.0 - 90.0));
+        Assert.Equal(270.0, ParametersOf(vm, 0).Real("Angle"), precision: 0);
+
+        // And round past a full turn, where it stops at the generator's own limit rather than wrapping.
+        var (vm2, _) = PlaceMCurve();
+        SwingThrough(vm2, Pin2AngleGrip(vm2), Steps(start - 90.0, 380.0 - 90.0));
+        Assert.Equal(360.0, ParametersOf(vm2, 0).Real("Angle"), precision: 3);
+    }
+
+    [Fact]
+    public void DraggingMCurvesPin1_PastAHalfTurn_LeavesPin2WhereItWasAndHowItWasHeading()
+    {
+        var (vm, _) = PlaceMCurve();
+        double start = ParametersOf(vm, 0).Real("Angle");
+        var pin1 = Pin1AngleGrip(vm);
+        var pin2Before = Pin2AngleGrip(vm);
+        double headingBefore = Pin2Heading(vm);
+
+        // The mirror of pin 2: pin 1 swings round the same centre of curvature the other way, so
+        // lengthening the curve by d degrees is pin 1 swung d degrees clockwise from its radial (-90).
+        SwingThrough(vm, pin1, Steps(-90.0, -90.0 - (250.0 - start)));
+
+        Assert.Equal(250.0, ParametersOf(vm, 0).Real("Angle"), precision: 0);
+        var pin2After = Pin2AngleGrip(vm);
+        Assert.InRange(pin2After.X, pin2Before.X - 3_000, pin2Before.X + 3_000);
+        Assert.InRange(pin2After.Y, pin2Before.Y - 3_000, pin2Before.Y + 3_000);
+        AssertSameBearing(headingBefore, Pin2Heading(vm));
+    }
+
+    [Fact]
+    public void OnAMirroredRotatedPlacement_Pin1StillHoldsPin2InPlaceAndHeading()
+    {
+        // The held direction reaches the world through the mirror, which reverses its sense.
+        var (vm, _) = PlaceMCurve();
+        vm.Model.Instances[0].MirrorX = true;
+        vm.Model.Instances[0].RotationDegrees = 30.0;
+        vm.SelectInstance(0);
+        double angleBefore = ParametersOf(vm, 0).Real("Angle");
+        var pin1 = Pin1AngleGrip(vm);
+        var pin2Before = Pin2AngleGrip(vm);
+        // Mirrored, a cell bearing d is world bearing rot + 180 - d.
+        double heading() => vm.Model.Instances[0].RotationDegrees - ParametersOf(vm, 0).Real("Angle");
+        double headingBefore = heading();
+
+        double from = Math.Atan2(pin1.Y - pin1.AnchorY, (double)(pin1.X - pin1.AnchorX)) * 180.0 / Math.PI;
+        SwingThrough(vm, pin1, Steps(from, from + 40.0));
+
+        Assert.NotEqual(angleBefore, ParametersOf(vm, 0).Real("Angle"), precision: 0);
+        var pin2After = Pin2AngleGrip(vm);
+        Assert.InRange(pin2After.X, pin2Before.X - 3_000, pin2Before.X + 3_000);
+        Assert.InRange(pin2After.Y, pin2Before.Y - 3_000, pin2Before.Y + 3_000);
+        AssertSameBearing(headingBefore, heading());
     }
 
     // ── The Properties Inspector follows the drag ────────────────────────────────────────────

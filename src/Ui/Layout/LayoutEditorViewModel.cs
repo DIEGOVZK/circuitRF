@@ -4340,15 +4340,14 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
             instanceDragOverrides = new Dictionary<int, LayoutInstance>
                 { [designatorOverride.Key] = designatorOverride.Value };
         }
-        else if (_pcellHandleDrag is { } pinDrag && (pinDrag.PendingDx != 0 || pinDrag.PendingDy != 0))
+        else if (_pcellHandleDrag is { } pinDrag && IsPinMoving(pinDrag))
         {
             // R-pch-4b: a pinned-anchor grip drag moves the whole instance so the anchor holds its
             // world position. Riding the EXISTING instance-drag-override channel means the renderer
             // needed no change at all — it already substitutes an overridden instance for the stored
             // one, which is exactly what this is.
-            var shifted = LayoutGeometry.Clone(pinDrag.Instance);
-            LayoutGeometry.TranslateBy(shifted, pinDrag.PendingDx, pinDrag.PendingDy);
-            instanceDragOverrides = new Dictionary<int, LayoutInstance> { [pinDrag.InstanceIndex] = shifted };
+            instanceDragOverrides = new Dictionary<int, LayoutInstance>
+                { [pinDrag.InstanceIndex] = PreviewInstance(pinDrag) };
         }
 
         IReadOnlyDictionary<int, LayoutShape> dragOverrides = EmptyDragOverrides;

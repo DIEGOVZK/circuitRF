@@ -161,7 +161,8 @@ public sealed record PCellHandle(
     double? Max = null,
     PCellHandleCrossAxis? Cross = null,
     bool KeepAnchorFixed = false,
-    PCellHandleQuantity Quantity = PCellHandleQuantity.Unspecified)
+    PCellHandleQuantity Quantity = PCellHandleQuantity.Unspecified,
+    double? AnchorDirDeg = null)
 {
     /// <summary>What the readout calls it — the generator's own <see cref="Label"/>, else the
     /// parameter name.</summary>
@@ -182,6 +183,14 @@ public sealed record PCellHandle(
     //
     // A no-op when the anchor does not move (an anchor at the cell origin, say), so it is safe and
     // self-documenting to set on every edge grip of a set rather than only the ones that need it.
+    //
+    // AnchorDirDeg (with KeepAnchorFixed): "and hold this DIRECTION still too." A cell-local bearing
+    // the generator re-emits on every generate, like the anchor itself; the host ROTATES the instance
+    // by however far it turned, then translates so the anchor keeps its place. It is what makes the
+    // far end of a bend a true mirror of the near one: R4 fixes arm 1 along +X, so holding the OTHER
+    // arm still while its angle changes is a rotation no generator can express. The grip is then
+    // measured in that held frame — its declared axis turns with the direction — so the projection
+    // the solver reads is the one the user sees in world space. Null is the translate-only behaviour.
 
     /// <summary>The perpendicular axis's own label, on a two-axis grip.</summary>
     public string CrossDisplayLabel =>
@@ -218,7 +227,8 @@ public sealed record PCellHandle(
         ? this
         : new PCellHandle(Cross.Parameter, AnchorX, AnchorY, X, Y, AxisDeg + 90.0, Kind,
                           Cross.Label, Cross.Min, Cross.Max,
-                          Cross: null, KeepAnchorFixed: KeepAnchorFixed, Quantity: Cross.Quantity);
+                          Cross: null, KeepAnchorFixed: KeepAnchorFixed, Quantity: Cross.Quantity,
+                          AnchorDirDeg: AnchorDirDeg);
 
     /// <summary>
     /// The scalar this handle measures at an arbitrary point, in the handle's own projection: DBU

@@ -76,6 +76,19 @@ public class MCurvePCellTests
         Assert.InRange(area / expected, 0.999, 1.0001);
     }
 
+    [Theory]
+    [InlineData(270.0)]
+    [InlineData(360.0)]
+    public void PastAHalfTurn_TheCopperIsStillTheAnnularSector_UpToAFullRing(double angleDeg)
+    {
+        // One arc between coincident ends has no circle, so a single-arc 360 deg turn drew nothing.
+        var curve = (CurveShape)Gen(W, angleDeg, R).Shapes[0];
+        double ro = (R + W / 2) * 1e6 * Dbu, ri = (R - W / 2) * 1e6 * Dbu;
+        double expected = angleDeg / 360.0 * Math.PI * (ro * ro - ri * ri);
+        double area = Area(LayoutFlattener.Flatten(curve, tolDbu: 100));
+        Assert.InRange(area / expected, 0.999, 1.0001);
+    }
+
     [Fact]
     public void AtRadiusHalfTheWidth_TheInnerEdgeCollapsesToTheCentre_AndNothingIsReported()
     {

@@ -479,6 +479,12 @@ public sealed class PCellWireHandle
 
     /// <summary>The cross axis's own quantity — same vocabulary, same absent-means-nothing rule.</summary>
     public string? CrossQuantity { get; set; }
+
+    /// <summary>With <see cref="KeepAnchorFixed"/>: a cell-local bearing the host also holds still in
+    /// world space, by turning the instance (<see cref="PCellHandle.AnchorDirDeg"/>). Additive on the
+    /// same terms as <see cref="Quantity"/>: absent is the translate-only behaviour every handle had
+    /// before it existed.</summary>
+    public double? AnchorDirDeg { get; set; }
 }
 
 /// <summary>The handle-kind vocabulary, in one place so the encoder and decoder cannot disagree.</summary>

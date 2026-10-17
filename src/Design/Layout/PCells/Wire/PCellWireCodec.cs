@@ -217,6 +217,7 @@ public static class PCellWireCodec
                     KeepAnchorFixed = h.KeepAnchorFixed,
                     Quantity        = PCellWireHandleQuantity.Encode(h.Quantity),
                     CrossQuantity   = h.Cross is null ? null : PCellWireHandleQuantity.Encode(h.Cross.Quantity),
+                    AnchorDirDeg    = h.AnchorDirDeg,
                 });
         }
 
@@ -541,7 +542,7 @@ public static class PCellWireCodec
             var c = Read(h.Span, payload, 4, "handle");
             list.Add(new PCellHandle(h.Parameter, c[0], c[1], c[2], c[3], h.AxisDeg, kind,
                                      h.Label, h.Min, h.Max, cross, h.KeepAnchorFixed,
-                                     PCellWireHandleQuantity.Decode(h.Quantity)));
+                                     PCellWireHandleQuantity.Decode(h.Quantity), h.AnchorDirDeg));
         }
 
         // Once per distinct kind, not once per handle — a cell declaring twelve grips of one unknown

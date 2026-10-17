@@ -130,7 +130,7 @@ public sealed partial class LayoutEditorViewModel
     /// current value, mirroring <see cref="RegeneratePCell"/>'s own merge behavior.
     /// </summary>
     public bool EditInstancePCellParameters(int instanceIndex, IReadOnlyDictionary<string, PCellValue> newParameters,
-        long translateDx = 0, long translateDy = 0)
+        long translateDx = 0, long translateDy = 0, double rotateDeg = 0)
     {
         if ((uint)instanceIndex >= (uint)Model.Instances.Count) return false;
         var inst = Model.Instances[instanceIndex];
@@ -202,6 +202,8 @@ public sealed partial class LayoutEditorViewModel
         // needs the instance to move, so that the edge the user did NOT grab holds its world
         // position. It rides in the SAME ReplaceInstanceCommand — one undo entry, and no window in
         // which the geometry has changed but the placement has not.
+        // A held direction turns it first (the translate was measured against the turned instance).
+        if (rotateDeg != 0) after.RotationDegrees = inst.RotationDegrees + rotateDeg;
         if (translateDx != 0 || translateDy != 0) LayoutGeometry.TranslateBy(after, translateDx, translateDy);
         Execute(new Commands.Layout.ReplaceInstanceCommand(Model, instanceIndex, inst, after));
         IsDirty = true;

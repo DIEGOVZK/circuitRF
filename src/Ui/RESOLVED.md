@@ -39704,3 +39704,33 @@ technology every layout shares.
   the combobox set to Bottom Copper moved the tint there; a double-click on "Outline" moved both.
 - Three menu tests had gone stale with commit 367aa7a0 (Examples moved from Tools to File ▸ New) and IM-14
   (Tools ▸ Digitise Plot…); their exact-order lists were updated.
+
+## MCURVE angle grip glitched past 180°; a second angle grip at pin 1 (owner, 2026-10-17)
+
+- **Cause: an angular projection is only defined modulo a turn**, and `PCellHandle.Project` reports it in
+  (-180, 180]. Both the probe and the solve compared raw projections, so a grip swung from 179° to 181° read as a
+  358° jump the other way: the probed slope came out with the wrong sign near 180°, and past it the cursor's
+  target (-179) solved toward the far end of the curve. Fix: `PCellHandleSolver.UnwrapNear` takes every difference
+  of two angular projections to the nearest turn — the probe against the base, the solve's achieved value against
+  the target, and the editor's cursor bearing against `AngularReference` (where the grip last LANDED, not where
+  the cursor was, so overshooting a limit never winds up turns that have to be unwound). Applies to every Angular
+  grip, MBend's included. `Project` itself still normalises; its own test holds that.
+- **MCURVE's grips are bounded to their own turn direction** (1°…360°, or −360°…−1°): crossing zero flips the
+  centre of curvature to the other side, and at zero there is no artwork and no grip to come back with.
+- **A full 360° turn drew nothing.** One arc between coincident ends has a zero chord, and `LayoutArc.FromBulge`
+  returns an empty arc for it; well before that the integer-DBU chord made the radius imprecise (0.5% at 359.99°).
+  A turn past 180° is now two arcs meeting at mid-turn. Below 180° the outline is unchanged; MCURVE's generator
+  version went to 2 because a cell on disk past 180° carries the single arc.
+- **Pin 1's grip is the MIRROR of pin 2's, on MCURVE and MBend alike** (owner follow-up, same day). The first
+  cut held only pin 2's POSITION, so pin 1 kept heading +X and the whole arc slid sideways while pin 2's heading
+  turned — a trace attached at pin 2 was left at an angle. A generator cannot turn its own frame (R4: pin 1 is at
+  the origin heading +X), so the contract gained `PCellHandle.AnchorDirDeg`: with `KeepAnchorFixed`, a
+  cell-local bearing the host ALSO holds still, by turning the instance (`PendingRotDeg`, applied before the
+  translate, in the preview and in the same `ReplaceInstanceCommand` at commit). Both pin-1 grips anchor on the
+  pivot (MCURVE's centre of curvature, MBend's corner) and hold pin 2's outward direction, which is `Angle`.
+  **The solver measures such a grip in the held frame** — the declared axis turns by however far the direction
+  turned — otherwise pin 1's cell-frame bearing from the pivot never changes and the grip reads as dead.
+  **Mirror sign:** a cell bearing d reaches the world as rot + d, or rot + 180 − d mirrored, so the instance turns
+  by −(Δd), or +(Δd) mirrored; a mirrored-and-rotated placement test fails on the wrong sign. The field is on the
+  wire (`anchorDirDeg`, additive in version 6) and in the Python helper (`anchor_dir`), since the wire
+  round-trip test holds every handle field.

@@ -427,7 +427,18 @@ public sealed partial class LayoutEditorViewModel
         /// position it had. Zero on an ordinary grip, and zero on a pinned one whose anchor happens
         /// not to move.</summary>
         public long PendingDx, PendingDy;
+
+        /// <summary>How far the INSTANCE must turn so a held direction (<see cref="PCellHandle.AnchorDirDeg"/>)
+        /// keeps its world bearing, in degrees counter-clockwise. Applied BEFORE the translate, which
+        /// is measured against the turned instance.</summary>
+        public double PendingRotDeg;
         public PCellHandle? PreviewHandle;
+
+        /// <summary>An Angular grip's projection where the grip last landed, continuous rather than
+        /// wrapped: the cursor's bearing is unwrapped to the turn nearest it, so a grip swung past
+        /// 180 deg keeps counting up instead of jumping to -180. Starts at the grip's own projection,
+        /// the same origin the solver measures from.</summary>
+        public double AngularReference;
 
         /// <summary>EVERY grip the regenerated cell emitted, so the ones that are not being dragged
         /// still follow the artwork they sit on. Null in deferred mode (R-pch-10 buys its saving by
@@ -494,6 +505,7 @@ public sealed partial class LayoutEditorViewModel
             Instance = inst,
             ValuePerProjection = valuePerProjection,
             Locked = locked,
+            AngularReference = handle.ProjectedPosition,
         };
 
         // R-pch-4a: a grip may drive a second parameter across its own axis. Measured the same way
@@ -567,6 +579,8 @@ public sealed partial class LayoutEditorViewModel
         bool suspendQuantize = suspendSnap || geometryTarget;
         var (lx, ly) = LayoutInstanceTransform.InverseTransformPoint(sx, sy, drag.Instance, 0, 0);
         double target = drag.Handle.Project(lx, ly);
+        bool angular = drag.Handle.Kind == PCellHandleKind.Angular;
+        if (angular) target = PCellHandleSolver.UnwrapNear(target, drag.AngularReference);
 
         PCellResult Generate(IReadOnlyDictionary<string, PCellValue> p)
         {
@@ -592,6 +606,8 @@ public sealed partial class LayoutEditorViewModel
         drag.Moved = true;
         if (!solved.Ok) return;   // the design is unchanged; the grip simply does not follow
 
+        var priorReference = drag.AngularReference;
+        if (angular) drag.AngularReference = solved.AchievedProjection;
         drag.PendingValue = solved.Value;
         drag.Readout = $"{drag.Handle.DisplayLabel} = {FormatHandleValue(drag.Handle.Quantity, solved.Value)}";
 
@@ -658,6 +674,7 @@ public sealed partial class LayoutEditorViewModel
             drag.PendingValue      = priorValue;
             drag.PendingCrossValue = priorCross;
             drag.Readout           = priorReadout;
+            drag.AngularReference  = priorReference;
             return;   // previous preview and grip position stand; the grip simply stops here
         }
 
@@ -818,7 +835,8 @@ public sealed partial class LayoutEditorViewModel
             // R-pch-4b: the parameter edit and the anchor-pinning translate are ONE command, so a
             // pinned drag is still one undo entry. Two commands would let Undo put the geometry back
             // while leaving the instance moved.
-            EditInstancePCellParameters(drag.InstanceIndex, edit, drag.PendingDx, drag.PendingDy);
+            EditInstancePCellParameters(drag.InstanceIndex, edit, drag.PendingDx, drag.PendingDy,
+                                        drag.PendingRotDeg);
         }
 
         ResetPCellHandleDragState();
@@ -887,12 +905,24 @@ public sealed partial class LayoutEditorViewModel
     private void ApplyAnchorPin(PCellHandleDragState drag)
     {
         drag.PendingDx = drag.PendingDy = 0;
+        drag.PendingRotDeg = 0;
         if (!drag.Handle.KeepAnchorFixed || drag.PreviewHandle is not { } moved) return;
+
+        // A held direction first: a cell-local bearing reaches the world as rot + d, or rot + 180 - d
+        // when mirrored, so the instance turns by the opposite of however far the direction turned,
+        // with the mirror's sign. The translate below is then measured against the TURNED instance.
+        var placed = drag.Instance;
+        if (drag.Handle.AnchorDirDeg is { } held && moved.AnchorDirDeg is { } turned && turned != held)
+        {
+            drag.PendingRotDeg = (drag.Instance.MirrorX ? 1.0 : -1.0) * (turned - held);
+            placed = LayoutGeometry.Clone(drag.Instance);
+            placed.RotationDegrees = drag.Instance.RotationDegrees + drag.PendingRotDeg;
+        }
 
         var (beforeX, beforeY) = LayoutInstanceTransform.TransformPoint(
             drag.Handle.AnchorX, drag.Handle.AnchorY, drag.Instance, 0, 0);
         var (afterX, afterY) = LayoutInstanceTransform.TransformPoint(
-            moved.AnchorX, moved.AnchorY, drag.Instance, 0, 0);
+            moved.AnchorX, moved.AnchorY, placed, 0, 0);
 
         drag.PendingDx = beforeX - afterX;
         drag.PendingDy = beforeY - afterY;
@@ -903,11 +933,16 @@ public sealed partial class LayoutEditorViewModel
     /// than floating away from it mid-drag.</summary>
     private LayoutInstance PreviewInstance(PCellHandleDragState drag)
     {
-        if (drag.PendingDx == 0 && drag.PendingDy == 0) return drag.Instance;
+        if (!IsPinMoving(drag)) return drag.Instance;
         var shifted = LayoutGeometry.Clone(drag.Instance);
+        if (drag.PendingRotDeg != 0)
+            shifted.RotationDegrees = drag.Instance.RotationDegrees + drag.PendingRotDeg;
         LayoutGeometry.TranslateBy(shifted, drag.PendingDx, drag.PendingDy);
         return shifted;
     }
+
+    private static bool IsPinMoving(PCellHandleDragState drag)
+        => drag.PendingDx != 0 || drag.PendingDy != 0 || drag.PendingRotDeg != 0;
 
     /// <summary>The generator's declared preview mode for this cell's own parameter set, resolved
     /// through the resolution cache so it costs nothing on a drag that has already drawn grips.

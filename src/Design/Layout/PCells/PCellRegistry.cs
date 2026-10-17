@@ -264,6 +264,10 @@ public static class PCellRegistry
             // A four-port now: the crossed line's segment is two bridge widths long and carries pin 4 on
             // its upper end. A cell on disk from the three-port was drawn without it.
             { "AIRBRIDGE", 2 },
+            // A turn past 180 deg is two arcs meeting at mid-turn instead of one, so a full 360 deg
+            // turn draws (one arc between coincident ends has no circle). Same copper below 360 deg,
+            // but a different outline, and a cell on disk carries the single arc.
+            { "MCURVE", 2 },
         };
 
     public static int GeneratorVersion(string generatorId)

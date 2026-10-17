@@ -193,6 +193,7 @@ public static class PCellHandleSolver
                     return false;
                 }
 
+                if (handle.Kind == PCellHandleKind.Angular) projection = UnwrapNear(projection, baseProjection);
                 double moved = projection - baseProjection;
                 if (Math.Abs(moved) >= minMove)
                 {
@@ -250,6 +251,7 @@ public static class PCellHandleSolver
                             out achieved, out achievedHandle, matchParameter))
                 return PCellHandleSolveResult.Failed(
                     $"'{handle.Parameter}' could not be regenerated at this value, so the design is unchanged.");
+            if (handle.Kind == PCellHandleKind.Angular) achieved = UnwrapNear(achieved, targetProjection);
 
             double error = targetProjection - achieved;
             if (Math.Abs(error) <= tolerance)
@@ -269,6 +271,24 @@ public static class PCellHandleSolver
         // Not converged is a normal outcome, not a failure: a quantized or clamped parameter simply
         // cannot land on an arbitrary target, and the honest answer is the value it did reach.
         return new PCellHandleSolveResult(true, Rebuild(value, isInt), achieved, false, null, achievedHandle);
+    }
+
+    /// <summary>
+    /// <paramref name="degrees"/> plus whatever whole turn puts it within half a turn of
+    /// <paramref name="near"/>.
+    ///
+    /// <para><b>An angular projection is only defined modulo a turn</b>, and
+    /// <see cref="PCellHandle.Project"/> reports it in (-180, 180]. Compared as raw numbers, a grip
+    /// swinging smoothly from 179 deg to 181 deg reads as a 358 deg jump the other way — so a turn
+    /// past 180 deg probed a slope of the wrong sign and solved toward the wrong end, which is how an
+    /// MCURVE dragged past a half-turn glitched. Every difference of two angular projections, here and
+    /// in the editor's cursor tracking, is taken through this instead.</para>
+    /// </summary>
+    internal static double UnwrapNear(double degrees, double near)
+    {
+        double d = degrees - near;
+        d -= 360.0 * Math.Floor((d + 180.0) / 360.0);
+        return near + d;
     }
 
     // ── internals ──────────────────────────────────────────────────────────────
@@ -320,9 +340,18 @@ public static class PCellHandleSolver
         // grip that never moves, i.e. Unmeasurable, and the drag would be refused outright. Measuring
         // from the REGENERATED anchor along the SAME declared axis is the quantity the declaration
         // actually names: how far the grip is from what it measures from.
-        projection = handle.KeepAnchorFixed
-            ? (handle with { AnchorX = moved.AnchorX, AnchorY = moved.AnchorY }).Project(moved.X, moved.Y)
-            : handle.Project(moved.X, moved.Y);
+        //
+        // A held DIRECTION (AnchorDirDeg) extends the same inversion to rotation: the host turns the
+        // instance so that direction keeps its world bearing, so the frame the grip is seen in turns
+        // with it, and the declared axis is measured from where the direction went.
+        var frame = handle;
+        if (handle.KeepAnchorFixed)
+        {
+            frame = handle with { AnchorX = moved.AnchorX, AnchorY = moved.AnchorY };
+            if (handle.AnchorDirDeg is { } held && moved.AnchorDirDeg is { } turned)
+                frame = frame with { AxisDeg = handle.AxisDeg + (turned - held) };
+        }
+        projection = frame.Project(moved.X, moved.Y);
         return true;
     }
 

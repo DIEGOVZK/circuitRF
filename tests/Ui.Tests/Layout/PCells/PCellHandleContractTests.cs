@@ -298,23 +298,23 @@ public sealed class PCellHandleContractTests : IDisposable
         Assert.Equal(0, atPin2.AnchorY);
         Assert.Equal(0, atPin2.AxisDeg);   // `Angle` is measured from +X, so the projection IS it
 
-        // PIN 1 swings about PIN 2, and that asymmetry is forced. Pin 1 sits at (0,0) for every value
-        // of Angle, so its bearing from the pivot is always 180 degrees — a grip anchored there is
-        // invariant in the parameter and the host would (correctly) refuse the drag as unmeasurable.
-        // Anchoring on the end that DOES move is what makes the same parameter reachable from here.
+        // PIN 1 is the mirror image: it swings about the SAME corner, holding arm 2's heading
+        // (pin 2's outward direction, which is `Angle`) as well as the corner's place. Pin 1's
+        // bearing from the corner is 180 degrees for every Angle, so it is measurable only because the
+        // axis turns with the held direction — which is what the host does by turning the instance.
         var atPin1 = angles.Single(a => a is { X: 0, Y: 0 });
-        Assert.Equal(atPin2.X, atPin1.AnchorX);
-        Assert.Equal(atPin2.Y, atPin1.AnchorY);
+        Assert.Equal((stubLen, 0L), (atPin1.AnchorX, atPin1.AnchorY));
+        Assert.Equal(90.0, atPin1.AnchorDirDeg);
+        Assert.Null(atPin2.AnchorDirDeg);
 
-        // The relationship is the inscribed-angle one: bearing = Angle/2 off the 180-degree
-        // reference. Checked at two values, so a sign flip or a factor-of-two slip fails here rather
-        // than as a drag that runs backwards.
-        Assert.Equal(45.0, atPin1.ProjectedPosition, precision: 3);
+        // In the held frame the bearing reads -Angle, at a slope of one: checked at two values, so a
+        // sign flip or a factor-of-two slip fails here rather than as a drag that runs backwards.
+        Assert.Equal(-90.0, atPin1.ProjectedPosition, precision: 3);
         var at30 = MBendPCell.Generate(
             new Dictionary<string, PCellValue> { ["W"] = 0.0003, ["Angle"] = 30.0, ["Miter"] = 0.0 },
             technology: null, PCellLayerSelection.Default).Handles!
             .Single(h => h.Parameter == "Angle" && h is { X: 0, Y: 0 });
-        Assert.Equal(15.0, at30.ProjectedPosition, precision: 3);
+        Assert.Equal(-30.0, at30.ProjectedPosition, precision: 3);
 
         // Miter still gets none: an enumeration wearing a Real's clothes, with no continuum to drag
         // along. Stated in the generator itself so nobody adds one by reflex.
