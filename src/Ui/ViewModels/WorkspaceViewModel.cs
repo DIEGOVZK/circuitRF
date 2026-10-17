@@ -498,6 +498,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         // and cleans up _scratchDocs/_openDocsByPath.
         _factory.CloseDockableConfirm  = ConfirmCloseDockable;
         _factory.CloseDockablesConfirm = ConfirmCloseDockables; // Close all / other / left / right: one prompt
+        _factory.IsDirtyForClose       = IsDockableDirtyForClose; // a floating document window's close box
         WireDockArrangementPersistence();
         WireDirtyWindowTitle();
         _factory.DockableClosed += (_, args) => { if (args.Dockable is not null) OnDockableClosed(args.Dockable); };
@@ -16963,7 +16964,9 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
     private async Task<bool> ConfirmCloseDockable(IDockable dockable)
     {
         if (dockable is SchematicDocument closing) StoreLastTuned(closing);
-        var window = ResolveOwner(null);
+        // The window the document is IN, so a torn-off one's prompt keeps that window in front — parented
+        // to the shell, the shell came forward and the window being closed was left behind it.
+        var window = HostWindowOf(dockable) ?? ResolveOwner(null);
         if (window is null) return true;
         if (!IsDockableDirtyForClose(dockable)) return true; // clean doc — no prompt needed
 
@@ -16998,7 +17001,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         var dirty = targets.Where(IsDockableDirtyForClose).ToList();
         if (dirty.Count == 0) return targets;
 
-        var window = ResolveOwner(null);
+        var window = HostWindowOf(dirty[0]) ?? ResolveOwner(null);
         if (window is null) return targets; // the single-tab prompt's rule
 
         if (dirty.Count == 1)

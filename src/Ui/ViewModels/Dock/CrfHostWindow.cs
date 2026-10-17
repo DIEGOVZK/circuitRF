@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml.MarkupExtensions;
@@ -282,7 +283,77 @@ public class CrfHostWindow : HostWindow
             return;
         }
 
+        if (Window?.Factory is CircuitRfDockFactory factory
+            && FloatedDocuments() is { Count: > 0 } documents
+            && ShouldAskBeforeClosing(_closingForLayoutRebuild, IsTracked,
+                                      factory.IsDirtyForClose is { } dirty && documents.Any(dirty)))
+        {
+            e.Cancel = true;
+            Dispatcher.UIThread.Post(() => CloseFloatedDocumentsThenWindow(factory, documents));
+            return;
+        }
+
         base.OnClosing(e);
+    }
+
+    /// <summary>
+    /// Whether this close must be cancelled and re-run as a prompted close of the documents it holds.
+    ///
+    /// <para><b>The bug:</b> (owner, 2026-10-17: a dirty undocked <c>.cem</c> closed by its window's
+    /// close box — the window vanished, THEN the save prompt appeared, and Cancel lost the edits.) Dock's
+    /// <c>HostWindow</c> runs the layout's close and, on <c>OnClosed</c>, <c>IFactory.CloseWindow</c> —
+    /// both reach <see cref="CircuitRfDockFactory.CloseDockable"/>, whose prompt is asynchronous, so
+    /// neither can hold the native close open. The window closed, the prompt came up afterwards, and a
+    /// Cancel kept a document whose floating layout had already been removed: open, dirty, and nowhere
+    /// on screen. Nothing on the path branches on document kind, so every torn-off document —
+    /// schematic, symbol, layout, EM setup, 3D view, technology, materials, wBond, Data Display, Smith
+    /// chart — lost its edits the same way.</para>
+    ///
+    /// <para><b>The fix asks first and lets the documents close the window</b>: the close is cancelled
+    /// and the float's documents go through the same one-prompt bulk close a tab strip's Close All
+    /// uses. Closing the last one collapses the float and Dock closes the window itself (arriving here
+    /// with <paramref name="isTracked"/> false, which is let through); Cancel closes nothing and the
+    /// window stays. A clean float keeps Dock's own close, which was never wrong.</para>
+    /// </summary>
+    internal static bool ShouldAskBeforeClosing(bool closingForLayoutRebuild, bool isTracked, bool anyDocumentDirty)
+        => !closingForLayoutRebuild && isTracked && anyDocumentDirty;
+
+    private async void CloseFloatedDocumentsThenWindow(CircuitRfDockFactory factory, IReadOnlyList<IDockable> documents)
+    {
+        // Another close prompt is on screen; this close box asks again once that one is answered.
+        if (factory.IsClosePromptOpen) return;
+
+        await factory.CloseDockablesAsync(documents);
+
+        // A float of documents only has closed with its last one. One that also holds a tool panel is
+        // still here, and finishing the close is the tool panels' own route.
+        if (IsTracked && Window is not null && !FloatsAnyDocument())
+            CloseFloatedToolPanels();
+    }
+
+    /// <summary>Every <see cref="IDocument"/> in the floated layout, outermost first.</summary>
+    internal IReadOnlyList<IDockable> FloatedDocuments()
+    {
+        var found = new List<IDockable>();
+        if (Window?.Layout is { } layout) CollectDocuments(layout, found);
+        return found;
+    }
+
+    private static void CollectDocuments(IDockable dockable, List<IDockable> found)
+    {
+        if (dockable is IDocument)
+        {
+            found.Add(dockable);
+            return;
+        }
+
+        if (dockable is IDock { VisibleDockables: { } children })
+        {
+            foreach (var child in children)
+            {
+                if (child is not null) CollectDocuments(child, found);
+            }
+        }
     }
 
     /// <summary>

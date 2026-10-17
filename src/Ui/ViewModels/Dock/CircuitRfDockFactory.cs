@@ -1117,6 +1117,13 @@ public class CircuitRfDockFactory : Factory
     public Func<IDockable, Task<bool>>? CloseDockableConfirm { get; set; }
 
     /// <summary>
+    /// Set by WorkspaceViewModel: true when closing this dockable would lose unsaved work — the same
+    /// answer its close prompts act on. <c>CrfHostWindow</c> asks it before letting a floating
+    /// document window's close box through. Null = nothing is ever dirty.
+    /// </summary>
+    public Func<IDockable, bool>? IsDirtyForClose { get; set; }
+
+    /// <summary>
     /// Set by WorkspaceViewModel. Called ONCE before a bulk close (Close all / other / left / right
     /// tabs) with every dockable that close would remove; returns the ones that may actually close.
     /// Null = each target goes through <see cref="CloseDockable"/>, one prompt at a time.
@@ -1214,21 +1221,27 @@ public class CircuitRfDockFactory : Factory
     /// Closes <paramref name="targets"/> after at most ONE prompt (see <see cref="CloseDockablesConfirm"/>).
     /// Requested while another prompt is open, it waits for that one rather than stacking a second.
     /// </summary>
-    public void CloseDockables(IReadOnlyList<IDockable> targets)
+    public void CloseDockables(IReadOnlyList<IDockable> targets) => _ = CloseDockablesAsync(targets);
+
+    /// <summary>
+    /// <see cref="CloseDockables"/>, finishing when the prompt has been answered and what it allowed is
+    /// closed. A request queued behind another prompt finishes at once, having closed nothing yet.
+    /// </summary>
+    public Task CloseDockablesAsync(IReadOnlyList<IDockable> targets)
     {
-        if (targets.Count == 0) return;
+        if (targets.Count == 0) return Task.CompletedTask;
         if (CloseDockablesConfirm is null)
         {
             // CloseDockable queues behind an open prompt itself, so these still ask one at a time.
             foreach (var d in targets) CloseDockable(d);
-            return;
+            return Task.CompletedTask;
         }
         if (IsClosePromptOpen)
         {
             _pendingCloses.Enqueue(() => CloseDockables(targets.Where(IsStillOpen).ToList()));
-            return;
+            return Task.CompletedTask;
         }
-        _ = ConfirmAndCloseManyAsync(targets);
+        return ConfirmAndCloseManyAsync(targets);
     }
 
     private async Task ConfirmAndCloseManyAsync(IReadOnlyList<IDockable> targets)

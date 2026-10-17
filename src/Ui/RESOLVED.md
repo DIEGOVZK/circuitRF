@@ -39734,3 +39734,24 @@ technology every layout shares.
   by −(Δd), or +(Δd) mirrored; a mirrored-and-rotated placement test fails on the wrong sign. The field is on the
   wire (`anchorDirDeg`, additive in version 6) and in the Python helper (`anchor_dir`), since the wire
   round-trip test holds every handle field.
+
+## A floating document window's close box closed the window BEFORE its save prompt (2026-10-17)
+
+- **Owner report:** a dirty undocked `.cem` closed by its window's close box — the window went, then the prompt
+  came, and Cancel lost the edits. **Every document kind took this path** (`.csch`, `.csym`, `.clay`, `.cem`,
+  `.c3d`, `.ctech`, `.cmat`, part libraries, wBond, `.cdd`, Smith chart): nothing on it branches on kind. The tab ✕
+  and Close All were always right; only the WINDOW's close box was wrong.
+- **Mechanism (decompiled, Dock 12.0.0.2):** `HostWindow.OnClosing` consults `FactoryBase.OnWindowClosing`
+  (synchronous, and only `IDockWindow.OnClose()`), runs the layout's Close, and `OnClosed` runs
+  `IFactory.CloseWindow` → `CloseDockable` per dockable. Our `CloseDockable` prompt is async, so nothing could
+  hold the native close open; a Cancel then kept a document whose floating layout had already been removed —
+  open, dirty, and nowhere on screen.
+- **Fix:** `CrfHostWindow.OnClosing` cancels the close when the float holds a document the factory's
+  `IsDirtyForClose` (the workspace's own `IsDockableDirtyForClose`) calls dirty, and runs the float's documents
+  through `CloseDockablesAsync` — the one-prompt bulk close. Closing the last document collapses the float and
+  Dock closes the window itself; Cancel leaves everything where it was; a float that also holds tools finishes
+  through `CloseFloatedToolPanels`. A clean float keeps Dock's own close. Gate: `DockWindowBehaviourTests`'
+  `ShouldAskBeforeClosing_…` and `ClosingAFloatsDocuments_…`.
+- **Follow-up, same day: the prompt is parented to the document's OWN window** (`HostWindowOf`, as the tab
+  menu's Save already was), not `ResolveOwner(null)`. Parented to the shell, showing the modal brought the
+  shell forward and a Cancel left the floating window behind it. Applies to the tab ✕ and Close All too.

@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using CircuitRF.Ui.Docking;
 using CircuitRF.Ui.Schematic;
 using CircuitRF.Ui.ViewModels;
@@ -865,6 +867,57 @@ public sealed class DockWindowBehaviourTests
     {
         Assert.Equal(expected,
             CrfHostWindow.ShouldTearDownOurWay(closingForLayoutRebuild, isTracked, floatsAnyDocument));
+    }
+
+    /// <summary>
+    /// A floating document window's close box with unsaved work in it: ask FIRST, and let the documents
+    /// close the window (owner, 2026-10-17 — a dirty undocked <c>.cem</c>'s window closed before its
+    /// prompt, and Cancel lost the edits; every document kind took the same path). Dock's own teardown
+    /// (<c>isTracked</c> false — the last document already gone) and our layout rebuild pass through.
+    /// </summary>
+    [Theory]
+    // closingForLayoutRebuild, isTracked, anyDocumentDirty, expected
+    [InlineData(false, true,  true,  true)]   // THE BUG: the close box of a float holding unsaved work
+    [InlineData(false, true,  false, false)]  // a clean float — Dock's own close, unchanged
+    [InlineData(false, false, true,  false)]  // Dock finishing its own teardown
+    [InlineData(true,  true,  true,  false)]  // workspace close/switch — already asked by the workspace
+    public void ShouldAskBeforeClosing_CancelsOnlyTheCloseBoxOfAFloatHoldingUnsavedWork(
+        bool closingForLayoutRebuild, bool isTracked, bool anyDocumentDirty, bool expected)
+    {
+        Assert.Equal(expected,
+            CrfHostWindow.ShouldAskBeforeClosing(closingForLayoutRebuild, isTracked, anyDocumentDirty));
+    }
+
+    /// <summary>
+    /// The model half of the same fix: closing a float's documents through the bulk prompt leaves the
+    /// float in place on Cancel, and removes it — the route by which Dock closes the native window — on
+    /// an answer that lets them all go. <c>CloseDockablesAsync</c> must not finish before the answer, or
+    /// the host would go on to close a window whose prompt is still on screen.
+    /// </summary>
+    [Fact]
+    public async Task ClosingAFloatsDocuments_KeepsTheFloatOnCancel_AndRemovesItWhenAllowed()
+    {
+        var factory = new CircuitRfDockFactory();
+        var root    = factory.CreateLayout();
+        factory.InitLayout(root);
+
+        var doc = new FakeDocument { Id = "Doc", Title = "Doc" };
+        var window = factory.CreateWindowFrom(doc)!;
+        root.Windows ??= factory.CreateList<IDockWindow>();
+        root.Windows.Add(window);
+        factory.InitDockWindow(window, root, hostWindow: null);
+
+        var answer = new TaskCompletionSource<IReadOnlyCollection<IDockable>>();
+        factory.CloseDockablesConfirm = _ => answer.Task;
+        var closing = factory.CloseDockablesAsync([doc]);
+        Assert.False(closing.IsCompleted);
+        answer.SetResult([]);                   // Cancel
+        await closing;
+        Assert.Single(root.Windows!);
+
+        factory.CloseDockablesConfirm = t => Task.FromResult<IReadOnlyCollection<IDockable>>([.. t]);
+        await factory.CloseDockablesAsync([doc]);
+        Assert.Empty(root.Windows!);
     }
 
     /// <summary>
