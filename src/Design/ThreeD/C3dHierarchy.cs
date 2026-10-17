@@ -37,6 +37,12 @@ public sealed record C3dFlattenResult(IReadOnlyList<C3dObject> Objects, IReadOnl
                                       string? Refusal, IReadOnlyList<string> Notes)
 {
     public static C3dFlattenResult Refuse(string why) => new([], [], why, []);
+
+    /// <summary>A refusal for materials this view's technology lacks: the materials that, added to it, would let the flatten
+    /// go ahead — each with the values its objects carry where they came from, so adding it changes nothing the solver sees.
+    /// Empty when the refusal has another cause, or when one of the materials could not be stated (its values unknown, or
+    /// the technology holding that name with other values).</summary>
+    public IReadOnlyList<TechMaterial> MissingMaterials { get; init; } = [];
 }
 
 /// <summary>A New 3D View from Layout: the document, and the ports that could not be carried across (with why).</summary>
@@ -288,9 +294,8 @@ public static class C3dHierarchy
         // The child's materials resolve in ITS technology; each must mean the same here.
         var (childTech, _) = TechnologyResolver.ResolveForDocument(child.TechRef, file, workspaceCws, cache ?? new TechnologyCache());
         var materials = child.Objects.Select(o => o.Material).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
-        if (MaterialMismatch(materials.Select(m => (m, C3dProblemAssembly.ObjectMaterial(childTech.Tech, m) is { } tm ? C3dElaborator.MaterialValues(tm, tempC) : null)),
-                             tech, tempC, inst.Name) is { } why)
-            return C3dFlattenResult.Refuse(why);
+        if (MaterialMismatch(materials.Select(m => (m, C3dProblemAssembly.ObjectMaterial(childTech.Tech, m))), tech, tempC, inst.Name) is { } refused)
+            return refused;
 
         var objects = new List<C3dObject>();
         var instances = new List<C3dInstance>();
@@ -360,20 +365,36 @@ public static class C3dHierarchy
         var byName = e.Materials.ToDictionary(m => m.Name, StringComparer.Ordinal);
         var rename = new Dictionary<string, string>(StringComparer.Ordinal);
         var unmatched = new List<string>();
-        foreach (string n in solids.Select(s => s.Material).Concat(sheets.Select(s => s.Material)).Distinct(StringComparer.Ordinal))
+        var missing = new List<TechMaterial>();
+        bool stated = true;
+        foreach (string n in solids.Select(s => s.Material).Concat(sheets.Select(s => s.Material)).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
         {
             var values = byName.GetValueOrDefault(n);
             string? match = C3dProblemAssembly.ObjectMaterial(tech, n) is { } same && (values is null || SameValues(C3dElaborator.MaterialValues(same, EmSetup.DefaultOperatingTempC), values))
                 ? same.Name
                 : values is null ? null
                 : tech?.ResolvedMaterials.FirstOrDefault(m => SameValues(C3dElaborator.MaterialValues(m, EmSetup.DefaultOperatingTempC), values))?.Name;
-            if (match is null) unmatched.Add(values is null ? $"'{n}'" : $"'{n}' ({Describe(values)})");
+            if (match is null)
+            {
+                unmatched.Add(values is null ? $"'{n}'" : $"'{n}' ({Describe(values)})");
+                // A name the technology already holds with other values cannot be added beside it; nor can unknown values.
+                if (values is null || C3dProblemAssembly.ObjectMaterial(tech, n) is not null) stated = false;
+                // One new material per distinct set of values: rows that agree share it, as the technology's own would match
+                // them (by values), so a second flatten of the same cell adds nothing.
+                else if (!missing.Any(m => SameValues(C3dElaborator.MaterialValues(m, EmSetup.DefaultOperatingTempC), values)))
+                    missing.Add(MaterialOf(n, values));
+            }
             else rename[n] = match;
         }
         if (unmatched.Count > 0)
+        {
+            bool one = unmatched.Count == 1;
             return C3dFlattenResult.Refuse(
-                $"Flattening '{inst.Name}' would give its objects materials this view's technology does not have: {string.Join(", ", unmatched)} — " +
-                "neither by name nor with equal values. Add them to the technology, or keep the instance: a silent swap would change what the solver sees.");
+                $"'{inst.Name}' cannot be flattened: its layout's stackup makes solids of {List(unmatched)}, and this view's technology " +
+                $"has no material of {(one ? "that name" : "those names")} or with {(one ? "those" : "their")} values. Every object in a 3D view " +
+                $"names one of its technology's materials, so {(one ? "it" : "they")} must be added to the technology first — or keep the " +
+                "instance. Substituting another material would change what the solver sees.") with { MissingMaterials = stated ? missing : [] };
+        }
 
         double per = C3dLowering.Metres(1, doc.DbuPerMicron);
         var ordered = solids.Select(s => (s.Order, (object)s)).Concat(sheets.Select(s => (s.Order, (object)s))).OrderBy(t => t.Order);
@@ -409,28 +430,56 @@ public static class C3dHierarchy
         ? string.Create(CultureInfo.InvariantCulture, $"σ {m.SigmaSm:G6} S/m")
         : string.Create(CultureInfo.InvariantCulture, $"εr {m.Epsr:G6}, tanδ {m.TanD:G6}");
 
-    /// <summary>Why the flattened materials would not mean the same in <paramref name="tech"/>, or null.
-    /// <paramref name="values"/>: each name with the values it has where it came from (null: unknown there).</summary>
-    private static string? MaterialMismatch(IEnumerable<(string Name, Em3dMaterial? Values)> values, Technology? tech, double? tempC, string inst)
+    /// <summary>The refusal when the flattened materials would not mean the same in <paramref name="tech"/>, or null.
+    /// <paramref name="values"/>: each name with the material it is where it came from (null: unknown there). A material
+    /// the technology lacks entirely is offered in <see cref="C3dFlattenResult.MissingMaterials"/>, copied whole.</summary>
+    private static C3dFlattenResult? MaterialMismatch(IEnumerable<(string Name, TechMaterial? Source)> values, Technology? tech, double? tempC, string inst)
     {
         var missing = new List<string>();
         var differ = new List<string>();
-        foreach (var (name, v) in values)
+        var copies = new List<TechMaterial>();
+        bool stated = true;
+        foreach (var (name, source) in values)
         {
-            if (C3dProblemAssembly.ObjectMaterial(tech, name) is not { } here) { missing.Add(name); continue; }
-            if (v is null) continue;
+            if (C3dProblemAssembly.ObjectMaterial(tech, name) is not { } here)
+            {
+                missing.Add($"'{name}'");
+                if (source is null) stated = false;
+                else copies.Add(MaterialLibraryPersistence.Deserialize(MaterialLibraryPersistence.Serialize([source]))[0]);
+                continue;
+            }
+            if (source is null) continue;
+            var v = C3dElaborator.MaterialValues(source, tempC ?? EmSetup.DefaultOperatingTempC);
             var mine = C3dElaborator.MaterialValues(here, tempC ?? EmSetup.DefaultOperatingTempC);
-            if (!(mine.Epsr == v.Epsr && mine.TanD == v.TanD && mine.Mur == v.Mur && Math.Abs(mine.SigmaSm - v.SigmaSm) <= 1e-9 * Math.Abs(v.SigmaSm)
-                  && (mine.EpsrTensor ?? []).SequenceEqual(v.EpsrTensor ?? [])))
-                differ.Add(name);
+            if (!SameValues(mine, v)) differ.Add($"'{name}'");
         }
         if (missing.Count == 0 && differ.Count == 0) return null;
         var parts = new List<string>();
-        if (missing.Count > 0) parts.Add($"this view's technology does not define {string.Join(", ", missing.Select(m => $"'{m}'"))}");
-        if (differ.Count > 0) parts.Add($"it defines {string.Join(", ", differ.Select(m => $"'{m}'"))} with other values");
-        return $"Flattening '{inst}' would give its objects materials that do not mean the same here: {string.Join("; ", parts)}. " +
-               "Add or align them in the technology, or keep the instance — a silent swap would change their conductivity.";
+        if (missing.Count > 0) parts.Add($"this view's technology does not define {List(missing)}");
+        if (differ.Count > 0) parts.Add($"it defines {List(differ)} with other values than the cell's own technology");
+        return C3dFlattenResult.Refuse(
+            $"'{inst}' cannot be flattened: its objects are made of materials that would not mean the same here — {string.Join("; ", parts)}. " +
+            "Add or align them in the technology, or keep the instance. Substituting another material would change what the solver sees.")
+            with { MissingMaterials = stated && differ.Count == 0 ? copies : [] };
     }
+
+    /// <summary>A material holding exactly <paramref name="values"/>, as <see cref="C3dElaborator.MaterialValues"/> reads it back.</summary>
+    private static TechMaterial MaterialOf(string name, Em3dMaterial values) => new()
+    {
+        Name = name,
+        Epsr = values.Epsr,
+        EpsrTensor = values.EpsrTensor is { Count: 3 } t ? [.. t] : null,
+        TanD = values.TanD,
+        Mur = values.Mur,
+        Sigma20 = values.SigmaSm > 0 ? values.SigmaSm : null,
+    };
+
+    /// <summary>A material's values as a refusal names them: σ for a conductor, else εr and tanδ.</summary>
+    public static string DescribeMaterial(TechMaterial m) => Describe(C3dElaborator.MaterialValues(m, EmSetup.DefaultOperatingTempC));
+
+    /// <summary>'a', 'a' and 'b', 'a', 'b' and 'c'.</summary>
+    private static string List(IReadOnlyList<string> items)
+        => items.Count <= 1 ? string.Join("", items) : $"{string.Join(", ", items.Take(items.Count - 1))} and {items[^1]}";
 
     private static C3dObject? FromSolid(Em3dSolid s, double per, ref int rounded, ref int tessellated)
     {
@@ -600,7 +649,7 @@ public static class C3dHierarchy
     /// instance is left. Returns the flat copy (or why not) so the caller can state the count before anything changes.
     /// <paramref name="elaborate"/> elaborates a working copy (the editor's elaborator, whose child cache makes it cheap).
     /// </summary>
-    public static (C3dDocument? Flat, string? Refusal, IReadOnlyList<string> Notes) FlattenAll(
+    public static (C3dDocument? Flat, string? Refusal, IReadOnlyList<string> Notes, IReadOnlyList<TechMaterial> MissingMaterials) FlattenAll(
         C3dDocument doc, string docPath, Func<C3dDocument, C3dElaboration> elaborate, Technology? tech,
         TechnologyCache? cache = null, string? workspaceCws = null, int maxLevels = 64)
     {
@@ -608,14 +657,14 @@ public static class C3dHierarchy
         var notes = new List<string>();
         for (int level = 0; work.Instances.Count > 0; level++)
         {
-            if (level == maxLevels) return (null, $"The hierarchy is deeper than {maxLevels} levels.", notes);
+            if (level == maxLevels) return (null, $"The hierarchy is deeper than {maxLevels} levels.", notes, []);
             var e = elaborate(work);
             var next = new List<C3dInstance>();
             var added = new List<C3dObject>();
             for (int i = 0; i < work.Instances.Count; i++)
             {
                 var r = FlattenOne(work, docPath, i, e, tech, cache, workspaceCws);
-                if (r.Refusal is { } why) return (null, why, notes);
+                if (r.Refusal is { } why) return (null, why, notes, r.MissingMaterials);
                 added.AddRange(r.Objects);
                 next.AddRange(r.Instances);
                 foreach (string n in r.Notes) if (!notes.Contains(n)) notes.Add(n);
@@ -624,7 +673,7 @@ public static class C3dHierarchy
             }
             work.Instances = next;
         }
-        return (work, null, notes);
+        return (work, null, notes, []);
     }
 
     // ── group into cell (R-em3d48-5) ─────────────────────────────────────────────────────────

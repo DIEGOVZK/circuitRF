@@ -20029,3 +20029,24 @@ executables (`tests/Ui.Tests/Em3d/PalaceGpuDeviceTests.cs`). The field test (R-e
   text can be anywhere); `ForceReadable` is dropped going to a schematic. Avalonia 12's `IClipboard`
   is marked not implementable by user code, so `SymbolClipboard.SerializeSelection` was pulled out of
   `CopyAsync` for the tests to produce real clipboard text.
+
+## 3D Flatten: missing materials are offered, not just refused (2026-10-17)
+
+A Gerber-imported board's dielectric stackup rows state εr/tanδ on the row and name no material, and the
+technology's material list holds only Copper. A layout child flattens to its ELABORATED solids, each named for
+its stackup row, and a 3D object must name one of the view's technology's materials — so Flatten was refused
+with a sentence the owner found hard to parse, and nothing offered a way forward.
+- `C3dFlattenResult.MissingMaterials` now carries the materials that would let it go ahead, with the values the
+  solids already had (so adding them changes nothing the solver sees). **One material per distinct set of
+  values** — rows that agree share it, matched by values exactly as the technology's own list would match
+  them — so a second instance of the same cell, flattened by a later command, adds nothing. Not offered when a
+  name already exists with other values, or when a 3D child's material also DIFFERS somewhere (that is still a
+  refusal: adding beside it would not be a fix).
+- The editor (`C3dEditorViewModel.WithMissingMaterials`) plans on a COPY of the technology holding them, so the
+  one confirm states both the materials added and the solid count before anything is written. The shell adds
+  them through the Paste dialog's destination and `CommitMaterialList` — the technology becomes unsaved.
+  **Do not re-plan after the shell commits**: the tech editor's live override reaches `TechnologyCache` on a
+  Background dispatcher post, so an immediate re-elaboration still sees the old list.
+- The object tree's instance row (and each of its parts) never offered the hierarchy entries the canvas's
+  menu did; both now come from `InstanceMenuItems`.
+Gate: `HierarchyGateTests.Flatten_DielectricRowsNamingNoMaterial_AddsOneSharedMaterial_AndASecondInstanceAddsNone`.

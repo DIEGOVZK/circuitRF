@@ -104,6 +104,8 @@ public sealed partial class C3dEditorViewModel
             items.Add(new Viewer3DMenuItem("Delete", Enabled: false, Tip: why));
             // brief-em3d-94 — a placed cell's part edits its material where that cell's technology defines it.
             if (EditMaterialItem(item) is { } edit) { items.Add(Viewer3DMenuItem.Separator); items.Add(edit); }
+            // its instance's own entries (Flatten among them), as the canvas offers them for the part
+            if (TreeInstanceItems(item) is { Count: > 0 } hierarchy) { items.Add(Viewer3DMenuItem.Separator); items.AddRange(hierarchy); items.Add(Viewer3DMenuItem.Separator); }
         }
         else
         {
@@ -161,6 +163,8 @@ public sealed partial class C3dEditorViewModel
             else if (drawn) items.Add(new Viewer3DMenuItem("Hide", () => SetRowsVisible([item], false, $"Hide {item.Name}")));
             if (drawn) items.Add(new Viewer3DMenuItem("Isolate", () => Viewer.Isolate(scene)));
             if (ModelItem(MembersOfRow(item), item.Name) is { } model) items.Add(model);    // brief-em3d-93
+            // an instance's row: Push Into, Swap View, Flatten, Flatten All Levels, Rename — the canvas's own entries
+            if (TreeInstanceItems(item) is { Count: > 0 } hierarchy) { items.Add(Viewer3DMenuItem.Separator); items.AddRange(hierarchy); items.Add(Viewer3DMenuItem.Separator); }
         }
         items.Add(new Viewer3DMenuItem("Show All", Viewer.ShowAll));
         items.Add(Viewer3DMenuItem.Separator);

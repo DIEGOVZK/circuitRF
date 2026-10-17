@@ -574,6 +574,23 @@ public partial class WorkspaceViewModel
     }
 
     /// <summary>
+    /// Flatten's materials (<see cref="C3dEditorViewModel.AddMaterials"/>): appended where the Paste dialog's creation puts a
+    /// new material — the technology's own list, else its first writable library — through the function the Materials dialog
+    /// commits with, which leaves that document unsaved. Returns the refusal, or null.
+    /// </summary>
+    private string? AddC3dMaterials(C3dEditorDocument doc, IReadOnlyList<TechMaterial> materials)
+    {
+        var vm = doc.ViewModel;
+        if (vm.Elaboration?.Technology is not { } tech || vm.Elaboration.TechnologyPath is not { } techPath)
+            return "This 3D design resolves no technology, so a new material has nowhere to go.";
+        if (MaterialSeeds(tech, techPath).FirstOrDefault(s => s.ReadOnlyReason is null) is not { } seed)
+            return $"'{Path.GetFileName(techPath)}' cannot take a new material: {ReadOnlyPathReason(techPath) ?? "it and its libraries are read-only"}.";
+        if (CommitMaterialList(techPath, seed, [.. seed.Materials, .. materials]) is { } refused) return refused;
+        ActivateIfOpen(C3dEditorDocument.KeyFor(doc.FilePath));
+        return null;
+    }
+
+    /// <summary>
     /// Materials editor redesign (2026-09-29) — the lists the 3D view's Materials dialog edits: the technology's own
     /// materials, then each library it names, each as it stands NOW — an open document's unsaved state, else the file.
     /// A library that cannot be written says why; a library shipped inside circuitRF is shown and never edited.

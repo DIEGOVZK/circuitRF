@@ -358,6 +358,69 @@ public sealed class HierarchyGateTests : IDisposable
         Assert.All(drawn, o => Assert.Equal(Scene3DVertex.Pack(r, g, b, 255), o.Rgba));
     }
 
+    /// <summary>A stackup whose dielectric rows state their values and name no material (a Gerber import's): flatten offers
+    /// the materials, ONE for rows that agree, adds them when confirmed, and keeps the problem; a second instance of the same
+    /// cell, flattened by a later command, lands on those materials and adds nothing.</summary>
+    [Fact]
+    public async Task Flatten_DielectricRowsNamingNoMaterial_AddsOneSharedMaterial_AndASecondInstanceAddsNone()
+    {
+        string ws = Workspace();
+        string techPath = Path.Combine(ws, "tech.ctech");
+        var tech = TechPersistence.LoadFromFile(techPath);
+        var layers = tech.Stackup!.Layers;
+        int at = layers.FindIndex(l => l.Kind == StackupKind.Dielectric);
+        var core = layers[at];
+        (core.Material, core.Epsr, core.TanD, core.Name) = (null, 3.17, 0.0041, "Dielectric 1");
+        core.ThicknessDbu /= 2;
+        var second = TechPersistence.Clone(tech).Stackup!.Layers[at];
+        second.Name = "Dielectric 2";
+        layers.Insert(at + 1, second);
+        TechPersistence.SaveToFile(techPath, tech);
+        LayoutCell(ws, "Die");
+        string c3d = C3dCell(ws, "Pkg", new C3dDocument
+        {
+            Instances = [new C3dInstance { Name = "U1", CellRef = "../../Die", View = C3dInstanceView.Layout },
+                         new C3dInstance { Name = "U2", CellRef = "../../Die", View = C3dInstanceView.Layout,
+                                           Placement = new C3dPlacement { Origin = new C3dPoint3(1000 * Um, 0, 0) } }],
+        });
+        var vm = Open(c3d);
+        var original = Solids(vm.Elaboration!);
+        string? asked = null;
+        var added = new List<IReadOnlyList<TechMaterial>>();
+        vm.Confirm = q => { asked = q; return Task.FromResult(true); };
+        vm.AddMaterials = m =>
+        {
+            added.Add(m);
+            var t = TechPersistence.LoadFromFile(techPath);
+            t.Materials.AddRange(m);
+            TechPersistence.SaveToFile(techPath, t);
+            return Task.FromResult<string?>(null);
+        };
+
+        await vm.FlattenAsync(0);
+        var made = Assert.Single(Assert.Single(added));
+        Assert.Equal("Dielectric 1", made.Name);
+        Assert.Contains("'Dielectric 1' (εr 3.17, tanδ 0.0041)", asked, StringComparison.Ordinal);
+        Assert.Equal("U2", Assert.Single(vm.Document.Instances).Name);
+        Assert.DoesNotContain(vm.Document.Objects, o => o.Material == "Dielectric 2");
+
+        // The next command, on the technology as it now stands: nothing to add, the same materials, the same problem.
+        C3dPersistence.SaveToFile(c3d, vm.Document);
+        vm = Open(c3d);
+        var materialsBefore = vm.Document.Objects.Select(o => o.Material).ToHashSet();
+        added.Clear();
+        vm.Confirm = q => { asked = q; return Task.FromResult(true); };
+        vm.AddMaterials = m => { added.Add(m); return Task.FromResult<string?>(null); };
+        await vm.FlattenAsync(0);
+        Settle(vm);
+        Assert.Empty(added);
+        Assert.DoesNotContain("no material", asked, StringComparison.Ordinal);
+        Assert.Empty(vm.Document.Instances);
+        Assert.Equal(materialsBefore, vm.Document.Objects.Select(o => o.Material).ToHashSet());
+        Assert.True(vm.Elaboration!.Ok, string.Join(" ", vm.Elaboration.Refusals));
+        Assert.Equal(original, Solids(vm.Elaboration));
+    }
+
     // ── 7. New 3D View from Layout ───────────────────────────────────────────────────────────
 
     [Fact]

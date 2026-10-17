@@ -306,6 +306,7 @@ public partial class WorkspaceViewModel
         {
             if (HostWindowOf(doc) is { } w) await TextConfirmDialog.AskAsync(w, "3D Editor", "Nothing was changed", refusal, null);
         };
+        vm.AddMaterials = materials => Task.FromResult(AddC3dMaterials(doc, materials));
         vm.PopOutQuestion = async question =>
         {
             if (HostWindowOf(doc) is not { } w) return C3dPopOutChoice.Save;

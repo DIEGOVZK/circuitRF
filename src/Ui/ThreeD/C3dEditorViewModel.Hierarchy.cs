@@ -81,6 +81,11 @@ public sealed partial class C3dEditorViewModel
     /// (Flatten): a menu command that did nothing must say why where it will be seen. Null: the status line only.</summary>
     public Func<string, Task>? Inform { get; set; }
 
+    /// <summary>Flatten's offer of the materials this view's technology lacks: the shell adds them where a new material goes
+    /// (the Paste dialog's destination), leaving that document unsaved, and returns the refusal or null. Null: nothing is
+    /// offered, and a missing material stays a refusal.</summary>
+    public Func<IReadOnlyList<TechMaterial>, Task<string?>>? AddMaterials { get; set; }
+
     /// <summary>Pop Out of a dirty child: the shell asks Save / Discard / Cancel. Null: Save.</summary>
     public Func<string, Task<C3dPopOutChoice>>? PopOutQuestion { get; set; }
 
@@ -219,26 +224,75 @@ public sealed partial class C3dEditorViewModel
     /// (L3c R-L3c-1a: the command states its outcome before acting). One undo entry.</summary>
     public async Task FlattenAsync(int index)
     {
-        var (result, question) = PlanFlatten(index);
+        var (result, question) = PlanFlatten(index, out var add);
         if (result is null) { await InformRefusal(); return; }
         if (question is not null && Confirm is { } ask && !await ask(question)) { StatusMessage = "Flatten cancelled."; return; }
+        if (!await AddMissingMaterials(add)) return;
         ApplyFlatten(index, result);
     }
 
     /// <summary>The flatten of instance <paramref name="index"/>, and the question to ask first (a layout child) — or null
     /// with the refusal on the status line.</summary>
-    public (C3dFlattenResult? Result, string? Question) PlanFlatten(int index)
+    public (C3dFlattenResult? Result, string? Question) PlanFlatten(int index) => PlanFlatten(index, out _);
+
+    /// <summary><see cref="PlanFlatten(int)"/>, and the materials the technology must be given first (<see cref="AddMaterials"/>).</summary>
+    public (C3dFlattenResult? Result, string? Question) PlanFlatten(int index, out IReadOnlyList<TechMaterial> add)
     {
         var inst = Document.Instances[index];
+        string? cws = _workspaceCws();
         C3dElaboration e;
-        lock (_elaborating) e = _elaborator.Elaborate(Document, FilePath, _workspaceCws());
-        var r = C3dHierarchy.FlattenOne(Document, FilePath, index, e, e.Technology, null, _workspaceCws());
-        if (r.Refusal is { } why) { StatusMessage = why; return (null, null); }
+        lock (_elaborating) e = _elaborator.Elaborate(Document, FilePath, cws);
+        (var r, add) = WithMissingMaterials(e.Technology, t => C3dHierarchy.FlattenOne(Document, FilePath, index, e, t, null, cws), r => r.MissingMaterials);
+        if (r.Refusal is { } why) { StatusMessage = why; add = []; return (null, null); }
         string? question = inst.View == C3dInstanceView.Layout
             ? $"Flatten {inst.Name} writes its layout's {r.Objects.Count:N0} elaborated solid{(r.Objects.Count == 1 ? "" : "s")} into this view as " +
               "objects. The link to the layout is then gone: a later edit of the layout will not reach them. Flatten?"
             : null;
+        if (add.Count > 0) question = MaterialsSentence($"{inst.Name}'s", add, e.TechnologyPath) + " " + (question ?? "Flatten?");
         return (r, question);
+    }
+
+    /// <summary>
+    /// The plan, offered the materials it lacks: run again on a COPY of the technology holding them until it needs no more (a
+    /// deeper level can name others), so the question states the outcome before anything is written. Only when the shell can
+    /// add them; what the plan ends on — success or a refusal — is returned with every material it was given.
+    /// </summary>
+    private (T Result, IReadOnlyList<TechMaterial> Added) WithMissingMaterials<T>(Technology? tech, Func<Technology?, T> plan,
+                                                                                 Func<T, IReadOnlyList<TechMaterial>> missing)
+    {
+        var added = new List<TechMaterial>();
+        var result = plan(tech);
+        if (AddMaterials is null || tech is null) return (result, added);
+        Technology? copy = null;
+        for (int round = 0; round < 8 && missing(result) is { Count: > 0 } more; round++)
+        {
+            copy ??= TechPersistence.Clone(tech);
+            copy.Materials.AddRange(more);
+            added.AddRange(more);
+            result = plan(copy);
+        }
+        return (result, added);
+    }
+
+    /// <param name="whose">The possessive the sentence names: "U1's", "the instances'".</param>
+    private static string MaterialsSentence(string whose, IReadOnlyList<TechMaterial> add, string? techPath)
+    {
+        string tech = techPath is null ? "This view's technology" : $"'{Path.GetFileName(techPath)}'";
+        var names = add.Select(m => $"'{m.Name}' ({C3dHierarchy.DescribeMaterial(m)})").ToList();
+        string list = names.Count == 1 ? names[0] : $"{string.Join(", ", names.Take(names.Count - 1))} and {names[^1]}";
+        return add.Count == 1
+            ? $"{tech} has no material for some of {whose} solids, so one is added to it with their values: {list}."
+            : $"{tech} has no material for some of {whose} solids, so {add.Count} are added to it with their values: {list}.";
+    }
+
+    /// <summary>The materials a confirmed flatten needs, added through the shell; false (the refusal said) when they were not.</summary>
+    private async Task<bool> AddMissingMaterials(IReadOnlyList<TechMaterial> add)
+    {
+        if (add.Count == 0 || AddMaterials is not { } shell) return true;
+        if (await shell(add) is not { } why) return true;
+        StatusMessage = why + " Nothing was flattened.";
+        await InformRefusal();
+        return false;
     }
 
     /// <summary>The flatten's one undo entry: the instance replaced by the result's instances, its objects appended.</summary>
@@ -261,9 +315,10 @@ public sealed partial class C3dEditorViewModel
     /// undo entry.</summary>
     public async Task FlattenAllAsync()
     {
-        var (flat, question) = PlanFlattenAll();
+        var (flat, question) = PlanFlattenAll(out var add);
         if (flat is null) { await InformRefusal(); return; }
         if (Confirm is { } ask && !await ask(question!)) { StatusMessage = "Flatten cancelled."; return; }
+        if (!await AddMissingMaterials(add)) return;
         ApplyFlattenAll(flat);
     }
 
@@ -273,17 +328,23 @@ public sealed partial class C3dEditorViewModel
         if (Inform is { } tell && StatusMessage is { Length: > 0 } why) await tell(why);
     }
 
-    public (C3dDocument? Flat, string? Question) PlanFlattenAll()
+    public (C3dDocument? Flat, string? Question) PlanFlattenAll() => PlanFlattenAll(out _);
+
+    /// <summary><see cref="PlanFlattenAll()"/>, and the materials the technology must be given first (<see cref="AddMaterials"/>).</summary>
+    public (C3dDocument? Flat, string? Question) PlanFlattenAll(out IReadOnlyList<TechMaterial> add)
     {
+        add = [];
         if (Document.Instances.Count == 0) { StatusMessage = "There is no instance to flatten."; return (null, null); }
         string? cws = _workspaceCws();
-        Technology? tech;
-        lock (_elaborating) tech = _elaborator.Elaborate(Document, FilePath, cws).Technology;
-        var (flat, why, notes) = C3dHierarchy.FlattenAll(Document, FilePath, d => { lock (_elaborating) return _elaborator.Elaborate(d, FilePath, cws); },
-                                                         tech, null, cws);
+        C3dElaboration e;
+        lock (_elaborating) e = _elaborator.Elaborate(Document, FilePath, cws);
+        var ((flat, why, notes, _), materials) = WithMissingMaterials(e.Technology,
+            t => C3dHierarchy.FlattenAll(Document, FilePath, d => { lock (_elaborating) return _elaborator.Elaborate(d, FilePath, cws); }, t, null, cws),
+            r => r.MissingMaterials);
         if (flat is null) { StatusMessage = why ?? "Flatten failed."; return (null, null); }
+        add = materials;
         int added = flat.Objects.Count - Document.Objects.Count;
-        return (flat, $"Flatten all levels replaces {Document.Instances.Count} instance{(Document.Instances.Count == 1 ? "" : "s")} with " +
+        return (flat, (add.Count > 0 ? MaterialsSentence("the instances'", add, e.TechnologyPath) + " " : "") + $"Flatten all levels replaces {Document.Instances.Count} instance{(Document.Instances.Count == 1 ? "" : "s")} with " +
                       $"{added:N0} object{(added == 1 ? "" : "s")}; this view will hold {flat.Objects.Count:N0} objects and no instances. " +
                       "Every link to a placed cell is then gone. Flatten?" + (notes.Count > 0 ? " " + string.Join(" ", notes) : ""));
     }
@@ -668,17 +729,36 @@ public sealed partial class C3dEditorViewModel
             if (Targets().Count > 0) yield return new Viewer3DMenuItem("Group into Cell…", () => _ = GroupIntoCellAsync());
             yield break;
         }
-        var inst = Document.Instances[index];
         yield return Viewer3DMenuItem.Separator;
+        foreach (var item in InstanceMenuItems(index, PushIntoSelected)) yield return item;
+        yield return new Viewer3DMenuItem("Group into Cell…", () => _ = GroupIntoCellAsync());
+    }
+
+    /// <summary>Instance <paramref name="index"/>'s own entries — Push Into, Swap View, Flatten, Flatten All Levels, Rename —
+    /// which the canvas's menu and the object tree's (on the instance's row and on each of its parts) both offer.
+    /// <paramref name="pushInto"/>: the canvas pushes into the element under the selection, the tree into the instance.</summary>
+    private IEnumerable<Viewer3DMenuItem> InstanceMenuItems(int index, Func<string?> pushInto)
+    {
+        var inst = Document.Instances[index];
         yield return new Viewer3DMenuItem(inst.View == C3dInstanceView.Layout ? "Push Into Cell (opens the layout)" : "Push Into Cell",
-                                          () => PushIntoSelected(), Tip: "Ctrl/Cmd+]. Ctrl/Cmd+[ pops back out.");
+                                          () => pushInto(), Tip: "Ctrl/Cmd+]. Ctrl/Cmd+[ pops back out.");
         string? swap = C3dHierarchy.SwapRefusal(FilePath, inst);
         yield return new Viewer3DMenuItem(inst.View == C3dInstanceView.Layout ? "Swap View to 3D" : "Swap View to Layout", () => SwapView(index),
                                           Enabled: swap is null, Tip: swap);
         yield return new Viewer3DMenuItem("Flatten", () => _ = FlattenAsync(index));
         yield return new Viewer3DMenuItem("Flatten All Levels", () => _ = FlattenAllAsync());
         yield return new Viewer3DMenuItem("Rename Instance…", () => _ = RenameInstanceAsync(index));
-        yield return new Viewer3DMenuItem("Group into Cell…", () => _ = GroupIntoCellAsync());
+    }
+
+    /// <summary>The object tree's hierarchy entries for an instance's row, or for one of its parts (the instance that placed
+    /// it, at the top level); empty for any other row.</summary>
+    private List<Viewer3DMenuItem> TreeInstanceItems(C3dTreeItem item)
+    {
+        int index = item.InstanceIndex >= 0 && !item.IsReadOnly ? item.InstanceIndex
+                  : item.IsReadOnly && Elaboration?.Provenance.TryGetValue(item.Name, out var p) == true && p.InstancePath.Length > 0
+                      ? Document.Instances.FindIndex(i => i.Name == p.InstancePath.Split('/', '[')[0])
+                      : -1;
+        return index < 0 || index >= Document.Instances.Count ? [] : [.. InstanceMenuItems(index, () => PushInto(index, null))];
     }
 
     /// <summary>Push In on the selected instance — the element under the selection, for an array.</summary>
