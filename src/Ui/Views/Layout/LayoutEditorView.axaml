@@ -620,6 +620,7 @@
                                    IsVisible="{Binding ActiveViewModel.ActiveTool, Converter={StaticResource EnumEqualsBool}, ConverterParameter=RoundedRect}"/>
                         <TextBox Text="{Binding ActiveViewModel.CornerRadiusText}" Width="70" FontSize="11" Padding="4,2"
                                  IsVisible="{Binding ActiveViewModel.ActiveTool, Converter={StaticResource EnumEqualsBool}, ConverterParameter=RoundedRect}"
+                                 ToolTip.Tip="Corner radius of the next rounded rectangle. auto rounds each corner by a fifth of the shorter side; type a length to fix it."
                                  LostFocus="OnCornerRadiusCommit" KeyDown="OnCornerRadiusKeyDown"/>
 
                         <!-- Path width + end style -->

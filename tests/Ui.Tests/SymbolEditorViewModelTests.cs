@@ -165,6 +165,31 @@ public class SymbolEditorViewModelTests
     }
 
     [Fact]
+    public void RoundedRect_CornerRadiusGrip_DragSetsClampedRadius_AndUndoReverts()
+    {
+        var sym = new EditableSymbol();
+        var rr  = new RoundedRectPrimitive { Cx = 0, Cy = 0, W = 200, H = 100, Radius = 10 };
+        sym.Primitives.Add(rr);
+        var vm = new SymbolEditorViewModel(sym);
+
+        vm.OnPointerPressed(0, -50, KeyModifiers.None);   // select via the top edge
+        vm.OnPointerReleased(0, -50);
+        var grips = vm.Overlay.CornerRadiusHandles;
+        Assert.NotNull(grips);
+        Assert.Equal((90.0, -50.0), grips![1]);           // top-right grip: R in from its own corner
+
+        vm.OnPointerPressed(90, -50, KeyModifiers.None);  // grab the top-right grip
+        vm.OnPointerMoved(-500, -50, leftDown: true);     // far past the middle
+        Assert.Equal(50.0, ((RoundedRectPrimitive)vm.ResizeLivePrimitive!).Radius, 1e-9); // half the shorter side
+        vm.OnPointerMoved(70, -50, leftDown: true);       // leftward on the right-hand side grows R
+        vm.OnPointerReleased(70, -50);
+
+        Assert.Equal(30.0, rr.Radius, 1e-9);
+        vm.UndoRedo.Undo();
+        Assert.Equal(10.0, rr.Radius, 1e-9);
+    }
+
+    [Fact]
     public void ZeroDrag_NoCommandOnStack()
     {
         var (_, vm, stack) = MakeVm();

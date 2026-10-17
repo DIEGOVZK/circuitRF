@@ -457,7 +457,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         InitScaleCommands();     // L1h — src/Ui/Layout/LayoutEditorViewModel.Scale.cs
 
         _pathWidthText     = LayoutUnits.Format(_pathWidthDbu, DisplayUnit, Model.DbuPerMicron);
-        _cornerRadiusText  = LayoutUnits.Format(_cornerRadiusDbu, DisplayUnit, Model.DbuPerMicron);
+        _cornerRadiusText  = FormatCornerRadius();
         _labelHeightText   = LayoutUnits.Format(_labelHeightDbu, DisplayUnit, Model.DbuPerMicron);
 
         // brief-snap-combobox-and-consistency.md R-cmb-1/2: _snapDbu/_displayUnit were just seeded onto
@@ -3422,15 +3422,27 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
 
     public static IReadOnlyList<PathEndStyle> AllPathEndStyles { get; } = Enum.GetValues<PathEndStyle>();
 
-    private long _cornerRadiusDbu;          // default 0 — a plain rect until the user sets one
+    /// <summary>Null is "auto": a fifth of the drawn rectangle's shorter side — the rule the symbol
+    /// editor's Rounded Rect uses. An absolute default cannot work across technologies (a radius visible
+    /// on a GaAs die is invisible on a board and the reverse), so the default scales with what is drawn
+    /// and a typed value fixes it. Typing "auto" or clearing the field returns to it.</summary>
+    private long? _cornerRadiusDbu;
+    internal const double AutoCornerRadiusFraction = 0.2;
     [ObservableProperty] private string _cornerRadiusText = "";
 
     public void CommitCornerRadiusText(string text)
     {
-        if (LayoutUnits.TryParse(text, DisplayUnit, Model.DbuPerMicron, out var dbu) && dbu >= 0)
+        string t = text.Trim();
+        if (t.Length == 0 || t.Equals("auto", StringComparison.OrdinalIgnoreCase))
+            _cornerRadiusDbu = null;
+        else if (LayoutUnits.TryParse(t, DisplayUnit, Model.DbuPerMicron, out var dbu) && dbu >= 0)
             _cornerRadiusDbu = dbu;
-        CornerRadiusText = LayoutUnits.Format(_cornerRadiusDbu, DisplayUnit, Model.DbuPerMicron);
+        CornerRadiusText = FormatCornerRadius();
     }
+
+    private string FormatCornerRadius() => _cornerRadiusDbu is { } r
+        ? LayoutUnits.Format(r, DisplayUnit, Model.DbuPerMicron)
+        : "auto";
 
     // R-lbl-1: this hardcoded value is ONLY the no-technology-resolved fallback now — the real default
     // comes from Technology.DefaultLabelHeightDbu, seeded once in ApplyTechResolution (see there for why
@@ -3449,7 +3461,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
     private void RefreshTypedFieldDisplays()
     {
         PathWidthText    = LayoutUnits.Format(_pathWidthDbu, DisplayUnit, Model.DbuPerMicron);
-        CornerRadiusText = LayoutUnits.Format(_cornerRadiusDbu, DisplayUnit, Model.DbuPerMicron);
+        CornerRadiusText = FormatCornerRadius();
         LabelHeightText  = LayoutUnits.Format(_labelHeightDbu, DisplayUnit, Model.DbuPerMicron);
     }
 
@@ -4212,7 +4224,8 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
                 if (!TryExpandDegenerateAxis(ref ay1, ref ay2, rawDy)) return null;
                 long rx1 = Math.Min(ax1, ax2), rx2 = Math.Max(ax1, ax2);
                 long ry1 = Math.Min(ay1, ay2), ry2 = Math.Max(ay1, ay2);
-                long radius = Math.Min(_cornerRadiusDbu, Math.Min(rx2 - rx1, ry2 - ry1) / 2);
+                long shorter = Math.Min(rx2 - rx1, ry2 - ry1);
+                long radius = Math.Min(_cornerRadiusDbu ?? (long)Math.Round(shorter * AutoCornerRadiusFraction), shorter / 2);
                 return new RoundedRectShape { Layer = CurrentLayerKey, X1 = rx1, Y1 = ry1, X2 = rx2, Y2 = ry2, CornerRadius = radius };
             }
 

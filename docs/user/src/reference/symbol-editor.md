@@ -139,6 +139,9 @@ Everything is undoable on the symbol's own undo stack, with full select / move /
 an inspector for the selected primitive's coordinates and text, a resize gripper, and copy/paste
 (including between symbols, and text to and from a schematic). Any schematic showing the cell re-renders live as you edit.
 
+A selected Rounded Rect also shows four round **corner-radius grips**, one near each corner on the top
+and bottom edges. Drag one along its edge to change the radius; it stops at half the shorter side.
+
 ## Locked symbols {#locked}
 
 The standard-library symbols (R, L, C, V, Tone, Term, GND, Port, FET, ZPort, SDD) and the

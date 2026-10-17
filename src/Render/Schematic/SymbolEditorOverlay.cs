@@ -73,6 +73,13 @@ public sealed record class SymbolEditorOverlay
     /// </summary>
     public (double X, double Y)? ResizeHandleTopLeft { get; init; }
 
+    /// <summary>
+    /// The four corner-radius grips of a single selected Rounded Rect, in symbol-local coordinates
+    /// (top-left, top-right, bottom-right, bottom-left), each R along the horizontal edge from its
+    /// own corner. Null for anything else.
+    /// </summary>
+    public IReadOnlyList<(double X, double Y)>? CornerRadiusHandles { get; init; }
+
     // ── Statics ───────────────────────────────────────────────────────────────
 
     private static readonly HashSet<int> s_emptyInts  = [];

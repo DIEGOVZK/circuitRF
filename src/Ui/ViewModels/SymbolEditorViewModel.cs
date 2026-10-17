@@ -202,6 +202,16 @@ public sealed partial class SymbolEditorViewModel : ObservableObject
     private bool   _resizeCornerIsTL;                                     // which corner is being dragged
     private bool   _resizeShift;
 
+    // ── Rounded Rect corner-radius gripper ───────────────────────────────────
+    // Four grips, one per corner, each R along the horizontal edge from its own corner (indices
+    // 0..3 = top-left, top-right, bottom-right, bottom-left) — the layout editor's arrangement
+    // (LayoutHandles.BuildRoundedRectHandles), so the grip follows the cursor on either side.
+
+    private bool   _isCornerRadiusDragging;
+    private int    _cornerRadiusPrimIdx = -1;
+    private int    _cornerRadiusGrip;
+    private double _cornerRadiusLive;
+
     // ── Selected-pin port remap ───────────────────────────────────────────────
 
     /// <summary>Port index of the currently selected pin; changing it fires RemapSymbolPinCommand.</summary>
@@ -515,6 +525,25 @@ public sealed partial class SymbolEditorViewModel : ObservableObject
             }
         }
 
+        IReadOnlyList<(double X, double Y)>? cornerRadiusHandles = null;
+        if (!IsLocked && ActiveTool == Tool.Select && _selection.Count == 1 && !_isDragging && !_isRubberBanding
+            && !_isResizing)
+        {
+            int idx = _selection.First();
+            if (idx >= 0 && idx < EditableSymbol.Primitives.Count
+                && EditableSymbol.Primitives[idx] is RoundedRectPrimitive committedRr)
+            {
+                var rr = committedRr;
+                if (_isCornerRadiusDragging && _cornerRadiusPrimIdx == idx)
+                {
+                    rr = (RoundedRectPrimitive)SymbolGeometry.Clone(committedRr);
+                    rr.Radius = _cornerRadiusLive;
+                    resizeLivePrim = rr;
+                }
+                cornerRadiusHandles = CornerRadiusHandlesOf(rr);
+            }
+        }
+
         // Set before Overlay so the inspector reads the correct value when reacting to Overlay changes.
         ResizeLivePrimitive = resizeLivePrim;
 
@@ -532,7 +561,26 @@ public sealed partial class SymbolEditorViewModel : ObservableObject
             UnmappedPortIndices = ComputeUnmappedPorts(),
             ResizeHandle        = resizeHandle,
             ResizeHandleTopLeft = resizeHandleTL,
+            CornerRadiusHandles = cornerRadiusHandles,
         };
+    }
+
+    private static (double X, double Y)[] CornerRadiusHandlesOf(RoundedRectPrimitive rr)
+    {
+        double x0 = rr.Cx - Math.Abs(rr.W) * 0.5, x1 = rr.Cx + Math.Abs(rr.W) * 0.5;
+        double y0 = rr.Cy - Math.Abs(rr.H) * 0.5, y1 = rr.Cy + Math.Abs(rr.H) * 0.5;
+        double r  = rr.Radius;
+        return [(x0 + r, y0), (x1 - r, y0), (x1 - r, y1), (x0 + r, y1)];
+    }
+
+    /// <summary>The radius a corner grip at <paramref name="grip"/> asks for with the cursor at
+    /// <paramref name="x"/>: the distance along the edge from that grip's own corner, clamped to
+    /// [0, half the shorter side] — the same clamp the layout editor's SetCornerRadius applies.</summary>
+    private static double CornerRadiusFromCursor(RoundedRectPrimitive rr, int grip, double x)
+    {
+        double hw = Math.Abs(rr.W) * 0.5;
+        double raw = grip is 1 or 2 ? rr.Cx + hw - x : x - (rr.Cx - hw);
+        return Math.Clamp(raw, 0, Math.Min(Math.Abs(rr.W), Math.Abs(rr.H)) * 0.5);
     }
 
     // ── Pointer handlers ──────────────────────────────────────────────────────
@@ -588,7 +636,8 @@ public sealed partial class SymbolEditorViewModel : ObservableObject
     {
         if (!leftDown)
         {
-            if (_isDragging || _isRubberBanding || _isDrawingTwoPoint || _isPinDragging || _isResizing)
+            if (_isDragging || _isRubberBanding || _isDrawingTwoPoint || _isPinDragging || _isResizing
+                || _isCornerRadiusDragging)
                 CancelOp();
 
             if (_drawPoints.Count > 0)
@@ -602,6 +651,16 @@ public sealed partial class SymbolEditorViewModel : ObservableObject
 
         if (ActiveTool == Tool.Select)
         {
+            if (_isCornerRadiusDragging)
+            {
+                if (_cornerRadiusPrimIdx >= 0 && _cornerRadiusPrimIdx < EditableSymbol.Primitives.Count
+                    && EditableSymbol.Primitives[_cornerRadiusPrimIdx] is RoundedRectPrimitive crr)
+                {
+                    _cornerRadiusLive = CornerRadiusFromCursor(crr, _cornerRadiusGrip, SnapToP(lx));
+                    RebuildOverlay();
+                }
+                return;
+            }
             if (_isResizing)
             {
                 double nx = SnapToP(lx);
@@ -704,6 +763,20 @@ public sealed partial class SymbolEditorViewModel : ObservableObject
     {
         if (ActiveTool == Tool.Select)
         {
+            if (_isCornerRadiusDragging)
+            {
+                _isCornerRadiusDragging = false;
+                if (!IsLocked && _cornerRadiusPrimIdx >= 0 && _cornerRadiusPrimIdx < EditableSymbol.Primitives.Count
+                    && EditableSymbol.Primitives[_cornerRadiusPrimIdx] is RoundedRectPrimitive crr
+                    && Math.Abs(_cornerRadiusLive - crr.Radius) > 1e-9)
+                {
+                    Execute(new Commands.Symbol.SetSymbolPrimitiveFieldCommand<double>(
+                        EditableSymbol, "Corner Radius", crr.Radius, _cornerRadiusLive, v => crr.Radius = v));
+                }
+                _cornerRadiusPrimIdx = -1;
+                RebuildOverlay();
+                return;
+            }
             if (_isResizing)
             {
                 _isResizing = false;
@@ -1028,6 +1101,24 @@ public sealed partial class SymbolEditorViewModel : ObservableObject
                 _resizeLiveX1     = x1; _resizeLiveY1 = y1; // BR tracking (used when !_resizeCornerIsTL)
                 _resizeLiveX0     = x0; _resizeLiveY0 = y0; // TL tracking (used when  _resizeCornerIsTL)
                 _resizeShift      = shift || EditableSymbol.Primitives[idx] is BitmapPrimitive;
+                RebuildOverlay();
+                return;
+            }
+        }
+
+        // Corner-radius grips after the resize grips: at R = 0 the top-left radius grip sits on the
+        // top-left resize grip and resizing keeps it; the top-right and bottom-left ones stay free.
+        int crGrip = !IsLocked && _selection.Count == 1 ? HitTestCornerRadiusGrip(lx, ly) : -1;
+        if (crGrip >= 0)
+        {
+            int idx = _selection.First();
+            if (idx >= 0 && idx < EditableSymbol.Primitives.Count
+                && EditableSymbol.Primitives[idx] is RoundedRectPrimitive crr)
+            {
+                _isCornerRadiusDragging = true;
+                _cornerRadiusPrimIdx    = idx;
+                _cornerRadiusGrip       = crGrip;
+                _cornerRadiusLive       = crr.Radius;
                 RebuildOverlay();
                 return;
             }
@@ -1479,6 +1570,16 @@ public sealed partial class SymbolEditorViewModel : ObservableObject
         return ResizeCorner.None;
     }
 
+    private int HitTestCornerRadiusGrip(double lx, double ly)
+    {
+        if (Overlay.CornerRadiusHandles is not { } handles) return -1;
+        double halfSize = 7.0 / Math.Max(CanvasZoom, 1e-6);
+        for (int i = 0; i < handles.Count; i++)
+            if (Math.Abs(lx - handles[i].X) <= halfSize && Math.Abs(ly - handles[i].Y) <= halfSize)
+                return i;
+        return -1;
+    }
+
     private void UpdateRubberBandSelection()
     {
         double rbX0 = Math.Min(_rbStartX, _rbCurX), rbY0 = Math.Min(_rbStartY, _rbCurY);
@@ -1523,6 +1624,8 @@ public sealed partial class SymbolEditorViewModel : ObservableObject
         _resizePrimIdx     = -1;
         _resizeCornerIsTL  = false;
         _resizeLiveX0      = 0; _resizeLiveY0 = 0;
+        _isCornerRadiusDragging = false;
+        _cornerRadiusPrimIdx    = -1;
         RebuildOverlay();
     }
 

@@ -246,6 +246,10 @@ shows a radius handle; a rounded rectangle shows corner-radius and bounding-box 
 edge to **convert** it between Line, Arc and Cubic, so a polygon can grow a curve without being
 redrawn.
 
+A new rounded rectangle takes its corner radius from the toolbar's **Radius** field. It reads
+**auto** until you type a length: each corner is rounded by a fifth of the shorter side, so the
+rounding shows at any scale. Type a length to fix the radius, or **auto** to go back.
+
 Self-intersection is allowed during a drag, flagged on release, and offered an automatic repair — it is
 not rejected mid-gesture.
 

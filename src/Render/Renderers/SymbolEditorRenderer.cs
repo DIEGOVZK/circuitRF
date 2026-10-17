@@ -505,6 +505,20 @@ internal static class SymbolEditorRenderer
         if (overlay.ResizeHandle.HasValue)        DrawGrip(overlay.ResizeHandle.Value);
         if (overlay.ResizeHandleTopLeft.HasValue) DrawGrip(overlay.ResizeHandleTopLeft.Value);
 
+        // Corner-radius grips — filled circles, so they read apart from the square resize grips.
+        if (overlay.CornerRadiusHandles is { } crHandles)
+        {
+            float cr = (float)Math.Max(2.5f, zoom * 3.5);
+            using var crFill   = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill,   Color = theme.SelectionBox };
+            using var crStroke = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1f, Color = theme.Background };
+            foreach (var (hx, hy) in crHandles)
+            {
+                float cx = (float)((hx - panX) * zoom), cy = (float)((hy - panY) * zoom);
+                canvas.DrawCircle(cx, cy, cr, crFill);
+                canvas.DrawCircle(cx, cy, cr, crStroke);
+            }
+        }
+
         if (overlay.RubberBand.HasValue)
         {
             var (rx0, ry0, rx1, ry1) = overlay.RubberBand.Value;

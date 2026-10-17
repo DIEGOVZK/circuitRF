@@ -57,6 +57,23 @@ public class LayoutDrawingToolsTests
     }
 
     [Fact]
+    public void RoundedRect_CornerRadius_DefaultsToAuto_AFifthOfTheShorterSide()
+    {
+        var vm = MakeVm(FreshModel());
+        vm.ActiveTool = LayoutEditorViewModel.Tool.RoundedRect;
+        vm.CommitCornerRadiusText("1000");
+        vm.CommitCornerRadiusText("auto");                // typing auto returns to the default
+        Assert.Equal("auto", vm.CornerRadiusText);
+
+        vm.OnPointerPressed(0, 0, KeyModifiers.None);
+        vm.OnPointerMoved(10000, 4000, true, KeyModifiers.None);
+        vm.OnPointerReleased(10000, 4000, KeyModifiers.None);
+
+        var rr = Assert.IsType<RoundedRectShape>(Assert.Single(vm.Model.Shapes));
+        Assert.Equal(800, rr.CornerRadius);              // 0.2 x 4000
+    }
+
+    [Fact]
     public void Circle_PressIsCenter_DragDistanceIsRadius()
     {
         var vm = MakeVm(FreshModel());
