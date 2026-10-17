@@ -653,7 +653,9 @@
                         <!-- R-stk2-6: the card list OPENS at roughly one conductor card and the
                              splitter is there for anyone who wants it the other way round. The height
                              tracks the card template rather than being a pixel count typed here —
-                             see TechEditorMetrics. -->
+                             see TechEditorMetrics. This is the height BEFORE the first layout: once
+                             the drawing has measured, the code-behind moves the splitter to just
+                             below it (TechEditorView.OnStackupTabLayoutUpdated). -->
                         <RowDefinition Height="{x:Static lay:TechEditorMetrics.StackupCardPaneOpeningHeight}"
                                        MinHeight="{x:Static lay:TechEditorMetrics.StackupCardPaneMinHeight}"/>
                     </Grid.RowDefinitions>

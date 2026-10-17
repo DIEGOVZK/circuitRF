@@ -74,6 +74,11 @@ public partial class TechEditorView : UserControl
         // seen before the splitter's own handler starts a drag with it.
         StackupSplitter.AddHandler(PointerPressedEvent, OnStackupSplitterPressed, RoutingStrategies.Tunnel);
 
+        // The tab OPENS fitted, too: the drawing's height follows the pane's width, so a fixed opening
+        // split leaves a gap below the drawing in a wide window. Once, on the first layout that has
+        // both panes open and a drawing measured — after that the splitter is the user's.
+        StackupTabGrid.LayoutUpdated += OnStackupTabLayoutUpdated;
+
         // R-stk3-9 — Esc clears the stackup selection, and R-stk4-6 — Esc reverts an open inline
         // editor before it does.
         //
@@ -255,8 +260,41 @@ public partial class TechEditorView : UserControl
         if (StackupSplitter is not null) StackupSplitter.IsVisible = drawing && cards;
     }
 
+    /// <summary>True until the opening fit has been applied, or the user has taken the splitter
+    /// before it could be.</summary>
+    private bool _openingFitPending = true;
+
+    /// <summary>
+    /// Fits the drawing (<see cref="FitStackupDrawing"/>) the first time the tab is laid out with both
+    /// panes open, so the card pane starts butted against the bottom of the cross-section rather than
+    /// at a fixed height that leaves a gap whose size depends on the window's width.
+    ///
+    /// <para><b>A layout callback, not <c>OnDataContextChanged</c></b>: the fit reads the grid's
+    /// arranged height and the drawing's measured one, and neither exists until the tab has been
+    /// laid out — which, for a technology opened on another tab, is whenever Stackup is first shown.
+    /// A pane opened collapsed keeps it pending until both are open. Writing the card row starts one
+    /// more layout pass; the flag is cleared first, so that pass does nothing.</para>
+    /// </summary>
+    private void OnStackupTabLayoutUpdated(object? sender, System.EventArgs e)
+    {
+        if (!_openingFitPending)
+        {
+            StackupTabGrid.LayoutUpdated -= OnStackupTabLayoutUpdated;
+            return;
+        }
+        if (_subscribedVm is not { StackupDrawingExpanded: true, StackupCardsExpanded: true }) return;
+        if (StackupTabGrid.Bounds.Height <= 0 || StackupDrawing.DesiredSize.Height <= 0) return;
+
+        _openingFitPending = false;
+        StackupTabGrid.LayoutUpdated -= OnStackupTabLayoutUpdated;
+        FitStackupDrawing();
+    }
+
     private void OnStackupSplitterPressed(object? sender, PointerPressedEventArgs e)
     {
+        // Any press on the splitter is the user taking it; an opening fit still pending would move it
+        // back out from under them.
+        _openingFitPending = false;
         if (e.ClickCount < 2) return;
         FitStackupDrawing();
         e.Handled = true;
@@ -312,6 +350,7 @@ public partial class TechEditorView : UserControl
     internal void ApplyStackupSplitForCapture()
     {
         if (StackupTabGrid is null || StackupDrawing is null) return;
+        _openingFitPending = false;
 
         var rows = StackupTabGrid.RowDefinitions;
         if (rows.Count < 4) return;
