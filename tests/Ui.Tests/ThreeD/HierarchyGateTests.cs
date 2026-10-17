@@ -339,6 +339,7 @@ public sealed class HierarchyGateTests : IDisposable
             Instances = [new C3dInstance { Name = "U1", CellRef = "../../Board", View = C3dInstanceView.Layout }],
         }));
         var original = Solids(vm.Elaboration!);
+        var colours = Colours(vm);
         told.Clear();
         await vm.FlattenAsync(0);
         Settle(vm);
@@ -348,21 +349,18 @@ public sealed class HierarchyGateTests : IDisposable
         Assert.True(vm.Elaboration!.Ok, string.Join(" ", vm.Elaboration.Refusals));
         Assert.Equal(original, Solids(vm.Elaboration));
 
-        // A flattened conductor has no drawing layer: it draws in its material's colour (the swatch the Materials editor
-        // shows), never the stackup edge ink.
-        var copper = vm.Elaboration.Technology!.FindMaterial("Copper")!;
-        var (r, g, b) = copper.Color is { } hex && Rgba.TryParseHex(hex, out var stated) ? (stated.R, stated.G, stated.B)
-                      : C3dMaterialRole.ImpliedColour(C3dMaterialRole.Implied(copper));
-        var drawn = vm.Viewer.Scene.Objects.Where(o => o.Material == "Copper").ToList();
-        Assert.NotEmpty(drawn);
-        Assert.All(drawn, o => Assert.Equal(Scene3DVertex.Pack(r, g, b, 255), o.Rgba));
+        // A flattened conductor remembers its drawing layer and draws in that layer's colour, as the placed layout drew it —
+        // the pad's layer and the barrel's differ — never the stackup edge ink.
+        Assert.Equal(colours, Colours(vm));
+        Assert.True(vm.Viewer.Scene.Objects.Where(o => o.Material == "Copper").Select(o => o.Rgba).Distinct().Count() > 1);
     }
 
     /// <summary>A stackup whose dielectric rows state their values and name no material (a Gerber import's): flatten offers
-    /// the materials, ONE for rows that agree, adds them when confirmed, and keeps the problem; a second instance of the same
-    /// cell, flattened by a later command, lands on those materials and adds nothing.</summary>
+    /// the materials, ONE PER ROW even where the rows agree (each slab keeps saying which row it is), adds them when confirmed,
+    /// and keeps the problem; a second instance of the same cell, flattened by a later command, lands on those materials by name
+    /// and adds nothing.</summary>
     [Fact]
-    public async Task Flatten_DielectricRowsNamingNoMaterial_AddsOneSharedMaterial_AndASecondInstanceAddsNone()
+    public async Task Flatten_DielectricRowsNamingNoMaterial_AddsOneMaterialPerRow_AndASecondInstanceAddsNone()
     {
         string ws = Workspace();
         string techPath = Path.Combine(ws, "tech.ctech");
@@ -398,11 +396,10 @@ public sealed class HierarchyGateTests : IDisposable
         };
 
         await vm.FlattenAsync(0);
-        var made = Assert.Single(Assert.Single(added));
-        Assert.Equal("Dielectric 1", made.Name);
-        Assert.Contains("'Dielectric 1' (εr 3.17, tanδ 0.0041)", asked, StringComparison.Ordinal);
+        Assert.Equal(["Dielectric 1", "Dielectric 2"], Assert.Single(added).Select(m => m.Name));
+        Assert.Contains("'Dielectric 1' (εr 3.17, tanδ 0.0041) and 'Dielectric 2' (εr 3.17, tanδ 0.0041)", asked, StringComparison.Ordinal);
         Assert.Equal("U2", Assert.Single(vm.Document.Instances).Name);
-        Assert.DoesNotContain(vm.Document.Objects, o => o.Material == "Dielectric 2");
+        Assert.Contains(vm.Document.Objects, o => o.Material == "Dielectric 2");
 
         // The next command, on the technology as it now stands: nothing to add, the same materials, the same problem.
         C3dPersistence.SaveToFile(c3d, vm.Document);
@@ -419,6 +416,71 @@ public sealed class HierarchyGateTests : IDisposable
         Assert.Equal(materialsBefore, vm.Document.Objects.Select(o => o.Material).ToHashSet());
         Assert.True(vm.Elaboration!.Ok, string.Join(" ", vm.Elaboration.Refusals));
         Assert.Equal(original, Solids(vm.Elaboration));
+    }
+
+    /// <summary>A flatten that brings up more than one part gathers them in a group named after the instance, says so first,
+    /// and leaves that group selected; Ungroup gives the loose parts back.</summary>
+    [Fact]
+    public void Flatten_GathersItsPartsInAGroupNamedAfterTheInstance_AndSelectsIt()
+    {
+        string ws = Workspace();
+        LayoutCell(ws, "Die");
+        var vm = Open(C3dCell(ws, "Pkg", new C3dDocument
+        {
+            Instances = [new C3dInstance { Name = "U1", CellRef = "../../Die", View = C3dInstanceView.Layout }],
+        }));
+        var (result, question) = vm.PlanFlatten(0);
+        Assert.True(result is not null, vm.StatusMessage);
+        Assert.True(result!.Objects.Count > 1);
+        Assert.Equal("U1", result.Group);
+        Assert.Contains("in group 'U1'", question, StringComparison.Ordinal);
+
+        var colours = Colours(vm);
+        vm.ApplyFlatten(0, result);
+        Settle(vm);
+        Assert.All(vm.Document.Objects, o => Assert.Equal("U1", o.Group));
+        // Drawn as it was: each copper solid remembers its drawing layer and takes that layer's colour, not its material's.
+        Assert.Contains(vm.Document.Objects, o => o.DrawingLayer == new LayerKey(1, 0));
+        Assert.Equal(colours, Colours(vm));
+        Assert.DoesNotContain("DrawingLayer", C3dPersistence.SerializeForRun(vm.Document), StringComparison.Ordinal);
+        Assert.True(vm.Viewer.Selection.Count > 1);
+        Assert.Equal(vm.SceneObjectsOfGroup("U1").Count, vm.Viewer.Selection.Count);
+        Assert.Equal("U1", Assert.Single(vm.SelectedTreeItems).GroupPath);
+
+        vm.Ungroup("U1");
+        Assert.All(vm.Document.Objects, o => Assert.Null(o.Group));
+    }
+
+    /// <summary>A 3D child's groups come up beneath the new group under names free in the parent, inside the instance's own
+    /// group; a name already taken gives <c>U1_2</c>, not <c>U2</c>. A child of one object makes no group of one.</summary>
+    [Fact]
+    public void FlattenOne_NestsTheChildsGroupsUnderTheInstancesGroup_AndASinglePartMakesNone()
+    {
+        string ws = Workspace();
+        C3dCell(ws, "Pair", new C3dDocument
+        {
+            Objects = [new C3dBox { Name = "a", Size = new(10 * Um, 10 * Um, 10 * Um), Group = "match" },
+                       new C3dBox { Name = "b", Min = new(20 * Um, 0, 0), Size = new(10 * Um, 10 * Um, 10 * Um) }],
+        });
+        C3dCell(ws, "One", new C3dDocument { Objects = [new C3dBox { Name = "c", Size = new(10 * Um, 10 * Um, 10 * Um), Group = "match" }] });
+        var parent = new C3dDocument
+        {
+            Objects = [new C3dBox { Name = "lid", Size = new(Um, Um, Um), Group = "U1/match" }],
+            Instances = [new C3dInstance { Name = "U1", CellRef = "../../Pair", Group = "pa" },
+                         new C3dInstance { Name = "U3", CellRef = "../../One", Group = "pa" }],
+        };
+        string path = C3dCell(ws, "Pkg", parent);
+        string cws = Path.Combine(ws, ".cws");
+        var e = C3dElaborator.ElaborateOnce(parent, path, cws);
+
+        var r = C3dHierarchy.FlattenOne(parent, path, 0, e, e.Technology, null, cws);
+        Assert.Null(r.Refusal);
+        Assert.Equal("pa/U1_2", r.Group);
+        Assert.Equal(["pa/U1_2/match_2", "pa/U1_2"], r.Objects.Select(o => o.Group));
+
+        var one = C3dHierarchy.FlattenOne(parent, path, 1, e, e.Technology, null, cws);
+        Assert.Null(one.Group);
+        Assert.Equal("pa", Assert.Single(one.Objects).Group);
     }
 
     // ── 7. New 3D View from Layout ───────────────────────────────────────────────────────────
@@ -597,6 +659,10 @@ public sealed class HierarchyGateTests : IDisposable
 
     /// <summary>The problem's solids up to names and order: the material's VALUES (a layout's stackup entry and the
     /// technology material it became are one material under two names), the role, and the geometry to a picometre.</summary>
+    /// <summary>Every drawn solid's and sheet's colour, as a sorted list: what a flatten must not change.</summary>
+    private static List<uint> Colours(C3dEditorViewModel vm)
+        => [.. vm.Viewer.Scene.Objects.Where(o => o.Material is not null).Select(o => o.Rgba).Order()];
+
     private static List<string> Solids(C3dElaboration e)
     {
         string V(string name) => e.Materials.Single(m => m.Name == name) is var m

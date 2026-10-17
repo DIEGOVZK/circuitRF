@@ -43,6 +43,10 @@ public sealed record C3dFlattenResult(IReadOnlyList<C3dObject> Objects, IReadOnl
     /// Empty when the refusal has another cause, or when one of the materials could not be stated (its values unknown, or
     /// the technology holding that name with other values).</summary>
     public IReadOnlyList<TechMaterial> MissingMaterials { get; init; } = [];
+
+    /// <summary>The path of the group the flatten gathered its parts in, named after the instance; null when it made none (a
+    /// single part, or a refusal).</summary>
+    public string? Group { get; init; }
 }
 
 /// <summary>A New 3D View from Layout: the document, and the ports that could not be carried across (with why).</summary>
@@ -222,10 +226,12 @@ public static class C3dHierarchy
     /// come up with their placements composed; a layout child becomes the solids <paramref name="elaboration"/> (this
     /// document's own, current) holds for it. <paramref name="tech"/> is this document's technology, which every
     /// flattened material must mean the same in; <paramref name="tempC"/> the temperature they are compared at.
+    /// <paramref name="takenGroups"/> are group names in use that <paramref name="doc"/> does not show (Flatten all's
+    /// instances of this level, not yet written back).
     /// </summary>
     public static C3dFlattenResult FlattenOne(C3dDocument doc, string docPath, int index, C3dElaboration elaboration,
                                               Technology? tech, TechnologyCache? cache = null, string? workspaceCws = null,
-                                              double tempC = EmSetup.DefaultOperatingTempC)
+                                              double tempC = EmSetup.DefaultOperatingTempC, IEnumerable<string>? takenGroups = null)
     {
         var inst = doc.Instances[index];
         string baseDir = Path.GetDirectoryName(Path.GetFullPath(docPath))!;
@@ -238,9 +244,24 @@ public static class C3dHierarchy
         var flat = inst.View == C3dInstanceView.ThreeD
             ? FlattenThreeD(doc, docPath, inst, file, baseDir, used, tech, cache, workspaceCws, tempC)
             : FlattenLayout(doc, inst, elaboration, used, tech);
-        // 3D editor groups — what the instance held lands in the instance's group; the child's own groups were the child's.
-        foreach (var o in flat.Objects) o.Group = inst.Group;
-        foreach (var i in flat.Instances) i.Group = inst.Group;
+        // 3D editor groups — what the instance held lands in the instance's group, one level down in a new group named after
+        // the instance when it held more than one thing: a flatten's many parts stay one thing to select, move or hide, and
+        // Ungroup gives them back. A 3D child's own groups come up beneath that one. A single part needs no group of one.
+        if (flat.Objects.Count + flat.Instances.Count > 1)
+        {
+            var taken = C3dGroups.Names(doc);
+            if (takenGroups is not null) taken.UnionWith(takenGroups);
+            string into = C3dGroups.Join([.. C3dGroups.Segments(inst.Group), FreeGroupName(inst.Name, taken)])!;
+            var beneath = ChildGroupPaths(into, taken);
+            foreach (var o in flat.Objects) o.Group = beneath(o.Group);
+            foreach (var i in flat.Instances) i.Group = beneath(i.Group);
+            flat = flat with { Group = into };
+        }
+        else
+        {
+            foreach (var o in flat.Objects) o.Group = inst.Group;
+            foreach (var i in flat.Instances) i.Group = inst.Group;
+        }
         // brief-em3d-92 — and what the instance's transparency multiplied onto each part is written onto the part itself, so
         // flattening does not change how anything is drawn (C3dTransparency.Compose; a part at its default takes the instance's).
         if (inst.Transparency is not null)
@@ -263,6 +284,26 @@ public static class C3dHierarchy
             foreach (var i in flat.Instances) i.Model = false;
         }
         return flat;
+    }
+
+    /// <summary><paramref name="name"/> as a group name not in <paramref name="taken"/> — else <c>name_2</c>, <c>name_3</c> … — added
+    /// to it. Not <c>U2</c> for a clash on <c>U1</c>: that reads as another instance.</summary>
+    private static string FreeGroupName(string name, HashSet<string> taken)
+        => taken.Add(name) ? name : C3dOperations.NextFreeName(name + "_1", taken);
+
+    /// <summary>A flattened part's group path: a 3D child's group <c>match</c> becomes <c>into/match</c>, each level under a name
+    /// free in <paramref name="taken"/> (a group's name is unique in the whole document); no group becomes <paramref name="into"/>.
+    /// The same child path always maps the same way, so an array's elements share their child's groups.</summary>
+    private static Func<string?, string> ChildGroupPaths(string into, HashSet<string> taken)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        string Map(string path)
+        {
+            if (map.TryGetValue(path, out var known)) return known;
+            string parent = C3dGroups.ParentOf(path) is { } p ? Map(p) : into;
+            return map[path] = parent + C3dGroups.Separator + FreeGroupName(C3dGroups.NameOf(path), taken);
+        }
+        return path => string.IsNullOrEmpty(path) ? into : Map(path);
     }
 
     /// <summary>Each element of an instance: its suffix for names (empty for a plain instance) and its placement in the
@@ -363,6 +404,8 @@ public static class C3dHierarchy
         // material of this view's technology. Each entry becomes the technology's material of the same name, else the one
         // with equal values — never one that merely shares a name.
         var byName = e.Materials.ToDictionary(m => m.Name, StringComparer.Ordinal);
+        var rows = solids.Select(s => s.Name).Concat(sheets.Select(s => s.Name))
+                         .Select(n => e.Origins.GetValueOrDefault(n)?.StackupEntry).OfType<string>().ToHashSet(StringComparer.Ordinal);
         var rename = new Dictionary<string, string>(StringComparer.Ordinal);
         var unmatched = new List<string>();
         var missing = new List<TechMaterial>();
@@ -373,16 +416,18 @@ public static class C3dHierarchy
             string? match = C3dProblemAssembly.ObjectMaterial(tech, n) is { } same && (values is null || SameValues(C3dElaborator.MaterialValues(same, EmSetup.DefaultOperatingTempC), values))
                 ? same.Name
                 : values is null ? null
-                : tech?.ResolvedMaterials.FirstOrDefault(m => SameValues(C3dElaborator.MaterialValues(m, EmSetup.DefaultOperatingTempC), values))?.Name;
+                // A material named after ANOTHER of the stackup's rows is that row's, not this one's: equal values do not make the
+                // Dielectric 2 slab a Dielectric 1 slab.
+                : tech?.ResolvedMaterials.FirstOrDefault(m => SameValues(C3dElaborator.MaterialValues(m, EmSetup.DefaultOperatingTempC), values) &&
+                                                              !(rows.Contains(m.Name) && m.Name != n))?.Name;
             if (match is null)
             {
                 unmatched.Add(values is null ? $"'{n}'" : $"'{n}' ({Describe(values)})");
                 // A name the technology already holds with other values cannot be added beside it; nor can unknown values.
                 if (values is null || C3dProblemAssembly.ObjectMaterial(tech, n) is not null) stated = false;
-                // One new material per distinct set of values: rows that agree share it, as the technology's own would match
-                // them (by values), so a second flatten of the same cell adds nothing.
-                else if (!missing.Any(m => SameValues(C3dElaborator.MaterialValues(m, EmSetup.DefaultOperatingTempC), values)))
-                    missing.Add(MaterialOf(n, values));
+                // One new material per row, named after it, even where rows agree: each slab keeps saying which row it is. A
+                // second flatten of the same cell finds them by name and adds nothing.
+                else missing.Add(MaterialOf(n, values));
             }
             else rename[n] = match;
         }
@@ -411,6 +456,7 @@ public static class C3dHierarchy
             if (made is null) return C3dFlattenResult.Refuse($"'{NameOf(item)}' of '{inst.Name}' has a shape a 3D view's objects cannot hold.");
             made.Name = Unique(Flat(NameOf(item)), used);
             made.Material = rename[made.Material!];
+            made.DrawingLayer = e.Origins.GetValueOrDefault(NameOf(item))?.DrawingLayer;   // drawn in its layer's colour, as it was
             objects.Add(made);
         }
         var notes = new List<string>();
@@ -661,12 +707,14 @@ public static class C3dHierarchy
             var e = elaborate(work);
             var next = new List<C3dInstance>();
             var added = new List<C3dObject>();
+            var nextGroups = new HashSet<string>(StringComparer.Ordinal);       // the groups `next` names, not in `work` yet
             for (int i = 0; i < work.Instances.Count; i++)
             {
-                var r = FlattenOne(work, docPath, i, e, tech, cache, workspaceCws);
+                var r = FlattenOne(work, docPath, i, e, tech, cache, workspaceCws, takenGroups: nextGroups);
                 if (r.Refusal is { } why) return (null, why, notes, r.MissingMaterials);
                 added.AddRange(r.Objects);
                 next.AddRange(r.Instances);
+                foreach (var ni in r.Instances) nextGroups.UnionWith(C3dGroups.Segments(ni.Group));
                 foreach (string n in r.Notes) if (!notes.Contains(n)) notes.Add(n);
                 // Later instances' new names must not collide with what this one just added.
                 work.Objects.AddRange(r.Objects);

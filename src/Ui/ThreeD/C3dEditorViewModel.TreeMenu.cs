@@ -207,7 +207,7 @@ public sealed partial class C3dEditorViewModel
     internal static void SetMaterialOf(C3dObject o, string material)
     {
         if (o is C3dOperation && C3dOperands.Inner(o) is { } inner) SetMaterialOf(inner, material);
-        else o.Material = material;
+        else if (o.Material != material) (o.Material, o.DrawingLayer) = (material, null);   // a flattened layer's colour was its old material's
     }
 
     /// <summary>The scene objects a tree node stands for: an instance's parts, or the node's own object.</summary>

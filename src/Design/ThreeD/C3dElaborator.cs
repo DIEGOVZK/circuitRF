@@ -991,7 +991,7 @@ public sealed class C3dElaborator(TechnologyCache? technologies = null, Geometry
             _origins[name] = new Em3dObjectOrigin(role switch
             {
                 Em3dRole.Conductor => Em3dObjectKind.Conductor, Em3dRole.Air => Em3dObjectKind.Air, _ => Em3dObjectKind.Body,
-            }, null, null, null);
+            }, null, obj.DrawingLayer, null);         // the layer only colours it; no stackup entry, so nothing treats it as board
             if (role == Em3dRole.Conductor) Net(name, name);
         }
 

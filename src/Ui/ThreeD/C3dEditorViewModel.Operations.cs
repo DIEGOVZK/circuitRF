@@ -323,9 +323,18 @@ public sealed partial class C3dEditorViewModel
             _selectAfterAdopt = null;
             Viewer.SetSelection(names.SelectMany(n => SceneObjectsNamed(n)).Select(o => Scene3DItem.OfObject(o.Id)));
         }
+        if (_selectGroupAfterAdopt is { } group)
+        {
+            _selectGroupAfterAdopt = null;
+            if (C3dGroups.MembersOf(Document, group).Count > 0) SelectGroupRow(group);
+        }
     }
 
     private List<string>? _selectAfterAdopt;
+
+    /// <summary>A group made by an edit whose members the scene does not hold yet (Flatten): its row and all of it are the
+    /// selection once they are drawn.</summary>
+    private string? _selectGroupAfterAdopt;
 
     private IEnumerable<Scene3DObject> SceneObjectsNamed(string name)
     {

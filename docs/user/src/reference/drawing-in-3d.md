@@ -316,8 +316,10 @@ walls, a row of pads — is picked, moved and changed as one thing.
   renamed the same way); a member copied on its own stays in its group.
 - Grouping, ungrouping and renaming are each **one undo step**, and the groups are saved in the `.c3d`: each member
   names its group — `"Group": "stage1/match"` — so a group can never be left empty or point at nothing.
-  **Flatten** puts a placed cell's contents in that instance's group, and **Group into Cell** gives the new instance
-  the group its contents were in. Groups are only organisation: the solver never sees them.
+  **Flatten** gathers a placed cell's contents in a new group named after the instance (`U1`, or `U1_2` when that
+  name is taken), inside the instance's own group, and selects it; a placed 3D cell's own groups come up inside it.
+  A cell that flattens to a single object makes no group. **Group into Cell** gives the new instance the group its
+  contents were in. Groups are only organisation: the solver never sees them.
 - A group's **Transparency** is one row too — see [Transparency](#transparency) — and so is its **Model** — see
   [Model](#model).
 
@@ -1150,7 +1152,9 @@ metal on top — bounded by its board outline, the die edge. Its objects are nam
 - **Push Into Cell** (**Ctrl/Cmd+]**) opens a 3D child in this editor, in context — the parent drawn dimmed
   around it — or a layout child in the layout editor. **Pop Out** (**Ctrl/Cmd+[**) returns.
 - **Flatten** replaces an instance with its objects (a layout's become solids; it asks first, stating how
-  many). **Group into Cell…** does the reverse for selected objects, without moving them.
+  many), gathered in a group named after the instance — **Ungroup** to loosen them. A layout's solids keep the
+  colour of the layer they were drawn on. When the technology has no material for a stackup row, Flatten offers to
+  add one named after that row, with its values — one per row, even where two rows have the same values. **Group into Cell…** does the reverse for selected objects, without moving them.
 
 ### A placed layout's dielectric {#layout-dielectric}
 

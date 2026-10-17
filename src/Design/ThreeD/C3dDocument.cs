@@ -171,6 +171,13 @@ public abstract class C3dObject : IC3dBindable
     [JsonPropertyOrder(12)]
     public TechAppearance? Appearance { get; set; }
 
+    /// <summary>The layout drawing layer a solid flattened out of a placed layout was built from. The view colours it with that
+    /// layer's colour, as it coloured the placed layout — a material's own <c>Color</c> still wins, as it does there — so flattening
+    /// changes nothing drawn. Drawing only: no solver reads it, a run's document never holds it, and changing the object's
+    /// material drops it. Omitted: coloured by its material.</summary>
+    [JsonPropertyOrder(12)]
+    public LayerKey? DrawingLayer { get; set; }
+
     /// <summary>brief-em3d-93 R-em3d93-1 — whether the object is in the solve. False keeps it drawn, pickable and editable and
     /// leaves it out of every simulation run (<see cref="C3dModelled"/>). Written only when false. An operation carries it for
     /// its result (and the Tools it keeps), as it carries <see cref="Hidden"/>; the object it wraps has none of its own. A

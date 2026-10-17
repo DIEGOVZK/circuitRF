@@ -246,7 +246,8 @@ public sealed partial class C3dEditorViewModel
         if (r.Refusal is { } why) { StatusMessage = why; add = []; return (null, null); }
         string? question = inst.View == C3dInstanceView.Layout
             ? $"Flatten {inst.Name} writes its layout's {r.Objects.Count:N0} elaborated solid{(r.Objects.Count == 1 ? "" : "s")} into this view as " +
-              "objects. The link to the layout is then gone: a later edit of the layout will not reach them. Flatten?"
+              $"objects{(r.Group is { } g ? $", in group '{C3dGroups.NameOf(g)}'" : "")}. The link to the layout is then gone: a later edit of " +
+              "the layout will not reach them. Flatten?"
             : null;
         if (add.Count > 0) question = MaterialsSentence($"{inst.Name}'s", add, e.TechnologyPath) + " " + (question ?? "Flatten?");
         return (r, question);
@@ -295,7 +296,8 @@ public sealed partial class C3dEditorViewModel
         return false;
     }
 
-    /// <summary>The flatten's one undo entry: the instance replaced by the result's instances, its objects appended.</summary>
+    /// <summary>The flatten's one undo entry: the instance replaced by the result's instances, its objects appended. What
+    /// came out is then the selection — its group's, when it made one.</summary>
     public void ApplyFlatten(int index, C3dFlattenResult r)
     {
         var inst = Document.Instances[index];
@@ -305,9 +307,12 @@ public sealed partial class C3dEditorViewModel
         instances.RemoveAt(index);
         instances.InsertRange(index, r.Instances.Select(C3dPersistence.SerializeInstance));
         Viewer.SetSelection([]);
+        if (r.Group is not null) _selectGroupAfterAdopt = r.Group;
+        else _selectAfterAdopt = [.. r.Objects.Select(o => o.Name), .. r.Instances.Select(i => i.Name)];
         Push(new C3dListsEdit($"Flatten {inst.Name}", before, (objects, instances), ApplyLists));
         StatusMessage = $"Flattened {inst.Name}: {r.Objects.Count:N0} object{(r.Objects.Count == 1 ? "" : "s")}" +
-                        (r.Instances.Count > 0 ? $" and {r.Instances.Count} instance{(r.Instances.Count == 1 ? "" : "s")}" : "") + " in its place." +
+                        (r.Instances.Count > 0 ? $" and {r.Instances.Count} instance{(r.Instances.Count == 1 ? "" : "s")}" : "") +
+                        (r.Group is { } g ? $" in its place, gathered in group '{C3dGroups.NameOf(g)}'." : " in its place.") +
                         (r.Notes.Count > 0 ? " " + string.Join(" ", r.Notes) : "");
     }
 
