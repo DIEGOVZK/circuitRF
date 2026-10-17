@@ -74,6 +74,24 @@ public class HitTestTests
     }
 
     [Fact]
+    public void RectHit_Crossing_SelectsGroundSittingDirectlyOnAPin()
+    {
+        var (edit, _, _) = BuildSmall();
+        // Resistor at (0,0) has its lower pin at (0,200); a GND placed there touches it with no wire.
+        var gnd = new EditableComponent { InstanceName = "GND1", Symbol = SymbolKind.Ground, X = 0, Y = 200 };
+        edit.Components.Add(gnd);
+        var (render, index) = edit.BuildRenderModel();
+
+        // Right-to-left rect over R1's upper half only — it does not reach the GND glyph.
+        var hits = SchematicHitTest.TestRect(edit, render, index, 300, -300, -300, -100,
+            SchematicHitTest.SelectMode.Crossing);
+        var ids = hits.Select(h => h.Id).ToHashSet();
+
+        Assert.Contains(edit.Components[0].Id, ids);
+        Assert.Contains(gnd.Id, ids);
+    }
+
+    [Fact]
     public void NearestPort_FindsPort_WithinTolerance()
     {
         var (edit, render, index) = BuildSmall();

@@ -453,6 +453,23 @@ public static class SchematicHitTest
         var result   = new List<HitResult>(initial);
         const double tol = 8.0;
 
+        // Every not-yet-selected component with an attached pin at (x, y).
+        void AddComponentsAt(double x, double y)
+        {
+            foreach (var other in editModel.Components)
+            {
+                if (selected.Contains(other.Id)) continue;
+                foreach (var oDef in editModel.PortDefsOf(other))
+                {
+                    if (other.IsPortDetached(oDef.PortIndex)) continue;
+                    var (opx, opy) = editModel.PortWorldOf(other, oDef);
+                    if (!SchematicGeometry.CoincidentPoints(x, y, opx, opy, tol)) continue;
+                    if (selected.Add(other.Id))
+                        result.Add(new HitResult(HitKind.Component, other.Id));
+                }
+            }
+        }
+
         foreach (var hit in initial.Where(h => h.Kind == HitKind.Component))
         {
             var comp = editModel.FindComponent(hit.Id);
@@ -462,6 +479,9 @@ public static class SchematicHitTest
             {
                 if (comp.IsPortDetached(def.PortIndex)) continue;
                 var (cpx, cpy) = editModel.PortWorldOf(comp, def);
+
+                // A part sitting directly on this pin (a GND dropped onto it, no wire between).
+                AddComponentsAt(cpx, cpy);
 
                 foreach (var wire in editModel.Wires)
                 {
@@ -479,18 +499,7 @@ public static class SchematicHitTest
                         ? (wire.Points[^1].X, wire.Points[^1].Y)
                         : (wire.Points[0].X,  wire.Points[0].Y);
 
-                    foreach (var other in editModel.Components)
-                    {
-                        if (selected.Contains(other.Id)) continue;
-                        foreach (var oDef in editModel.PortDefsOf(other))
-                        {
-                            if (other.IsPortDetached(oDef.PortIndex)) continue;
-                            var (opx, opy) = editModel.PortWorldOf(other, oDef);
-                            if (!SchematicGeometry.CoincidentPoints(otherX, otherY, opx, opy, tol)) continue;
-                            if (selected.Add(other.Id))
-                                result.Add(new HitResult(HitKind.Component, other.Id));
-                        }
-                    }
+                    AddComponentsAt(otherX, otherY);
                 }
             }
         }
