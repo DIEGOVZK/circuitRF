@@ -1,0 +1,12 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:CircuitRF.Ui.ViewModels"
+             xmlns:local="using:CircuitRF.Ui.Views.Properties"
+             x:Class="CircuitRF.Ui.Views.Properties.SchematicTextInspectorView"
+             x:DataType="vm:SchematicTextInspectorViewModel">
+
+    <!-- A free text placed in a schematic: the symbol editor's text rows, from the same control. -->
+    <ScrollViewer>
+        <local:TextPrimitiveFieldsView Margin="6,4"/>
+    </ScrollViewer>
+</UserControl>

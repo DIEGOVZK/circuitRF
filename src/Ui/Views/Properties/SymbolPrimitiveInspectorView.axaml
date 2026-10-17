@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:CircuitRF.Ui.ViewModels"
              xmlns:conv="using:CircuitRF.Ui.Converters"
+             xmlns:local="using:CircuitRF.Ui.Views.Properties"
              x:Class="CircuitRF.Ui.Views.Properties.SymbolPrimitiveInspectorView"
              x:DataType="vm:SymbolPrimitiveInspectorViewModel">
 
@@ -368,99 +369,7 @@
                 </Grid>
 
                 <!-- ── Text fields ───────────────────────────────────────────────────── -->
-                <StackPanel IsVisible="{Binding IsTextPrimitive}" Spacing="4">
-
-                    <Grid ColumnDefinitions="56,*">
-                        <TextBlock Grid.Column="0" Text="Content" VerticalAlignment="Center" FontSize="11"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-                        <TextBox Grid.Column="1"
-                                 Text="{Binding TextContent, Mode=TwoWay}"
-                                 FontSize="11" Padding="4,2"/>
-                    </Grid>
-
-                    <Grid ColumnDefinitions="36,*,6,36,*">
-                        <TextBlock Grid.Column="0" Text="AX" VerticalAlignment="Center" FontSize="11"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-                        <NumericUpDown Grid.Column="1"
-                                       Value="{Binding TextAnchorX, Mode=TwoWay, Converter={x:Static conv:NumericFieldConverter.Instance}}"
-                                       ShowButtonSpinner="False" FormatString="0.##"
-                                       FontSize="11" Padding="4,2"/>
-                        <TextBlock Grid.Column="3" Text="AY" VerticalAlignment="Center" FontSize="11"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-                        <NumericUpDown Grid.Column="4"
-                                       Value="{Binding TextAnchorY, Mode=TwoWay, Converter={x:Static conv:NumericFieldConverter.Instance}}"
-                                       ShowButtonSpinner="False" FormatString="0.##"
-                                       FontSize="11" Padding="4,2"/>
-                    </Grid>
-
-                    <Grid ColumnDefinitions="56,*">
-                        <TextBlock Grid.Column="0" Text="Font size" VerticalAlignment="Center" FontSize="11"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-                        <NumericUpDown Grid.Column="1"
-                                       Value="{Binding TextFontSize, Mode=TwoWay, Converter={x:Static conv:NumericFieldConverter.Instance}}"
-                                       Minimum="1" Maximum="500" Increment="1"
-                                       FormatString="0" FontSize="11" Padding="4,2"/>
-                    </Grid>
-
-                    <Grid ColumnDefinitions="56,*">
-                        <TextBlock Grid.Column="0" Text="Style" VerticalAlignment="Center" FontSize="11"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-                        <ComboBox Grid.Column="1"
-                                  ItemsSource="{x:Static vm:SymbolPrimitiveInspectorViewModel.FontStyleOptions}"
-                                  SelectedItem="{Binding TextFontStyle, Mode=TwoWay}"
-                                  HorizontalAlignment="Stretch"
-                                  FontSize="11" Padding="4,2"/>
-                    </Grid>
-
-                    <Grid ColumnDefinitions="56,*">
-                        <TextBlock Grid.Column="0" Text="Color" VerticalAlignment="Center" FontSize="11"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                                   ToolTip.Tip="Text color role: SymbolPlus = the '+'/plus accent color; SymbolText/SymbolLine = regular."/>
-                        <ComboBox Grid.Column="1"
-                                  ItemsSource="{x:Static vm:SymbolPrimitiveInspectorViewModel.ColorRoleOptions}"
-                                  SelectedItem="{Binding TextColorRole, Mode=TwoWay}"
-                                  HorizontalAlignment="Stretch"
-                                  FontSize="11" Padding="4,2"/>
-                    </Grid>
-
-                    <Grid ColumnDefinitions="56,*">
-                        <TextBlock Grid.Column="0" Text="Align" VerticalAlignment="Center" FontSize="11"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-                        <ComboBox Grid.Column="1"
-                                  ItemsSource="{x:Static vm:SymbolPrimitiveInspectorViewModel.AlignOptions}"
-                                  SelectedItem="{Binding TextAlign, Mode=TwoWay}"
-                                  HorizontalAlignment="Stretch"
-                                  FontSize="11" Padding="4,2"/>
-                    </Grid>
-
-                    <Grid ColumnDefinitions="56,*">
-                        <TextBlock Grid.Column="0" Text="VAlign" VerticalAlignment="Center" FontSize="11"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                                   ToolTip.Tip="Vertical anchor. With Align this is the (horizontal, vertical) anchor point used for snapping. Baseline = legacy text behaviour."/>
-                        <ComboBox Grid.Column="1"
-                                  ItemsSource="{x:Static vm:SymbolPrimitiveInspectorViewModel.VAlignOptions}"
-                                  SelectedItem="{Binding TextVAlign, Mode=TwoWay}"
-                                  HorizontalAlignment="Stretch"
-                                  FontSize="11" Padding="4,2"/>
-                    </Grid>
-
-                    <Grid ColumnDefinitions="56,*">
-                        <TextBlock Grid.Column="0" Text="Rotation" VerticalAlignment="Center" FontSize="11"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                                   ToolTip.Tip="Literal text rotation in the editor (R0/R90/R180/R270). The R key also steps this."/>
-                        <ComboBox Grid.Column="1"
-                                  ItemsSource="{x:Static vm:SymbolPrimitiveInspectorViewModel.RotationOptions}"
-                                  SelectedItem="{Binding TextRotation, Mode=TwoWay}"
-                                  HorizontalAlignment="Stretch"
-                                  FontSize="11" Padding="4,2"/>
-                    </Grid>
-
-                    <CheckBox Content="Force readable"
-                              IsChecked="{Binding TextForceReadable, Mode=TwoWay}"
-                              FontSize="11" Padding="0,2"
-                              ToolTip.Tip="When a schematic instance is rotated upside-down/back-to-front, auto-flip this text 180° so it stays right-way-up. Off = rotates rigidly with the symbol."/>
-
-                </StackPanel>
+                <local:TextPrimitiveFieldsView IsVisible="{Binding IsTextPrimitive}"/>
 
                 <!-- ── Bitmap: Opacity ──────────────────────────────────────────────── -->
                 <Grid IsVisible="{Binding ShowBitmapFields}" ColumnDefinitions="56,*">

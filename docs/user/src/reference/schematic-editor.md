@@ -455,6 +455,11 @@ Grouped by what you are doing, left to right:
 - **Draw** — Select, the Wire tool, and the three things you place constantly: **Ground**, **Term**
   (a numbered port with a reference impedance, for an S-parameter run) and **Pin** (a connection
   point of the cell you are drawing). [Which is which](pins-ports-terms.html) is worth reading once.
+- **Text** — a note on the drawing: click where it starts, type, <kbd>Enter</kbd> to place it. It
+  works as the [Symbol Editor's](symbol-editor.html) Text tool does: double-click a text to change
+  what it says, and the Properties panel sets its size, style, colour, alignment and rotation. Text
+  copies between a schematic and a symbol both ways: paste a selection copied in the other editor and
+  its texts come across, at the same size and orientation.
 - **Orient** — rotate 90° either way and mirror in either axis, applied to the selection.
 - **Delete** — on the selection.
 - **Snap** — cycles the snap mode. Electrical points always land on the connection grid whatever this

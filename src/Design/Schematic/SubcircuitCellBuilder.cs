@@ -223,12 +223,9 @@ public static class SubcircuitCellBuilder
 
         model.CanvasObjects.Add(new EditableText
         {
-            Text     = Annotation(translation, cellName),
-            X        = leftX,
-            Y        = (rows - 1) * Pitch + Pitch,
-            Width    = 3200,
-            Height   = 500,
-            FontSize = 11f,
+            Text = Annotation(translation, cellName),
+            X    = leftX - 1600,
+            Y    = (rows - 1) * Pitch + Pitch - 250,
         });
 
         return model;

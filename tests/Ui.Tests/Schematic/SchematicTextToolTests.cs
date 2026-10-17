@@ -1,0 +1,167 @@
+// The schematic's Text tool and free text: the symbol editor's text primitive, placed on a schematic. One
+// test per claim — the tool's gesture, editing in place, the Properties rows, the .csch record (and the
+// pre-existing records written before text was drawn), what the renderer draws, and R on a lone text.
+
+using System.Linq;
+using System.Text.Json.Nodes;
+using Avalonia.Input;
+using CircuitRF.Render;
+using CircuitRF.Ui.ViewModels;
+using Xunit;
+
+namespace CircuitRF.Ui.Tests.Schematic;
+
+public sealed class SchematicTextToolTests
+{
+    [Fact]
+    public void TextTool_ClickTypeEnter_PlacesOneUndoableText_AndLettersAreNotShortcuts()
+    {
+        var model = new SchematicEditModel();
+        var vm = new SchematicViewModel(model);
+        vm.SetTextTool();
+
+        vm.OnPointerPressed(1000, 500, KeyModifiers.None);
+        Assert.True(vm.IsTypingText);
+        vm.OnTextInput("Ws");
+        Assert.True(vm.OnKeyDown(Key.S, KeyModifiers.None));   // typed, not "switch to Select"
+        Assert.Equal(SchematicViewModel.Tool.Text, vm.ActiveTool);
+        vm.OnKeyDown(Key.Back, KeyModifiers.None);
+        vm.OnTextInput("!");
+        vm.OnKeyDown(Key.Enter, KeyModifiers.None);
+
+        var text = Assert.IsType<EditableText>(Assert.Single(model.CanvasObjects));
+        Assert.Equal(("W!", 1000.0, 500.0), (text.Text, text.X, text.Y));
+        Assert.Equal((SymbolTextAlign.Left, SymbolTextVAlign.Top), (text.Align, text.VAlign));
+        Assert.False(vm.IsTypingText);
+        Assert.Equal(SchematicViewModel.Tool.Text, vm.ActiveTool);   // ready for the next one
+
+        vm.UndoRedo.Undo();
+        Assert.Empty(model.CanvasObjects);
+    }
+
+    [Fact]
+    public void TextTool_Escape_AbandonsTheText_AndReturnsToSelect()
+    {
+        var model = new SchematicEditModel();
+        var vm = new SchematicViewModel(model);
+        vm.SetTextTool();
+        vm.OnPointerPressed(0, 0, KeyModifiers.None);
+        vm.OnTextInput("gone");
+
+        vm.OnKeyDown(Key.Escape, KeyModifiers.None);
+
+        Assert.Empty(model.CanvasObjects);
+        Assert.False(vm.IsTypingText);
+        Assert.Null(vm.Overlay.TextPreview);
+        Assert.Equal(SchematicViewModel.Tool.Select, vm.ActiveTool);
+    }
+
+    [Fact]
+    public void DoubleClickEdit_ChangesTheContent_Undoably()
+    {
+        var model = new SchematicEditModel();
+        var text = new EditableText { Text = "old", X = 0, Y = 0 };
+        model.CanvasObjects.Add(text);
+        var vm = new SchematicViewModel(model);
+
+        vm.BeginCanvasTextEdit(text.Id, 10, 10);
+        Assert.Equal("old", vm.InlineEditValue);
+        vm.InlineEditValue = "new";
+        vm.CommitInlineEdit();
+
+        Assert.Equal("new", text.Text);
+        vm.UndoRedo.Undo();
+        Assert.Equal("old", text.Text);
+    }
+
+    [Fact]
+    public void Inspector_ShowsALoneText_AndEachRowIsOneUndoableCommand()
+    {
+        var model = new SchematicEditModel();
+        var text = new EditableText { Text = "note", X = 100, Y = 200 };
+        var part = new EditableComponent { InstanceName = "R1", Symbol = SymbolKind.Resistor };
+        model.CanvasObjects.Add(text);
+        model.Components.Add(part);
+        var vm = new SchematicViewModel(model);
+        var inspector = new SchematicTextInspectorViewModel();
+        inspector.SetContext(vm);
+
+        vm.Selection.SetAll([text.Id, part.Id]);
+        Assert.False(inspector.IsActive);
+        vm.Selection.SetAll([text.Id]);
+        Assert.True(inspector.IsActive);
+        Assert.False(inspector.ShowTextForceReadable);
+        Assert.Equal(("note", 100.0, 200.0), (inspector.TextContent, inspector.TextAnchorX, inspector.TextAnchorY));
+
+        inspector.TextFontSize  = 120;
+        inspector.TextFontStyle = SymbolFontStyle.Bold;
+        inspector.TextRotation  = SymbolRotation.R270;
+        Assert.Equal((120.0, SymbolFontStyle.Bold, SymbolRotation.R270), (text.FontSize, text.FontStyle, text.Rotation));
+
+        vm.UndoRedo.Undo();
+        vm.UndoRedo.Undo();
+        Assert.Equal((120.0, SymbolFontStyle.Regular, SymbolRotation.R0), (text.FontSize, text.FontStyle, text.Rotation));
+        Assert.Equal(SymbolFontStyle.Regular, inspector.TextFontStyle);   // the rows follow the undo
+    }
+
+    [Fact]
+    public void Csch_RoundTripsEveryField_AndAPreTextRecordReadsCentredOnItsPoint()
+    {
+        var model = new SchematicEditModel();
+        model.CanvasObjects.Add(new EditableText
+        {
+            Text = "a\nb", X = 300, Y = -400, FontSize = 55, FontStyle = SymbolFontStyle.Italic,
+            Align = SymbolTextAlign.Right, VAlign = SymbolTextVAlign.Baseline,
+            ColorRole = SymbolColorRole.SymbolPlus, Rotation = SymbolRotation.R90,
+        });
+        string json = SchematicPersistence.Serialize(model, "Cell");
+
+        var back = Assert.IsType<EditableText>(Assert.Single(SchematicPersistence.Deserialize(json).model.CanvasObjects));
+        Assert.Equal(("a\nb", 300.0, -400.0, 55.0), (back.Text, back.X, back.Y, back.FontSize));
+        Assert.Equal((SymbolFontStyle.Italic, SymbolTextAlign.Right, SymbolTextVAlign.Baseline),
+                     (back.FontStyle, back.Align, back.VAlign));
+        Assert.Equal((SymbolColorRole.SymbolPlus, SymbolRotation.R90), (back.ColorRole, back.Rotation));
+
+        // A record written before text was drawn has none of the new keys: its X/Y was a box centre.
+        var root = JsonNode.Parse(json)!;
+        var rec  = root["CanvasObjects"]!.AsArray()[0]!.AsObject();
+        foreach (var key in new[] { "FontStyle", "Align", "VAlign", "ColorRole" }) rec.Remove(key);
+        rec["IsBold"] = true;
+        var legacy = Assert.IsType<EditableText>(
+            Assert.Single(SchematicPersistence.Deserialize(root.ToJsonString()).model.CanvasObjects));
+        Assert.Equal((SymbolTextAlign.Center, SymbolTextVAlign.Middle, SymbolFontStyle.Bold),
+                     (legacy.Align, legacy.VAlign, legacy.FontStyle));
+    }
+
+    [Fact]
+    public void Renderer_DrawsFreeText_OneLineBoxPerLine()
+    {
+        var model = new SchematicEditModel();
+        var text = new EditableText { Text = "first\nsecond", X = 0, Y = 0 };
+        model.CanvasObjects.Add(text);
+        var (render, index) = model.BuildRenderModel();
+
+        var placed = SchematicRenderer.MeasureTexts((800, 600), render, index, -100, -100, 1.0, SchematicRenderTheme.Light)
+            .Where(p => p.Role == SchematicTextRole.Text).ToList();
+
+        Assert.Equal(["first", "second"], placed.Select(p => p.Text));
+        Assert.All(placed, p => Assert.Equal(text.Id, p.ComponentId));
+        Assert.True(placed[1].TopLeft.Y > placed[0].TopLeft.Y);                       // stacked downward
+        Assert.Equal(placed[0].TopLeft.X, placed[1].TopLeft.X, 2);                    // Left-aligned
+        Assert.Equal(100f, placed[0].TopLeft.X, 1);                                   // anchor is the left edge
+    }
+
+    [Fact]
+    public void RotateKey_OnALoneText_TurnsItAboutItsOwnAnchor()
+    {
+        var model = new SchematicEditModel();
+        var text = new EditableText { Text = "t", X = 1234, Y = 567 };   // off the connection grid
+        model.CanvasObjects.Add(text);
+        var vm = new SchematicViewModel(model);
+        vm.Selection.SetAll([text.Id]);
+
+        Assert.True(vm.OnKeyDown(Key.R, KeyModifiers.None));
+
+        Assert.Equal((1234.0, 567.0, SymbolRotation.R90), (text.X, text.Y, text.Rotation));
+    }
+}

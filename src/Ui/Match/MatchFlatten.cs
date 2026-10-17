@@ -182,14 +182,12 @@ public static class MatchFlatten
         // A blocked arm reaches BlockGroundY plus its label block, so the record moves down under it
         // rather than being written across the drawing it documents.
         double recordY = plan.Elements.Any(x => x.IsDcBlock) ? 2500.0 : 1900.0;
+        // Anchored at the top-left of the band it was given, under the drawing it documents.
         model.CanvasObjects.Add(new EditableText
         {
             Text = Annotation(rebuild, design, instanceName, stamped ?? DateTime.UtcNow),
-            X = cursor / 2.0,
-            Y = recordY,
-            Width = Math.Max(2600.0, cursor + 1600.0),
-            Height = 900.0,
-            FontSize = 11f,
+            X = cursor / 2.0 - Math.Max(2600.0, cursor + 1600.0) / 2.0,
+            Y = recordY - 450.0,
         });
 
         return model;

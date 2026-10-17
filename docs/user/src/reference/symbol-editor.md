@@ -137,7 +137,7 @@ Gestures:
 
 Everything is undoable on the symbol's own undo stack, with full select / move / delete / rotate,
 an inspector for the selected primitive's coordinates and text, a resize gripper, and copy/paste
-(including between symbols). Any schematic showing the cell re-renders live as you edit.
+(including between symbols, and text to and from a schematic). Any schematic showing the cell re-renders live as you edit.
 
 ## Locked symbols {#locked}
 

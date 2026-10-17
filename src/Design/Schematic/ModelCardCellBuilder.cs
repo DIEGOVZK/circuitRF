@@ -177,12 +177,9 @@ public static class ModelCardCellBuilder
         // cannot carry.
         model.CanvasObjects.Add(new EditableText
         {
-            Text     = Annotation(translation, cellName),
-            X        = 0,
-            Y        = 900,
-            Width    = 2400,
-            Height   = 400,
-            FontSize = 11f,
+            Text = Annotation(translation, cellName),
+            X    = -1200,
+            Y    = 700,
         });
 
         var terminals = SymbolPortDefs.For(kind);

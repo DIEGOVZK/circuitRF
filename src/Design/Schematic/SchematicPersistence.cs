@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using CircuitRF.Core.Design;
 using CircuitRF.Design.Cells;
+using CircuitRF.Design.Symbol;
 namespace CircuitRF.Design.Schematic;
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -338,6 +339,18 @@ public sealed class CschCanvasObject
     public bool    IsBold     { get; set; }
     public bool    IsItalic   { get; set; }
     public uint    ColorArgb  { get; set; } = 0xFF202020;
+
+    // Text, as the symbol editor's TextPrimitive states it. Null on every other kind (WhenWritingNull),
+    // and null on a text written before these existed — which is how the reader knows that record's
+    // X/Y named the centre of its box rather than an anchor corner.
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public SymbolFontStyle?  FontStyle { get; set; }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public SymbolTextAlign?  Align     { get; set; }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public SymbolTextVAlign? VAlign    { get; set; }
+    [JsonConverter(typeof(JsonStringEnumConverter))]
+    public SymbolColorRole?  ColorRole { get; set; }
 
     // Primitive shape
     [JsonConverter(typeof(JsonStringEnumConverter))]
@@ -761,9 +774,12 @@ public static class SchematicPersistence
 
         else if (obj is EditableText txt)
         {
-            rec.Text = txt.Text; rec.FontFamily = txt.FontFamily;
-            rec.FontSize = txt.FontSize; rec.IsBold = txt.IsBold;
-            rec.IsItalic = txt.IsItalic; rec.ColorArgb = txt.ColorArgb;
+            rec.Text = txt.Text;
+            rec.FontSize = (float)txt.FontSize;
+            rec.IsBold   = txt.FontStyle == SymbolFontStyle.Bold;
+            rec.IsItalic = txt.FontStyle == SymbolFontStyle.Italic;
+            rec.FontStyle = txt.FontStyle; rec.Align = txt.Align;
+            rec.VAlign = txt.VAlign; rec.ColorRole = txt.ColorRole;
         }
 
         else if (obj is EditablePrimitive prim)
@@ -801,11 +817,19 @@ public static class SchematicPersistence
             }
             case CanvasObjectKind.Text:
             {
+                // A record with no Align is from before text was drawn: its X/Y is the centre of the
+                // box it was given, so it reads back centred on that point.
+                bool legacy = rec.Align is null;
                 var txt = new EditableText
                 {
-                    Text = rec.Text ?? "Text", FontFamily = rec.FontFamily ?? "",
-                    FontSize = rec.FontSize, IsBold = rec.IsBold, IsItalic = rec.IsItalic,
-                    ColorArgb = rec.ColorArgb,
+                    Text      = rec.Text ?? "Text",
+                    FontSize  = rec.FontSize > 0 ? rec.FontSize : EditableText.DefaultFontSize,
+                    FontStyle = rec.FontStyle
+                                ?? (rec.IsBold ? SymbolFontStyle.Bold
+                                    : rec.IsItalic ? SymbolFontStyle.Italic : SymbolFontStyle.Regular),
+                    Align     = rec.Align  ?? SymbolTextAlign.Center,
+                    VAlign    = rec.VAlign ?? (legacy ? SymbolTextVAlign.Middle : SymbolTextVAlign.Top),
+                    ColorRole = rec.ColorRole ?? SymbolColorRole.SymbolLine,
                 };
                 ApplyBase(txt);
                 return txt;

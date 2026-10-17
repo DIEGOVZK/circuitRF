@@ -113,6 +113,11 @@
                     DataContext="{Binding PictureInspectorVm}"
                     IsVisible="{Binding IsActive}"/>
 
+                <!-- A free text placed in the schematic: the symbol editor's text rows. -->
+                <symInsp:SchematicTextInspectorView
+                    DataContext="{Binding TextInspectorVm}"
+                    IsVisible="{Binding IsActive}"/>
+
             </Grid>
 
         </Grid>

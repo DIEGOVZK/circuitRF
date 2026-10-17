@@ -40,6 +40,7 @@ public partial class SchematicView : UserControl
         SchematicCanvasCtrl.ComponentDoubleTapped  += OnComponentDoubleTapped;
         SchematicCanvasCtrl.TextLabelDoubleTapped  += OnTextLabelDoubleTapped;
         SchematicCanvasCtrl.WireDoubleTapped       += OnWireDoubleTapped;
+        SchematicCanvasCtrl.CanvasTextDoubleTapped += OnCanvasTextDoubleTapped;
         SchematicCanvasCtrl.ViewportChanged        += OnViewportChanged;
 
         // Wire ContextMenu.Closed in code-behind (AXAML can't bind RoutedEvents on ContextMenu).
@@ -237,6 +238,7 @@ public partial class SchematicView : UserControl
         SelectToolBtn.Classes.Set("ToolActive", tool == SchematicViewModel.Tool.Select);
         ZoomBoxToolBtn.Classes.Set("ToolActive", tool == SchematicViewModel.Tool.ZoomBox);
         WireToolBtn.Classes.Set("ToolActive", tool == SchematicViewModel.Tool.Wire);
+        TextToolBtn.Classes.Set("ToolActive", tool == SchematicViewModel.Tool.Text);
         PlaceGroundBtn.Classes.Set("ToolActive",
             tool == SchematicViewModel.Tool.Place && vm?.PlacementSymbol == SymbolKind.Ground);
         PlacePortBtn.Classes.Set("ToolActive",
@@ -299,6 +301,10 @@ public partial class SchematicView : UserControl
 
         var vm = Vm;
         if (vm is null) return;
+
+        // While a text is being typed, its characters must reach the canvas: no letter is a shortcut.
+        // Escape still falls through, and ends the text as it ends any tool.
+        if (vm.IsTypingText && e.Key != Key.Escape) return;
 
         bool ctrl = (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) != 0;
         if (ctrl)
@@ -407,6 +413,12 @@ public partial class SchematicView : UserControl
     private void OnWireTool(object? sender, RoutedEventArgs e)
     {
         Vm?.SetWireTool();
+        SchematicCanvasCtrl.Focus();
+    }
+
+    private void OnTextTool(object? sender, RoutedEventArgs e)
+    {
+        Vm?.SetTextTool();
         SchematicCanvasCtrl.Focus();
     }
 
@@ -1101,8 +1113,28 @@ public partial class SchematicView : UserControl
 
     private void OnViewportChanged(object? sender, EventArgs e)
     {
-        if (InlineEditBox.IsVisible && _labelAnchor is not null)
+        if (InlineEditBox.IsVisible && (_labelAnchor is not null || _textAnchor is not null))
             RepositionInlineEditBox();
+    }
+
+    // ── Free text double-tap → edit its content in place ──────────────────────
+
+    // A free text being edited: the WORLD left edge and first baseline of its box, and its font size —
+    // so the box sits over the text at the text's own size, and follows zoom and pan.
+    private sealed record CanvasTextAnchor(double Left, double Baseline, double FontSize);
+    private CanvasTextAnchor? _textAnchor;
+
+    private void OnCanvasTextDoubleTapped(object? sender, EditableText txt)
+    {
+        if (Vm is null) return;
+        _labelAnchor = null;
+        // The box's top-left, as the symbol editor opens its own inline editor there; the baseline is
+        // where ShowInlineEditBox expects it, one ascent below that top.
+        var (x0, y0, _, _) = SymbolGeometry.BboxOf(txt.ToPrimitive());
+        _textAnchor = new CanvasTextAnchor(x0, y0 + txt.FontSize * SchematicInlineEditBox.AscenderRatio, txt.FontSize);
+        var (sx, sy) = SchematicCanvasCtrl.WorldToScreen(_textAnchor.Left, _textAnchor.Baseline);
+        Vm.BeginCanvasTextEdit(txt.Id, sx, sy);
+        ShowInlineEditBox(sx, sy, Vm.InlineEditValue, txt.FontSize);
     }
 
     // Screen position of this label row's text anchor (Skia baseline / left edge), derived from the
@@ -1120,6 +1152,17 @@ public partial class SchematicView : UserControl
 
     private void RepositionInlineEditBox()
     {
+        if (_textAnchor is { } ta)
+        {
+            double fs = Math.Max(SchematicCanvasCtrl.CurrentZoom * ta.FontSize, 9.0);
+            InlineEditBox.FontSize = fs;
+            var (tx, ty) = SchematicCanvasCtrl.WorldToScreen(ta.Left, ta.Baseline);
+            InlineEditBox.Width   = CalcInlineEditWidth(InlineEditBox.Text ?? "", fs);
+            _inlineEditAnchorLeft = tx - TextBoxLeftPad;
+            InlineEditBox.Margin  = new Thickness(
+                _inlineEditAnchorLeft, ty - TextBoxTopPad - fs * SchematicInlineEditBox.AscenderRatio, 0, 0);
+            return;
+        }
         if (_labelAnchor is null) return;
 
         double zoom     = SchematicCanvasCtrl.CurrentZoom;
@@ -1243,12 +1286,13 @@ public partial class SchematicView : UserControl
         }, DispatcherPriority.Input);
     }
 
-    private void ShowInlineEditBox(double screenX, double screenY, string initialText)
+    private void ShowInlineEditBox(double screenX, double screenY, string initialText, double fontWorldSize = 70)
     {
         // screenX = text left edge in screen pixels (from DrawLabels lx).
         // screenY = Skia text baseline in screen pixels (from DrawLabels ly).
+        // fontWorldSize = the drawn text's size in world units (70 for every label the renderer draws).
         double zoom     = SchematicCanvasCtrl.CurrentZoom;
-        double fontSize = Math.Max(zoom * 70, 9.0);   // no upper cap — matches renderer
+        double fontSize = Math.Max(zoom * fontWorldSize, 9.0);   // no upper cap — matches renderer
         InlineEditBox.FontSize = fontSize;
 
         double width = CalcInlineEditWidth(initialText, fontSize);
@@ -1294,6 +1338,7 @@ public partial class SchematicView : UserControl
     private void DismissInlineEditBox()
     {
         _labelAnchor = null;
+        _textAnchor  = null;
         InlineEditBox.TextChanged -= OnInlineEditTextChanged;
         InlineEditBox.IsVisible    = false;
     }

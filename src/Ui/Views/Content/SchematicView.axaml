@@ -219,6 +219,14 @@
                                               VerticalAlignment="Center" HorizontalAlignment="Center"/>
                 </Button>
 
+                <!-- Text tool — the symbol editor's own button, icon and gesture -->
+                <Button x:Name="TextToolBtn"
+                        Click="OnTextTool"
+                        ToolTip.Tip="Text — click anchor, type, Enter to place"
+                        Padding="6,3">
+                    <mi:MaterialIcon Kind="FormatText" Width="16" Height="16"/>
+                </Button>
+
                 <!-- Separator -->
                 <Border Width="1" VerticalAlignment="Stretch" Margin="2,3"
                         Background="{DynamicResource SystemControlForegroundBaseLowBrush}"/>

@@ -888,6 +888,9 @@ public sealed record SchematicBitmap(
     double Width, double Height,
     double Opacity);           // 0 = transparent, 1 = opaque
 
+/// <summary>A free text on the schematic (read model): the symbol editor's primitive, in world units.</summary>
+public sealed record SchematicText(string Id, TextPrimitive Primitive);
+
 /// <summary>
 /// The complete schematic read model consumed by SchematicRenderer.
 /// Immutable after construction — 6c is read-only.
@@ -899,6 +902,7 @@ public sealed class SchematicModel
     public IReadOnlyList<SchematicDot>        ConnectionDots { get; init; } = [];
     public IReadOnlyList<SchematicNetLabel>   NetLabels    { get; init; } = [];
     public IReadOnlyList<SchematicBitmap>     Bitmaps      { get; init; } = [];
+    public IReadOnlyList<SchematicText>       Texts        { get; init; } = [];
     public double GridSize  { get; init; } = 100.0;
     // Overall bounding box of all elements (used for zoom-to-fit).
     public double BbMinX   { get; init; }

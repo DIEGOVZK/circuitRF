@@ -1546,9 +1546,21 @@ public sealed class SchematicEditModel
                 1.0 - b.Transparency))
             .ToList();
 
+        var texts = CanvasObjects
+            .OfType<EditableText>()
+            .OrderBy(t => t.ZOrder)
+            .Select(t => new SchematicText(t.Id, t.ToPrimitive()))
+            .ToList();
+
         double minX = double.MaxValue, minY = double.MaxValue;
         double maxX = double.MinValue, maxY = double.MinValue;
 
+        foreach (var t in texts)
+        {
+            var (x0, y0, x1, y1) = SymbolGeometry.BboxOf(t.Primitive);
+            if (x0 < minX) minX = x0; if (x1 > maxX) maxX = x1;
+            if (y0 < minY) minY = y0; if (y1 > maxY) maxY = y1;
+        }
         foreach (var c in comps)
         {
             if (c.BbMinX < minX) minX = c.BbMinX; if (c.BbMaxX > maxX) maxX = c.BbMaxX;
@@ -1569,6 +1581,7 @@ public sealed class SchematicEditModel
             ConnectionDots = dots,
             NetLabels      = netLabels,
             Bitmaps        = bitmaps,
+            Texts          = texts,
             GridSize       = GridSize,
             BbMinX = minX - 200, BbMinY = minY - 200,
             BbMaxX = maxX + 200, BbMaxY = maxY + 200,

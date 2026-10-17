@@ -10,7 +10,7 @@ namespace CircuitRF.Ui.ViewModels;
 /// Each field change fires a SetSymbolPrimitiveFieldCommand through the VM's undo stack.
 /// Framework-free (no Avalonia types).
 /// </summary>
-public sealed partial class SymbolPrimitiveInspectorViewModel : ObservableObject
+public sealed partial class SymbolPrimitiveInspectorViewModel : ObservableObject, ITextPrimitiveFields
 {
     private SymbolEditorViewModel? _vm;
     private SymbolPrimitive?       _prim;
@@ -336,6 +336,9 @@ public sealed partial class SymbolPrimitiveInspectorViewModel : ObservableObject
     [ObservableProperty] private SymbolRotation   _textRotation;
     [ObservableProperty] private bool             _textForceReadable;
     [ObservableProperty] private SymbolColorRole  _textColorRole;
+
+    /// <summary>Always shown: a symbol's text is the text a rotated instance can turn upside down.</summary>
+    public bool ShowTextForceReadable => true;
 
     partial void OnTextColorRoleChanged(SymbolColorRole oldValue, SymbolColorRole newValue)
     {

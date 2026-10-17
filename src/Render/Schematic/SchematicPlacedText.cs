@@ -17,6 +17,8 @@ public enum SchematicTextRole
     SymbolText,
     /// <summary>A mark about the instance rather than the circuit: an external alias, "moved", "Not Found".</summary>
     Chrome,
+    /// <summary>Free text placed on the schematic itself (a canvas object), its id as the component id.</summary>
+    Text,
 }
 
 /// <summary>

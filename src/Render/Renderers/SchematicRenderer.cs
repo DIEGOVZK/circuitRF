@@ -412,9 +412,33 @@ public static class SchematicRenderer
             }
         }
 
+        // ── Free text (canvas objects) ────────────────────────────────────────
+        // Drawn by the symbol editor's own primitive renderer, at identity transform — the code the
+        // symbol editor draws its text with, so the two editors' text cannot look different.
+        if (!isLod)
+            foreach (var t in model.Texts)
+                DrawSymbol(canvas, [LiveText(t, overlay?.CanvasObjectDragPositions)],
+                           compX: 0, compY: 0, rotation: SymbolRotation.R0, mirrorX: false,
+                           panX: panX, panY: panY, zoom: zoom, theme: theme,
+                           texts: texts, componentId: t.Id, textRole: SchematicTextRole.Text);
+
         // ── 6d overlay ────────────────────────────────────────────────────────
         if (overlay is not null)
             DrawOverlay(canvas, canvasSize, model, overlay, panX, panY, zoom, theme, isLod);
+    }
+
+    /// <summary>The text where a move drag has it this frame. The drag's override is the object's
+    /// box written as a top-left corner about its (X, Y) — which for a text is the anchor — so the
+    /// anchor is that box's centre.</summary>
+    private static TextPrimitive LiveText(
+        SchematicText t, IReadOnlyDictionary<string, (double X, double Y, double W, double H)>? overrides)
+    {
+        if (overrides is null || !overrides.TryGetValue(t.Id, out var ov)) return t.Primitive;
+        var live = (TextPrimitive)SymbolGeometry.Clone(t.Primitive);
+        live.ColorRole = t.Primitive.ColorRole;
+        live.AnchorX = ov.X + ov.W / 2.0;
+        live.AnchorY = ov.Y + ov.H / 2.0;
+        return live;
     }
 
     // ── DrawSymbol — generic primitive-list renderer ──────────────────────────
@@ -437,7 +461,8 @@ public static class SchematicRenderer
         SKPaint? overridePaint = null,
         bool applyForceReadable = false,      // true only for schematic component instances
         Action<SchematicPlacedText>? texts = null,
-        string? componentId = null)
+        string? componentId = null,
+        SchematicTextRole textRole = SchematicTextRole.SymbolText)
     {
         // Rotation in degrees for angle-bearing primitives (Arc, Sine).
         double rotDeg = rotation switch
@@ -538,8 +563,14 @@ public static class SchematicRenderer
                 font.GetFontMetrics(out var fm);
                 float ascPx  = -fm.Ascent;                     // distance above baseline (px)
                 float descPx =  fm.Descent;                    // distance below baseline (px)
-                float boxHpx =  ascPx + descPx;
-                float awPx   =  font.MeasureText(txt.Content);  // real advance width (px)
+                float lineHpx =  ascPx + descPx;
+                // Content with line breaks is a stack of line boxes (SymbolGeometry.TextBoxSize's rule),
+                // and the box the anchor is measured against is the whole stack.
+                string[] lines = SymbolGeometry.TextLines(txt.Content);
+                float boxHpx =  lineHpx * lines.Length;
+                float awPx   =  lines.Length == 1
+                    ? font.MeasureText(txt.Content)             // real advance width (px)
+                    : lines.Max(l => font.MeasureText(l));
 
                 // Anchor offset from the box centre, unrotated text frame, WORLD units.
                 double ox = txt.Align switch
@@ -553,7 +584,7 @@ public static class SchematicRenderer
                     SymbolTextVAlign.Top    => -boxHpx * 0.5 / zoom,
                     SymbolTextVAlign.Middle =>  0.0,
                     SymbolTextVAlign.Bottom => +boxHpx * 0.5 / zoom,
-                    _                       => (-boxHpx * 0.5 + ascPx) / zoom,   // Baseline (legacy)
+                    _                       => (-boxHpx * 0.5 + ascPx) / zoom,   // Baseline (legacy): the first line's
                 };
 
                 // Local box centre = Anchor − Rot(textRotation, offset); LP then applies the component
@@ -580,10 +611,31 @@ public static class SchematicRenderer
                 int save = canvas.Save();
                 canvas.Translate(cxp, cyp);
                 canvas.RotateDegrees((float)netDeg);
-                canvas.DrawText(txt.Content, 0f, baselineDy, SKTextAlign.Center, font, tPaint);
+                if (lines.Length == 1)
+                {
+                    canvas.DrawText(txt.Content, 0f, baselineDy, SKTextAlign.Center, font, tPaint);
+                    canvas.RestoreToCount(save);
+                    Place(texts, txt.Content, textRole, componentId, primIndex, font,
+                          cxp, cyp, netDeg, 0f, baselineDy, SKTextAlign.Center);
+                    continue;
+                }
+
+                // Each line sits in its own line box, aligned within the stack as the text is aligned.
+                var (lineX, lineAlign) = txt.Align switch
+                {
+                    SymbolTextAlign.Center => (0f,            SKTextAlign.Center),
+                    SymbolTextAlign.Right  => (awPx * 0.5f,   SKTextAlign.Right),
+                    _                      => (-awPx * 0.5f,  SKTextAlign.Left),
+                };
+                for (int li = 0; li < lines.Length; li++)
+                {
+                    float lineBaseline = -boxHpx * 0.5f + li * lineHpx + ascPx;
+                    canvas.DrawText(lines[li], lineX, lineBaseline, lineAlign, font, tPaint);
+                }
                 canvas.RestoreToCount(save);
-                Place(texts, txt.Content, SchematicTextRole.SymbolText, componentId, primIndex, font,
-                      cxp, cyp, netDeg, 0f, baselineDy, SKTextAlign.Center);
+                for (int li = 0; li < lines.Length; li++)
+                    Place(texts, lines[li], textRole, componentId, primIndex, font,
+                          cxp, cyp, netDeg, lineX, -boxHpx * 0.5f + li * lineHpx + ascPx, lineAlign);
                 continue;
             }
 
@@ -1491,6 +1543,26 @@ public static class SchematicRenderer
                 canvas.DrawRect(SKRect.Create(ax, ay, bx - ax, by - ay), bmSelStroke);
             }
         }
+
+        // Free text: selection is the glyphs redrawn in the selection colour, as the symbol editor
+        // shows a selected text — no box.
+        if (!isLod && overlay.SelectedCanvasObjIds.Count > 0 && model.Texts.Count > 0)
+        {
+            using var selText = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill, Color = theme.SelectionBox };
+            foreach (var t in model.Texts)
+            {
+                if (!overlay.SelectedCanvasObjIds.Contains(t.Id)) continue;
+                DrawSymbol(canvas, [LiveText(t, overlay.CanvasObjectDragPositions)],
+                           compX: 0, compY: 0, rotation: SymbolRotation.R0, mirrorX: false,
+                           panX: panX, panY: panY, zoom: zoom, theme: theme, overridePaint: selText);
+            }
+        }
+
+        // The text being typed by the Text tool, caret included.
+        if (overlay.TextPreview is { } preview)
+            DrawSymbol(canvas, [preview],
+                       compX: 0, compY: 0, rotation: SymbolRotation.R0, mirrorX: false,
+                       panX: panX, panY: panY, zoom: zoom, theme: theme);
 
         if (!isLod && overlay.CanvasObjectScaleBox is { } box)
         {

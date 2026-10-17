@@ -61,15 +61,24 @@ public static class SymbolGeometry
 
     // ── Text geometry helpers ─────────────────────────────────────────────────────
 
-    /// <summary>Unrotated text box size (W = content advance, H = ascent+descent), font-approximated.</summary>
+    /// <summary>Unrotated text box size (W = content advance, H = ascent+descent), font-approximated.
+    /// Content holding line breaks is a stack of lines, one line box each (the renderer's pitch), as
+    /// wide as its longest line.</summary>
     public static (double W, double H) TextBoxSize(TextPrimitive t)
     {
-        double w = t.Content is { Length: > 0 } c
-            ? c.Length * t.FontSize * TextAdvance
+        var lines = TextLines(t.Content);
+        int longest = lines.Max(l => l.Length);
+        double w = longest > 0
+            ? longest * t.FontSize * TextAdvance
             : t.FontSize * TextAdvance * 2;          // empty: same minimum as old BboxOf (halfW*2)
-        double h = t.FontSize * (TextAscentFrac + TextDescentFrac);
+        double h = lines.Length * t.FontSize * (TextAscentFrac + TextDescentFrac);
         return (w, h);
     }
+
+    /// <summary>The lines a text's content draws as — split on <c>\n</c> (a <c>\r</c> before it is
+    /// dropped). One line, the whole content, when it holds no break.</summary>
+    public static string[] TextLines(string? content)
+        => (content ?? "").Replace("\r\n", "\n").Split('\n');
 
     /// <summary>Anchor offset from box center in the UNROTATED text frame (screen Y-down).</summary>
     private static (double ox, double oy) TextAnchorOffset(TextPrimitive t)

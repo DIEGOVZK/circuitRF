@@ -157,7 +157,15 @@ public sealed partial class SchematicViewModel : ObservableObject
 
     // ── Tool state ────────────────────────────────────────────────────────────
 
-    public enum Tool { Select, Pan, Wire, Place, ZoomBox, MoveLabels }
+    public enum Tool { Select, Pan, Wire, Place, ZoomBox, MoveLabels, Text }
+
+    // ── Text tool (the symbol editor's: click an anchor, type, Enter places) ──
+
+    private bool   _isTypingText;
+    /// <summary>True while a text is being typed; key handlers read this to leave the keys to it.</summary>
+    public  bool   IsTypingText => _isTypingText;
+    private double _textAnchorX, _textAnchorY;
+    private string _textBuffer = "";
 
     [ObservableProperty] private Tool   _activeTool  = Tool.Select;
     [ObservableProperty] private bool   _keepConnect = true;
@@ -345,7 +353,7 @@ public sealed partial class SchematicViewModel : ObservableObject
 
     // ── Inline editing ────────────────────────────────────────────────────────
 
-    public enum InlineEditKind { None, ComponentType, ComponentName, ComponentParam, WireNetLabel }
+    public enum InlineEditKind { None, ComponentType, ComponentName, ComponentParam, WireNetLabel, CanvasText }
 
     [ObservableProperty] private bool   _isInlineEditing;
     [ObservableProperty] private double _inlineEditScreenX;
@@ -607,8 +615,20 @@ public sealed partial class SchematicViewModel : ObservableObject
                 ? Overlay.LabelDragOffsets
                 : null,
             CanvasObjectScaleBox    = scaleBox,
+            TextPreview             = TypingPreview(),
         };
     }
+
+    /// <summary>The text the Text tool is typing, with its caret — the symbol editor's preview.</summary>
+    private TextPrimitive? TypingPreview() => !_isTypingText ? null : new TextPrimitive
+    {
+        Content  = _textBuffer + "|",
+        AnchorX  = _textAnchorX,
+        AnchorY  = _textAnchorY,
+        FontSize = EditableText.DefaultFontSize,
+        Align    = SymbolTextAlign.Left,
+        VAlign   = SymbolTextVAlign.Top,
+    };
 
     /// <summary>The rect whose scale handles show: the picture's, when the selection is exactly one
     /// picture and the Select tool is active — the layout editor's rule for a bitmap, whose bbox
@@ -675,6 +695,8 @@ public sealed partial class SchematicViewModel : ObservableObject
     public void SetWireTool()    { ActiveTool = Tool.Wire;    CancelCurrentOp(); }
     [RelayCommand]
     public void SetZoomBoxTool() { ActiveTool = Tool.ZoomBox; CancelCurrentOp(); }
+    [RelayCommand]
+    public void SetTextTool()    { ActiveTool = Tool.Text;    CancelCurrentOp(); }
 
     /// <summary>
     /// Enters Move-Labels mode.
@@ -838,6 +860,17 @@ public sealed partial class SchematicViewModel : ObservableObject
     public bool OnKeyDown(Key key, KeyModifiers modifiers)
     {
         bool ctrl = (modifiers & (KeyModifiers.Control | KeyModifiers.Meta)) != 0;
+
+        // Typing a text owns the keyboard: Escape abandons it, Enter places it, Backspace edits it,
+        // and nothing else may act as a shortcut — characters arrive through OnTextInput.
+        if (_isTypingText)
+        {
+            if (key == Key.Escape)                     SetSelectTool();
+            else if (key is Key.Enter or Key.Return)   CommitText();
+            else if (key == Key.Back && _textBuffer.Length > 0) { _textBuffer = _textBuffer[..^1]; RebuildOverlay(); }
+            return true;
+        }
+
         switch (key)
         {
             case Key.Escape:
@@ -893,7 +926,72 @@ public sealed partial class SchematicViewModel : ObservableObject
             case Tool.Place:      HandlePlacePress(worldX, worldY);      break;
             case Tool.ZoomBox:    HandleZoomBoxPress(worldX, worldY);    break;
             case Tool.MoveLabels: HandleMoveLabelPress(worldX, worldY, modifiers); break;
+            case Tool.Text:       HandleTextPress(worldX, worldY);       break;
         }
+    }
+
+    // ── Text tool ─────────────────────────────────────────────────────────────
+
+    /// <summary>A click sets where the text starts — its top-left anchor, snapped as a label is — and
+    /// starts typing there. The symbol editor's Text tool, gesture for gesture.</summary>
+    private void HandleTextPress(double wx, double wy)
+    {
+        _isTypingText = true;
+        _textAnchorX  = SnapBySnapMode(wx);
+        _textAnchorY  = SnapBySnapMode(wy);
+        _textBuffer   = "";
+        RebuildOverlay();
+    }
+
+    private double SnapBySnapMode(double v)
+    {
+        double grid = SnapMode switch
+        {
+            SnapMode.ConnectionGrid => EditModel.GridSize,        // P
+            SnapMode.FineGrid       => EditModel.AuthorGridSize,  // p
+            _                       => 0,
+        };
+        return grid > 0 ? Math.Round(v / grid) * grid : v;
+    }
+
+    /// <summary>Characters typed into the canvas while the Text tool is typing.</summary>
+    public void OnTextInput(string text)
+    {
+        if (!_isTypingText || string.IsNullOrEmpty(text)) return;
+        // Backspace/Enter arrive here as control characters on some platforms and would draw as tofu;
+        // they are handled in OnKeyDown, so only printable text is kept.
+        string printable = new string(text.Where(c => !char.IsControl(c)).ToArray());
+        if (printable.Length == 0) return;
+        _textBuffer += printable;
+        RebuildOverlay();
+    }
+
+    /// <summary>Places what was typed (one undoable step) and stays in the Text tool for the next one.
+    /// Nothing typed places nothing.</summary>
+    private void CommitText()
+    {
+        if (!string.IsNullOrWhiteSpace(_textBuffer))
+            Execute(new PlaceCanvasObjectCommand(EditModel, new EditableText
+            {
+                Text     = _textBuffer,
+                X        = _textAnchorX,
+                Y        = _textAnchorY,
+                FontSize = EditableText.DefaultFontSize,
+                Align    = SymbolTextAlign.Left,
+                VAlign   = SymbolTextVAlign.Top,
+            }));
+        _isTypingText = false;
+        _textBuffer   = "";
+        RebuildOverlay();
+    }
+
+    /// <summary>Double-click on a text: open the inline editor on its content, at its box's top-left.</summary>
+    public void BeginCanvasTextEdit(string textId, double screenX, double screenY)
+    {
+        if (EditModel.FindCanvasObject(textId) is not EditableText txt) return;
+        Selection.SelectOne(txt.Id);
+        InlineEditIncludesName = false; InlineEditSelStart = 0; InlineEditSelLength = -1;
+        SetInlineEdit(InlineEditKind.CanvasText, txt.Id, txt.Text, screenX, screenY);
     }
 
     public void OnPointerMoved(double worldX, double worldY, bool leftDown,
@@ -4930,6 +5028,13 @@ public sealed partial class SchematicViewModel : ObservableObject
                 }
                 break;
             }
+            case InlineEditKind.CanvasText:
+            {
+                if (EditModel.FindCanvasObject(targetId ?? "") is not EditableText txt || txt.Text == newVal) break;
+                Execute(new SetCanvasObjectPropertyCommand<string>(
+                    EditModel, txt, "Text", txt.Text, newVal, v => txt.Text = v));
+                break;
+            }
             case InlineEditKind.WireNetLabel:
             {
                 if (newVal.Length == 0)
@@ -5172,6 +5277,7 @@ public sealed partial class SchematicViewModel : ObservableObject
         }
 
         if (_wirePoints.Count > 0) { _wirePoints.Clear(); RebuildOverlay(); }
+        if (_isTypingText) { _isTypingText = false; _textBuffer = ""; RebuildOverlay(); }
         _isRubberBanding = false;
         ClearDragState();
         CancelInlineEdit();
@@ -5183,7 +5289,7 @@ public sealed partial class SchematicViewModel : ObservableObject
         // shown at once by SchematicCanvas.ShowPlacementGhostAtPointer, which checks the pointer is over it.)
         _placeGhostPos = null;
         // Clear drag overrides and segment highlight so the renderer falls back to model positions.
-        Overlay = Overlay with { RubberBand = null, WirePreview = null, Ghost = null,
+        Overlay = Overlay with { RubberBand = null, WirePreview = null, Ghost = null, TextPreview = null,
                                  ComponentDragPositions = null, WireDragPoints = null,
                                  LabelDragOffsets = null, CanvasObjectDragPositions = null,
                                  SelectedWireSegments = SchematicOverlay.EmptySegments,
@@ -5242,6 +5348,14 @@ public sealed partial class SchematicViewModel : ObservableObject
         if (await Clipboard.PictureClipboard.LayoutPicturesAsync(clipboard) is { Count: > 0 } layoutPictures)
         {
             PasteFragment([], [], [.. Clipboard.PictureClipboard.ToSchematic(layoutPictures)], EditModel.GridSize);
+            return;
+        }
+
+        // Texts copied in the symbol editor paste here as schematic text (Clipboard.TextClipboard), and
+        // only the texts; a symbol copy with none falls through, and is ignored below as it always was.
+        if (await Clipboard.TextClipboard.SymbolTextsAsSchematicAsync(clipboard) is { Count: > 0 } symbolTexts)
+        {
+            PasteFragment([], [], [.. symbolTexts], EditModel.GridSize);
             return;
         }
 

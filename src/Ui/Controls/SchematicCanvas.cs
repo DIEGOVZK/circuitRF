@@ -152,6 +152,7 @@ public sealed class SchematicCanvas : Control
             SchematicViewModel.Tool.Place      => StandardCursorType.Cross,
             SchematicViewModel.Tool.ZoomBox    => StandardCursorType.Cross,
             SchematicViewModel.Tool.MoveLabels => StandardCursorType.SizeAll,
+            SchematicViewModel.Tool.Text       => StandardCursorType.Cross,
             _                                  => StandardCursorType.Arrow,
         };
     }
@@ -267,6 +268,8 @@ public sealed class SchematicCanvas : Control
     public event EventHandler<EditableComponent>?  ComponentDoubleTapped;
     public event EventHandler<TextLabelHitArgs>?   TextLabelDoubleTapped;
     public event EventHandler<WireHitArgs>?        WireDoubleTapped;
+    /// <summary>A free text was double-clicked with the Select tool: edit its content in place.</summary>
+    public event EventHandler<EditableText>?       CanvasTextDoubleTapped;
 
     // Clipboard shortcuts — raised so code-behind can do the async clipboard work.
     public event EventHandler? ClipboardCopyRequested;
@@ -290,6 +293,7 @@ public sealed class SchematicCanvas : Control
         KeyUp               += OnKeyUp;
         LostFocus           += OnCanvasLostFocus;
         DoubleTapped        += OnDoubleTapped;
+        TextInput           += OnTextInput;
 
         ((IResourceHost)this).ResourcesChanged += (_, _) => InvalidateVisual();
         LayoutUpdated += OnLayoutUpdated;
@@ -721,10 +725,17 @@ public sealed class SchematicCanvas : Control
             return;
         }
 
+        // The Text tool's double-click is two clicks that each start a text, as in the symbol editor.
+        if (_editContext.ActiveTool == SchematicViewModel.Tool.Text) return;
+
         var hit = SchematicHitTest.Test(_editContext.EditModel, _model, _index, wx, wy, zoom: _zoom);
 
         switch (hit.Kind)
         {
+            case SchematicHitTest.HitKind.CanvasObject
+                when _editContext.EditModel.FindCanvasObject(hit.Id) is EditableText txt:
+                CanvasTextDoubleTapped?.Invoke(this, txt);
+                break;
             case SchematicHitTest.HitKind.ComponentType:
             case SchematicHitTest.HitKind.ComponentName:
             case SchematicHitTest.HitKind.ComponentParam:
@@ -982,6 +993,13 @@ public sealed class SchematicCanvas : Control
         UpdateCursor();
     }
 
+    private void OnTextInput(object? _, TextInputEventArgs e)
+    {
+        if (e.Text is not { Length: > 0 } || _editContext is not { IsTypingText: true } vm) return;
+        vm.OnTextInput(e.Text);
+        e.Handled = true;
+    }
+
     private void OnKeyDown(object? _, KeyEventArgs e)
     {
         // Deliberately not `return` — Alt is a modifier, and swallowing it here would cost every
@@ -989,6 +1007,16 @@ public sealed class SchematicCanvas : Control
         if (e.Key is Key.LeftAlt or Key.RightAlt) { _altHeld = true; UpdateCursor(); }
 
         if (_editContext is null) return;
+
+        // Typing a text: every key is the text's (the VM consumes them). A character key is left
+        // unhandled so the platform still delivers it as TextInput; the editing keys are claimed.
+        if (_editContext.IsTypingText)
+        {
+            _editContext.OnKeyDown(e.Key, e.KeyModifiers);
+            if (e.Key is Key.Enter or Key.Return or Key.Back or Key.Escape) e.Handled = true;
+            InvalidateVisual();
+            return;
+        }
 
         bool ctrl = (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) != 0;
 
@@ -1033,7 +1061,8 @@ public sealed class SchematicCanvas : Control
     /// to the nudge) whenever something is selected or a text gesture owns the keyboard.</summary>
     private bool TryArrowPan(KeyEventArgs e)
     {
-        if (_editContext is null || !_editContext.Selection.IsEmpty || _editContext.IsInlineEditing)
+        if (_editContext is null || !_editContext.Selection.IsEmpty || _editContext.IsInlineEditing
+            || _editContext.IsTypingText)
             return false;
         if (CanvasArrowPan.ScreenStep(e.Key, e.KeyModifiers) is not { } step) return false;
 

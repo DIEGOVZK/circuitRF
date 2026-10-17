@@ -1709,8 +1709,11 @@ public sealed partial class SymbolEditorViewModel : ObservableObject
         if (IsLocked) return;
 
         var result = await SymbolClipboard.PasteAsync(clipboard);
-        if (result is null) return;
-        var (prims, pins, _) = result.Value;
+        // Not a symbol selection: the texts of a schematic selection paste here as text primitives
+        // (Clipboard.TextClipboard), and only the texts.
+        var (prims, pins) = result is { } r
+            ? (r.Prims, r.Pins)
+            : ([.. (await Clipboard.TextClipboard.SchematicTextsAsSymbolAsync(clipboard)).Cast<SymbolPrimitive>()], []);
         if (prims.Count == 0 && pins.Count == 0) return;
 
         Execute(new PasteSymbolSelectionCommand(

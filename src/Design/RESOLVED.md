@@ -19997,3 +19997,35 @@ executables (`tests/Ui.Tests/Em3d/PalaceGpuDeviceTests.cs`). The field test (R-e
 - **Not addressed:** the four copper files are named `ART01..04`, which identifies nothing, so they come
   in unclassified and the stackup stays empty; the set's layer profile is a binary word-processor
   document circuitRF cannot read.
+
+## Schematic free text: the symbol editor's text primitive, placed on a schematic (2026-10-17)
+
+- **`EditableText` already existed and was never drawn.** It round-tripped through `.csch` and the
+  clipboard, and three builders wrote one (`ModelCardCellBuilder`'s card annotation,
+  `SubcircuitCellBuilder`'s, `MatchFlatten`'s design record), but `SchematicModel` had no text list,
+  so nothing rendered it and no gesture could create one. It is now the schematic's text object and
+  carries `TextPrimitive`'s fields one for one; `ToPrimitive()` is what the renderer draws
+  (`SchematicRenderer.DrawSymbol`, the symbol editor's own text path) and what the bounding box is
+  measured from (`SymbolGeometry.BboxOf`). Rotation is the base class's `RotationDeg` read in quarter
+  turns, so the rigid group rotate turns a text with no new field; a lone text pivots on its own
+  anchor (`SchematicGroupTransform`), since snapping that pivot slid an off-grid note.
+- **X/Y changed meaning, and the reader tells the two apart by `Align`.** A text record written
+  before this has no `Align`/`VAlign`/`FontStyle`/`ColorRole` keys and its X/Y was the CENTRE of a
+  Width x Height box; it reads back `Center`/`Middle`, so it lands centred where it was meant to be.
+  `IsBold`/`IsItalic` map to `FontStyle`. New records write all four keys (`WhenWritingNull`, so a
+  bitmap record is byte-identical) and still write `IsBold`/`IsItalic`.
+- **The builder records are multi-line**, so `SymbolGeometry.TextBoxSize` and the renderer's text
+  branch stack `\n`-separated lines (one line box each, aligned within the stack); a single line takes
+  the exact path it always did. The builders now anchor top-left at the default size: their old
+  `FontSize = 11` would have drawn at a sixth of the schematic's own lettering. A `.csch` written by
+  them before today keeps its 11 and draws small until resized in the Properties panel.
+- **Not fixed, noticed:** `SymbolGeometry.Clone` drops a `TextPrimitive`'s `ColorRole` (a copied
+  SymbolPlus text pastes as SymbolLine in the symbol editor). `SchematicRenderer.LiveText` sets it
+  back explicitly for that reason.
+- **Text copies between the schematic and symbol editors** (`src/Ui/Clipboard/TextClipboard.cs`, on
+  `PictureClipboard`'s pattern): each paste reads its own format first, and when the clipboard holds the
+  OTHER editor's selection, only its texts cross. No scaling or flip — both are P = 100 and Y-down.
+  Schematic to symbol moves the group by whole P steps so it centres near the symbol origin (a schematic
+  text can be anywhere); `ForceReadable` is dropped going to a schematic. Avalonia 12's `IClipboard`
+  is marked not implementable by user code, so `SymbolClipboard.SerializeSelection` was pulled out of
+  `CopyAsync` for the tests to produce real clipboard text.

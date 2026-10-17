@@ -108,6 +108,13 @@ internal sealed class SchematicGroupTransform
             px = comps[0].X;
             py = comps[0].Y;
         }
+        else if (comps.Count == 0 && wires.Count == 0 && objs is [EditableText lone])
+        {
+            // A text on its own turns about its own anchor, as a lone part turns about its origin —
+            // the symbol editor's R on a text. Snapping this pivot would slide an off-grid note.
+            px = lone.X;
+            py = lone.Y;
+        }
         else
         {
             var anchors = comps.Select(c => (X: c.X, Y: c.Y))

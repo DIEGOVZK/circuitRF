@@ -26,8 +26,12 @@ public partial class PropertiesTool : Tool
     /// <summary>Pictures placed in the active schematic, while they are the whole selection.</summary>
     public SchematicPictureInspectorViewModel PictureInspectorVm { get; } = new();
 
+    /// <summary>A free text placed in the active schematic, while it is the whole selection.</summary>
+    public SchematicTextInspectorViewModel TextInspectorVm { get; } = new();
+
     /// <summary>The schematic's "select something" line: nothing the panel can show is selected.</summary>
-    public bool ShowSchematicPlaceholder => EditorVm.IsEmptyState && !PictureInspectorVm.IsActive;
+    public bool ShowSchematicPlaceholder =>
+        EditorVm.IsEmptyState && !PictureInspectorVm.IsActive && !TextInspectorVm.IsActive;
 
     /// <summary>wbond.md §6.9 — everything about one selected bond wire, incl. its coordinates.</summary>
     [ObservableProperty]
@@ -160,6 +164,11 @@ public partial class PropertiesTool : Tool
             OnPropertyChanged(nameof(ShowSchematicPlaceholder));
             if (IsSchematicContextActive) HeaderText = SchematicHeader();
         };
+        TextInspectorVm.ActiveChanged += () =>
+        {
+            OnPropertyChanged(nameof(ShowSchematicPlaceholder));
+            if (IsSchematicContextActive) HeaderText = SchematicHeader();
+        };
     }
 
     // ── Context setters ───────────────────────────────────────────────────────
@@ -181,13 +190,15 @@ public partial class PropertiesTool : Tool
         SymbolInspectorVm.SetContext(null);
         LayoutInspectorVm.SetContext(null);
         PictureInspectorVm.SetContext(vm);
+        TextInspectorVm.SetContext(vm);
         WireInspectorVm.SetContext(null);
         ClearC3d();
         HeaderText = SchematicHeader();
     }
 
     private string SchematicHeader() =>
-        PictureInspectorVm.IsActive ? "Picture" : EditorVm.IsEmptyState ? "Properties" : "Component";
+        PictureInspectorVm.IsActive ? "Picture" : TextInspectorVm.IsActive ? "Text"
+        : EditorVm.IsEmptyState ? "Properties" : "Component";
 
     /// <summary>Called by WorkspaceViewModel when the active symbol-editor document changes.</summary>
     public void SetActiveSymbolEditor(SymbolEditorViewModel? vm)
@@ -206,6 +217,7 @@ public partial class PropertiesTool : Tool
         SymbolInspectorVm.SetContext(vm);
         LayoutInspectorVm.SetContext(null);
         PictureInspectorVm.SetContext(null);
+        TextInspectorVm.SetContext(null);
         WireInspectorVm.SetContext(null);
         ClearC3d();
         HeaderText = vm is not null ? "Symbol" : "Properties";
@@ -228,6 +240,7 @@ public partial class PropertiesTool : Tool
         SymbolInspectorVm.SetContext(null);
         LayoutInspectorVm.SetContext(null);
         PictureInspectorVm.SetContext(null);
+        TextInspectorVm.SetContext(null);
         WireInspectorVm.SetContext(null);
         ClearC3d();
         HeaderText = vm is not null ? "Cell" : "Properties";
@@ -257,6 +270,7 @@ public partial class PropertiesTool : Tool
         SymbolInspectorVm.SetContext(null);
         LayoutInspectorVm.SetContext(null);
         PictureInspectorVm.SetContext(null);
+        TextInspectorVm.SetContext(null);
         WireInspectorVm.SetContext(null);
         ClearC3d();
         DatasetsVm.SetWindow(window);
@@ -279,6 +293,7 @@ public partial class PropertiesTool : Tool
         SymbolInspectorVm.SetContext(null);
         LayoutInspectorVm.SetContext(null);
         PictureInspectorVm.SetContext(null);
+        TextInspectorVm.SetContext(null);
         WireInspectorVm.SetContext(null);
         ClearC3d();
         IsWireActive          = false;
@@ -318,6 +333,7 @@ public partial class PropertiesTool : Tool
         SymbolInspectorVm.SetContext(null);
         LayoutInspectorVm.SetContext(null);
         PictureInspectorVm.SetContext(null);
+        TextInspectorVm.SetContext(null);
         WireInspectorVm.SetContext(null);
         ClearC3d();
 
@@ -343,6 +359,7 @@ public partial class PropertiesTool : Tool
         SymbolInspectorVm.SetContext(null);
         LayoutInspectorVm.SetContext(vm);
         PictureInspectorVm.SetContext(null);
+        TextInspectorVm.SetContext(null);
         WireInspectorVm.SetContext(null);
         ClearC3d();
         HeaderText = vm is not null ? "Layout" : "Properties";
@@ -381,6 +398,7 @@ public partial class PropertiesTool
         SymbolInspectorVm.SetContext(null);
         LayoutInspectorVm.SetContext(null);
         PictureInspectorVm.SetContext(null);
+        TextInspectorVm.SetContext(null);
         ClearC3d();
 
         WireInspectorVm.SetContext(vm);
@@ -410,6 +428,7 @@ public partial class PropertiesTool
         SymbolInspectorVm.SetContext(null);
         LayoutInspectorVm.SetContext(null);
         PictureInspectorVm.SetContext(null);
+        TextInspectorVm.SetContext(null);
         WireInspectorVm.SetContext(null);
 
         C3dInspectorVm = vm?.Properties;

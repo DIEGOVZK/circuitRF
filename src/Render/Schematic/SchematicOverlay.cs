@@ -144,6 +144,9 @@ public sealed record class SchematicOverlay
     /// </summary>
     public (double X, double Y, double W, double H)? CanvasObjectScaleBox { get; init; }
 
+    /// <summary>The text the Text tool is typing, caret included, in world units; null when not typing.</summary>
+    public TextPrimitive? TextPreview { get; init; }
+
     // ── R-dup-1: the Alt duplicate drag (docs/design/pcell-parameter-handles.md's sibling rule for
     //    the schematic; the layout editor's own half rides its paste-ghost channel) ────────────────
 

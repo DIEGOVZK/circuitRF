@@ -55,24 +55,8 @@ public static class SymbolClipboard
     {
         if (primitives.Count == 0 && pins.Count == 0) return;
 
-        // Build JSON payload (primary format — round-trips perfectly; paste depends on it).
-        var payload = new Payload
-        {
-            Marker     = Marker,
-            GridSize   = gridSize,
-            Primitives = [..primitives],
-            Pins       = pins.Select(p => new CsymPin
-            {
-                LocalX    = p.LocalX,
-                LocalY    = p.LocalY,
-                PortIndex = p.PortIndex,
-                Name      = p.Name,
-            }).ToList(),
-        };
-
-        string json;
-        try   { json = JsonSerializer.Serialize(payload, _opts); }
-        catch { return; }
+        string? json = SerializeSelection(primitives, pins, gridSize);
+        if (json is null) return;
 
         // Resolve render policy once for this copy operation.
         var (variant, transparent) = ClipboardRenderPolicy.Resolve();
@@ -170,6 +154,41 @@ public static class SymbolClipboard
             .ToList();
 
         return (payload.Primitives, pins, payload.GridSize);
+    }
+
+    /// <summary>The JSON a copy puts on the clipboard (the primary format — round-trips perfectly; paste
+    /// depends on it), or null when the selection cannot be serialized.</summary>
+    internal static string? SerializeSelection(
+        IReadOnlyList<SymbolPrimitive> primitives, IReadOnlyList<SymbolPin> pins, double gridSize = 100.0)
+    {
+        var payload = new Payload
+        {
+            Marker     = Marker,
+            GridSize   = gridSize,
+            Primitives = [..primitives],
+            Pins       = pins.Select(p => new CsymPin
+            {
+                LocalX    = p.LocalX,
+                LocalY    = p.LocalY,
+                PortIndex = p.PortIndex,
+                Name      = p.Name,
+            }).ToList(),
+        };
+        try   { return JsonSerializer.Serialize(payload, _opts); }
+        catch { return null; }
+    }
+
+    /// <summary>The primitives of a symbol selection held in <paramref name="json"/>, where they were
+    /// copied (no paste offset), or null when the text is not a symbol selection.</summary>
+    internal static List<SymbolPrimitive>? PrimitivesIn(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json) || !json.Contains(Marker, StringComparison.Ordinal)) return null;
+        try
+        {
+            var payload = JsonSerializer.Deserialize<Payload>(json, _opts);
+            return payload?.Marker == Marker ? payload.Primitives : null;
+        }
+        catch { return null; }
     }
 
     // ── Private rendering helpers ─────────────────────────────────────────────
