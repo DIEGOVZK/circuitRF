@@ -49,26 +49,52 @@ public sealed partial class C3dEditorViewModel
         return null;
     }
 
-    /// <summary>The phantom a scene object is a layer of (its provenance's top object), or −1.</summary>
+    /// <summary>The phantom (or brief-sar-11's voxel body) a scene object is a layer or tissue of (its provenance's top object),
+    /// or −1.</summary>
     private int PhantomIndexOf(Scene3DObject o)
         => Elaboration?.Provenance.TryGetValue(o.Name, out var p) == true && p.InstancePath.Length == 0 && p.TopObject is { } top
-           && Document.Objects.FindIndex(d => d.Name == top) is >= 0 and var i && Document.Objects[i] is C3dPhantom ? i : -1;
+           && Document.Objects.FindIndex(d => d.Name == top) is >= 0 and var i && Document.Objects[i] is C3dPhantom or C3dVoxelBody ? i : -1;
 
     /// <summary>The phantom the canvas's selection is, wholly, or −1.</summary>
     private int SelectedPhantom()
     {
         var indices = Viewer.SelectedObjects().Select(PhantomIndexOf).Distinct().ToList();
-        return indices is [>= 0 and var i] ? i : -1;
+        return indices is [>= 0 and var i] && Document.Objects[i] is C3dPhantom ? i : -1;
     }
 
-    /// <summary>A phantom's layer rows beneath its row: each layer's solid (so selecting it selects the phantom) and material.</summary>
+    /// <summary>A phantom's layer rows beneath its row: each layer's solid (so selecting it selects the phantom) and material —
+    /// and brief-sar-11's voxel body's tissue rows the same way.</summary>
     private void AddPhantomLayers(C3dTreeItem row, C3dObject o)
     {
+        if (o is C3dVoxelBody body)
+        {
+            foreach (var label in body.Labels.Where(l => !l.Air))
+                row.Children.Add(new C3dTreeItem(this, C3dPhantoms.LayerName(body.Name, label.Name), PhantomLayerKind,
+                                                 label.Material ?? NoMaterialHeader, -1, -1, !body.Hidden)
+                                 { IsReadOnly = true, IsModelled = body.Model, DisplayName = $"{label.Name} ({label.Label})" });
+            return;
+        }
         if (o is not C3dPhantom p) return;
         foreach (var layer in p.Layers)
             row.Children.Add(new C3dTreeItem(this, C3dPhantoms.LayerName(p.Name, layer.Name), PhantomLayerKind,
                                              layer.Material ?? NoMaterialHeader, -1, -1, !p.Hidden)
                              { IsReadOnly = true, IsModelled = p.Model, DisplayName = layer.Name });
+    }
+
+    /// <summary>brief-sar-11 — sets the material of row <paramref name="row"/> of the voxel body at <paramref name="index"/>: one
+    /// undo entry.</summary>
+    public string? SetVoxelLabelMaterial(int index, int row, string? material)
+    {
+        if (index < 0 || index >= Document.Objects.Count || Document.Objects[index] is not C3dVoxelBody b || row < 0 || row >= b.Labels.Count)
+            return "There is no such voxel label.";
+        if (b.Labels[row].Material == material && !b.Labels[row].Air) return null;
+        ChangeObjects($"Material of {b.Name}/{b.Labels[row].Name}", [index], o =>
+        {
+            var l = ((C3dVoxelBody)o).Labels[row];
+            l.Material = material;
+            l.Air = false;
+        });
+        return null;
     }
 
     /// <summary>The canvas's and the tree's Flatten entry for a phantom.</summary>

@@ -625,6 +625,70 @@ public partial class WorkspaceViewModel
         foreach (string note in editor.LastStepNotes) Messages.Info(note, editor.FilePath);
     }
 
+    // ── Import anatomy (brief-sar-11) ──────────────────────────────────────────────────────────
+
+    /// <summary>File ▸ Import ▸ Voxel Model… and Surface Meshes…: enabled with an active 3D editor (no geometry kernel needed).</summary>
+    public bool ThreeDImportAnatomyAvailable => HasActiveC3dEditor();
+
+    public string ThreeDImportAnatomyTip
+        => "A segmented voxel model (NIfTI, raw, a DiscMaterial .h5, or a tetrahedral .node/.ele voxelised), or one closed surface " +
+           "per tissue (STL, OBJ, PLY), in this 3D view, each label or surface given a material. openEMS runs it. Requires an active 3D editor.";
+
+    private bool CanImportAnatomy() => ThreeDImportAnatomyAvailable;
+
+    [RelayCommand(CanExecute = nameof(CanImportAnatomy))]
+    private async Task ImportVoxelModel(Window? owner)
+    {
+        if (ActiveC3dEditor() is not { } editor) return;
+        if (editor.ImportAnatomyRefusal() is { } refusal) { Messages.Error(refusal); return; }
+        if (ResolveOwner(owner) is not { } window) return;
+        var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import Voxel Model",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Label volumes") { Patterns = ["*.nii", "*.nii.gz", "*.gz", "*.h5", "*.hdf5", "*.raw", "*.bin", "*.vol", "*.node", "*.ele"] },
+                new FilePickerFileType("All Files") { Patterns = ["*.*"] },
+            ],
+        });
+        if (files.Count == 0) return;
+        string source = files[0].Path.LocalPath;
+        var vm = new VoxelImportDialogViewModel(source, editor.AnatomyMaterials(), editor.Document.DbuPerMicron,
+                                                options => editor.PlanVoxelImport(source, options));
+        bool ok = await new CircuitRF.Ui.Views.ThreeD.VoxelImportDialog(vm).ShowDialog<bool>(window);
+        if (!ok || vm.Plan is not { } plan) return;
+        if (editor.AcceptVoxelImport(plan) is { } why) { Messages.Error(why); return; }
+        foreach (string line in plan.Report.Lines(plan.Rows)) Messages.Info(line, editor.FilePath);
+        foreach (string note in editor.LastAnatomyNotes) Messages.Info(note, editor.FilePath);
+        if (plan.Report.Warning is { } w) Messages.Warning(w, editor.FilePath);
+    }
+
+    [RelayCommand(CanExecute = nameof(CanImportAnatomy))]
+    private async Task ImportSurfaceMeshes(Window? owner)
+    {
+        if (ActiveC3dEditor() is not { } editor) return;
+        if (editor.ImportAnatomyRefusal() is { } refusal) { Messages.Error(refusal); return; }
+        if (ResolveOwner(owner) is not { } window) return;
+        var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import Surface Meshes (one closed surface per tissue)",
+            AllowMultiple = true,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("Surface meshes") { Patterns = ["*.stl", "*.obj", "*.ply", "*.STL", "*.OBJ", "*.PLY"] },
+                new FilePickerFileType("All Files") { Patterns = ["*.*"] },
+            ],
+        });
+        if (files.Count == 0) return;
+        var paths = files.Select(f => f.Path.LocalPath).ToList();
+        var vm = new SurfaceImportDialogViewModel(paths, editor.AnatomyMaterials(), unit => editor.PlanSurfaceImport(paths, unit));
+        bool ok = await new CircuitRF.Ui.Views.ThreeD.SurfaceImportDialog(vm).ShowDialog<bool>(window);
+        if (!ok || vm.Plan is not { } plan) return;
+        if (editor.AcceptSurfaceImport(plan) is { } why) { Messages.Error(why); return; }
+        foreach (string note in editor.LastAnatomyNotes) Messages.Info(note, editor.FilePath);
+    }
+
     // ── Export STEP (brief-em3d-69) ────────────────────────────────────────────────────────────
 
     /// <summary>File ▸ Export ▸ STEP…: shown always, enabled with the kernel and an active 3D or layout
@@ -770,6 +834,9 @@ public partial class WorkspaceViewModel
         OnPropertyChanged(nameof(ThreeDImportStepAvailable));
         OnPropertyChanged(nameof(ThreeDImportStepTip));
         ImportStepCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(ThreeDImportAnatomyAvailable));
+        ImportVoxelModelCommand.NotifyCanExecuteChanged();
+        ImportSurfaceMeshesCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(ThreeDExportStepAvailable));
         OnPropertyChanged(nameof(ThreeDExportStepTip));
         ExportStepCommand.NotifyCanExecuteChanged();

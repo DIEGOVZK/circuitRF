@@ -322,6 +322,9 @@ public static class Authoring
         string noun = args[0].ToLowerInvariant();
         JsonRun.Verb = "import " + noun;
 
+        // brief-sar-11 — anatomy into a .c3d: its own argument set, and the same one-verb-with-nouns surface.
+        if (noun == "voxels") return AnatomyImportVerb.RunVoxels(args[1..]);
+        if (noun == "surfaces") return AnatomyImportVerb.RunSurfaces(args[1..]);
         if (noun != "part")
         {
             JsonRun.Report(CliDiagnostics.ImportUnknownNoun(noun));
@@ -603,7 +606,8 @@ public static class Authoring
     {
         Console.Error.WriteLine(
             "Usage: circuitrf import part <file-or-folder> --into <workspace-or-dir> "
-            + "[--cell N] [--variant V] [--tech <file.ctech>] [--add-layers] [--list-parts]");
+            + "[--cell N] [--variant V] [--tech <file.ctech>] [--add-layers] [--list-parts]\n"
+            + AnatomyImportVerb.UsageText);
         return 1;
     }
 }

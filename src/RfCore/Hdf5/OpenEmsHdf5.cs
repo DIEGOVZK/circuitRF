@@ -96,7 +96,7 @@ public sealed record OpenEmsSarResult(
     ulong ValidCubes, ulong UsedCubes, ulong UnusedCubes, ulong AirCubes);
 
 /// <summary>openEMS 0.37.0's HDF5 output and sar_calc's, read through PureHDF. See the file header.</summary>
-public static class OpenEmsHdf5
+public static partial class OpenEmsHdf5
 {
     /// <summary>The <c>openEMS_HDF5_version</c> 0.37.0 writes — the layout this reader is pinned to.</summary>
     public const double PinnedVersion = 0.3;
@@ -300,7 +300,7 @@ public static class OpenEmsHdf5
             return v.Length == 1 ? v[0] : throw Unexpected(AttrPath(objPath, name), $"{v.Length} values", "one value");
         }
 
-        private string Text(IH5Object obj, string objPath, string name, string expected)
+        public string Text(IH5Object obj, string objPath, string name, string expected)
         {
             var a = Attribute(obj, objPath, name, expected);
             return a.Type.Class is H5DataTypeClass.String or H5DataTypeClass.VariableLength
@@ -308,7 +308,7 @@ public static class OpenEmsHdf5
                 : throw Unexpected(AttrPath(objPath, name), Describe(a.Type), "a string");
         }
 
-        private static string Describe(IH5DataType t) => t.Class switch
+        public static string Describe(IH5DataType t) => t.Class switch
         {
             H5DataTypeClass.FloatingPoint => $"float{t.Size * 8}",
             H5DataTypeClass.FixedPoint => $"{(t.FixedPoint.IsSigned ? "int" : "uint")}{t.Size * 8}",

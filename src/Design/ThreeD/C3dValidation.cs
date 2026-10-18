@@ -56,6 +56,13 @@ public static class C3dValidation
                         found.Add(C3dDiagnostics.UnknownMaterial(layerName, layer.Material));
                 }
             }
+            else if (o is C3dVoxelBody body)
+            {
+                // brief-sar-11 — a voxel body's materials are its rows'; an Air row has none.
+                foreach (var row in body.Labels.Where(r => !r.Air && r.Material is { Length: > 0 }))
+                    if (isKnownMaterial is not null && !isKnownMaterial(row.Material!))
+                        found.Add(C3dDiagnostics.UnknownMaterial(C3dPhantoms.LayerName(o.Name, row.Name), row.Material!));
+            }
             else if (o is not C3dPolyline)
             {
                 // brief-em3d-50: a wire's omitted material is wBond's default metal, which the technology must still define.
@@ -85,6 +92,7 @@ public static class C3dValidation
 
             // brief-em3d-101 R-em3d101-6 — an image that cannot be drawn, and Locked where nothing reads it.
             if (o is C3dSheet sheet) Images(sheet, documentPath, found);
+            if (o is C3dVoxelBody or C3dMesh) ImportedFile(o, documentPath, found);
             if (o.FaceImages is { Count: > 0 }) FaceImages(o, documentPath, found);
 
             if (unresolved?.Contains(o.Name) == true) { Unread(o.Unread, $"'{o.Name}'", found); continue; }
@@ -217,6 +225,8 @@ public static class C3dValidation
             case C3dSphere sp:    Sphere(sp, found);    break;
             case C3dEllipsoid el: Ellipsoid(el, found); break;
             case C3dPhantom ph:   Phantom(ph, found);   break;
+            case C3dVoxelBody vb: VoxelBody(vb, found); break;
+            case C3dMesh me:      Mesh(me, found);      break;
             case C3dSheet s:      Sheet(s, found);      break;
             case C3dPolyline l:   Polyline(l, found);   break;
             case C3dPolyhedron h: Polyhedron(h, found); break;
@@ -422,6 +432,58 @@ public static class C3dValidation
 
     /// <summary>brief-sar-3 R-sar3-2 — a phantom's shape: positive dimensions, shells that leave every layer a volume, and one
     /// named layer per solid.</summary>
+    /// <summary>brief-sar-11 — a voxel body's own shape: a file, a raw layout that holds together, a label table with one row per
+    /// label and names a tissue can take, a crop that keeps something, a grid step that is not negative.</summary>
+    private static void VoxelBody(C3dVoxelBody b, List<Diagnostic> found)
+    {
+        if (string.IsNullOrWhiteSpace(b.File)) found.Add(C3dDiagnostics.VoxelBodyShape(b.Name, "names no File"));
+        if (b.Raw is { } raw && C3dVoxelBodies.LayoutOf(raw, 1000)!.Fault() is { } fault)
+            found.Add(C3dDiagnostics.VoxelBodyShape(b.Name, "has a Raw layout that does not hold together: " + fault.TrimEnd('.')));
+        if (b.Raw is null && b.File.Length > 0 && C3dVoxelBodies.FormatOf(b.File) == "raw")
+            found.Add(C3dDiagnostics.VoxelBodyShape(b.Name, $"names '{b.File}', a raw volume, and states no Raw layout (dimensions, type, voxel size)"));
+        if (b.Labels.GroupBy(r => r.Label).FirstOrDefault(g => g.Count() > 1) is { } twice)
+            found.Add(C3dDiagnostics.VoxelBodyShape(b.Name, $"has two rows for label {twice.Key}"));
+        foreach (var r in b.Labels.Where(r => !r.Air))
+        {
+            if (string.IsNullOrWhiteSpace(r.Name)) found.Add(C3dDiagnostics.VoxelBodyShape(b.Name, $"has a row for label {r.Label} with no name"));
+            else if (r.Name.Contains('/') || r.Name.Contains(',')) found.Add(C3dDiagnostics.VoxelBodyShape(b.Name, $"has the tissue '{r.Name}', whose name holds '/' or ','"));
+        }
+        if (b.Labels.Where(r => !r.Air).GroupBy(r => r.Name, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1) is { } same)
+            found.Add(C3dDiagnostics.VoxelBodyShape(b.Name, $"has two tissues named '{same.Key}'; each label's tissue is its own solid"));
+        if (b.Labels.FirstOrDefault(r => r.Air && r.Material is { Length: > 0 }) is { } both)
+            found.Add(C3dDiagnostics.VoxelBodyShape(b.Name, $"marks label {both.Label} Air and gives it the material '{both.Material}'"));
+        if (b.Crop is { } c && (c.I1 <= c.I0 || c.J1 <= c.J0 || c.K1 <= c.K0 || c.I0 < 0 || c.J0 < 0 || c.K0 < 0))
+            found.Add(C3dDiagnostics.VoxelBodyShape(b.Name, "has a Crop that keeps nothing (each upper index must exceed its lower, from 0)"));
+        if (b.GridStep < 0) found.Add(C3dDiagnostics.VoxelBodyShape(b.Name, "has a GridStep that is negative (0 puts a line on every voxel boundary)"));
+    }
+
+    private static void Mesh(C3dMesh m, List<Diagnostic> found)
+    {
+        if (string.IsNullOrWhiteSpace(m.File)) found.Add(C3dDiagnostics.MeshShape(m.Name, "names no File"));
+        if (C3dMeshes.UnitMetres(m.Unit) is null) found.Add(C3dDiagnostics.MeshShape(m.Name, $"states the unit '{m.Unit}', which is not m, cm, mm, um, in or mil"));
+    }
+
+    /// <summary>brief-sar-11 — an imported anatomy file: inside this 3D view's folder, present, and (a warning) unchanged since import.</summary>
+    private static void ImportedFile(C3dObject o, string? documentPath, List<Diagnostic> found)
+    {
+        if (documentPath is null) return;
+        var (file, hash, kind) = o switch
+        {
+            C3dVoxelBody b => (b.File, b.Hash, "voxel body"),
+            C3dMesh m => (m.File, m.Hash, "mesh"),
+            _ => ("", "", ""),
+        };
+        if (file.Length == 0) return;
+        Diagnostic Shape(string why) => o is C3dMesh ? C3dDiagnostics.MeshShape(o.Name, why) : C3dDiagnostics.VoxelBodyShape(o.Name, why);
+        string folder = Path.GetDirectoryName(Path.GetFullPath(documentPath))!;
+        string full = Path.GetFullPath(Path.Combine(folder, file));
+        if (!full.StartsWith(folder + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+        { found.Add(Shape($"names '{file}', which is outside this 3D view's folder; an imported file is copied into it")); return; }
+        if (!File.Exists(full)) { found.Add(Shape($"names '{file}', which does not exist")); return; }
+        if (hash.Length > 0 && !string.Equals(StepHash(full), hash, StringComparison.OrdinalIgnoreCase))
+            found.Add(C3dDiagnostics.ImportedFileChanged(kind, o.Name, file));
+    }
+
     private static void Phantom(C3dPhantom p, List<Diagnostic> found)
     {
         if (C3dPhantoms.ShapeFault(p) is { } why) found.Add(C3dDiagnostics.PhantomShape(p.Name, why));

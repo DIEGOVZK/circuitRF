@@ -660,11 +660,13 @@ internal static class ToolCatalog
         // named and described as bringing artwork IN, where an agent looking for an export does not
         // look. Both are single-mode now, like `render`.
         new("import",
-            "Bring a component in as a cell: a footprint and its symbol, from a component file or folder. "
+            "Bring something in: a component as a cell (a footprint and its symbol); a segmented voxel model (NIfTI, raw, a "
+          + "DiscMaterial .h5, or a tetrahedral .node/.ele voxelised) or per-tissue closed surfaces (STL, OBJ, PLY) into a .c3d. "
           + "To convert artwork between formats, including exporting a layout, use convert.",
-            null, null,
+            "what",
+            "What to import.",
             [
-                new("", ["import", "part"],
+                new("part", ["import", "part"],
                     [new("path", true, "The component file or folder.")],
                     [
                         new("into",       "--into",        OptKind.Path, "The workspace the cell is created in."),
@@ -676,6 +678,34 @@ internal static class ToolCatalog
                         Summary,
                     ],
                     "A footprint and its symbol, as a cell."),
+                new("voxels", ["import", "voxels"],
+                    [new("path", true, "The label volume: .nii, .nii.gz, .h5 (DiscMaterial), a raw file, or a .node/.ele mesh.")],
+                    [
+                        new("into",      "--into",       OptKind.Path,    "The .c3d the body goes into; created when absent."),
+                        new("labels",    "--labels",     OptKind.Path,    "A label list CSV: label,name[,material]."),
+                        new("material",  "--material",   OptKind.StrMap,  "Per label: its material, or air. {\"4\": \"Muscle\"}."),
+                        new("name",      "--name",       OptKind.Str,     "The object's name. Default: the file's stem."),
+                        new("dims",      "--dims",       OptKind.Str,     "A raw volume's voxels: nx,ny,nz."),
+                        new("type",      "--type",       OptKind.Str,     "A raw volume's integer type: uint8, int8, uint16, int16, uint32, int32."),
+                        new("voxel",     "--voxel",      OptKind.Str,     "A raw volume's voxel size, or a tetrahedral mesh's, with its unit: 2mm or 1mm,1mm,2mm."),
+                        new("bigEndian", "--big-endian", OptKind.Flag,    "A raw volume is big-endian."),
+                        new("header",    "--header",     OptKind.Integer, "Bytes to skip at the start of a raw volume."),
+                        new("unit",      "--unit",       OptKind.Str,     "A tetrahedral mesh's length unit. Default mm."),
+                        new("crop",      "--crop",       OptKind.Str,     "Keep voxels i0,j0,k0,i1,j1,k1 (upper ends exclusive)."),
+                        new("gridStep",  "--grid-step",  OptKind.Str,     "The FDTD cell inside the body, with its unit. Default: a line on every voxel boundary."),
+                        new("report",    "--report",     OptKind.Flag,    "Print the size report and the label table; write nothing."),
+                    ],
+                    "A segmented voxel model, as one VoxelBody whose labels map to materials."),
+                new("surfaces", ["import", "surfaces"],
+                    [new("path", true, "A closed surface file (STL, OBJ, PLY), or a folder of them, one per tissue.")],
+                    [
+                        new("into",      "--into",       OptKind.Path,    "The .c3d the surfaces go into; created when absent."),
+                        new("unit",      "--unit",       OptKind.Str,     "The files' length unit. Default mm."),
+                        new("material",  "--material",   OptKind.StrMap,  "Per file (name or stem): its material."),
+                        new("group",     "--group",      OptKind.Str,     "The group the surfaces are gathered in."),
+                        new("report",    "--report",     OptKind.Flag,    "Check and order the surfaces; write nothing."),
+                    ],
+                    "Per-tissue closed surfaces, as Mesh objects nested outermost first."),
             ]),
 
         new("convert",

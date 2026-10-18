@@ -478,6 +478,9 @@ public static class C3dThermal
             case Em3dEllipsoid el:
                 // brief-sar-3 — exact, as the sphere's is: grown by tol along each semi-axis.
                 return (el with { A = el.A + tol, B = el.B + tol, C = el.C + tol }).Contains(q);
+            case Em3dShapeSolid { IsMesh: true } mesh:
+                // brief-sar-11 — an imported surface IS its triangles: the parity of a ray's crossings, not its box.
+                return C3dMeshInside.Contains(mesh.Display, q);
             default:
                 var (x0, y0, z0, x1, y1, z1) = Em3dProblem.Bounds(p);
                 return q.X >= x0 - tol && q.X <= x1 + tol && q.Y >= y0 - tol && q.Y <= y1 + tol && q.Z >= z0 - tol && q.Z <= z1 + tol;

@@ -139,6 +139,8 @@ public static class C3dBindings
         new(typeof(C3dPhantom), nameof(C3dPhantom.Shell1), 1, C3dFieldKind.Length),
         new(typeof(C3dPhantom), nameof(C3dPhantom.Shell2), 1, C3dFieldKind.Length),
         new(typeof(C3dPhantom), nameof(C3dPhantom.Voxel), 1, C3dFieldKind.Length),
+        // brief-sar-11 — a voxel body's FDTD cell inside it (0: a line on every voxel boundary).
+        new(typeof(C3dVoxelBody), nameof(C3dVoxelBody.GridStep), 1, C3dFieldKind.Length),
         new(typeof(C3dWire), nameof(C3dWire.DiameterUm), 1, C3dFieldKind.Microns),
         new(typeof(C3dRect), nameof(C3dRect.Min), 2, C3dFieldKind.Length),
         new(typeof(C3dRect), nameof(C3dRect.Size), 2, C3dFieldKind.Length),

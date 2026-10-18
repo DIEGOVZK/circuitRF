@@ -186,6 +186,11 @@ public sealed record Em3dShapeSolid(
     /// <summary>The linear deflection <see cref="Display"/> was made at, metres.</summary>
     public double DisplayDeflectionM { get; init; }
 
+    /// <summary>brief-sar-11 — a solid with no B-rep: an imported triangle mesh (its <see cref="Display"/> IS the solid) or a voxel
+    /// body's tissue (its display is a drawing; <see cref="Em3dSolid.Labels"/> is the solid). The geometry worker never sees one,
+    /// so only openEMS lowers it.</summary>
+    public bool IsMesh => Brep.Length == 0;
+
     /// <summary>
     /// brief-em3d-65 R-em3d65-3a — the same solid tessellated again at a linear deflection (metres) and an angular one
     /// (radians), with each triangle's <see cref="Em3dTriangle.Face"/> an index into <see cref="Faces"/>: how the FDTD
@@ -298,9 +303,54 @@ public sealed record Em3dSolid(string Name, string Material, Em3dRole Role, Em3d
     /// solid — is the primitive itself.</summary>
     public Em3dVoxelLattice? Voxel { get; init; }
 
+    /// <summary>brief-sar-11 — the label volume this solid is one tissue of, when it came from a segmented voxel model: the solid
+    /// is every voxel whose label is <see cref="Label"/>, and its primitive is drawing only (a surface extracted from the voxels
+    /// at a reduced resolution). Null for every other solid.</summary>
+    public Em3dLabelVolume? Labels { get; init; }
+
+    /// <summary>brief-sar-11 — the entry of <see cref="Labels"/> this solid is (1-based; 0 is the volume's air).</summary>
+    public int Label { get; init; }
+
     /// <summary>Whether the solid holds <paramref name="q"/>: <paramref name="inside"/> asked of the primitive at <paramref name="q"/>,
-    /// or at its voxel's centre when the solid is voxelized.</summary>
-    public bool Holds(Point3 q, Func<Em3dPrimitive, Point3, bool> inside) => inside(Primitive, Voxel?.CentreOf(q) ?? q);
+    /// or at its voxel's centre when the solid is voxelized; a label volume's tissue holds the voxels carrying its label.</summary>
+    public bool Holds(Point3 q, Func<Em3dPrimitive, Point3, bool> inside)
+        => Labels is { } v ? v.EntryAt(q) == Label : inside(Primitive, Voxel?.CentreOf(q) ?? q);
+}
+
+/// <summary>
+/// brief-sar-11 — a segmented voxel model, placed: voxel boundaries along the world's axes (metres, strictly increasing, one more
+/// line than voxels per axis) and one entry per voxel, C order over (x, y, z), 0 for air and k for <c>Tissues[k − 1]</c>. Every
+/// solid of one body shares the one instance. <paramref name="GridStepM"/> is the FDTD cell asked for inside the body: 0 puts a
+/// line on every voxel boundary; a positive step lets the grid place lines at most that far apart, and each cell then takes the
+/// voxel its own centre lies in (CSXCAD's sampling under cell-constant material).
+/// </summary>
+public sealed record Em3dLabelVolume(string Body, double[] X, double[] Y, double[] Z, byte[] Entries,
+                                     IReadOnlyList<string> Tissues, double GridStepM)
+{
+    public int Nx => X.Length - 1;
+    public int Ny => Y.Length - 1;
+    public int Nz => Z.Length - 1;
+
+    /// <summary>The entry of the voxel holding <paramref name="q"/> (a point on a boundary belongs to the voxel above it); 0
+    /// outside the volume.</summary>
+    public int EntryAt(Point3 q)
+    {
+        int i = Cell(X, q.X), j = Cell(Y, q.Y), k = Cell(Z, q.Z);
+        return i < 0 || j < 0 || k < 0 ? 0 : Entries[((long)i * Ny + j) * Nz + k];
+    }
+
+    private static int Cell(double[] lines, double v)
+    {
+        if (!(v >= lines[0]) || !(v <= lines[^1])) return -1;
+        int at = Array.BinarySearch(lines, v);
+        int i = at >= 0 ? at : ~at - 1;
+        return Math.Min(i, lines.Length - 2);
+    }
+
+    /// <summary>Equal by identity: one body's solids share one instance, and its arrays are too large to compare.</summary>
+    public bool Equals(Em3dLabelVolume? other) => ReferenceEquals(this, other);
+
+    public override int GetHashCode() => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);
 }
 
 /// <summary>

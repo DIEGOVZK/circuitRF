@@ -46,4 +46,16 @@ public static class OpenEmsArrayOrder
             disk[iz, iy, ix] = values[Index(ix, iy, iz, ny, nz)];
         return disk;
     }
+
+    /// <summary>brief-sar-11 — the inverse of <see cref="ToCsxcadOrder{T}"/>: a /DiscData buffer read flat (x fastest, as its
+    /// (nz, ny, nx) dimensions store it) back into circuitRF's C order over (x, y, z).</summary>
+    public static T[] FromCsxcadOrder<T>(T[] disk, int nx, int ny, int nz)
+    {
+        var values = new T[disk.Length];
+        for (int iz = 0; iz < nz; iz++)
+        for (int iy = 0; iy < ny; iy++)
+        for (int ix = 0; ix < nx; ix++)
+            values[Index(ix, iy, iz, ny, nz)] = disk[(iz * ny + iy) * nx + ix];
+        return values;
+    }
 }

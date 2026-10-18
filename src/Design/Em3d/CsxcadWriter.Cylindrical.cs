@@ -31,6 +31,10 @@ public static partial class CsxcadWriter
     {
         CsxcadLowering No(string why) => new(null, [], [], 0, 0, 0, 0, [], [], [], why);
         if (grid.Refusal is { } refused) return No(refused);
+        // brief-sar-11 — a DiscMaterial's voxels are Cartesian; a cylindrical grid would sample them on its own cells unsaid.
+        if (problem.Solids.FirstOrDefault(s => s.Labels is not null) is { Labels: { } voxelBody })
+            return No($"The voxel body '{voxelBody.Body}' is a Cartesian voxel model, which circuitRF writes on a Cartesian grid only. " +
+                      "Set OpenEms.Grid to Cartesian.");
         if (farFieldHz is { Count: > 0 })
             return No("A radiation pattern needs openEMS's near-to-far-field box, which circuitRF writes on a Cartesian grid only. " +
                       "Set OpenEms.Grid to Cartesian for the pattern, or turn RadiationPattern off for the cylindrical run.");

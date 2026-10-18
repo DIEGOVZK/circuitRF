@@ -271,7 +271,7 @@ public static partial class CsxcadWriter
         var kernelSaid = new List<string>();
         foreach (var solid in problem.Solids)
         {
-            if (solid.Primitive is not Em3dShapeSolid k) continue;
+            if (solid.Primitive is not Em3dShapeSolid k || solid.Labels is not null) continue;
             var (file, why) = KernelPly(solid, k, grid, ctx);
             if (file is null) return No(why!);
             if (!kernelFiles.Any(x => x.FileName == file.FileName)) kernelFiles.Add(file);
@@ -287,6 +287,25 @@ public static partial class CsxcadWriter
         var voxelsWritten = new HashSet<string>(StringComparer.Ordinal);
         foreach (var item in items)
         {
+            // brief-sar-11 R-sar11-3 — a voxel body's tissues are ONE DiscMaterial, written where its first tissue would be.
+            if (item.Solid is { Labels: { } volume })
+            {
+                if (!voxelsWritten.Add(volume.Body)) continue;
+                var tissues = problem.Solids.Where(x => ReferenceEquals(x.Labels, volume)).OrderBy(x => x.Label).ToList();
+                var (xml, file, refusal) = VoxelBody(volume, tissues, materials, fitHz, run.Sar?.Densities, id++);
+                if (refusal is not null) return No(refusal);
+                props.Append(xml);
+                kernelFiles.Add(file!);
+                var over = problem.Solids.Where(x => !ReferenceEquals(x.Labels, volume)).Select(x => (x.Name, B: Em3dProblem.Bounds(x.Primitive)))
+                                  .Concat(problem.Sheets.Select(x => (x.Name, B: x.WorldBounds())))
+                                  .Where(o => o.B.X0 < volume.X[^1] && o.B.X1 > volume.X[0] && o.B.Y0 < volume.Y[^1] && o.B.Y1 > volume.Y[0] &&
+                                              o.B.Z0 < volume.Z[^1] && o.B.Z1 > volume.Z[0])
+                                  .Select(o => o.Name).ToList();
+                notes.Add($"The voxel body '{volume.Body}' is written as a DiscMaterial of {volume.Nx} × {volume.Ny} × {volume.Nz} voxels ({file!.FileName}), " +
+                          "under every other object" +
+                          (over.Count > 0 ? $": {Names(over)} reach{(over.Count == 1 ? "es" : "")} into its box and take{(over.Count == 1 ? "s" : "")} the volume they share." : "."));
+                continue;
+            }
             // brief-sar-8 — a voxelized phantom's layers are ONE DiscMaterial, written where its first layer would be.
             if (item.Solid is { Voxel: { } lattice })
             {

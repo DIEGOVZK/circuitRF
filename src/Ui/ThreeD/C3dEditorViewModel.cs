@@ -1096,6 +1096,8 @@ public sealed partial class C3dEditorViewModel : ObservableObject, IViewer3DEdit
         (typeof(C3dBox), "Boxes"), (typeof(C3dPrism), "Prisms"), (typeof(C3dCylinder), "Cylinders"), (typeof(C3dSphere), "Spheres"),
         // brief-sar-3 — an ellipsoid beside the sphere; a phantom, one row with its layers beneath it.
         (typeof(C3dEllipsoid), "Ellipsoids"), (typeof(C3dPhantom), "Phantoms"),
+        // brief-sar-11 — imported anatomy: a voxel body is one row (its tissues are its label table), a mesh one per surface.
+        (typeof(C3dVoxelBody), "Voxel bodies"), (typeof(C3dMesh), "Meshes"),
         (typeof(C3dPolyhedron), "Polyhedra"), (typeof(C3dSheet), "Sheets"), (typeof(C3dPolyline), "Polylines"),
         (typeof(C3dWire), "Wires"),
         // brief-em3d-64 — drawn and listed; brief 66 gives an operation its own node with its operands beneath it.

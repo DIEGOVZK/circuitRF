@@ -154,6 +154,22 @@ public static class C3dDiagnostics
         "c3d.phantom.shape", DiagnosticSeverity.Error,
         "The phantom '{name}' {why}.", ("name", name), ("why", why));
 
+    /// <summary>brief-sar-11 — a voxel body or an imported surface mesh that does not hold together.</summary>
+    public static Diagnostic VoxelBodyShape(string name, string why) => Diagnostic.Create(
+        "c3d.voxelbody.shape", DiagnosticSeverity.Error,
+        "The voxel body '{name}' {why}.", ("name", name), ("why", why));
+
+    public static Diagnostic MeshShape(string name, string why) => Diagnostic.Create(
+        "c3d.mesh.shape", DiagnosticSeverity.Error,
+        "The mesh '{name}' {why}.", ("name", name), ("why", why));
+
+    /// <summary>brief-sar-11 — an imported anatomy file whose bytes are not the ones recorded at import: a WARNING, since the model
+    /// is read again as it now is, and the run says what it holds.</summary>
+    public static Diagnostic ImportedFileChanged(string kind, string name, string file) => Diagnostic.Create(
+        "c3d.imported.changed", DiagnosticSeverity.Warning,
+        "The {kind} '{name}' was imported from '{file}', and that file has changed since: what runs is the file as it is now.",
+        ("kind", kind), ("name", name), ("file", file));
+
     public static Diagnostic SheetShape(string name, string why) => Diagnostic.Create(
         "c3d.sheet.shape", DiagnosticSeverity.Error,
         "The sheet '{name}' {why}.", ("name", name), ("why", why));

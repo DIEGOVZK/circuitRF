@@ -721,6 +721,22 @@ internal static class DocumentSchema
             omitted = 0, the smooth layers) gives openEMS the phantom in cubes of that side, each the
             innermost layer holding its centre, on a lattice with a corner at Centre: how openEMS's own
             phantoms are made. Palace and the thermal solver mesh the smooth layers whatever it says.
+          * A VoxelBody is a segmented voxel model in its own file beside the .c3d (File: a NIfTI
+            .nii/.nii.gz, a CSXCAD DiscMaterial .h5, or a raw volume with its Raw layout {"Nx", "Ny",
+            "Nz", "Type": "uint8"…, "VoxelX", "VoxelY", "VoxelZ" in DBU, "BigEndian", "HeaderBytes"}),
+            and Labels, one row per label: {"Label": 4, "Name": "muscle", "Material": "Muscle"} or
+            {"Label": 9, "Name": "lumen", "Air": true}. Label 0 is air without a row. A label voxels
+            carry that no row maps is a refusal naming it and its voxel count. Each mapped row is the
+            solid "<body>/<name>", a dielectric. Crop {"I0", "J0", "K0", "I1", "J1", "K1"} keeps voxel
+            indices [I0, I1) … along the world's axes as the file is read; GridStep (DBU, omitted = 0)
+            is the FDTD cell inside the body, 0 putting a line on every voxel boundary. The placement
+            moves it and may turn it by quarter turns only. openEMS gets it as one DiscMaterial (at
+            most 255 tissues); Palace and the thermal solver refuse it. `import voxels` writes one.
+          * A Mesh is one closed triangle surface in its own file beside the .c3d (File: STL, OBJ or
+            PLY; Unit its length unit, mm when omitted; Flip when its triangles face inward), a solid
+            of its Material lowered to openEMS through a PolyhedronReader. A per-tissue surface model
+            is several, outermost first, so an inner tissue wins. Palace and the thermal solver refuse
+            it. `import surfaces` writes them.
           * "LumpedElements" are R, L and C across gaps, each a gap exactly as a lumped port's is (Name,
             Plane, Offset, Rect, and optional Positive/Negative), with Topology Parallel (default) or
             Series and any of R, L, C as expressions with RUnit, LUnit, CUnit (base SI when omitted):

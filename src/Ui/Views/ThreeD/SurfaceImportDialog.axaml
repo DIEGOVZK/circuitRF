@@ -1,0 +1,61 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:t3="using:CircuitRF.Ui.ThreeD"
+        x:Class="CircuitRF.Ui.Views.ThreeD.SurfaceImportDialog"
+        x:DataType="t3:SurfaceImportDialogViewModel"
+        Title="{Binding Title}"
+        Width="760" Height="440" MinWidth="520" MinHeight="300"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True"
+        ShowInTaskbar="False">
+
+    <!-- brief-sar-11 R-sar11-4: one closed surface per tissue, checked and ordered outermost first, each given a material. -->
+    <Grid RowDefinitions="Auto,Auto,*,Auto,Auto" Margin="16,12,16,12">
+
+        <WrapPanel Grid.Row="0" Margin="0,0,0,6">
+            <TextBlock Text="Unit" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <ComboBox ItemsSource="{Binding Units}" SelectedItem="{Binding Unit}" FontSize="12"
+                      ToolTip.Tip="A mesh file states no unit: the length one of its coordinates means."/>
+            <TextBlock Text="Group" FontSize="12" VerticalAlignment="Center" Margin="12,0,6,0"/>
+            <TextBox Text="{Binding GroupName}" Width="180" FontSize="12"/>
+        </WrapPanel>
+
+        <SelectableTextBlock Grid.Row="1" Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                             Foreground="{DynamicResource SystemErrorTextColor}" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,4"/>
+
+        <Grid Grid.Row="2" RowDefinitions="Auto,*">
+            <Grid ColumnDefinitions="150,170,90,*" Margin="0,0,0,2">
+                <TextBlock Grid.Column="0" Text="Name" FontSize="11" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="1" Text="Material" FontSize="11" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="2" Text="Nesting" FontSize="11" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="3" Text="File" FontSize="11" FontWeight="SemiBold"/>
+            </Grid>
+            <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding Rows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="t3:SurfaceImportRowViewModel">
+                            <Grid ColumnDefinitions="150,170,90,*" Margin="0,1">
+                                <TextBox Grid.Column="0" Text="{Binding Name}" FontSize="12" Margin="0,0,6,0"/>
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding $parent[ItemsControl].((t3:SurfaceImportDialogViewModel)DataContext).Materials}"
+                                          SelectedItem="{Binding Material}" FontSize="12" HorizontalAlignment="Stretch" Margin="0,0,6,0"/>
+                                <TextBlock Grid.Column="2" Text="{Binding DepthText}" FontSize="12" VerticalAlignment="Center"/>
+                                <SelectableTextBlock Grid.Column="3" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap">
+                                    <Run Text="{Binding File}"/><Run Text=" — "/><Run Text="{Binding CheckText}"/>
+                                </SelectableTextBlock>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
+
+        <SelectableTextBlock Grid.Row="3" Text="{Binding Notes}" FontSize="11" TextWrapping="Wrap" Margin="0,6,0,0"
+                             Foreground="{DynamicResource SystemBaseMediumColor}"/>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,10,0,0">
+            <Button Content="Cancel" Width="90" HorizontalContentAlignment="Center" Command="{Binding CancelCommand}"/>
+            <Button Content="Import" Width="90" HorizontalContentAlignment="Center" IsDefault="True" Command="{Binding AcceptCommand}"
+                    ToolTip.Tip="Copy each file beside this 3D view and add one Mesh per surface, outermost first, in the group."/>
+        </StackPanel>
+    </Grid>
+</Window>

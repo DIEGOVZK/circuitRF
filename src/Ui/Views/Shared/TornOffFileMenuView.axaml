@@ -163,6 +163,14 @@
                           Command="{Binding ImportStepCommand}"
                           CommandParameter="{Binding $parent[Window]}"
                           ToolTip.Tip="{Binding ThreeDImportStepTip}"/>
+                <MenuItem Header="_Voxel Model…"
+                          Command="{Binding ImportVoxelModelCommand}"
+                          CommandParameter="{Binding $parent[Window]}"
+                          ToolTip.Tip="{Binding ThreeDImportAnatomyTip}"/>
+                <MenuItem Header="Surface _Meshes…"
+                          Command="{Binding ImportSurfaceMeshesCommand}"
+                          CommandParameter="{Binding $parent[Window]}"
+                          ToolTip.Tip="{Binding ThreeDImportAnatomyTip}"/>
                 <MenuItem Header="_Component…"
                           Command="{Binding ImportComponentCommand}"
                           CommandParameter="{Binding $parent[Window]}"/>

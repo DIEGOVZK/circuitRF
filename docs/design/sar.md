@@ -1,6 +1,6 @@
 # circuitRF — SAR and B1 for MRI coil designers and phone SAR
 
-**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7), SAR-6 done (§8), SAR-7 done (§9), SAR-8 done (§10; the birdcage moved to SAR-8b), SAR-9 done (§11), SAR-10 done (§12) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
+**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7), SAR-6 done (§8), SAR-7 done (§9), SAR-8 done (§10; the birdcage moved to SAR-8b), SAR-9 done (§11), SAR-10 done (§12), SAR-11 done (§13) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
 **Reference data:** [`testdata/sar/openems-ref/`](../../testdata/sar/openems-ref/README.md) · **Builds on:**
 [`em-3d.md`](em-3d.md) (the openEMS backend) and [`em-3d-f0-findings.md`](em-3d-f0-findings.md) (its validated versions).
 
@@ -1545,3 +1545,162 @@ value, read on demand with `B1pMean(F1, "brain")`, is **0.2049 µT/√W, +0.00 %
 - `LoopCoilOptimizeTests`: §12.6 (the B1 half skips where the field set is not on the machine).
 - `CapacitorYieldTests`: §12.5.
 - `FieldsDirectiveRoundTripTests` gained `drive=2,3 weights=…` through the `.cnl` reader and writer and the schematic.
+
+---
+
+## 13. Segmented voxel models and per-tissue surfaces (SAR-11)
+
+Researchers bring their own anatomy. circuitRF ships no anatomical model (overview L2); it ships the importers. Two forms are
+read: a **segmented label map** (one integer per voxel naming a tissue, usually NIfTI) and **one closed surface per tissue**.
+Both land in a `.c3d` and run on openEMS.
+
+### 13.1 The voxel body (R-sar11-1)
+
+`C3dVoxelBody` (`$type` `VoxelBody`) references its volume by a path relative to the `.c3d`, as a STEP part does, with the
+file's `sha256` recorded at import (`check` warns when the file has changed since). Its **label table** is one row per label:
+`{Label, Name, Material}` or `{Label, Name, Air: true}`.
+
+- **Label 0 is air unless a row maps it.** A row with `Air` is air too.
+- **A label voxels carry that no row maps is a refusal** — at import and at every run — naming each label and its voxel count
+  (`The voxel body 'slab' has 1 label its table maps to no material: 7 (1 voxel)`). A tissue left out in silence would be air,
+  and the SAR in its neighbours wrong with nothing said.
+- Each mapped row is one dielectric solid, **`<body>/<name>`** — a phantom layer's spelling, so `Sar.Region` names a tissue
+  (`head/brain`) or the whole body (`head`) exactly as it names a phantom (`Em3dGenerationResult.Phantoms` lists bodies after
+  phantoms). B1's default region is a phantom's innermost layer; a body has no innermost, so name `Sar.B1Region` for one.
+- `Crop` keeps voxel indices `[I0, I1) × [J0, J1) × [K0, K1)` along the world's axes as the file is read. After it, the volume
+  is cut to the voxels that hold tissue, so neither the file openEMS reads nor the grid carries a frame of air.
+- **The placement moves the body and may turn it by quarter turns only**: voxels are then moved exactly, and a DiscMaterial
+  file's non-uniform boundaries survive. Any other rotation is refused with its angle (the same rule as a file's own
+  orientation, §13.2).
+- **Drawn, never simulated, as tissue-coloured surfaces at a reduced resolution**: the volume decimated to at most 96 blocks
+  along its longest axis (each block the label at its centre voxel), every block face between two tissues emitted. The drawing
+  is an `Em3dShapeSolid` with **no B-rep** whose one face's box is the tissue's **exact** voxel bounds, so the grid, the SAR dump
+  box and the view all read the true extent from it; the solid itself is `Em3dSolid.Labels` (an `Em3dLabelVolume`), and
+  `Em3dSolid.Holds` asks the voxel a point lies in — so a named region, B1's region and a peak's tissue are the tissue CSXCAD
+  gave the cell.
+- Loaded once: a whole-body volume is hundreds of megabytes, so it is cached by the file's path, length, write time and raw
+  layout (`C3dVoxelBodies.Loads` counts the misses); editing the table or the placement re-uses it.
+
+### 13.2 Readers (R-sar11-2)
+
+| File | Reader | Rules |
+|---|---|---|
+| `.nii`, `.nii.gz` (NIfTI-1 and NIfTI-2) | `NiftiFile`, from the published header layouts | either byte order; a two-file `.hdr`/`.img` pair refused; 3D only (a series refused); integer data, or a float volume whose every voxel is a whole number from 0 to 65,535 (noted); a scaled volume (`scl_slope` not 0/1, `scl_inter` ≠ 0) refused; the affine is the sform when its code is set, else the qform quaternion (qfac from `pixdim[0]`), else `pixdim` on the diagonal (noted); units from `xyzt_units`, millimetres when unstated (noted) |
+| raw | `RawVolume` | dimensions, type (`uint8` … `int32`), voxel size, byte order and a header to skip are stated (the dialog's fields, the CLI's flags); x fastest; the file's length must equal header + voxels × width exactly, both ways — a wrong dimension or type almost always shows up there |
+| `.h5` (CSXCAD DiscMaterial) | `OpenEmsHdf5.ReadDiscMaterial` (new, beside SAR-4's reader) | version ≥ 2; `/DiscData` uint8 (nz, ny, nx), chunked and deflated allowed (openEMS's own phantoms are); names optional; the boundaries in metres as stored. Its εr/σ/ρ tables are **not** used: the label table's materials are, and the import says so |
+| label list CSV | `LabelTableCsv` | `label,name[,material]`, a header row allowed, `#` comments; `air` as a material is air; a label given twice refused |
+
+**A non-axis-aligned affine is refused with the angle** (`VoxelAxes`, tolerance 1e-6 on the direction cosine, about 0.08°):
+resampling a label map onto a turned grid is a decision about anatomy that belongs to whoever made the segmentation. A
+permutation and a flip are not refused — they are how the common orientations are stored — and are applied by moving voxels.
+
+Labels are held as `ushort` (0 … 65,535): a whole body at 1 mm (~270 M voxels) is half a gigabyte in it, where `int` would be a
+whole one; a label outside the range is a refusal naming it.
+
+### 13.3 Lowering to openEMS (R-sar11-3)
+
+`CsxcadWriter.VoxelBody` writes **one `DiscMaterial`** per body, with SAR-4's `DiscMaterialWriter`: entry 0 air, then one
+entry per tissue with its material's εr, σ (evaluated at the SAR frequency, SAR-2) and, when SAR is requested, its density.
+Exactly as a voxelized phantom (§10.3): the box is written at **priority 0**, so anything overlapping it wins there and the run
+names it; a tissue with a tensor permittivity or μr ≠ 1 is refused; the file rides the kernel-file path into every port's
+directory and is checked by hash before openEMS starts.
+
+- **The placement is applied to the boundaries, not written as a CSXCAD transform.** The brief asked for a transform; the
+  file's lines are instead the placed world lines — the very lines the grid puts on the voxels — so a cell's centre is looked
+  up in the same numbers on both sides, and no CSXCAD transformation chain (whose rotation the grid would not see, §5.1) is
+  involved. A quarter turn is applied by moving voxels. The cost: one placement, one file; moving the body rewrites it.
+- **The grid inside the body**: with `GridStep` 0 (the default) every voxel boundary is a required grid line (`FdtdGrid`
+  collects them as material faces), so each FDTD cell is one voxel. A positive `GridStep` caps the cell inside the body at that
+  step instead (`Shape.CellCap`); **the resampling rule is CSXCAD's own**: under cell-constant material each cell takes the voxel
+  its centre lies in — nearest-voxel sampling, stated, not averaged. Voxel lines are movable: below `MinCellUm` they merge as
+  any material faces do, and the merge is reported.
+- **Priority with other solids** is em-3d.md §6.3a's, with the body as one dielectric at the bottom (priority 0).
+- **At most 255 tissues per body.** CSXCAD addresses a uint8 index (sar.md §6.4), so more is refused, naming the limit and
+  saying to map labels that share a material to one row. *For the owner:* an atlas with more labels than that needs CSXCAD to
+  change, or a body split across several DiscMaterials.
+- Palace and the thermal solver refuse a body (`GmshGeoWriter.ImportedOpenEmsOnly`: nothing builds a meshable solid from
+  voxels), the cylindrical writer refuses it (its voxels are Cartesian), and STEP export refuses it.
+
+### 13.4 Per-tissue surfaces (R-sar11-4)
+
+`C3dMesh` (`$type` `Mesh`) is one closed surface in its own file (STL ASCII or binary, OBJ, PLY ASCII or binary), its `Unit`
+stated (a mesh file says none). It lowers to an `Em3dShapeSolid` with no B-rep whose display mesh **is** the solid, its
+tessellator returning that mesh — so openEMS gets it through the **existing PolyhedronReader PLY path** a kernel solid takes
+(`KernelPly`), unchanged. Its inside test is the parity of a ray's crossings, through a (y, z) bin grid per mesh
+(`C3dMeshInside`), so a SAR region on a mesh tissue is the surface, not its box.
+
+- **The check, per file**: closed (every edge in exactly two triangles, once each way; open, non-manifold and flipped edges
+  counted), not self-intersecting (each triangle's edges against every triangle sharing no vertex, through a uniform grid;
+  coplanar overlaps are not detected), and outward (a negative enclosed volume is turned round and said). A surface that fails
+  is reported for its file and **nothing is imported**; a file edited after import is checked again at elaboration.
+- **Nested by containment**: surfaces are ordered by how many others contain them, outermost first, so an inner tissue has the
+  later construction order and wins the volume it shares (em-3d.md §6.3a) — a phantom's rule. Two that cross rather than nest
+  are named.
+- Imported surfaces carry **`Role: Dielectric`**: a tissue states εr and σ together, which on an ordinary object asks for a role
+  (em-3d.md §4.1a); a phantom's layer and a body's tissue are dielectric by construction, a mesh says so in its file.
+- **Tetrahedral `.node`/`.ele` meshes are voxelised** (`TetMesh.Voxelise`) at a chosen size on a lattice cornered at the mesh's
+  lowest point, each voxel the region of the tetrahedron holding its centre (CSXCAD's own sampling rule), and kept as a
+  `.nii.gz` beside the `.c3d` — then a voxel body like any other. A region attribute is the label; none is label 1.
+
+### 13.5 Size, said before the run (R-sar11-5)
+
+The import's report (`VoxelImportReport`, printed by the CLI, shown in the dialog and posted to Messages): the file's voxel
+count, dimensions and voxel size; what the crop and the tissue keep; the label histogram with each row's material; and the FDTD
+cells inside the body with openEMS's memory for them (`Em3dSizeEstimate.OpenEmsMemoryBytes`, the figure the grid's own memory
+refusal uses). Past **50 M cells inside the body** it is a **warning, never a refusal** — a whole body at 1 mm is a legitimate,
+slow run — naming a Crop or a coarser GridStep as the remedy. The air around the body is the run's own grid and is not counted.
+
+### 13.6 Import: one pair of functions, three front ends
+
+`AnatomyImport` (`src/Design/ThreeD/Import/`) plans and applies both imports: the label table's defaults (a name from the CSV,
+then the file's own entry names, then `label k`; a material from the CSV, then a technology material whose name equals the
+tissue's ignoring case — never anything fuzzier, the STEP import's rule), the copy into the view's folder
+(`StepImport.CopyInto`, reused), and the report. The front ends only gather choices:
+
+- **CLI**: `import voxels <file> --into <x.c3d>` (`--labels`, `--material L=name|air`, `--name`, `--dims`/`--type`/`--voxel`/
+  `--big-endian`/`--header` for raw, `--voxel`/`--unit` for a tetrahedral mesh, `--crop`, `--grid-step`, `--report`) and
+  `import surfaces <files…|folder> --into <x.c3d>` (`--unit`, `--material stem=name`, `--group`, `--report`). Lengths carry a
+  unit (`2.5mm`); a bare number is refused, as `render` refuses one. The `.c3d` is created when absent. `src/Cli/AnatomyImportVerb.cs`.
+- **MCP**: the `import` tool gained a `what` selector — `part`, `voxels`, `surfaces` — mirroring the CLI's nouns (it had been
+  single-mode since `convert` was split from it; every mode still brings something in).
+- **GUI**: File ▸ Import ▸ Voxel Model… and Surface Meshes… on the active 3D view: the table (label, voxels, tissue, material or
+  air) with the report, or the surfaces with their check and nesting; one undo entry that carries the copied bytes
+  (`C3dFilesEdit`). The Inspector shows a body's file, air labels, crop, voxel extent and `GridStep`, and one material combo per
+  tissue; the tree lists its tissues under it, and picking a tissue in the view selects the body. A save keeps the copies a
+  body or a mesh names, as it keeps a Step part's.
+
+`convert` was not extended: it is one import plus one export between artwork formats, and a voxel model has no export target.
+
+### 13.7 Local models (R-sar11-6)
+
+`testdata/sar/local-models/` is git-ignored except its README and `.gitignore`. A developer may put a free model obtained
+themselves there (a `.nii`, `.nii.gz` or DiscMaterial `.h5`, optionally `<stem>.csv` beside it); `LocalModelImportTests` reads
+each one and prints its report, and skips with a reason when the folder is empty. No model, name or licence text enters the
+repository.
+
+### 13.8 Gates
+
+`tests/Ui.Tests/Sar/VoxelImportTests.cs`, every volume and surface synthetic and written by the test:
+
+- `NiftiReaderTests` (routine): a `.nii.gz` written byte by byte from the header layout, stored with x flipped, round-trips its
+  dimensions, affine and labels; NiftiFile's writer reads back to the same volume; an affine turned 10° is refused naming 10°.
+- `VoxelBodyCsxTests` (routine): a 3-label slab placed 40 mm along x writes one DiscMaterial that SAR-4's reader reads back
+  exactly (every voxel's entry, the boundaries, εr and σ per entry), with a grid line on every voxel boundary; a stray label is
+  refused with its count, and accepted once marked Air.
+- `VoxelVsPrimitivePhantomTests`: the `Ellipsoid3` head phantom voxelised to 2.5 mm and the same ellipsoids imported as a label
+  volume write **the same DiscMaterial** — boundaries, every voxel's entry, εr and σ (routine, writer output). Opt-in
+  (`Benchmark`, 42 s): both run by the installed openEMS for 20 steps on **one grid** (the body's, given to the phantom's setup
+  as explicit lines), and the two raw SAR dumps agree **cell by cell in conductivity, density and complex E, exactly**.
+- `SurfaceAndTetImportTests` (routine): two nested cubes import outermost first with materials matched by file name and lower
+  through two PLY PolyhedronReaders, the inner one later; the mesh inside test is the surface; a cube with a hole is refused
+  naming its 3 open edges; a five-tetrahedron cube voxelises at 1 mm to 1,000 voxels of its region.
+- `LocalModelImportTests`: §13.7, skipped without a local model.
+- `ThreeDViewDocumentTests`' every-kind fixture holds a `VoxelBody` and a `Mesh`; `ServeProtocolAdapterTests` covers the three
+  `import` modes.
+
+### 13.9 Not in SAR-11
+
+Posing or morphing; skewed (non-axis-aligned) affines; anatomical models of circuitRF's own (brief §3). Also not done: a voxel
+body on Palace or the thermal solver (it would need a surface mesh per tissue, or a voxel-to-tetrahedron path); a DiscMaterial
+of more than 255 tissues; a self-intersection test for surfaces past 2 M triangles (checked for closure only, and said).
+

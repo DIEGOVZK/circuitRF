@@ -63,6 +63,8 @@ Fourteen verbs run no analysis, so none of §3-§6 applies to them and §7's exi
 | `new workspace` | a directory | `WorkspaceCreate.Create` | a `.cws` and, unless `--tech none`, a copied `.ctech` |
 | `new cell` | a workspace + a name | `CellCreate.Create` | a cell folder and one empty-but-valid file per `--views` |
 | `import part` | a component file or folder | `ComponentRead` + `ComponentImport.Import` | a cell folder holding the land patterns and the symbol |
+| `import voxels` | a label volume (`.nii[.gz]`, DiscMaterial `.h5`, raw, or a `.node`/`.ele` mesh voxelised) + `--into x.c3d` | `AnatomyImport.PlanVoxels` + `ApplyVoxels` | the volume copied beside the `.c3d` and one `VoxelBody` (sar.md §13) |
+| `import surfaces` | closed surfaces (STL, OBJ, PLY) or a folder of them + `--into x.c3d` | `AnatomyImport.PlanSurfaces` + `ApplySurfaces` | each file copied beside the `.c3d` and one `Mesh` per surface, outermost first |
 | `check` | a workspace, a cell folder, or one document | the validators that already exist | **nothing** — §10 |
 | `explain` | the same, plus `--expr` / `--analysis` / `--ref` / `--cells` / `--layers` / `--extents` / `--footprints` / `--tunables`, and `--setup` and `--object` (one object's resolved appearance) for a `.c3d` | reports what resolution DECIDED | **nothing** — §10 |
 | `render` | the same three view documents, a cell folder, a workspace + `--cell`, a `.cdd`, a 3D `.cem`, or a `.c3d` (and its field plots) | draws it with the renderer the GUI draws with | one `.svg` / `.pdf` / `.png` — §13, §13.7 for a data display, §13.8 for a 3D setup, §13.8.1 for a field plot |
@@ -1393,7 +1395,7 @@ be found by its name.
 | `check` | `check` |
 | `explain` | `explain`, including RND-3's `--cells` / `--layers` / `--extents`, `--footprints` and `--tunables` |
 | `create` | `new workspace` / `new cell` |
-| `import` | `import part` |
+| `import` | `import part` / `import voxels` / `import surfaces`, selected by `what` (brief-sar-11): every mode brings something in, so an export still never lands here |
 | `convert` | `convert` — one import and one export between any two formats, so an export is a `convert` |
 | `render` | `render` — **one tool over every document kind**, as the verb is (R-rnd0-4/R-rnd5-2). The kind comes from the path, so there is no selector; making the view type one would advertise three modes where there is one verb |
 | `netlist` | `netlist` — the extraction Simulate performs, as a document |

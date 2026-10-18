@@ -91,4 +91,43 @@ public static partial class CsxcadWriter
         sb.Append("            </DiscMaterial>\n");
         return (sb.ToString(), new Em3dKernelFile(file, bytes, lattice.Phantom), null);
     }
+
+    /// <summary>
+    /// brief-sar-11 R-sar11-3 — the DiscMaterial property for one voxel body and its file: the body's own boundaries (already
+    /// placed in the world, so no CSXCAD transform is needed and the file's lines are the lines the grid put on its voxels) and one
+    /// entry per tissue, εr, σ and ρ evaluated at the SAR frequency as an ordinary solid's are. Entry 0 is air and the box is
+    /// written at priority 0, exactly as a voxelized phantom's. Or the refusal (a voxel carries εr, σ and ρ only).
+    /// </summary>
+    private static (string? Xml, Em3dKernelFile? File, string? Refusal) VoxelBody(
+        Em3dLabelVolume volume, IReadOnlyList<Em3dSolid> tissues, IReadOnlyDictionary<string, Em3dMaterial> materials, double fitHz,
+        IReadOnlyDictionary<string, double>? densities, int id)
+    {
+        var entries = new List<DiscTissue> { new("air", 1, 0, 0) };
+        var byEntry = tissues.ToDictionary(t => t.Label);
+        for (int e = 1; e <= volume.Tissues.Count; e++)
+        {
+            if (!byEntry.TryGetValue(e, out var s))
+            {
+                // a tissue whose material was refused upstream never reaches here; one left out otherwise is air, said by the run
+                entries.Add(new DiscTissue(volume.Tissues[e - 1].Replace(',', ' '), 1, 0, 0));
+                continue;
+            }
+            var m = materials[s.Material];
+            if (m.EpsrTensor is not null || m.Mur != 1)
+                return (null, null, $"The voxel body '{volume.Body}' has the tissue '{s.Name}' made of '{m.Name}', whose " +
+                                    $"{(m.EpsrTensor is not null ? "permittivity is a tensor" : $"μr is {G(m.Mur)}")}: a voxel carries εr, σ and density only.");
+            entries.Add(new DiscTissue(s.Name.Replace(',', ' '), (float)m.Epsr, (float)Kappa(m, m.Epsr, fitHz),
+                                       (float)(densities?.GetValueOrDefault(s.Name) ?? 0)));
+        }
+        string file = VoxelFile(volume.Body);
+        byte[] bytes = DiscMaterialWriter.ToBytes(volume.X, volume.Y, volume.Z, volume.Entries, entries);
+        var sb = new StringBuilder();
+        Open(sb, "DiscMaterial", id, volume.Body, Colors.Dielectric, " Isotropy=\"1\"");
+        AppendPrimitives(sb, Box(0, new Point3(volume.X[0], volume.Y[0], volume.Z[0]), new Point3(volume.X[^1], volume.Y[^1], volume.Z[^1])));
+        sb.Append("                <Property Epsilon=\"1,1,1\" Mue=\"1,1,1\" Kappa=\"0,0,0\" Sigma=\"0,0,0\" Density=\"0\" />\n");
+        sb.Append("                <Weight Epsilon=\"1,1,1\" Mue=\"1,1,1\" Kappa=\"1,1,1\" Sigma=\"1,1,1\" Density=\"1\" />\n");
+        sb.Append($"                <DiscFile Type=\"0\" File=\"{Esc(file)}\" UseDBBackground=\"1\" Scale=\"1\" />\n");
+        sb.Append("            </DiscMaterial>\n");
+        return (sb.ToString(), new Em3dKernelFile(file, bytes, volume.Body), null);
+    }
 }

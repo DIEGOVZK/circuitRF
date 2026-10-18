@@ -1,0 +1,92 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:t3="using:CircuitRF.Ui.ThreeD"
+        x:Class="CircuitRF.Ui.Views.ThreeD.VoxelImportDialog"
+        x:DataType="t3:VoxelImportDialogViewModel"
+        Title="{Binding Title}"
+        Width="760" Height="560" MinWidth="560" MinHeight="380"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True"
+        ShowInTaskbar="False">
+
+    <!-- brief-sar-11 R-sar11-1/-2/-5: a label volume's table (label, voxels, tissue name, material or air) and its size report.
+         The raw and tetrahedral fields show only for those files; Read re-plans with what is typed. -->
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto" Margin="16,12,16,12">
+
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,4">
+            <TextBlock Grid.Column="0" Text="Label list" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <TextBox Grid.Column="1" Text="{Binding LabelsCsv}" FontSize="12" PlaceholderText="optional: a CSV of label,name,material"/>
+            <Button Grid.Column="2" Content="Browse…" Margin="6,0,0,0" Click="OnBrowseLabels"/>
+        </Grid>
+
+        <WrapPanel Grid.Row="1" IsVisible="{Binding IsRaw}" Margin="0,2,0,2">
+            <TextBlock Text="Dimensions" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <TextBox Text="{Binding Dims}" Width="120" FontSize="12" PlaceholderText="nx, ny, nz"/>
+            <TextBlock Text="Type" FontSize="12" VerticalAlignment="Center" Margin="12,0,6,0"/>
+            <ComboBox ItemsSource="{Binding RawTypes}" SelectedItem="{Binding RawType}" FontSize="12"/>
+            <TextBlock Text="Voxel (mm)" FontSize="12" VerticalAlignment="Center" Margin="12,0,6,0"/>
+            <TextBox Text="{Binding VoxelMm}" Width="100" FontSize="12" PlaceholderText="2 or 1,1,2"/>
+            <CheckBox Content="Big-endian" IsChecked="{Binding BigEndian}" Margin="12,0,0,0"/>
+            <TextBlock Text="Header bytes" FontSize="12" VerticalAlignment="Center" Margin="12,0,6,0"/>
+            <TextBox Text="{Binding HeaderBytes}" Width="70" FontSize="12"/>
+        </WrapPanel>
+
+        <WrapPanel Grid.Row="1" IsVisible="{Binding IsTet}" Margin="0,2,0,2">
+            <TextBlock Text="Voxelise at (mm)" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <TextBox Text="{Binding VoxelMm}" Width="80" FontSize="12" PlaceholderText="2"/>
+            <TextBlock Text="Mesh unit" FontSize="12" VerticalAlignment="Center" Margin="12,0,6,0"/>
+            <ComboBox ItemsSource="{Binding Units}" SelectedItem="{Binding MeshUnit}" FontSize="12"/>
+        </WrapPanel>
+
+        <WrapPanel Grid.Row="2" Margin="0,2,0,6">
+            <TextBlock Text="Name" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0"/>
+            <TextBox Text="{Binding ObjectName}" Width="160" FontSize="12"/>
+            <TextBlock Text="Grid step (mm)" FontSize="12" VerticalAlignment="Center" Margin="12,0,6,0"/>
+            <TextBox Text="{Binding GridStepMm}" Width="70" FontSize="12"
+                     ToolTip.Tip="The FDTD cell inside the body. 0 puts a grid line on every voxel boundary; larger lets each cell take the voxel its centre lies in."/>
+            <Button Content="Read" Margin="12,0,0,0" Command="{Binding ReadCommand}"
+                    ToolTip.Tip="Read the file with these settings and fill the table and the size report."/>
+        </WrapPanel>
+
+        <SelectableTextBlock Grid.Row="3" Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                             Foreground="{DynamicResource SystemErrorTextColor}" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,4"/>
+
+        <Grid Grid.Row="4" RowDefinitions="Auto,*">
+            <Grid ColumnDefinitions="60,110,180,*,60" Margin="0,0,0,2">
+                <TextBlock Grid.Column="0" Text="Label" FontSize="11" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="1" Text="Voxels" FontSize="11" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="2" Text="Tissue" FontSize="11" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="3" Text="Material" FontSize="11" FontWeight="SemiBold"/>
+                <TextBlock Grid.Column="4" Text="Match" FontSize="11" FontWeight="SemiBold"/>
+            </Grid>
+            <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl ItemsSource="{Binding Rows}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="t3:VoxelImportRowViewModel">
+                            <Grid ColumnDefinitions="60,110,180,*,60" Margin="0,1">
+                                <TextBlock Grid.Column="0" Text="{Binding LabelText}" FontSize="12" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="{Binding VoxelsText}" FontSize="12" VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="2" Text="{Binding Name}" FontSize="12" Margin="0,0,6,0"/>
+                                <ComboBox Grid.Column="3" ItemsSource="{Binding $parent[ItemsControl].((t3:VoxelImportDialogViewModel)DataContext).Materials}"
+                                          SelectedItem="{Binding Material}" FontSize="12" HorizontalAlignment="Stretch" Margin="0,0,6,0"/>
+                                <TextBlock Grid.Column="4" Text="{Binding MatchText}" FontSize="12" VerticalAlignment="Center"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
+
+        <SelectableTextBlock Grid.Row="5" Text="{Binding Report}" FontFamily="{DynamicResource IBMPlexMono}" FontSize="11" TextWrapping="Wrap"
+                             Margin="0,6,0,0" Foreground="{DynamicResource SystemBaseMediumColor}"/>
+
+        <Grid Grid.Row="6" ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+            <SelectableTextBlock Grid.Column="0" Text="{Binding Notes}" FontSize="11" TextWrapping="Wrap" VerticalAlignment="Center"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button Content="Cancel" Width="90" HorizontalContentAlignment="Center" Command="{Binding CancelCommand}"/>
+                <Button Content="Import" Width="90" HorizontalContentAlignment="Center" IsDefault="True" Command="{Binding AcceptCommand}"
+                        ToolTip.Tip="Copy the volume beside this 3D view and add one voxel body. Every label needs a material, or air."/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

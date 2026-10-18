@@ -140,7 +140,7 @@
 
             <!-- brief-sar-3 R-sar3-2 — a phantom's layers, outermost first: each one's material, one undo entry per choice. -->
             <StackPanel Spacing="4" IsVisible="{Binding IsPhantom}">
-                <TextBlock Text="Layers, outermost first" FontSize="11" Opacity="0.7"/>
+                <TextBlock Text="{Binding LayersHeader}" FontSize="11" Opacity="0.7"/>
                 <ItemsControl ItemsSource="{Binding PhantomLayers}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="t3:C3dPhantomLayerRow">

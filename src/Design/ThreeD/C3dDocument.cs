@@ -124,6 +124,8 @@ public sealed partial class C3dPlacement : IC3dBindable
 [JsonDerivedType(typeof(C3dChamfer),    "Chamfer")]
 [JsonDerivedType(typeof(C3dStep),       "Step")]
 [JsonDerivedType(typeof(C3dPhantom),    "Phantom")]
+[JsonDerivedType(typeof(C3dVoxelBody),  "VoxelBody")]
+[JsonDerivedType(typeof(C3dMesh),       "Mesh")]
 public abstract class C3dObject : IC3dBindable
 {
     /// <summary>brief-em3d-51 — the object's dimension fields that hold an expression (<see cref="C3dBindings"/>).</summary>
@@ -708,6 +710,126 @@ public sealed class C3dStep : C3dObject
 
     /// <summary>Known only once the kernel has read the part.</summary>
     public override IReadOnlyList<string> FaceNames() => [];
+}
+
+// ── Imported anatomy (brief-sar-11) ───────────────────────────────────────────────────────────
+
+/// <summary>brief-sar-11 R-sar11-1 — one row of a voxel body's label table: a label of the file, the tissue's name, and the material
+/// it is made of — or <see cref="Air"/>, which leaves those voxels to the air around the body.</summary>
+public sealed class C3dVoxelLabel
+{
+    public int Label { get; set; }
+
+    /// <summary>The tissue's name: its solid is <c>&lt;body&gt;/&lt;name&gt;</c>, the spelling a SAR region names it by.</summary>
+    public string Name { get; set; } = "";
+
+    /// <summary>A material of the document's technology. Null (with <see cref="Air"/> false) leaves the label unmapped, which a run
+    /// refuses while voxels carry it.</summary>
+    public string? Material { get; set; }
+
+    /// <summary>These voxels are air. Label 0 is air without a row; a row for 0 with a material makes it a tissue.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Air { get; set; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Unread { get; set; }
+}
+
+/// <summary>brief-sar-11 — what a raw volume's bytes mean (nothing in the file says): voxels along x, y and z (x fastest), their
+/// integer type (<c>uint8</c>, <c>int16</c> …), their size in DBU, the byte order and a header to skip.</summary>
+public sealed class C3dVoxelRaw
+{
+    public int Nx { get; set; }
+    public int Ny { get; set; }
+    public int Nz { get; set; }
+    public string Type { get; set; } = "uint8";
+    public long VoxelX { get; set; }
+    public long VoxelY { get; set; }
+    public long VoxelZ { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool BigEndian { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public long HeaderBytes { get; set; }
+}
+
+/// <summary>brief-sar-11 — a voxel range of a label volume, in voxel indices along the world's x, y and z as the file is read
+/// (after its own orientation is applied): [I0, I1) × [J0, J1) × [K0, K1).</summary>
+public sealed class C3dVoxelRange
+{
+    public int I0 { get; set; }
+    public int J0 { get; set; }
+    public int K0 { get; set; }
+    public int I1 { get; set; }
+    public int J1 { get; set; }
+    public int K1 { get; set; }
+}
+
+/// <summary>
+/// brief-sar-11 R-sar11-1 — a segmented voxel model: a label volume in its own file beside the <c>.c3d</c> (NIfTI, raw, or a CSXCAD
+/// DiscMaterial file), referenced by relative path as a STEP part is, and a label table mapping each label to a material. In
+/// the problem each mapped label is one tissue, <c>&lt;body&gt;/&lt;tissue&gt;</c>; openEMS is given the whole body as one
+/// DiscMaterial. The placement moves it and may turn it by quarter turns (the FDTD grid is axis-aligned). <see cref="Crop"/>
+/// keeps part of the volume. <see cref="GridStep"/> is the FDTD cell inside the body (DBU): 0 puts a line on every voxel
+/// boundary. The base <see cref="C3dObject.Material"/> is not used: each row names its own. Drawn as tissue-coloured surfaces
+/// at a reduced resolution — a drawing only.
+/// </summary>
+public sealed class C3dVoxelBody : C3dObject
+{
+    /// <summary>Relative to the <c>.c3d</c>.</summary>
+    public string File { get; set; } = "";
+
+    /// <summary><c>sha256:&lt;hex&gt;</c> of the file's bytes when it was imported; <c>check</c> says when it has changed.</summary>
+    public string Hash { get; set; } = "";
+
+    /// <summary>A raw volume's layout; null for a NIfTI or DiscMaterial file, which states its own.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public C3dVoxelRaw? Raw { get; set; }
+
+    public List<C3dVoxelLabel> Labels { get; set; } = [];
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public C3dVoxelRange? Crop { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public long GridStep { get; set; }
+
+    /// <summary>Where the file was imported from, for <c>explain</c>.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SourcePath { get; set; }
+
+    /// <summary>A body's faces are its tissues' — and a voxel tissue has none to name.</summary>
+    public override IReadOnlyList<string> FaceNames() => [];
+}
+
+/// <summary>
+/// brief-sar-11 R-sar11-4 — a closed triangle surface in its own file beside the <c>.c3d</c> (STL, OBJ or PLY), one tissue of a
+/// per-tissue surface model, made of <see cref="C3dObject.Material"/>. <see cref="Unit"/> is the file's length unit (a mesh
+/// file states none). Lowered to openEMS through the PolyhedronReader PLY path a kernel solid takes; nested tissues are ordered
+/// outermost first, so an inner one wins the volume it shares.
+/// </summary>
+public sealed class C3dMesh : C3dObject
+{
+    /// <summary>Relative to the <c>.c3d</c>.</summary>
+    public string File { get; set; } = "";
+
+    /// <summary><c>sha256:&lt;hex&gt;</c> of the file's bytes when it was imported.</summary>
+    public string Hash { get; set; } = "";
+
+    /// <summary>The file's length unit: <c>m</c>, <c>mm</c>, <c>um</c>, <c>in</c> or <c>mil</c>.</summary>
+    public string Unit { get; set; } = "mm";
+
+    /// <summary>The file's triangles face inward; they are turned round when read.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Flip { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SourcePath { get; set; }
+
+    public static readonly string[] FaceNameList = ["surface"];
+
+    public override IReadOnlyList<string> FaceNames() => FaceNameList;
 }
 
 // ── Instances ─────────────────────────────────────────────────────────────────────────────────

@@ -600,6 +600,35 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
         foreach (var f in editor.DimensionFields(obj).Where(f => obj is not C3dPhantom ph || PhantomUses(ph, f.Path))) Fields.Add(f);
         foreach (var row in RowsOf(Fields)) FieldRows.Add(row);
         if (obj is C3dPhantom phantom && !operand) LoadPhantomLayers(index, phantom);
+        if (obj is C3dVoxelBody body && !operand) LoadVoxelLabels(index, body);
+    }
+
+    // ── a voxel body's label table (brief-sar-11 R-sar11-1) ──────────────────────────────────
+
+    /// <summary>The heading over <see cref="PhantomLayers"/>: a phantom's layers, or a voxel body's tissues.</summary>
+    [ObservableProperty] private string _layersHeader = "Layers, outermost first";
+
+    /// <summary>One combobox per mapped label, in table order — the rows a phantom's layers use; air rows are listed as text.</summary>
+    private void LoadVoxelLabels(int index, C3dVoxelBody b)
+    {
+        IsPhantom = true;
+        LayersHeader = "Tissues: label → material";
+        IsMaterialEditable = false;
+        Material = null;
+        MaterialPlaceholder = "Each label names its own, below";
+        Rows.Add(new C3dPropertyRow("File", b.File + (b.Raw is { } r ? $" (raw {r.Nx} × {r.Ny} × {r.Nz} {r.Type})" : "")));
+        var air = b.Labels.Where(l => l.Air).Select(l => $"{l.Label} ({l.Name})").ToList();
+        Rows.Add(new C3dPropertyRow("Air", air.Count == 0 ? "label 0" : "label 0, " + string.Join(", ", air)));
+        if (b.Crop is { } c) Rows.Add(new C3dPropertyRow("Crop", $"voxels [{c.I0}, {c.I1}) × [{c.J0}, {c.J1}) × [{c.K0}, {c.K1})"));
+        if (editor.Elaboration?.Solids.FirstOrDefault(s => s.Labels?.Body == b.Name)?.Labels is { } v)
+            Rows.Add(new C3dPropertyRow("Voxels", $"{v.Nx} × {v.Ny} × {v.Nz} around the tissue, {v.Tissues.Count} tissue(s); openEMS only"));
+        for (int i = 0; i < b.Labels.Count; i++)
+        {
+            if (b.Labels[i].Air) continue;
+            int row = i;
+            PhantomLayers.Add(new C3dPhantomLayerRow($"{b.Labels[i].Name} ({b.Labels[i].Label})", b.Labels[i].Material,
+                m => Error = editor.SetVoxelLabelMaterial(index, row, m) ?? ""));
+        }
     }
 
     // ── a phantom's layers (brief-sar-3 R-sar3-2) ────────────────────────────────────────────
@@ -612,6 +641,7 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
     private void LoadPhantomLayers(int index, C3dPhantom p)
     {
         IsPhantom = true;
+        LayersHeader = "Layers, outermost first";
         IsMaterialEditable = false;
         Material = null;
         MaterialPlaceholder = "Each layer names its own, below";
@@ -1061,6 +1091,9 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
                 if (head == "Shell2") return "Second shell";
                 if (head == "Voxel") return "Voxel size";
                 break;
+            case C3dVoxelBody:
+                if (head == "GridStep") return "Grid step (0: a line per voxel)";
+                break;
             case C3dWire:
                 if (head == "DiameterUm") return "Diameter";
                 // 3D editor round 4 — a wire row.
@@ -1264,6 +1297,11 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
             case C3dPolyhedron ph:
                 yield return new("Vertices", ph.Vertices.Count.ToString(CultureInfo.InvariantCulture));
                 yield return new("Faces", ph.Faces.Count.ToString(CultureInfo.InvariantCulture));
+                break;
+            case C3dMesh m:
+                // brief-sar-11 — an imported surface: its file and unit; openEMS solves it, Palace does not.
+                yield return new("File", $"{m.File} ({m.Unit}{(m.Flip ? ", turned round" : "")})");
+                yield return new("Solved by", "openEMS only (a PolyhedronReader); Palace and the thermal solver refuse it");
                 break;
         }
     }

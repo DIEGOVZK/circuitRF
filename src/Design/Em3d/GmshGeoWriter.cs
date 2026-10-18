@@ -143,6 +143,7 @@ public static partial class GmshGeoWriter
         // brief-sar-3 §3 — a lumped element on Palace is its own later series.
         if (problem.LumpedElements.Count > 0)
             return No(LumpedElementsOpenEmsOnly(problem.LumpedElements[0].Name));
+        if (ImportedOpenEmsOnly(problem.Solids, "Palace") is { } imported) return No(imported);
         var problems = problem.Validate().Concat(settings.Problems()).ToList();
         if (problems.Count > 0)
             return No("The 3D problem cannot be lowered for Palace: " + string.Join(" ", problems));
@@ -1186,6 +1187,18 @@ public static partial class GmshGeoWriter
     }
 
     /// <summary>brief-sar-3 §3 — what Palace says to a problem holding a lumped element.</summary>
+    /// <summary>brief-sar-11 — the refusal for a voxel body's tissues or an imported surface mesh among <paramref name="solids"/>: the
+    /// geometry worker builds no solid from either, so only openEMS runs them. Null when there is none.</summary>
+    public static string? ImportedOpenEmsOnly(IEnumerable<Em3dSolid> solids, string solver)
+    {
+        var names = solids.Where(s => s.Primitive is Em3dShapeSolid { IsMesh: true })
+                          .Select(s => s.Labels?.Body ?? s.Name).Distinct(StringComparer.Ordinal).ToList();
+        return names.Count == 0 ? null
+            : $"{string.Join(", ", names.Select(n => $"'{n}'"))} {(names.Count == 1 ? "is an imported voxel body or surface mesh" : "are imported voxel bodies or surface meshes")}, " +
+              $"which openEMS runs and {solver} does not in this version (nothing builds a meshable solid from them). Run the setup on openEMS, " +
+              "or set the object's Model off.";
+    }
+
     public static string LumpedElementsOpenEmsOnly(string name)
         => $"Lumped element '{name}' is solved by openEMS only in this version: Palace's lumped elements are a later series. " +
            "Set Solver3D to openEMS.";

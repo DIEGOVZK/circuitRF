@@ -20233,3 +20233,24 @@ Design note: `docs/design/sar.md` §8. Gate: `tests/Ui.Tests/Sar/SarResultsTests
   message for any abort, not a step limit.
 Design note: `docs/design/sar.md` §11. Gates: `tests/Ui.Tests/Sar/FieldCosimTests.cs`, `CosimSuperpositionTests.cs`,
 `CosimLoopCoilTests.cs`.
+
+## Segmented voxel models and per-tissue surfaces in a `.c3d` (brief-sar-11, 2026-10-18)
+
+- **A run directory's file name must never come from `HashCode`.** `HashCode.Combine` is seeded per process, so a mesh
+  solid's `BrepHash` built from it named its PLY differently on every launch: harmless to one run, but it defeats any cache or
+  comparison across processes and makes two identical runs write different files. `C3dMeshes.Placed` hashes the placement
+  with SHA-256 instead.
+- **A solid with no B-rep is an `Em3dShapeSolid` with an empty `Brep` (`IsMesh`).** That one primitive gives an imported
+  surface the kernel solid's whole openEMS path (the PLY writer, the grid's extremes, the scene's drawing, the fidelity table)
+  with no new case anywhere — but every place that hands `Brep` to the geometry worker must refuse it first, or it writes an
+  empty `.brep` and the worker's error names nothing the user drew: `GmshGeoWriter.ImportedOpenEmsOnly` (Palace and thermal)
+  and STEP export do.
+- **A voxel tissue's primitive is a drawing; its solid is `Em3dSolid.Labels`.** `Em3dSolid.Holds` reads the label volume, so
+  every caller that asks "is this cell that tissue" (SAR regions, B1's region, a peak's tissue) gets CSXCAD's answer. A caller
+  that asks `C3dThermal.Inside(s.Primitive, …)` directly would get the decimated drawing; none does today, and a new one should
+  go through `Holds`.
+- **`Em3dLabelVolume` compares by identity.** Its arrays are a whole body's voxels; record equality would compare them
+  element by element on every problem comparison. One body's tissues share one instance, which is also how the writer groups
+  them into one DiscMaterial.
+- **CSXCAD's uint8 index caps a body at 255 tissues** (sar.md §6.4, §13.3). Refused, naming the limit.
+Design note: `docs/design/sar.md` §13. Gates: `tests/Ui.Tests/Sar/VoxelImportTests.cs`.

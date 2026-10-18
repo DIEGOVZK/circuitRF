@@ -719,6 +719,8 @@ public sealed class CliStructuredOutputTests(ITestOutputHelper output) : IDispos
         "impedance.tech.none",
         "impedance.tech.not-found",
         "impedance.tech.unreadable",
+        // brief-sar-11 — `import voxels` / `import surfaces`: an argument missing or unparsable, the sentence whole.
+        "import.anatomy.args",
         "import.args.into-required",
         "import.args.multiple-sources",
         "import.args.noun-required",

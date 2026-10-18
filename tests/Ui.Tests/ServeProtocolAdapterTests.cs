@@ -973,8 +973,11 @@ public sealed class ServeProtocolAdapterTests(ITestOutputHelper output) : IDispo
             ["create/workspace"]  = ["path"],
             ["create/cell"]       = ["workspace", "name"],
             // `import` and `convert` were one tool with a `what` selector until an export was found
-            // filed under "import"; both are single-mode now.
-            ["import/"]           = ["path"],
+            // filed under "import"; `convert` stays single-mode. brief-sar-11 gave `import` its CLI nouns
+            // back as modes — every one of them brings something in.
+            ["import/part"]       = ["path"],
+            ["import/voxels"]     = ["path"],
+            ["import/surfaces"]   = ["path"],
             ["convert/"]          = ["path"],
             ["read/"]             = ["path"],
             // AUT-11's three. Single-mode for the same reason `render` is: each takes a path whose

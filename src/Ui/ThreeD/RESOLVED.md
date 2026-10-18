@@ -355,3 +355,12 @@ vanish, including the wire the mistake was on. The owner's rule is now a best at
   sheet goes to the snap's height. The first cut moved the bounding-box centre onto the snap, which put a solid's middle at
   the corner. With no extent it still does that. Without a snap the drag follows the grab point, so the handle stays under
   the cursor. Gate: `GizmoSnapTests`.
+
+## A save deleted every imported copy a Step part did not name (brief-sar-11, 2026-10-18)
+
+- **Trap:** `RemoveUnnamedStepCopies` runs after every save and deletes each file this session copied into the view's folder
+  that no Step object names. Brief-sar-11's voxel volumes and surface meshes are copied the same way (`StepImport.CopyInto`),
+  so the first save after importing one would have deleted the file the new object names, and the next elaboration would have
+  refused it as missing.
+- **Fix:** the save keeps whatever a `VoxelBody` or a `Mesh` names as well. Any future object that references a copied file
+  must be added to that walk, or its file goes at the next save.

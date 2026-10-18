@@ -1,0 +1,5 @@
+# brief-sar-11 R-sar11-6 — anatomical models a developer obtained themselves, under their own licences, are kept here on that
+# machine only. Nothing but this file and the README is ever committed: no model, no model's name, no licence text.
+*
+!.gitignore
+!README.md

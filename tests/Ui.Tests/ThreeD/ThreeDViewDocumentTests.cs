@@ -493,6 +493,34 @@ public sealed class ThreeDViewDocumentTests : IDisposable
 			]
 		},
 		{
+			"$type": "VoxelBody",
+			"Name": "anatomy",
+			"File": "anatomy.nii.gz",
+			"Hash": "",
+			"Labels": [
+				{
+					"Label": 1,
+					"Name": "muscle",
+					"Material": "Gold"
+				},
+				{
+					"Label": 2,
+					"Name": "lumen",
+					"Air": true
+				}
+			],
+			"GridStep": 2000
+		},
+		{
+			"$type": "Mesh",
+			"Name": "organ",
+			"Material": "Gold",
+			"Role": "Dielectric",
+			"File": "organ.stl",
+			"Hash": "",
+			"Unit": "mm"
+		},
+		{
 			"$type": "Sheet",
 			"Name": "trace",
 			"Material": "Gold",

@@ -126,6 +126,12 @@ public static class StepExportDiagnostics
         "step.export.elaboration", DiagnosticSeverity.Error, "{first}{more}",
         ("first", first), ("more", count > 1 ? $" ({count - 1} more refusal{(count == 2 ? "" : "s")}: `check` lists them.)" : ""));
 
+    /// <summary>brief-sar-11 — an imported voxel tissue or surface mesh has no B-rep for STEP to carry.</summary>
+    public static Diagnostic ImportedAnatomy(string name) => Diagnostic.Create(
+        "step.export.imported-anatomy", DiagnosticSeverity.Error,
+        "'{name}' is an imported voxel body or surface mesh, which has no solid for STEP export to write.",
+        ("name", name));
+
     public static Diagnostic NothingToExport(int ignored) => Diagnostic.Create(
         "step.export.nothing", DiagnosticSeverity.Error, "{text}",
         ("text", ignored == 0
@@ -697,6 +703,9 @@ public static class StepExport
                     ["kind"] = "loft", ["smooth"] = w.Section == Em3dSection.Circle,
                     ["rings"] = new JsonArray([.. w.Rings.Select(r => (JsonNode)new JsonArray([.. r.Select(q => (JsonNode)P(q))]))]),
                 };
+            case Em3dShapeSolid { IsMesh: true }:
+                // brief-sar-11 — an imported voxel tissue or surface mesh has no B-rep for STEP to carry.
+                throw new StepExportException(StepExportDiagnostics.ImportedAnatomy(it.Name));
             case Em3dShapeSolid k:
                 if (!blobNames.TryGetValue(k.BrepHash, out string? blob))
                 {

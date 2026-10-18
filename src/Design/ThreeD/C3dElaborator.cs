@@ -958,7 +958,80 @@ public sealed class C3dElaborator(TechnologyCache? technologies = null, Geometry
                 }
                 return;
             }
+            // brief-sar-11 — a voxel body is its tissues, a mesh its surface: each read from its own file beside the document.
+            if (obj is C3dVoxelBody body) { VoxelBody(body, name, world, doc, tech, prefix, path, exact); return; }
+            if (obj is C3dMesh mesh) { MeshSolid(mesh, name, world, doc, tech, prefix, path, exact); return; }
             Managed(obj, name, world, doc, tech, prefix, path, exact);
+        }
+
+        /// <summary>
+        /// brief-sar-11 R-sar11-1/-3 — a voxel body: one dielectric solid per mapped label row, named as a phantom's layer is, each
+        /// holding the voxels its label carries (<see cref="Em3dSolid.Labels"/>) and drawn by its decimated surface. A row whose
+        /// material the technology lacks is a refusal, as an object's is.
+        /// </summary>
+        private void VoxelBody(C3dVoxelBody body, string name, C3dTransform world, C3dDocument doc, TechResolution tech, string prefix,
+                               string path, bool exact)
+        {
+            Read(C3dVoxelBodies.FileOf(body, path));
+            var placed = C3dLowering.InMetres(body.Placement.ToTransform(), doc.DbuPerMicron).Then(world);
+            var (resolved, refusal) = C3dVoxelBodies.Resolve(body, name, path, placed, doc.DbuPerMicron);
+            if (resolved is null) { _refusals.Add(refusal!); return; }
+            _notes.AddRange(resolved.Notes);
+            string techName = TechName(tech);
+            Know(tech, techName);
+            int first = _solids.Count;
+            foreach (var t in resolved.Tissues)
+            {
+                string tissue = C3dPhantoms.LayerName(name, t.Row.Name);
+                if (C3dProblemAssembly.ObjectMaterial(tech.Tech, t.Row.Material!) is not { } material)
+                {
+                    _refusals.Add($"'{tissue}' is made of '{t.Row.Material}', which its technology ({techName}) does not define.");
+                    continue;
+                }
+                int before = _solids.Count;
+                Add(body, tissue, new C3dLowered(t.Drawing, null, C3dMesh.FaceNameList, "voxel-tissue"), material, Em3dRole.Dielectric,
+                    world, tech, prefix, path, exact);
+                if (_solids.Count > before) _solids[^1] = _solids[^1] with { Labels = resolved.Volume, Label = t.Entry };
+            }
+            if (_solids.Count > first)
+            {
+                var v = resolved.Volume;
+                string step = v.GridStepM > 0 ? $"cells of at most {FdtdGrid.FormatLength(v.GridStepM)}, each the voxel its centre lies in"
+                                              : "a grid line on every voxel boundary";
+                _notes.Add($"The voxel body '{name}' is {v.Nx} × {v.Ny} × {v.Nz} voxels in {resolved.Tissues.Count} tissue(s), given to openEMS as one " +
+                           $"DiscMaterial with {step}; Palace and the thermal solver do not run it.");
+            }
+        }
+
+        /// <summary>brief-sar-11 R-sar11-4 — a per-tissue surface: its file read, checked and placed, as a solid with no B-rep.</summary>
+        private void MeshSolid(C3dMesh mesh, string name, C3dTransform world, C3dDocument doc, TechResolution tech, string prefix,
+                               string path, bool exact)
+        {
+            Read(C3dMeshes.FileOf(mesh, path));
+            var placed = C3dLowering.InMetres(mesh.Placement.ToTransform(), doc.DbuPerMicron).Then(world);
+            var (lowered, refusal) = C3dMeshes.Lower(mesh, name, path, placed);
+            if (lowered is null) { _refusals.Add(refusal!); return; }
+            string techName = TechName(tech);
+            Know(tech, techName);
+            if (mesh.Material is not { Length: > 0 } matName)
+            {
+                if (!_off) _warnings.Add(NoMaterialWarning(name));
+                _unassignedSolids.Add(new Em3dSolid(name, "", Em3dRole.Dielectric, lowered.Solid!, 0));
+                _provenance[name] = new C3dProvenance(prefix.TrimEnd('/'), path, name[prefix.Length..], lowered.FaceNames)
+                {
+                    TopObject = _topObject, Transparency = _transparency, Opacity = _opacity, Appearance = _appearance,
+                    InstanceAppearances = _instanceAppearances, Exact = exact && mesh.Placement.ToTransform().IsIntegral,
+                    Element = prefix.Length > 0 ? world : null,
+                };
+                return;
+            }
+            if (C3dProblemAssembly.ObjectMaterial(tech.Tech, matName) is not { } material)
+            {
+                _refusals.Add($"'{name}' is made of '{matName}', which its technology ({techName}) does not define.");
+                return;
+            }
+            if (Role(mesh.Role, material, name) is not { } role) return;
+            Add(mesh, name, lowered, material, role, world, tech, prefix, path, exact);
         }
 
         private void Managed(C3dObject obj, string name, C3dTransform world, C3dDocument doc, TechResolution tech, string prefix,

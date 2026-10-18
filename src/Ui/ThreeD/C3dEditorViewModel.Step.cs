@@ -451,8 +451,8 @@ public sealed partial class C3dEditorViewModel
 
     // ── the save (R-em3d68-4d) ───────────────────────────────────────────────────────────────
 
-    /// <summary>After a save: every copy this session wrote that no open frame's Step objects name is deleted. Returns the
-    /// paths removed.</summary>
+    /// <summary>After a save: every copy this session wrote that no open frame's Step, VoxelBody or Mesh objects name is
+    /// deleted. Returns the paths removed.</summary>
     internal IReadOnlyList<string> RemoveUnnamedStepCopies()
     {
         if (_stepCopiesWritten.Count == 0) return [];
@@ -462,6 +462,9 @@ public sealed partial class C3dEditorViewModel
             string dir = Path.GetDirectoryName(Path.GetFullPath(c3d))!;
             foreach (var s in doc.Objects.SelectMany(C3dOperands.SelfAndDescendants).OfType<C3dStep>())
                 named.Add(Path.GetFullPath(Path.Combine(dir, s.File)));
+            // brief-sar-11 — an imported voxel volume or surface is a copy of the same kind, named by its object.
+            foreach (var o in doc.Objects)
+                if (((o as C3dVoxelBody)?.File ?? (o as C3dMesh)?.File) is { Length: > 0 } file) named.Add(Path.GetFullPath(Path.Combine(dir, file)));
         }
         Name(Document, FilePath);
         foreach (var f in _frames) Name(f.Document, f.FilePath);

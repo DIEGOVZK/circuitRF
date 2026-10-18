@@ -638,6 +638,17 @@ public static partial class FdtdGrid
             }
         }
 
+        // brief-sar-11 R-sar11-3 — a voxel body with no grid step of its own: a line on every voxel boundary inside the box, so
+        // each FDTD cell is one voxel and CSXCAD's sampling at the cell's centre reads that voxel exactly.
+        foreach (var volume in problem.Solids.Select(s => s.Labels).OfType<Em3dLabelVolume>().Distinct())
+        {
+            if (volume.GridStepM > 0) continue;
+            double[] at = axis switch { FdtdAxis.X => volume.X, FdtdAxis.Y => volume.Y, _ => volume.Z };
+            foreach (double e in at)
+                if (e >= ctx.BoxMin(axis) && e <= ctx.BoxMax(axis))
+                    Add(e, false, new FdtdLineSource(volume.Body, FdtdLineKind.MaterialFace, e));
+        }
+
         foreach (var port in problem.Ports)
         {
             double lo = A3(port.Min, axis), hi = A3(port.Max, axis);
@@ -1345,6 +1356,8 @@ public static partial class FdtdGrid
         public FdtdAxis? SheetAxis;
         /// <summary>brief-em3d-65 — a kernel solid, whose face and edge tables give its lines.</summary>
         public Em3dShapeSolid? Kernel;
+        /// <summary>brief-sar-11 — the largest cell its own volume allows: a voxel body's GridStepM when it states one.</summary>
+        public double CellCap = double.PositiveInfinity;
 
         public (double Lo, double Hi) Range(FdtdAxis a) => a switch
         {
@@ -1414,6 +1427,18 @@ public static partial class FdtdGrid
                     _ => null,
                 };
                 bool conductor = s.Role == Em3dRole.Conductor;
+                // brief-sar-11 — a voxel body's tissue: its extremes here, its voxel boundaries in CollectRequired, and its own
+                // grid step as a cap on the cell inside it. Its primitive is a drawing, so nothing else is read from it.
+                if (s.Labels is { } volume)
+                {
+                    Shapes.Add(new Shape
+                    {
+                        Name = s.Name, Conductor = false, IsSheet = false, Thin = false,
+                        X0 = x0, X1 = x1, Y0 = y0, Y1 = y1, Z0 = z0, Z1 = z1, Rings = null,
+                        Index = Index(s.Material), CellCap = volume.GridStepM > 0 ? volume.GridStepM : double.PositiveInfinity,
+                    });
+                    continue;
+                }
                 if (s.Primitive is Em3dShapeSolid kernel)
                 {
                     Shapes.Add(new Shape
@@ -1483,26 +1508,26 @@ public static partial class FdtdGrid
         /// </summary>
         public double MaxCell(FdtdAxis a, double lo, double hi)
         {
-            double n = 1;
+            double n = 1, cap = double.PositiveInfinity;
             foreach (var s in Shapes)
             {
                 if (s.Conductor) continue;
                 var (s0, s1) = s.Range(a);
-                if (s0 < hi - Tol && s1 > lo + Tol) n = Math.Max(n, s.Index);
+                if (s0 < hi - Tol && s1 > lo + Tol) { n = Math.Max(n, s.Index); cap = Math.Min(cap, s.CellCap); }
             }
-            return C0 / (_p.Frequency.StopHz * n * _settings.CellsPerWavelength);
+            return Math.Min(cap, C0 / (_p.Frequency.StopHz * n * _settings.CellsPerWavelength));
         }
 
         public double MaxCellAt(FdtdAxis a, double at)
         {
-            double n = 1;
+            double n = 1, cap = double.PositiveInfinity;
             foreach (var s in Shapes)
             {
                 if (s.Conductor) continue;
                 var (s0, s1) = s.Range(a);
-                if (s0 <= at + Tol && s1 >= at - Tol) n = Math.Max(n, s.Index);
+                if (s0 <= at + Tol && s1 >= at - Tol) { n = Math.Max(n, s.Index); cap = Math.Min(cap, s.CellCap); }
             }
-            return C0 / (_p.Frequency.StopHz * n * _settings.CellsPerWavelength);
+            return Math.Min(cap, C0 / (_p.Frequency.StopHz * n * _settings.CellsPerWavelength));
         }
 
         /// <summary>Is there metal other than <paramref name="self"/> at a plan point within a z range?</summary>

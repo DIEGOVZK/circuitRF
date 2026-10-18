@@ -145,6 +145,7 @@ public static partial class GmshGeoWriter
     {
         ArgumentNullException.ThrowIfNull(input);
         if (input.Solids.Count == 0) return No("The thermal problem holds no solid with a material, so there is nothing to mesh.");
+        if (ImportedOpenEmsOnly(input.Solids, "the thermal solver") is { } imported) return No(imported);
         if (input.Sizing.Order is not (1 or 2)) return No($"A thermal mesh is order 1 or 2, not {input.Sizing.Order}.");
         if (!(input.Sizing.Grading > 1)) return No("A thermal mesh's Grading must be above 1.");
 

@@ -490,7 +490,12 @@ public static class C3dProblemAssembly
             Phantoms = [.. document.Objects.OfType<C3dPhantom>()
                 .Select(ph => (ph.Name, (IReadOnlyList<string>)[.. ph.Layers.Select(l => C3dPhantoms.LayerName(ph.Name, l.Name))
                                                                          .Where(n => solids.Any(s => s.Name == n))]))
-                .Where(ph => ph.Item2.Count > 0)],
+                .Where(ph => ph.Item2.Count > 0)
+                // brief-sar-11 — a voxel body stands for its tissues in Sar.Region as a phantom does for its layers, in row order.
+                .Concat(document.Objects.OfType<C3dVoxelBody>()
+                    .Select(b => (b.Name, (IReadOnlyList<string>)[.. b.Labels.Select(l => C3dPhantoms.LayerName(b.Name, l.Name))
+                                                                        .Where(n => solids.Any(s => s.Name == n)).Distinct()]))
+                    .Where(b => b.Item2.Count > 0))],
         };
     }
 

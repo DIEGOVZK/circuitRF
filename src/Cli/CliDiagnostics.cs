@@ -733,16 +733,20 @@ internal static class CliDiagnostics
 
     public static Diagnostic ImportNounRequired() => new(
         "import.args.noun-required", DiagnosticSeverity.Error,
-        "import: say what to import — 'import part'.");
+        "import: say what to import — 'import part', 'import voxels' or 'import surfaces'.");
 
     public static Diagnostic ImportUnknownNoun(string noun) => Diagnostic.Create(
         "import.args.unknown-noun", DiagnosticSeverity.Error,
-        "import: there is nothing called '{noun}' to import. Known: part. "
+        "import: there is nothing called '{noun}' to import. Known: part, voxels, surfaces. "
         + "For layout interchange (GDSII, DXF, Gerber, boards) use `convert`.", ("noun", noun));
+
+    /// <summary>brief-sar-11 — an anatomy import's argument that is missing or does not parse; the sentence is whole.</summary>
+    public static Diagnostic ImportAnatomyArgs(string noun, string why) => Diagnostic.Create(
+        "import.anatomy.args", DiagnosticSeverity.Error, "import {noun}: {why}", ("noun", noun), ("why", why));
 
     public static Diagnostic ImportUnknownOption(string option) => Diagnostic.Create(
         "import.args.unknown-option", DiagnosticSeverity.Error,
-        "import part: unknown option '{option}'.", ("option", option));
+        "import: unknown option '{option}'.", ("option", option));
 
     public static Diagnostic ImportMultipleSources() => new(
         "import.args.multiple-sources", DiagnosticSeverity.Error,
