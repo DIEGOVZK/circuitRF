@@ -1214,3 +1214,21 @@ src/Engine/Em3d/Sar/SarResults.cs|A region box holds at least one cell.
 src/Engine/Em3d/Sar/SarResults.cs|The region '{Name}' has {_mask.Length} entries for a grid of {grid.Count} cells.
 src/Engine/Em3d/Sar/SarResults.cs|The region '{Name}' reaches outside the grid.
 src/Engine/Em3d/Sar/SarResults.cs|The region '{name}' holds no cell centre.
+
+# ── brief-sar-9 (2026-10-18): a fields analysis's refusals, a field set's file form, the recombination's invariants ─────────
+src/Design/Em3d/FieldCosimulation.cs|{who}: '{fa.Block}' has {snp.PortCount} ports and its field set {set.PortCount}.
+src/Design/Em3d/FieldCosimulation.cs|{who}: '{fa.Block}' is a {block.ComponentType}, not an S-parameter block.
+src/Design/Em3d/FieldCosimulation.cs|{who}: block= names no S-parameter block.
+src/Design/Em3d/FieldCosimulation.cs|{who}: drive='{fa.DriveExpr}' is not a port number ({e.Message}).
+src/Design/Em3d/FieldCosimulation.cs|{who}: freq='{fa.FreqExpr}' could not be resolved ({e.Message}).
+src/Design/Em3d/FieldCosimulation.cs|{who}: the circuit has no instance '{fa.Block}'.
+src/Design/Em3d/PortFieldSet.cs|'{path}' holds {(fs.Length - start) / size:N0} values where {elements:N0} were expected.
+src/Design/Em3d/PortFieldSet.cs|'{path}' is not a C-order {descr} array.
+src/Design/Em3d/PortFieldSet.cs|'{path}' is not a NumPy array.
+src/Design/Em3d/PortFieldSet.cs|This field set carries no H: its run had B1 off.
+src/Engine/Em3d/Sar/FieldRecombination.cs|A port weight is not finite.
+src/Engine/Em3d/Sar/FieldRecombination.cs|A {m.GetLength(0)} × {m.GetLength(1)} matrix and {n} weights.
+src/Engine/Em3d/Sar/FieldRecombination.cs|The box [{box.I0}, {box.I1}) × [{box.J0}, {box.J1}) × [{box.K0}, {box.K1}) is not inside the 
+src/Engine/Em3d/Sar/FieldRecombination.cs|{weights.Count} weights for a field set of {set.PortCount} ports.
+src/Engine/SParameterEngine.cs|A port's waves need every circuit port terminated in a resistive Z0 (Re Z0 > 0); 
+src/Engine/SParameterEngine.cs|The circuit has no port number {drivenPort} at its top level to drive 

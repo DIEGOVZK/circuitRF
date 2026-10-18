@@ -53,6 +53,11 @@ public sealed class CemSar
     /// circuitRF's. Omitted: off.</summary>
     public bool? CrossCheck { get; set; }
 
+    /// <summary>brief-sar-9 — also keep every port's E (and H, with B1) over the SAR box, per unit incident wave at that port with
+    /// every other port matched, as files beside the <c>.sNp</c>: what a schematic's <c>fields</c> analysis recombines into the
+    /// field of any circuit around the block, with no new EM run. Omitted: off.</summary>
+    public bool? PerPortFields { get; set; }
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? Unread { get; set; }
 
@@ -78,7 +83,7 @@ public sealed class CemSar
 /// <param name="B0Sign">+1 or −1.</param>
 public sealed record SarSettings(IReadOnlyList<double> FrequenciesHz, IReadOnlyList<double> MassesGrams, SarMethod Method,
                                  IReadOnlyList<string>? Region, bool B1, int B0Axis, int B0Sign, IReadOnlyList<string>? B1Region,
-                                 bool CrossCheck)
+                                 bool CrossCheck, bool PerPortFields = false)
 {
     /// <summary>The masses an omitted <see cref="CemSar.MassesGrams"/> averages over.</summary>
     public static IReadOnlyList<double> DefaultMassesGrams { get; } = [1, 10];
@@ -99,7 +104,7 @@ public sealed record SarSettings(IReadOnlyList<double> FrequenciesHz, IReadOnlyL
         bool b1 = sar.B1 ?? (hz.Count > 0 && hz.All(f => f < B1DefaultBelowHz));
         return new SarSettings(hz, sar.MassesGrams is { Count: > 0 } m ? [.. m] : DefaultMassesGrams, sar.Method ?? SarMethod.Cube,
                                sar.Region is { Count: > 0 } r ? [.. r] : null, b1, axis, sign,
-                               sar.B1Region is { Count: > 0 } b ? [.. b] : null, sar.CrossCheck ?? false)
+                               sar.B1Region is { Count: > 0 } b ? [.. b] : null, sar.CrossCheck ?? false, sar.PerPortFields ?? false)
         {
             B0AxisText = sar.B0Axis,
         };

@@ -329,6 +329,7 @@ public static class CircuitEvaluation
                                          IReadOnlyList<string> expressions, Action<string>? breadcrumb)
     {
         var results     = new List<AnalysisResult>();
+        var fields      = new List<FieldsArtifact>();
         var notes       = new List<string>();
         var errors      = new List<string>();
         var convergence = new List<AnalysisConvergence>();
@@ -351,7 +352,7 @@ public static class CircuitEvaluation
 
                 bool? converged = true;
                 var ds = pa.Typed is not null
-                    ? RunTypedAnalysis(pa.Typed, nl, tb, lib, notes, plan.BaseDirectory, inner, out converged)
+                    ? RunTypedAnalysis(pa.Typed, nl, tb, lib, notes, plan.BaseDirectory, inner, out converged, fields)
                     : RunRawSparam(pa.RawLine!, nl, inner);
 
                 if (ds is not null)
@@ -427,7 +428,7 @@ public static class CircuitEvaluation
             ? string.Join("; ", allNotes)
             : $"{results.Count} analysis run(s) complete";
         return new RunResult(RunStatus.Success, summary, results, nlWarnings, grouped, nlNotes,
-                             convergence, outcomes);
+                             convergence, outcomes, fields);
     }
 
     private static IReadOnlyList<string> DrainWarnings(ElaboratedNetlist nl)
@@ -486,6 +487,9 @@ public static class CircuitEvaluation
             case DcAnalysis:
                 return ($"DC '{analysis.Name}': operating point", 1, false);
 
+            case FieldsAnalysis fa:
+                return ($"Fields '{fa.Name}': '{fa.Block}' recombined at {fa.FreqExpr} {fa.FreqUnit}, driven from port {fa.DriveExpr}", 1, false);
+
             default:
                 return ($"Analysis type '{analysis.GetType().Name}' is not dispatched.", 0, false);
         }
@@ -525,7 +529,8 @@ public static class CircuitEvaluation
         List<string>      notes,
         string?           baseDirectory,
         RunControl?       control,
-        out bool?         converged)
+        out bool?         converged,
+        List<FieldsArtifact>? fields = null)
     {
         // A linear analysis has nothing to converge; a sweep and a loadpull carry convergence per point,
         // in their data. The two single solves below say for themselves.
@@ -578,6 +583,10 @@ public static class CircuitEvaluation
                 // engine diagnostic raised inside a sweep to the Messages panel.
                 return ParametricSweepEngine.Run(psa, lib, tb,
                     baseDirectory: baseDirectory, control: control, diagnosticsInto: nl);
+
+            // brief-sar-9 — an EM block's per-port fields recombined by this circuit's waves; no EM run
+            case FieldsAnalysis fa:
+                return CircuitRF.Design.Em3d.FieldCosimulation.Run(fa, nl, notes, control, fields);
 
             case DcAnalysis:
             {

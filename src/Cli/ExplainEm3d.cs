@@ -171,7 +171,7 @@ internal static class ExplainEm3d
         var (plan, refusal) = Em3dSar.Resolve(s, p, g.Phantoms);
         if (plan is null)
             return new Em3dSarJson(s.FrequenciesHz, s.MassesGrams, s.Method.ToString(), "", [], s.B1, s.B0AxisName, null, s.CrossCheck, [],
-                                   null, null, refusal);
+                                   null, null, refusal) { PerPortFields = s.PerPortFields };
         var materials = p.Materials.ToDictionary(m => m.Name, StringComparer.Ordinal);
         var tissue = p.Solids.Where(x => plan.Densities.ContainsKey(x.Name)).OrderBy(x => x.Order)
                       .Select(x => new Em3dTissueJson(x.Name, x.Material, plan.Densities[x.Name], materials[x.Material].Epsr, materials[x.Material].SigmaSm))
@@ -179,7 +179,7 @@ internal static class ExplainEm3d
         long? cells = grid is { Cylinder: null } ? Em3dSar.DumpCells(plan, grid) : null;
         return new Em3dSarJson(s.FrequenciesHz, s.MassesGrams, s.Method.ToString(), plan.RegionName, plan.Region, s.B1, s.B0AxisName,
                                s.B1 ? plan.B1RegionName : null, s.CrossCheck, tissue, cells,
-                               cells is { } c ? Em3dSar.EstimateBytes(plan, c, p.Ports.Count) : null, null);
+                               cells is { } c ? Em3dSar.EstimateBytes(plan, c, p.Ports.Count) : null, null) { PerPortFields = s.PerPortFields };
     }
 
     /// <summary>
@@ -502,7 +502,8 @@ internal static class ExplainEm3d
         static string G(double v) => v.ToString("G4", CultureInfo.InvariantCulture);
         Console.WriteLine($"  sar          at {string.Join(", ", s.FrequenciesHz.Select(MaterialDispersion.Hz))}; " +
                           $"{string.Join(", ", s.MassesGrams.Select(m => G(m) + " g"))} averaged ({s.Method})" +
-                          (s.B1 ? $"; B1 with B0 along {s.B0Axis}" : "; no B1") + (s.CrossCheck ? "; cross-checked with sar_calc" : ""));
+                          (s.B1 ? $"; B1 with B0 along {s.B0Axis}" : "; no B1") + (s.CrossCheck ? "; cross-checked with sar_calc" : "") +
+                          (s.PerPortFields ? "; every port's fields kept beside the .sNp" : ""));
         if (s.Refusal is { } no) { Console.WriteLine($"  {"",-12} a run would stop here: {no}"); return; }
         Console.WriteLine($"  {"",-12} region {s.Region}: {string.Join(", ", s.RegionObjects)}" + (s.B1Region is { } b ? $"; B1's mean over {b}" : ""));
         foreach (var t in s.Tissue)

@@ -163,6 +163,33 @@ public sealed partial class C3dEditorViewModel
     [RelayCommand]
     public void NewFieldPlot() => AddFieldPlot(null, null);
 
+    /// <summary>
+    /// brief-sar-9 R-sar9-3 — the view opened on a schematic's fields analysis: the plot that already shows its recombined field,
+    /// drawn and selected; else a new one of |B1+| (local SAR when the run kept no B1) at its frequency, on the view's clip plane.
+    /// </summary>
+    public void ShowCosim(string setup, double ghz, string analysis, bool b1)
+    {
+        // the recombination wrote its volumes after this view last read the runs: a view already open would not find them
+        RunFinished();
+        var wanted = new C3dFieldSolution { GHz = ghz, Cosim = analysis };
+        if (Document.FieldPlots.FirstOrDefault(p => wanted.SameAs(p.Solution) && string.Equals(p.Setup, setup, StringComparison.Ordinal)) is { } shown)
+        {
+            if (shown.Hidden) SetPlotsVisible([shown.Name], true, $"Show {shown.Name}");
+            SelectPlotRow(shown.Name);
+            return;
+        }
+        AddFieldPlot(false, p =>
+        {
+            p.Name = C3dFieldPlot.NextName(Document.FieldPlots, analysis + " ");
+            p.Setup = setup;
+            p.Solver = null;
+            p.Solution = wanted;
+            p.Quantity = b1 ? CircuitRF.Design.Em3d.SarVolumeFiles.B1PlusQuantity : CircuitRF.Design.Em3d.SarVolumeFiles.LocalQuantity;
+            p.Mode = null;
+            p.On = C3dFieldPlotOn.ClipPlane;
+        });
+    }
+
     private C3dFieldPlot AddFieldPlot(bool? temperature, Action<C3dFieldPlot>? shape, bool select = true)
     {
         var plot = DefaultPlot(temperature);

@@ -373,7 +373,7 @@ internal static class ToolCatalog
           // whole result inline while `lpp` returned a written path and nothing else, with nothing
           // in this schema to say which a caller would get.
           + "Every run returns result.shape — the groups, cubes, units and axis extents it produced. "
-          + "sparam, dc, hb and em return the values inline as well; lp and lpp return their "
+          + "sparam, dc, hb, em and fields return the values inline as well; lp and lpp return their "
           + "one-row-per-grid-point summary instead, and hand over the cubes when asked with all, "
           + "only or group. Narrow a large result with at, range or result=summary rather than "
           + "receiving it whole. A 3D em setup's Problem3D decides what comes back: Driven an S-matrix, "
@@ -420,6 +420,14 @@ internal static class ToolCatalog
                     [Analysis, Set, Output, All, .. Narrowing, .. LoadpullSolverOptions, .. LoadpullOptions],
                     "Loadpull pursuit: searches for the MXP and MXE terminations. Returns the optima and the "
                   + "result's shape; ask for the cubes with all, only or group."),
+                // brief-sar-9: the `fields` verb — an EM block's per-port fields recombined by the circuit, no EM run.
+                new("fields", ["fields"],
+                    [new("path", true, "The .cnl or .csch whose fields analyses to run.")],
+                    [Analysis, Set, Output],
+                    "An S-parameter block's per-port fields (kept beside its .sNp by a 3D run with Sar.PerPortFields) recombined with "
+                  + "the waves this circuit delivers to its ports: SAR, B1± and their scalars at one frequency, per watt at the "
+                  + "drive port. Starts no EM run, so a capacitor changed with set re-runs in seconds. Every enabled fields analysis "
+                  + "unless analysis names one."),
                 // brief-tuneopt-11 R-to11-5: the `opt` verb, so the document is the verb's `--json`
                 // object and nothing here reshapes it. The final result by default; showIterations
                 // asks for each iteration too.

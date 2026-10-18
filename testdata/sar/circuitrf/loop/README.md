@@ -49,3 +49,17 @@ CRF_WRITE_SAR8_OUTPUTS=1 dotnet test tests/Ui.Tests --settings circuitrf.benchma
 
 A single run by hand: `circuitrf em testdata/sar/circuitrf/loop/Loop/3d/Loop.c3d --setup ReferenceGrid` (or `OwnGrid`); it
 writes `results/`, which is git-ignored.
+
+## SAR-9: the same coil with ports for capacitors
+
+`LoopPorts/3d/LoopPorts.c3d` is `Loop.c3d` on the reference's lines with the three capacitors replaced by 50 Ω lumped
+ports (2, 3, 4) and the feed a 50 Ω port 1; its one setup, `CoSim`, keeps every port's fields (`Sar.PerPortFields`).
+`cosim/LoopCosim.cnl` places its `.s4p` as an S-parameter block, puts the tutorial's 5.4 pF back across the gaps, drives
+port 1 from 2.5 Ω, and declares the `fields` analysis `F1` at 298 MHz. **`cosim/output/` is circuitRF OUTPUT**: the
+`.s4p`, the field set's manifest, the co-simulation record and the recombined SAR and B1 planes (its README says which
+command wrote each). `CosimLoopCoilTests` holds it to `reference-grid/` (`docs/design/sar.md` §11.6). The field set itself
+(201 MB) stays in `results/`.
+
+```
+CRF_WRITE_SAR9_OUTPUTS=1 dotnet test tests/Ui.Tests --settings circuitrf.benchmark.runsettings --filter "FullyQualifiedName~CosimLoopCoilRerunTests"
+```

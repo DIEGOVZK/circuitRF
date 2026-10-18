@@ -21,7 +21,7 @@ namespace CircuitRF.Ui.ViewModels;
 /// </summary>
 public sealed partial class AnalysisEditorViewModel : ObservableObject
 {
-    public enum AnalysisKind { DC, SP, HB, LP, LPP }
+    public enum AnalysisKind { DC, SP, HB, LP, LPP, Fields }
 
     private readonly SchematicEditModel _model;
     private readonly List<string>       _existingNames;
@@ -37,7 +37,7 @@ public sealed partial class AnalysisEditorViewModel : ObservableObject
     // ── Type selection ────────────────────────────────────────────────────────
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsDc), nameof(IsSp), nameof(IsHb), nameof(IsLp), nameof(IsLpp),
+    [NotifyPropertyChangedFor(nameof(IsDc), nameof(IsSp), nameof(IsHb), nameof(IsLp), nameof(IsLpp), nameof(IsFields),
                               nameof(ShowSweeps))]
     private AnalysisKind _type = AnalysisKind.DC;
 
@@ -46,10 +46,14 @@ public sealed partial class AnalysisEditorViewModel : ObservableObject
     public bool IsHb  => Type == AnalysisKind.HB;
     public bool IsLp  => Type == AnalysisKind.LP;
     public bool IsLpp => Type == AnalysisKind.LPP;
+    public bool IsFields => Type == AnalysisKind.Fields;
+
+    /// <summary>brief-sar-9 — the fields analysis's body.</summary>
+    public FieldsBodyViewModel FieldsBody { get; private set; } = new();
 
     /// <summary>Parametric-sweep chains are supported on every analysis type — including freq-swept
     /// Loadpull and Loadpull-Pursuit over a tone VAR (FreqSweptLoadpull brief, Layers A–E).</summary>
-    public bool ShowSweeps => true;
+    public bool ShowSweeps => !IsFields;     // brief-sar-9 — a fields analysis is one frequency, one circuit: no sweep wraps it
 
     // ── Name + Enabled ────────────────────────────────────────────────────────
 
@@ -197,6 +201,15 @@ public sealed partial class AnalysisEditorViewModel : ObservableObject
 #pragma warning restore CS0618
                 break;
 
+            case FieldsAnalysis fa:
+                _type      = AnalysisKind.Fields;
+                FieldsBody = FieldsBodyViewModel.From(fa);
+                SpBody     = new SpBodyViewModel(model);
+                HbBody     = SeededHb(model);
+                LpBody     = SeededLp(model, workspaceRoot);
+                LppBody    = SeededLpp(model, workspaceRoot);
+                break;
+
             default: // DcAnalysis or unknown
                 _type  = AnalysisKind.DC;
                 SpBody = new SpBodyViewModel(model);
@@ -322,6 +335,7 @@ public sealed partial class AnalysisEditorViewModel : ObservableObject
             AnalysisKind.HB  => "HB",
             AnalysisKind.LP  => "LP",
             AnalysisKind.LPP => "LPP",
+            AnalysisKind.Fields => "F",
             _                => "DC",
         };
         for (int n = 1; n <= 999; n++)
@@ -368,6 +382,7 @@ public sealed partial class AnalysisEditorViewModel : ObservableObject
             AnalysisKind.HB  => HbBody.BuildAnalysis(name,      Enabled),
             AnalysisKind.LP  => LpBody.IsValid  ? LpBody.BuildAnalysis(name, Enabled)  : null,
             AnalysisKind.LPP => LppBody.IsValid ? LppBody.BuildAnalysis(name, Enabled) : null,
+            AnalysisKind.Fields => FieldsBody.IsValid ? FieldsBody.BuildAnalysis(name, Enabled) : null,
             _                => null,
         };
         if (inner is null) return null;

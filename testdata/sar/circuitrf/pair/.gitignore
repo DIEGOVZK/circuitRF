@@ -1,0 +1,3 @@
+# A run of the .c3d writes here (openEMS run directories and the per-port fields). What the tests read is copied into
+# fixed/ by PairSuperpositionRerunTests (CRF_WRITE_SAR9_OUTPUTS=1).
+results/

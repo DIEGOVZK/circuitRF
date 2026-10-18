@@ -1,0 +1,80 @@
+{
+  "Analysis": "F1",
+  "Block": "EM1",
+  "Snp": "LoopPorts CoSim.openems.s4p",
+  "Stamp": "20261018T193019Z-551edf6a",
+  "FrequencyHz": 298000000,
+  "DrivePort": 1,
+  "DriveZ0Re": 2.5,
+  "DriveZ0Im": 0,
+  "ReflectionRe": -0.008202909836561379,
+  "ReflectionIm": -0.06986162425076034,
+  "Ports": [
+    1,
+    2,
+    3,
+    4
+  ],
+  "Incident": [
+    [
+      1.67251721388756,
+      0.10493788049382331
+    ],
+    [
+      -1.249333260051437,
+      -2.943728934639
+    ],
+    [
+      1.2492215947173535,
+      2.9435061331323134
+    ],
+    [
+      -1.2199165270844001,
+      -2.87018153285814
+    ]
+  ],
+  "Reflected": [
+    [
+      -1.5157003248053675,
+      -0.11598397317738617
+    ],
+    [
+      1.6298032267483904,
+      -2.7513842111530242
+    ],
+    [
+      -1.6296900149149314,
+      2.751162191471503
+    ],
+    [
+      1.5880179937863905,
+      -2.684089643813003
+    ]
+  ],
+  "AvailablePowerW": 0.5,
+  "AcceptedPowerW": 0.4975260328636294,
+  "DeliveredPowerW": 0.4975260328636324,
+  "DeliveredFromSW": 0.4975260342686627,
+  "AbsorbedPowerW": 0.41338402004079644,
+  "AbsorbedFromQW": 0.41338401998588686,
+  "OtherLossW": 0.08414201282283595,
+  "Normalisation": "accepted",
+  "Averaged": true,
+  "Checks": [
+    "Check: the summed field absorbs 0.4134 W and the tissue matrix says 0.4134 W (1.328E-08 % apart).",
+    "Check: the circuit delivers 0.4975 W into the block and the field set\u0027s S-matrix says 0.4975 W (2.824E-07 % apart).",
+    "Check: over every excitation, the block\u0027s dissipation less the tissue\u0027s absorption is at least -3.82E-06 W per W incident (the dissipation\u0027s largest 0.01837)."
+  ],
+  "Reflection": {
+    "Real": -0.008202909836561379,
+    "Imaginary": -0.06986162425076034,
+    "Magnitude": 0.07034155438104266,
+    "Phase": -1.687677688366956
+  },
+  "DriveZ0": {
+    "Real": 2.5,
+    "Imaginary": 0,
+    "Magnitude": 2.5,
+    "Phase": 0
+  }
+}

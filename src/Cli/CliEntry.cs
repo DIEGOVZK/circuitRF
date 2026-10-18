@@ -188,6 +188,9 @@ return JsonRun.Finish(Dispatch(JsonRun.Verb) is { } run ? run(args[1..]) : Unkno
     "lpp" or "loadpull_pursuit" or "pursuit"
                                 => a => RunLoadpull(a, pursuit: true),
     "em"     => RunEm,
+    // brief-sar-9: a schematic's fields analyses — an EM block's per-port fields recombined by the circuit, no EM run. It
+    // owns no recombination: the run is CircuitEvaluation's, which dispatches FieldCosimulation as Simulate does.
+    "fields" => CircuitRF.Cli.Fields.Run,
     // The Optimizer window's run, headless (brief-tuneopt-11). It owns no optimization: the run is
     // src/Design/Optimization's OptimizationRun, the object the panel drives. Writes nothing to the
     // design's values; --save-preset is its one opt-in write.
@@ -1029,7 +1032,7 @@ static void ReportLoadpullFindings(DataSet ds)
 /// that names the file, and a folder that cannot be created is the same problem reported once
 /// rather than twice.</para>
 /// </summary>
-static void EnsureOutputDirectory(string path)
+internal static void EnsureOutputDirectory(string path)
 {
     try
     {
@@ -2013,7 +2016,7 @@ static DataSet? EvaluateMeasurements(TestBench tb, ElaboratedNetlist nl, string 
 /// GUI's grouped run DataSet (analysis group + "measurements" group).
 static DataSet MergeForExport(DataSet ds, DataSet measDs) => HbCircuitRun.Merge(ds, measDs);
 
-static ExportFormat FormatFromExtension(string path) => Path.GetExtension(path).ToLowerInvariant() switch
+internal static ExportFormat FormatFromExtension(string path) => Path.GetExtension(path).ToLowerInvariant() switch
 {
     ".npy"          => ExportFormat.Npy,
     ".txt" or ".tsv" => ExportFormat.Tsv,
@@ -2095,7 +2098,7 @@ static void PrintHbDataSet(DataSet ds, int maxRows, bool allPoints)
 /// with axis labels where the axis carries them. A complex cube prints magnitude and phase — the
 /// spectrum is what is being read, and a raw re/im pair is not readable as one.
 /// </summary>
-static void PrintCube(string label, DataCube cube, int maxRows, bool allPoints)
+internal static void PrintCube(string label, DataCube cube, int maxRows, bool allPoints)
 {
     if (cube.Rank == 0)
     {

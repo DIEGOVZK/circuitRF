@@ -205,7 +205,8 @@ public static class Em3dSar
     {
         long perFrequency = cells * RawBytesPerCell + (plan.Settings.B1 ? cells * HBytesPerCell : 0) +
                             cells * VolumeBytesPerQuantity * (1 + plan.Settings.MassesGrams.Count + (plan.Settings.B1 ? 2 : 0));
-        return perFrequency * plan.Settings.FrequenciesHz.Count * Math.Max(1, ports);
+        // brief-sar-9 R-sar9-1 — the per-port fields beside the .sNp, when the group keeps them
+        return perFrequency * plan.Settings.FrequenciesHz.Count * Math.Max(1, ports) + PortFieldSetWriter.EstimateBytes(plan, cells, Math.Max(1, ports));
     }
 
     /// <summary>The run's one line about the dumps: the box, its cells and the disk it takes; a warning above
@@ -218,7 +219,9 @@ public static class Em3dSar
         string note = $"SAR is dumped over the tissue's bounding box plus one cell: {i1 - i0} × {j1 - j0} × {k1 - k0} = {cells:N0} cells, " +
                       $"about {MachineMemory.Format(bytes)} on disk for {plan.Settings.FrequenciesHz.Count} frequenc" +
                       $"{(plan.Settings.FrequenciesHz.Count == 1 ? "y" : "ies")} and {ports} driven port{(ports == 1 ? "" : "s")}" +
-                      (plan.Settings.B1 ? " with B1's H dump" : "") + ".";
+                      (plan.Settings.B1 ? " with B1's H dump" : "") +
+                      (plan.Settings.PerPortFields ? $", of which {MachineMemory.Format(PortFieldSetWriter.EstimateBytes(plan, cells, Math.Max(1, ports)))} " +
+                                                     "is the per-port fields kept beside the .sNp" : "") + ".";
         string? warning = bytes > WarnBytes
             ? $"The SAR dumps will take about {MachineMemory.Format(bytes)} on disk. Fewer SAR frequencies, B1 off, or a coarser grid in the tissue would reduce it."
             : null;

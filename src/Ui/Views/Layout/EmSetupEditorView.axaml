@@ -788,7 +788,7 @@
                         <CheckBox Content="SAR and B1" IsChecked="{Binding ViewModel.SarEnabled}"
                                   ToolTip.Tip="{x:Static em:EmSetupEditorViewModel.SarTip}"/>
                         <Grid IsVisible="{Binding ViewModel.SarEnabled}" ColumnDefinitions="Auto,170" ColumnSpacing="8" RowSpacing="2"
-                              RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" HorizontalAlignment="Left">
+                              RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" HorizontalAlignment="Left">
                             <TextBlock Grid.Row="0" Grid.Column="0" Classes="colhdr" Text="At (GHz)" VerticalAlignment="Center"/>
                             <TextBox   Grid.Row="0" Grid.Column="1" Classes="num" Tag="Sar.FrequenciesGHz"
                                        Text="{Binding ViewModel.SarFrequenciesText}"
@@ -827,6 +827,9 @@
                             <CheckBox  Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Content="Cross-check with sar_calc"
                                        IsChecked="{Binding ViewModel.SarCrossCheck}"
                                        ToolTip.Tip="Also runs openEMS's sar_calc on the same dump, when it is installed beside openEMS, and shows its peak beside circuitRF's."/>
+                            <CheckBox  Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="2" Content="Keep per-port fields"
+                                       IsChecked="{Binding ViewModel.SarPerPortFields}"
+                                       ToolTip.Tip="Also keeps every port's E and H beside the .sNp, so a schematic's fields analysis can give SAR and B1 for any capacitors, matching and feed around the block without another EM run."/>
                         </Grid>
                         <SelectableTextBlock FontSize="10" TextWrapping="Wrap" Foreground="{DynamicResource CrfWarningBrush}"
                                    Text="{Binding ViewModel.SarFieldError}"

@@ -3988,6 +3988,18 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         foreach (var w in result.Warnings)
             Messages.Warning(w);
 
+        // brief-sar-9 R-sar9-3 — each fields analysis's recombined SAR and B1, one click from the 3D view whose run kept the fields,
+        // which opens with that result drawn and selected.
+        foreach (var f in result.Fields)
+            if (f.C3dPath is { } c3dPath)
+                Messages.PostAction(MessageLevel.Info,
+                    $"Fields '{f.Analysis}': the recombined SAR and B1 are in {Path.GetFileName(c3dPath)}'s 3D view.", "Open in 3D view", () =>
+                    {
+                        OpenOrActivateC3dEditor(c3dPath);
+                        OpenC3dEditorFor(c3dPath)?.ShowCosim(f.Setup, f.FrequencyHz / 1e9, f.Analysis, f.HasB1);
+                        return Task.CompletedTask;
+                    }, c3dPath);
+
         switch (result.Status)
         {
             case RunStatus.NoAnalysis:

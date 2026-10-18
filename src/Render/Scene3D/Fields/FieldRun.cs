@@ -48,6 +48,9 @@ public sealed record FieldSolution(FieldProblemKind Kind, int Excitation, double
     /// ordinary field step, which offers whatever its file lists.</summary>
     public IReadOnlyCollection<string>? Offers { get; init; }
 
+    /// <summary>brief-sar-9 — the fields analysis whose recombined field this is (FieldSar.cs); null for a port's own.</summary>
+    public string? Cosim { get; init; }
+
     /// <summary>brief-sar-6 — what <see cref="Offers"/> holds, as the picker labels it: <c>SAR</c>, <c>B1</c>, or nothing.</summary>
     public string? OffersLabel => Offers is null ? null : Offers.Any(FieldNames.IsB1) ? "B1" : "SAR";
 }
@@ -152,6 +155,8 @@ public sealed partial class FieldRun
             // brief-sar-6 — a SAR run's volumes, as solutions of their own (FieldSar.cs)
             solutions.AddRange(SarSolutions(portDir, port));
         }
+        // brief-sar-9 — every fields analysis recombined from this run's per-port fields, beside its .sNp
+        solutions.AddRange(CosimSolutions(runDir));
         if (solutions.Count == 0) return null;
         return new FieldRun
         {

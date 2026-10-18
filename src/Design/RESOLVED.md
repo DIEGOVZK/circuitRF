@@ -20200,3 +20200,36 @@ Design note: `docs/design/sar.md` §5. Gate: `tests/Ui.Tests/Em3d/SarPhantomsLum
 - **SAR and B1 are magnitudes, not signed values**: a real scalar is offered as `Value` and drawn on a diverging map with a
   symmetric range; `FieldNames.IsMagnitude` offers them as `Peak`, a sequential map from zero.
 Design note: `docs/design/sar.md` §8. Gate: `tests/Ui.Tests/Sar/SarResultsTests.cs`.
+
+## Capacitors as ports: per-port fields recombined by the circuit (brief-sar-9, 2026-10-18)
+
+- **The Touchstone writer records ONE reference impedance, the first port's.** `WriteOpenEmsSnp` passes
+  `problem.Ports…First().Z0`, so an `.sNp` whose ports have different Z0s is read back by an S-parameter block in the first
+  port's Z0. The field set's manifest records each port's own Z0 and the recombination uses it, so the two would disagree.
+  Every co-simulation here puts 50 Ω on every block port, including the coil's feed (its 2.5 Ω source is in the schematic).
+  Fixing the writer is a Touchstone 2.0 (`[Reference]`) question, not SAR-9's.
+- **An analysis's detail belongs in the netlist's notes, not in the `notes` list.** `RunResult.Notes` is the netlist's
+  notes (`nl.AddNoteOnce`): the GUI posts each as an Info line and `circuitrf fields` prints them. The `notes` list
+  `RunTypedAnalysis` is handed becomes `StatusMessage`, joined with "; " into the run's one-line summary. `FieldCosimulation`
+  puts every line in the first and only its first line in the second. A multi-line readout pushed into `notes` arrives as
+  one unreadable sentence.
+- **The tissue matrix is over every tissue cell, so it is checked against every tissue cell.** The first version compared
+  aᴴQa with the SAR engine's `AbsorbedPowerW`, which is the stated `Region`'s only. With a `Region` naming some tissues, the
+  check warned that the field files did not match their manifest when they did. The loop coil states no region, so its run
+  never showed it. The absorption, the "other loss" and the power-split note now sum every cell with ρ > 0.
+- **The 3D view caches what a run saved** (`C3dEditorViewModel.Discovered`, cleared by `RunFinished`). A recombination writes
+  into the run's folder with no EM run, so a view open before it would not find the new solution. "Open in 3D view"
+  (`ShowCosim`) calls `RunFinished` first.
+- **`FieldCosimulation.Runs` is process-wide.** A test that counts recombinations shares its delta with any other test
+  recombining in parallel, and failed 3 ≠ 2 under a filtered run. The classes that recombine share the
+  `FieldCosimulation.Runs` test collection.
+- **Staleness is a stamp, never a file time.** The manifest and the `.sNp`'s provenance line carry one stamp, written in that
+  order. A git checkout or a copy sets file times arbitrarily, so a committed field set compared by mtime would read as
+  stale on every fresh clone.
+- **openEMS's energy criterion and a high-Q coil.** Run to `EndCriterionDb` −60, the loop coil's field energy sat at
+  −41.8 dB from 270 ns on while the port current kept falling 3 dB per 19 ns. That is a floor the 298 MHz resonance is not
+  part of, so openEMS alone would have run to the step limit. circuitRF's port-decay rule (`ABORT` once the port signals
+  reach the criterion) stopped it at 397 ns. openEMS then prints "Max. number of timesteps was reached", which is its
+  message for any abort, not a step limit.
+Design note: `docs/design/sar.md` §11. Gates: `tests/Ui.Tests/Sar/FieldCosimTests.cs`, `CosimSuperpositionTests.cs`,
+`CosimLoopCoilTests.cs`.

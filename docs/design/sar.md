@@ -1,6 +1,6 @@
 # circuitRF — SAR and B1 for MRI coil designers and phone SAR
 
-**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7), SAR-6 done (§8), SAR-7 done (§9), SAR-8 done (§10; the birdcage moved to SAR-8b) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
+**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7), SAR-6 done (§8), SAR-7 done (§9), SAR-8 done (§10; the birdcage moved to SAR-8b), SAR-9 done (§11) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
 **Reference data:** [`testdata/sar/openems-ref/`](../../testdata/sar/openems-ref/README.md) · **Builds on:**
 [`em-3d.md`](em-3d.md) (the openEMS backend) and [`em-3d-f0-findings.md`](em-3d-f0-findings.md) (its validated versions).
 
@@ -767,6 +767,7 @@ keys and `reference em-setup` documents them from the type:
 | `B0Axis` | `+z` | `±x`, `±y`, `±z` |
 | `B1Region` | the first phantom's innermost layer, else `Region` | where the mean \|B1+\| is taken |
 | `CrossCheck` | off | §7.6 |
+| `PerPortFields` | off | every port's E and H kept beside the `.sNp` for a schematic's `fields` analysis (§11, SAR-9) |
 
 **The units are in the key names** (`FrequenciesGHz`, `MassesGrams`), where the brief wrote `Frequencies` and `Masses`,
 as `SaveFieldsGHz` and `OffsetUm` already are: a bare SAR frequency could be Hz, MHz or GHz, and all three are plausible.
@@ -1219,3 +1220,177 @@ The H dump for B1 (VTK, 276 bytes a cell at its peak, §8.3) is the largest file
 - **Run (b)'s generator change** (§10.7) — the owner's.
 - **A sheet a hair short of its line** loses that line's edges in openEMS as the feed did (§10.2); not seen here, not fixed.
 - **`--exact-endcriteria`** would make a run repeatable (§3.2), still not equal to the reference's stop step; the owner's, as in §9.2.
+
+## 11. Capacitors as ports: per-port fields recombined by the circuit (SAR-9)
+
+The method coil designers use. Every capacitor gap and the feed of a coil become ports, so the EM problem has no resonance of
+its own and no long ring-down. openEMS runs once per port and keeps each port's E and H. A schematic places the `.sNp` as an
+S-parameter block, puts the real capacitors, matching network and feed around it, and a `fields` analysis turns the waves the
+circuit delivers into the block's ports into SAR and B1± by superposition, **in about a second and with no EM run**. Changing a
+capacitor and running the analysis again starts no process.
+
+### 11.1 Keeping the fields: `Sar.PerPortFields` (R-sar9-1)
+
+A Boolean in the `Sar` group (§8.1; off when omitted). It needs nothing else: a driven run already runs one excitation per port,
+the others terminated in their Z0, because the S-matrix needs them. After the SAR results, `PortFieldSetWriter` reads every
+port's raw SAR dump (and its H dump, with B1) and writes the **field set** beside the `.sNp`, in a folder named after it:
+
+| File | What it holds |
+|---|---|
+| `<stem>.fields/fields.json` | the manifest: ports and their Z0, per SAR frequency the S-matrix, the tissue matrix (§11.4), each file's size; the tissue names, the `Sar` group the run used, and the run's **stamp** |
+| `f<j>.{x,y,z}faces.npy` | the cells' faces, float64, m |
+| `f<j>.{sigma,rho,volume}.npy` | σ, ρ, V per cell, float32, C order over (x, y, z) |
+| `f<j>.owner.npy` | each cell's tissue, int16, an index into the manifest's tissues (−1 background) |
+| `p<n>.f<j>.E.npy`, `p<n>.f<j>.H.npy` | port n's E and H, complex64, shape (nx, ny, nz, 3), per √W incident (§11.2) |
+
+The cells are the SAR dump's box (the tissue plus one cell, §8.3), so the set is 24 bytes a cell per port and field. The run's disk
+estimate before it starts includes it, and says how much of it is the field set. Files are read **memory-mapped**, one run of
+cells at a time; the writer itself never holds a port's field whole (two passes: transcribe, then normalise in place). The loop
+coil's four ports at 298 MHz take 201 MB.
+
+`explain` reports the key on the `sar` line, and the setup editor's Sar group has a *Keep per-port fields* checkbox.
+
+### 11.2 Per unit incident wave (R-sar9-2)
+
+Run k's dump F_k is the field of **every** port's incident wave in that run: port k's from its source, plus what the other ports'
+terminations reflect back (round-off with openEMS's matched port resistors, but not zero). With A the incident-wave matrix,
+A_ik = port i's incident power wave in run k, F = Ê·A, so the stored fields are **Ê = F·A⁻¹**: each port's field for 1 √W
+incident at that port and nothing incident anywhere else. A is formed from the same probes and DFT as the S-matrix, a_i =
+(U_i + Z0_i·I_i)/(√2·√Z0_i) in circuitRF's DFT. openEMS's dumps carry a ×2 against that DFT, and with it |a|² is the incident
+power in watts exactly. The fields and the S-matrix therefore share one definition of a wave. The total field of any excitation is
+E = Σ_k a_k·Ê_k, and the same for H.
+
+### 11.3 The schematic side: the `fields` analysis (R-sar9-3)
+
+```
+analysis F1 type=fields block=EM1 freq=298 freqUnit=MHz drive=1 [norm=accepted|available] [average=yes|no]
+```
+
+`block` is the S-parameter block's instance path (`X1.EM1` inside a cell); `freq` must be one of the run's SAR frequencies; `drive`
+is the circuit port that drives, every other circuit port terminated in its Z0. One circuit solve at that frequency
+(`SParameterEngine.BlockWaves`: the S-parameter run's own unit-incident-wave drive, one factorisation) gives the voltage across
+each of the block's ports and the current into it. Then a_k = (V_k + Z0_k·I_k)/(2√Z0_k) and b_k likewise, in the Z0 the fields were
+normalised in. Over the drive's unit wave that is the square root of a power ratio in any phasor convention, so the weights are
+those waves times √P_avail, with P_avail = 0.5 W (`PalaceDrive.IncidentPowerW`, the incident power every driven field in the 3D
+view is loaded at). `FieldRecombination.Recombine` sums the fields one x slab of every port at a time, and SAR-5's engine averages
+the summed grid.
+
+**Normalisation.** The record and volumes are as solved at P_avail. The per-watt values divide by the drive port's accepted power
+P_avail·(1 − |Γ|²) by default, or by P_avail with `norm=available`. **`average=no`** skips the averaged SAR (the cost that
+dominates). `FieldRecombination.Local` is the fast path SAR-10 needs: local SAR and B1± over a box (one clip plane is a box one
+cell thick), reading only those cells.
+
+**Results.** Written beside the field set, in `<stem>.fields/cosim/<analysis>/`: SAR-6's record (`sar1.json`) and volumes, and
+`cosim.json` (the drive, Γ, every port's a and b, the powers and the checks). The DataSet carries the SAR group's scalars, plus
+`Pdel`, `Pother`, `Gamma`, `SARpeak`, and the waves `a` and `b` per port. The 3D view of the `.c3d` that ran offers each recombined
+result as its own solution, `<f> GHz, fields 'F1' (circuit port 1 driven)`, drawn with no scale of its own. After a GUI run the
+Messages pane has an **Open in 3D view** action that opens it with that result drawn and selected. The analysis is in the
+Analysis editor (*Fields (SAR, B1)*), and headless it is `circuitrf fields` (`cli.md` §28) or MCP `run analysis=fields`. No
+parametric sweep wraps it (the sweep engine refuses the type).
+
+**Port impedances.** The circuit reads the block's `.sNp`, and the Touchstone writer records only the first port's Z0. A field set
+whose ports have different Z0s would be recombined in the manifest's Z0s against an S-block read in one Z0. Every co-simulation
+here uses 50 Ω on every block port (`src/Design/RESOLVED.md`).
+
+### 11.4 What the run checks, and what the checks cannot see (R-sar9-5)
+
+Three checks, each a note, and a warning when it fails:
+
+- **The summed field's absorbed power against the tissue matrix**, Q_mn = Σ ½σV·(Ê_m*·Ê_n) over every tissue cell, computed once
+  when the set is written: aᴴQa must equal the recombination's absorption over every tissue cell (not a stated `Region`), to 0.1 %.
+  This catches field files that are not the ones the manifest was computed from.
+- **The power the circuit delivers into the block**, Σ|a_k|² − |b_k|², against the field set's own S-matrix, aᴴ(I − SᴴS)a, to 2 %.
+  This catches a block whose `.sNp` is interpolated away from the SAR frequency, or is not the run's.
+- **No excitation absorbs more than it dissipates**: I − SᴴS − Q must be positive semidefinite (its smallest eigenvalue no lower than
+  −2 % of the dissipation's largest). Where the run measured a radiation pattern, each port's dissipation is also split into absorbed,
+  radiated and the rest (conductor loss).
+
+**What they cannot see.** All three compare the field set with itself and with its own S-matrix. A field that is wrong in the same
+way in E and in S (too short a ring-down, a coarse grid) passes every one: they hold the recombination to its inputs, not the
+inputs to the physics. The loop coil (§11.6) is what holds those.
+
+**Stale or missing.** The manifest and the `.sNp`'s provenance carry the same stamp, and the manifest is written first, so the `.sNp`
+is never the older. A set whose stamp is not the `.sNp`'s is **refused as stale, naming every port**. A port file that is missing,
+or whose size is not the size the run wrote, is refused naming that port. **File times are not compared**: a git checkout or a copy
+sets them arbitrarily, and a committed field set would read as stale on every fresh clone. A new run deletes the old folder,
+recombined results included, before writing.
+
+### 11.5 Superposition (R-sar9-6)
+
+`testdata/sar/circuitrf/pair/`: two lumped ports over a lossy block, per-port fields kept. One more openEMS run, of port 1's model
+with port 2's excitation added at −0.5 times its own, is the **simultaneous** run. All three take the same fixed number of steps
+(`EndCriterionDb` −200, so no criterion fires), so their DFTs cover the same window. The field set recombined with the incident waves
+the simultaneous run's own probes measured gives that run's local SAR and |B1+| **in every cell, to 1.7e-6 of the peak**, and the
+fast path's plane gives the same. The birdcage's two-run combination waits on SAR-8b, which is not done.
+
+### 11.6 The loop coil with ports for capacitors (R-sar9-6)
+
+`testdata/sar/circuitrf/loop/LoopPorts/3d/LoopPorts.c3d` is §10's `Loop.c3d` on the reference's lines, with the three capacitors
+replaced by 50 Ω lumped ports (2, 3, 4) and the feed a 50 Ω port 1, setup `CoSim` (`PerPortFields` on). `cosim/LoopCosim.cnl`
+puts the tutorial's 5.4 pF back across the three gaps and drives port 1 from 2.5 Ω, as the tutorial's feed. Against SAR-8's
+lumped-capacitor run (a), per watt accepted:
+
+| Quantity | SAR-8 run (a) | co-simulation | Tolerance (overview §4) |
+|---|---|---|---|
+| \|B1+\| at the phantom centre | 0.2408 µT/√W | **0.2445 (+1.50 %)** | 2 % |
+| psSAR10g | 1.8144 W/kg | **1.8682 (+2.97 %)**, same cell | 3 % |
+| peak local SAR | 8.665 W/kg | 8.921 (+2.96 %) | reported |
+| mean \|B1+\| over the brain | 0.2019 µT/√W | 0.2049 (+1.48 %) | reported |
+| absorbed / accepted | 80.7 % | 83.1 % | reported |
+| SAR and \|B1+\| planes' correlation | | 1.00000 on all four | reported |
+
+The circuit gives |Γ| 0.070 at the feed, and the block's incident waves are 1.68, 3.20, 3.20 and 3.12 √W at 0.5 W available. The
+checks agree to 1.3e-10 (Q) and 2.8e-9 (S), and the smallest eigenvalue of I − SᴴS − Q is −3.8e-6 W per W against a largest
+dissipation of 0.018.
+
+**Most of the difference is SAR-8's truncated ring-down.** Every SAR number is 3 % up and every B1 number 1.5 % up: a uniform
+scale on the field, its square on SAR, with the planes correlated 1.00000. SAR-8's run stopped on openEMS's energy criterion at
+245 ns, with the coil's current still −36 dB below its peak (§10.5). The current rings down as a single exponential, 3 dB per 19 ns,
+and a DFT of a ring-down cut at amplitude g₀ keeps a fraction 1 − g₀ of the resonant phasor: 0.984 in field, 0.968 in SAR. The
+co-simulation has no ring-down to cut: its four runs stop on circuitRF's port-decay rule at about 5,800 steps each, and recombining
+from runs stopped at −40 dB and at −60 dB gives the same numbers. **Run (a) again with `EndCriterionDb` −60** (circuitRF's port-decay
+rule stopped it at 117,181 steps, 397 ns, after 24 min; the energy sat at −41.8 dB from 270 ns on, a floor the resonance is not
+part of, so openEMS's own criterion would have run to the step limit) closes about
+four fifths of the gap:
+
+| per watt accepted | run (a), −36 dB at its stop | run (a) to −60 dB | co-simulation |
+|---|---|---|---|
+| psSAR10g | 1.814 W/kg | 1.857 (+2.37 %) | 1.868 (+2.97 %) |
+| peak local SAR | 8.665 W/kg | 8.868 (+2.34 %) | 8.921 (+2.96 %) |
+| mean \|B1+\| over the brain | 0.2019 µT/√W | 0.2043 (+1.19 %) | 0.2049 (+1.48 %) |
+| absorbed / accepted | 80.7 % | 82.6 % | 83.1 % |
+
+What remains between the fully rung-down lumped run and the co-simulation is again uniform, 0.29 % in field and 0.59 % in SAR,
+and it is **not explained**. Candidates not yet separated are the lumped elements' discretisation in openEMS against ideal circuit
+capacitors and feed resistance, and the accepted power taken at a 2.5 Ω lumped port against the circuit's drive. It is a fifth of
+the 3 % tolerance.
+
+### 11.7 Costs
+
+| | SAR-8 run (a), lumped capacitors | co-simulation |
+|---|---|---|
+| openEMS | 72,468 steps, 371 s, one run | 4 runs of ~5,800 steps, ~38 s each |
+| whole EM run | 6.4 min | ~3 min, including the 201 MB field set |
+| a capacitor changed | a new EM run | one circuit solve and a recombination, **~1 s**, no process (`CosimNoEmRunTests` counts both) |
+
+### 11.8 Gates
+
+`tests/Ui.Tests/Sar/`:
+
+- `FieldRecombinationTests` (routine): synthetic per-port fields with known weights give the hand-computed sum, local SAR and B1±;
+  the fast path's plane is the full path's and reads only its cells.
+- `CosimNoEmRunTests` (routine): two capacitor values recombine twice with zero openEMS launches, and port 2's wave moves.
+- `FieldSetStaleTests` (routine): a set from another run is refused as stale naming both ports; a missing port file names its port.
+- `FieldsDirectiveRoundTripTests` (routine): `type=fields` survives the `.cnl` reader and writer and the schematic's serialisation.
+- `PairSuperpositionTests` (routine, fixed data): §11.5. `PairSuperpositionRerunTests` (`Benchmark`) remakes the fixed data with
+  `CRF_WRITE_SAR9_OUTPUTS=1`.
+- `CosimLoopCoilTests` (routine, fixed data): §11.6's tolerances, and, when the run's field set is still on the machine, that the
+  committed output is what the schematic's `fields` analysis gives now. `CosimLoopCoilRerunTests` (`Benchmark`, ~3.5 min) runs
+  `circuitrf em` on `LoopPorts.c3d` and `circuitrf fields` on the schematic, and with `CRF_WRITE_SAR9_OUTPUTS=1` rewrites
+  `cosim/output/`.
+
+### 11.9 Not done in SAR-9
+
+- **The birdcage's superposition** — with SAR-8b.
+- **Per-port Z0 in the Touchstone** (§11.3): the field set records each port's Z0 and the writer does not.
+- **Goals, tuning, the optimizer and yield on recombined SAR and B1** — SAR-10, which the fast path is for.

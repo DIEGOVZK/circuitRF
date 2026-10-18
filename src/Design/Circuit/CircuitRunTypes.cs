@@ -23,6 +23,13 @@ public sealed record AnalysisResult(string Name, DataSet Data);
 public sealed record AnalysisConvergence(string Name, bool? Converged, string? Detail = null);
 
 /// <summary>
+/// brief-sar-9 — a fields analysis's recombined result, beside the field set: the 3D view it belongs to (the <c>.c3d</c> whose
+/// run kept the fields; null when that run recorded none), the setup and frequency, and the folder. What the GUI's "Open in 3D
+/// view" opens.
+/// </summary>
+public sealed record FieldsArtifact(string Analysis, string? C3dPath, string Setup, double FrequencyHz, string Folder, bool HasB1);
+
+/// <summary>
 /// Result returned by <see cref="CircuitEvaluation.Execute"/>: status, message, and the collected
 /// per-analysis results.
 /// </summary>
@@ -34,8 +41,12 @@ public sealed class RunResult(
     DataSet?                         grouped  = null,
     IReadOnlyList<string>?           notes    = null,
     IReadOnlyList<AnalysisConvergence>? convergence = null,
-    IReadOnlyList<ExpressionOutcome>?   expressions = null)
+    IReadOnlyList<ExpressionOutcome>?   expressions = null,
+    IReadOnlyList<FieldsArtifact>?      fields = null)
 {
+    /// <summary>brief-sar-9 — every fields analysis's recombined result, in run order.</summary>
+    public IReadOnlyList<FieldsArtifact> Fields { get; } = fields ?? [];
+
     public RunStatus                       Status        { get; } = status;
     public string                          StatusMessage { get; } = statusMessage;
     public IReadOnlyList<AnalysisResult>   Results       { get; } = results ?? [];
@@ -72,7 +83,7 @@ public sealed class RunResult(
     /// <summary>This result with <paramref name="leading"/> ahead of its own notes.</summary>
     internal RunResult WithLeadingNotes(IReadOnlyList<string> leading)
         => new(Status, StatusMessage, Results, Warnings, GroupedResults, [.. leading, .. Notes],
-               Convergence, Expressions);
+               Convergence, Expressions, Fields);
 
     // Convenience: callers that only need the DataSets (unchanged from Phase 6e).
     public IReadOnlyList<DataSet> DataSets => Results.Select(r => r.Data).ToList();

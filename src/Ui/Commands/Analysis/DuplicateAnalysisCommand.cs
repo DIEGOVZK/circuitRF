@@ -57,6 +57,13 @@ internal sealed class DuplicateAnalysisCommand : IUiCommand
         DcAnalysis =>
             new DcAnalysis(newName) { Enabled = a.Enabled },
 
+        FieldsAnalysis f =>
+            new FieldsAnalysis(newName)
+            {
+                Enabled = a.Enabled, Block = f.Block, FreqExpr = f.FreqExpr, FreqUnit = f.FreqUnit, DriveExpr = f.DriveExpr,
+                Norm = f.Norm, AverageExpr = f.AverageExpr,
+            },
+
         SParameterAnalysis sp =>
             new SParameterAnalysis(newName, sp.Sweeps) { Enabled = a.Enabled },
 

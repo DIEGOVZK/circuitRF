@@ -368,7 +368,7 @@ public static class OpenEmsSarResults
     }
 
     /// <summary>Each SAR cell centre's index among the H dump's centres; null when one has none within a quarter cell.</summary>
-    private static int[]? Map(SarAxis axis, double[] h)
+    internal static int[]? Map(SarAxis axis, double[] h)
     {
         var map = new int[axis.Count];
         int at = 0;

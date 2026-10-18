@@ -1,0 +1,194 @@
+{
+ "FormatVersion": 1,
+ "DbuPerMicron": 1000,
+ "DisplayUnit": "Mm",
+ "SnapDbu": 1000,
+ "Objects": [
+  {
+   "$type": "Sheet",
+   "Name": "aLo",
+   "Material": "PEC",
+   "Plane": "XZ",
+   "Offset": -10000000,
+   "Rect": {
+    "Min": [
+     -1000000,
+     -26250000
+    ],
+    "Size": [
+     2000000,
+     25000000
+    ]
+   }
+  },
+  {
+   "$type": "Sheet",
+   "Name": "aHi",
+   "Material": "PEC",
+   "Plane": "XZ",
+   "Offset": -10000000,
+   "Rect": {
+    "Min": [
+     -1000000,
+     1250000
+    ],
+    "Size": [
+     2000000,
+     25000000
+    ]
+   }
+  },
+  {
+   "$type": "Sheet",
+   "Name": "bLo",
+   "Material": "PEC",
+   "Plane": "XZ",
+   "Offset": 10000000,
+   "Rect": {
+    "Min": [
+     -1000000,
+     -26250000
+    ],
+    "Size": [
+     2000000,
+     25000000
+    ]
+   }
+  },
+  {
+   "$type": "Sheet",
+   "Name": "bHi",
+   "Material": "PEC",
+   "Plane": "XZ",
+   "Offset": 10000000,
+   "Rect": {
+    "Min": [
+     -1000000,
+     1250000
+    ],
+    "Size": [
+     2000000,
+     25000000
+    ]
+   }
+  },
+  {
+   "$type": "Box",
+   "Name": "block",
+   "Material": "block tissue",
+   "Min": [
+    10000000,
+    -20000000,
+    -20000000
+   ],
+   "Size": [
+    30000000,
+    40000000,
+    40000000
+   ],
+   "Role": "Dielectric"
+  }
+ ],
+ "Variables": [],
+ "Ports": [
+  {
+   "Number": 1,
+   "Name": "a",
+   "Kind": "Lumped",
+   "Plane": "XZ",
+   "Offset": -10000000,
+   "Rect": {
+    "Min": [
+     -1000000,
+     -1250000
+    ],
+    "Size": [
+     2000000,
+     2500000
+    ]
+   },
+   "Z0": "50"
+  },
+  {
+   "Number": 2,
+   "Name": "b",
+   "Kind": "Lumped",
+   "Plane": "XZ",
+   "Offset": 10000000,
+   "Rect": {
+    "Min": [
+     -1000000,
+     -1250000
+    ],
+    "Size": [
+     2000000,
+     2500000
+    ]
+   },
+   "Z0": "50"
+  }
+ ],
+ "Setups": [
+  {
+   "FormatVersion": 1,
+   "Name": "PerPort",
+   "Frequency": {
+    "StartExpr": "0.5",
+    "StopExpr": "1.5",
+    "StepExpr": "",
+    "NumPoints": 11,
+    "Mode": "PointCount",
+    "Kind": "Linear",
+    "StartUnit": "GHz",
+    "StopUnit": "GHz",
+    "StepUnit": "GHz"
+   },
+   "Solver3D": "OpenEms",
+   "AirBox": {
+    "XMin": {
+     "PaddingUm": 40000,
+     "Boundary": "Absorbing"
+    },
+    "XMax": {
+     "PaddingUm": 40000,
+     "Boundary": "Absorbing"
+    },
+    "YMin": {
+     "PaddingUm": 40000,
+     "Boundary": "Absorbing"
+    },
+    "YMax": {
+     "PaddingUm": 40000,
+     "Boundary": "Absorbing"
+    },
+    "ZMin": {
+     "PaddingUm": 40000,
+     "Boundary": "Absorbing"
+    },
+    "ZMax": {
+     "PaddingUm": 40000,
+     "Boundary": "Absorbing"
+    }
+   },
+   "OpenEms": {
+    "PmlCells": 0,
+    "EndCriterionDb": -200,
+    "MaxTimeSteps": 6000,
+    "SaveFieldsGHz": [],
+    "CellConstantMaterial": true,
+    "CellsPerWavelength": 12
+   },
+   "Sar": {
+    "FrequenciesGHz": [
+     1.0
+    ],
+    "MassesGrams": [
+     1
+    ],
+    "Method": "Simple",
+    "B1": true,
+    "PerPortFields": true
+   }
+  }
+ ]
+}

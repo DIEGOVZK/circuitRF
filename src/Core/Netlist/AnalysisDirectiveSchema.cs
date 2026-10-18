@@ -211,6 +211,18 @@ public static partial class AnalysisDirectiveSchema
             new("Unit",  Default: "",    Summary: "Unit the Start/Stop/Step numbers are written in. Absent = base SI."),
             new("log",   Default: "false", Summary: "Logarithmic spacing. Also accepted as the bare word 'log'."),
         ], BareWords: ["log"], RequiredOneOf: [["Values", "Start"], ["Values", "Stop"]]),
+
+        // brief-sar-9 R-sar9-3 — an EM block's per-port fields recombined by this circuit's port waves
+        new("fields", ["field_cosim", "cosim"],
+        [
+            new("block",    Required: true,  Summary: "Instance path of the S-parameter block whose .sNp was written by a 3D run with Sar.PerPortFields."),
+            new("freq",     Required: true,  Summary: "The frequency the fields are recombined at: one the 3D run kept (its Sar.FrequenciesGHz). Bare number in Hz unless freqUnit= or Unit= says otherwise."),
+            new("freqUnit", Default: "Hz",   Summary: "Unit for freq."),
+            new("Unit",                      Summary: "Same as freqUnit."),
+            new("drive",    Default: "1",    Summary: "The circuit port number that drives the circuit; every other circuit port is terminated in its Z0."),
+            new("norm",     Default: "accepted", Summary: "accepted | available: the drive power every SAR and B1 result is per watt of."),
+            new("average",  Default: "yes",  Summary: "yes: averaged SAR too (the setup's masses). no: local SAR and B1 only — the fast path."),
+        ]),
     ];
 
     /// <summary>Every directive spec, in the order the reference page should list them.</summary>

@@ -72,15 +72,22 @@ public sealed class SarRunRecord
     public List<string> Volumes { get; set; } = [];
     public List<SarCrossCheckRecord>? CrossCheck { get; set; }
 
+    /// <summary>brief-sar-9 — the power the per-watt values are referred to, W, when it is not <see cref="AcceptedPowerW"/>: a
+    /// fields analysis normalised to its drive's AVAILABLE power. Null: accepted, as every 3D run is.</summary>
+    public double? ReferencePowerW { get; set; }
+
     // ── normalised to 1 W accepted (R-sar6-3) ───────────────────────────────────────────────────────
+
+    /// <summary>The power every per-watt value divides by: <see cref="ReferencePowerW"/>, else the accepted power.</summary>
+    public double PerWattDivisor => ReferencePowerW ?? AcceptedPowerW;
 
     /// <summary>The peak of <paramref name="quantity"/>, W/kg per W accepted; null when the run found none.</summary>
     public double? PeakPerWatt(string quantity)
-        => Peaks.FirstOrDefault(p => p.Quantity == quantity) is { } p && AcceptedPowerW > 0 ? p.Value / AcceptedPowerW : null;
+        => Peaks.FirstOrDefault(p => p.Quantity == quantity) is { } p && PerWattDivisor > 0 ? p.Value / PerWattDivisor : null;
 
-    public double? WholeSarPerWatt => TissueMassKg > 0 && AcceptedPowerW > 0 ? AbsorbedPowerW / TissueMassKg / AcceptedPowerW : null;
-    public double? AbsorbedFraction => AcceptedPowerW > 0 ? AbsorbedPowerW / AcceptedPowerW : null;
-    public double? B1pMeanPerSqrtWatt => B1pMeanT is { } b && AcceptedPowerW > 0 ? b / Math.Sqrt(AcceptedPowerW) : null;
+    public double? WholeSarPerWatt => TissueMassKg > 0 && PerWattDivisor > 0 ? AbsorbedPowerW / TissueMassKg / PerWattDivisor : null;
+    public double? AbsorbedFraction => PerWattDivisor > 0 ? AbsorbedPowerW / PerWattDivisor : null;
+    public double? B1pMeanPerSqrtWatt => B1pMeanT is { } b && PerWattDivisor > 0 ? b / Math.Sqrt(PerWattDivisor) : null;
 
     /// <summary>(absorbed + radiated) / accepted, a fraction; null without a radiation pattern.</summary>
     public double? PowerBudget => RadiationEfficiency is { } eta && AbsorbedFraction is { } a ? a + eta : null;

@@ -61,18 +61,8 @@ internal static class LoopReplication
         string p1 = Path.Combine(stem, "p1");
         Directory.CreateDirectory(outDir);
         File.Copy(stem + ".s1p", Path.Combine(outDir, Touchstone), true);
-        foreach (string f in Probes.Append(Record)) File.Copy(Path.Combine(p1, f), Path.Combine(outDir, f), true);
-        var lines = "xyz".Select(a => SarVolumeFiles.ReadFloat64(Path.Combine(p1, SarVolumeFiles.LinesFile(0, a)))).ToArray();
-        foreach (char a in "xyz") File.Copy(Path.Combine(p1, SarVolumeFiles.LinesFile(0, a)), Path.Combine(outDir, SarVolumeFiles.LinesFile(0, a)), true);
-        foreach (string q in Quantities)
-        {
-            var (vol, shape) = SarVolumeFiles.ReadFloat32(Path.Combine(p1, SarVolumeFiles.VolumeFile(0, q)));
-            foreach (var (name, axis) in Planes)
-            {
-                var (plane, n0, n1) = Slice(vol, shape, lines[axis], axis);
-                SarVolumeFiles.WriteFloat32(Path.Combine(outDir, PlaneFile(q, name)), plane, n0, n1);
-            }
-        }
+        foreach (string f in Probes) File.Copy(Path.Combine(p1, f), Path.Combine(outDir, f), true);
+        CollectVolumes(p1, outDir);
 
         string log = File.ReadAllText(Path.Combine(p1, "openems.log"));
         var size = Regex.Match(log, @"FDTD simulation size: (\d+)x(\d+)x(\d+)");
@@ -93,6 +83,25 @@ internal static class LoopReplication
             ["openems_wall_s"] = time.Success ? double.Parse(time.Groups[2].Value, CultureInfo.InvariantCulture) : null,
         };
         File.WriteAllText(Path.Combine(outDir, RunFacts), facts.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+    }
+
+    /// <summary>A SAR run's record, its volumes' cell centres and each volume's two planes, from <paramref name="from"/> (a port's run
+    /// directory, or brief-sar-9's recombined result) into <paramref name="outDir"/>.</summary>
+    public static void CollectVolumes(string from, string outDir)
+    {
+        Directory.CreateDirectory(outDir);
+        File.Copy(Path.Combine(from, Record), Path.Combine(outDir, Record), true);
+        var lines = "xyz".Select(a => SarVolumeFiles.ReadFloat64(Path.Combine(from, SarVolumeFiles.LinesFile(0, a)))).ToArray();
+        foreach (char a in "xyz") File.Copy(Path.Combine(from, SarVolumeFiles.LinesFile(0, a)), Path.Combine(outDir, SarVolumeFiles.LinesFile(0, a)), true);
+        foreach (string q in Quantities)
+        {
+            var (vol, shape) = SarVolumeFiles.ReadFloat32(Path.Combine(from, SarVolumeFiles.VolumeFile(0, q)));
+            foreach (var (name, axis) in Planes)
+            {
+                var (plane, n0, n1) = Slice(vol, shape, lines[axis], axis);
+                SarVolumeFiles.WriteFloat32(Path.Combine(outDir, PlaneFile(q, name)), plane, n0, n1);
+            }
+        }
     }
 
     /// <summary>The plane of volume <paramref name="vol"/> (C order over x, y, z) normal to <paramref name="axis"/> at 0, linear

@@ -16,7 +16,7 @@ namespace CircuitRF.Design.Schematic;
 //    - Id never persisted
 //    - format_version reject-on-mismatch (enforced by the CschFile wrapper)
 //
-//  Type discriminator: CschAnalysis.Type is "dc" / "sp" / "hb" / "sweep" / "lp" / "lpp".
+//  Type discriminator: CschAnalysis.Type is "dc" / "sp" / "hb" / "sweep" / "lp" / "lpp" / "fields".
 //  Loadpull ("lp") and Loadpull-Pursuit ("lpp") round-trip here (authoring forms: briefs 05-06).
 //  Their tone serializes as LpToneExpr + LpToneUnit — the same coefficient+unit pair HB uses, so a
 //  VAR tone with or without a unit resolves correctly via the var-unit-wins rule (brief 04b).
@@ -54,7 +54,7 @@ public sealed class CschFrequencySpec
 /// </summary>
 public sealed class CschAnalysis
 {
-    /// <summary>Type tag: "dc" | "sp" | "hb" | "sweep" | "lp" | "lpp".  Unknown tags are skipped on load.</summary>
+    /// <summary>Type tag: "dc" | "sp" | "hb" | "sweep" | "lp" | "lpp" | "fields".  Unknown tags are skipped on load.</summary>
     public string Type    { get; set; } = "";
     public string Name    { get; set; } = "";
     /// <summary>False = skip at run time (VendorC "enabled" pattern). Defaults true; absent on old files → true.</summary>
@@ -96,6 +96,13 @@ public sealed class CschAnalysis
     public string?   SsUnit            { get; set; }
     public string?   SsLogExpr         { get; set; }
     public string?   SsMaxHarmExpr     { get; set; }
+    // brief-sar-9 — a fields analysis ("fields"): the EM block, the frequency, the drive port, the normalisation, averaging.
+    public string?   FieldsBlock       { get; set; }
+    public string?   FieldsFreqExpr    { get; set; }
+    public string?   FieldsFreqUnit    { get; set; }
+    public string?   FieldsDriveExpr   { get; set; }
+    public string?   FieldsNorm        { get; set; }
+    public string?   FieldsAverageExpr { get; set; }
     public string?   SweepVarName      { get; set; }
     public string?   SweepStartExpr    { get; set; }
     public string?   SweepStopExpr     { get; set; }
@@ -293,6 +300,11 @@ public static class AnalysisSerialization
     public static CschAnalysis ToDto(Analysis a) => a switch
     {
         DcAnalysis => new CschAnalysis { Type = "dc", Name = a.Name, Enabled = a.Enabled },
+        FieldsAnalysis f => new CschAnalysis
+        {
+            Type = "fields", Name = a.Name, Enabled = a.Enabled, FieldsBlock = f.Block, FieldsFreqExpr = f.FreqExpr,
+            FieldsFreqUnit = f.FreqUnit, FieldsDriveExpr = f.DriveExpr, FieldsNorm = f.Norm, FieldsAverageExpr = f.AverageExpr,
+        },
 
         SParameterAnalysis sp => new CschAnalysis
         {
@@ -451,6 +463,11 @@ public static class AnalysisSerialization
     public static Analysis? FromDto(CschAnalysis dto) => dto.Type switch
     {
         "dc" => new DcAnalysis(dto.Name) { Enabled = dto.Enabled },
+        "fields" => new FieldsAnalysis(dto.Name)
+        {
+            Enabled = dto.Enabled, Block = dto.FieldsBlock ?? "", FreqExpr = dto.FieldsFreqExpr ?? "", FreqUnit = dto.FieldsFreqUnit ?? "Hz",
+            DriveExpr = dto.FieldsDriveExpr ?? "1", Norm = dto.FieldsNorm ?? FieldsAnalysis.NormAccepted, AverageExpr = dto.FieldsAverageExpr ?? "yes",
+        },
 
         "sp" when dto.Sweeps is { Count: > 0 } =>
             new SParameterAnalysis(dto.Name, dto.Sweeps.Select(FromDto).ToList())

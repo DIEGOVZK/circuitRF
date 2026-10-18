@@ -1,0 +1,17 @@
+{
+ "FormatVersion": 1,
+ "Name": "Pair",
+ "Materials": [
+  {
+   "Name": "PEC",
+   "Sigma20": 1e+30
+  },
+  {
+   "Name": "block tissue",
+   "Epsr": 50,
+   "Sigma20": 0.65,
+   "DensityKgM3": 1100,
+   "Source": "An arbitrary lossy tissue-like dielectric for brief-sar-9's superposition gate: the numbers need only be lossy and state a density."
+  }
+ ]
+}

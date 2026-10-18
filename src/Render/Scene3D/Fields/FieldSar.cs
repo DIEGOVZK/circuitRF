@@ -42,6 +42,34 @@ public sealed partial class FieldRun
     }
 }
 
+public sealed partial class FieldRun
+{
+    /// <summary>
+    /// brief-sar-9 — the fields analyses recombined from <paramref name="runDir"/>'s per-port fields: the SAR and B1 volumes each
+    /// left in <c>&lt;run&gt;.fields/cosim/&lt;analysis&gt;/</c>, as solutions of their own. Each carries its drive already: the
+    /// circuit's driven port, its Z0 and its reflection, with its volumes at the incident power every driven step is loaded at
+    /// (FieldCosimulation's header), so FieldDrive refers it exactly as it refers a port's own.
+    /// </summary>
+    private static IEnumerable<FieldSolution> CosimSolutions(string runDir)
+    {
+        string root = Path.Combine(runDir.TrimEnd(Path.DirectorySeparatorChar) + ".fields", FieldCosimulation.CosimFolder);
+        if (!System.IO.Directory.Exists(root)) yield break;
+        foreach (string dir in System.IO.Directory.EnumerateDirectories(root).Order(StringComparer.Ordinal))
+        {
+            string recordPath = Path.Combine(dir, SarVolumeFiles.RecordFile(0));
+            if (SarVolumeFiles.ReadRecord(recordPath) is not { } r || FieldCosimulation.ReadRecord(dir) is not { } c) continue;
+            double ghz = r.FrequencyHz / 1e9;
+            var drive = new FieldPortDrive(c.DrivePort, c.DriveZ0, c.Reflection, Complex.One, true);
+            var sar = r.Volumes.Where(FieldNames.IsSar).ToList();
+            if (sar.Count > 0)
+                yield return new FieldSolution(FieldProblemKind.Driven, 0, ghz, recordPath, null, "openEMS") { Offers = sar, Drive = drive, Cosim = c.Analysis };
+            if (r.Volumes.Contains(FieldNames.B1Plus))
+                yield return new FieldSolution(FieldProblemKind.Driven, 0, ghz, Path.Combine(dir, SarVolumeFiles.VolumeFile(0, FieldNames.B1Plus)), null, "openEMS")
+                             { Offers = [.. r.Volumes.Where(FieldNames.IsB1)], Drive = drive, Cosim = c.Analysis };
+        }
+    }
+}
+
 public sealed partial class FieldStep
 {
     /// <summary>brief-sar-6 — the node lattice of a step drawn on a rectilinear grid (a SAR or B1 volume), x fastest; null for

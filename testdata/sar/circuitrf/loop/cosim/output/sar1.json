@@ -1,0 +1,84 @@
+{
+  "Port": 1,
+  "FrequencyHz": 298000000,
+  "Index": 1,
+  "AcceptedPowerW": 0.4975260328636294,
+  "RadiationEfficiency": null,
+  "Region": "all tissue",
+  "AbsorbedPowerW": 0.41338402004079644,
+  "TissueMassKg": 4.169182270782895,
+  "UncountedPowerW": 0,
+  "Peaks": [
+    {
+      "Quantity": "SAR",
+      "Value": 4.438592910766602,
+      "Cell": [
+        3,
+        33,
+        50
+      ],
+      "CentreM": [
+        -0.09719166666666665,
+        -0.018493589743589764,
+        -0.0055787037037037055
+      ],
+      "CubeLoM": null,
+      "CubeHiM": null,
+      "CubeMassKg": null,
+      "Kind": null,
+      "Object": "head/skin",
+      "Material": "openEMS head phantom skin (298 MHz)"
+    },
+    {
+      "Quantity": "SAR10g",
+      "Value": 0.92948979139328,
+      "Cell": [
+        10,
+        27,
+        47
+      ],
+      "CentreM": [
+        -0.08330833333333335,
+        -0.029166666666666664,
+        -0.01127314814814815
+      ],
+      "CubeLoM": [
+        -0.09315810772058658,
+        -0.0390164410539199,
+        -0.021122922535401392
+      ],
+      "CubeHiM": [
+        -0.07345855894608011,
+        -0.019316892279413425,
+        -0.00142337376089491
+      ],
+      "CubeMassKg": 0.01000000000041515,
+      "Kind": "Valid",
+      "Object": "head/skin",
+      "Material": "openEMS head phantom skin (298 MHz)"
+    }
+  ],
+  "B1Region": "head/brain",
+  "B1pMeanT": 1.4454869678711001E-07,
+  "B0Axis": "\u002Bz",
+  "Shape": [
+    105,
+    87,
+    107
+  ],
+  "Volumes": [
+    "SAR",
+    "SAR10g",
+    "B1p",
+    "B1m"
+  ],
+  "CrossCheck": null,
+  "ReferencePowerW": null,
+  "PerWattDivisor": 0.4975260328636294,
+  "WholeSarPerWatt": 0.19929068140145906,
+  "AbsorbedFraction": 0.8308791756312055,
+  "B1pMeanPerSqrtWatt": 2.04930347059361E-07,
+  "PowerBudget": null,
+  "EfficiencyQuantity": "SAR10g",
+  "SarEfficiency": 1.4993114871577773E-07
+}

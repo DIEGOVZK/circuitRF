@@ -189,7 +189,7 @@ public static class FieldPlotResolver
     /// <summary>A saved step as a plot names it, by value.</summary>
     public static C3dFieldSolution SolutionKey(FieldSolution s, Em3dProblem? problem) => s.Kind switch
     {
-        FieldProblemKind.Driven => new C3dFieldSolution { GHz = s.Timestep, Port = s.Excitation > 0 ? s.Excitation : null },
+        FieldProblemKind.Driven => new C3dFieldSolution { GHz = s.Timestep, Port = s.Excitation > 0 ? s.Excitation : null, Cosim = s.Cosim },
         FieldProblemKind.Eigenmode => new C3dFieldSolution { Mode = s.Index + 1 },
         FieldProblemKind.Thermal => new C3dFieldSolution { Point = s.Index + 1 },
         _ => new C3dFieldSolution
@@ -304,6 +304,9 @@ public static class FieldPlotResolver
         int port = s.Excitation > 0 ? s.Excitation : s.Drive?.Port ?? 0;
         // brief-sar-6 — a SAR run's volumes are their own solutions at the dump's frequency and port
         string sar = s.OffersLabel is { } what ? $" ({what})" : "";
+        // brief-sar-9 — a fields analysis's recombined field, driven from its circuit's port
+        if (s.Cosim is { } cosim)
+            return $"{G(s.Timestep)} GHz, fields '{cosim}' (circuit port {s.Drive?.Port ?? 0} driven)" + sar;
         return sar.Length > 0 ? SolutionLabel(s with { Offers = null }, modes, problem, solver) + sar : s.Kind switch
         {
             FieldProblemKind.Driven => $"{G(s.Timestep)} GHz" + (port <= 0 ? ""

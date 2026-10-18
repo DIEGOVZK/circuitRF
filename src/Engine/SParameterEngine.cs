@@ -95,6 +95,83 @@ public static class SParameterEngine
         return (BuildDataSet(netlist, freqsHz, sMatrices, prep.Z0PerPort, prep.Probes, wsp, nd, settings), stats);
     }
 
+    /// <summary>
+    /// brief-sar-9 R-sar9-3 — what one excitation of the terminated network delivers to an N-port block: the voltage across
+    /// each of the block's ports (port node minus its reference) and the current flowing INTO it there, for a unit incident
+    /// wave (a = 1, the S-parameter run's own Norton drive) at circuit port <see cref="DrivenPort"/> with every other circuit
+    /// port terminated in its Z0. <see cref="Reflection"/> is that port's S_jj. The phasor convention is the S-parameter
+    /// run's, so only ratios to the unit drive are meaningful: a block port's incident wave over the drive's is the square
+    /// root of a power ratio in any convention.
+    /// </summary>
+    public sealed record BlockPortDrive(int DrivenPort, Complex DrivenZ0, Complex Reflection, Complex[] Voltage, Complex[] Current);
+
+    /// <summary>
+    /// brief-sar-9 R-sar9-3 — <see cref="BlockPortDrive"/> at one frequency for the block whose elaborated instance path is
+    /// <paramref name="instancePath"/>, driven from circuit port number <paramref name="drivenPort"/>. One factorisation, one
+    /// back-substitution, on the same assembly a sweep stamps. Wave path only (every circuit port with Re Z0 &gt; 0): the
+    /// legacy path's ports are 0 V branches, which terminate nothing.
+    /// </summary>
+    public static BlockPortDrive BlockWaves(ElaboratedNetlist netlist, double freqHz, string instancePath, int drivenPort,
+                                            AnalysisSettings? settings = null)
+    {
+        ArgumentNullException.ThrowIfNull(netlist);
+        settings ??= AnalysisSettings.Default;
+        double[] freqs = [freqHz];
+        var p = Prepare(netlist, freqs, settings);
+        if (!p.AllPortsResistive)
+            throw new InvalidOperationException("A port's waves need every circuit port terminated in a resistive Z0 (Re Z0 > 0); " +
+                                                "one port's Z0 has none.");
+        int j = p.Ports.FindIndex(x => x.PortNum == drivenPort);
+        if (j < 0)
+            throw new InvalidOperationException($"The circuit has no port number {drivenPort} at its top level to drive " +
+                                                $"(ports: {string.Join(", ", p.Ports.Select(x => x.PortNum))}).");
+        var block = netlist.Components.FirstOrDefault(c => string.Equals(c.InstancePath, instancePath, StringComparison.Ordinal));
+        if (block?.Model is not SnpModel snp)
+            throw new InvalidOperationException(block is null
+                ? $"The circuit has no instance '{instancePath}'."
+                : $"'{instancePath}' is a {block.ComponentType}, not an S-parameter block.");
+
+        var mna = p.Mna;
+        int nonGround = mna.NodeCount;
+        double omega = 2.0 * Math.PI * freqHz;
+        StampAll(mna, netlist, omega, skipPorts: true, dcNodeVoltages: p.DcNodeVoltages);
+        StampPortConductances(mna, p.Ports, p.Ports.Count);
+        ApplyRegularization(mna, netlist, nonGround, settings, applyIfNecessary: false);
+        SparseLU lu;
+        try { lu = mna.Factorize(nodeNamer: p.NodeNamer, branchNamer: p.BranchNamer); }
+        catch (SingularMatrixException) when (p.CanRetry)
+        {
+            StampAll(mna, netlist, omega, skipPorts: true, dcNodeVoltages: p.DcNodeVoltages);
+            StampPortConductances(mna, p.Ports, p.Ports.Count);
+            ApplyRegularization(mna, netlist, nonGround, settings, applyIfNecessary: true);
+            lu = mna.Factorize(nodeNamer: p.NodeNamer, branchNamer: p.BranchNamer);
+        }
+
+        // The S-parameter run's own drive: a unit incident wave, Norton current 2√(Re Z0)/Z0.
+        var driven = p.Ports[j];
+        Complex iInj = 2.0 * Math.Sqrt(driven.Z0.Real) / driven.Z0;
+        var b = new Complex[mna.Size];
+        var x = new Complex[mna.Size];
+        if (driven.Node0 > 0) b[driven.Node0 - 1] = iInj;
+        if (driven.Node1 > 0) b[driven.Node1 - 1] = -iInj;
+        lu.Solve(b, x);
+
+        Complex vj = GetPortVoltage(x, driven);
+        Complex ij = iInj - vj / driven.Z0;
+        Complex reflection = (vj - Complex.Conjugate(driven.Z0) * ij) / (2.0 * Math.Sqrt(driven.Z0.Real));
+
+        Complex V(int node) => node > 0 ? x[node - 1] : Complex.Zero;
+        int n = snp.PortCount;
+        var voltage = new Complex[n];
+        var current = new Complex[n];
+        for (int k = 0; k < n; k++)
+        {
+            voltage[k] = V(block.Nodes[k]) - V(block.ReferenceNode);
+            current[k] = x[snp.PortBranchIndices[k]];     // the branch flows from port node k into the block (SnpModel.Stamp)
+        }
+        return new BlockPortDrive(drivenPort, driven.Z0, reflection, voltage, current);
+    }
+
     /// <summary>The NDF's own per-frequency outputs, allocated only when the knob is on — the
     /// emptiness is what keeps a no-knob run on exactly its old path (R-wsp6-9(j)).</summary>
     private sealed class NdfOutput

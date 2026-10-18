@@ -335,6 +335,8 @@ public static class CnlWriter
         ParametricSweepAnalysis ps    => FormatParametricSweepAnalysis(ps),
         SParameterAnalysis sp         => FormatSParameterAnalysis(sp),
         DcAnalysis dc                 => $"analysis {dc.Name} type=dc",
+        FieldsAnalysis fa             => $"analysis {fa.Name} type=fields block={fa.Block} freq=\"{fa.FreqExpr}\" freqUnit={fa.FreqUnit} " +
+                                         $"drive={fa.DriveExpr} norm={fa.Norm} average={fa.AverageExpr}",
         _                             => $"analysis {analysis.Name}",
     };
 

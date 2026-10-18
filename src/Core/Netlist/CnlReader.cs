@@ -109,6 +109,8 @@ public sealed class CnlReader
                 tb.Analyses.Add(lpAnalysis!);
             else if (TryParseParametricSweepDirective(rawLine, out var psAnalysis))
                 tb.Analyses.Add(psAnalysis!);
+            else if (TryParseFieldsDirective(rawLine, out var fieldsAnalysis))
+                tb.Analyses.Add(fieldsAnalysis!);
             else if (TryParseSParamDirective(rawLine, out var spAnalysis))
             {
                 // Multi-segment: merge consecutive segments with the same analysis name.
@@ -1031,6 +1033,35 @@ public sealed class CnlReader
 
         if (!isDc) return false;
         result = new DcAnalysis(analysisName) { Enabled = ParseEnabledToken(tokens) };
+        return true;
+    }
+
+    /// <summary>
+    /// brief-sar-9 — a "Name type=fields block=… freq=… …" directive as a <see cref="FieldsAnalysis"/>. Returns false if it is
+    /// not a type=fields directive (PrepareAnalysisDirective has already canonicalised every key and refused unknown ones).
+    /// </summary>
+    private static bool TryParseFieldsDirective(string rawLine, out FieldsAnalysis? result)
+    {
+        result = null;
+        var tokens = TokeniseLine(rawLine);
+        if (tokens.Count < 2) return false;
+        var kv = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 1; i < tokens.Count; i++)
+        {
+            int eq = tokens[i].IndexOf('=');
+            if (eq > 0) kv[tokens[i][..eq]] = tokens[i][(eq + 1)..].Trim('"');
+        }
+        if (!kv.TryGetValue("type", out var type) || AnalysisDirectiveSchema.Find(type)?.Type != "fields") return false;
+        result = new FieldsAnalysis(tokens[0])
+        {
+            Block       = kv.GetValueOrDefault("block", ""),
+            FreqExpr    = kv.GetValueOrDefault("freq", ""),
+            FreqUnit    = kv.GetValueOrDefault("freqUnit") ?? kv.GetValueOrDefault("Unit") ?? "Hz",
+            DriveExpr   = kv.GetValueOrDefault("drive", "1"),
+            Norm        = kv.GetValueOrDefault("norm", FieldsAnalysis.NormAccepted),
+            AverageExpr = kv.GetValueOrDefault("average", "yes"),
+            Enabled     = ParseEnabledToken(tokens),
+        };
         return true;
     }
 

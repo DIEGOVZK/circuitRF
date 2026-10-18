@@ -70,6 +70,41 @@ public abstract class Analysis(string name)
 public sealed class DcAnalysis(string name) : Analysis(name);
 
 /// <summary>
+/// brief-sar-9 R-sar9-3 — the field of an EM block in this circuit: the block's per-port fields (kept beside its <c>.sNp</c> by a
+/// 3D run with <c>Sar.PerPortFields</c>) recombined with the incident waves this circuit delivers to each of its ports when
+/// circuit port <see cref="DriveExpr"/> is driven. Gives SAR, B1± and their scalars at one frequency, normalised to the drive's
+/// accepted or available power, with no new EM run. Every value is the directive's text, resolved at run time.
+/// </summary>
+public sealed class FieldsAnalysis(string name) : Analysis(name)
+{
+    /// <summary>The S-parameter block's instance path (<c>EM1</c>, or <c>X1.EM1</c> inside a cell).</summary>
+    public string Block { get; init; } = "";
+
+    /// <summary>The frequency the fields are taken at: one the 3D run kept (its Sar.FrequenciesGHz).</summary>
+    public string FreqExpr { get; init; } = "";
+
+    /// <summary>The unit of <see cref="FreqExpr"/>.</summary>
+    public string FreqUnit { get; init; } = "Hz";
+
+    /// <summary>The circuit port number that drives the circuit; every other circuit port is terminated in its Z0.</summary>
+    public string DriveExpr { get; init; } = "1";
+
+    /// <summary><c>accepted</c> (the default) or <c>available</c>: the power at the drive every result is per watt of.</summary>
+    public string Norm { get; init; } = NormAccepted;
+
+    /// <summary><c>yes</c> (the default): the averaged SAR too. <c>no</c>: local SAR and B1 only, the fast path.</summary>
+    public string AverageExpr { get; init; } = "yes";
+
+    public const string NormAccepted = "accepted", NormAvailable = "available";
+
+    /// <summary>Whether <see cref="Norm"/> asks for the available power; anything but <c>available</c> is accepted.</summary>
+    public bool PerAvailable => Norm.Trim().Equals(NormAvailable, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Whether the averaged SAR is asked for (<see cref="Analysis.ParseNdf"/>'s spellings of yes; empty is yes).</summary>
+    public bool Average => AverageExpr.Trim().Length == 0 || ParseNdf(AverageExpr);
+}
+
+/// <summary>
 /// S-parameter analysis. Carries one or more frequency-sweep segments; at engine time all
 /// segments are unioned into a single sorted/deduped flat frequency array via <see cref="Expand"/>.
 /// </summary>

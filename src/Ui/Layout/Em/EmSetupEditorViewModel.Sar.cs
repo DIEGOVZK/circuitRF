@@ -38,6 +38,7 @@ public sealed partial class EmSetupEditorViewModel
     [ObservableProperty] private string _sarB0Axis = "+z";
     [ObservableProperty] private string _sarB1RegionText = "";
     [ObservableProperty] private bool _sarCrossCheck;
+    [ObservableProperty] private bool _sarPerPortFields;
     [ObservableProperty] private string? _sarFieldError;
 
     public static IReadOnlyList<SarMethod> SarMethodChoices { get; } = Enum.GetValues<SarMethod>();
@@ -81,6 +82,7 @@ public sealed partial class EmSetupEditorViewModel
         SarB0Axis = s?.B0Axis is { } a && SarSettings.ParseB0Axis(a) is { } parsed ? SarSettings.B0AxisSpellings[parsed.Axis switch { 0 => 2, 1 => 4, _ => 0 } + (parsed.Sign < 0 ? 1 : 0)] : "+z";
         SarB1RegionText = s?.B1Region is { } b ? string.Join(", ", b) : "";
         SarCrossCheck = s?.CrossCheck ?? false;
+        SarPerPortFields = s?.PerPortFields ?? false;
         SarFieldError = null;
         _suppressCommit = was;
         OnPropertyChanged(nameof(IsSarSetup));
@@ -91,6 +93,7 @@ public sealed partial class EmSetupEditorViewModel
     partial void OnSarB1ChoiceChanged(SarB1Choice value) { if (!_suppressCommit) CommitSarField("Sar.B1"); }
     partial void OnSarB0AxisChanged(string value) { if (!_suppressCommit) CommitSarField("Sar.B0Axis"); }
     partial void OnSarCrossCheckChanged(bool value) { if (!_suppressCommit) CommitSarField("Sar.CrossCheck"); }
+    partial void OnSarPerPortFieldsChanged(bool value) { if (!_suppressCommit) CommitSarField("Sar.PerPortFields"); }
 
     /// <summary>
     /// Commits one Sar key — <c>Sar.&lt;Key&gt;</c> is its tag. Turning SAR on starts the group at the sweep's centre; off removes
@@ -135,6 +138,9 @@ public sealed partial class EmSetupEditorViewModel
                     break;
                 case "Sar.CrossCheck":
                     sar.CrossCheck = SarCrossCheck ? true : null;
+                    break;
+                case "Sar.PerPortFields":
+                    sar.PerPortFields = SarPerPortFields ? true : null;
                     break;
                 default:
                     return;

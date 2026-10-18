@@ -44,6 +44,7 @@ public partial class AnalysisEditorDialog : Window
         HbRadio.IsChecked = vm.IsHb;
         LpRadio.IsChecked = vm.IsLp;
         LppRadio.IsChecked = vm.IsLpp;
+        FieldsRadio.IsChecked = vm.IsFields;
         NameBox.Text           = vm.Name;
         EnabledCheck.IsChecked = vm.Enabled;
 
@@ -85,6 +86,7 @@ public partial class AnalysisEditorDialog : Window
             nameof(HbRadio) => AnalysisEditorViewModel.AnalysisKind.HB,
             nameof(LpRadio) => AnalysisEditorViewModel.AnalysisKind.LP,
             nameof(LppRadio) => AnalysisEditorViewModel.AnalysisKind.LPP,
+            nameof(FieldsRadio) => AnalysisEditorViewModel.AnalysisKind.Fields,
             _               => Vm.Type,
         };
         Vm.Type = kind;
@@ -98,6 +100,7 @@ public partial class AnalysisEditorDialog : Window
         HbBodyPanel.IsVisible = kind == AnalysisEditorViewModel.AnalysisKind.HB;
         LpBodyPanel.IsVisible = kind == AnalysisEditorViewModel.AnalysisKind.LP;
         LppBodyPanel.IsVisible = kind == AnalysisEditorViewModel.AnalysisKind.LPP;
+        FieldsBodyPanel.IsVisible = kind == AnalysisEditorViewModel.AnalysisKind.Fields;
     }
 
     // ── Name ──────────────────────────────────────────────────────────────────

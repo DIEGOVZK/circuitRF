@@ -2452,7 +2452,12 @@ namespace RfCore.Export
         bool CrossCheck, IReadOnlyList<Em3dTissueJson> Tissue,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? DumpCells,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? DumpBytes,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Refusal);
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Refusal)
+    {
+        /// <summary>brief-sar-9 — the run keeps every port's fields beside its .sNp (Sar.PerPortFields); absent when it does not.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool PerPortFields { get; init; }
+    }
 
     /// <summary>brief-sar-6 — a tissue object: written with its density, so openEMS's raw SAR dump counts it.</summary>
     public sealed record Em3dTissueJson(string Object, string Material, double DensityKgM3, double Epsr, double SigmaSm);

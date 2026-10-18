@@ -54,6 +54,7 @@ public sealed partial class AnalysisRowViewModel : ObservableObject
         LoadpullPursuitAnalysis  => "LPP",
         LoadpullAnalysis         => "LP",
         ParametricSweepAnalysis  => "SW",
+        FieldsAnalysis           => "FLD",
         _                        => "?",
     };
     public string Summary   => ComputeSummary(Analysis, _schematicVm.EditModel);
@@ -132,6 +133,7 @@ public sealed partial class AnalysisRowViewModel : ObservableObject
         LoadpullPursuitAnalysis lpp => FormatLppSummary(lpp),
         LoadpullAnalysis lp        => FormatLpSummary(lp),
         ParametricSweepAnalysis ps => FormatSweepSummary(ps),
+        FieldsAnalysis fa          => $"{fa.Block} at {fa.FreqExpr} {fa.FreqUnit}, port {fa.DriveExpr} driven" + (fa.Average ? "" : ", local only"),
         _                          => "",
     };
 

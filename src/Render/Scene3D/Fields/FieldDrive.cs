@@ -121,8 +121,9 @@ public static class FieldDrive
     internal static IReadOnlyList<FieldSolution> OpenEms(string runDir, IReadOnlyList<FieldSolution> steps)
     {
         var document = RunPortZ0s(runDir);
-        var list = new List<FieldSolution>(steps.Count);
-        foreach (var port in steps.GroupBy(s => s.Excitation))
+        // brief-sar-9 — a recombined field carries its circuit's drive already
+        var list = new List<FieldSolution>(steps.Where(s => s.Cosim is not null));
+        foreach (var port in steps.Where(s => s.Cosim is null).GroupBy(s => s.Excitation))
         {
             int k = port.Key;
             Complex[]? u = null, i = null;

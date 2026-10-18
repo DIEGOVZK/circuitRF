@@ -129,6 +129,10 @@ public sealed class C3dFieldSolution
     /// <summary>A thermal run's sweep point, 1-based.</summary>
     public int? Point { get; set; }
 
+    /// <summary>brief-sar-9 — a schematic's fields analysis, by name: the field the circuit recombined from the run's per-port
+    /// fields, at <see cref="GHz"/>, rather than one port's own.</summary>
+    public string? Cosim { get; set; }
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement>? Unread { get; set; }
 
@@ -136,7 +140,8 @@ public sealed class C3dFieldSolution
     /// round trip through the <c>.pvd</c>'s timestep can move it by.</summary>
     public bool SameAs(C3dFieldSolution? other)
         => other is not null && Near(GHz, other.GHz) && Port == other.Port && Mode == other.Mode &&
-           string.Equals(Terminal, other.Terminal, StringComparison.Ordinal) && Point == other.Point;
+           string.Equals(Terminal, other.Terminal, StringComparison.Ordinal) && Point == other.Point &&
+           string.Equals(Cosim, other.Cosim, StringComparison.Ordinal);
 
     private static bool Near(double? a, double? b)
         => a is null ? b is null : b is not null && Math.Abs(a.Value - b.Value) <= 1e-9 * Math.Max(Math.Abs(a.Value), Math.Abs(b.Value));
@@ -146,6 +151,7 @@ public sealed class C3dFieldSolution
     public string Describe()
     {
         string G(double v) => v.ToString("G6", CultureInfo.InvariantCulture);
+        if (GHz is { } fc && Cosim is { } c) return $"{G(fc)} GHz, fields '{c}'";
         if (GHz is { } f) return $"{G(f)} GHz" + (Port is { } p ? $", port {p}" : "");
         if (Mode is { } m) return $"mode {m}";
         if (Terminal is { } t) return $"terminal '{t}'";
@@ -153,7 +159,7 @@ public sealed class C3dFieldSolution
         return "the first saved solution";
     }
 
-    public C3dFieldSolution Clone() => new() { GHz = GHz, Port = Port, Mode = Mode, Terminal = Terminal, Point = Point };
+    public C3dFieldSolution Clone() => new() { GHz = GHz, Port = Port, Mode = Mode, Terminal = Terminal, Point = Point, Cosim = Cosim };
 }
 
 /// <summary>R-em3d83-1 — a field plot: a named reading of a setup's run, drawn where it says.</summary>
