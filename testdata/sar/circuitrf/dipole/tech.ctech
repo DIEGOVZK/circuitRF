@@ -1,0 +1,31 @@
+{
+ "FormatVersion": 1,
+ "Name": "Dipole_SAR",
+ "Materials": [
+  {
+   "Name": "PEC",
+   "Sigma20": 1e+30
+  },
+  {
+   "Name": "openEMS Dipole_SAR skin (1 GHz)",
+   "Epsr": 50,
+   "Sigma20": 0.65,
+   "DensityKgM3": 1100,
+   "Source": "The value openEMS 0.37.0 states for the 'skin' ellipsoid of its Dipole_SAR tutorial (python/Tutorials/Dipole_SAR.py), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 1 GHz, not circuitRF's Gabriel tissue: the Skin (wet) record above gives εr 45.71, σ 0.8818 S/m there. Density as the same script states it."
+  },
+  {
+   "Name": "openEMS Dipole_SAR headbone (1 GHz)",
+   "Epsr": 13,
+   "Sigma20": 0.1,
+   "DensityKgM3": 2000,
+   "Source": "The value openEMS 0.37.0 states for the 'headbone' ellipsoid of its Dipole_SAR tutorial (python/Tutorials/Dipole_SAR.py), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 1 GHz, not circuitRF's Gabriel tissue: the Bone (cortical) record above gives εr 12.36, σ 0.1557 S/m there. Density as the same script states it."
+  },
+  {
+   "Name": "openEMS Dipole_SAR brain (1 GHz)",
+   "Epsr": 60,
+   "Sigma20": 0.7,
+   "DensityKgM3": 1040,
+   "Source": "The value openEMS 0.37.0 states for the 'brain' ellipsoid of its Dipole_SAR tutorial (python/Tutorials/Dipole_SAR.py), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 1 GHz, not circuitRF's Gabriel tissue: the Brain (grey matter) record above gives εr 52.28, σ 0.9854 S/m there. Density as the same script states it."
+  }
+ ]
+}

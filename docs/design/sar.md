@@ -1,6 +1,6 @@
 # circuitRF — SAR and B1 for MRI coil designers and phone SAR
 
-**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7), SAR-6 done (§8) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
+**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7), SAR-6 done (§8), SAR-7 done (§9) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
 **Reference data:** [`testdata/sar/openems-ref/`](../../testdata/sar/openems-ref/README.md) · **Builds on:**
 [`em-3d.md`](em-3d.md) (the openEMS backend) and [`em-3d-f0-findings.md`](em-3d-f0-findings.md) (its validated versions).
 
@@ -924,3 +924,132 @@ dump's cells and its disk estimate, or the sentence a run would stop on. MCP's `
 - **Prad** is the pattern stage's radiated-over-accepted at the SAR frequency, interpolated linearly between sweep points
   when it is not one; with no radiation pattern it is absent, and the readout says how to get it.
 - **The 3D view's projection plane** is drawn through the middle of the volume, whatever the plot's stored offset.
+
+---
+
+## 9. `Dipole_SAR` rebuilt in circuitRF — the phone-SAR gate (SAR-7)
+
+openEMS's `Dipole_SAR` tutorial rebuilt from `.c3d` objects alone (`testdata/sar/circuitrf/dipole/`, its README lists
+every file), run by circuitRF, and compared with SAR-1's reference (§3.1). **The gate passes on both grids**, after one
+circuitRF defect the first run found was fixed (§9.3). Everything under `reference-grid/` and `own-grid/` is circuitRF
+output, kept apart from the reference and labelled as such in its `run.json`.
+
+### 9.1 The `.c3d` (R-sar7-1)
+
+| Tutorial | `.c3d` |
+|---|---|
+| `AddMetal` box of zero width, z ±0.48·λ0/2 (143.90 mm) | two PEC `Sheet`s on XZ at y = 0, x ±0.1 mm, from ±1.25 mm to ±71.95 mm. A zero-width sheet or box is refused (`C3dValidation`), so the sheets take the feed box's own width; on the reference's lines both edges snap to the line at x = 0, which is the tutorial's line |
+| `AddLumpedPort` 50 Ω, [−0.1, −0.1, −1.25]…[0.1, 0.1, 1.25] mm, z | a lumped port on XZ, x ±0.1 mm, z ±1.25 mm, Z0 50; its conductors are inferred (`armLo` → `armHi`) |
+| three ellipsoids at (100, 0, 0) mm, priorities 10, 11, 12 | one `Phantom`, `Ellipsoid3`, semi-axes 80/100/100 mm, shells 5 and 10 mm, in the shipped `openEMS Dipole_SAR …` tissues with their densities |
+| air box x −200…350, y and z ±250 mm; `PML_8` on six faces | `AirBox` paddings that put each face there; `PmlCells` 8; every face `Absorbing` |
+| `NrTS` 30,000, `EndCriteria` 1e-4, `CellConstantMaterial` | `MaxTimeSteps` 30,000, `EndCriterionDb` −40, `CellConstantMaterial` true |
+| `CreateNF2FFBox`, `CalcNF2FF` at f0 | `RadiationPattern` true (Prad at the SAR frequency, §8.6) |
+| `sar_calc --method IEEE_62704 --mass 10` | `Sar`: `FrequenciesGHz` [1], `MassesGrams` [10], `Method` `Cube`, `CrossCheck` true |
+
+`check` passes it with one note (the inferred port polarity) and no warning. **The excitation is circuitRF's, not the
+tutorial's**: the writer derives the Gaussian from the sweep (f0 = 1 GHz, fc = 0.5 GHz for 0.5–1.5 GHz), where the script
+sets f0 = 0, fc = 1.5 GHz. Both reach 1.5 GHz; every quantity compared is per watt accepted or a ratio, so neither pulse
+changes it beyond where each run stops (§3.2). There is no setup key for the pulse, and replication did not need one.
+
+**The sweep is 11 points, not the tutorial's 501**, and that is a cost, not a choice of accuracy (§9.5): with a radiation
+pattern, every sweep point is a surface dump and a transform. The 11 points (0.1 GHz apart) are all on the reference's
+2 MHz vector, so S11 is compared point for point.
+
+### 9.2 The numbers (R-sar7-3)
+
+Both runs of the committed output, against SAR-1's run 1. Per watt accepted throughout.
+
+| Quantity | Reference | (a) reference's lines | (b) circuitRF's grid | Tolerance (§4) |
+|---|---|---|---|---|
+| grid | 114 × 115 × 116 = 1.52 M cells | the same | 132 × 121 × 124 = 1.98 M cells | |
+| openEMS stopped at step | 2,272 | 2,686 | 17,399 | |
+| max \|Δ\|S11\|\| over the band | — | 7.4e-4 | 0.045 | (a) 0.01 |
+| Zin at 1 GHz | 53.142 + j3.728 Ω | 53.125 + j3.737 Ω (0.036 %) | 54.62 + j8.55 Ω (9.5 %) | (a) 1 % |
+| accepted fraction 1 − \|S11\|² at f0 | 0.99777 | 0.99777 | 0.99143 | (a) 1 % |
+| **psSAR10g** | **2.4350 W/kg** | **2.4372 (+0.09 %)** | **2.3752 (−2.45 %)** | (a) 2 %, (b) 5 % |
+| whole-phantom SAR | 0.15095 W/kg | 0.15098 (+0.02 %) | 0.14939 (−1.03 %) | (a) 2 % |
+| absorbed / radiated | 65.6 % / 32.3 % | 65.65 % / 32.34 % | 64.95 % / 32.26 % | |
+| power budget | 97.93 % | 97.99 % | 97.21 % | (a) 95–100 % |
+| peak 10 g cube | (21.25, −1.25, 0) mm, skin | the same cell, skin | the same cell, skin | same tissue, within one cell |
+| `sar_calc` on circuitRF's own dump | | identical | identical | 0.5 % |
+
+**Accepted power is compared as a fraction of the incident wave**, 1 − \|S11\|², not in watts: each run's accepted power is
+formed at its own pulse (§9.1), so the watts differ by the pulses' spectra at 1 GHz (1.61e-27 W in the tutorial, 2.68e-26 W
+here). What a watt accepted is, is the same: P_acc = 2·Re(U·I*) of circuitRF's DFT is openEMS's to six figures on the same
+probes (§8.4).
+
+**Run (a)'s differences are the reference's own run-to-run spread.** psSAR10g +0.09 % against the reference's 0.24 % between
+unmodified runs (§3.2); the same setup run three times here stopped at 2,584, 2,669 and 2,686 steps and gave psSAR10g
+2.4397, 2.4370 and 2.4372. circuitRF does not pass `--exact-endcriteria`, so its runs are not repeatable either; adding it
+would move the stop step of every openEMS run circuitRF makes, every committed openEMS golden with it, and is the owner's to
+decide.
+
+### 9.3 The first divergence, and its cause (R-sar7-4)
+
+The first run (a) gave psSAR10g, whole-phantom SAR and the absorbed power to within 0.2 %, |ΔS11| below 6e-4 and Zin to
+0.03 % — **and radiated 15.3 % against the tutorial's 32.3 %, a budget of 80.9 %**. The XMLs agreed structurally (the same
+lines, the tissues as three scaled spheres, PEC on the line at x = y = 0, the lumped resistor on one z edge), and so did
+the SAR chain, so the divergence was the radiation pattern alone.
+
+**Cause: the equivalence surface sat inside the PML.** `OpenEmsFarField.Place` (brief-em3d-31) puts the surface
+`PmlMarginCells` (3) cells in from the air box's face, because on circuitRF's own grid the PML's `PmlCells` cells lie
+outside the box. On given lines (SAR-3) the box reaches the grid's edge and the PML is the grid's outermost cells, as
+openEMS's `PML_8` takes them, so the surface was 3 cells from the edge: 490 × 440 × 440 mm, five cells deep in an 8-cell
+absorber, reading an attenuated field. **Fix:** the margin counts from the PML's inner edge on each absorbing face — the
+box's face on circuitRF's own grid (unchanged, by construction), `PmlCells` lines in on given lines. The surface is now
+331 × 281 × 281 mm and the radiated share 32.3 %. Gate: `NearFieldSurfaceTests` (the same surface, PmlCells + 3 lines in,
+on both kinds of grid). Nothing else was changed and no tolerance was touched.
+
+### 9.4 Run (b)'s difference (R-sar7-5)
+
+circuitRF's grid at `CellsPerWavelength` 10.32 — 2.5 mm in the brain (εr 60) at 1.5 GHz, the script's phantom target —
+against the script's `SmoothMeshLines` at 2.5 mm in the phantom and 10 mm in air:
+
+| | Script | circuitRF |
+|---|---|---|
+| lines | 114 × 115 × 116 | 132 × 121 × 124 (+30 % cells) |
+| cells in the phantom (x 20–180 mm) | 2.5 mm | 2.37–2.63 mm |
+| cell at the skin nearest the dipole (x = 20 mm) | 2.5 mm | 2.5 mm, after 3.11 and 4.03 mm cells outside it |
+| the dipole | an unresolved line at x = y = 0 | the 0.2 mm sheets resolved: lines at x = ±0.1 mm, graded out at 1.3 to 4 mm before the skin |
+| air | 9.95 mm, inside the box | up to 19.4 mm (λ/10 at 1.5 GHz) |
+| PML | the box's outer 8 cells | 8 cells of 19.4 mm outside the box (155 mm a side) |
+| smallest cell, time step | 2.28 mm, 4.66 ps | 0.2 mm, 0.66 ps (7× the steps) |
+
+psSAR10g moves **−2.45 %** and the peak cube stays in the same cell. The port moves most: Zin 54.6 + j8.6 Ω against
+53.1 + j3.7 Ω, |ΔS11| up to 0.045, which is what a thinner radiator does: an unresolved line behaves as a wire whose radius is set by
+the cell around it, 2.5 mm here, and a resolved 0.2 mm strip is far thinner. So the dipole's modelling is the likeliest cause, the
+coarser cells between it and the skin the next; within 5 % R-sar7-5 does not ask for the property to be isolated, and it
+was not. The 0.2 mm cells are the price of resolving the strip: a `MinCellUm` of a few hundred µm would merge its edges
+back into one line, as the script has it, at the cost of not modelling the drawn width.
+
+### 9.5 Costs, and what they showed
+
+| | (a) | (b) |
+|---|---|---|
+| openEMS | 28.5 s | 183–499 s (machine load) |
+| the radiation pattern's transform (1° sphere), Release | 141 s for 21 points | 92.6 s for 11 points |
+| whole run, Release | 3 min (21 points) | 10 min |
+| `DipoleSarRerunTests`, both runs, Debug | 15.6 min | |
+
+- **A radiation pattern at every sweep point is expensive, and nothing estimates it.** With the tutorial's 501 points the
+  first run wrote **21 GB** of surface dumps (six faces × E and H × 23 VTK files, ~47 MB a frequency) and filled the disk
+  before openEMS finished; `explain` had estimated 178 MB for the run. The transform then costs ~40 s a point in Debug
+  (841 s for 21). Setting the sweep to 11 points was the workaround here. A disk estimate for the surface dumps beside the
+  SAR dump's, or a pattern at named frequencies only (the SAR frequency is all the budget needs), is the owner's to decide.
+- At 500 MHz on circuitRF's own grid the radiation efficiency came out 1.048 and was refused by the existing check (the
+  dipole is far from resonance there, |S11| 0.995, so the accepted power is small and the ratio sensitive). It does not
+  touch the SAR frequency.
+- `explain` estimates the SAR dump as 66 × 82 × 83 cells; openEMS wrote 68 × 84 × 85. The disk note under-counts by one cell
+  a side (8 % here).
+
+### 9.6 Gates
+
+`tests/Ui.Tests/Sar/DipoleSarReplicationTests.cs`:
+
+- `DipoleSarReplicationTests` (routine, fixed data, no process): run (a) — |S11| at every sweep point within 0.01, Zin at
+  f0 within 1 %, the accepted fraction within 1 %, psSAR10g and whole-phantom SAR within 2 %, the budget within 95–100 %;
+  run (b) — psSAR10g within 5 %; both — the peak 10 g cube in the skin and within one reference cell of its centre. Skipped
+  without SAR-1's data, which is never in the repository.
+- `NearFieldSurfaceTests` (routine): §9.3.
+- `DipoleSarRerunTests` (`Benchmark`): both setups through the CLI as a process, held to the same; `CRF_WRITE_SAR7_OUTPUTS=1`
+  writes the committed output.

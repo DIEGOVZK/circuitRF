@@ -1026,7 +1026,7 @@ internal static class Check
                 if (gridSettings.Problems().Count == 0)
                 {
                     var grid = CircuitRF.Engine.Em3d.FdtdGrid.Build(problem, gridSettings);
-                    if (CircuitRF.Design.Em3d.OpenEmsFarField.Place(problem, grid, [problem.Frequency.StartHz]).Refusal is { } tight)
+                    if (CircuitRF.Design.Em3d.OpenEmsFarField.Place(problem, grid, [problem.Frequency.StartHz], gridSettings.PmlCells).Refusal is { } tight)
                         problems.Add(tight);
                 }
             }

@@ -8,12 +8,17 @@
 // re-validation and nothing else. openEMS's HDF5 output (the raw SAR dump, sar_calc's result, HDF5 field dumps) is
 // read through RfCore's PureHDF adapter, RfCore.Hdf5.OpenEmsHdf5 (brief-sar-4). It sits:
 //
-//   * PmlMarginCells = 3 cells inside every absorbing face. The first requirement is that no sample's
+//   * PmlMarginCells = 3 cells inside every absorbing face's PML. The first requirement is that no sample's
 //     interpolation stencil reaches the PML: a node-interpolated H averages the dual cells either side of
 //     the node, so a surface one cell in (openEMS's own tutorial default) already reads the absorber's first
 //     graded cell. The other two cells are margin against the absorber's own inner-edge reflection, which is
 //     strongest in the cells next to it. Three is not a convergence result; the dipole gate
 //     (OpenEmsRadiationTests) is what shows it is enough on the grid circuitRF places.
+//     WHERE THE PML IS (brief-sar-7): on circuitRF's own grid its PmlCells cells lie OUTSIDE the air box, so the PML's inner
+//     edge is the box's face; on lines a setup gives (OpenEms.GridLines) they are the grid's outermost cells, as openEMS's
+//     PML_n takes them, and the box reaches the grid's edge. The margin counts from whichever is further in. Counting from
+//     the face alone put Dipole_SAR's surface five cells deep in its absorber and read 15 % radiated against the
+//     tutorial's 32 % (sar.md §9).
 //   * ConductorClearanceCells = 1 cell clear of every conductor and port, so no node the transform reads
 //     sits on metal (where E averages across a conductor and H is a surface current, not a free-space field).
 //
@@ -70,10 +75,11 @@ public static class OpenEmsFarField
 
     /// <summary>
     /// The surface for <paramref name="problem"/> on <paramref name="grid"/>, dumped at
-    /// <paramref name="frequenciesHz"/>; or a refusal naming what to change.
+    /// <paramref name="frequenciesHz"/>; or a refusal naming what to change. <paramref name="pmlCells"/> is the absorber's
+    /// thickness in cells (<c>OpenEms.PmlCells</c>), which on given grid lines lies inside the air box.
     /// </summary>
     public static (Nf2ffSurface? Surface, string? Refusal) Place(Em3dProblem problem, FdtdGridResult grid,
-                                                                   IReadOnlyList<double> frequenciesHz)
+                                                                   IReadOnlyList<double> frequenciesHz, int pmlCells)
     {
         ArgumentNullException.ThrowIfNull(problem);
         ArgumentNullException.ThrowIfNull(grid);
@@ -128,7 +134,10 @@ public static class OpenEmsFarField
         {
             var lines = axes[a].Lines;
             double tol = 1e-9 * Math.Max(1e-6, boxHi[a] - boxLo[a]);
+            // The PML's inner edge on each face: the box's face on circuitRF's own grid, PmlCells lines in on given lines.
             int iLoFace = Nearest(lines, boxLo[a]), iHiFace = Nearest(lines, boxHi[a]);
+            if (kinds[2 * a] == Em3dBoundaryKind.Absorbing) iLoFace = Math.Max(iLoFace, pmlCells);
+            if (kinds[2 * a + 1] == Em3dBoundaryKind.Absorbing) iHiFace = Math.Min(iHiFace, lines.Count - 1 - pmlCells);
             // The last line at or below the conductors' low extent, the first at or above their high one.
             int iLoMetal = lines.Count - 1, iHiMetal = 0;
             for (int i = 0; i < lines.Count; i++) if (lines[i] <= lo[a] + tol) iLoMetal = i;

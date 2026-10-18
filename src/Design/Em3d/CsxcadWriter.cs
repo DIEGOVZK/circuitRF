@@ -454,7 +454,7 @@ public static partial class CsxcadWriter
         Nf2ffSurface? surface = null;
         if (farFieldHz is { Count: > 0 })
         {
-            var (placed, why) = OpenEmsFarField.Place(problem, grid, farFieldHz);
+            var (placed, why) = OpenEmsFarField.Place(problem, grid, farFieldHz, ctx.Pml);
             if (placed is null) return No(why!);
             surface = placed;
             string fd = string.Join(",", farFieldHz.Select(R));

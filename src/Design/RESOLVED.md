@@ -1,5 +1,17 @@
 # src/Design — resolved findings (detail, off the CLAUDE.md growth path)
 
+## The radiation pattern's surface sat inside the PML on given grid lines (2026-10-18, brief-sar-7)
+
+`OpenEmsFarField.Place` counted its 3-cell margin from the air box's face, which is the PML's inner edge only on
+circuitRF's own grid (the PML is added outside the box). On lines a setup gives (`OpenEms.GridLines`, SAR-3) the box
+reaches the grid's edge and the PML is the grid's outermost `PmlCells` cells, so the surface sat five cells deep in an
+8-cell absorber: `Dipole_SAR` read 15.3 % radiated against openEMS's 32.3 %, while S11 and every SAR number agreed. The
+margin now counts from the PML's inner edge on each absorbing face, which `Place` takes as `pmlCells`; on circuitRF's own
+grid that is the box's face, so nothing there moves. Gate: `NearFieldSurfaceTests`. Detail: `docs/design/sar.md` §9.3.
+
+Also seen, not fixed: a radiation pattern is a surface dump and a transform at EVERY sweep point, and no estimate covers
+it — a 501-point sweep wrote 21 GB and filled the disk (sar.md §9.5).
+
 ## Generated cells cross the firewall, and a headless run rebuilds them (2026-09-28, brief-generated-cells-2)
 
 - **What moved** (`src/Ui/Layout/PCells` → `Layout/PCells`, namespaces with it): `GeneratedCellsLifecycle`,

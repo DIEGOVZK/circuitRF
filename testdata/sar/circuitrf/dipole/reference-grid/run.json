@@ -1,0 +1,12 @@
+{
+  "note": "circuitRF OUTPUT, not a reference: setup ReferenceGrid of Dipole.c3d, run by circuitRF on openEMS (brief-sar-7). The reference it is compared with is testdata/sar/openems-ref/Dipole_SAR.",
+  "setup": "ReferenceGrid",
+  "grid_lines": [
+    114,
+    115,
+    116
+  ],
+  "stopped_at_timestep": 2686,
+  "energy_at_stop_db": -47.55,
+  "openems_wall_s": 28.53
+}

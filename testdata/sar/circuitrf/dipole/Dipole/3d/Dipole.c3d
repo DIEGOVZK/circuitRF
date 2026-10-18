@@ -1,0 +1,220 @@
+{
+ "FormatVersion": 1,
+ "DbuPerMicron": 1000,
+ "DisplayUnit": "Mm",
+ "SnapDbu": 1000,
+ "Objects": [
+  {
+   "$type": "Sheet",
+   "Name": "armLo",
+   "Material": "PEC",
+   "Plane": "XZ",
+   "Offset": 0,
+   "Rect": {
+    "Min": [
+     -100000,
+     -71950190
+    ],
+    "Size": [
+     200000,
+     70700190
+    ]
+   }
+  },
+  {
+   "$type": "Sheet",
+   "Name": "armHi",
+   "Material": "PEC",
+   "Plane": "XZ",
+   "Offset": 0,
+   "Rect": {
+    "Min": [
+     -100000,
+     1250000
+    ],
+    "Size": [
+     200000,
+     70700190
+    ]
+   }
+  },
+  {
+   "$type": "Phantom",
+   "Name": "head",
+   "Shape": "Ellipsoid3",
+   "Centre": [
+    100000000,
+    0,
+    0
+   ],
+   "SemiAxes": [
+    80000000,
+    100000000,
+    100000000
+   ],
+   "Shell1": 5000000,
+   "Shell2": 10000000,
+   "Layers": [
+    {
+     "Name": "skin",
+     "Material": "openEMS Dipole_SAR skin (1 GHz)"
+    },
+    {
+     "Name": "headbone",
+     "Material": "openEMS Dipole_SAR headbone (1 GHz)"
+    },
+    {
+     "Name": "brain",
+     "Material": "openEMS Dipole_SAR brain (1 GHz)"
+    }
+   ]
+  }
+ ],
+ "Variables": [],
+ "Ports": [
+  {
+   "Number": 1,
+   "Name": "feed",
+   "Kind": "Lumped",
+   "Plane": "XZ",
+   "Offset": 0,
+   "Rect": {
+    "Min": [
+     -100000,
+     -1250000
+    ],
+    "Size": [
+     200000,
+     2500000
+    ]
+   },
+   "Z0": "50"
+  }
+ ],
+ "Setups": [
+  {
+   "FormatVersion": 1,
+   "Name": "ReferenceGrid",
+   "Frequency": {
+    "StartExpr": "0.5",
+    "StopExpr": "1.5",
+    "StepExpr": "",
+    "NumPoints": 11,
+    "Mode": "PointCount",
+    "Kind": "Linear",
+    "StartUnit": "GHz",
+    "StopUnit": "GHz",
+    "StepUnit": "GHz"
+   },
+   "Solver3D": "OpenEms",
+   "RadiationPattern": true,
+   "AirBox": {
+    "XMin": {
+     "PaddingUm": 199900,
+     "Boundary": "Absorbing"
+    },
+    "XMax": {
+     "PaddingUm": 170000,
+     "Boundary": "Absorbing"
+    },
+    "YMin": {
+     "PaddingUm": 150000,
+     "Boundary": "Absorbing"
+    },
+    "YMax": {
+     "PaddingUm": 150000,
+     "Boundary": "Absorbing"
+    },
+    "ZMin": {
+     "PaddingUm": 150000,
+     "Boundary": "Absorbing"
+    },
+    "ZMax": {
+     "PaddingUm": 150000,
+     "Boundary": "Absorbing"
+    }
+   },
+   "OpenEms": {
+    "PmlCells": 8,
+    "EndCriterionDb": -40,
+    "MaxTimeSteps": 30000,
+    "SaveFieldsGHz": [],
+    "CellConstantMaterial": true,
+    "GridLines": {
+     "File": "../../../../openems-ref/Dipole_SAR/sar_dipole.xml"
+    }
+   },
+   "Sar": {
+    "FrequenciesGHz": [
+     1.0
+    ],
+    "MassesGrams": [
+     10
+    ],
+    "Method": "Cube",
+    "CrossCheck": true
+   }
+  },
+  {
+   "FormatVersion": 1,
+   "Name": "OwnGrid",
+   "Frequency": {
+    "StartExpr": "0.5",
+    "StopExpr": "1.5",
+    "StepExpr": "",
+    "NumPoints": 11,
+    "Mode": "PointCount",
+    "Kind": "Linear",
+    "StartUnit": "GHz",
+    "StopUnit": "GHz",
+    "StepUnit": "GHz"
+   },
+   "Solver3D": "OpenEms",
+   "RadiationPattern": true,
+   "AirBox": {
+    "XMin": {
+     "PaddingUm": 199900,
+     "Boundary": "Absorbing"
+    },
+    "XMax": {
+     "PaddingUm": 170000,
+     "Boundary": "Absorbing"
+    },
+    "YMin": {
+     "PaddingUm": 150000,
+     "Boundary": "Absorbing"
+    },
+    "YMax": {
+     "PaddingUm": 150000,
+     "Boundary": "Absorbing"
+    },
+    "ZMin": {
+     "PaddingUm": 150000,
+     "Boundary": "Absorbing"
+    },
+    "ZMax": {
+     "PaddingUm": 150000,
+     "Boundary": "Absorbing"
+    }
+   },
+   "OpenEms": {
+    "PmlCells": 8,
+    "EndCriterionDb": -40,
+    "MaxTimeSteps": 30000,
+    "SaveFieldsGHz": [],
+    "CellConstantMaterial": true,
+    "CellsPerWavelength": 10.32
+   },
+   "Sar": {
+    "FrequenciesGHz": [
+     1.0
+    ],
+    "MassesGrams": [
+     10
+    ],
+    "Method": "Cube",
+    "CrossCheck": true
+   }
+  }
+ ]
+}

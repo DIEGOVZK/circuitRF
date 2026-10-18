@@ -1,0 +1,87 @@
+{
+  "Port": 1,
+  "FrequencyHz": 1000000000,
+  "Index": 1,
+  "AcceptedPowerW": 2.935206885399034E-26,
+  "RadiationEfficiency": 0.3225865702531385,
+  "Region": "all tissue",
+  "AbsorbedPowerW": 1.9063286235135233E-26,
+  "TissueMassKg": 4.347596837094088,
+  "UncountedPowerW": 0,
+  "Peaks": [
+    {
+      "Quantity": "SAR",
+      "Value": 3.73024391472591E-25,
+      "Cell": [
+        3,
+        43,
+        50
+      ],
+      "CentreM": [
+        0.023750000000000007,
+        0.0037502656842148636,
+        0.017317308709438074
+      ],
+      "CubeLoM": null,
+      "CubeHiM": null,
+      "CubeMassKg": null,
+      "Kind": null,
+      "Object": "head/skin",
+      "Material": "openEMS Dipole_SAR skin (1 GHz)"
+    },
+    {
+      "Quantity": "SAR10g",
+      "Value": 6.971822025255875E-26,
+      "Cell": [
+        2,
+        41,
+        43
+      ],
+      "CentreM": [
+        0.021250000000000005,
+        -0.0012500924120864704,
+        -2.168404344971009E-19
+      ],
+      "CubeLoM": [
+        0.020000000000000004,
+        -0.010509440085391853,
+        -0.009259347673305383
+      ],
+      "CubeHiM": [
+        0.03851869534661077,
+        0.008009255261218913,
+        0.009259347673305383
+      ],
+      "CubeMassKg": 0.010000000000000024,
+      "Kind": "Unused",
+      "Object": "head/skin",
+      "Material": "openEMS Dipole_SAR skin (1 GHz)"
+    }
+  ],
+  "B1Region": null,
+  "B1pMeanT": null,
+  "B0Axis": null,
+  "Shape": [
+    68,
+    84,
+    87
+  ],
+  "Volumes": [
+    "SAR",
+    "SAR10g"
+  ],
+  "CrossCheck": [
+    {
+      "MassGrams": 10,
+      "Peak": 6.971822025255875E-26,
+      "SarCalcPeak": 6.971822025255875E-26,
+      "RelativeDifference": 0
+    }
+  ],
+  "WholeSarPerWatt": 0.1493859616714731,
+  "AbsorbedFraction": 0.649469934469155,
+  "B1pMeanPerSqrtWatt": null,
+  "PowerBudget": 0.9720565047222935,
+  "EfficiencyQuantity": "SAR10g",
+  "SarEfficiency": null
+}
