@@ -139,6 +139,7 @@ attaches each to the OCCT face that IS that face, by geometry, never by OCCT's l
 | `box` | `min`, `size` | `xmin xmax ymin ymax zmin zmax` | the face's plane: its normal picks the axis, its side of the middle picks min or max |
 | `cylinder` | `base`, `axis`, `length` (negative runs backwards), `radius` | `bottom top side` | `side` is the cylindrical face; `bottom` is the cap at `base` |
 | `sphere` | `centre`, `radius` | `surface` | its one spherical face (brief-em3d-102); a worker built before it refuses `this worker cannot build a "sphere"`, which circuitRF reports as a worker to rebuild |
+| `ellipsoid` | `centre`, `semi` (semi-axes along the node's x, y, z) | `surface` | its one face, a B-spline: a unit sphere under one affinity (brief-sar-3) |
 | `prism` | `outline`, `holes` (points in the object's frame), `extrude` (one vector: height along the plane's normal plus the shear) | `bottom top side0… hole0.side0…` | `bottom` is the outline's face, `top` its translate; side *k* is the face `BRepPrimAPI_MakePrism` generated from outline edge *k* → *k*+1 |
 | `polyhedron` | `vertices`, `loops` (`outer`, `holes`: vertex indices) | one per loop | the face made from that loop, followed through sewing |
 
@@ -184,7 +185,8 @@ propagates. An empty result is refused as `build.empty` (brief 66: the editor wo
 StepExport (`src/Design/ThreeD/Step/StepExport.cs`) decides what is in the file; this writes it, in one request. Each
 part's `geometry` is resolved numbers, micrometres, in the WORLD frame: `box` (`min`, `max`), `prism` (`outline`,
 `holes`, `extrude` — the same reader as a tree's prism), `cylinder` (`from`, `to`, `radius`), `sphere` (`centre`,
-`radius`, optional `zmin`/`zmax` — a ball flattened on its pad, kept between two heights), `polyhedron` (`vertices`,
+`radius`, optional `zmin`/`zmax` — a ball flattened on its pad, kept between two heights), `ellipsoid` (`centre`, `semi`,
+and its axes `u`, `v`), `polyhedron` (`vertices`,
 `loops`), `loft` (`rings`, `smooth` — a bond wire: a ruled loft through its sections, closed by its end faces, each ring
 a periodic spline when smooth), `face` (`outline`, `holes` — a sheet, written as a shell-based surface model) and `brep`
 (`blob`, naming a request blob of B-rep bytes — a kernel solid). Then, in order: each part loses what the parts its

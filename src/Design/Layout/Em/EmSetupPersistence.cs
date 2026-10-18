@@ -468,12 +468,27 @@ public sealed class CemOpenEms
     /// outermost conductor radius no longer than the radial cell there (R-em3d120-1c).</summary>
     public int? AzimuthLines { get; set; }
 
+    /// <summary>
+    /// brief-sar-3 R-sar3-4 — each FDTD cell takes the material at its centre rather than an average over its edges
+    /// (openEMS's <c>CellConstantMaterial</c>): less accurate at a material's face, and what averaging SAR over cubes needs.
+    /// Default: on for a setup that requests SAR, off otherwise, so every setup written before it runs as it did.
+    /// </summary>
+    public bool? CellConstantMaterial { get; set; }
+
+    /// <summary>
+    /// brief-sar-3 R-sar3-5 — the grid lines to run on, instead of the ones circuitRF places: per axis, a list of coordinates in
+    /// <c>Unit</c>, or a CSXCAD XML <c>File</c> whose <c>RectilinearGrid</c> is taken verbatim. With it no line of circuitRF's
+    /// own is placed. How an openEMS script is ported with its mesh, and how a replication runs on the reference's own grid.
+    /// </summary>
+    public CemGridLines? GridLines { get; set; }
+
     /// <summary>A copy, so an editor can change one without touching a setup that shares it.</summary>
     public CemOpenEms Clone()
     {
         var c = (CemOpenEms)MemberwiseClone();
         c.SaveFieldsGHz = SaveFieldsGHz is { } f ? [.. f] : null;
         c.AxisOriginUm = AxisOriginUm is { } o ? [.. o] : null;
+        c.GridLines = GridLines?.Clone();
         return c;
     }
 
@@ -483,7 +498,7 @@ public sealed class CemOpenEms
     public bool IsEmpty =>
         CellsPerWavelength is null && GradingRatio is null && ThirdsRule is null && MinCellUm is null && PmlCells is null &&
         EndCriterionDb is null && MaxTimeSteps is null && SaveFieldsGHz is null && SaveH is null &&
-        Grid is null && Axis is null && AxisOriginUm is null && AzimuthLines is null;
+        Grid is null && Axis is null && AxisOriginUm is null && AzimuthLines is null && CellConstantMaterial is null && GridLines is null;
 
     /// <summary>
     /// brief-em3d-8 R-em3d8-6 — the section's grid fields RESOLVED, each omitted one taking
@@ -493,7 +508,28 @@ public sealed class CemOpenEms
     public static CircuitRF.Engine.Em3d.OpenEmsGridSettings ResolveGrid(CemOpenEms? section)
     {
         var d = CircuitRF.Engine.Em3d.OpenEmsGridSettings.Default;
-        return section is null ? d : new(
+        if (section is null) return d;
+        return Resolved(section, d) with { ExplicitLines = section.GridLines?.Resolve() };
+    }
+
+    /// <summary>brief-sar-3 R-sar3-5 — <see cref="ResolveGrid(CemOpenEms?)"/> for a setup read from
+    /// <paramref name="documentPath"/> (the <c>.c3d</c> or <c>.cem</c>): a relative <c>GridLines.File</c> is read beside it.</summary>
+    public static CircuitRF.Engine.Em3d.OpenEmsGridSettings ResolveGrid(CemOpenEms? section, string? documentPath)
+        => ResolveGrid(Anchored(section, documentPath));
+
+    /// <summary>brief-sar-3 R-sar3-5 — <paramref name="section"/> with its grid file's folder set to
+    /// <paramref name="documentPath"/>'s, as a copy; the section itself when there is nothing to anchor.</summary>
+    public static CemOpenEms? Anchored(CemOpenEms? section, string? documentPath)
+    {
+        if (section?.GridLines is not { File: { Length: > 0 } } || documentPath is null) return section;
+        var c = section.Clone();
+        c.GridLines!.BaseDirectory = Path.GetDirectoryName(Path.GetFullPath(documentPath));
+        return c;
+    }
+
+    private static CircuitRF.Engine.Em3d.OpenEmsGridSettings Resolved(CemOpenEms section, CircuitRF.Engine.Em3d.OpenEmsGridSettings d)
+    {
+        return new(
             section.CellsPerWavelength ?? d.CellsPerWavelength,
             section.GradingRatio       ?? d.GradingRatio,
             section.ThirdsRule         ?? d.ThirdsRule,
@@ -520,14 +556,131 @@ public sealed class CemOpenEms
 
     /// <summary>brief-em3d-9 R-em3d9-6 — the section's run fields RESOLVED, each omitted one taking
     /// <see cref="OpenEmsRunSettings.Default"/>'s.</summary>
-    public static OpenEmsRunSettings ResolveRun(CemOpenEms? section)
+    /// <param name="requestsSar">brief-sar-3 R-sar3-4 — whether the setup asks for SAR (SAR-6), which turns
+    /// <see cref="CellConstantMaterial"/> on unless the section says otherwise. No setup asks yet, so the default is off.</param>
+    public static OpenEmsRunSettings ResolveRun(CemOpenEms? section, bool requestsSar = false)
     {
         var d = OpenEmsRunSettings.Default;
-        return section is null ? d : new(section.EndCriterionDb ?? d.EndCriterionDb, section.MaxTimeSteps ?? d.MaxTimeSteps)
+        return section is null ? d with { CellConstantMaterial = requestsSar }
+            : new(section.EndCriterionDb ?? d.EndCriterionDb, section.MaxTimeSteps ?? d.MaxTimeSteps)
         {
             SaveFieldsGHz = section.SaveFieldsGHz,
             SaveH = section.SaveH ?? d.SaveH,
+            CellConstantMaterial = section.CellConstantMaterial ?? requestsSar,
         };
+    }
+}
+
+/// <summary>
+/// brief-sar-3 R-sar3-5 — <c>OpenEms.GridLines</c>: the lines an openEMS run uses, given rather than placed. Either a CSXCAD
+/// XML <see cref="File"/> (what an openEMS script's <c>Write2XML</c> or <c>WriteOpenEMS</c> writes), whose
+/// <c>RectilinearGrid</c> is taken verbatim, or three lists <see cref="X"/>, <see cref="Y"/>, <see cref="Z"/> in
+/// <see cref="Unit"/> — never both.
+/// </summary>
+public sealed class CemGridLines
+{
+    /// <summary>A CSXCAD XML file whose <c>RectilinearGrid</c> lines are taken verbatim (scaled by its <c>DeltaUnit</c>):
+    /// absolute, or relative to the file the setup is in (the <c>.c3d</c> or <c>.cem</c>).</summary>
+    public string? File { get; set; }
+
+    /// <summary>The unit of <see cref="X"/>, <see cref="Y"/> and <see cref="Z"/>: <c>m</c>, <c>mm</c>, <c>um</c>, <c>nm</c>,
+    /// <c>mil</c> or <c>in</c>. Required with them: a bare coordinate could be any of them.</summary>
+    public string? Unit { get; set; }
+
+    /// <summary>The x lines, strictly increasing, in <see cref="Unit"/>.</summary>
+    public List<double>? X { get; set; }
+
+    /// <summary>The y lines, strictly increasing, in <see cref="Unit"/>.</summary>
+    public List<double>? Y { get; set; }
+
+    /// <summary>The z lines, strictly increasing, in <see cref="Unit"/>.</summary>
+    public List<double>? Z { get; set; }
+
+    /// <summary>The folder a relative <see cref="File"/> is read from: the setup's own file's, set by whoever read the setup
+    /// from it. Never written.</summary>
+    [JsonIgnore]
+    public string? BaseDirectory { get; set; }
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? Unread { get; set; }
+
+    public CemGridLines Clone()
+    {
+        var c = (CemGridLines)MemberwiseClone();
+        c.X = X is { } x ? [.. x] : null;
+        c.Y = Y is { } y ? [.. y] : null;
+        c.Z = Z is { } z ? [.. z] : null;
+        return c;
+    }
+
+    private static readonly Dictionary<string, double> Units = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["m"] = 1, ["mm"] = 1e-3, ["um"] = 1e-6, ["µm"] = 1e-6, ["nm"] = 1e-9, ["mil"] = 25.4e-6, ["in"] = 0.0254, ["inch"] = 0.0254,
+    };
+
+    /// <summary>The lines in metres, or — in <see cref="CircuitRF.Engine.Em3d.FdtdExplicitLines.Problem"/> — why they could not be
+    /// read. The file is read here, at resolution, so <c>explain</c>, <c>check</c> and a run all read the same lines.</summary>
+    public CircuitRF.Engine.Em3d.FdtdExplicitLines Resolve()
+    {
+        static CircuitRF.Engine.Em3d.FdtdExplicitLines Bad(string source, string why) => new([], [], [], source) { Problem = why };
+        bool lists = X is not null || Y is not null || Z is not null;
+        if (File is { Length: > 0 } file)
+        {
+            if (lists || Unit is not null)
+                return Bad(file, "OpenEms.GridLines gives both a File and lists of lines; give one or the other.");
+            return ReadFile(file);
+        }
+        if (!lists) return Bad("nothing", "OpenEms.GridLines gives neither a File nor X, Y and Z lists.");
+        string source = $"lists in {Unit}";
+        if (X is null || Y is null || Z is null)
+            return Bad(source, "OpenEms.GridLines gives lines for some axes only; give X, Y and Z, or a File.");
+        if (Unit is not { Length: > 0 } u || !Units.TryGetValue(u.Trim(), out double scale))
+            return Bad(source, $"OpenEms.GridLines' Unit is {(Unit is null ? "missing" : $"'{Unit}'")}: give m, mm, um, nm, mil or in — " +
+                               "a bare coordinate could be any of them.");
+        return new([.. X.Select(v => v * scale)], [.. Y.Select(v => v * scale)], [.. Z.Select(v => v * scale)], source);
+    }
+
+    private CircuitRF.Engine.Em3d.FdtdExplicitLines ReadFile(string file)
+    {
+        string name = Path.GetFileName(file);
+        CircuitRF.Engine.Em3d.FdtdExplicitLines Bad(string why) => new([], [], [], name) { Problem = why };
+        string path;
+        if (Path.IsPathRooted(file)) path = file;
+        else if (BaseDirectory is { } dir) path = Path.GetFullPath(Path.Combine(dir, file));
+        else return Bad($"OpenEms.GridLines.File '{file}' is relative, and this setup was not read from a file it could be relative to. " +
+                        "Give its full path.");
+        System.Xml.Linq.XElement grid;
+        try
+        {
+            var doc = System.Xml.Linq.XDocument.Load(path);
+            grid = doc.Descendants().FirstOrDefault(e => e.Name.LocalName == "RectilinearGrid")
+                   ?? throw new FormatException("it holds no RectilinearGrid");
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Xml.XmlException or FormatException)
+        {
+            return Bad($"OpenEms.GridLines.File '{file}' cannot be read as a CSXCAD grid: {e.Message}");
+        }
+        if ((string?)grid.Attribute("CoordSystem") is { } cs && cs.Trim() != "0")
+            return Bad($"OpenEms.GridLines.File '{file}' holds a cylindrical grid (CoordSystem {cs}); OpenEms.GridLines gives Cartesian lines.");
+        double delta = 1;
+        if ((string?)grid.Attribute("DeltaUnit") is { } du &&
+            !double.TryParse(du, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out delta))
+            return Bad($"OpenEms.GridLines.File '{file}''s DeltaUnit '{du}' is not a number.");
+        var axes = new List<double>[3];
+        string[] tags = ["XLines", "YLines", "ZLines"];
+        for (int k = 0; k < 3; k++)
+        {
+            var e = grid.Elements().FirstOrDefault(x => x.Name.LocalName == tags[k]);
+            if (e is null) return Bad($"OpenEms.GridLines.File '{file}' has no {tags[k]}.");
+            axes[k] = [];
+            foreach (string t in e.Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                if (!double.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v))
+                    return Bad($"OpenEms.GridLines.File '{file}''s {tags[k]} holds '{t}', which is not a number.");
+                axes[k].Add(v * delta);
+            }
+        }
+        return new(axes[0], axes[1], axes[2], name);
     }
 }
 
@@ -553,6 +706,9 @@ public sealed record OpenEmsRunSettings(double EndCriterionDb, long? MaxTimeStep
 
     /// <summary>brief-em3d-82 R-em3d82-4 — dump H beside E at each saved frequency. Off by default: twice the disk.</summary>
     public bool SaveH { get; init; }
+
+    /// <summary>brief-sar-3 R-sar3-4 — write <c>CellConstantMaterial="1"</c>. Off by default: what every run wrote before it.</summary>
+    public bool CellConstantMaterial { get; init; }
 
     /// <summary>The default ceiling as a multiple of the grid's step estimate.</summary>
     public const int DefaultStepsFactor = 10;
@@ -1238,7 +1394,12 @@ public static class EmSetupPersistence
     }
 
     public static EmSetup LoadFromFile(string path)
-        => Deserialize(GzipTextFile.ReadAllTextAutoGzip(path));
+    {
+        var setup = Deserialize(GzipTextFile.ReadAllTextAutoGzip(path));
+        // brief-sar-3 R-sar3-5 — a relative grid file is read beside the .cem that names it.
+        setup.OpenEms = CemOpenEms.Anchored(setup.OpenEms, path);
+        return setup;
+    }
 
     /// <summary>
     /// brief-em3d-42 R-em3d42-5a — a setup as a <c>.c3d</c> embeds it: the <c>.cem</c> schema through this

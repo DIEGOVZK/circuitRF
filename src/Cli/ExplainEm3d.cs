@@ -659,6 +659,7 @@ internal static class ExplainEm3d
         Em3dSweep           => "sweep",
         Em3dSphere          => "sphere",
         Em3dTruncatedSphere => "truncated-sphere",
+        Em3dEllipsoid       => "ellipsoid",
         Em3dPolyhedron      => "polyhedron",
         Em3dShapeSolid      => "kernel-solid",
         _                   => p.GetType().Name,

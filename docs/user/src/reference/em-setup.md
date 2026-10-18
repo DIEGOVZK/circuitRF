@@ -647,6 +647,34 @@ is written on a Cartesian grid only). No field is saved for the 3D view, whose f
 grid; the run says so. Measured end to end through `circuitrf em`: the coax section above within 0.4 Ω of its
 closed form, and its transmission phase within 0.01° of the line's.
 
+### Running on given grid lines {#openems-given-lines}
+
+To run on a grid you already have — an openEMS script's own mesh, or a reference you are reproducing —
+give its lines instead of letting circuitRF place them. `GridLines` in the `OpenEms` section takes either
+a file or three lists:
+
+| Field (in `OpenEms.GridLines`) | What it is |
+|---|---|
+| `File` | A CSXCAD XML file (what an openEMS script's `Write2XML` or `WriteOpenEMS` writes): its `RectilinearGrid` lines are taken exactly, scaled by its `DeltaUnit`. A relative path is read beside the `.c3d` or `.cem` holding the setup |
+| `X`, `Y`, `Z` and `Unit` | The lines as three lists, each increasing, in `Unit` — `m`, `mm`, `um`, `nm`, `mil` or `in`. The unit is required |
+
+```json
+"OpenEms": { "PmlCells": 8, "GridLines": { "File": "sar_dipole.xml" } }
+```
+
+With given lines, circuitRF places none of its own. The grid's extent is the region simulated, as it is in
+openEMS: each face's boundary is applied at the outermost line, and the PML takes the outermost `PmlCells`
+cells. The run is refused, naming the lines on either side, when:
+
+- the air box reaches beyond the grid (shrink its padding to fit inside);
+- a lumped port's or lumped element's sheet is not on a line, both ends of its gap fall on one line, or its
+  width has no line across it;
+- a sheet is not on a line;
+- the setup has a wave port, or asks for a cylindrical grid.
+
+A coordinate counts as on a line when it is within a thousandth of the cell beside it, so a script's file,
+written to seven significant figures, lines up. `circuitrf explain` prints the grid as usual.
+
 ### Running openEMS {#openems-run}
 
 With openEMS chosen the panel shows the grid settings above and two of its own, each a field of the
@@ -658,6 +686,7 @@ With openEMS chosen the panel shows the grid settings above and two of its own, 
 | `MaxTimeSteps` | ten times the grid's own estimate | The most time steps one run may take |
 | `SaveFieldsGHz` | the sweep's centre | The frequencies, GHz, whose electric field openEMS records over the air box for the 3D view; `[]` records none |
 | `SaveH` | off | Also record the magnetic field H at those frequencies, so the 3D view offers \|H\|. It doubles the field files on disk |
+| `CellConstantMaterial` | off; on for a setup that requests SAR | Each grid cell takes the material at its centre instead of an average over its edges. Averaging SAR over cubes needs it, and it is slightly less accurate at a material boundary. The panel's **Cell-constant material** box |
 
 **openEMS excites one port per simulation, so an N-port setup is N runs**, one after another, each
 using every core — a 4-port takes about four times as long as a 2-port, and the progress line says
@@ -685,7 +714,8 @@ criterion, and it is never presented as converged.
   the wire's radius around it matched Palace within 0.1 dB in circuitRF's own validation.
 
 Absorbing faces are PML (`PmlCells`; 0 gives a first-order Mur boundary instead), and anything reaching
-one is continued through it. The result lands beside a Palace one without replacing it —
+one is continued through it. They are written as openEMS spells them: `PML_8` with the default 8 cells,
+`MUR` with 0 — the two spellings openEMS's own SAR examples use. The result lands beside a Palace one without replacing it —
 `results/<name>.openems.sNp` and `<name>.openems_em.npy` — and `results/<name>.openems/` keeps the model
 and, per port, openEMS's log and probe files, so a run can be repeated by hand.
 

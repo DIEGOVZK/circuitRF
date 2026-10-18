@@ -45,7 +45,18 @@ public static class C3dValidation
 
         foreach (var o in doc.Objects)
         {
-            if (o is not C3dPolyline)
+            if (o is C3dPhantom phantom)
+            {
+                // brief-sar-3 R-sar3-2 — a phantom's materials are its layers'.
+                foreach (var layer in phantom.Layers)
+                {
+                    string layerName = C3dPhantoms.LayerName(o.Name, layer.Name);
+                    if (string.IsNullOrWhiteSpace(layer.Material)) { if (o.Model) found.Add(C3dDiagnostics.NoMaterial(layerName)); }
+                    else if (isKnownMaterial is not null && !isKnownMaterial(layer.Material))
+                        found.Add(C3dDiagnostics.UnknownMaterial(layerName, layer.Material));
+                }
+            }
+            else if (o is not C3dPolyline)
             {
                 // brief-em3d-50: a wire's omitted material is wBond's default metal, which the technology must still define.
                 // brief-em3d-64 R-em3d64-3b: an operation's material is its Blank's (or Target's), which is checked there.
@@ -91,6 +102,13 @@ public static class C3dValidation
             if (i.Transparency is { } t && !C3dTransparency.InRange(t)) found.Add(C3dDiagnostics.TransparencyRange($"The instance '{i.Name}'", t));
             Appearance(i.Appearance, $"The instance '{i.Name}'", $"the instance '{i.Name}'", isKnownMaterial, found);
             Unread(i.Unread, $"The instance '{i.Name}'", found);
+        }
+
+        // brief-sar-3 R-sar3-3 — a lumped element states at least one value; what its gap touches is the run's to resolve.
+        foreach (var le in doc.LumpedElements)
+        {
+            if (le.R is null && le.L is null && le.C is null) found.Add(C3dDiagnostics.LumpedElementEmpty(le.Name));
+            Unread(le.Unread, $"The lumped element '{le.Name}'", found);
         }
 
         Look(doc.Look, documentPath, found);
@@ -197,6 +215,8 @@ public static class C3dValidation
             case C3dPrism p:      Prism(p, found);      break;
             case C3dCylinder c:   Cylinder(c, found);   break;
             case C3dSphere sp:    Sphere(sp, found);    break;
+            case C3dEllipsoid el: Ellipsoid(el, found); break;
+            case C3dPhantom ph:   Phantom(ph, found);   break;
             case C3dSheet s:      Sheet(s, found);      break;
             case C3dPolyline l:   Polyline(l, found);   break;
             case C3dPolyhedron h: Polyhedron(h, found); break;
@@ -329,6 +349,7 @@ public static class C3dValidation
         var named = doc.Objects.Select(o => (Kind: "object", o.Name))
                    .Concat(doc.Objects.SelectMany(Tools).Select(t => (Kind: "object", t.Name)))
                    .Concat(doc.Instances.Select(i => (Kind: "instance", i.Name)))
+                   .Concat(doc.LumpedElements.Select(l => (Kind: "lumped element", l.Name)))
                    .ToList();
 
         foreach (var (kind, name) in named)
@@ -391,6 +412,20 @@ public static class C3dValidation
     {
         if (s.Radius <= 0)
             found.Add(C3dDiagnostics.ZeroVolume(s.Name, "sphere", "its radius is not positive"));
+    }
+
+    private static void Ellipsoid(C3dEllipsoid e, List<Diagnostic> found)
+    {
+        if (e.SemiAxes.X <= 0 || e.SemiAxes.Y <= 0 || e.SemiAxes.Z <= 0)
+            found.Add(C3dDiagnostics.ZeroVolume(e.Name, "ellipsoid", "a semi-axis is not positive"));
+    }
+
+    /// <summary>brief-sar-3 R-sar3-2 — a phantom's shape: positive dimensions, shells that leave every layer a volume, and one
+    /// named layer per solid.</summary>
+    private static void Phantom(C3dPhantom p, List<Diagnostic> found)
+    {
+        if (C3dPhantoms.ShapeFault(p) is { } why) found.Add(C3dDiagnostics.PhantomShape(p.Name, why));
+        foreach (var l in p.Layers) Unread(l.Unread, $"The layer '{l.Name}' of '{p.Name}'", found);
     }
 
     private static void Sheet(C3dSheet s, List<Diagnostic> found)

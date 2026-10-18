@@ -140,6 +140,9 @@ public static partial class GmshGeoWriter
         ArgumentNullException.ThrowIfNull(settings);
 
         if (problem.Type == Em3dProblemType.Thermal) return No(Em3dProblem.ThermalIsNotEm);
+        // brief-sar-3 §3 — a lumped element on Palace is its own later series.
+        if (problem.LumpedElements.Count > 0)
+            return No(LumpedElementsOpenEmsOnly(problem.LumpedElements[0].Name));
         var problems = problem.Validate().Concat(settings.Problems()).ToList();
         if (problems.Count > 0)
             return No("The 3D problem cannot be lowered for Palace: " + string.Join(" ", problems));
@@ -856,6 +859,18 @@ public static partial class GmshGeoWriter
                 L($"v = newv; Sphere(v) = {{{Um(s.Center.X)}, {Um(s.Center.Y)}, {Um(s.Center.Z)}, {Um(s.Radius)}}};");
                 L($"{list}[] = {{v}};");
                 break;
+            case Em3dEllipsoid el:
+            {
+                // brief-sar-3 R-sar3-1 — the OCC kernel's own construction: a unit sphere, dilated along its axes, turned onto
+                // its frame and moved to its centre (the lengths are micrometres, as every other line here).
+                L("v = newv; Sphere(v) = {0, 0, 0, 1};");
+                L($"Dilate {{{{0, 0, 0}}, {{{Um(el.A)}, {Um(el.B)}, {Um(el.C)}}}}} {{ Volume{{v}}; }}");
+                if (AxisAngle(el) is var (ax, ay, az, angle))
+                    L($"Rotate {{{{{Num(ax)}, {Num(ay)}, {Num(az)}}}, {{0, 0, 0}}, {Num(angle)}}} {{ Volume{{v}}; }}");
+                L($"Translate {{{Um(el.Center.X)}, {Um(el.Center.Y)}, {Um(el.Center.Z)}}} {{ Volume{{v}}; }}");
+                L($"{list}[] = {{v}};");
+                break;
+            }
             case Em3dTruncatedSphere t:
             {
                 L($"v = newv; Sphere(v) = {{{Um(t.Center.X)}, {Um(t.Center.Y)}, {Um(t.Center.Z)}, {Um(t.Radius)}}};");
@@ -1168,6 +1183,32 @@ public static partial class GmshGeoWriter
         return o;
 
         static bool Same(Point2 a, Point2 b) => Math.Abs(a.X - b.X) < 1e-12 && Math.Abs(a.Y - b.Y) < 1e-12;
+    }
+
+    /// <summary>brief-sar-3 §3 — what Palace says to a problem holding a lumped element.</summary>
+    public static string LumpedElementsOpenEmsOnly(string name)
+        => $"Lumped element '{name}' is solved by openEMS only in this version: Palace's lumped elements are a later series. " +
+           "Set Solver3D to openEMS.";
+
+    /// <summary>brief-sar-3 — the rotation taking the world's axes onto an ellipsoid's (U, V, W) as an axis and an angle
+    /// (radians), or null when there is none to make.</summary>
+    internal static (double X, double Y, double Z, double Angle)? AxisAngle(Em3dEllipsoid e)
+    {
+        var (u, v, w) = (e.U, e.V, e.W);
+        double trace = u.X + v.Y + w.Z;
+        double angle = Math.Acos(Math.Clamp((trace - 1) / 2, -1, 1));
+        if (angle < 1e-12) return null;
+        double x = v.Z - w.Y, y = w.X - u.Z, z = u.Y - v.X;           // the skew part of R = [U V W]
+        double n = Math.Sqrt(x * x + y * y + z * z);
+        if (n < 1e-9)
+        {
+            // A half turn: the axis is R + I's largest column.
+            double[][] c = [[u.X + 1, u.Y, u.Z], [v.X, v.Y + 1, v.Z], [w.X, w.Y, w.Z + 1]];
+            var best = c.MaxBy(k => k[0] * k[0] + k[1] * k[1] + k[2] * k[2])!;
+            double m = Math.Sqrt(best[0] * best[0] + best[1] * best[1] + best[2] * best[2]);
+            return (best[0] / m, best[1] / m, best[2] / m, Math.PI);
+        }
+        return (x / n, y / n, z / n, angle);
     }
 
     // ── text ───────────────────────────────────────────────────────────────────────────────────

@@ -431,7 +431,8 @@ public static class Scene3DBuilder
                 InitiallyVisible = wire || (s.Role != Em3dRole.Air && s.Name != outermost),
                 FaceNames = FacesOf(s.Name),
                 CapCentres = s.Primitive is Em3dCylinder cyl ? [cyl.AxisStart, cyl.AxisEnd]
-                           : s.Primitive is Em3dSphere ball && NamedSurface(ball, FacesOf(s.Name)) ? [ball.Center] : null,
+                           : s.Primitive is Em3dSphere ball && NamedSurface(ball, FacesOf(s.Name)) ? [ball.Center]
+                           : s.Primitive is Em3dEllipsoid egg && NamedSurface(egg, FacesOf(s.Name)) ? [egg.Center] : null,
                 Context = dim, Wireframe = wire, Transparency = see,
             }, mesh, wire && s.Primitive is Em3dCylinder c0 ? CylinderGenerators(c0).Select(q => (q, wireEdge)) : null,
                faces: true, features: Features(s.Name, mesh, sheet: false, (s.Primitive as Em3dShapeSolid)?.Edges), wireEdges: wire ? wireEdge : null,
@@ -716,7 +717,7 @@ public static class Scene3DBuilder
 
     /// <summary>brief-em3d-102 §0 — a DRAWN sphere names its one face (<c>surface</c>, by its provenance), so its triangles carry
     /// face 0 and Face mode selects it; a ball, which names none, keeps <see cref="FaceUnknown"/>. Per object, not per primitive.</summary>
-    private static bool NamedSurface(Em3dPrimitive p, IReadOnlyList<string> faces) => p is Em3dSphere && faces.Count == 1;
+    private static bool NamedSurface(Em3dPrimitive p, IReadOnlyList<string> faces) => p is Em3dSphere or Em3dEllipsoid && faces.Count == 1;
 
     private static Em3dTriangleMesh AsFaceZero(Em3dTriangleMesh m)
         => new(m.Vertices, [.. m.Triangles.Select(t => t with { Face = 0 })]);

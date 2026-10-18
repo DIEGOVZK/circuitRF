@@ -186,6 +186,7 @@ public static class Em3dSizeEstimate
         Em3dCylinder c        => Math.PI * c.Radius * c.Radius * Distance(c.AxisStart, c.AxisEnd),
         Em3dSphere s          => 4.0 / 3.0 * Math.PI * s.Radius * s.Radius * s.Radius,
         Em3dTruncatedSphere t => Cap(t),
+        Em3dEllipsoid e       => e.Volume,
         _                     => MeshVolume(Em3dTessellation.Of(new Em3dSolid("", "", Em3dRole.Conductor, p, 0))),
     };
 

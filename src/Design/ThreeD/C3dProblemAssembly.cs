@@ -101,6 +101,8 @@ public static class C3dSetups
         var s = embedded.Clone();
         s.Name = $"{Path.GetFileNameWithoutExtension(c3dPath)} {embedded.Name}";
         s.LayoutRef = Path.GetFileName(c3dPath);
+        // brief-sar-3 R-sar3-5 — a relative grid file is read beside the .c3d that embeds the setup.
+        s.OpenEms = CemOpenEms.Anchored(s.OpenEms, c3dPath);
         return s;
     }
 
@@ -436,6 +438,21 @@ public static class C3dProblemAssembly
                 notes.Add($"{document.Ports.Count - ports.Count} port(s) drive no terminal and are not in the magnetostatic problem.");
         }
 
+        // ── brief-sar-3 R-sar3-3 — lumped elements: a port's gap, by the port's own rules, carrying R, L and C ──────
+        var lumped = new List<Em3dLumpedElement>();
+        if (setup.IsStatic3D)
+        {
+            if (document.LumpedElements.Any(l => l.Model))
+                notes.Add($"A static solve has no frequency for R, L and C: the 3D view's {document.LumpedElements.Count(l => l.Model)} lumped " +
+                          "element(s) are not in the problem.");
+        }
+        else
+            foreach (var r in C3dLumpedElements.Resolve(document, context, drawn.Resolution))
+            {
+                if (r.Resolved is null) return No(r.Refusal!, e.Warnings);
+                lumped.Add(r.Resolved);
+            }
+
         // ── Face boundaries (R-em3d49-4) ────────────────────────────────────────────────────────
         if (FaceBoundaries(document, e, materials, tempC, out var faceBoundaries) is { } boundaryRefusal)
             return No(boundaryRefusal, e.Warnings);
@@ -457,6 +474,7 @@ public static class C3dProblemAssembly
             GroundObjects = ground,
             EigenmodeCount = setup.Eigenmode?.Count ?? EmEigenmode3D.DefaultCount,
             EigenmodeTargetHz = setup.Eigenmode?.TargetGHz is { } target ? target * 1e9 : fMin,
+            LumpedElements = lumped,
         };
         return new Em3dGenerationResult(problem, null, notes)
         {

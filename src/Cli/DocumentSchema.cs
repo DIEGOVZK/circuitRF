@@ -614,8 +614,9 @@ internal static class DocumentSchema
             along that normal, and a prism's Height is measured along it — negative is allowed, and
             says which way the prism was pulled. Shear moves a prism's top against its bottom.
           * Dimensions are SIZES, never second corners: a box is Min and Size, a rectangle Min and
-            Size, a cylinder Base, Axis, Length and Radius, a sphere Centre and Radius. A size is
-            positive; a negative one is normalised on the next save by moving Min.
+            Size, a cylinder Base, Axis, Length and Radius, a sphere Centre and Radius, an ellipsoid
+            Centre and SemiAxes (along x, y and z of its own frame, so a placement's rotation turns
+            it). A size is positive; a negative one is normalised on the next save by moving Min.
           * Placement: the object's own frame is mirrored (MirrorX negates its x), then rotated by
             each Rotate entry in list order ({"Axis": "Z", "Deg": 90}, right-handed), then moved to
             Origin. Omitted, it is the identity. A rotation lives here, never in the coordinates, so
@@ -705,10 +706,24 @@ internal static class DocumentSchema
                              hole<h>.side<k>
                 Cylinder     bottom, top, side
                 Sphere       surface (curved: no boundary, face edit or image goes on it)
+                Ellipsoid    surface (curved, as a sphere's)
                 Polyhedron   each face's own Name, unique within the object
 
           * A Polyhedron must be closed: every edge used by exactly two faces, in opposite
             directions. Every face must be planar within 1 DBU.
+          * A Phantom is a layered phantom as ONE object: its Layers ([{"Name", "Material"}],
+            outermost first) are nested solids, and the innermost wins where they overlap. Shape is
+            Ellipsoid3 (Centre, SemiAxes, Shell1, Shell2: the shells come off every semi-axis),
+            Cylinder3 (Centre, Radius, Length, Axis, Shell1, Shell2: radial shells, every layer the
+            full length), FlatBox (Centre, Size, Shell1: liquid in a shell on its floor and four
+            walls, open on top), Sphere1 (Centre, Radius) or Box1 (Centre, Size). Its own Material is
+            not used. In the solved problem each layer is the solid "<phantom>/<layer>".
+          * "LumpedElements" are R, L and C across gaps, each a gap exactly as a lumped port's is (Name,
+            Plane, Offset, Rect, and optional Positive/Negative), with Topology Parallel (default) or
+            Series and any of R, L, C as expressions with RUnit, LUnit, CUnit (base SI when omitted):
+            {"Name": "C1", "Plane": "YZ", "Offset": -130000000, "Rect": {...}, "C": "Ctune", "CUnit":
+            "pF"}. A lumped element is not a port: nothing excites it and S has no row for it.
+            openEMS solves it; Palace refuses it in this version.
           * A Polyline is construction geometry. It has no Material and is never solved. Its Points
             are [u, v] on its Plane at its Offset — unless a vertex leaves that plane (the editor
             snaps a polyline's vertices to features anywhere), when the polyline is written with

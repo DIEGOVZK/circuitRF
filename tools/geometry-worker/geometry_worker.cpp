@@ -70,6 +70,9 @@
 #include <BRepBuilderAPI_MakeWire.hxx>
 #include <BRepBuilderAPI_Sewing.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
+#include <BRepBuilderAPI_GTransform.hxx>
+#include <gp_GTrsf.hxx>
+#include <gp_Mat.hxx>
 #include <BRepCheck_Analyzer.hxx>
 #include <BRepExtrema_DistShapeShape.hxx>
 #include <BRepFilletAPI_MakeChamfer.hxx>
@@ -952,6 +955,31 @@ static Named BuildSphere(const NodeReader& r, const std::vector<std::string>& na
   return n;
 }
 
+// brief-sar-3 R-sar3-1 -- an ellipsoid is a unit sphere at the origin scaled along its own axes u, v and u x v by its three
+// semi-axes, then moved to its centre: one affinity, which OCCT applies by turning the sphere into a B-spline surface. Its one
+// face is names[0], as a sphere's; it has no feature edge either.
+static TopoDS_Shape Ellipsoid(const NodeReader& r, gp_XYZ centre, gp_XYZ semi, gp_XYZ u, gp_XYZ v)
+{
+  if (semi.X() <= 0 || semi.Y() <= 0 || semi.Z() <= 0) r.Bad("a semi-axis is not positive");
+  gp_XYZ w = u.Crossed(v);
+  TopoDS_Shape unit = BRepPrimAPI_MakeSphere(gp_Pnt(0, 0, 0), 1.0).Shape();
+  gp_Mat m(u.X() * semi.X(), v.X() * semi.Y(), w.X() * semi.Z(),
+           u.Y() * semi.X(), v.Y() * semi.Y(), w.Y() * semi.Z(),
+           u.Z() * semi.X(), v.Z() * semi.Y(), w.Z() * semi.Z());
+  BRepBuilderAPI_GTransform scaled(unit, gp_GTrsf(m, centre), true);
+  if (!scaled.IsDone()) r.Bad("the ellipsoid could not be built");
+  return scaled.Shape();
+}
+
+static Named BuildEllipsoid(const NodeReader& r, const std::vector<std::string>& names)
+{
+  if (names.size() != 1) r.Bad("an ellipsoid names one face: surface");
+  TopoDS_Shape s = Ellipsoid(r, r.Xyz("centre"), r.Xyz("semi"), gp_XYZ(1, 0, 0), gp_XYZ(0, 1, 0));
+  Named n{s, {}};
+  for (TopExp_Explorer x(s, TopAbs_FACE); x.More(); x.Next()) n.faces.push_back({x.Current(), names[0]});
+  return n;
+}
+
 static Named BuildPrism(const NodeReader& r, const std::vector<std::string>& names)
 {
   std::vector<gp_Pnt> outline = r.Points(r.Member("outline"), "outline");
@@ -1542,6 +1570,7 @@ static Named BuildNode(const Json& node)
     if (kind.text == "box") n = BuildBox(r, names);
     else if (kind.text == "cylinder") n = BuildCylinder(r, names);
     else if (kind.text == "sphere") n = BuildSphere(r, names);
+    else if (kind.text == "ellipsoid") n = BuildEllipsoid(r, names);
     else if (kind.text == "prism") n = BuildPrism(r, names);
     else if (kind.text == "polyhedron") n = BuildPolyhedron(r, names);
     else r.Bad("this worker cannot build a \"" + kind.text + "\"");
@@ -2231,6 +2260,7 @@ static TopoDS_Shape ExportGeometry(const Json& g, const std::string& name, const
     if (!common.IsDone()) r.Bad("the truncated sphere could not be cut");
     return common.Shape();
   }
+  if (k == "ellipsoid") return Ellipsoid(r, r.Xyz("centre"), r.Xyz("semi"), r.Xyz("u"), r.Xyz("v"));
   if (k == "prism")
   {
     const Json& outline = r.Member("outline");

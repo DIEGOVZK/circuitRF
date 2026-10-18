@@ -683,7 +683,7 @@ internal static class Check
     /// <summary>brief-em3d-120 — the cylindrical-grid note or refusals for one embedded openEMS setup, from the run's own planner.</summary>
     private static void CylindricalAdvice(string path, Findings f, string setupName, EmSetup setup, C3dDocument doc)
     {
-        var settings = CemOpenEms.ResolveGrid(setup.OpenEms);
+        var settings = CemOpenEms.ResolveGrid(setup.OpenEms, path);
         if (settings.Problems().Count > 0) return;
         var assembled = C3dProblemAssembly.Assemble(setup, doc, Path.GetFullPath(path), DocumentKinds.AncestorCws(Path.GetFullPath(path)));
         if (assembled.Problem is not { } problem || problem.Validate().Count > 0) return;
@@ -1022,7 +1022,7 @@ internal static class Check
         {
             if (setup.Solver3D is Em3dSolver.OpenEms or Em3dSolver.Both)
             {
-                var gridSettings = CemOpenEms.ResolveGrid(setup.OpenEms);
+                var gridSettings = CemOpenEms.ResolveGrid(setup.OpenEms, path);
                 if (gridSettings.Problems().Count == 0)
                 {
                     var grid = CircuitRF.Engine.Em3d.FdtdGrid.Build(problem, gridSettings);
@@ -1037,7 +1037,7 @@ internal static class Check
         // brief-em3d-116 — a wave port openEMS cannot build (a hollow waveguide, a current loop with no room): the lowering's
         // own sentence, from the run's own planner.
         if (problems.Count == 0 && setup.Solver3D is Em3dSolver.OpenEms or Em3dSolver.Both &&
-            CircuitRF.Design.Em3d.Em3dRunService.OpenEmsWavePortRefusal(problem, CemOpenEms.ResolveGrid(setup.OpenEms)) is { } noWave)
+            CircuitRF.Design.Em3d.Em3dRunService.OpenEmsWavePortRefusal(problem, CemOpenEms.ResolveGrid(setup.OpenEms, path)) is { } noWave)
             problems.Add(noWave);
         foreach (string p in problems) f.Add(CliDiagnostics.CheckEmRefused(path, p));
         if (problems.Count == 0)

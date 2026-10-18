@@ -41,6 +41,20 @@
 // (src/Engine); the feed is lines FdtdGrid.Build already put in the grid, and a solid reaching the face is carried down it
 // by the same Context.Out as through any absorbing face (a cylinder too, on a feed face only, so no lumped file changes).
 //
+// LUMPED ELEMENTS (brief-sar-3 R-sar3-3) are a port's resistor without its probes or its source: openEMS's LumpedElement
+// with R, C and L each written only when stated, and LEtype 0 (parallel) or 1 (series), the attributes in the order CSXCAD
+// itself writes them. Em3dLumpedElement.Inexpressible names what 0.37.0 cannot state, and the writer refuses it.
+//
+// ELLIPSOIDS (brief-sar-3 R-sar3-1): one whose axes are the world's is a unit Sphere under a Scale3 then a Translate
+// transformation, which IS that ellipsoid (CSXCAD's inside test inverts the transformation) and is what openEMS's own
+// Dipole_SAR writes. One rotated off the world's axes would need a rotation between the two, and the grid (FdtdGrid) reads a
+// solid's extent from its primitive, not from CSXCAD's transformation chain; it is written as the polyhedron of its
+// tessellation instead, which the grid then staircases exactly as it would the transformed sphere.
+//
+// CELL-CONSTANT MATERIAL (brief-sar-3 R-sar3-4): OpenEms.CellConstantMaterial writes CellConstantMaterial="1" on <FDTD>, so a
+// cell takes the material at its centre rather than an average over its edges, as SAR averaging needs. Off writes nothing,
+// so a setup without it is the bytes it always was.
+//
 // ONE MODEL, N FILES (R-em3d9-3b). Model() is the shared model; PortFile(k) is it with port k's
 // excitation added as the LAST property, so the N files differ in exactly that element and no ID moves.
 
@@ -187,6 +201,16 @@ public static partial class CsxcadWriter
                           "lumped port cannot state it.");
         }
         if (run.Problems() is { Count: > 0 } bad) return No(string.Join(" ", bad));
+        // brief-sar-3 R-sar3-3 — what openEMS 0.37.0's lumped element cannot state is refused by name, never written as something else.
+        foreach (var le in problem.LumpedElements)
+        {
+            if (le.Inexpressible() is { } cannot) return No(cannot);
+            if (LumpedAxis(le) is null)
+                return No($"Lumped element '{le.Name}''s direction is not along an axis in its own sheet, so openEMS's lumped element cannot state it.");
+        }
+        if (problem.LumpedElements.Count > 0 && grid.Cylinder is not null)
+            return No($"Lumped element '{problem.LumpedElements[0].Name}' is in a problem on a cylindrical grid, which writes coaxial wave ports " +
+                      "only in this version. Set the openEMS section's Grid to Cartesian.");
         // brief-em3d-120 — a cylindrical grid is its own lowering (CsxcadWriter.Cylindrical.cs); nothing below changes for a Cartesian one.
         if (grid.Cylinder is { } cylinder) return WriteCylindrical(problem, grid, gridSettings, run, farFieldHz, cylinder, faceKinds);
         // brief-em3d-116 — a wave port is a fed, probed line, on the grid built with its feed (FdtdGrid.Build planned it).
@@ -352,6 +376,21 @@ public static partial class CsxcadWriter
             excitations.Add(ExcitationProperty(p, start, stop, axis, sign, portPriority));
         }
 
+        // ── brief-sar-3 R-sar3-3 — lumped elements: the port's resistor element, with R, C and L as stated ──────────
+        foreach (var le in problem.LumpedElements)
+        {
+            int axis = LumpedAxis(le)!.Value;
+            Point3 start = le.Min, stop = le.Max;
+            if (FdtdGrid.PortWidthAxis(le) is int across)
+            {
+                start = With(start, across, FdtdGrid.SnapToLine(grid.Axis((FdtdAxis)across).Lines, Get(start, across)));
+                stop = With(stop, across, FdtdGrid.SnapToLine(grid.Axis((FdtdAxis)across).Lines, Get(stop, across)));
+            }
+            Open(props, "LumpedElement", id++, le.Name, Colors.Lumped, LumpedAttributes(le, axis));
+            AppendPrimitives(props, Box(portPriority, start, stop));
+            props.Append("            </LumpedElement>\n");
+        }
+
         // ── brief-em3d-29 R-em3d29-6a — the field dumps: one per saved frequency, over the air box ───────
         // openEMS's frequency-domain E dump (DumpType 10) at the CELL CENTRES (DumpMode 2), as VTK (FileType 0):
         // the pinned openEMS writes each component's magnitude and phase, which is the complex field
@@ -414,6 +453,13 @@ public static partial class CsxcadWriter
 
         // ── Notes ────────────────────────────────────────────────────────────────────────────────
         notes.AddRange(plan.Notes);
+        if (gridSettings.ExplicitLines is { } given) notes.Add(FdtdGrid.GivenLinesNote(given, grid));
+        if (run.CellConstantMaterial)
+            notes.Add("OpenEms.CellConstantMaterial is on: each FDTD cell takes the material at its centre rather than an average over " +
+                      "its edges (openEMS's CellConstantMaterial), as averaging SAR over cubes needs; it is less accurate at a material's face.");
+        if (problem.LumpedElements.Count > 0)
+            notes.Add($"{Names(problem.LumpedElements.Select(l => l.Name))} {(problem.LumpedElements.Count == 1 ? "is a lumped element" : "are lumped elements")}: " +
+                      "R, L and C across a gap, excited by nothing and with no row in S.");
         if (CartesianCoaxNote(problem, plan, grid) is { } staircase) notes.Add(staircase);
         notes.Add("openEMS boundaries: " + string.Join(", ", Enumerable.Range(0, 6).Select(k =>
             $"{FaceKeys[k]} {BoundaryName(faceKinds[k], ctx.Pml)}")) + ".");
@@ -457,7 +503,7 @@ public static partial class CsxcadWriter
         // 3D editor round 3 — the box's own fill when the problem states one (a 3D view's: Air, or what the user chose).
         var air = problem.Boundary.Material is { } fill && materials.TryGetValue(fill, out var filled) ? filled
                 : problem.Solids.FirstOrDefault(s => s.Role == Em3dRole.Air) is { } a ? materials[a.Material] : GmshGeoWriter.FreeSpace;
-        string head = Head(grid, faceKinds, ctx.Pml, maxSteps, run.EndCriterionDb, f0, fc, air, fitHz);
+        string head = Head(grid, faceKinds, ctx.Pml, maxSteps, run.EndCriterionDb, f0, fc, air, fitHz, run.CellConstantMaterial);
         const string tail = "        </Properties>\n    </ContinuousStructure>\n</openEMS>\n";
         string body = props.ToString();
         string model = head + body + tail;
@@ -606,7 +652,7 @@ public static partial class CsxcadWriter
     // ── The file's head: the run, the boundaries, the grid, the background ───────────────────────
 
     private static string Head(FdtdGridResult grid, Em3dBoundaryKind[] faces, int pml, long maxSteps, double endDb,
-                               double f0, double fc, Em3dMaterial air, double fitHz)
+                               double f0, double fc, Em3dMaterial air, double fitHz, bool cellConstant)
     {
         var sb = new StringBuilder();
         sb.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n");
@@ -614,7 +660,7 @@ public static partial class CsxcadWriter
         sb.Append("     Units: metres. Run by circuitRF once per port, as  openEMS model.xml  in that port's directory. -->\n");
         sb.Append("<openEMS>\n");
         sb.Append($"    <FDTD NumberOfTimesteps=\"{maxSteps.ToString(CultureInfo.InvariantCulture)}\" endCriteria=\"{R(Math.Pow(10, endDb / 10))}\" " +
-                  $"OverSampling=\"{OverSampling}\" TimeStepMethod=\"{TimeStepMethod}\">\n");
+                  $"OverSampling=\"{OverSampling}\" TimeStepMethod=\"{TimeStepMethod}\"{CellConstantAttribute(cellConstant)}>\n");
         sb.Append($"        <Excitation Type=\"0\" f0=\"{R(f0)}\" fc=\"{R(fc)}\" />\n");
         sb.Append("        <BoundaryCond");
         for (int k = 0; k < 6; k++) sb.Append($" {FaceKeys[k]}=\"{BoundaryToken(faces[k], pml)}\"");
@@ -631,6 +677,13 @@ public static partial class CsxcadWriter
         return sb.ToString();
     }
 
+    /// <summary>brief-sar-3 R-sar3-4 — the attribute on &lt;FDTD&gt;, or nothing when off.</summary>
+    private static string CellConstantAttribute(bool on) => on ? " CellConstantMaterial=\"1\"" : "";
+
+    /// <summary>
+    /// brief-sar-3 R-sar3-6 — an absorbing face is <c>PML_&lt;n&gt;</c> with <c>PmlCells</c> n, and <c>MUR</c> with PmlCells 0: the
+    /// two spellings the SAR tutorials pass openEMS (<c>['PML_8']*6</c>, <c>['MUR']*6</c>), which its BoundaryCond reads as text.
+    /// </summary>
     private static string BoundaryToken(Em3dBoundaryKind k, int pml) => k switch
     {
         Em3dBoundaryKind.Absorbing => pml > 0 ? $"PML_{pml}" : "MUR",
@@ -829,6 +882,8 @@ public static partial class CsxcadWriter
                 return $"                    <Sphere Priority=\"{pr}\" Radius=\"{R(sp.Radius)}\">\n" +
                        $"                        {P("Center", sp.Center)}\n" +
                        "                    </Sphere>\n";
+            case Em3dEllipsoid el when el.AlignedSemiAxes() is var (ax, ay, az):
+                return ScaledSphere(pr, el.Center, ax, ay, az);
             case Em3dSweep w when ctx.SubCell(w):
             {
                 thin.Add(s.Name);
@@ -862,6 +917,41 @@ public static partial class CsxcadWriter
                 return sb.ToString();
             }
         }
+    }
+
+    /// <summary>brief-sar-3 R-sar3-1 — an axis-aligned ellipsoid as openEMS's Dipole_SAR writes one: a unit sphere at the origin,
+    /// scaled per axis, then moved to its centre.</summary>
+    public static string ScaledSphere(int priority, Point3 centre, double ax, double ay, double az)
+        => $"                    <Sphere Priority=\"{priority}\" Radius=\"1\">\n" +
+           "                        <Transformation>\n" +
+           $"                            <Scale3 Argument=\"{R(ax)},{R(ay)},{R(az)}\" />\n" +
+           $"                            <Translate Argument=\"{R(centre.X)},{R(centre.Y)},{R(centre.Z)}\" />\n" +
+           "                        </Transformation>\n" +
+           "                        <Center X=\"0\" Y=\"0\" Z=\"0\" />\n" +
+           "                    </Sphere>\n";
+
+    /// <summary>brief-sar-3 R-sar3-3 — the axis a lumped element's current runs along, in its own sheet; null when there is none.</summary>
+    private static int? LumpedAxis(Em3dLumpedElement le)
+    {
+        double[] d = [le.Direction.X, le.Direction.Y, le.Direction.Z];
+        double[] ext = [le.Max.X - le.Min.X, le.Max.Y - le.Min.Y, le.Max.Z - le.Min.Z];
+        for (int a = 0; a < 3; a++)
+            if (Math.Abs(d[a]) > 1 - 1e-9 && ext[a] > 0) return a;
+        return null;
+    }
+
+    /// <summary>
+    /// brief-sar-3 R-sar3-3 — a lumped element's attributes as CSXCAD writes them (<c>CSPropLumpedElement::Write2XML</c>):
+    /// Direction, Caps, then R, C and L — each only when stated, since an absent one reads back as not present — then LEtype.
+    /// </summary>
+    public static string LumpedAttributes(Em3dLumpedElement le, int axis)
+    {
+        var sb = new StringBuilder($" Direction=\"{axis}\" Caps=\"1\"");
+        if (le.R is { } r) sb.Append($" R=\"{R(r)}\"");
+        if (le.C is { } c) sb.Append($" C=\"{R(c)}\"");
+        if (le.L is { } l) sb.Append($" L=\"{R(l)}\"");
+        sb.Append($" LEtype=\"{(le.Topology == Em3dRlcTopology.Series ? 1 : 0)}\"");
+        return sb.ToString();
     }
 
     private static bool IsAxisNormal(Point3 n)
@@ -1133,6 +1223,7 @@ public static partial class CsxcadWriter
         public static readonly (int R, int G, int B, int A) Port       = (140, 226, 179, 255);
         public static readonly (int R, int G, int B, int A) Probe      = (152, 84, 47, 255);
         public static readonly (int R, int G, int B, int A) Excitation = (71, 23, 17, 255);
+        public static readonly (int R, int G, int B, int A) Lumped     = (216, 254, 67, 255);
     }
 
     private static string R(double v) => v.ToString("R", CultureInfo.InvariantCulture);

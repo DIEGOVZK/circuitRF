@@ -58,6 +58,11 @@ public sealed record OpenEmsGridSettings(
     /// means) is the Cartesian grid.</summary>
     public OpenEmsCylindrical? Cylindrical { get; init; }
 
+    /// <summary>brief-sar-3 R-sar3-5 — grid lines given by the setup (<c>OpenEms.GridLines</c>): the grid is exactly these and
+    /// <see cref="FdtdGrid"/> places none of its own. Null (the default, and what every existing setup means) lets it place
+    /// them.</summary>
+    public FdtdExplicitLines? ExplicitLines { get; init; }
+
     /// <summary>Every value that cannot be built, as sentences naming the field — empty when all can.</summary>
     public IReadOnlyList<string> Problems()
     {
@@ -74,6 +79,22 @@ public sealed record OpenEmsGridSettings(
             p.Add($"OpenEms.AzimuthLines is {n}; it must be {OpenEmsCylindrical.MinAzimuthLines} to {OpenEmsCylindrical.MaxAzimuthLines}.");
         if (Cylindrical is { } c && (c.Axis > FdtdAxis.Z || !double.IsFinite(c.Origin.X) || !double.IsFinite(c.Origin.Y) || !double.IsFinite(c.Origin.Z)))
             p.Add("OpenEms.Axis must be X, Y or Z, and OpenEms.AxisOriginUm three finite lengths.");
+        if (ExplicitLines is { } ex)
+        {
+            if (ex.Problem is { } bad) p.Add(bad);
+            else
+            {
+                if (Cylindrical is not null)
+                    p.Add("OpenEms.GridLines gives Cartesian lines, and OpenEms.Grid is Cylindrical: give one or the other.");
+                foreach (var (name, lines) in new[] { ("X", ex.X), ("Y", ex.Y), ("Z", ex.Z) })
+                {
+                    if (lines.Count < 3)
+                        p.Add($"OpenEms.GridLines gives {lines.Count} {name} line(s) ({ex.Source}); openEMS needs at least 3 on every axis.");
+                    else if (lines.Any(v => !double.IsFinite(v)) || Enumerable.Range(1, lines.Count - 1).Any(i => !(lines[i] > lines[i - 1])))
+                        p.Add($"OpenEms.GridLines' {name} lines ({ex.Source}) are not finite and strictly increasing.");
+                }
+            }
+        }
         return p;
     }
 
@@ -89,6 +110,18 @@ public sealed record OpenEmsCylindrical(FdtdAxis Axis, Point3 Origin, int? Azimu
 {
     /// <summary>The fewest and most azimuth lines a setup may state (both counts include the closing line at 2π).</summary>
     public const int MinAzimuthLines = 9, MaxAzimuthLines = 4001;
+}
+
+/// <summary>
+/// brief-sar-3 R-sar3-5 — the grid lines a setup gives, metres, per axis, and where they came from (<c>a list in mm</c>, or
+/// a CSXCAD file's name) for every sentence that names them. <see cref="Problem"/> is why they could not be read; the lists
+/// are then empty.
+/// </summary>
+public sealed record FdtdExplicitLines(IReadOnlyList<double> X, IReadOnlyList<double> Y, IReadOnlyList<double> Z, string Source)
+{
+    public string? Problem { get; init; }
+
+    public IReadOnlyList<double> Axis(FdtdAxis a) => a switch { FdtdAxis.X => X, FdtdAxis.Y => Y, _ => Z };
 }
 
 /// <summary>Why a required line exists (R-em3d8-2d).</summary>
@@ -113,6 +146,8 @@ public enum FdtdLineKind
     /// <summary>brief-em3d-116 — a wave port's feed: the source plane, the voltage planes and the uniform lattice between —
     /// never moved.</summary>
     WavePortPlane,
+    /// <summary>brief-sar-3 R-sar3-5 — a line the setup gave (<c>OpenEms.GridLines</c>).</summary>
+    Given,
 }
 
 /// <summary>
@@ -145,6 +180,7 @@ public sealed record FdtdLineSource(
             FdtdLineKind.SheetPlane    => $"sheet plane at {at}",
             FdtdLineKind.PortExtent    => $"port extent at {at}",
             FdtdLineKind.WavePortPlane => $"feed line at {at}",
+            FdtdLineKind.Given         => $"given line at {at}",
             _                          => $"face at {at}",
         };
         if (Kind is FdtdLineKind.ThirdsInside or FdtdLineKind.ThirdsOutside)
@@ -250,7 +286,8 @@ public sealed record FdtdAxisGrid(
 /// lengths of ring-down, at the estimated step.</param>
 /// <param name="Refusal">Non-null when the run would not fit in memory (R-em3d8-5b): a sentence naming
 /// the feature that set the smallest cell and the setting that would relax it. The lines are still
-/// here, so <c>explain</c> can show the size that was refused.</param>
+/// here, so <c>explain</c> can show the size that was refused. brief-sar-3 — on given lines, also why the
+/// problem cannot be run on them (a port between the lines it needs).</param>
 public sealed record FdtdGridResult(
     FdtdAxisGrid               X,
     FdtdAxisGrid               Y,
@@ -355,6 +392,7 @@ public static partial class FdtdGrid
         // brief-em3d-49 — a face boundary is a sheet coincident with its face here, so it gets that sheet's lines.
         problem = Em3dFaceSheets.Apply(problem);
         if (settings.Cylindrical is { } cylindrical) return BuildCylindrical(problem, settings, cylindrical, availableMemoryBytes);
+        if (settings.ExplicitLines is { } given) return BuildExplicit(problem, settings, given, availableMemoryBytes);
 
         var ctx = new Context(problem, settings);
         // brief-em3d-116 R-em3d116-1 — a wave port's face is fed from behind: its feed's lattice is fixed lines past the face,
@@ -375,7 +413,9 @@ public static partial class FdtdGrid
             // building the axis again. A grid with no split pair is built exactly once, exactly as before.
             var localCells = new Dictionary<ThirdsEdge, (double H, string? By)>();
             var keepLines = new HashSet<ThirdsEdge>();
-            var acrossPorts = problem.Ports.Where(p => PortWidthAxis(p) == (int)a).Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
+            var acrossPorts = problem.Ports.Where(p => PortWidthAxis(p) == (int)a).Select(p => p.Name)
+                                     .Concat(problem.LumpedElements.Where(le => PortWidthAxis(le) == (int)a).Select(le => le.Name))
+                                     .ToHashSet(StringComparer.Ordinal);
             for (int pass = 0; ; pass++)
             {
                 var axisMerges = new List<FdtdMerge>();
@@ -603,6 +643,13 @@ public static partial class FdtdGrid
             double lo = A3(port.Min, axis), hi = A3(port.Max, axis);
             Add(lo, true, new FdtdLineSource(port.Name, FdtdLineKind.PortExtent, lo));
             if (hi != lo) Add(hi, true, new FdtdLineSource(port.Name, FdtdLineKind.PortExtent, hi));
+        }
+        // brief-sar-3 R-sar3-3 — a lumped element's sheet is gridded exactly as a lumped port's is, and snaps the same way.
+        foreach (var le in problem.LumpedElements)
+        {
+            double lo = A3(le.Min, axis), hi = A3(le.Max, axis);
+            Add(lo, true, new FdtdLineSource(le.Name, FdtdLineKind.PortExtent, lo));
+            if (hi != lo) Add(hi, true, new FdtdLineSource(le.Name, FdtdLineKind.PortExtent, hi));
         }
 
         string n = AxisName(axis);
@@ -994,9 +1041,14 @@ public static partial class FdtdGrid
     /// drives along — or null for a wave port, a coaxial one, or a sheet with no such axis. Only this extent snaps.
     /// </summary>
     public static int? PortWidthAxis(Em3dPort p)
+        => p.Kind != Em3dPortKind.Lumped || p.Annulus is not null ? null : WidthAxis(p.Min, p.Max, p.Direction);
+
+    /// <summary>brief-sar-3 — a lumped element's, by the same rule as a lumped port's.</summary>
+    public static int? PortWidthAxis(Em3dLumpedElement e) => WidthAxis(e.Min, e.Max, e.Direction);
+
+    private static int? WidthAxis(Point3 min, Point3 max, Point3 direction)
     {
-        if (p.Kind != Em3dPortKind.Lumped || p.Annulus is not null) return null;
-        double[] lo = [p.Min.X, p.Min.Y, p.Min.Z], hi = [p.Max.X, p.Max.Y, p.Max.Z], d = [p.Direction.X, p.Direction.Y, p.Direction.Z];
+        double[] lo = [min.X, min.Y, min.Z], hi = [max.X, max.Y, max.Z], d = [direction.X, direction.Y, direction.Z];
         int? axis = null;
         for (int i = 0; i < 3; i++)
             if (hi[i] > lo[i] && Math.Abs(d[i]) < 0.5)
@@ -1578,6 +1630,7 @@ public static partial class FdtdGrid
                     Em3dCylinder c => Math.Min(2 * c.Radius, Distance(c.AxisStart, c.AxisEnd)),
                     Em3dSphere sp => 2 * sp.Radius,
                     Em3dTruncatedSphere t => Math.Min(2 * t.Radius, t.ZMax - t.ZMin),
+                    Em3dEllipsoid el => 2 * Math.Min(el.A, Math.Min(el.B, el.C)),
                     var prim => Extent(Em3dProblem.Bounds(prim)),
                 };
                 min = Math.Min(min, f);

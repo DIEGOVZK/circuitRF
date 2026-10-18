@@ -144,6 +144,16 @@ public static class C3dDiagnostics
         "c3d.solid.zero-volume", DiagnosticSeverity.Error,
         "The {kind} '{name}' has no volume: {why}.", ("name", name), ("kind", kind), ("why", why));
 
+    /// <summary>brief-sar-3 R-sar3-3 — a lumped element with no value.</summary>
+    public static Diagnostic LumpedElementEmpty(string name) => Diagnostic.Create(
+        "c3d.lumped.empty", DiagnosticSeverity.Error,
+        "The lumped element '{name}' states no R, L or C; give it at least one.", ("name", name));
+
+    /// <summary>brief-sar-3 R-sar3-2 — a phantom whose dimensions or layers do not make its shape.</summary>
+    public static Diagnostic PhantomShape(string name, string why) => Diagnostic.Create(
+        "c3d.phantom.shape", DiagnosticSeverity.Error,
+        "The phantom '{name}' {why}.", ("name", name), ("why", why));
+
     public static Diagnostic SheetShape(string name, string why) => Diagnostic.Create(
         "c3d.sheet.shape", DiagnosticSeverity.Error,
         "The sheet '{name}' {why}.", ("name", name), ("why", why));

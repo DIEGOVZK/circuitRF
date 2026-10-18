@@ -205,7 +205,7 @@ public static partial class CsxcadWriter
                       "medium rather than a step into free space.");
 
         // ── The file ───────────────────────────────────────────────────────────────────────────────────────────
-        string head = CylHead(grid, cyl, faceKinds, ctx.Pml, maxSteps, run.EndCriterionDb, f0, fc, air, fitHz);
+        string head = CylHead(grid, cyl, faceKinds, ctx.Pml, maxSteps, run.EndCriterionDb, f0, fc, air, fitHz, run.CellConstantMaterial);
         const string tail = "        </Properties>\n    </ContinuousStructure>\n</openEMS>\n";
         string body = props.ToString();
         var files = excitations.Select(e =>
@@ -217,7 +217,7 @@ public static partial class CsxcadWriter
     }
 
     private static string CylHead(FdtdGridResult grid, FdtdCylinder cyl, Em3dBoundaryKind[] faces, int pml, long maxSteps, double endDb,
-                                  double f0, double fc, Em3dMaterial air, double fitHz)
+                                  double f0, double fc, Em3dMaterial air, double fitHz, bool cellConstant)
     {
         var sb = new StringBuilder();
         sb.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n");
@@ -226,7 +226,7 @@ public static partial class CsxcadWriter
         sb.Append("     Run by circuitRF once per port, as  openEMS model.xml  in that port's directory. -->\n");
         sb.Append("<openEMS>\n");
         sb.Append($"    <FDTD NumberOfTimesteps=\"{maxSteps.ToString(CultureInfo.InvariantCulture)}\" CylinderCoords=\"1\" endCriteria=\"{R(Math.Pow(10, endDb / 10))}\" " +
-                  $"OverSampling=\"{OverSampling}\" TimeStepMethod=\"{TimeStepMethod}\">\n");
+                  $"OverSampling=\"{OverSampling}\" TimeStepMethod=\"{TimeStepMethod}\"{CellConstantAttribute(cellConstant)}>\n");
         sb.Append($"        <Excitation Type=\"0\" f0=\"{R(f0)}\" fc=\"{R(fc)}\" />\n");
         // ρmin is PEC on a pin's surface and ignored on the axis (openEMS's own axis handling); α closes on itself, so its
         // two entries are placeholders openEMS does not apply, written PEC as upstream's own examples write them.

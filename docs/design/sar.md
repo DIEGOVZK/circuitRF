@@ -1,6 +1,6 @@
 # circuitRF — SAR and B1 for MRI coil designers and phone SAR
 
-**Status:** SAR-1 done (§1–§3), SAR-2 done (§4) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
+**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
 **Reference data:** [`testdata/sar/openems-ref/`](../../testdata/sar/openems-ref/README.md) · **Builds on:**
 [`em-3d.md`](em-3d.md) (the openEMS backend) and [`em-3d-f0-findings.md`](em-3d-f0-findings.md) (its validated versions).
 
@@ -340,3 +340,132 @@ disagree with the reference for a reason that has nothing to do with SAR. Each r
   mode on the MCP `import` tool (R-aut-13), which turns that tool from single-mode into one with a selector. Left for
   the owner.
 - Debye or Lorentz fits for broadband FDTD tissue (overview §8); Palace, which will read the same evaluated values.
+
+---
+
+## 5. Phantoms, lumped elements and the FDTD keys replication needs (SAR-3)
+
+What SAR-7 and SAR-8 need to rebuild `Dipole_SAR` and `MRI_Loop_Coil` from `.c3d` objects alone.
+
+### 5.1 The ellipsoid (R-sar3-1)
+
+`C3dEllipsoid` is a centre and three semi-axes in DBU, along x, y and z of its own frame, so a placement's rotation turns it
+(a sphere's rotation only moves its centre). It lowers to `Em3dEllipsoid` — centre, semi-axes A, B, C and the frame's axes
+U, V (W = U × V) — which carries the placement's rotation in its axes. Its one face is `surface`; every face edit, a
+boundary on it, Fillet/Chamfer and Convert to Polyhedron are refused as a sphere's are.
+
+| Where | How it is stated |
+|---|---|
+| CSXCAD, axes on the world's | a unit `Sphere` under `Scale3` then `Translate`, exactly what `Dipole_SAR.py` writes (§5.6 gate) |
+| CSXCAD, turned off the world's axes | the `Polyhedron` of its tessellation: the grid reads a solid's extent from its primitive, not from CSXCAD's transformation chain, so a rotation between the scale and the move would be gridded from a box it does not fill; the polyhedron is staircased the way the transformed sphere would be. The writer's header says so |
+| Gmsh (Palace, thermal) | `Sphere` of radius 1, `Dilate` by the semi-axes, `Rotate` onto its frame, `Translate` |
+| geometry worker | a unit sphere under one `gp_GTrsf` (the semi-axes along u, v, u × v, then the centre): a B-spline surface, exact |
+| STEP export | the worker's `ellipsoid` primitive (centre, semi, u, v) |
+
+**The kernel's volume** of an ellipsoid turned 30° about y (80 × 60 × 30 µm) is 4.4e-4 below 4/3·π·abc. The surface is
+exact: with `BRepGProp::VolumeProperties`' adaptive integration at 1e-9 the same solid gives the analytic volume to 1e-6.
+The 4.4e-4 is the worker's fixed-order Gauss integration over a B-spline face (a sphere's analytic face integrates to
+1e-6 with it). The worker is left as it is — every volume it reports would move — and the gate holds the kernel's own
+tolerance, 1e-3.
+
+### 5.2 Layered phantoms (R-sar3-2)
+
+`C3dPhantom` is one object: a `Shape`, its dimensions, shells, and `Layers` (`Name`, `Material`), outermost first. In the
+problem each layer is an ordinary solid named `<phantom>/<layer>` (the spelling a placed cell's contents take, which no
+document object can have), elaborated outermost first so the innermost has the later construction order and wins
+(em-3d.md §6.3a) — the priorities 10, 11, 12 `Dipole_SAR` gives skin, headbone and brain. **Every layer is a dielectric**:
+a tissue record states εr and σ together, which on an ordinary object asks for a Role; a phantom's layer has one.
+
+| Shape | Fields | Layers, outermost first | From |
+|---|---|---|---|
+| `Ellipsoid3` | Centre, SemiAxes, Shell1, Shell2 | each shell comes off every semi-axis | openEMS's head phantom: 100/80/100 mm, shells 9 and 9 mm; `Dipole_SAR`'s three ellipsoids |
+| `Cylinder3` | Centre, Radius, Length, Axis, Shell1, Shell2 | radial shells; every layer runs the full length | openEMS's body cylinder: r 100 mm, 260 mm, shells 8 and 10 mm |
+| `FlatBox` | Centre, Size, Shell1 | a shell on the floor and four walls, the liquid open on top | the flat phantom of phone SAR (SAR-12) |
+| `Sphere1`, `Box1` | Centre, Radius / Size | one | the analytic checks |
+
+The defaults (`C3dPhantom.New`) are the openEMS examples' geometry where there is one, as `create_phantoms.py` states
+it, and SAR-2's records of those examples' tissues as materials. The flat box's liquid defaults to the body
+tissue-simulating liquid; **its shell names no material**, because no shell material with a stated source is shipped —
+the owner's to decide whether one should be.
+
+**Flatten** (`C3dPhantoms.Flatten`) replaces the phantom with its layers as ordinary objects named
+`<phantom>_<layer>`, in a group named after it, in its place in construction order: a flattened phantom elaborates to the
+same solids, materials, roles and orders (the gate). The flattened objects hold numbers; an expression in the phantom's
+dimensions is not carried into them.
+
+### 5.3 The lumped element (R-sar3-3)
+
+`C3dLumpedElement` (the document's `LumpedElements`) is a gap given exactly as a lumped port's — plane, offset,
+rectangle, optional Positive/Negative — and resolved by **the port's own code**: `C3dLumpedElements` builds a port record
+from it and calls `C3dPorts.Resolve`, so the contact inference, the corner inset, the stated-ends override and the
+not-modelled refusal cannot drift apart. Only the polarity is dropped. R, L and C are expressions in the document's
+scope, each with its unit (`C = Ctune`, `CUnit = pF`), so the tuning series sweeps them by re-running.
+
+openEMS 0.37.0's `LumpedElement` reads `Direction`, `Caps`, `R`, `C`, `L` (each absent = not present) and `LEtype`
+(0 parallel, its default; 1 series). From `operator.cpp` and `operator_ext_lumpedRLC.cpp` at the `v0.37.0` tag (read,
+not copied): a parallel R and/or C is folded into the cell's material, a parallel element with L and every series element
+go through the RLC extension, a negative value is clamped to zero with a warning, an element with nothing is skipped, a
+zero R or L in parallel is treated as absent (open), a zero C in series as absent, and a series element whose only values
+are a zero R or L divides by zero in its update. **Each of those is refused by `Em3dLumpedElement.Inexpressible`**,
+naming the element, rather than written as something openEMS would turn into something else. One openEMS check is not
+reproduced: a parallel C so small that C / (Σ cell area / length) is below ε₀ is skipped by openEMS with a warning; it
+depends on the snapped cells, and the run's own log carries openEMS's sentence.
+
+The writer writes it as a port's resistor element is written, the width snapped to a line as a port's is
+(`FdtdGrid.PortWidthAxis`), and the grid collects its extents as a port's (`PortExtent` lines, the same thirds-pair snap).
+It is not a port: no excitation, no probe, no row in S. **Palace refuses it** in this version (its lumped elements are
+their own series), a static problem leaves it out with a note, and a cylindrical grid refuses it (that lowering writes
+coaxial wave ports only).
+
+### 5.4 Cell-constant material (R-sar3-4)
+
+`OpenEms.CellConstantMaterial` writes `CellConstantMaterial="1"` on `<FDTD>`. `CemOpenEms.ResolveRun(section,
+requestsSar)` turns it on by default when the setup requests SAR — SAR-6 passes that; nothing requests SAR yet — and
+off otherwise, so every existing setup writes the bytes it wrote. The gate compares a setup without SAR with brief-em3d-9's
+committed microstrip golden, byte for byte, and with the key on, the golden with exactly that one attribute added.
+
+### 5.5 Explicit grid lines (R-sar3-5) and boundaries (R-sar3-6)
+
+`OpenEms.GridLines` is either `File` — a CSXCAD XML whose `RectilinearGrid` is taken verbatim, each line times its
+`DeltaUnit`, a cylindrical one refused — or `X`, `Y`, `Z` lists in a `Unit` that must be stated (a bare coordinate could
+be mm or m). A relative file is read beside the document that holds the setup (`CemOpenEms.Anchored`: the `.cem`'s
+reader and `C3dSetups.ForRun` set it). With it `FdtdGrid` places **no** line: none collected, merged, filled, or added for
+a PML. The simulated domain is the grid's extent, as in openEMS; each face's boundary is applied at the grid's outermost
+line and a PML takes its outermost `PmlCells` cells, as openEMS's `PML_n` does. Refused, each with the lines either side:
+
+- the air box reaching past the grid (content outside it would not be simulated);
+- a lumped port's or element's sheet whose plane is not on a line, whose two ends along its direction land on one line
+  (openEMS skips an element of zero snapped length), or whose width holds no line;
+- a sheet whose plane is not on a line;
+- a wave port (its feed is a lattice only circuitRF's own grid places), and a cylindrical grid with given lines.
+
+"On a line" is within 1e-3 of the cell beside it: the reference XMLs write coordinates to seven figures, so the loop
+coil's capacitors sit 3.3e-6 mm off their lines. An extent between lines is accepted when it still spans the same edges,
+as openEMS's snapping does: `Dipole_SAR`'s feed box is ±0.1 mm about the line at x = 0 and ±1.25 mm on z, 2.3 µm off the
+nearest lines.
+
+**Boundaries.** Both examples' choices are expressible as they stand: an absorbing face is written `PML_<PmlCells>`, so
+`PmlCells` 8 on six absorbing faces is `Dipole_SAR`'s `['PML_8']*6`, and `PmlCells` 0 is `MUR`, `MRI_Loop_Coil`'s
+`['MUR']*6`. The Python scripts pass openEMS those strings directly (their FDTD settings are not in the XML, §3.4), and
+openEMS's `BoundaryCond` reads the same text from circuitRF's file. Nothing was missing.
+
+### 5.6 Gates
+
+`tests/Ui.Tests/Em3d/SarPhantomsLumpedGridTests.cs`:
+
+- `C3dEllipsoidTests`: the worker's ellipsoid (turned 30° about y) against 4/3·π·abc to the kernel's tolerance (§5.1); the
+  CSXCAD element of an axis-aligned one has `Dipole_SAR`'s skin ellipsoid's structure and values (a unit sphere, Scale3
+  80, 100, 100 mm, Translate 100 mm — in metres, where the script's file is in mm with DeltaUnit 0.001); a turned one is a
+  `Polyhedron`.
+- `C3dPhantomTests`: an `Ellipsoid3` beside a dipole writes three nested ellipsoids in its three tissues with priorities
+  rising inward, semi-axes 100, 91, 82 mm; Flatten gives the same solids, materials, roles and orders.
+- `LumpedElementCsxTests`: a 5.4 pF element whose C is a VAR in pF, across a gap in y, writes the attributes
+  `MRI_Loop_Coil.xml`'s `caps_y` carries (Direction 1, Caps 1, C 5.4e-12, LEtype 0; no R, no L) with the same values, and
+  adds no port. It reads the reference XML where present and the transcribed values elsewhere.
+- `ExplicitGridTests`: `Dipole_SAR`'s XML gives its 114 × 115 × 116 lines exactly, written back unchanged (a stand-in file
+  of the same form where the reference is absent); a port between two given lines is refused naming them.
+- `SarSetupUnchangedTests`: §5.4.
+
+### 5.7 Not in SAR-3
+
+Voxel and mesh import (SAR-11); a lumped element on Palace (its own series); a lumped element on a cylindrical grid.

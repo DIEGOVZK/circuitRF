@@ -93,6 +93,7 @@ public sealed class C3dFaceEditor
     {
         C3dCylinder c => CapCentres(c),
         C3dSphere s => [s.Centre],
+        C3dEllipsoid e => [e.Centre],
         _ => null,
     };
 
@@ -106,7 +107,15 @@ public sealed class C3dFaceEditor
     public const string SphereConvert = "A sphere is not converted to a polyhedron: its facets would be ~500 unnamed faces. Cut it with a Boolean instead.";
 
     /// <summary>The refusal a fixed point gives a vertex move: the cylinder's or the sphere's sentence.</summary>
-    public static string FixedPointMove(C3dObject o) => o is C3dSphere ? SphereVertexMove : CylinderVertexMove;
+    public static string FixedPointMove(C3dObject o) => o switch
+    {
+        C3dSphere => SphereVertexMove, C3dEllipsoid => EllipsoidVertexMove, _ => CylinderVertexMove,
+    };
+
+    /// <summary>brief-sar-3 — what an ellipsoid says to a face edit, a vertex move and Convert to Polyhedron, as a sphere does.</summary>
+    public const string EllipsoidFaceEdit = "An ellipsoid's surface is curved: change its SemiAxes in the Inspector.";
+    public const string EllipsoidVertexMove = "An ellipsoid's centre snaps and measures but does not move.";
+    public const string EllipsoidConvert = "An ellipsoid is not converted to a polyhedron: its facets would be ~500 unnamed faces. Cut it with a Boolean instead.";
 
     // ── Move Along Normal (push/pull) ────────────────────────────────────────────────────────
 
@@ -116,7 +125,7 @@ public sealed class C3dFaceEditor
     {
         switch (Source)
         {
-            case C3dSphere:
+            case C3dSphere or C3dEllipsoid:
                 return null;
             case C3dCylinder c:
                 if (sign > 0) return null;
@@ -144,6 +153,7 @@ public sealed class C3dFaceEditor
         {
             case C3dCylinder c: return CylinderAlong(c, face, d, length);
             case C3dSphere: return C3dFaceEditResult.Refuse(SphereFaceEdit);
+            case C3dEllipsoid: return C3dFaceEditResult.Refuse(EllipsoidFaceEdit);
             case C3dSheet s:
             {
                 var copy = Copy(s);
@@ -197,6 +207,7 @@ public sealed class C3dFaceEditor
         {
             case C3dCylinder: return C3dFaceEditResult.Refuse(CylinderFreeMove);
             case C3dSphere: return C3dFaceEditResult.Refuse(SphereFaceEdit);
+            case C3dEllipsoid: return C3dFaceEditResult.Refuse(EllipsoidFaceEdit);
             case C3dSheet s:
             {
                 var (u, v, w) = C3dBrepBuild.ToPlane(s.Plane, by);
@@ -234,6 +245,7 @@ public sealed class C3dFaceEditor
         {
             case C3dCylinder: return C3dFaceEditResult.Refuse(CylinderVertexMove);
             case C3dSphere: return C3dFaceEditResult.Refuse(SphereVertexMove);
+            case C3dEllipsoid: return C3dFaceEditResult.Refuse(EllipsoidVertexMove);
             case C3dSheet { Image: not null, Rect: { } rect } img when vertex is >= 0 and < 4: return ImageCorner(img, rect, vertex, to, freeAspect, aspect);
             case C3dSheet s: return SheetVertex(s, vertex, to);
             case C3dPolyline: return C3dFaceEditResult.Refuse("A polyline is construction geometry: edit it by drawing it again.");
@@ -379,6 +391,7 @@ public sealed class C3dFaceEditor
             case C3dPolyhedron: return C3dFaceEditResult.Refuse($"'{o.Name}' is already a polyhedron.");
             case C3dSheet or C3dPolyline: return C3dFaceEditResult.Refuse($"'{o.Name}' is not a solid.");
             case C3dSphere: return C3dFaceEditResult.Refuse(C3dFaceEditor.SphereConvert);
+            case C3dEllipsoid: return C3dFaceEditResult.Refuse(C3dFaceEditor.EllipsoidConvert);
             case C3dCylinder c:
             {
                 int n = facets ?? Engine.Em3d.Em3dTessellation.CylinderSegments;
@@ -410,6 +423,9 @@ public static class C3dFaceCommands
                 return null;
             case C3dSphere:
                 refusal = "A sphere's surface is curved, and this needs a flat face.";
+                return null;
+            case C3dEllipsoid:
+                refusal = "An ellipsoid's surface is curved, and this needs a flat face.";
                 return null;
             case C3dSheet s:
             {

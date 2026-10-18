@@ -938,6 +938,14 @@ public sealed class C3dElaborator(TechnologyCache? technologies = null, Geometry
                 return;
             }
             if (C3dOperands.IsKernel(obj)) { KernelObject(obj, name, world, doc, tech, prefix, path, exact); return; }
+            // brief-sar-3 R-sar3-2 — a phantom is its layers, outermost first, so the innermost wins (C3dPhantoms).
+            if (obj is C3dPhantom phantom)
+            {
+                if (C3dPhantoms.ShapeFault(phantom) is { } fault) { _refusals.Add($"The phantom '{name}' {fault}."); return; }
+                foreach (var (layer, solid) in C3dPhantoms.Layers(phantom))
+                    Managed(solid, C3dPhantoms.LayerName(name, layer.Name), world, doc, tech, prefix, path, exact);
+                return;
+            }
             Managed(obj, name, world, doc, tech, prefix, path, exact);
         }
 

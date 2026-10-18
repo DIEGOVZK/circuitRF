@@ -63,6 +63,7 @@ public static class Em3dTessellation
             case Em3dCylinder cyl:         b.Cylinder(cyl); break;
             case Em3dSweep sweep:          b.Sweep(sweep); break;
             case Em3dSphere s:             b.Sphere(s.Center, s.Radius, -s.Radius, s.Radius); break;
+            case Em3dEllipsoid e:          b.Ellipsoid(e); break;
             case Em3dTruncatedSphere t:
                 b.Sphere(t.Center, t.Radius,
                          Math.Max(t.ZMin - t.Center.Z, -t.Radius), Math.Min(t.ZMax - t.Center.Z, t.Radius));
@@ -250,6 +251,15 @@ public static class Em3dTessellation
             }
             if (!southPole) Cap(rings[0], new Point3(c.X, c.Y, c.Z + zLo), reverse: true);
             if (!northPole) Cap(rings[^1], new Point3(c.X, c.Y, c.Z + zHi), reverse: false);
+        }
+
+        /// <summary>brief-sar-3 R-sar3-1 — the unit sphere's tessellation mapped onto the ellipsoid, so its rings follow its
+        /// own axes whatever its rotation.</summary>
+        public void Ellipsoid(Em3dEllipsoid e)
+        {
+            int first = Vertices.Count;
+            Sphere(new Point3(0, 0, 0), 1, -1, 1);
+            for (int i = first; i < Vertices.Count; i++) Vertices[i] = e.Map(Vertices[i].X, Vertices[i].Y, Vertices[i].Z);
         }
 
         public void Extrusion(IReadOnlyList<Point2> outline, IReadOnlyList<IReadOnlyList<Point2>> holes,

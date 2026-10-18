@@ -103,6 +103,71 @@ public sealed record Em3dTruncatedSphere(Point3 Center, double Radius, double ZM
     : Em3dPrimitive;
 
 /// <summary>
+/// brief-sar-3 R-sar3-1 — an ellipsoid: its centre and its semi-axes <paramref name="A"/>, <paramref name="B"/> and
+/// <paramref name="C"/>, metres, along its own axes <paramref name="U"/>, <paramref name="V"/> and <see cref="W"/> = U × V (unit
+/// vectors; the world's x and y for one that was never rotated). A point p is inside when Σ ((p − c)·axis / semi-axis)² ≤ 1.
+/// </summary>
+public sealed record Em3dEllipsoid(Point3 Center, double A, double B, double C, Point3 U, Point3 V) : Em3dPrimitive
+{
+    /// <summary>An ellipsoid whose axes are the world's.</summary>
+    public static Em3dEllipsoid Aligned(Point3 center, double a, double b, double c)
+        => new(center, a, b, c, new Point3(1, 0, 0), new Point3(0, 1, 0));
+
+    /// <summary>The third axis, U × V.</summary>
+    public Point3 W => new(U.Y * V.Z - U.Z * V.Y, U.Z * V.X - U.X * V.Z, U.X * V.Y - U.Y * V.X);
+
+    /// <summary>4/3·π·A·B·C, m³.</summary>
+    public double Volume => 4.0 / 3.0 * Math.PI * A * B * C;
+
+    /// <summary>
+    /// The semi-axis along world x, y and z when each of the ellipsoid's own axes lies along a world axis (to 1e-12) — any
+    /// placement made of quarter turns — or null when one does not. Such an ellipsoid is exactly a unit sphere scaled per
+    /// world axis, which is what openEMS's <c>Scale3</c> transform states.
+    /// </summary>
+    public (double X, double Y, double Z)? AlignedSemiAxes()
+    {
+        double[] s = new double[3];
+        bool[] taken = new bool[3];
+        foreach (var (axis, semi) in new[] { (U, A), (V, B), (W, C) })
+        {
+            double[] a = [Math.Abs(axis.X), Math.Abs(axis.Y), Math.Abs(axis.Z)];
+            int k = a[0] > 1 - 1e-12 ? 0 : a[1] > 1 - 1e-12 ? 1 : a[2] > 1 - 1e-12 ? 2 : -1;
+            if (k < 0 || taken[k]) return null;
+            taken[k] = true;
+            s[k] = semi;
+        }
+        return (s[0], s[1], s[2]);
+    }
+
+    /// <summary>The point of the ellipsoid's surface that the unit sphere's point (x, y, z) maps to.</summary>
+    public Point3 Map(double x, double y, double z)
+    {
+        var w = W;
+        return new Point3(Center.X + A * x * U.X + B * y * V.X + C * z * w.X,
+                          Center.Y + A * x * U.Y + B * y * V.Y + C * z * w.Y,
+                          Center.Z + A * x * U.Z + B * y * V.Z + C * z * w.Z);
+    }
+
+    /// <summary>True when <paramref name="p"/> is inside or on the surface.</summary>
+    public bool Contains(Point3 p)
+    {
+        var d = new Point3(p.X - Center.X, p.Y - Center.Y, p.Z - Center.Z);
+        var w = W;
+        double u = (d.X * U.X + d.Y * U.Y + d.Z * U.Z) / A, v = (d.X * V.X + d.Y * V.Y + d.Z * V.Z) / B,
+               t = (d.X * w.X + d.Y * w.Y + d.Z * w.Z) / C;
+        return u * u + v * v + t * t <= 1;
+    }
+
+    /// <summary>The exact half-extent along each world axis: √((A·Uᵢ)² + (B·Vᵢ)² + (C·Wᵢ)²).</summary>
+    public (double X, double Y, double Z) HalfExtent()
+    {
+        var w = W;
+        double R(double u, double v, double t) => Math.Sqrt(A * A * u * u + B * B * v * v + C * C * t * t);
+        return (R(U.X, V.X, w.X), R(U.Y, V.Y, w.Y), R(U.Z, V.Z, w.Z));
+    }
+}
+
+/// <summary>
 /// brief-em3d-64 R-em3d64-3a — a solid the geometry kernel built (a boolean, a fillet, a chamfer, a STEP part): an OPAQUE
 /// B-rep only the worker reads, the kernel's display tessellation of it, and its named faces and edges. It is a
 /// primitive, not a second kind of solid, so precedence, construction order, materials and provenance need no new case.
@@ -354,6 +419,62 @@ public sealed record Em3dPort(
     public string? FaceGroupLabel { get; init; }
 }
 
+/// <summary>brief-sar-3 R-sar3-3 — how a lumped element's R, L and C are joined.</summary>
+public enum Em3dRlcTopology
+{
+    /// <summary>R ∥ L ∥ C — openEMS's <c>LEtype</c> 0, and its default.</summary>
+    Parallel,
+    /// <summary>R + L + C in series — openEMS's <c>LEtype</c> 1.</summary>
+    Series,
+}
+
+/// <summary>
+/// brief-sar-3 R-sar3-3 — a lumped R, L and/or C across a gap: an axis-aligned rectangle from <paramref name="Min"/> to
+/// <paramref name="Max"/> (exactly one axis has zero extent), carrying current along <paramref name="Direction"/> — the same
+/// sheet a lumped port is, found by the same rules. Each of <paramref name="R"/> (Ω), <paramref name="L"/> (H) and
+/// <paramref name="C"/> (F) may be absent (null). It is <b>not a port</b>: it is excited by nothing and adds no row to S.
+/// </summary>
+public sealed record Em3dLumpedElement(
+    string          Name,
+    Point3          Min,
+    Point3          Max,
+    Point3          Direction,
+    double?         R,
+    double?         L,
+    double?         C,
+    Em3dRlcTopology Topology)
+{
+    /// <summary>
+    /// Why openEMS 0.37.0 cannot state this element, or null when it can. Its lumped element takes R, L and C each optional,
+    /// in parallel or in series — but a value that is negative is clamped to zero, an element with none is skipped, a zero R
+    /// or L in parallel is a short it treats as absent, a zero C in series is treated as absent, and a series element of R =
+    /// 0 alone divides by zero. Each is refused here by name rather than written as something else.
+    /// </summary>
+    public string? Inexpressible()
+    {
+        string who = $"Lumped element '{Name}'";
+        if (R is null && L is null && C is null)
+            return $"{who} states no R, L or C: an element with none is nothing, and openEMS skips it. Give it a value.";
+        foreach (var (key, v) in new[] { ("R", R), ("L", L), ("C", C) })
+            if (v is { } x && (!double.IsFinite(x) || x < 0))
+                return $"{who}'s {key} is {x.ToString("G6", System.Globalization.CultureInfo.InvariantCulture)}: a lumped value is a " +
+                       "finite number of 0 or more (openEMS would clamp a negative one to zero).";
+        if (Topology == Em3dRlcTopology.Parallel)
+        {
+            if (R == 0) return $"{who} is parallel with R = 0, a short circuit openEMS treats as absent (open). Draw a conductor for a short, or remove R.";
+            if (L == 0) return $"{who} is parallel with L = 0, a short circuit openEMS treats as absent. Draw a conductor for a short, or remove L.";
+        }
+        else
+        {
+            if (C == 0) return $"{who} is series with C = 0, which openEMS treats as absent rather than as an open. Remove C, or give it a value.";
+            if ((R ?? 0) == 0 && (L ?? 0) == 0 && C is null)
+                return $"{who} is series with nothing but a zero R or L, which openEMS 0.37.0 cannot state (its update divides by it). " +
+                       "Draw a conductor for a short.";
+        }
+        return null;
+    }
+}
+
 /// <summary>
 /// A coaxial port's sheet, between two radii. The current (or field) runs radially between the two
 /// objects: <paramref name="Outward"/> when the negative object is the inner one, which is Palace's
@@ -454,6 +575,10 @@ public sealed record Em3dProblem(
 
     /// <summary>True when any port is a wave port.</summary>
     public bool HasWavePorts => Ports.Any(p => p.Kind == Em3dPortKind.Wave);
+
+    /// <summary>brief-sar-3 R-sar3-3 — lumped R, L, C across gaps. They are not ports. Empty — every problem written before
+    /// them — lowers byte for byte as before.</summary>
+    public IReadOnlyList<Em3dLumpedElement> LumpedElements { get; init; } = [];
 
     /// <summary>brief-em3d-74 R-em3d74-4b — boxes with a target element size, honoured by every lowering that meshes with Gmsh
     /// (Palace and thermal). Empty — every problem written before them — lowers byte for byte as before.</summary>
@@ -635,6 +760,22 @@ public sealed record Em3dProblem(
             }
         }
 
+        // brief-sar-3 R-sar3-3 — a lumped element is a port's sheet that carries R, L, C instead of a source.
+        foreach (var le in LumpedElements)
+        {
+            Name("lumped element", le.Name);
+            int zeroAxes = (le.Max.X == le.Min.X ? 1 : 0) + (le.Max.Y == le.Min.Y ? 1 : 0) + (le.Max.Z == le.Min.Z ? 1 : 0);
+            if (zeroAxes != 1)
+                problems.Add($"Lumped element '{le.Name}''s sheet is not a rectangle: exactly one of its axes must have zero extent, " +
+                             $"and {zeroAxes} do.");
+            else if (!Inside(le.Min.X, le.Min.Y, le.Min.Z, le.Max.X, le.Max.Y, le.Max.Z))
+                problems.Add($"Lumped element '{le.Name}''s sheet extends outside the air box.");
+            if (le.R is null && le.L is null && le.C is null)
+                problems.Add($"Lumped element '{le.Name}' states no R, L or C.");
+            if (IsStatic)
+                problems.Add($"Lumped element '{le.Name}' is in a static problem, which has no frequency for its R, L and C to act at.");
+        }
+
         ValidateFaceGroups(problems);
         ValidateFaceBoundaries(problems);
 
@@ -803,6 +944,7 @@ public sealed record Em3dProblem(
             "does not have one section ring of at least three vertices per path vertex",
         Em3dSphere s when !(s.Radius > 0) => "has zero radius",
         Em3dTruncatedSphere t when !(t.Radius > 0) || !(t.ZMax > t.ZMin) => "has zero volume",
+        Em3dEllipsoid e when !(e.A > 0 && e.B > 0 && e.C > 0) => "has a semi-axis that is not positive",
         _ => null,
     };
 
@@ -863,6 +1005,11 @@ public sealed record Em3dProblem(
             case Em3dTruncatedSphere t:
                 return (t.Center.X - t.Radius, t.Center.Y - t.Radius, Math.Max(t.ZMin, t.Center.Z - t.Radius),
                         t.Center.X + t.Radius, t.Center.Y + t.Radius, Math.Min(t.ZMax, t.Center.Z + t.Radius));
+            case Em3dEllipsoid e:
+            {
+                var (hx, hy, hz) = e.HalfExtent();
+                return (e.Center.X - hx, e.Center.Y - hy, e.Center.Z - hz, e.Center.X + hx, e.Center.Y + hy, e.Center.Z + hz);
+            }
             case Em3dShapeSolid k:
                 return k.Bounds();
             default:

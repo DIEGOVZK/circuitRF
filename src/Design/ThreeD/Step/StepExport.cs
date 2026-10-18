@@ -667,6 +667,14 @@ public static class StepExport
                 return new JsonObject { ["kind"] = "cylinder", ["from"] = P(c.AxisStart), ["to"] = P(c.AxisEnd), ["radius"] = c.Radius * Um };
             case Em3dSphere s:
                 return new JsonObject { ["kind"] = "sphere", ["centre"] = P(s.Center), ["radius"] = s.Radius * Um };
+            case Em3dEllipsoid el:
+                // brief-sar-3 R-sar3-1 — the worker's scaled sphere: its semi-axes along its own axes u, v and u × v.
+                return new JsonObject
+                {
+                    ["kind"] = "ellipsoid", ["centre"] = P(el.Center),
+                    ["semi"] = new JsonArray(el.A * Um, el.B * Um, el.C * Um),
+                    ["u"] = new JsonArray(el.U.X, el.U.Y, el.U.Z), ["v"] = new JsonArray(el.V.X, el.V.Y, el.V.Z),
+                };
             case Em3dTruncatedSphere t:
                 return new JsonObject
                 {
@@ -747,6 +755,8 @@ public static class StepExport
                                      + "/" + string.Join("/", e.Holes.Select(h => string.Join(";", h.Select(q => Pt(inv, new Point3(q.X, q.Y, e.ZBottom)))))),
             Em3dCylinder c => "cyl " + Pt(inv, c.AxisStart) + ";" + Pt(inv, c.AxisEnd) + ";" + R(c.Radius),
             Em3dSphere s => "sph " + Pt(inv, s.Center) + ";" + R(s.Radius),
+            Em3dEllipsoid el => "ell " + Pt(inv, el.Center) + ";" + R(el.A) + ";" + R(el.B) + ";" + R(el.C) + ";" +
+                                Pt(inv, el.Map(1, 0, 0)) + ";" + Pt(inv, el.Map(0, 1, 0)),
             Em3dTruncatedSphere t => "tsph " + Pt(inv, t.Center) + ";" + R(t.Radius) + ";" + Pt(inv, t.Center with { Z = t.ZMin }) + ";" + Pt(inv, t.Center with { Z = t.ZMax }),
             Em3dPolyhedron ph => "poly " + string.Join(";", ph.Vertices.Select(v => Pt(inv, v))) + "|" +
                                  string.Join(";", ph.Faces.Select(f => string.Join(",", f.Outer) + "/" + string.Join("/", f.Holes.Select(h => string.Join(",", h))))),

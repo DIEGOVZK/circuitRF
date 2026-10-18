@@ -67,7 +67,7 @@ public sealed class GeometryKernelTree
     public IReadOnlyList<string> FaceNames { get; }
 
     /// <summary>The kinds a tree can hold. A sheet, a polyline and a wire are not solids the kernel builds.</summary>
-    public static bool CanHold(C3dObject obj) => obj is C3dBox or C3dCylinder or C3dSphere or C3dPrism or C3dPolyhedron
+    public static bool CanHold(C3dObject obj) => obj is C3dBox or C3dCylinder or C3dSphere or C3dEllipsoid or C3dPrism or C3dPolyhedron
                                                  or C3dBoolean or C3dFillet or C3dChamfer or C3dStep;
 
     /// <summary>
@@ -116,7 +116,7 @@ public sealed class GeometryKernelTree
         IReadOnlyList<string> names = obj is C3dPolyhedron ph0 ? [.. (Kernel.C3dRecognition.ExactlyPlanarFaces(ph0) ?? ph0.Faces).Select(f => f.Name)]
                                                                : obj.FaceNames();
         w.Begin()
-         .Key("kind").Str(obj switch { C3dBox => "box", C3dCylinder => "cylinder", C3dSphere => "sphere", C3dPrism => "prism", _ => "polyhedron" })
+         .Key("kind").Str(obj switch { C3dBox => "box", C3dCylinder => "cylinder", C3dSphere => "sphere", C3dEllipsoid => "ellipsoid", C3dPrism => "prism", _ => "polyhedron" })
          .Key("name").Str(obj.Name)
          .Key("faces").BeginArr();
         foreach (var n in names) w.Str(n);
@@ -140,6 +140,11 @@ public sealed class GeometryKernelTree
                 // brief-em3d-102 R-em3d102-3a — a worker built before spheres refuses the kind with its own sentence.
                 w.Key("centre").Point(U(sp.Centre.X), U(sp.Centre.Y), U(sp.Centre.Z));
                 w.Key("radius").Num(U(sp.Radius));
+                break;
+            case C3dEllipsoid el:
+                // brief-sar-3 R-sar3-1 — a unit sphere scaled along its own axes; a worker built before ellipsoids refuses the kind.
+                w.Key("centre").Point(U(el.Centre.X), U(el.Centre.Y), U(el.Centre.Z));
+                w.Key("semi").Point(U(el.SemiAxes.X), U(el.SemiAxes.Y), U(el.SemiAxes.Z));
                 break;
             case C3dPrism p:
             {

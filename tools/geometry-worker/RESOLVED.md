@@ -82,3 +82,18 @@ The closure staging already worked cross: it reads `NEEDED` with `readelf`, whic
 - **Built and gated on macOS arm64 only.** The Windows (llvm-mingw) and Linux builds of this source are owed before
   release, as for brief 62. A worker built before this refuses the node with its own sentence, which circuitRF reports as a
   worker to rebuild.
+
+## An ellipsoid node and STEP primitive: a unit sphere under one affinity (brief-sar-3, 2026-10-18)
+
+- **`ellipsoid`** (`centre`, `semi` — the three semi-axes along the node's own x, y, z) builds a unit sphere at the origin
+  and applies one `gp_GTrsf` through `BRepBuilderAPI_GTransform`: the semi-axes along u, v and u × v, then the centre. OCCT
+  turns the sphere into a rational B-spline surface, and an affine image of one is exact. One face, named as a sphere's
+  `surface`; no feature edge. STEP export's `ellipsoid` primitive adds `u` and `v` (a turned ellipsoid in the world frame).
+- **Its volume as the worker reports it is 4.4e-4 low** (80 × 60 × 30 µm, turned 30° about y): `Volume()` calls
+  `BRepGProp::VolumeProperties(s, p)`, a fixed-order Gauss integration, which is exact on a sphere's analytic face and not on
+  a B-spline one. Measured with `VolumeProperties(s, p, 1e-9)` (adaptive): the analytic volume to 1e-6. Not changed, because
+  every volume the worker reports (builds, written parts, STEP reads) would move and adaptive integration costs more on a
+  large STEP part; the SAR-3 gate holds 1e-3. Switching to the adaptive form is a one-line change if a caller ever needs it.
+- Built and gated on macOS arm64 only, as the sphere was; a worker built before it refuses the node by name, which
+  circuitRF reports as a worker to rebuild.
+

@@ -7,6 +7,7 @@
 //   Prism on XY, no Shear, rotation about z only              → Em3dExtrudedPolygon (rotated outline)
 //   Cylinder                                                  → Em3dCylinder (any axis: the rotation is applied)
 //   Sphere                                                    → Em3dSphere (the placement moves its centre)
+//   Ellipsoid (brief-sar-3)                                   → Em3dEllipsoid (the placement turns its axes)
 //   Anything else                                             → Em3dPolyhedron
 //
 // A sheet lies flat (Em3dSheet at Z) under the same condition a prism stays an extrusion, and otherwise
@@ -43,7 +44,7 @@ public sealed record C3dSheetGeometry(IReadOnlyList<Point2> Outline, IReadOnlyLi
 public static class C3dLowering
 {
     /// <summary>The lowering table's rows, as <see cref="C3dLowered.Kind"/> spells them.</summary>
-    public const string KindBox = "box", KindExtrusion = "extruded-polygon", KindCylinder = "cylinder", KindSphere = "sphere",
+    public const string KindBox = "box", KindExtrusion = "extruded-polygon", KindCylinder = "cylinder", KindSphere = "sphere", KindEllipsoid = "ellipsoid",
                         KindPolyhedron = "polyhedron", KindSheet = "sheet", KindFramedSheet = "sheet-in-a-plane";
 
     /// <summary>DBU to metres, exactly: the DBU as a decimal number of micrometres (LayoutUnits), then to metres.</summary>
@@ -104,6 +105,10 @@ public static class C3dLowering
             case C3dSphere sp:
                 return Transform(new Em3dSphere(new Point3(M(sp.Centre.X), M(sp.Centre.Y), M(sp.Centre.Z)), M(sp.Radius)),
                                  C3dSphere.FaceNameList, w, KindSphere);
+            case C3dEllipsoid el:
+                return Transform(Em3dEllipsoid.Aligned(new Point3(M(el.Centre.X), M(el.Centre.Y), M(el.Centre.Z)),
+                                                       M(el.SemiAxes.X), M(el.SemiAxes.Y), M(el.SemiAxes.Z)),
+                                 C3dEllipsoid.FaceNameList, w, KindEllipsoid);
             case C3dPolyhedron ph:
             {
                 // brief-em3d-47 R-em3d47-1c — an edited solid that is exactly a box or a z-prism again lowers as one.
@@ -316,6 +321,13 @@ public static class C3dLowering
                                       null, faceNames, "sweep");
             case Em3dSphere sp:
                 return new C3dLowered(new Em3dSphere(Apply(t, sp.Center), sp.Radius), null, faceNames, KindSphere);
+            case Em3dEllipsoid el:
+            {
+                // brief-sar-3 R-sar3-1 — a rigid placement turns the axes and moves the centre; a mirror leaves the shape as it was.
+                var o = Apply(t, new Point3(0, 0, 0));
+                Point3 Turn(Point3 v) => Apply(t, v) is var q ? new Point3(q.X - o.X, q.Y - o.Y, q.Z - o.Z) : v;
+                return new C3dLowered(el with { Center = Apply(t, el.Center), U = Turn(el.U), V = Turn(el.V) }, null, faceNames, KindEllipsoid);
+            }
             case Em3dTruncatedSphere ts when IsZOnly(t):
             {
                 double z0 = t.M22 * ts.ZMin + t.Tz, z1 = t.M22 * ts.ZMax + t.Tz;

@@ -562,6 +562,10 @@ public static class C3dHierarchy
                 // brief-em3d-102 R-em3d102-1e — a flattened sphere (a drawn one, or a layout's ball bond) stays a sphere, not ~500 facets.
                 made = new C3dSphere { Centre = P(sp.Center), Radius = D(sp.Radius) };
                 break;
+            case Em3dEllipsoid el when el.AlignedSemiAxes() is var (ax, ay, az):
+                // brief-sar-3 — an ellipsoid on the world's axes stays an ellipsoid; a turned one is the default's triangles.
+                made = new C3dEllipsoid { Centre = P(el.Center), SemiAxes = new C3dPoint3(D(ax), D(ay), D(az)) };
+                break;
             case Em3dPolyhedron ph:
                 made = new C3dPolyhedron
                 {
@@ -671,6 +675,11 @@ public static class C3dHierarchy
                 break;
             case C3dCylinder c: c.Base = Mul(c.Base, k); c.Length *= k; c.Radius *= k; break;
             case C3dSphere sp: sp.Centre = Mul(sp.Centre, k); sp.Radius *= k; break;
+            case C3dEllipsoid el: el.Centre = Mul(el.Centre, k); el.SemiAxes = Mul(el.SemiAxes, k); break;
+            case C3dPhantom ph:
+                ph.Centre = Mul(ph.Centre, k); ph.SemiAxes = Mul(ph.SemiAxes, k); ph.Size = Mul(ph.Size, k);
+                ph.Radius *= k; ph.Length *= k; ph.Shell1 *= k; ph.Shell2 *= k;
+                break;
             case C3dSheet s:
                 s.Offset *= k;
                 if (s.Rect is { } r) s.Rect = new C3dRect { Min = Mul(r.Min, k), Size = Mul(r.Size, k) };

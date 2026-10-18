@@ -127,7 +127,7 @@ public static class Em3dFaceGeometry
         Em3dExtrudedPolygon e => ["bottom", "top", .. Enumerable.Range(0, e.Outline.Count).Select(k => $"side{k}"),
                                   .. e.Holes.SelectMany((h, i) => Enumerable.Range(0, h.Count).Select(k => $"hole{i}.side{k}"))],
         Em3dCylinder => ["bottom", "top", "side"],
-        Em3dSphere => ["surface"],
+        Em3dSphere or Em3dEllipsoid => ["surface"],
         Em3dPolyhedron ph => [.. ph.Faces.Select(f => f.Name)],
         Em3dShapeSolid k => [.. k.Faces.Select(f => f.Name)],
         _ => [],
@@ -221,6 +221,9 @@ public static class Em3dFaceGeometry
             }
             case Em3dSphere when face == "surface":
                 why = "it is a sphere's curved surface, and a boundary is placed on a flat face";
+                return null;
+            case Em3dEllipsoid when face == "surface":
+                why = "it is an ellipsoid's curved surface, and a boundary is placed on a flat face";
                 return null;
             case Em3dPolyhedron ph:
             {

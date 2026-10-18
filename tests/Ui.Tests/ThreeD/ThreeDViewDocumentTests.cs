@@ -463,6 +463,36 @@ public sealed class ThreeDViewDocumentTests : IDisposable
 			"Radius": 50
 		},
 		{
+			"$type": "Ellipsoid",
+			"Name": "dome",
+			"Material": "Gold",
+			"Centre": [900, 900, 100],
+			"SemiAxes": [80, 60, 40]
+		},
+		{
+			"$type": "Phantom",
+			"Name": "head",
+			"Shape": "Ellipsoid3",
+			"Centre": [3000, 3000, 3000],
+			"SemiAxes": [1000, 800, 1000],
+			"Shell1": 90,
+			"Shell2": 90,
+			"Layers": [
+				{
+					"Name": "skin",
+					"Material": "Gold"
+				},
+				{
+					"Name": "skull",
+					"Material": "Gold"
+				},
+				{
+					"Name": "brain",
+					"Material": "Gold"
+				}
+			]
+		},
+		{
 			"$type": "Sheet",
 			"Name": "trace",
 			"Material": "Gold",

@@ -20100,3 +20100,32 @@ warning), `SarReferenceSetTests`.
 - A compile trap met here: `string.Create(CultureInfo.InvariantCulture, $"…" + "…")` does not compile (CS1620). The
   concatenation is not an interpolated-string handler, so it binds to the `ref` overload. Use one interpolated literal.
 Gate: `tests/Ui.Tests/Em3d/TissueMaterialTests.cs` (`ColeColeTests`, `TissueLibraryTests`).
+
+## Phantoms, the ellipsoid, a lumped RLC element, cell-constant material, given grid lines (brief-sar-3, 2026-10-18)
+
+- **A phantom's layers are elaborated outermost first, so the innermost wins** by construction order — the priorities
+  the openEMS examples give. They are named `<phantom>/<layer>`, a spelling no document object can have, so a layer never
+  collides with an object. **Each layer is a dielectric by declaration** (`Role` set in `C3dPhantoms.Layers`): the
+  constant openEMS tissue records state εr and σ together, which on an ordinary object is the "state a Role" refusal
+  (the SAR-2 entry above); the first run of the gate met exactly that refusal.
+- **A lumped element's gap is resolved by `C3dPorts.Resolve` on a port record built from it** (`C3dLumpedElements`), not
+  by a copy of the port rules. Only polarity is dropped.
+- **What openEMS 0.37.0 would silently change in a lumped element is refused** (`Em3dLumpedElement.Inexpressible`):
+  read from its `operator.cpp` / `operator_ext_lumpedRLC.cpp` at the `v0.37.0` tag. Negative values are clamped to 0,
+  an empty element is skipped, a zero parallel R or L and a zero series C are treated as absent, and a series element of
+  a zero R or L alone divides by zero.
+- **An ellipsoid turned off the world's axes is a CSXCAD `Polyhedron`, not a transformed sphere**: `FdtdGrid` reads a
+  solid's extent from the primitive, so a rotation inside CSXCAD's transformation chain would be gridded from the wrong box.
+  On the world's axes it is a unit `Sphere` under `Scale3` + `Translate`, as `Dipole_SAR` writes it.
+- **The geometry worker's volume of an ellipsoid is 4.4e-4 low and the shape is exact.** `BRepGProp::VolumeProperties`
+  without an epsilon integrates a B-spline face at a fixed order; with eps 1e-9 the same solid is analytic to 1e-6. The
+  worker was not changed (every reported volume would move); `tools/geometry-worker/RESOLVED.md` has the measurement.
+- **`CellConstantMaterial` is off unless stated or SAR is requested**, and off writes nothing, so every existing setup is
+  the same bytes. The committed openEMS golden (`testdata/em3d/openems-goldens/microstrip`) is the proof.
+- **Given grid lines: the domain is the grid**, as in openEMS. The air box must lie inside it, and a port, lumped
+  element or sheet between lines it needs is refused naming the lines. "On a line" is 1e-3 of the local cell, because
+  the reference XMLs write coordinates to seven figures (the loop coil's capacitors are 3.3e-6 mm off their lines). A
+  relative `GridLines.File` is read beside the setup's document: `EmSetupPersistence.LoadFromFile` and
+  `C3dSetups.ForRun` set `CemGridLines.BaseDirectory` (`CemOpenEms.Anchored`), and `check` passes the path.
+Design note: `docs/design/sar.md` §5. Gate: `tests/Ui.Tests/Em3d/SarPhantomsLumpedGridTests.cs`.
+
