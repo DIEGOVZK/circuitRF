@@ -1565,6 +1565,10 @@
                                         Command="{Binding ViewModel.AddGenericMaterialsCommand}"
                                         IsVisible="{Binding ViewModel.CanAddGenericMaterials}"
                                         ToolTip.Tip="Copy circuitRF's generic library (metals, ceramics, semiconductors, laminates — every value with its source) beside this technology and name it."/>
+                                <Button Content="Add Tissue Materials" FontSize="11" Padding="8,3"
+                                        Command="{Binding ViewModel.AddTissueMaterialsCommand}"
+                                        IsVisible="{Binding ViewModel.CanAddTissueMaterials}"
+                                        ToolTip.Tip="Copy circuitRF's tissue library (body tissues whose εr and σ follow frequency, and phantom liquids and gels — every value with its source) beside this technology and name it."/>
                                 <Button Content="Open Selected Row's Library" FontSize="11" Padding="8,3"
                                         Command="{Binding ViewModel.OpenSelectedRowLibraryCommand}"
                                         ToolTip.Tip="Library rows are edited in their own document: open the library the selected row came from."/>

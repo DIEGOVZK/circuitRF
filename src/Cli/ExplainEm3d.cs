@@ -1,7 +1,9 @@
 using System.Globalization;
 using CircuitRF.Design.Em3d;
+using CircuitRF.Design.Layout;
 using CircuitRF.Design.Layout.Em;
 using CircuitRF.Design.Layout.Em3d;
+using CircuitRF.Design.ThreeD;
 using CircuitRF.Design.ThreeD.Occ;
 using CircuitRF.Engine.Em3d;
 using CircuitRF.Render;
@@ -61,9 +63,19 @@ internal static class ExplainEm3d
         var temperature = new Em3dTemperatureJson(
             p.OperatingTempC, setup.OperatingTempC is null ? "default" : "field", metals, g.NoAlpha, g.UnknownTemperature);
 
+        // brief-sar-2 R-sar2-7 — which problem materials came from a frequency-dependent record, and where they were evaluated:
+        // the one frequency C3dProblemAssembly evaluated them at, by the same function.
+        var dispersion = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (src.Elaboration is { } el)
+            foreach (var s in p.Solids)
+                if (el.SolidMaterials.TryGetValue(s.Name, out var rec) && rec.Technology.FindMaterial(rec.Material) is { } tm
+                    && MaterialDispersion.IsDispersive(tm))
+                    dispersion[s.Material] = tm.ColeCole is not null ? "Cole-Cole" : "table";
+        double evaluatedAt = C3dProblemAssembly.MaterialFrequency(p.Frequency);
         var materials = p.Materials.Select(m => new Em3dMaterialJson(
             m.Name, m.Epsr, m.EpsrTensor, m.TanD, m.Mur, m.SigmaSm,
-            g.MaterialSources.TryGetValue(m.Name, out var from) ? from : "unrecorded")).ToList();
+            g.MaterialSources.TryGetValue(m.Name, out var from) ? from : "unrecorded",
+            dispersion.GetValueOrDefault(m.Name), dispersion.ContainsKey(m.Name) ? evaluatedAt : null)).ToList();
 
         var solids = p.Solids.Select(s =>
             {
@@ -451,6 +463,29 @@ internal static class ExplainEm3d
         }
     }
 
+    /// <summary>brief-sar-2 R-sar2-7 — <c>explain --materials</c>: the problem's materials alone, each dispersive one with the
+    /// frequency it was evaluated at.</summary>
+    public static void PrintMaterials(ExplainEm3dJson r)
+    {
+        if (r.Refusal is { } refusal) { Console.WriteLine($"  materials    the 3D problem could not be built: {refusal}"); return; }
+        PrintMaterialRows(r);
+        if (r.Materials.FirstOrDefault(m => m.EvaluatedAtHz is not null)?.EvaluatedAtHz is { } f)
+            Console.WriteLine($"  {"",-12} frequency-dependent materials are evaluated once, at {MaterialDispersion.Hz(f)} (the sweep's " +
+                              "centre), and the solver sees those values at every frequency of the sweep.");
+    }
+
+    private static void PrintMaterialRows(ExplainEm3dJson r)
+    {
+        static string G(double v) => v.ToString("G4", CultureInfo.InvariantCulture);
+        Console.WriteLine("  materials");
+        foreach (var m in r.Materials)
+            Console.WriteLine($"    {m.Name,-24} εr {G(m.Epsr)}" +
+                              (m.EpsrTensor is { } tensor ? $" (xx/yy/zz {string.Join("/", tensor.Select(G))})" : "") +
+                              $"  tanδ {G(m.TanD)}  μr {G(m.Mur)}  σ {G(m.SigmaSm)} S/m" +
+                              (m.EvaluatedAtHz is { } at ? $" at {MaterialDispersion.Hz(at)} ({m.Dispersion})" : "") +
+                              $"   from {m.From}");
+    }
+
     public static void Print(ExplainEm3dJson r)
     {
         static string L(double m) => Em3dSectionScene.FormatLength(m);
@@ -479,11 +514,7 @@ internal static class ExplainEm3d
                 Console.WriteLine($"  {"",-12} σ of unknown temperature, used as given: {string.Join(", ", t.UnknownTemperature)}");
         }
 
-        Console.WriteLine("  materials");
-        foreach (var m in r.Materials)
-            Console.WriteLine($"    {m.Name,-24} εr {G(m.Epsr)}" +
-                              (m.EpsrTensor is { } tensor ? $" (xx/yy/zz {string.Join("/", tensor.Select(G))})" : "") +
-                              $"  tanδ {G(m.TanD)}  μr {G(m.Mur)}  σ {G(m.SigmaSm)} S/m   from {m.From}");
+        PrintMaterialRows(r);
 
         Console.WriteLine("  solids       (construction order: where two overlap, the later one wins)");
         foreach (var s in r.Solids)

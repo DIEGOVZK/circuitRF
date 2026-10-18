@@ -20074,3 +20074,29 @@ Gate: `HierarchyGateTests.Flatten_DielectricRowsNamingNoMaterial_AddsOneSharedMa
   wrappers that made it are. `SarReferenceSetTests` skips with a reason where it is absent.
 Gate: `SolverDiscoveryTests` (the banners of both releases, both spellings, an untested openEMS proceeding with the
 warning), `SarReferenceSetTests`.
+
+## Tissue materials: a Cole-Cole or tabulated εr/σ, evaluated once per 3D run (brief-sar-2, 2026-10-18)
+
+- **`MaterialDispersion` is the one rule**: the elaborator, `check`, `explain --materials`, `reference shipped-materials`
+  and the material editor all call it, and the formula itself is `CircuitRF.Engine.Em3d.ColeCole`. Design note
+  `docs/design/sar.md` §4.
+- **A dispersive material is lowered with tanδ 0.** Its evaluated σ is the TOTAL conductivity (ionic plus dielectric
+  loss), and CSXCAD's Kappa is σ + ωε₀εr·tanδ, so a tanδ beside it counts the loss twice. `C3dElaborator.MaterialValues`
+  with a frequency is where this happens. Without one (editor preview, thermal run, cross-technology comparison) a
+  dispersive record is its plain `Epsr`/`Sigma20`, which is also what a build that predates the model reads.
+- **A dispersive record is a dielectric by declaration** (`C3dMaterialRole.Implied`). It states εr and σ₂₀, which would
+  otherwise be the deliberate "ambiguous: state a Role" case. The constant lossy records in the tissue library (the gel,
+  the openEMS example tissues) are still ambiguous, so an object made of one states its Role.
+- **`MaterialLibraries.SameValues` compares the dispersion too.** Two records equal at 1 GHz but with different models
+  are two answers.
+- **The frequency is the sweep's centre until SAR-6** gives a setup a SAR frequency (`C3dProblemAssembly.MaterialFrequency`).
+  The run's notes carry one line. A layout stackup placed in a 3D view does not reach it (`Em3dLayoutSolids` takes no
+  frequency); its tissue entry reads the 1 GHz plain numbers.
+- **openEMS's fallback phantom values are not the Gabriel model at the frequency its script names** (its 298 MHz skull is
+  close to Gabriel cortical bone at 1.8 GHz). The library keeps them as written, under their own names, so a replication
+  is never silently given circuitRF's tissues instead.
+- **Density and thermal values are left unstated where no source was verified** (eight tissues' densities, every
+  tissue's thermal values). This follows the brief's rule that no number goes in without a source. See sar.md §4.3.
+- A compile trap met here: `string.Create(CultureInfo.InvariantCulture, $"…" + "…")` does not compile (CS1620). The
+  concatenation is not an interpolated-string handler, so it binds to the `ref` overload. Use one interpolated literal.
+Gate: `tests/Ui.Tests/Em3d/TissueMaterialTests.cs` (`ColeColeTests`, `TissueLibraryTests`).

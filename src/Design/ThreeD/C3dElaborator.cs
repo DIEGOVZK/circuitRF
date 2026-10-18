@@ -62,6 +62,13 @@ public sealed record C3dElaborationOptions(double? FMaxHz = null, double TempC =
     /// <summary>brief-em3d-51 — <c>explain --set</c>: names bound over the top document's scope before anything resolves.</summary>
     public IReadOnlyList<(string Name, string Expr)>? Sets { get; init; }
 
+    /// <summary>brief-sar-2 R-sar2-3 — the one frequency every dispersive material (a tissue, a phantom liquid) is evaluated at
+    /// before lowering, so each solver sees plain εr and σ. Null: the record's plain numbers (an editor preview, a thermal run).</summary>
+    public double? MaterialFrequencyHz { get; init; }
+
+    /// <summary>What <see cref="MaterialFrequencyHz"/> is, for the run's one note: <c>the sweep's centre</c>.</summary>
+    public string? MaterialFrequencyBasis { get; init; }
+
     /// <summary>brief-em3d-51 — the top document's cell, when the caller holds one the disk does not yet say (the editor's
     /// preview of a drag that writes a parameter's default). Null: read from the document's own cell folder.</summary>
     public C3dCell? Cell { get; init; }
@@ -635,8 +642,13 @@ public sealed class C3dElaborator(TechnologyCache? technologies = null, Geometry
 
     /// <summary>A technology material's values at <paramref name="tempC"/> — the one rule elaboration resolves a drawn
     /// object's material by (brief-em3d-48 compares a flattened object's against it).</summary>
-    public static Em3dMaterial MaterialValues(TechMaterial m, double tempC)
+    /// <remarks>brief-sar-2 — with <paramref name="frequencyHz"/>, a dispersive material is its model's εr and total σ there,
+    /// with no loss tangent beside it (the σ already carries the dielectric loss); one its model cannot give a value for there
+    /// keeps its plain numbers, and the elaborator refuses it before anything runs.</remarks>
+    public static Em3dMaterial MaterialValues(TechMaterial m, double tempC, double? frequencyHz = null)
     {
+        if (frequencyHz is { } f && MaterialDispersion.At(m, f, out _) is { } d)
+            return new Em3dMaterial(m.Name, d.Epsr, null, 0, m.Mur ?? 1, d.SigmaSm);
         double sigma = 0;
         if (m.Sigma20 is { } s20)
             sigma = m.Alpha20 is { } a20 ? new WireMaterial(m.Name, s20, a20, 0).SigmaAt(tempC) : s20;
@@ -792,6 +804,14 @@ public sealed class C3dElaborator(TechnologyCache? technologies = null, Geometry
                            $"{string.Join(", ", _builtInWireValues.Select(v => v.Name).Distinct().Select(n => $"'{n}'"))} or in the " +
                            "workspace's assembly rules, so the built-in starting value was used. It is a first guess, not assembly " +
                            "data: set it on the wire's end, or in the .wasm the workspace's DefaultAssemblyRef names.");
+
+            // brief-sar-2 R-sar2-3 — one line: the frequency every dispersive material was evaluated at, and what each became.
+            if (_dispersive.Count > 0 && options.MaterialFrequencyHz is { } mf)
+                _notes.Add($"Frequency-dependent materials are evaluated once, at {MaterialDispersion.Hz(mf)}" +
+                           (options.MaterialFrequencyBasis is { Length: > 0 } basis ? $" ({basis})" : "") +
+                           ", and the solver sees those values at every frequency: " +
+                           string.Join("; ", _dispersive.Select(d => string.Create(CultureInfo.InvariantCulture,
+                               $"{d.Key} εr {d.Value.Epsr:G4}, σ {d.Value.Sigma:G4} S/m"))) + ".");
 
             var (materials, sources, walkMaterials) = Materials();
             var solids = new List<Em3dSolid>(_solids);
@@ -1546,9 +1566,22 @@ public sealed class C3dElaborator(TechnologyCache? technologies = null, Geometry
         /// <summary>A technology material's values at the operating temperature — the generator's body rule.</summary>
         private Em3dMaterial Resolve(TechMaterial m, out string note)
         {
-            note = m.Sigma20 is not null && m.Alpha20 is null ? " (σ₂₀, no α₂₀)" : "";
+            if (MaterialDispersion.IsDispersive(m) && options.MaterialFrequencyHz is { } f)
+            {
+                var at = MaterialDispersion.At(m, f, out string? refusal);
+                if (refusal is not null && _dispersionRefused.Add(m.Name)) _refusals.Add(refusal);
+                var v = MaterialValues(m, options.TempC, f);
+                if (at is not null) _dispersive[m.Name] = (v.Epsr, v.SigmaSm);
+                note = "";   // the frequency is the run's one note (below) and explain's row, not every source string
+                return v;
+            }
+            note = m.Sigma20 is not null && m.Alpha20 is null && !MaterialDispersion.IsDispersive(m) ? " (σ₂₀, no α₂₀)" : "";
             return MaterialValues(m, options.TempC);
         }
+
+        /// <summary>brief-sar-2 — each dispersive material evaluated in this elaboration, for the run's one note.</summary>
+        private readonly SortedDictionary<string, (double Epsr, double Sigma)> _dispersive = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _dispersionRefused = new(StringComparer.OrdinalIgnoreCase);
 
         private string Register(string tech, string name, Em3dMaterial values, string source)
         {

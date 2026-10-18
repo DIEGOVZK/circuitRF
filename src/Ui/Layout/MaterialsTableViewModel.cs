@@ -709,7 +709,7 @@ public sealed partial class MaterialRowViewModel : ObservableObject
         C3dImpliedRole.Ambiguous  => "Ambiguous",
         _                         => "States nothing",
     };
-    public string RoleReason => C3dMaterialRole.Reason(ImpliedRole);
+    public string RoleReason => C3dMaterialRole.Reason(Material);
 
     /// <summary>The reason as a sentence under the name: "Conductor — it states σ₂₀ and no εr."</summary>
     public string RoleSentence => RoleReason.Length == 0 ? "" : char.ToUpperInvariant(RoleReason[0]) + RoleReason[1..] + ".";

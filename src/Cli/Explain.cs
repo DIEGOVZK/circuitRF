@@ -65,7 +65,7 @@ internal static class Explain
     {
         string? path = null, expr = null, reference = null, analysisName = null, setupName = null, objectName = null;
         bool wantAnalyses = false, wantCells = false, wantLayers = false, wantExtents = false, all = false;
-        bool wantFootprints = false, wantLook = false, wantTunables = false;
+        bool wantFootprints = false, wantLook = false, wantTunables = false, wantMaterials = false;
         ViewType? askedView = null;
         var device = CircuitRF.Design.Em3d.PalaceDevice.Cpu;
         var sets = new List<(string Name, string Expr)>();
@@ -122,6 +122,9 @@ internal static class Explain
                     continue;
                 // brief-em3d-110 R-em3d110-1g — a .c3d's Look as `render --look realistic` resolves it, and its appearance table.
                 case "--look": wantLook = true; continue;
+                // brief-sar-2 R-sar2-7 — a 3D setup's materials as the solver receives them, and the frequency each
+                // frequency-dependent one was evaluated at.
+                case "--materials": wantMaterials = true; continue;
                 // brief-em3d-136 R-em3d136-4c — a 3D setup's report as `em --device` would run it: which device, and
                 // (for gpu) whether this Palace can, through the run's own readiness check.
                 case "--device" when i + 1 < args.Length:
@@ -165,7 +168,7 @@ internal static class Explain
         int asked = (expr is null ? 0 : 1) + (reference is null ? 0 : 1) + (wantAnalyses ? 1 : 0)
                   + (wantCells ? 1 : 0) + (wantLayers ? 1 : 0) + (wantExtents ? 1 : 0)
                   + (wantFootprints ? 1 : 0) + (objectName is null ? 0 : 1) + (wantLook ? 1 : 0)
-                  + (wantTunables ? 1 : 0);
+                  + (wantTunables ? 1 : 0) + (wantMaterials ? 1 : 0);
         if (asked > 1) { JsonRun.Report(CliDiagnostics.ExplainOneQuestion()); return Usage(); }
         if (all && !wantCells) { JsonRun.Report(CliDiagnostics.ExplainAllNeedsCells()); return Usage(); }
 
@@ -245,6 +248,10 @@ internal static class Explain
         if (wantLook)
             exit |= kind == DocumentKind.ThreeD ? ExplainLook.Walk(path, setupName, walks)
                   : JsonRun.Fail(CliDiagnostics.ExplainOptionNotApplicable("--look", DocumentKinds.Name(kind), "a 3D view's Look and appearances"));
+
+        if (wantMaterials && kind is not (DocumentKind.ThreeD or DocumentKind.EmSetup))
+            exit |= JsonRun.Fail(CliDiagnostics.ExplainOptionNotApplicable("--materials", DocumentKinds.Name(kind),
+                                                                           "a 3D setup's materials as its solver receives them"));
 
         if (reference is not null)
         {
@@ -339,7 +346,8 @@ internal static class Explain
             footprints, em3d, solved is null ? null : Solved.ForExplain(solved), tunables, statistics, distributions);
 
         Print(path, kind, walks, analyses, value, refRes, cells, layers, extents, footprints);
-        if (em3d is not null) ExplainEm3d.Print(em3d);
+        if (em3d is not null && wantMaterials) ExplainEm3d.PrintMaterials(em3d);
+        else if (em3d is not null) ExplainEm3d.Print(em3d);
         if (solved is not null) Solved.Print(solved);
         if (tunables is not null) ExplainTunables.Print(tunables);
         if (statistics is not null) ExplainStatistics.Print(statistics);

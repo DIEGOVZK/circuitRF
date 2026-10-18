@@ -356,7 +356,13 @@ public static class C3dProblemAssembly
             notes.Add($"The 3D view's own {document.Setups.Count} embedded setup(s) are not consulted: this .cem is the setup.");
 
         // ── The geometry: the elaboration the editor draws, less what is not modelled (brief-em3d-93) ──
-        var drawn = (elaborator ?? new C3dElaborator()).Elaborate(document, path, workspaceCws, new C3dElaborationOptions(fMax, tempC));
+        // brief-sar-2 R-sar2-3 — every dispersive material is evaluated once, before lowering. A setup that requests SAR names
+        // the frequency (SAR-6); until then it is the sweep's centre, and the elaboration's note says so.
+        double materialHz = MaterialFrequency(frequency);
+        var drawn = (elaborator ?? new C3dElaborator()).Elaborate(document, path, workspaceCws, new C3dElaborationOptions(fMax, tempC)
+        {
+            MaterialFrequencyHz = materialHz, MaterialFrequencyBasis = "the sweep's centre",
+        });
         var e = C3dModelled.Filter(document, drawn);
         notes.AddRange(e.Notes);
         if (!e.Ok) return No(string.Join(" ", e.Refusals), e.Warnings);
@@ -377,7 +383,7 @@ public static class C3dProblemAssembly
         // 3D editor round 3 — the air box's fill (owner decision): the document's AirBoxMaterial, Air when it names none — the
         // technology's material of that name, else (for Air and Vacuum) a built-in one with free space's values.
         var materialSources = new Dictionary<string, string>(e.MaterialSources, StringComparer.Ordinal);
-        if (AirFill(document.AirBoxMaterial, e.Technology, tempC, out string fillWhy) is not { } fill)
+        if (AirFill(document.AirBoxMaterial, e.Technology, tempC, out string fillWhy, materialHz) is not { } fill)
             return No(fillWhy, e.Warnings);
         if (!materials.Any(m => m.Name == fill.Material.Name))
         {
@@ -496,6 +502,13 @@ public static class C3dProblemAssembly
     public static TechMaterial? ObjectMaterial(Technology? tech, string? name)
         => tech?.FindMaterial(name) ?? (IsFreeSpace(name) ? new TechMaterial { Name = name!, Epsr = 1, TanD = 0, Mur = 1 } : null);
 
+    /// <summary>
+    /// brief-sar-2 R-sar2-3 — the frequency a setup with no SAR frequency evaluates its dispersive materials at: the sweep's
+    /// centre — the arithmetic middle of a linear sweep, the geometric middle of a log one.
+    /// </summary>
+    public static double MaterialFrequency(Em3dFrequency f)
+        => f.Kind == Em3dSweepKind.Log && f.StartHz > 0 ? Math.Sqrt(f.StartHz * f.StopHz) : 0.5 * (f.StartHz + f.StopHz);
+
     /// <summary>Whether <paramref name="name"/> is one of the built-in free-space names, Air or Vacuum.</summary>
     public static bool IsFreeSpace(string? name)
         => string.Equals(name, Em3dGenerator.AirMaterial, StringComparison.OrdinalIgnoreCase) ||
@@ -506,12 +519,20 @@ public static class C3dProblemAssembly
     /// <paramref name="tempC"/>; Air and Vacuum fall back to built-in free space when the technology lacks them. A material
     /// that neither the technology nor the built-ins know is a refusal naming it, never a guess.
     /// </summary>
-    public static (Em3dMaterial Material, string Source)? AirFill(string? name, Technology? tech, double tempC, out string why)
+    public static (Em3dMaterial Material, string Source)? AirFill(string? name, Technology? tech, double tempC, out string why,
+                                                                  double? materialHz = null)
     {
         why = "";
         string want = name is { Length: > 0 } n ? n : Em3dGenerator.AirMaterial;
         if (tech?.FindMaterial(want) is { } m)
-            return (C3dElaborator.MaterialValues(m, tempC) with { Name = m.Name }, $"technology '{tech.Name}'");
+        {
+            if (materialHz is { } f && MaterialDispersion.IsDispersive(m) && MaterialDispersion.At(m, f, out string? refused) is null && refused is not null)
+            {
+                why = "The air box's fill cannot be evaluated: " + refused;
+                return null;
+            }
+            return (C3dElaborator.MaterialValues(m, tempC, materialHz) with { Name = m.Name }, $"technology '{tech.Name}'");
+        }
         if (string.Equals(want, Em3dGenerator.AirMaterial, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(want, VacuumMaterial, StringComparison.OrdinalIgnoreCase))
             return (new Em3dMaterial(want, 1, null, 0, 1, 0), "built in (free space)");

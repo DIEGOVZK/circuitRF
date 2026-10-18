@@ -2481,11 +2481,17 @@ namespace RfCore.Export
 
     /// <param name="From">Where the values resolved from: the technology's Materials, the
     /// <c>.wBond</c>'s, a stackup entry's own numbers, or free space.</param>
+    /// <param name="Dispersion">brief-sar-2 — <c>Cole-Cole</c> or <c>table</c> for a frequency-dependent material, whose εr and
+    /// σ here are its model's at <paramref name="EvaluatedAtHz"/>; null for a constant one.</param>
     public sealed record Em3dMaterialJson(
         string Name, double Epsr,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         IReadOnlyList<double>? EpsrTensor,
-        double TanD, double Mur, double SigmaSm, string From);
+        double TanD, double Mur, double SigmaSm, string From,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string? Dispersion = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        double? EvaluatedAtHz = null);
 
     /// <param name="Kind"><c>solid</c> or <c>sheet</c>.</param>
     /// <param name="SheetReason">Why the generator made it a sheet (brief 3 §5f).</param>

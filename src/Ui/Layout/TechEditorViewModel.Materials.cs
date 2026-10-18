@@ -52,6 +52,11 @@ public sealed partial class TechEditorViewModel
         !(Working.MaterialLibraries ?? []).Any(r => string.Equals(Path.GetFileName(Core.RefPath.ToNative(r)),
                                                                    MaterialLibraries.GenericFileName, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>brief-sar-2 — shown while the technology does not already name circuitRF's tissue library.</summary>
+    public bool CanAddTissueMaterials =>
+        !(Working.MaterialLibraries ?? []).Any(r => string.Equals(Path.GetFileName(Core.RefPath.ToNative(r)),
+                                                                   MaterialLibraries.TissueFileName, StringComparison.OrdinalIgnoreCase));
+
     /// <summary>Uses outside this technology — open 3D objects — which the workspace supplies. Null: none.</summary>
     public Func<string, IReadOnlyList<string>>? ExternalMaterialUses { get; set; }
 
@@ -119,6 +124,7 @@ public sealed partial class TechEditorViewModel
         }
         MaterialsTable?.Rebuild(Working.LibraryMaterials);
         OnPropertyChanged(nameof(CanAddGenericMaterials));
+        OnPropertyChanged(nameof(CanAddTissueMaterials));
         OnPropertyChanged(nameof(MaterialsTabHeader));
     }
 
@@ -219,6 +225,18 @@ public sealed partial class TechEditorViewModel
         try { reference = MaterialLibraries.CopyGenericBeside(FilePath); }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { MaterialsRefusal = ex.Message; return; }
         AddReference(reference, "Add Generic Materials");
+    }
+
+    /// <summary><i>Add Tissue Materials</i> (brief-sar-2 R-sar2-4) — <see cref="AddGenericMaterials"/> for circuitRF's tissue
+    /// library: body tissues with their frequency-dependent models, and phantom liquids and gels.</summary>
+    [RelayCommand]
+    public void AddTissueMaterials()
+    {
+        MaterialsRefusal = null;
+        string reference;
+        try { reference = MaterialLibraries.CopyShippedBeside(FilePath, MaterialLibraries.TissueFileName, "tissue"); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { MaterialsRefusal = ex.Message; return; }
+        AddReference(reference, "Add Tissue Materials");
     }
 
     /// <summary><i>Remove Library</i> — the reference only, never the file.</summary>

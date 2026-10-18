@@ -28,6 +28,9 @@ public static class C3dMaterialRole
     public static C3dImpliedRole Implied(TechMaterial m)
     {
         if (string.Equals(m.Name, Em3dGenerator.AirMaterial, StringComparison.OrdinalIgnoreCase)) return C3dImpliedRole.Air;
+        // brief-sar-2 — a frequency-dependent εr and σ (a tissue, a phantom liquid) is a lossy dielectric by declaration: its
+        // σ is the loss of a dielectric at one frequency, never a metal's.
+        if (MaterialDispersion.IsDispersive(m)) return C3dImpliedRole.Dielectric;
         bool hasSigma = m.Sigma20 is > 0;
         bool hasEpsr = m.Epsr is not null || m.EpsrTensor is { Length: 3 };
         return (hasSigma, hasEpsr) switch
@@ -51,6 +54,12 @@ public static class C3dMaterialRole
         C3dImpliedRole.Air        => (0xA8, 0xC8, 0xE8),
         _                         => (0x90, 0x90, 0x90),
     };
+
+    /// <summary>The Role column's reason for <paramref name="m"/>, one sentence.</summary>
+    public static string Reason(TechMaterial m)
+        => MaterialDispersion.IsDispersive(m)
+            ? "dielectric — it states a frequency-dependent εr and σ, which is a lossy dielectric's"
+            : Reason(Implied(m));
 
     /// <summary>The Role column's reason, one sentence.</summary>
     public static string Reason(C3dImpliedRole role) => role switch

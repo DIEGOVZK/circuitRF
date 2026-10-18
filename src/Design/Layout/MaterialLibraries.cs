@@ -55,6 +55,10 @@ public static class MaterialLibraries
     /// <c>tech/</c> folder, so a shipped technology's reference to it is true in both places.</summary>
     public const string GenericFileName = "generic-materials.cmat";
 
+    /// <summary>brief-sar-2 R-sar2-4 — the shipped tissue library (Gabriel 1996 tissues, phantom liquids and gels), shipped
+    /// beside the generic one and offered to a workspace the same way.</summary>
+    public const string TissueFileName = "tissue-materials.cmat";
+
     /// <summary>How a shipped library is named in a message and in <see cref="LibraryMaterial.SourcePath"/>.</summary>
     public const string ShippedPrefix = "shipped:";
 
@@ -131,19 +135,26 @@ public static class MaterialLibraries
     /// reused; a <b>different</b> file of that name is a refusal naming it (throws
     /// <see cref="IOException"/>) — it is the user's file and is never overwritten.
     /// </summary>
-    public static string CopyGenericBeside(string ctechPath)
+    public static string CopyGenericBeside(string ctechPath) => CopyShippedBeside(ctechPath, GenericFileName, "generic");
+
+    /// <summary>
+    /// <see cref="CopyGenericBeside"/> for any shipped library (<see cref="TissueFileName"/>, brief-sar-2): copies it beside
+    /// <paramref name="ctechPath"/> and returns the reference. An identical file there is reused; a different one is a
+    /// refusal naming it, never overwritten. <paramref name="what"/> names it in that sentence ("tissue").
+    /// </summary>
+    public static string CopyShippedBeside(string ctechPath, string fileName, string what)
     {
-        string target = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ctechPath))!, GenericFileName);
-        string json = GenericRawJson();
+        string target = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ctechPath))!, fileName);
+        string json = ShippedRawJson(fileName);
         if (File.Exists(target))
         {
             if (File.ReadAllText(target) != json)
                 throw new IOException(
-                    $"'{target}' already exists and is not circuitRF's generic library. Rename or move it, or add it " +
+                    $"'{target}' already exists and is not circuitRF's {what} library. Rename or move it, or add it " +
                     "with Add Library… if it is the library you want.");
         }
         else File.WriteAllText(target, json);
-        return GenericFileName;
+        return fileName;
     }
 
     // ── References ────────────────────────────────────────────────────────────
@@ -332,6 +343,7 @@ public static class MaterialLibraries
     public static bool SameValues(TechMaterial a, TechMaterial b)
         => ElectricalSame(a, b)
         && BothOrNone(a.ThermalK, b.ThermalK) && BothOrNone(a.DensityKgM3, b.DensityKgM3) && BothOrNone(a.SpecificHeat, b.SpecificHeat)
+        && BothOrNone(a.PerfusionRate, b.PerfusionRate) && BothOrNone(a.MetabolicHeat, b.MetabolicHeat)
         && TablesAgree(a.SigmaVsTemp, b.SigmaVsTemp) && TablesAgree(a.ThermalKVsTemp, b.ThermalKVsTemp)
         && (a.ThermalKTensor is null || b.ThermalKTensor is null || a.ThermalKTensor.SequenceEqual(b.ThermalKTensor));
 
@@ -347,7 +359,23 @@ public static class MaterialLibraries
         && (a.Mur ?? 1) == (b.Mur ?? 1)
         && (a.Sigma20 ?? 0) == (b.Sigma20 ?? 0)
         && (a.Sigma20 is null || a.Alpha20 == b.Alpha20)
-        && (a.EpsrTensor is { Length: 3 } ? a.EpsrTensor : []).SequenceEqual(b.EpsrTensor is { Length: 3 } ? b.EpsrTensor : []);
+        && (a.EpsrTensor is { Length: 3 } ? a.EpsrTensor : []).SequenceEqual(b.EpsrTensor is { Length: 3 } ? b.EpsrTensor : [])
+        && DispersionSame(a, b);
+
+    /// <summary>brief-sar-2 — a dispersion decides εr and σ at every frequency but 1 GHz, so two records with different models
+    /// (or one with a model and one without) are two answers.</summary>
+    private static bool DispersionSame(TechMaterial a, TechMaterial b)
+    {
+        if ((a.ColeCole is null) != (b.ColeCole is null)) return false;
+        if (a.ColeCole is { } x && b.ColeCole is { } y
+            && !(x.EpsInf == y.EpsInf && x.SigmaIonic == y.SigmaIonic && x.Terms.Count == y.Terms.Count
+                 && x.Terms.Zip(y.Terms).All(t => t.First.DeltaEps == t.Second.DeltaEps && t.First.TauSeconds == t.Second.TauSeconds
+                                                  && t.First.Alpha == t.Second.Alpha)))
+            return false;
+        var (p, q) = (a.DielectricVsFrequency ?? [], b.DielectricVsFrequency ?? []);
+        return p.Count == q.Count && p.Zip(q).All(r => r.First.FrequencyHz == r.Second.FrequencyHz && r.First.Epsr == r.Second.Epsr
+                                                       && r.First.SigmaSm == r.Second.SigmaSm);
+    }
 
     /// <summary>A record's electrical values, as a conflict sentence states them.</summary>
     public static string Describe(TechMaterial m)
@@ -363,6 +391,8 @@ public static class MaterialLibraries
         if (m.ThermalKVsTemp is { Count: > 0 } kt) parts.Add($"a {kt.Count}-point k(T) table");
         if (m.ThermalKTensor is { Length: 3 } ktt) parts.Add($"k tensor {Num(ktt[0])}/{Num(ktt[1])}/{Num(ktt[2])} W/(m·K)");
         if (m.SigmaVsTemp is { Count: > 0 } st) parts.Add($"a {st.Count}-point σ(T) table");
+        if (m.ColeCole is { } cc) parts.Add($"a {cc.Terms.Count}-term Cole-Cole model");
+        if (m.DielectricVsFrequency is { Count: > 0 } ft) parts.Add($"a {ft.Count}-row εr/σ-against-frequency table");
         return parts.Count == 0 ? "states nothing" : string.Join(", ", parts);
 
         static string Num(double v) => v.ToString("G6", CultureInfo.InvariantCulture);

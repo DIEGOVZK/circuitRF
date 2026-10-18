@@ -507,6 +507,20 @@ internal static class DocumentSchema
             materials wherever they touch: { "MaterialA": "Gallium nitride", "MaterialB": ...,
             "ResistanceM2KW": 3.3e-8, "Source": ... }. The pair is unordered; the duplicate rule is
             the materials' own (`material.interface-conflict`).
+          * ColeCole makes εr and σ follow frequency, as a body tissue's do: { "EpsInf": 4, "SigmaIonic":
+            0.2, "Terms": [ { "DeltaEps": 50, "TauSeconds": 7.234e-12, "Alpha": 0.1 }, ... ] } (one to
+            four terms; τ in SECONDS; 0 ≤ α < 1), giving ε̂(ω) = ε∞ + Σ Δε/(1 + (jωτ)^(1−α)) + σᵢ/(jωε₀).
+            DielectricVsFrequency is the other form, target values at named frequencies —
+            [ { "FrequencyHz": 835e6, "Epsr": 41.5, "SigmaSm": 0.90 }, ... ] in increasing frequency —
+            interpolated linearly between rows and REFUSED outside them. A record states one or the
+            other. A 3D run evaluates every such material ONCE, at the sweep's centre, before lowering
+            (the run's notes name the frequency and the values), and the solver sees that εr and σ
+            with no tanδ; `explain --materials` reports them. Keep Epsr and Sigma20 as the model's
+            values at 1 GHz — what a build without the model reads; `check` warns when they disagree
+            by more than 1 % (`tech.material.model-disagrees`). A material with either form is a
+            dielectric: an object made of it needs no Role.
+          * PerfusionRate (1/s, Pennes' blood perfusion) and MetabolicHeat (W/m³) are stored and
+            reported for a later bioheat solver; nothing reads them yet.
           * Appearance is how the material LOOKS in the 3D view's realistic mode — glTF 2.0's
             metallic-roughness parameters, every one optional:
               BaseColor            #rrggbb (sRGB)  a metal's reflectance, a dielectric's body colour
@@ -530,6 +544,11 @@ internal static class DocumentSchema
         melting points), ceramics, semiconductors, laminates, die attaches and package alloys, each
         record with its Source — and every shipped technology names it; `new workspace` copies it
         into tech/ beside the technology. `check <file.cmat>` checks a library on its own.
+        circuitRF also ships tissue-materials.cmat — the body tissues of Gabriel, Lau and Gabriel
+        (1996) as Cole-Cole models, head and body tissue-simulating liquids as target tables, a
+        saline gel, and the tissue values openEMS's own SAR and MRI examples state — which no shipped
+        technology names: the technology editor's Add Tissue Materials copies it beside a .ctech and
+        names it ("MaterialLibraries": [ ..., "tissue-materials.cmat" ]).
         `reference shipped-materials` lists every material it holds, with its values;
         `reference technologies` lists which libraries each shipped technology names.
 

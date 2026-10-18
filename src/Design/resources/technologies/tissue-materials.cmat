@@ -1,0 +1,401 @@
+{
+  "FormatVersion": 1,
+  "Materials": [
+    {
+      "Name": "Skin (dry)",
+      "Epsr": 40.94,
+      "Sigma20": 0.8998,
+      "ColeCole": {
+        "EpsInf": 4,
+        "SigmaIonic": 0.0002,
+        "Terms": [
+          { "DeltaEps": 32, "TauSeconds": 7.234e-12, "Alpha": 0 },
+          { "DeltaEps": 1100, "TauSeconds": 3.2481e-08, "Alpha": 0.2 },
+          { "DeltaEps": 0, "TauSeconds": 0.00015916, "Alpha": 0.2 },
+          { "DeltaEps": 0, "TauSeconds": 0.015915, "Alpha": 0.2 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Skin (dry)'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: not stated - no compilation this library cites gives one for this tissue, so SAR in it cannot be computed until a density is added to a workspace copy, with its source.",
+      "Color": "#E8B8A0"
+    },
+    {
+      "Name": "Skin (wet)",
+      "Epsr": 45.71,
+      "Sigma20": 0.8818,
+      "ColeCole": {
+        "EpsInf": 4,
+        "SigmaIonic": 0.0004,
+        "Terms": [
+          { "DeltaEps": 39, "TauSeconds": 7.958e-12, "Alpha": 0.1 },
+          { "DeltaEps": 280, "TauSeconds": 7.9577e-08, "Alpha": 0 },
+          { "DeltaEps": 30000, "TauSeconds": 1.592e-06, "Alpha": 0.16 },
+          { "DeltaEps": 30000, "TauSeconds": 0.001592, "Alpha": 0.2 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Skin (wet)'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: not stated - no compilation this library cites gives one for this tissue, so SAR in it cannot be computed until a density is added to a workspace copy, with its source.",
+      "Color": "#E0A890"
+    },
+    {
+      "Name": "Fat",
+      "Epsr": 5.447,
+      "Sigma20": 0.0535,
+      "DensityKgM3": 950,
+      "ColeCole": {
+        "EpsInf": 2.5,
+        "SigmaIonic": 0.01,
+        "Terms": [
+          { "DeltaEps": 3, "TauSeconds": 7.958e-12, "Alpha": 0.2 },
+          { "DeltaEps": 15, "TauSeconds": 1.5915e-08, "Alpha": 0.1 },
+          { "DeltaEps": 33000, "TauSeconds": 0.00015916, "Alpha": 0.05 },
+          { "DeltaEps": 10000000, "TauSeconds": 0.007958, "Alpha": 0.01 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Fat (not infiltrated)'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: ICRU Report 44 (1989), 'Adipose Tissue (ICRU-44)', as tabulated by J. H. Hubbell and S. M. Seltzer, X-Ray Mass Attenuation Coefficients, NIST Standard Reference Database 126, Table 2.",
+      "Color": "#F2E3A0"
+    },
+    {
+      "Name": "Muscle",
+      "Epsr": 54.81,
+      "Sigma20": 0.9782,
+      "DensityKgM3": 1050,
+      "ColeCole": {
+        "EpsInf": 4,
+        "SigmaIonic": 0.2,
+        "Terms": [
+          { "DeltaEps": 50, "TauSeconds": 7.234e-12, "Alpha": 0.1 },
+          { "DeltaEps": 7000, "TauSeconds": 3.5368e-07, "Alpha": 0.1 },
+          { "DeltaEps": 1200000, "TauSeconds": 0.00031831, "Alpha": 0.1 },
+          { "DeltaEps": 25000000, "TauSeconds": 0.002274, "Alpha": 0 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Muscle'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: ICRU Report 44 (1989), 'Muscle, Skeletal (ICRU-44)', as tabulated by J. H. Hubbell and S. M. Seltzer, X-Ray Mass Attenuation Coefficients, NIST Standard Reference Database 126, Table 2.",
+      "Color": "#B5473A"
+    },
+    {
+      "Name": "Bone (cortical)",
+      "Epsr": 12.36,
+      "Sigma20": 0.1557,
+      "DensityKgM3": 1920,
+      "ColeCole": {
+        "EpsInf": 2.5,
+        "SigmaIonic": 0.02,
+        "Terms": [
+          { "DeltaEps": 10, "TauSeconds": 1.3263e-11, "Alpha": 0.2 },
+          { "DeltaEps": 180, "TauSeconds": 7.9577e-08, "Alpha": 0.2 },
+          { "DeltaEps": 5000, "TauSeconds": 0.00015916, "Alpha": 0.2 },
+          { "DeltaEps": 100000, "TauSeconds": 0.015915, "Alpha": 0 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Bone (cortical)'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: ICRU Report 44 (1989), 'Bone, Cortical (ICRU-44)', as tabulated by J. H. Hubbell and S. M. Seltzer, X-Ray Mass Attenuation Coefficients, NIST Standard Reference Database 126, Table 2.",
+      "Color": "#EDE6D6"
+    },
+    {
+      "Name": "Bone (cancellous)",
+      "Epsr": 20.58,
+      "Sigma20": 0.364,
+      "ColeCole": {
+        "EpsInf": 2.5,
+        "SigmaIonic": 0.07,
+        "Terms": [
+          { "DeltaEps": 18, "TauSeconds": 1.3263e-11, "Alpha": 0.22 },
+          { "DeltaEps": 300, "TauSeconds": 7.9577e-08, "Alpha": 0.25 },
+          { "DeltaEps": 20000, "TauSeconds": 0.00015916, "Alpha": 0.2 },
+          { "DeltaEps": 20000000, "TauSeconds": 0.015915, "Alpha": 0 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Bone (cancellous)'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: not stated - no compilation this library cites gives one for this tissue, so SAR in it cannot be computed until a density is added to a workspace copy, with its source.",
+      "Color": "#D9C9A8"
+    },
+    {
+      "Name": "Brain (grey matter)",
+      "Epsr": 52.28,
+      "Sigma20": 0.9854,
+      "DensityKgM3": 1040,
+      "ColeCole": {
+        "EpsInf": 4,
+        "SigmaIonic": 0.02,
+        "Terms": [
+          { "DeltaEps": 45, "TauSeconds": 7.958e-12, "Alpha": 0.1 },
+          { "DeltaEps": 400, "TauSeconds": 1.5915e-08, "Alpha": 0.15 },
+          { "DeltaEps": 200000, "TauSeconds": 0.0001061, "Alpha": 0.22 },
+          { "DeltaEps": 45000000, "TauSeconds": 0.005305, "Alpha": 0 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Brain (grey matter)'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: ICRU Report 44 (1989), 'Brain, Grey/White Matter (ICRU-44)', as tabulated by J. H. Hubbell and S. M. Seltzer, X-Ray Mass Attenuation Coefficients, NIST Standard Reference Database 126, Table 2.",
+      "Color": "#B8A8A8"
+    },
+    {
+      "Name": "Brain (white matter)",
+      "Epsr": 38.58,
+      "Sigma20": 0.6219,
+      "DensityKgM3": 1040,
+      "ColeCole": {
+        "EpsInf": 4,
+        "SigmaIonic": 0.02,
+        "Terms": [
+          { "DeltaEps": 32, "TauSeconds": 7.958e-12, "Alpha": 0.1 },
+          { "DeltaEps": 100, "TauSeconds": 7.958e-09, "Alpha": 0.1 },
+          { "DeltaEps": 40000, "TauSeconds": 5.3052e-05, "Alpha": 0.3 },
+          { "DeltaEps": 35000000, "TauSeconds": 0.007958, "Alpha": 0.02 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Brain (white matter)'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: ICRU Report 44 (1989), 'Brain, Grey/White Matter (ICRU-44)', as tabulated by J. H. Hubbell and S. M. Seltzer, X-Ray Mass Attenuation Coefficients, NIST Standard Reference Database 126, Table 2.",
+      "Color": "#E8E0D8"
+    },
+    {
+      "Name": "Cerebrospinal fluid",
+      "Epsr": 68.44,
+      "Sigma20": 2.455,
+      "ColeCole": {
+        "EpsInf": 4,
+        "SigmaIonic": 2,
+        "Terms": [
+          { "DeltaEps": 65, "TauSeconds": 7.958e-12, "Alpha": 0.1 },
+          { "DeltaEps": 40, "TauSeconds": 1.592e-09, "Alpha": 0 },
+          { "DeltaEps": 0, "TauSeconds": 0.00015916, "Alpha": 0 },
+          { "DeltaEps": 0, "TauSeconds": 0.015915, "Alpha": 0 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Cerebro spinal fluid'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: not stated - no compilation this library cites gives one for this tissue, so SAR in it cannot be computed until a density is added to a workspace copy, with its source.",
+      "Color": "#A8D8F0"
+    },
+    {
+      "Name": "Blood",
+      "Epsr": 61.06,
+      "Sigma20": 1.583,
+      "DensityKgM3": 1060,
+      "ColeCole": {
+        "EpsInf": 4,
+        "SigmaIonic": 0.7,
+        "Terms": [
+          { "DeltaEps": 56, "TauSeconds": 8.377e-12, "Alpha": 0.1 },
+          { "DeltaEps": 5200, "TauSeconds": 1.3263e-07, "Alpha": 0.1 },
+          { "DeltaEps": 0, "TauSeconds": 0.00015916, "Alpha": 0.2 },
+          { "DeltaEps": 0, "TauSeconds": 0.015915, "Alpha": 0 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Blood'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: ICRU Report 44 (1989), 'Blood, Whole (ICRU-44)', as tabulated by J. H. Hubbell and S. M. Seltzer, X-Ray Mass Attenuation Coefficients, NIST Standard Reference Database 126, Table 2.",
+      "Color": "#8B1A1A"
+    },
+    {
+      "Name": "Vitreous humour",
+      "Epsr": 68.88,
+      "Sigma20": 1.667,
+      "ColeCole": {
+        "EpsInf": 4,
+        "SigmaIonic": 1.5,
+        "Terms": [
+          { "DeltaEps": 65, "TauSeconds": 7.234e-12, "Alpha": 0 },
+          { "DeltaEps": 30, "TauSeconds": 1.5916e-07, "Alpha": 0.1 },
+          { "DeltaEps": 0, "TauSeconds": 0.00015916, "Alpha": 0 },
+          { "DeltaEps": 0, "TauSeconds": 0.015915, "Alpha": 0 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Vitreous humor'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: not stated - no compilation this library cites gives one for this tissue, so SAR in it cannot be computed until a density is added to a workspace copy, with its source.",
+      "Color": "#D8ECF4"
+    },
+    {
+      "Name": "Lung (inflated)",
+      "Epsr": 21.83,
+      "Sigma20": 0.4741,
+      "ColeCole": {
+        "EpsInf": 2.5,
+        "SigmaIonic": 0.03,
+        "Terms": [
+          { "DeltaEps": 18, "TauSeconds": 7.958e-12, "Alpha": 0.1 },
+          { "DeltaEps": 500, "TauSeconds": 6.3662e-08, "Alpha": 0.1 },
+          { "DeltaEps": 250000, "TauSeconds": 0.00015916, "Alpha": 0.2 },
+          { "DeltaEps": 40000000, "TauSeconds": 0.007958, "Alpha": 0 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Lung (inflated)'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: not stated - no compilation this library cites gives one for this tissue, so SAR in it cannot be computed until a density is added to a workspace copy, with its source.",
+      "Color": "#F0B8C0"
+    },
+    {
+      "Name": "Lung (deflated)",
+      "Epsr": 51.1,
+      "Sigma20": 0.897,
+      "DensityKgM3": 1050,
+      "ColeCole": {
+        "EpsInf": 4,
+        "SigmaIonic": 0.2,
+        "Terms": [
+          { "DeltaEps": 45, "TauSeconds": 7.958e-12, "Alpha": 0.1 },
+          { "DeltaEps": 1000, "TauSeconds": 1.5916e-07, "Alpha": 0.1 },
+          { "DeltaEps": 500000, "TauSeconds": 0.00015916, "Alpha": 0.2 },
+          { "DeltaEps": 10000000, "TauSeconds": 0.015915, "Alpha": 0 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Lung (deflated)'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: ICRU Report 44 (1989), 'Lung Tissue (ICRU-44)', as tabulated by J. H. Hubbell and S. M. Seltzer, X-Ray Mass Attenuation Coefficients, NIST Standard Reference Database 126, Table 2.",
+      "Color": "#D88890"
+    },
+    {
+      "Name": "Heart",
+      "Epsr": 59.29,
+      "Sigma20": 1.284,
+      "ColeCole": {
+        "EpsInf": 4,
+        "SigmaIonic": 0.05,
+        "Terms": [
+          { "DeltaEps": 50, "TauSeconds": 7.958e-12, "Alpha": 0.1 },
+          { "DeltaEps": 1200, "TauSeconds": 1.5916e-07, "Alpha": 0.05 },
+          { "DeltaEps": 450000, "TauSeconds": 7.2343e-05, "Alpha": 0.22 },
+          { "DeltaEps": 25000000, "TauSeconds": 0.004547, "Alpha": 0 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Heart'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: not stated - no compilation this library cites gives one for this tissue, so SAR in it cannot be computed until a density is added to a workspace copy, with its source.",
+      "Color": "#9E2B2B"
+    },
+    {
+      "Name": "Liver",
+      "Epsr": 46.4,
+      "Sigma20": 0.8971,
+      "ColeCole": {
+        "EpsInf": 4,
+        "SigmaIonic": 0.02,
+        "Terms": [
+          { "DeltaEps": 39, "TauSeconds": 8.842e-12, "Alpha": 0.1 },
+          { "DeltaEps": 6000, "TauSeconds": 5.3052e-07, "Alpha": 0.2 },
+          { "DeltaEps": 50000, "TauSeconds": 2.2736e-05, "Alpha": 0.2 },
+          { "DeltaEps": 30000000, "TauSeconds": 0.015915, "Alpha": 0.05 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Liver'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: not stated - no compilation this library cites gives one for this tissue, so SAR in it cannot be computed until a density is added to a workspace copy, with its source.",
+      "Color": "#6B2A1E"
+    },
+    {
+      "Name": "Kidney",
+      "Epsr": 57.94,
+      "Sigma20": 1.45,
+      "ColeCole": {
+        "EpsInf": 4,
+        "SigmaIonic": 0.05,
+        "Terms": [
+          { "DeltaEps": 47, "TauSeconds": 7.958e-12, "Alpha": 0.1 },
+          { "DeltaEps": 3500, "TauSeconds": 1.9894e-07, "Alpha": 0.22 },
+          { "DeltaEps": 250000, "TauSeconds": 7.9577e-05, "Alpha": 0.22 },
+          { "DeltaEps": 30000000, "TauSeconds": 0.004547, "Alpha": 0 }
+        ]
+      },
+      "Source": "Dielectric: the four-term Cole-Cole parameters of S. Gabriel, R. W. Lau and C. Gabriel, The dielectric properties of biological tissues: III. Parametric models for the dielectric spectrum of tissues, Phys. Med. Biol. 41 (1996) 2271-2293, Table 1, row 'Kidney'; the same parameters as C. Gabriel, Compilation of the dielectric properties of body tissues at RF and microwave frequencies, report AL/OE-TR-1996-0037, Armstrong Laboratory, Brooks Air Force Base (1996), Appendix C, as IFAC-CNR (Florence) reproduces it. Relaxation times are entered in seconds. Epsr and Sigma20 are the model's own values at 1 GHz, for a build that does not read the model. Density: not stated - no compilation this library cites gives one for this tissue, so SAR in it cannot be computed until a density is added to a workspace copy, with its source.",
+      "Color": "#8A3A2E"
+    },
+    {
+      "Name": "Head tissue-simulating liquid",
+      "Epsr": 41.34,
+      "Sigma20": 1.015,
+      "DensityKgM3": 1000,
+      "DielectricVsFrequency": [
+        { "FrequencyHz": 150000000, "Epsr": 52.3, "SigmaSm": 0.76 },
+        { "FrequencyHz": 300000000, "Epsr": 45.3, "SigmaSm": 0.87 },
+        { "FrequencyHz": 450000000, "Epsr": 43.5, "SigmaSm": 0.87 },
+        { "FrequencyHz": 835000000, "Epsr": 41.5, "SigmaSm": 0.9 },
+        { "FrequencyHz": 900000000, "Epsr": 41.5, "SigmaSm": 0.97 },
+        { "FrequencyHz": 915000000, "Epsr": 41.5, "SigmaSm": 0.98 },
+        { "FrequencyHz": 1450000000, "Epsr": 40.5, "SigmaSm": 1.2 },
+        { "FrequencyHz": 1610000000, "Epsr": 40.3, "SigmaSm": 1.29 },
+        { "FrequencyHz": 1800000000, "Epsr": 40, "SigmaSm": 1.4 },
+        { "FrequencyHz": 2000000000, "Epsr": 40, "SigmaSm": 1.4 },
+        { "FrequencyHz": 2450000000, "Epsr": 39.2, "SigmaSm": 1.8 },
+        { "FrequencyHz": 3000000000, "Epsr": 38.5, "SigmaSm": 2.4 },
+        { "FrequencyHz": 5800000000, "Epsr": 35.3, "SigmaSm": 5.27 }
+      ],
+      "Source": "Target values of a head tissue-simulating liquid for phone SAR: FCC Office of Engineering and Technology, OET Bulletin 65 Supplement C (Edition 01-01), Evaluating Compliance with FCC Guidelines for Human Exposure to Radiofrequency Electromagnetic Fields, Appendix C, table 'Tissue dielectric parameters for head and body phantoms' (its 1800-2000 MHz row is entered at both ends). The bulletin interpolates linearly between the closest pair of target frequencies, which is what circuitRF does; it does not extrapolate, and neither does circuitRF. Density: 1000 kg/m3, as stated under the same table. Epsr and Sigma20 are the interpolated values at 1 GHz, for a build that does not read the table. A reference value for research use, not a compliance claim.",
+      "Color": "#C8E0E8"
+    },
+    {
+      "Name": "Body tissue-simulating liquid",
+      "Epsr": 54.84,
+      "Sigma20": 1.098,
+      "DensityKgM3": 1000,
+      "DielectricVsFrequency": [
+        { "FrequencyHz": 150000000, "Epsr": 61.9, "SigmaSm": 0.8 },
+        { "FrequencyHz": 300000000, "Epsr": 58.2, "SigmaSm": 0.92 },
+        { "FrequencyHz": 450000000, "Epsr": 56.7, "SigmaSm": 0.94 },
+        { "FrequencyHz": 835000000, "Epsr": 55.2, "SigmaSm": 0.97 },
+        { "FrequencyHz": 900000000, "Epsr": 55, "SigmaSm": 1.05 },
+        { "FrequencyHz": 915000000, "Epsr": 55, "SigmaSm": 1.06 },
+        { "FrequencyHz": 1450000000, "Epsr": 54, "SigmaSm": 1.3 },
+        { "FrequencyHz": 1610000000, "Epsr": 53.8, "SigmaSm": 1.4 },
+        { "FrequencyHz": 1800000000, "Epsr": 53.3, "SigmaSm": 1.52 },
+        { "FrequencyHz": 2000000000, "Epsr": 53.3, "SigmaSm": 1.52 },
+        { "FrequencyHz": 2450000000, "Epsr": 52.7, "SigmaSm": 1.95 },
+        { "FrequencyHz": 3000000000, "Epsr": 52, "SigmaSm": 2.73 },
+        { "FrequencyHz": 5800000000, "Epsr": 48.2, "SigmaSm": 6 }
+      ],
+      "Source": "Target values of a body tissue-simulating liquid for phone SAR: FCC Office of Engineering and Technology, OET Bulletin 65 Supplement C (Edition 01-01), Evaluating Compliance with FCC Guidelines for Human Exposure to Radiofrequency Electromagnetic Fields, Appendix C, table 'Tissue dielectric parameters for head and body phantoms' (its 1800-2000 MHz row is entered at both ends). The bulletin interpolates linearly between the closest pair of target frequencies, which is what circuitRF does; it does not extrapolate, and neither does circuitRF. Density: 1000 kg/m3, as stated under the same table. Epsr and Sigma20 are the interpolated values at 1 GHz, for a build that does not read the table. A reference value for research use, not a compliance claim.",
+      "Color": "#B8D8C8"
+    },
+    {
+      "Name": "Saline gel (implant heating)",
+      "Epsr": 80,
+      "Sigma20": 0.47,
+      "DensityKgM3": 1000,
+      "Source": "A gelled-saline phantom of the kind used for RF heating tests of passive implants. Conductivity 0.47 S/m: K. Fujimoto, L. M. Angelone, E. Lucano, S. S. Rajan and M. I. Iacono, Radio-frequency safety assessment of stents in blood vessels during magnetic resonance imaging, Front. Physiol. 9 (2018) 1439, doi:10.3389/fphys.2018.01439 (open access). Relative permittivity 80, the value O. Aboyewa, H. Akinleye, J. Wrubel and M. Nichols, Characterization of a tissue-equivalent phantom for thermometric studies in MRI, AAPM 63rd Annual Meeting (2021), give as the recommended one (they measured 82.1 and 0.47 S/m at 127.8 MHz). Constant: both are stated for the 64 and 128 MHz scanners. Density: 1000 kg/m3, liquid water's (NIST Standard Reference Database 126, Table 2), since neither source states the gel's.",
+      "Color": "#D0E8F0"
+    },
+    {
+      "Name": "openEMS head phantom brain (298 MHz)",
+      "Epsr": 52.7,
+      "Sigma20": 0.95,
+      "DensityKgM3": 1046,
+      "Source": "The value openEMS 0.37.0 states for the 'Brain' tissue of its bundled head phantom (resources/phantoms/create_phantoms.py, phantom_head_298MHz.h5), read by the MRI_Loop_Coil tutorial, kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 298 MHz, not circuitRF's Gabriel tissue: the Brain (grey matter) record above gives εr 60.09, σ 0.6915 S/m there. Density as the same script states it."
+    },
+    {
+      "Name": "openEMS head phantom skull (298 MHz)",
+      "Epsr": 11.4,
+      "Sigma20": 0.29,
+      "DensityKgM3": 1908,
+      "Source": "The value openEMS 0.37.0 states for the 'Skull' tissue of its bundled head phantom (resources/phantoms/create_phantoms.py, phantom_head_298MHz.h5), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 298 MHz, not circuitRF's Gabriel tissue: the Bone (cortical) record above gives εr 13.45, σ 0.08249 S/m there. Density as the same script states it."
+    },
+    {
+      "Name": "openEMS head phantom skin (298 MHz)",
+      "Epsr": 38.9,
+      "Sigma20": 0.84,
+      "DensityKgM3": 1100,
+      "Source": "The value openEMS 0.37.0 states for the 'Skin' tissue of its bundled head phantom (resources/phantoms/create_phantoms.py, phantom_head_298MHz.h5), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 298 MHz, not circuitRF's Gabriel tissue: the Skin (wet) record above gives εr 51.96, σ 0.63 S/m there. Density as the same script states it."
+    },
+    {
+      "Name": "openEMS body phantom tissue (128 MHz)",
+      "Epsr": 62.8,
+      "Sigma20": 0.66,
+      "DensityKgM3": 1046,
+      "Source": "The value openEMS 0.37.0 states for the 'Tissue' of its bundled body cylinder (resources/phantoms/create_phantoms.py, phantom_body_128MHz.h5), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 128 MHz, not circuitRF's Gabriel tissue: the Muscle record above gives εr 63.49, σ 0.7192 S/m there. Density as the same script states it."
+    },
+    {
+      "Name": "openEMS body phantom bone (128 MHz)",
+      "Epsr": 12.5,
+      "Sigma20": 0.13,
+      "DensityKgM3": 1908,
+      "Source": "The value openEMS 0.37.0 states for the 'Bone' of its bundled body cylinder (resources/phantoms/create_phantoms.py, phantom_body_128MHz.h5), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 128 MHz, not circuitRF's Gabriel tissue: the Bone (cortical) record above gives εr 14.72, σ 0.06735 S/m there. Density as the same script states it."
+    },
+    {
+      "Name": "openEMS body phantom skin (128 MHz)",
+      "Epsr": 46.8,
+      "Sigma20": 0.58,
+      "DensityKgM3": 1100,
+      "Source": "The value openEMS 0.37.0 states for the 'Skin' of its bundled body cylinder (resources/phantoms/create_phantoms.py, phantom_body_128MHz.h5), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 128 MHz, not circuitRF's Gabriel tissue: the Skin (wet) record above gives εr 61.59, σ 0.5442 S/m there. Density as the same script states it."
+    },
+    {
+      "Name": "openEMS Dipole_SAR skin (1 GHz)",
+      "Epsr": 50,
+      "Sigma20": 0.65,
+      "DensityKgM3": 1100,
+      "Source": "The value openEMS 0.37.0 states for the 'skin' ellipsoid of its Dipole_SAR tutorial (python/Tutorials/Dipole_SAR.py), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 1 GHz, not circuitRF's Gabriel tissue: the Skin (wet) record above gives εr 45.71, σ 0.8818 S/m there. Density as the same script states it."
+    },
+    {
+      "Name": "openEMS Dipole_SAR headbone (1 GHz)",
+      "Epsr": 13,
+      "Sigma20": 0.1,
+      "DensityKgM3": 2000,
+      "Source": "The value openEMS 0.37.0 states for the 'headbone' ellipsoid of its Dipole_SAR tutorial (python/Tutorials/Dipole_SAR.py), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 1 GHz, not circuitRF's Gabriel tissue: the Bone (cortical) record above gives εr 12.36, σ 0.1557 S/m there. Density as the same script states it."
+    },
+    {
+      "Name": "openEMS Dipole_SAR brain (1 GHz)",
+      "Epsr": 60,
+      "Sigma20": 0.7,
+      "DensityKgM3": 1040,
+      "Source": "The value openEMS 0.37.0 states for the 'brain' ellipsoid of its Dipole_SAR tutorial (python/Tutorials/Dipole_SAR.py), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 1 GHz, not circuitRF's Gabriel tissue: the Brain (grey matter) record above gives εr 52.28, σ 0.9854 S/m there. Density as the same script states it."
+    }
+  ]
+}

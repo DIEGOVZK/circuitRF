@@ -4,7 +4,7 @@ slug: reference/materials.html
 doc-kind: Reference Guide
 breadcrumb: Docs > Reference > Materials
 lede: What a material is, where it is kept — a technology's own list or a .cmat library it names — and how to enter one in the Materials editor, step by step, with its electrical, thermal and anisotropic values and its look in the realistic view.
-keywords: material, materials, .cmat, material library, .ctech, technology, generic materials, built-in materials, dielectric, conductor, permittivity, εr, er, loss tangent, tanδ, tan delta, permeability, μr, conductivity, σ, sigma, temperature coefficient, α, alpha, σ(T), k(T), thermal conductivity, density, specific heat, anisotropic, anisotropy, tensor, laminate, appearance, realistic view, colour, source, delete material, rename material, Air, material.conflict
+keywords: material, materials, tissue, body tissue, Cole-Cole, dispersion, frequency-dependent, phantom, tissue-simulating liquid, SAR, Gabriel, .cmat, material library, .ctech, technology, generic materials, built-in materials, dielectric, conductor, permittivity, εr, er, loss tangent, tanδ, tan delta, permeability, μr, conductivity, σ, sigma, temperature coefficient, α, alpha, σ(T), k(T), thermal conductivity, density, specific heat, anisotropic, anisotropy, tensor, laminate, appearance, realistic view, colour, source, delete material, rename material, Air, material.conflict
 ---
 
 A **material** is a named record of values: a relative permittivity, a conductivity, a thermal conductivity, a colour, a
@@ -133,6 +133,37 @@ stating a table moves no EM answer. A **wBond** component's wires read the shipp
 component's `Temp` — held at the table's nearest end outside it, with a warning in the Messages panel.
 
 {{ui: materials-thermal}}
+
+## Body tissues and phantom liquids {#tissue}
+
+A body tissue's permittivity and conductivity change strongly with frequency: muscle's σ is about 0.69 S/m at 64 MHz and
+0.98 S/m at 1 GHz. A material can therefore state a **frequency-dependent model** instead of one fixed pair:
+
+- a **Cole-Cole model**, the parametric form body tissues are published in. circuitRF evaluates it at any frequency.
+- a **table of target values at named frequencies**, the way a tissue-simulating liquid is specified. It is
+  interpolated between rows and **refused outside them**.
+
+A 3D run evaluates every such material **once**, at the sweep's centre frequency, and the solver uses those values across
+the whole sweep. The run's notes give the frequency and each value. `explain` with `--materials` lists the problem's
+materials as the solver receives them. Because the values hold at that one frequency only, a result such as SAR is valid
+there and nowhere else. To work at another frequency, centre the sweep on it. A tissue is a lossy dielectric, so an
+object made of one needs no Role.
+
+**Add Tissue Materials**, on the technology editor's Materials tab, copies circuitRF's tissue library beside the
+technology and names it. The library holds:
+
+- sixteen body tissues from the 1996 parametric model of Gabriel, Lau and Gabriel;
+- head and body tissue-simulating liquids for phone SAR, from the FCC's published target table;
+- a saline gel of the kind used for implant heating tests;
+- the tissue values openEMS's own SAR and MRI examples use.
+
+Every record cites its source. Where no source gives a tissue's density, the record states none: add one, with its
+source, to your own copy before computing SAR in that tissue.
+
+Selecting a tissue shows a **Frequency dependence** card: εr and σ **at f**, for a frequency you type (`298M`,
+`298 MHz`), and a small plot of both against frequency. The model is in the record and is edited in the file. εr and
+σ₂₀ on the cards above are the model's values at 1 GHz, which is what a build without the model reads. `check` warns
+when they disagree with the model.
 
 ## Anisotropic materials {#anisotropic}
 

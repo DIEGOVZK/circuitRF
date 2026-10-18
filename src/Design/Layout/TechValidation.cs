@@ -418,6 +418,9 @@ public static class TechValidation
         /// <summary>brief-em3d-73 R-em3d73-2b — a σ(T) or k(T) table disagreeing with its own constant at 20 °C (warning).
         /// It retires <c>tech.material.not-read-yet</c>, which reported every stated table at info.</summary>
         public const string MaterialTableDisagrees  = "tech.material.table-disagrees";
+        /// <summary>brief-sar-2 R-sar2-1 — a dispersive material's plain Epsr/Sigma20 disagreeing with its own model at 1 GHz by
+        /// more than 1 %, or missing (warning).</summary>
+        public const string MaterialModelDisagrees  = "tech.material.model-disagrees";
         /// <summary>brief-em3d-105 R-em3d105-1b — an appearance value out of its range, or a colour that is not #rrggbb.</summary>
         public const string AppearanceInvalid       = "tech.material.appearance-invalid";
         /// <summary>brief-em3d-105 — an appearance's Like naming no material in scope (warning: it falls through).</summary>

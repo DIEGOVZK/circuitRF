@@ -244,6 +244,7 @@ internal static partial class Reference
     private static string Role(TechMaterial m)
     {
         if (string.Equals(m.Name, "Air", StringComparison.OrdinalIgnoreCase)) return "air";
+        if (MaterialDispersion.IsDispersive(m)) return "dielectric (frequency-dependent)";
         return (m.Sigma20 is not null, m.Epsr is not null) switch
         {
             (true, false) => "conductor",

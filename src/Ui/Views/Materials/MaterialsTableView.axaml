@@ -285,6 +285,32 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- brief-sar-2 R-sar2-7 — a frequency-dependent material (a tissue, a phantom liquid): εr and σ at f, and how they
+                             move with frequency. Read from the record; the model is edited in the file. -->
+                        <Border Classes="card" IsVisible="{Binding IsDispersive}">
+                            <StackPanel Spacing="8">
+                                <TextBlock Classes="hdr" Text="Frequency dependence"/>
+                                <TextBlock Classes="hint" Text="{Binding DispersionSummary}"/>
+                                <Grid ColumnDefinitions="Auto,110,*" ColumnSpacing="8">
+                                    <TextBlock Grid.Column="0" Classes="lbl" Text="at f" VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1" Classes="val" KeyDown="OnCellKeyDown"
+                                             Text="{Binding ReadoutFrequencyText, UpdateSourceTrigger=LostFocus}"
+                                             ToolTip.Tip="The frequency to read the model at: 298M, 298 MHz or 2.98e8."/>
+                                    <TextBlock Grid.Column="2" Text="{Binding ReadoutText}" FontSize="12" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                </Grid>
+                                <Canvas Width="300" Height="90" HorizontalAlignment="Left" Background="#10808080" ClipToBounds="True">
+                                    <Polyline Points="{Binding EpsrPoints}" Stroke="#3B7DD8" StrokeThickness="1.5"/>
+                                    <Polyline Points="{Binding SigmaPoints}" Stroke="#D8763B" StrokeThickness="1.5"/>
+                                    <Rectangle Canvas.Left="{Binding MarkerX}" Width="1" Height="90" Fill="#80808080" IsVisible="{Binding HasMarker}"/>
+                                </Canvas>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <TextBlock Text="— εr" Foreground="#3B7DD8" FontSize="11"/>
+                                    <TextBlock Text="— σ" Foreground="#D8763B" FontSize="11"/>
+                                    <TextBlock Classes="hint" Text="{Binding PlotLegend}"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
                         <!-- conductor -->
                         <Border Classes="card">
                             <StackPanel Spacing="8">

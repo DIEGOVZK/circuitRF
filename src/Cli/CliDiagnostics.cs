@@ -1530,7 +1530,7 @@ internal static class CliDiagnostics
     /// (R-rnd3-2).</summary>
     public static Diagnostic ExplainOneQuestion() => new(
         "explain.args.one-question", DiagnosticSeverity.Error,
-        "explain: --expr, --analysis, --ref, --cells, --layers, --extents, --footprints, --object and --look ask " +
+        "explain: --expr, --analysis, --ref, --cells, --layers, --extents, --footprints, --object, --look, --tunables and --materials ask " +
         "different questions — pass one.");
 
     /// <summary><c>--all</c> is <c>--cells</c>' own modifier and means nothing beside anything else.

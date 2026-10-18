@@ -283,6 +283,12 @@ gained since the stackup existed (`SheetAt`, `Fill`, `PresentWithLayer`), so the
 bump. The generated reference page (`circuitrf reference technology`) describes them the day they
 exist, with no page to write.
 
+**Frequency-dependent materials (brief-sar-2).** A record may also state a Cole-Cole dispersion (`ColeCole`) or
+target values at named frequencies (`DielectricVsFrequency`), as body tissues and phantom liquids need. A 3D problem
+evaluates each such material once, before lowering, so every backend still receives constant εr and σ (with tanδ 0).
+The record keeps its plain `Epsr`/`Sigma20` at the model's 1 GHz values for an older build, and `check` warns when they
+disagree. The model, the frequency rule and the shipped `tissue-materials.cmat` are in [`sar.md`](sar.md) §4.
+
 **Material libraries (`.cmat`) — rev 7, decided 2026-09-26.** A technology may name **material
 libraries**: `MaterialLibraries`, a list of paths resolved against the `.ctech`'s own directory. A `.cmat` is
 JSON — a `FormatVersion` and a `Materials` list in **exactly** the record schema above, read by the same

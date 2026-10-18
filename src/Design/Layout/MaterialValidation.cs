@@ -6,7 +6,8 @@ namespace CircuitRF.Design.Layout;
 /// <summary>
 /// A list of materials' OWN rules — the ones that need no stackup, body or object to be broken
 /// (brief-em3d-53 R-em3d53-4): duplicate names, a malformed εr tensor, a malformed temperature table and — brief-em3d-73
-/// R-em3d73-2b — a table that disagrees with its own constant at 20 °C, and the reserved <c>@</c>. One function, so a <c>.ctech</c>'s <c>Materials</c> block and a
+/// R-em3d73-2b — a table that disagrees with its own constant at 20 °C, the reserved <c>@</c>, and — brief-sar-2 — a
+/// dispersion's own shape and its plain numbers against it at 1 GHz. One function, so a <c>.ctech</c>'s <c>Materials</c> block and a
 /// <c>.cmat</c> are checked by the same code, and the Materials editor shows exactly what <c>check</c>
 /// reports. <b>No material rule lives in a view model.</b> The ids and sentences of the rules that
 /// existed before this brief are unchanged.
@@ -61,6 +62,19 @@ public static class MaterialValidation
                 problems.Add(Problem(TechValidation.Ids.MaterialTableDisagrees, DiagnosticSeverity.Warning,
                     string.Create(CultureInfo.InvariantCulture,
                         $"Material \"{m.Name}\" states ThermalKVsTemp, which gives {kd.Table:G5} W/(m·K) at 20 °C, and ThermalK = {kd.Constant:G5} W/(m·K) — {Percent(kd.Table, kd.Constant)} apart. A thermal run uses the table. Make them agree, or remove the one that is wrong.")));
+
+            // brief-sar-2 R-sar2-1 — a frequency-dependent model: its own shape, and its plain numbers against it at 1 GHz.
+            if (m.ColeCole is not null && m.DielectricVsFrequency is { Count: > 0 })
+                problems.Add(Problem(TechValidation.Ids.MaterialInvalid, DiagnosticSeverity.Error,
+                    $"Material \"{m.Name}\" states both a Cole-Cole model and DielectricVsFrequency; a material has one dispersion. Remove one."));
+            else if (m.ColeCole is { } cc && MaterialDispersion.Fault(cc) is { } ccFault)
+                problems.Add(Problem(TechValidation.Ids.MaterialInvalid, DiagnosticSeverity.Error,
+                    $"Material \"{m.Name}\" states a Cole-Cole model whose {ccFault}."));
+            else if (m.DielectricVsFrequency is { Count: > 0 } ft && MaterialDispersion.TableFault(ft) is { } ftFault)
+                problems.Add(Problem(TechValidation.Ids.MaterialInvalid, DiagnosticSeverity.Error,
+                    $"Material \"{m.Name}\" states DielectricVsFrequency, but {ftFault}."));
+            else if (MaterialDispersion.PlainNumbersDisagreement(m) is { } plain)
+                problems.Add(Problem(TechValidation.Ids.MaterialModelDisagrees, DiagnosticSeverity.Warning, plain));
 
             if (m.ThermalKTensor is { } kt)
             {

@@ -1,6 +1,6 @@
 # circuitRF — SAR and B1 for MRI coil designers and phone SAR
 
-**Status:** SAR-1 done (§1–§3) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
+**Status:** SAR-1 done (§1–§3), SAR-2 done (§4) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
 **Reference data:** [`testdata/sar/openems-ref/`](../../testdata/sar/openems-ref/README.md) · **Builds on:**
 [`em-3d.md`](em-3d.md) (the openEMS backend) and [`em-3d-f0-findings.md`](em-3d-f0-findings.md) (its validated versions).
 
@@ -218,3 +218,125 @@ output until it exits, so the run's progress cannot be followed from its log.
   end criterion are in the scripts, and the README tables them.
 - **S11 finer than the script's frequency step.** `MRI_Loop_Coil`'s vector steps 1.2 MHz, coarser than SAR-8's
   0.5 MHz gate on the S11 minimum, so the port's time-domain probes are kept and SAR-8 evaluates S11 from them.
+
+---
+
+## 4. Tissue materials, evaluated at one frequency (SAR-2)
+
+### 4.1 The model
+
+A body tissue's εr and σ move strongly with frequency (muscle σ is 0.69 S/m at 64 MHz and 0.98 S/m at 1 GHz), so a
+tissue is not one constant pair. A material record (`TechMaterial`, em-3d.md §4.1a) may state one of two optional
+dispersions, both additive and nullable, with no `FormatVersion` bump:
+
+- **`ColeCole`** — `EpsInf`, `SigmaIonic` (S/m) and one to four `Terms` of `DeltaEps`, `TauSeconds`, `Alpha`, giving
+  ε̂(ω) = ε∞ + Σ Δεₙ / (1 + (jωτₙ)^(1−αₙ)) + σᵢ/(jωε₀), the form of Gabriel, Lau and Gabriel (1996). With the e^{jωt}
+  convention εr = Re ε̂ and σ = −ωε₀ Im ε̂, the **total** conductivity: ionic conduction and every dispersion's loss.
+  The formula is `CircuitRF.Engine.Em3d.ColeCole` (numbers only). τ is stored in seconds, never in the paper's
+  ps/ns/µs/ms columns.
+- **`DielectricVsFrequency`** — target (εr, σ) rows at named frequencies, the way a tissue-simulating liquid is
+  specified: interpolated linearly between the two nearest rows and **refused outside them**, never extrapolated.
+
+`MaterialDispersion` (`src/Design/Layout`) is the one rule. The elaborator, `check`, `explain --materials` and the
+material editor all call it. A record with either form is a **dielectric by declaration**: it states εr and σ₂₀, which
+on their own would make it ambiguous, but its σ is a dielectric's loss at one frequency, never a metal's. So an object
+made of it needs no Role (`C3dMaterialRole.Implied`).
+
+**The plain numbers stay.** A dispersive record still states `Epsr` and `Sigma20`, its model's values at 1 GHz, which
+is what a build without the model reads (it keeps the model's keys in `Unread` and writes them back). `check` warns,
+as `tech.material.model-disagrees`, when they differ from the model at 1 GHz by more than 1 %, or when one is missing.
+This is em-3d.md §4.1a's rule for an edited number that nothing reads.
+
+`PerfusionRate` (1/s, Pennes' ω_b) and `MetabolicHeat` (W/m³, Pennes' Q_m) are stored for a later bioheat series. Nothing
+reads them yet.
+
+### 4.2 Where the frequency comes from (overview L6)
+
+Every dispersive material in a 3D problem is evaluated **once, before lowering**, at one frequency. Each solver still
+receives a plain εr and σ, with **tanδ 0**: the evaluated σ already carries the dielectric loss, and CSXCAD's Kappa is
+σ + ωε₀εr·tanδ (`CsxcadWriter.Kappa`), so a non-zero tanδ beside it would count the loss twice. Nothing is evaluated
+per FDTD time step. `C3dElaborationOptions.MaterialFrequencyHz` carries the frequency.
+
+- **A setup that requests SAR** will name its SAR frequency (SAR-6), and that is the frequency.
+- **Until then, and for any setup without SAR**, it is the sweep's centre (`C3dProblemAssembly.MaterialFrequency`): the
+  arithmetic middle of a linear sweep, the geometric middle of a log one. The run's notes say so in one line:
+  *"Frequency-dependent materials are evaluated once, at 298 MHz (the sweep's centre), and the solver sees those values
+  at every frequency: Muscle εr 58.23, σ 0.77 S/m."*
+- **A table asked outside its rows refuses the run**, naming the material, its range and the frequency asked.
+- Without a frequency (an editor preview, a thermal run, a comparison between technologies) a dispersive record is its
+  plain numbers.
+
+An openEMS run is broadband, but its tissues are constant, so its SAR and B1 are valid at that one frequency only.
+SAR-6's result says so (L6).
+
+**Not reached: a layout stackup.** A layout placed in a 3D view resolves its stackup's materials through
+`Em3dLayoutSolids`, which takes no frequency. A stackup entry naming a tissue gets its plain (1 GHz) numbers there. No
+phase needs a tissue in a layout stackup. If one does, `Em3dLayoutSolidsOptions` takes the same frequency.
+
+### 4.3 The shipped tissue library
+
+`tissue-materials.cmat` ships beside `generic-materials.cmat`. No shipped technology names it. The technology editor's
+**Add Tissue Materials** copies it beside a `.ctech` and names it, exactly as *Add Generic Materials* does
+(`MaterialLibraries.CopyShippedBeside`), and an existing file of that name that differs is refused, never
+overwritten. Its 28 records:
+
+| Records | Values from | Density from |
+|---|---|---|
+| 16 Gabriel tissues: skin (dry, wet), fat, muscle, cortical and cancellous bone, brain grey and white matter, cerebrospinal fluid, blood, vitreous humour, lung (inflated, deflated), heart, liver, kidney | Gabriel, Lau and Gabriel, *Phys. Med. Biol.* 41 (1996) 2271–2293, Table 1; the same parameters as Gabriel's report AL/OE-TR-1996-0037, Appendix C, entered from the IFAC-CNR copy of it | ICRU Report 44 (1989), as NIST SRD 126 Table 2 tabulates it, for fat (adipose), muscle (skeletal), cortical bone, blood, brain grey and white (one row), and deflated lung. **The other eight state no density** (below) |
+| Head and body tissue-simulating liquids | FCC OET Bulletin 65 Supplement C (Edition 01-01), Appendix C: 150 MHz to 5.8 GHz, the 1800–2000 MHz row entered at both ends. The bulletin itself prescribes linear interpolation between target frequencies | 1000 kg/m³, stated under the same table |
+| Saline gel (implant heating) | σ 0.47 S/m: Fujimoto et al., *Front. Physiol.* 9 (2018) 1439 (open access). εr 80: the recommended value as Aboyewa et al., AAPM 2021, quote it | water's, NIST SRD 126 (neither source states the gel's) |
+| 9 openEMS example tissues: the head phantom (298 MHz) and body cylinder (128 MHz) of `resources/phantoms/create_phantoms.py`, and `Dipole_SAR`'s three ellipsoids (1 GHz) | the values each script states, kept exactly, so SAR-7 and SAR-8 match without a model evaluation in between | the same scripts |
+
+Names are plain (`Muscle`, `Fat`). None collides with a generic material, so none needs a `Tissue/` prefix. The fat
+record is the paper's *not infiltrated* fat (5.46, 0.051 S/m at 900 MHz). The *infiltrated* row was not entered,
+because no verifiable copy of its parameters was to hand.
+
+**Two things the openEMS records show.** The fallback phantoms' script says its values are "at 298 MHz" and "at
+128 MHz" from the Gabriel model, but they are not that model's values at those frequencies. Its 298 MHz skull is εr 11.4,
+σ 0.29 S/m, while Gabriel cortical bone at 298 MHz is εr 13.4, σ 0.082 S/m (the script's pair is close to Gabriel's
+1.8 GHz value). Its brain is εr 52.7, σ 0.95 S/m against grey matter's 60.1, 0.69 S/m. This is why R-sar2-5 keeps them
+as the script states them, not as circuitRF's tissues. A replication that substituted circuitRF's Muscle or Bone would
+disagree with the reference for a reason that has nothing to do with SAR. Each record's `Source` gives both pairs.
+
+**What the library does not hold, and why (owner to decide).** *No record carries a number without a source*
+(R-sar2-4), so where no source was verified, the record states nothing:
+
+- **Density for eight tissues**: both skins, cancellous bone, CSF, vitreous humour, inflated lung, heart, liver and
+  kidney. ICRU 46 / Woodard and White (1986) tabulate them, but no free copy was reachable to verify against. SAR in
+  such a tissue cannot be computed until a density is stated, and SAR-5 must refuse it, naming the material.
+- **Thermal conductivity, specific heat, perfusion and metabolic heat for every tissue.** The usual compilations are a
+  purchased book or the online database O2 excludes. The fields exist and are empty.
+
+### 4.4 Readouts
+
+- **`explain <.c3d|.cem> --materials`** (MCP: `explain materials=true`): the problem's materials as the solver receives
+  them; a dispersive one is marked `at <f> (Cole-Cole)` or `(table)`, and the frequency's one line follows. The JSON row
+  gains `dispersion` and `evaluatedAtHz` (omitted for a constant material). The ordinary `explain` of a 3D setup marks
+  them the same way.
+- **The material editor** shows a *Frequency dependence* card for a dispersive record: εr and σ **at f** (a field, 1 GHz
+  until a host sets `MaterialsTableViewModel.ReadoutFrequencyHz`; SAR-6 sets it to the active setup's SAR frequency),
+  and a small εr/σ-against-log-frequency plot, 10 MHz–10 GHz for a model and the table's own span for a table, with f
+  marked. The model is edited in the file. The card reads it.
+- `reference shipped-materials` lists the records with the role `dielectric (frequency-dependent)`.
+
+### 4.5 Gates
+
+`tests/Ui.Tests/Em3d/TissueMaterialTests.cs`:
+
+- `ColeColeTests`: muscle, fat and cortical bone at 64, 128, 298, 900 and 1800 MHz, through the **shipped** records, to
+  four significant figures. **The reference values are the Gabriel model evaluated by an independent implementation**
+  (a separate script, run once), not values printed in the paper: Part III prints its parameters and its figures,
+  not a table at these frequencies. The familiar published pairs (muscle 55.03 / 0.943 S/m and fat 5.46 / 0.051 S/m at
+  900 MHz, muscle 53.55 / 1.34 S/m at 1.8 GHz) agree with the rows.
+- `TissueLibraryTests`: the library ships, every record has a `Source`, and `check` finds nothing in it; a plain number
+  5 % off its model is the warning; the library round-trips; with no frequency a record is its plain numbers, exactly as
+  the record with its model stripped; a 3D run evaluates muscle at 298 MHz for a 100–496 MHz sweep, with tanδ 0, no Role
+  and the one note; and the head liquid asked at 100 MHz refuses the run.
+
+### 4.6 Not done in SAR-2
+
+- **R-sar2-6, the importer for a user's own downloaded tissue table** (optional in the brief). The CSV reader is
+  simple. What it needs decided is its surface: a CLI noun (`import tissues <csv> --into <file.cmat>`) plus a second
+  mode on the MCP `import` tool (R-aut-13), which turns that tool from single-mode into one with a selector. Left for
+  the owner.
+- Debye or Lorentz fits for broadband FDTD tissue (overview §8); Palace, which will read the same evaluated values.

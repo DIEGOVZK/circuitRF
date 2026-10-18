@@ -610,6 +610,10 @@ internal static class ToolCatalog
                             "Every value of a schematic or netlist that can be tuned or optimized, at any depth, with its key "
                           + "(R1.R, Wline, DUT:R3.R), value, default range and whether Push can write it; and the keys the "
                           + "tuning setup names that resolve to nothing."),
+                        // brief-sar-2 R-sar2-7 — R-aut-13: reachable from the command line, so reachable here.
+                        new("materials", "--materials", OptKind.Flag,
+                            "A 3D setup's (.c3d's or .cem's) materials as its solver receives them; a frequency-dependent "
+                          + "one (a tissue, a phantom liquid) with the frequency it was evaluated at, the sweep's centre."),
                         new("all",     "--all",     OptKind.Flag,
                             "Only with cells: include generated cells, which are hidden by default. On its own it is refused."),
                         new("view",    "--view",    OptKind.Str,

@@ -934,6 +934,29 @@ public sealed class TechMaterial
     /// (Z_th(jω), brief-em3d-80) reads. Carried; no steady-state run reads it.</summary>
     public double? SpecificHeat { get; set; }
 
+    /// <summary>brief-sar-2 R-sar2-2 — blood perfusion, m³ of blood per m³ of tissue per second (1/s): Pennes' ω_b, for a
+    /// later bioheat series. Stored and reported; nothing reads it yet.</summary>
+    public double? PerfusionRate { get; set; }
+
+    /// <summary>brief-sar-2 R-sar2-2 — metabolic heat generation, W/m³: Pennes' Q_m, for a later bioheat series. Stored and
+    /// reported; nothing reads it yet.</summary>
+    public double? MetabolicHeat { get; set; }
+
+    /// <summary>
+    /// brief-sar-2 R-sar2-1 — a Cole-Cole dispersion (<see cref="TechColeCole"/>): a body tissue's εr and σ move strongly
+    /// with frequency, so they are evaluated at the one frequency a 3D setup names (<see cref="MaterialDispersion"/>) and the
+    /// solver receives the plain pair. The record still states <see cref="Epsr"/> and <see cref="Sigma20"/> — the model's
+    /// values at 1 GHz — which is what a build without this block reads; <c>check</c> warns when the two disagree.
+    /// </summary>
+    public TechColeCole? ColeCole { get; set; }
+
+    /// <summary>
+    /// brief-sar-2 R-sar2-5 — εr and σ given as targets at named frequencies, the way a tissue-simulating liquid is
+    /// specified: interpolated linearly between the two nearest rows and <b>refused outside them</b>. In increasing
+    /// frequency. A record states this or <see cref="ColeCole"/>, never both.
+    /// </summary>
+    public List<TechFrequencyPoint>? DielectricVsFrequency { get; set; }
+
     /// <summary>
     /// Where the values come from — free text, and for a dielectric <b>the frequency they are stated
     /// at</b>, since every backend receives constant εr and tanδ (brief-em3d-53 R-em3d53-8b). Read by
@@ -960,6 +983,42 @@ public sealed class TechMaterial
 /// <summary>A material a technology reaches through one of its libraries (brief-em3d-53 §1b), and the
 /// file it came from — an absolute path, or a shipped library's resource name.</summary>
 public sealed record LibraryMaterial(TechMaterial Material, string SourcePath);
+
+/// <summary>
+/// brief-sar-2 R-sar2-1 — a four-term (at most) Cole-Cole dispersion: ε̂(ω) = ε∞ + Σ Δεₙ / (1 + (jωτₙ)^(1−αₙ)) + σᵢ/(jωε₀),
+/// the parametric form of Gabriel, Lau and Gabriel (Phys. Med. Biol. 41, 1996). Evaluated by <c>CircuitRF.Engine.Em3d.ColeCole</c>.
+/// </summary>
+public sealed class TechColeCole
+{
+    /// <summary>ε∞, the permittivity at frequencies far above every dispersion.</summary>
+    public double EpsInf { get; set; }
+
+    /// <summary>σᵢ, the static ionic conductivity, S/m.</summary>
+    public double SigmaIonic { get; set; }
+
+    /// <summary>The dispersions, one to four.</summary>
+    public List<TechColeColeTerm> Terms { get; set; } = [];
+
+    /// <summary>Keys this build does not read, kept and written back.</summary>
+    [System.Text.Json.Serialization.JsonExtensionData]
+    public Dictionary<string, System.Text.Json.JsonElement>? Unread { get; set; }
+}
+
+/// <summary>One Cole-Cole dispersion: strength Δε, relaxation time τ in SECONDS, broadening α (0 ≤ α &lt; 1; 0 is Debye).</summary>
+public sealed class TechColeColeTerm
+{
+    public double DeltaEps { get; set; }
+    public double TauSeconds { get; set; }
+    public double Alpha { get; set; }
+}
+
+/// <summary>brief-sar-2 R-sar2-5 — a dielectric's target εr and σ (S/m) at one named frequency, Hz.</summary>
+public sealed class TechFrequencyPoint
+{
+    public double FrequencyHz { get; set; }
+    public double Epsr { get; set; }
+    public double SigmaSm { get; set; }
+}
 
 /// <summary>One point of a temperature-dependent property table: the property's value at
 /// <see cref="TempC"/>. The unit of <see cref="Value"/> is the property's own.</summary>
