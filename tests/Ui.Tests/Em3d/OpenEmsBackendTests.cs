@@ -401,13 +401,13 @@ public sealed class OpenEmsBackendTests(ITestOutputHelper output) : IDisposable
         => d.Descendants("ProbeBox").Single(e => e.Attribute("Name")!.Value == name);
 }
 
-/// <summary>Skips, naming what is missing, unless an openEMS run would proceed — openEMS found and
-/// validated (the run's own ReadinessFor).</summary>
+/// <summary>Skips, naming what is missing, unless an openEMS run would proceed — openEMS found (any version
+/// runs since brief-sar-1; the run's own ReadinessFor).</summary>
 public sealed class OpenEmsFactAttribute : FactAttribute
 {
     private static readonly Lazy<string?> Reason = new(() =>
         SolverDiscovery.ReadinessFor(Em3dSolver.OpenEms).FirstOrDefault(r => !r.Proceeds) is { } r
-            ? $"needs a validated openEMS: {r.Refusal}" : null);
+            ? $"needs an openEMS: {r.Refusal}" : null);
 
     public OpenEmsFactAttribute()
     {

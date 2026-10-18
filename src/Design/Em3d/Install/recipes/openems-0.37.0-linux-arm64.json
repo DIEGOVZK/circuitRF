@@ -1,9 +1,9 @@
 {
   "$schema": "./recipe.schema.json",
   "comment": "R-em3d24-4b. Upstream's build script with --disable-GUI, over the distribution's own development packages (openEMS's install/requirements page). The remedy is that page's list for this distribution.",
-  "id": "openems-0.37.0-rc3-linux-arm64",
+  "id": "openems-0.37.0-linux-arm64",
   "tool": "openems",
-  "version": "0.37.0-rc3",
+  "version": "0.37.0",
   "platform": "linux",
   "architecture": "arm64",
   "layout": "in-place",
@@ -14,7 +14,7 @@
       "id": "openems",
       "url": "https://github.com/thliebig/openEMS-Project.git",
       "fetchedBy": "git",
-      "checksumNote": "a git clone of tag v0.37.0-rc3, checked against its commit 0c9d988ea026cec33fc98a1849ab238e74715c21 after the clone"
+      "checksumNote": "a git clone of tag v0.37.0, checked against its commit 974294ba7d812ef5a46a4760593057aee7ce6866 after the clone"
     },
     {
       "url": "https://github.com/thliebig/CSXCAD.git",
@@ -187,7 +187,7 @@
   ],
   "steps": [
     {
-      "name": "Clone openEMS 0.37.0-rc3",
+      "name": "Clone openEMS 0.37.0",
       "kind": "run",
       "command": "${git}",
       "arguments": [
@@ -195,7 +195,7 @@
         "--quiet",
         "--recursive",
         "--branch",
-        "v0.37.0-rc3",
+        "v0.37.0",
         "https://github.com/thliebig/openEMS-Project.git",
         "${home}/src"
       ]
@@ -211,7 +211,7 @@
         "HEAD"
       ],
       "captureAs": "openems",
-      "expect": "0c9d988ea026cec33fc98a1849ab238e74715c21"
+      "expect": "974294ba7d812ef5a46a4760593057aee7ce6866"
     },
     {
       "name": "Build openEMS",

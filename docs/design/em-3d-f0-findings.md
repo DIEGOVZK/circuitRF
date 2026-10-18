@@ -459,6 +459,33 @@ Re-surveyed on 2026-09-24 before installing: Palace's newest release is still **
 | Gmsh | **4.15.2** | `gmsh --version` → `4.15.2-git`; OCC 7.9.3 | Homebrew bottle |
 | openEMS | **0.37.0-rc3** | banner `version 67d3784`, CSXCAD `dcdb62b` | **a release candidate**: 0.0.36 is three years old and was not tried. When 0.37.0 final ships, re-run `testdata/em3d/f0` and replace this entry; an rc should not stay on a validated list |
 
+### 6.1 openEMS 0.37.0 final (brief-sar-1, 2026-10-17)
+
+0.37.0 shipped on 2026-10-09: openEMS `305df56`, CSXCAD `c46e320`, tags `v0.37.0` and `v0.7.0`, built as row 11 of
+`testdata/em3d/f0/README.md` §Install was (2 min 17 s, 151 MB). Every committed openEMS case of F0 was re-run on it
+from its committed `case.xml` and post-processed by its own `postproc.py` (`testdata/em3d/f0/tools/rerun_openems.py`),
+against the committed `reference.s2p`:
+
+| Run | rc3 stopped at | 0.37.0 stopped at | max \|ΔS11\| | max \|ΔS21\| | max Δ\|S21\| | max Δ arg S21 |
+|---|---|---|---|---|---|---|
+| A curve-dw25 | 28,035 | 28,480 | 9.3e-7 | 7.7e-7 | 9.5e-6 dB | 8.0e-5° |
+| A wire-dw12.7 | 12,090 | 12,245 | 3.6e-6 | 2.5e-6 | 3.5e-5 dB | 2.1e-4° |
+| A wire-dw6.35 | 22,568 | 22,932 | 9.7e-7 | 2.1e-6 | 2.7e-5 dB | 1.8e-4° |
+| A wire-dw4.2333 | 31,360 | 31,360 | 0 | 0 | 0 | 2e-15° |
+| A wire-dw3.175 | 42,018 | 42,018 | 0 | 0 | 0 | 2e-15° |
+| B dw25-lossy | 73,000 (limit) | 73,000 (limit) | 0 | 0 | 0 | 2e-15° |
+| B dw25-lossless | ~1,390,346 (stopped by hand) | 1,390,346 (set as its limit), 18.7 min | 1.6e-9 | 1.0e-9 | 8.5e-9 dB | 5.8e-8° |
+
+**No number moved for a physical reason.** Where the run stopped at the same step, 0.37.0 is bit-identical to rc3.
+(The lossless case B run, stopped by hand on rc3, could only be re-run to the step of its last committed probe
+sample; its 1e-9 residue is consistent with the hand-stopped run ending a sample or so away, and was not traced further.) Where it did not, the whole difference is the stop: openEMS evaluates its energy end criterion every few seconds of
+wall-clock time, so a run of a few seconds stops at a step that depends on machine load (all three are at −91 to
+−98 dB by then, far past the −50 dB criterion). `--exact-endcriteria` (new in 0.37.0) makes the stop repeatable;
+`docs/design/sar.md` §3.2 measures the same effect on `Dipole_SAR`. The committed rc3 references stay as they are.
+
+**The list is now of TESTED versions** (owner, 2026-10-17): openEMS takes Gmsh's rule (brief-em3d-135), so any
+version runs, with a warning naming the list, and the list is **0.37.0-rc3 and 0.37.0**. Palace stays strict.
+
 ## 7. Things F0 found that are not questions
 
 - **circuitRF's `.clay` reader ignored an unknown field silently.** A polygon written with `"Points"`

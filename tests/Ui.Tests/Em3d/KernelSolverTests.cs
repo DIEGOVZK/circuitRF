@@ -409,13 +409,13 @@ public sealed class KernelBothFactAttribute : FactAttribute
     }
 }
 
-/// <summary>A <see cref="KernelFactAttribute"/> that also needs a validated openEMS.</summary>
+/// <summary>A <see cref="KernelFactAttribute"/> that also needs an openEMS that runs.</summary>
 public sealed class KernelOpenEmsFactAttribute : FactAttribute
 {
     public KernelOpenEmsFactAttribute()
     {
         if (KernelForTests.SkipReason is { } k) Skip = k;
         else if (SolverDiscovery.ReadinessFor(Em3dSolver.OpenEms).FirstOrDefault(r => !r.Proceeds) is { } r)
-            Skip = $"needs a validated openEMS: {r.Refusal}";
+            Skip = $"needs an openEMS: {r.Refusal}";
     }
 }

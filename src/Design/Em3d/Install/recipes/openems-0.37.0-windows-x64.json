@@ -1,9 +1,9 @@
 {
   "$schema": "./recipe.schema.json",
-  "comment": "R-em3d24-4b. Upstream's published 64-bit Windows archive for the validated release candidate. Its digest is GitHub's, published with the release asset. It does not print F0's hashes: it prints the tags (openEMS v0.37.0-rc3, CSXCAD v0.7.0-rc3), which pin exactly F0's two commits, so SolverDiscovery's validated entry accepts both spellings (first Windows install, 2026-09-30).",
-  "id": "openems-0.37.0-rc3-windows-x64",
+  "comment": "R-em3d24-4b. Upstream's published 64-bit Windows archive for the validated release (2026-10-09). Its digest is GitHub's, published with the release asset. It prints the tags (openEMS v0.37.0, CSXCAD v0.7.0) rather than the hashes 305df56 and c46e320, which the tags pin exactly, so SolverDiscovery's validated entry accepts both spellings (as found at the first Windows install of the release candidate, 2026-09-30).",
+  "id": "openems-0.37.0-windows-x64",
   "tool": "openems",
-  "version": "0.37.0-rc3",
+  "version": "0.37.0",
   "platform": "windows",
   "architecture": "x64",
   "layout": "relocatable",
@@ -11,16 +11,16 @@
   "sources": [
     {
       "id": "archive",
-      "url": "https://github.com/thliebig/openEMS-Project/releases/download/v0.37.0-rc3/openEMS_x64_v0.37.0-rc3_msvc.zip",
+      "url": "https://github.com/thliebig/openEMS-Project/releases/download/v0.37.0/openEMS_x64_v0.37.0_msvc.zip",
       "fetchedBy": "circuitRF",
-      "file": "openEMS_x64_v0.37.0-rc3_msvc.zip",
-      "sha256": "948d04e67a0b7ee4b149176e746b23e609a8ac46c525ba75d6c11071f354339a"
+      "file": "openEMS_x64_v0.37.0_msvc.zip",
+      "sha256": "e4f14fd6e9be7d0c1fd9c244768c21c1c2b62b8aa81f08253ebf6e06040cda5a"
     }
   ],
   "prerequisites": [],
   "steps": [
     {
-      "name": "Download openEMS 0.37.0-rc3",
+      "name": "Download openEMS 0.37.0",
       "kind": "download",
       "source": "archive"
     },

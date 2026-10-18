@@ -483,10 +483,10 @@ validated (for Gmsh, tested), where the program is, and how it was found.
 assistant put there, and it has an **Uninstall …** button. Anything else reads *Found at …*, and
 circuitRF never offers to remove it.
 
-**A Palace or openEMS version circuitRF has not validated is refused, not just flagged.** Palace's
-configuration changes meaning between versions, and a setting read the wrong way gives an answer that looks
-plausible. The row says which versions are validated. **Gmsh is only flagged**: an untested Gmsh runs, and the
-row and every run say, in the same words, which versions are tested. The same check runs at the start of every
+**A Palace version circuitRF has not validated is refused, not just flagged.** Palace's configuration changes
+meaning between versions, and a setting read the wrong way gives an answer that looks plausible. The row says
+which versions are validated. **Gmsh and openEMS are only flagged**: an untested version runs, and the row and
+every run say, in the same words, which versions are tested. The same check runs at the start of every
 3D run and in `circuitrf explain`, so all three always agree.
 
 The Palace row also carries its licence note: a default Palace build includes ParMETIS, which may be

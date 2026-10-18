@@ -376,6 +376,8 @@ public static class Em3dRunService
         {
             var o = readiness.Single(r => r.Tool == SolverTool.OpenEms).Installation!;
             log.Notes.Add($"Solver: openEMS {o.DescribeVersion()} at {o.Path}.");
+            // brief-sar-1 — an untested openEMS runs, and the run says so among its Warnings, as Gmsh's does.
+            if (readiness.Single(r => r.Tool == SolverTool.OpenEms).Warning is { } untested) log.Warnings.Add(untested);
             // brief-em3d-136 §6 — the device is Palace's setting; openEMS is unaffected by it.
             if (device == PalaceDevice.Gpu) log.Notes.Add("Device GPU applies to Palace; openEMS runs on the CPU.");
             gridSettings = CemOpenEms.ResolveGrid(setup.OpenEms);

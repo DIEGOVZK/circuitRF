@@ -73,8 +73,8 @@ public sealed class RunBothTests(ITestOutputHelper output) : IDisposable
         File.WriteAllText(fake, $"""
             #!/bin/sh
             if [ "$1" = "--help" ]; then
-              echo ' | openEMS 64bit -- version 67d3784'
-              echo '		CSXCAD -- Version: dcdb62b'
+              echo ' | openEMS 64bit -- version 305df56'
+              echo '		CSXCAD -- Version: c46e320'
               exit 0
             fi
             echo '{Words}' >&2

@@ -1039,7 +1039,7 @@ There are three ways to start an install, and they all do the same thing:
 |---|---|---|---|
 | Palace 0.18.1 | yes. It is built from source, which takes about an hour. | yes (arm64 and x64). It is built from source. | yes, inside the Linux subsystem (WSL 2), built from source there (see [Palace on Windows](em-setup.html#palace-windows)). |
 | Gmsh 4.15.2 | yes, from Gmsh's own archive, in under a minute | yes. x64 from Gmsh's own archive; arm64 is built from Gmsh's source against your distribution's OpenCASCADE, in about 3 minutes (Gmsh publishes no Linux arm64 build). | yes, from Gmsh's own archive |
-| openEMS 0.37.0-rc3 | yes. It is built by openEMS's own script. | yes. It is built by openEMS's own script. | yes, from openEMS's own archive |
+| openEMS 0.37.0 | yes. It is built by openEMS's own script. | yes. It is built by openEMS's own script. | yes, from openEMS's own archive |
 
 **Some installs need tools you install first.** A source build needs a compiler and some libraries.
 If one is missing, nothing is downloaded. circuitRF names the one command to run for your system, such
@@ -1218,10 +1218,10 @@ the space back instead, use **Remove all 3D solvers …** in
 
 A 3D setup (one whose `Solver3D` names Palace or openEMS) runs a solver circuitRF does not include. You
 install it yourself, and circuitRF finds it — or you name it in
-{{anchor: settings.html#em3d|Settings ▸ Solvers}}. **circuitRF runs only the Palace and openEMS versions
-it has validated** and refuses any other, naming the validated ones, because a solver's input can change
-meaning between versions and the result would look plausible either way. **Gmsh is different: any version
-runs.** circuitRF lists the Gmsh versions it has tested, and a run with any other version goes ahead with a
+{{anchor: settings.html#em3d|Settings ▸ Solvers}}. **circuitRF runs only the Palace versions it has
+validated** and refuses any other, naming the validated ones, because Palace's input can change meaning
+between versions and the result would look plausible either way. **Gmsh and openEMS are different: any version
+runs.** circuitRF lists the versions it has tested, and a run with any other version goes ahead with a
 warning that names them. What a different Gmsh could change is which mesh entities belong to which named
 object, and every run checks that before solving, whatever the version.
 
@@ -1229,7 +1229,7 @@ object, and every run checks that before solving, whatever the version.
 |---|---|---|
 | Palace | 0.18.1 | `palace --serial --version` prints `Palace version: 0dc74cd` and `Schema version: 1-7-0` — a git hash, never "0.18.1" |
 | Gmsh | tested: 4.11.0 to 4.15.2, every release between; any other runs with a warning | `gmsh --version` prints the version, e.g. `4.15.2` (the Homebrew build adds `-git`) |
-| openEMS | 0.37.0-rc3 | `openEMS --help` prints a banner with `version 67d3784` and `CSXCAD -- Version: dcdb62b` |
+| openEMS | tested: 0.37.0-rc3 and 0.37.0; any other runs with a warning | `openEMS --help` prints a banner with `version v0.37.0` and `CSXCAD -- Version: v0.7.0`; a build from a clone without its tags prints the git hashes `305df56` and `c46e320` instead (0.37.0-rc3: `67d3784` and `dcdb62b`) |
 
 Below is exactly what was done to validate them. **Only macOS on arm64 has been verified**, and Gmsh on
 Linux arm64. Elsewhere the routes are *not yet verified*; use the upstream instructions linked with each
@@ -1243,7 +1243,7 @@ circuitRF's scripts). On Linux arm64, **Install Gmsh…** builds 4.15.2 for you,
 
 **openEMS** — macOS: install its dependencies with `brew install cmake boost hdf5 cgal vtk`, then
 
-<pre><code class="cmd"><span class="prompt">$ </span>git clone --recursive -b v0.37.0-rc3 https://github.com/thliebig/openEMS-Project.git
+<pre><code class="cmd"><span class="prompt">$ </span>git clone --recursive -b v0.37.0 https://github.com/thliebig/openEMS-Project.git
 <span class="prompt">$ </span>cd openEMS-Project
 <span class="prompt">$ </span>./update_openEMS.sh ~/opt/openEMS --disable-GUI --python --njobs=4</code></pre>
 

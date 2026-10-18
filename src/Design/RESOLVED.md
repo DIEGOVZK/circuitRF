@@ -20050,3 +20050,27 @@ with a sentence the owner found hard to parse, and nothing offered a way forward
 - The object tree's instance row (and each of its parts) never offered the hierarchy entries the canvas's
   menu did; both now come from `InstanceMenuItems`.
 Gate: `HierarchyGateTests.Flatten_DielectricRowsNamingNoMaterial_AddsOneSharedMaterial_AndASecondInstanceAddsNone`.
+
+## openEMS 0.37.0 final; openEMS's list is of TESTED versions, as Gmsh's is (brief-sar-1, 2026-10-17)
+
+- **0.37.0 joined 0.37.0-rc3** on `SolverDiscovery`'s openEMS list: openEMS `305df56` / CSXCAD `c46e320`, or the tags
+  `v0.37.0` / `v0.7.0` that a build from a tagged checkout and upstream's Windows archive print instead. The four
+  install recipes moved to 0.37.0 (openEMS-Project `974294b`; the Windows archive's digest is GitHub's own). rc3 has
+  no recipe any more, so the install assistant builds 0.37.0.
+- **openEMS now runs at any version, with a warning, like Gmsh** (`untestedRuns: true`, the owner's decision): the
+  list says what has been tested, not what may run. Palace stays strict. The run service puts openEMS's untested
+  warning in the run's Warnings, as it already did Gmsh's; `DescribeUntested` says "If a run fails" for openEMS where
+  it says "If meshing fails" for Gmsh; `explain` prints "tested" for both.
+- **testdata/em3d/f0 re-run on 0.37.0** (`testdata/em3d/f0/tools/rerun_openems.py`): no physics moved. The cases whose
+  stop step matched rc3's are bit-identical; the others stopped at another step, and that is the whole difference
+  (`docs/design/em-3d-f0-findings.md` §6.1).
+- **A short openEMS run is not repeatable by default.** openEMS evaluates its energy end criterion every few seconds
+  of WALL-CLOCK time, so the step it stops at depends on machine load; `--exact-endcriteria` checks every Nyquist
+  interval and makes two runs bit-identical. On `Dipole_SAR`, psSAR10g moved 0.24 % between unmodified runs
+  (`docs/design/sar.md` §3.2). A gate comparing a circuitRF openEMS run with a reference carries that spread.
+- **`sar_calc` exits 1 on success and 0 on failure**: its `main` returns `CalcFromHDF5`'s bool. Anything that runs
+  it (SAR-5's cross-check) must judge by the output file.
+- **The SAR-1 reference data (testdata/sar/openems-ref) is not in the repository** (owner): only its README and the
+  wrappers that made it are. `SarReferenceSetTests` skips with a reason where it is absent.
+Gate: `SolverDiscoveryTests` (the banners of both releases, both spellings, an untested openEMS proceeding with the
+warning), `SarReferenceSetTests`.

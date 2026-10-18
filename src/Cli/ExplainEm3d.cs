@@ -583,7 +583,7 @@ internal static class ExplainEm3d
             else
                 Console.WriteLine($"    {s.Tool,-10} {s.Version}" +
                                   (s.Release is not { } rel ? (s.Warning is null ? ", NOT validated" : ", not tested")
-                                   : (rel == s.Version ? ", " : $" = {rel}, ") + (s.Tool == SolverDiscovery.Gmsh.Name ? SolverDiscovery.Gmsh.ListWord : "validated")) +
+                                   : (rel == s.Version ? ", " : $" = {rel}, ") + (s.Tool == SolverDiscovery.Palace.Name ? SolverDiscovery.Palace.ListWord : "tested")) +
                                   $" — {(s.Path is { } path ? SpackInstalls.FoldPadding(path) : null)} ({s.HowFound})");   // --json keeps the full path
             foreach (var c in s.Capabilities)
                 Console.WriteLine($"    {"",-10} {c.Capability}: {(c.Available ? "yes" : "no")}" +

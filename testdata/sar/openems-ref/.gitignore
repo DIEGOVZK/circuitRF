@@ -1,0 +1,7 @@
+# The reference data itself is kept on the developer machine only, never in the repository (owner, 2026-10-18).
+# What is committed is how it was made: README.md (what each file is, the versions, the commands) and tools/.
+# SarReferenceSetTests skips with a reason where the data is absent.
+Dipole_SAR/
+MRI_Loop_Coil/
+MRI_LP_Birdcage/
+analytic/

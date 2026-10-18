@@ -117,7 +117,7 @@ public sealed record SolverCapabilityVerdict(SolverCapability Capability, bool A
 /// was not taken, what it can do, and the refusal — null when the run may proceed.
 /// </summary>
 /// <param name="Warning">brief-em3d-135 R-em3d135-1b — set when the run proceeds with a program circuitRF has not
-/// tested (Gmsh only, <see cref="SolverDiscovery.UntestedRuns"/>): <see cref="SolverDiscovery.DescribeUntested"/>.
+/// tested (Gmsh and openEMS, <see cref="SolverDiscovery.UntestedRuns"/>): <see cref="SolverDiscovery.DescribeUntested"/>.
 /// A run puts it in its Warnings.</param>
 public sealed record SolverReadiness(
     SolverTool Tool, string Name, SolverInstallation? Installation, IReadOnlyList<string> Rejected,
@@ -169,8 +169,8 @@ public sealed record SolverReadiness(
 /// <para><b>Found and validated are separate answers.</b> The first program that STARTS and identifies
 /// itself is the one found, whatever its version — the Settings row shows it and says it is not
 /// validated, and <see cref="Check"/> refuses to run it naming the validated list (R-em3d6-2b), or, for a
-/// tool whose <see cref="UntestedRuns"/> is set (Gmsh), runs it with a warning naming the tested list
-/// (brief-em3d-135). Walking on past it to a validated copy elsewhere would run a different program from
+/// tool whose <see cref="UntestedRuns"/> is set (Gmsh, openEMS), runs it with a warning naming the tested list
+/// (brief-em3d-135, brief-sar-1). Walking on past it to a validated copy elsewhere would run a different program from
 /// the one the user's own shell runs, with nothing on screen saying so.</para>
 /// </summary>
 public sealed partial class SolverDiscovery
@@ -258,12 +258,16 @@ public sealed partial class SolverDiscovery
         _ => new(
             SolverTool.OpenEms, "openEMS", "CIRCUITRF_OPENEMS", ["openEMS"],
             versionArguments: ["--help"],
-            // docs/design/em-3d-f0-findings.md §6 — 0.37.0-rc3 (git 67d3784), CSXCAD dcdb62b. A release
-            // candidate: replace this entry when 0.37.0 final ships and testdata/em3d/f0 has been re-run.
-            // Upstream's tags openEMS v0.37.0-rc3 and CSXCAD v0.7.0-rc3 are exactly those two commits,
-            // which is what upstream's Windows archive prints instead of the hashes.
-            validated: [new SolverValidatedVersion("0.37.0-rc3", "67d3784", "dcdb62b", ("v0.37.0-rc3", "v0.7.0-rc3"))],
-            extraDirectories: [Path.Combine(Home(), "opt", "openEMS", "bin")], spackPackage: "openems"),
+            // TESTED versions, oldest first; any other runs, with a warning (brief-sar-1, as Gmsh's brief-em3d-135).
+            // Each is a pair of commits, and its tags are what a build from a tagged checkout and upstream's Windows
+            // archive print instead of the hashes.
+            validated: [
+                // docs/design/em-3d-f0-findings.md §6 — F0's release candidate, and every em3d brief's since.
+                new SolverValidatedVersion("0.37.0-rc3", "67d3784", "dcdb62b", ("v0.37.0-rc3", "v0.7.0-rc3")),
+                // brief-sar-1 R-sar1-1 — testdata/em3d/f0 re-run on it (em-3d-f0-findings.md §6).
+                new SolverValidatedVersion("0.37.0", "305df56", "c46e320", ("v0.37.0", "v0.7.0")),
+            ],
+            extraDirectories: [Path.Combine(Home(), "opt", "openEMS", "bin")], spackPackage: "openems", untestedRuns: true),
     };
 
     /// <summary>The instance for <paramref name="tool"/>.</summary>
@@ -392,9 +396,10 @@ public sealed partial class SolverDiscovery
 
     /// <summary>
     /// brief-em3d-135 R-em3d135-1a — whether a version off <see cref="ValidatedVersions"/> runs, with a warning,
-    /// rather than being refused. Gmsh only: what a different Gmsh could break, the entity table guards by
-    /// construction. Palace and openEMS stay strict, because a key or file read differently between their
-    /// versions gives a plausible wrong answer and nothing downstream would notice.
+    /// rather than being refused. Gmsh: what a different Gmsh could break, the entity table guards by
+    /// construction. openEMS: the owner's decision (brief-sar-1) — its list says what has been tested, not what
+    /// may run. Palace stays strict, because a key read differently between its versions gives a plausible
+    /// wrong answer and nothing downstream would notice.
     /// </summary>
     public bool UntestedRuns { get; }
 
@@ -402,7 +407,7 @@ public sealed partial class SolverDiscovery
     /// a tool whose <see cref="UntestedRuns"/> is set.</summary>
     public bool Runs(SolverInstallation installation) => installation.Validated || UntestedRuns;
 
-    /// <summary>What user-facing text calls a version on <see cref="ValidatedVersions"/>: "tested" for Gmsh.</summary>
+    /// <summary>What user-facing text calls a version on <see cref="ValidatedVersions"/>: "tested" for Gmsh and openEMS.</summary>
     public string ListWord => UntestedRuns ? "tested" : "validated";
 
     /// <summary>The path named in Settings, or null. Installed by <c>src/Ui</c>
@@ -714,7 +719,7 @@ public sealed partial class SolverDiscovery
     public string DescribeUntested(SolverInstallation installation)
         => $"{Name} at '{installation.Where}' reports version {installation.DescribeVersion()}, which circuitRF has not " +
            $"tested; tested: {string.Join(", ", ValidatedVersions.Select(v => v.ToString()))}. circuitRF runs it anyway. " +
-           $"If meshing fails or a result looks wrong, point circuitRF at a tested {Name} in Settings ▸ Solvers or with " +
+           $"If {(Tool == SolverTool.Gmsh ? "meshing" : "a run")} fails or a result looks wrong, point circuitRF at a tested {Name} in Settings ▸ Solvers or with " +
            $"{EnvironmentVariable}.";
 
     /// <summary>The refusal for a program found at a version circuitRF has not validated (R-em3d6-2b). For an
@@ -726,13 +731,9 @@ public sealed partial class SolverDiscovery
         if (UntestedRuns)
             return $"{Name} at '{installation.Where}' ({installation.HowFoundText}) reports version " +
                    $"{installation.DescribeVersion()}, which circuitRF has not tested. Tested: {list}.";
-        string why = Tool switch
-        {
-            SolverTool.Palace => "Palace's configuration changes meaning between versions, and a key read differently " +
-                                 "produces a plausible wrong answer rather than an error.",
-            _                 => "circuitRF writes openEMS's XML and reads its probe files as that version does, " +
-                                 "and has verified no other.",
-        };
+        // Palace is the one strict tool: Gmsh and openEMS are UntestedRuns, and were answered above.
+        const string why = "Palace's configuration changes meaning between versions, and a key read differently " +
+                           "produces a plausible wrong answer rather than an error.";
         return $"{Name} at '{installation.Where}' ({installation.HowFoundText}) reports version " +
                $"{installation.DescribeVersion()}, which circuitRF has not validated, so this 3D setup will not run. " +
                $"Validated: {list}. {why} Point circuitRF at a validated {Name} in Settings ▸ Solvers or with " +

@@ -120,9 +120,9 @@ public sealed class SolverDiscoveryTests : IDisposable
     }
 
     /// <summary>brief-em3d-135 — Gmsh's list is of TESTED versions: an untested one runs, with one warning naming the
-    /// list, which the Settings row repeats word for word. openEMS stays strict (Palace is Gate3).</summary>
+    /// list, which the Settings row repeats word for word. brief-sar-1 — openEMS's is too (Palace stays strict, Gate3).</summary>
     [Fact]
-    public void Gate3b_AnUntestedGmsh_Proceeds_WithAWarningNamingTheTestedList_AndOpenEmsIsStillRefused()
+    public void Gate3b_AnUntestedGmshOrOpenEms_Proceeds_WithAWarningNamingTheTestedList()
     {
         string older = FakePrinting("gmsh-old", "4.10.5");
         var d = Discovery(SolverTool.Gmsh, preferred: older, env: null);
@@ -141,11 +141,13 @@ public sealed class SolverDiscoveryTests : IDisposable
         Assert.True(current.Proceeds);
         Assert.Null(current.Warning);
 
-        var openEms = Discovery(SolverTool.OpenEms, preferred: FakePrinting("openems-new", "openEMS 64bit -- version 9abcdef\nCSXCAD -- Version: dcdb62b"), env: null)
-            .Check(SolverDiscovery.CapabilitiesFor(SolverTool.OpenEms));
-        Assert.False(openEms.Proceeds);
-        Assert.Contains("not validated", openEms.Refusal);
-        Assert.Null(openEms.Warning);
+        string newer = FakePrinting("openems-new", "openEMS 64bit -- version 9abcdef\nCSXCAD -- Version: dcdb62b");
+        var o = Discovery(SolverTool.OpenEms, preferred: newer, env: null);
+        var openEms = o.Check(SolverDiscovery.CapabilitiesFor(SolverTool.OpenEms));
+        Assert.True(openEms.Proceeds, openEms.Refusal);
+        Assert.Contains($"'{newer}' reports version 9abcdef, CSXCAD dcdb62b, which circuitRF has not tested; tested: 0.37.0-rc3 (67d3784), 0.37.0 (305df56).", openEms.Warning);
+        Assert.Contains("If a run fails", openEms.Warning);
+        Assert.EndsWith(openEms.Warning!, o.DescribeForSettings(openEms.Installation, []));
     }
 
     // ── 4. banner parsing, against the banners F0 recorded ──────────────────────────────────────
@@ -153,8 +155,9 @@ public sealed class SolverDiscoveryTests : IDisposable
     [Theory]
     [InlineData(SolverTool.Palace,  "palace-version.txt",  "0dc74cd", "1-7-0",   "0.18.1")]
     [InlineData(SolverTool.Gmsh,    "gmsh-version.txt",    "4.15.2",  null,      "4.15.2")]
+    [InlineData(SolverTool.OpenEms, "openems-0.37.0-banner.txt", "v0.37.0", "v0.7.0", "0.37.0")]
     [InlineData(SolverTool.OpenEms, "openems-banner.txt",  "67d3784", "dcdb62b", "0.37.0-rc3")]
-    public void Gate4_EachF0BannerParsesToItsValidatedVersion(SolverTool tool, string fixture, string version, string? companion, string release)
+    public void Gate4_EachF0BannerParsesToItsValidatedVersion(SolverTool tool, string fixture, string version, string? companion, string? release)
     {
         var parsed = SolverDiscovery.ParseVersion(tool, File.ReadAllText(Banner(fixture)));
         Assert.NotNull(parsed);
@@ -164,15 +167,18 @@ public sealed class SolverDiscoveryTests : IDisposable
         Assert.Equal(release, d.Find(out _)!.Release);
     }
 
-    /// <summary>Upstream's Windows archive prints its tags, not F0's hashes — the version lines as a
-    /// Windows install reported them. Those tags pin exactly F0's two commits, so it is the same release;
-    /// a tagged openEMS beside some other CSXCAD is still not.</summary>
+    /// <summary>A build from a tagless clone prints the hashes, upstream's Windows archive and a tagged
+    /// checkout print the tags — the version lines as each reported them. The tags pin exactly those two
+    /// commits, so both spellings are the same release; a tagged openEMS beside some other CSXCAD is not.</summary>
     [Theory]
-    [InlineData("v0.7.0-rc3", "0.37.0-rc3")]
-    [InlineData("v0.7.0-rc2", null)]
-    public void Gate4_TheReleaseArchiveTagsIdentifyTheSameValidatedRelease(string csxcad, string? release)
+    [InlineData("v0.37.0", "v0.7.0",     "0.37.0")]
+    [InlineData("305df56", "c46e320",    "0.37.0")]
+    [InlineData("v0.37.0-rc3", "v0.7.0-rc3", "0.37.0-rc3")]
+    [InlineData("v0.37.0", "v0.7.0-rc3", null)]
+    [InlineData("305df56", "dcdb62b",    null)]
+    public void Gate4_TheReleaseArchiveTagsIdentifyTheSameValidatedRelease(string openEms, string csxcad, string? release)
     {
-        string fake = FakePrinting("tagged", $"openEMS 64bit -- version v0.37.0-rc3\nCSXCAD -- Version: {csxcad}");
+        string fake = FakePrinting("tagged", $"openEMS 64bit -- version {openEms}\nCSXCAD -- Version: {csxcad}");
         Assert.Equal(release, Discovery(SolverTool.OpenEms, preferred: fake, env: null).Find(out _)!.Release);
     }
 
