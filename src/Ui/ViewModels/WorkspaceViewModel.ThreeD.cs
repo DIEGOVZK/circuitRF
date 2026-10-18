@@ -788,6 +788,7 @@ public partial class WorkspaceViewModel
         ThreeDShowAllCommand.NotifyCanExecuteChanged();
         ThreeDSnapCommand.NotifyCanExecuteChanged();
         ThreeDDrawCommand.NotifyCanExecuteChanged();
+        ThreeDAddPhantomCommand.NotifyCanExecuteChanged();
         ThreeDInsertImageCommand.NotifyCanExecuteChanged();
         ThreeDTemperatureCommand.NotifyCanExecuteChanged();
         ThreeDDrawingPlaneCommand.NotifyCanExecuteChanged();
@@ -889,6 +890,13 @@ public partial class WorkspaceViewModel
     private void ThreeDDraw(string kind)
     {
         if (ActiveC3dEditor() is { } e && Enum.TryParse<CircuitRF.Ui.ThreeD.Tools.C3dToolKind>(kind, out var k)) e.Arm(k);
+    }
+
+    /// <summary>brief-sar-3 R-sar3-2 — 3D ▸ Draw ▸ Phantom ▸ …: a layered phantom of that shape, one undo entry.</summary>
+    [RelayCommand(CanExecute = nameof(HasActiveC3dEditor))]
+    private void ThreeDAddPhantom(string shape)
+    {
+        if (ActiveC3dEditor() is { } e && Enum.TryParse<CircuitRF.Design.ThreeD.C3dPhantomShape>(shape, out var s)) e.AddPhantom(s);
     }
 
     /// <summary>brief-em3d-101 R-em3d101-2b — 3D ▸ Draw ▸ Image…: the same picker and the same placement as the toolbar button.</summary>

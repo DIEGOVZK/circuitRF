@@ -45,11 +45,15 @@ public sealed partial class C3dEditorViewModel : IC3dDrawHost
         (C3dToolKind.Cylinder, 'Y', nameof(Viewer3DPathGlyph.Cylinder)),
         // brief-em3d-102 — Sph_ere (owner decision D1: S, P and H are taken); the icon set has no sphere either (D5).
         (C3dToolKind.Sphere, 'E', nameof(Viewer3DPathGlyph.Sphere)),
+        // brief-sar-3 — an _Oval: E and I read as Ellipsoid's letters and E is the sphere's; drawn, as the sphere is.
+        (C3dToolKind.Ellipsoid, 'O', nameof(Viewer3DPathGlyph.Ellipsoid)),
         (C3dToolKind.Sheet, 'S', "RectangleOutline"),
         (C3dToolKind.Polygon, 'G', "VectorPolygon"),
         (C3dToolKind.Polyline, 'L', "VectorPolyline"),
         // brief-em3d-49 R-em3d49-2d — a port, drawn like a sheet.
         (C3dToolKind.Port, 'P', "ArrowUpBoldBoxOutline"),
+        // brief-sar-3 R-sar3-3 — a lumped element, drawn like a port: _C for its capacitor glyph.
+        (C3dToolKind.LumpedElement, 'C', nameof(Viewer3DPathGlyph.Capacitor)),
         // brief-em3d-50 R-em3d50-3a — a bond wire, pad to pad.
         (C3dToolKind.Wire, 'W', "VectorCurve"),
         // brief-em3d-75 R-em3d75-1a — the thermal places: a heat source, a probe, a mesh region.
@@ -280,6 +284,8 @@ public sealed partial class C3dEditorViewModel : IC3dDrawHost
     public bool IsPolylineArmed { get => ArmedTool == C3dToolKind.Polyline; set => ArmToggle(C3dToolKind.Polyline, value); }
     public bool IsCylinderArmed { get => ArmedTool == C3dToolKind.Cylinder; set => ArmToggle(C3dToolKind.Cylinder, value); }
     public bool IsSphereArmed   { get => ArmedTool == C3dToolKind.Sphere;   set => ArmToggle(C3dToolKind.Sphere, value); }
+    public bool IsEllipsoidArmed { get => ArmedTool == C3dToolKind.Ellipsoid; set => ArmToggle(C3dToolKind.Ellipsoid, value); }
+    public bool IsLumpedElementArmed { get => ArmedTool == C3dToolKind.LumpedElement; set => ArmToggle(C3dToolKind.LumpedElement, value); }
     public bool IsPortArmed { get => ArmedTool == C3dToolKind.Port; set => ArmToggle(C3dToolKind.Port, value); }
     // brief-em3d-75 — the thermal tools' toolbar toggles.
     public bool IsHeatSourceArmed { get => ArmedTool is C3dToolKind.HeatSource or C3dToolKind.HeatSourcePolygon; set => ArmToggle(C3dToolKind.HeatSource, value); }
@@ -305,6 +311,8 @@ public sealed partial class C3dEditorViewModel : IC3dDrawHost
             C3dToolKind.Polygon => new PolygonTool(this),
             C3dToolKind.Polyline => new PolylineTool(this),
             C3dToolKind.Sphere => new SphereTool(this),
+            C3dToolKind.Ellipsoid => new EllipsoidTool(this),
+            C3dToolKind.LumpedElement => new LumpedElementTool(this, NewLumpedElementTemplate),
             C3dToolKind.Port => new PortTool(this, () => NewPortTemplate()),
             C3dToolKind.Wire => WireToolArmed(),
             C3dToolKind.HeatSource => new HeatSourceTool(this),
@@ -348,7 +356,7 @@ public sealed partial class C3dEditorViewModel : IC3dDrawHost
         // brief-em3d-46 — one gesture at a time: arming a tool ends a measurement.
         if (tool is not null) Viewer.EndMeasure();
         foreach (string p in new[] { nameof(ArmedTool), nameof(Tool), nameof(IsBoxArmed), nameof(IsSheetArmed), nameof(IsPolygonArmed),
-                                     nameof(IsPolylineArmed), nameof(IsCylinderArmed), nameof(IsSphereArmed), nameof(IsPortArmed), nameof(IsWireArmed), nameof(ToolPrompt),
+                                     nameof(IsPolylineArmed), nameof(IsCylinderArmed), nameof(IsSphereArmed), nameof(IsEllipsoidArmed), nameof(IsLumpedElementArmed), nameof(IsPortArmed), nameof(IsWireArmed), nameof(ToolPrompt),
                                      nameof(IsHeatSourceArmed), nameof(IsProbeArmed), nameof(IsMeshRegionArmed) })
             OnPropertyChanged(p);
         Viewer.RequestFrame();
@@ -444,7 +452,7 @@ public sealed partial class C3dEditorViewModel : IC3dDrawHost
         // brief-em3d-66 — a Tool's name inside a boolean is taken too: names are unique across the document.
         // brief-em3d-75 — and a thermal place's: brief 73 makes names unique across objects, instances and places.
         var used = new HashSet<string>(Document.Objects.Select(o => o.Name).Concat(Document.Instances.Select(i => i.Name)).Concat(NestedNames())
-                                               .Concat(ThermalPlaceNames()), StringComparer.Ordinal);
+                                               .Concat(ThermalPlaceNames()).Concat(Document.LumpedElements.Select(l => l.Name)), StringComparer.Ordinal);
         for (int n = 1; ; n++)
             if (!used.Contains(prefix + n)) return prefix + n;
     }
@@ -491,6 +499,13 @@ public sealed partial class C3dEditorViewModel : IC3dDrawHost
         if (step.Finished && _tool is TemperatureAlongTool along && along.Take() is { } ends)
         {
             if (PlotTemperatureAlong(ends.From, ends.To) is { } alongWhy) StatusMessage = alongWhy;
+            OnPropertyChanged(nameof(ToolPrompt));
+            Viewer.RequestFrame();
+            return;
+        }
+        if (step.Finished && _tool is LumpedElementTool lumpedTool && lumpedTool.TakeMade() is { } lumped)
+        {
+            AddLumpedElement(lumped);
             OnPropertyChanged(nameof(ToolPrompt));
             Viewer.RequestFrame();
             return;
@@ -707,6 +722,7 @@ public sealed partial class C3dEditorViewModel : IC3dDrawHost
         if (_crossing is { } x) { overlay.Crossing.Add(x.A); overlay.Crossing.Add(x.B); }
         FillSimulateOverlay(overlay);
         FillThermalOverlay(overlay);
+        FillLumpedOverlay(overlay);                // brief-sar-3
     }
 
     private static List<C3dPoint3> Points3Of(C3dPolyline l)

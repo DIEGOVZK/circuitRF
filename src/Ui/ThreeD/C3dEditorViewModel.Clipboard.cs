@@ -86,6 +86,7 @@ public sealed partial class C3dEditorViewModel
         { IsAirBox: true } => "The air box is the active setup's, not the geometry's: it does not copy.",
         { Kind: FieldPlotKind } => "A field plot is a reading of a run (it names a setup and a solution): it does not copy yet.",
         { Kind: "Part" } => "Part of a placed cell: it belongs to its own cell. Copy the placed cell instead.",
+        { Kind: LumpedElementKind } => "A lumped element does not copy yet: draw another with the Lumped Element tool.",
         _ => null,
     };
 

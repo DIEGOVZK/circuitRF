@@ -889,7 +889,7 @@ public sealed partial class Viewer3DViewModel : ObservableObject, IDisposable
                 {
                     if (grid is null)
                     {
-                        grid = FdtdGrid.Build(scene.Problem!, CemOpenEms.ResolveGrid(setup?.OpenEms));
+                        grid = FdtdGrid.Build(scene.Problem!, CemOpenEms.ResolveGrid(setup?.OpenEms, CemPath));   // brief-sar-3 — a relative GridLines.File
                         var built = grid;
                         _post(() => { if (ReferenceEquals(Scene.Geometry, scene.Geometry)) _grid = (scene, built); });
                     }

@@ -60,6 +60,14 @@ public sealed partial class C3dEditorViewModel
             items.Add(new Viewer3DMenuItem("Delete", port is null ? null : () => DeletePorts([port]), Enabled: port is not null));
             if (port is not null) items.Add(PortModelItem([port]));    // brief-em3d-93
         }
+        // brief-sar-3 — a lumped element's row: rename, model, hide, delete.
+        else if (item.Kind == LumpedElementKind)
+        {
+            items.AddRange(LumpedTreeItems(item));
+            items.Add(Viewer3DMenuItem.Separator);
+            items.Add(new Viewer3DMenuItem("Properties", () => ShowProperties(rename: false)));
+            return items;
+        }
         // brief-em3d-75 R-em3d75-1b — a thermal place's row: rename, hide, delete (and a line probe's plot); a thermal
         // boundary's row: delete, from the active thermal setup.
         else if (item.Kind is HeatSourceKind or ProbeKind or MeshRegionKind or ThermalBoundaryKindName or EffectiveBlockKind or SymmetryPlaneKind)
@@ -95,6 +103,14 @@ public sealed partial class C3dEditorViewModel
             items.Add(Viewer3DMenuItem.Separator);
             items.Add(new Viewer3DMenuItem("Remove", () => RemoveFeature(top, fp),
                 Tip: "The solid returns unrounded, in its place and under its name."));
+        }
+        // brief-sar-3 — a phantom layer's row: its phantom's Flatten; the layer itself is edited on the phantom's page.
+        else if (item.Kind == PhantomLayerKind)
+        {
+            int pi = Document.Objects.FindIndex(o => o is C3dPhantom && item.Name.StartsWith(o.Name + "/", StringComparison.Ordinal));
+            if (pi >= 0) items.Add(FlattenPhantomItem(pi));
+            items.Add(new Viewer3DMenuItem("Properties", () => ShowProperties(rename: false)));
+            return items;
         }
         else if (item.IsReadOnly)
         {
@@ -147,13 +163,17 @@ public sealed partial class C3dEditorViewModel
                     items.Add(Viewer3DMenuItem.Separator);
                 }
                 items.Add(new Viewer3DMenuItem("Rename…", () => ShowProperties(rename: true)));
+                // brief-sar-3 — a phantom's materials are its layers', chosen on its Inspector page
+                if (Document.Objects[index] is C3dPhantom) items.Add(FlattenPhantomItem(index));
                 var mats = Materials;
                 // brief-em3d-53 — the list ends in New Material…, so a technology with none is not a dead end.
+                if (Document.Objects[index] is not C3dPhantom)
                 items.Add(new Viewer3DMenuItem("Material",
                     Children: [.. mats.Select(m => new Viewer3DMenuItem(m, () => ChangeObjects($"Material of {Document.Objects[index].Name}", [index], o => SetMaterialOf(o, m)))),
                                .. mats.Count > 0 ? [Viewer3DMenuItem.Separator] : Array.Empty<Viewer3DMenuItem>(),
                                new Viewer3DMenuItem(NewMaterialItem, () => RequestMaterialPicker([index], startNew: true),
                                    Tip: "Make a material in the technology or one of its libraries, and give it to this object.")]));
+                if (Document.Objects[index] is not C3dPhantom)
                 items.Add(new Viewer3DMenuItem("Assign Material…", () => RequestMaterialPicker([index], startNew: false),
                     Tip: "Choose this object's material from its technology's materials — each with its role and source — or make a new one."));
                 if (EditMaterialItem(item) is { } edit) items.Add(edit);    // brief-em3d-94
@@ -215,7 +235,9 @@ public sealed partial class C3dEditorViewModel
     {
         if (item.IsAirBox) return AirBoxFaceObjects();
         if (item.IsGroup) return SceneObjectsOfGroup(item.GroupPath!);
-        var names = item.InstanceIndex >= 0 ? item.Children.Select(c => c.Name) : [item.Name];
+        // brief-sar-3 — a phantom's row is its layers' solids
+        bool phantom = item.ObjectIndex >= 0 && item.ObjectIndex < Document.Objects.Count && item.OperandPath is null && Document.Objects[item.ObjectIndex] is C3dPhantom;
+        var names = item.InstanceIndex >= 0 || phantom ? item.Children.Select(c => c.Name) : [item.Name];
         return [.. names.Select(SceneObject).OfType<Scene3DObject>()];
     }
 

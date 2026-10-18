@@ -29,7 +29,8 @@ public sealed class EditorToolbarKeysTests
     }
 
     /// <summary>Box, Cylinder, Sphere, then Sheet — in the toolbar and the Shift+A popup — and the Sheet is the layout's
-    /// rectangle. brief-em3d-102 gate 10: the sphere is third, drawn, on E, and listed after Cylinder in both 3D ▸ Draw menus.</summary>
+    /// rectangle. brief-em3d-102 gate 10: the sphere is third, drawn, on E, and listed after Cylinder in both 3D ▸ Draw menus.
+    /// brief-sar-3: the ellipsoid follows the sphere, drawn, on O.</summary>
     [Fact]
     public void Toolbar_CylinderFollowsBox_AndSheetIsARectangle()
     {
@@ -44,7 +45,9 @@ public sealed class EditorToolbarKeysTests
         Assert.Contains("Kind=\"RectangleOutline\"", sheetButton, StringComparison.Ordinal);
 
         var kinds = C3dEditorViewModel.DrawTools.Select(t => t.Kind).ToList();
-        Assert.Equal([C3dToolKind.Box, C3dToolKind.Cylinder, C3dToolKind.Sphere, C3dToolKind.Sheet], kinds.Take(4));
+        Assert.Equal([C3dToolKind.Box, C3dToolKind.Cylinder, C3dToolKind.Sphere, C3dToolKind.Ellipsoid, C3dToolKind.Sheet], kinds.Take(5));
+        Assert.Equal(('O', nameof(CircuitRF.Ui.Viewer3D.Viewer3DPathGlyph.Ellipsoid)),
+                     C3dEditorViewModel.DrawTools.Where(t => t.Kind == C3dToolKind.Ellipsoid).Select(t => (t.Letter, t.Icon)).Single());
         Assert.Equal(('E', nameof(CircuitRF.Ui.Viewer3D.Viewer3DPathGlyph.Sphere)),
                      C3dEditorViewModel.DrawTools.Where(t => t.Kind == C3dToolKind.Sphere).Select(t => (t.Letter, t.Icon)).Single());
         string window = File.ReadAllText(ReadPath(Path.Combine("..", "WorkspaceWindow.axaml")));

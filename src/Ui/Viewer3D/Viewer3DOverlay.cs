@@ -340,6 +340,7 @@ public sealed class Viewer3DOverlay : Control
     private static readonly IBrush ProbeBrush = new SolidColorBrush(Color.FromRgb(40, 200, 220));
     private static readonly IBrush RegionBrush = new SolidColorBrush(Color.FromRgb(170, 120, 230));
     /// <summary>brief-em3d-90 — a thermal symmetry plane: the colour the air box hatches a symmetry face in (Scene3DBuilder).</summary>
+    private static readonly IBrush LumpedBrush = new SolidColorBrush(Color.FromRgb(200, 220, 60));
     private static readonly IBrush SymmetryBrush = new SolidColorBrush(Color.FromRgb(160, 80, 210));
 
     /// <summary>brief-em3d-67 — a world polyline, projected, drawn twice: a halo, then the stroke.</summary>
@@ -402,6 +403,7 @@ public sealed class Viewer3DOverlay : Control
         Lines(d.MeshRegions, new Pen(RegionBrush, 1.3) { DashStyle = new DashStyle([6, 4], 0) });
         Lines(d.Probes, new Pen(ProbeBrush, 1.6));
         Lines(d.SymmetryPlanes, new Pen(SymmetryBrush, 1.1));
+        Lines(d.LumpedElements, new Pen(LumpedBrush, 1.6));            // brief-sar-3
         foreach (var p in d.ProbeMarks)
             if (Screen(p) is (var pp, true))
             {
@@ -912,11 +914,24 @@ public sealed class Viewer3DPathGlyph : Control
         "M21 8.32L12.7 13.39L12.7 21.57L21 16.5L21 8.32Z" +
         "M11.3 21.57L11.3 13.39L3 8.32L3 16.5L11.3 21.57Z";
 
+    /// <summary>brief-sar-3 — an outlined ellipsoid: the sphere's glyph pressed flat (rx 9, ry 6), its equator as the sphere's
+    /// is drawn, so the two read as one family.</summary>
+    public const string Ellipsoid =
+        "M3,12 A9,6 0 1 1 21,12 A9,6 0 1 1 3,12 Z " +
+        "M5,12 A7,4 0 1 0 19,12 A7,4 0 1 0 5,12 Z " +
+        "M19,12 A7,2.4 0 0 1 5,12 A7,1.2 0 0 0 19,12 Z";
+
+    /// <summary>brief-sar-3 R-sar3-3 — a capacitor: two plates across a gap, a lead to each.</summary>
+    public const string Capacitor =
+        "M2,11 H9 V13 H2 Z M15,11 H22 V13 H15 Z M8,4 H10 V20 H8 Z M14,4 H16 V20 H14 Z";
+
     /// <summary>The constant a tool table names (<c>nameof(Cylinder)</c> …), or null for a Material icon's kind.</summary>
     public static string? Named(string name) => name switch
     {
         nameof(Cylinder) => Cylinder,
         nameof(Sphere) => Sphere,
+        nameof(Ellipsoid) => Ellipsoid,
+        nameof(Capacitor) => Capacitor,
         _ => null,
     };
 

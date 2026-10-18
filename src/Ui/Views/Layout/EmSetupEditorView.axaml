@@ -763,9 +763,15 @@
                                    PlaceholderText="{x:Static em:EmSetupEditorViewModel.OpenEmsDefaultMaxTimeSteps}"
                                    LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"
                                    ToolTip.Tip="The most time steps one run may take. A run that reaches it before the end criterion has not converged; its result is written with a warning. Blank: ten times the grid's own estimate."/>
-                        <CheckBox Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2" Content="Thirds rule at metal edges"
-                                  IsChecked="{Binding ViewModel.OpenEmsThirdsRule}"
-                                  ToolTip.Tip="Places a strip's edge lines a third of the local cell inside the metal and two thirds outside, where the edge field lives, rather than one line on the edge."/>
+                        <StackPanel Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2" Spacing="2">
+                            <CheckBox Content="Thirds rule at metal edges"
+                                      IsChecked="{Binding ViewModel.OpenEmsThirdsRule}"
+                                      ToolTip.Tip="Places a strip's edge lines a third of the local cell inside the metal and two thirds outside, where the edge field lives, rather than one line on the edge."/>
+                            <!-- brief-sar-3 R-sar3-4 -->
+                            <CheckBox Content="Cell-constant material"
+                                      IsChecked="{Binding ViewModel.OpenEmsCellConstantMaterial}"
+                                      ToolTip.Tip="{x:Static em:EmSetupEditorViewModel.OpenEmsCellConstantTip}"/>
+                        </StackPanel>
                         <TextBlock Grid.Row="7" Grid.Column="0" Classes="colhdr" Text="Save fields at (GHz)" VerticalAlignment="Center"/>
                         <TextBox   Grid.Row="7" Grid.Column="1" Classes="num" Tag="OpenEms.SaveFieldsGHz"
                                    Text="{Binding ViewModel.OpenEmsSaveFieldsText}"

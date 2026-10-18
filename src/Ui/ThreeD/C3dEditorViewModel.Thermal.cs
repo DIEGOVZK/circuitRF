@@ -1179,7 +1179,7 @@ public sealed partial class C3dEditorViewModel
     public void SetPlaceShown(string name, bool shown)
     {
         if (shown) _hiddenPlaces.Remove(name); else _hiddenPlaces.Add(name);
-        if (AllTreeItems().FirstOrDefault(t => t.Name == name && t.Kind is HeatSourceKind or ProbeKind or MeshRegionKind or EffectiveBlockKind) is { } row) row.Sync(shown);
+        if (AllTreeItems().FirstOrDefault(t => t.Name == name && t.Kind is HeatSourceKind or ProbeKind or MeshRegionKind or EffectiveBlockKind or LumpedElementKind) is { } row) row.Sync(shown);
         Viewer.RequestFrame();
     }
 

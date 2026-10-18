@@ -489,6 +489,8 @@ public sealed partial class C3dEditorViewModel : ObservableObject, IViewer3DEdit
         // brief-em3d-50 — a wire's ball is a solid of its own, and belongs to the wire it was made for.
         if (i < 0 && Elaboration?.Provenance.TryGetValue(o.Name, out var p) == true && p.ObjectName != o.Name)
             i = Document.Objects.FindIndex(d => d.Name == p.ObjectName);
+        // brief-sar-3 — a phantom's layer is its phantom's solid.
+        if (i < 0) i = PhantomIndexOf(o);
         return i;
     }
 
@@ -668,7 +670,8 @@ public sealed partial class C3dEditorViewModel : ObservableObject, IViewer3DEdit
         if (name.Length == 0) return "A name cannot be empty.";
         if (string.Equals(name, "airbox", StringComparison.OrdinalIgnoreCase)) return "'airbox' is reserved: the air box's faces are named after it.";
         if (name.Contains('/')) return "A name cannot hold '/': an instance's contents are named '<instance>/<object>'.";
-        if (Document.Objects.Any(o => o != obj && o.Name == name) || Document.Instances.Any(i => i.Name == name) || NestedNames().Contains(name))
+        if (Document.Objects.Any(o => o != obj && o.Name == name) || Document.Instances.Any(i => i.Name == name) || NestedNames().Contains(name)
+            || Document.LumpedElements.Any(l => l.Name == name))
             return $"'{name}' is already the name of something in this 3D view.";
         Viewer.ExpectRename(obj.Name, name);
         bool entered = _entered is { } e0 && e0.Top == obj.Name;
@@ -1091,6 +1094,8 @@ public sealed partial class C3dEditorViewModel : ObservableObject, IViewer3DEdit
     private static readonly (Type Type, string Header)[] Groups =
     [
         (typeof(C3dBox), "Boxes"), (typeof(C3dPrism), "Prisms"), (typeof(C3dCylinder), "Cylinders"), (typeof(C3dSphere), "Spheres"),
+        // brief-sar-3 — an ellipsoid beside the sphere; a phantom, one row with its layers beneath it.
+        (typeof(C3dEllipsoid), "Ellipsoids"), (typeof(C3dPhantom), "Phantoms"),
         (typeof(C3dPolyhedron), "Polyhedra"), (typeof(C3dSheet), "Sheets"), (typeof(C3dPolyline), "Polylines"),
         (typeof(C3dWire), "Wires"),
         // brief-em3d-64 — drawn and listed; brief 66 gives an operation its own node with its operands beneath it.

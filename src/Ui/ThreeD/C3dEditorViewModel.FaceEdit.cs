@@ -142,6 +142,7 @@ public sealed partial class C3dEditorViewModel : IC3dFaceHost
     {
         if (!HaveFace(out var f) || LockedFace(f.Obj)) return;
         if (f.Obj is C3dSphere) { StatusMessage = C3dFaceEditor.SphereFaceEdit; return; }
+        if (f.Obj is C3dEllipsoid) { StatusMessage = C3dFaceEditor.EllipsoidFaceEdit; return; }
         if (C3dFaceFrame.Of(f.Obj, f.Face, CursorWorldDbu()) is not { } frame) { StatusMessage = $"Face {f.Face} has no normal to move along."; return; }
         BeginFaceEdit(new PushPullTool(this, f.Index, f.Obj, f.Face, frame), f.Scene, f.SceneFace);
     }
@@ -152,6 +153,7 @@ public sealed partial class C3dEditorViewModel : IC3dFaceHost
         if (!HaveFace(out var f) || LockedFace(f.Obj)) return;
         if (f.Obj is C3dCylinder) { StatusMessage = C3dFaceEditor.CylinderFreeMove; return; }
         if (f.Obj is C3dSphere) { StatusMessage = C3dFaceEditor.SphereFaceEdit; return; }
+        if (f.Obj is C3dEllipsoid) { StatusMessage = C3dFaceEditor.EllipsoidFaceEdit; return; }
         var frame = C3dFaceFrame.Of(f.Obj, f.Face, null);
         var pivot = frame is { } fr ? new C3dPoint3(R(fr.Through.X), R(fr.Through.Y), R(fr.Through.Z)) : default;
         (C3dPoint3, bool)? baseAt = null;
@@ -238,6 +240,7 @@ public sealed partial class C3dEditorViewModel : IC3dFaceHost
         if (!HaveFace(out var f)) return;
         if (f.Obj is C3dCylinder && f.Face == "side") { StatusMessage = "A cylinder's side is curved: extrude a cap, or Convert to Polyhedron first."; return; }
         if (f.Obj is C3dSphere) { StatusMessage = C3dFaceEditor.SphereFaceEdit; return; }
+        if (f.Obj is C3dEllipsoid) { StatusMessage = C3dFaceEditor.EllipsoidFaceEdit; return; }
         if (C3dFaceFrame.Of(f.Obj, f.Face, null) is not { } frame) { StatusMessage = $"Face {f.Face} has no normal to extrude along."; return; }
         SetTool(new ExtrudeFaceTool(this, f.Index, f.Obj, f.Face, frame));
         StatusMessage = "";
@@ -248,6 +251,7 @@ public sealed partial class C3dEditorViewModel : IC3dFaceHost
     {
         if (!HaveFace(out var f) || LockedFace(f.Obj)) return;
         if (f.Obj is C3dSphere) { StatusMessage = C3dFaceEditor.SphereFaceEdit; return; }
+        if (f.Obj is C3dEllipsoid) { StatusMessage = C3dFaceEditor.EllipsoidFaceEdit; return; }
         if (C3dFaceCommands.PlaneOf(f.Obj, f.Face, out var why) is not { } plane) { StatusMessage = why ?? "That face is not flat."; return; }
         var target = new C3dTarget(false, f.Index);
         BeginOperation(new AlignToFaceTool(this, target, PivotOf([target]), plane, f.Face));
@@ -625,13 +629,13 @@ public sealed partial class C3dEditorViewModel : IC3dFaceHost
         }
         else if (FaceSelection() is { } f)
         {
-            bool cyl = f.Obj is C3dCylinder, sph = f.Obj is C3dSphere;
+            bool cyl = f.Obj is C3dCylinder, sph = f.Obj is C3dSphere or C3dEllipsoid;
             bool curved = sph || (cyl && f.Face == "side");
             string? copyWhy = null;
             if (C3dFaceCommands.Polygon(f.Obj, f.Face, out var why) is not var (_, aligned)) copyWhy = why;
             else if (aligned is null) copyWhy = "A tilted face: sheets lie on XY, YZ or XZ in this version.";
             // brief-em3d-102 R-em3d102-4 — a sphere's surface: every edit disabled, each saying where the Radius is changed.
-            string? sphWhy = sph ? C3dFaceEditor.SphereFaceEdit : null;
+            string? sphWhy = f.Obj is C3dEllipsoid ? C3dFaceEditor.EllipsoidFaceEdit : sph ? C3dFaceEditor.SphereFaceEdit : null;
             yield return new Viewer3DMenuItem("Move Along Normal", StartPushPull, Enabled: !sph, Tip: sphWhy, Gesture: Viewer3DMenuItem.Plain(Key.N));
             yield return new Viewer3DMenuItem("Move", StartFaceMove, Enabled: !cyl && !sph, Tip: cyl ? C3dFaceEditor.CylinderFreeMove : sphWhy, Gesture: Viewer3DMenuItem.Plain(Key.G));
             yield return new Viewer3DMenuItem("Extrude to New Solid", StartExtrudeFace, Gesture: Viewer3DMenuItem.Plain(Key.E, KeyModifiers.Shift), Enabled: !curved,

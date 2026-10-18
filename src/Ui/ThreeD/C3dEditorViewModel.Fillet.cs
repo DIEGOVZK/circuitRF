@@ -54,6 +54,9 @@ public sealed partial class C3dEditorViewModel
         // brief-em3d-102 R-em3d102-3d — a selected sphere: say it has no edges, kernel or not, rather than ask for some.
         if (edges.Count == 0 && Viewer.SelectedObjects() is [var only] && DocumentIndex(only) is >= 0 and var si && Document.Objects[si] is C3dSphere)
             return C3dFillets.SphereRefused(op);
+        // brief-sar-3 — an ellipsoid says the same, in its own words.
+        if (edges.Count == 0 && Viewer.SelectedObjects() is [var egg] && DocumentIndex(egg) is >= 0 and var ei && Document.Objects[ei] is C3dEllipsoid e)
+            return C3dFillets.TargetRefusal(e)!;
         if (KernelMissing(op.ToString()) is { } k) return k;
         if (edges.Count == 0) return C3dFillets.SelectEdges(op);
         var ids = edges.Select(i => i.Object).Distinct().ToList();

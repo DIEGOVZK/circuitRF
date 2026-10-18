@@ -32,7 +32,7 @@ public enum C3dTreeGrouping { Material, Primitive }
 
 /// <summary>What a group of the editor's tree holds — what code finds a group by (a header may be any material's name).</summary>
 public enum C3dTreeGroupRole { Objects, Construction, Instances, Ports, AirBox, Booleans, Groups, HeatSources, Probes, MeshRegions, ThermalBoundaries,
-                              EffectiveBlocks, SymmetryPlanes, FieldPlots, NotModelled }
+                              EffectiveBlocks, SymmetryPlanes, FieldPlots, NotModelled, LumpedElements }
 
 public sealed partial class C3dEditorViewModel
 {
@@ -139,7 +139,7 @@ public sealed partial class C3dEditorViewModel
         // The view's own states first: a saved edit below rebuilds the tree, and the rebuilt rows read these.
         foreach (var r in rows)
         {
-            if (r.Kind is HeatSourceKind or ProbeKind or MeshRegionKind or EffectiveBlockKind) SetPlaceShown(r.Name, visible);
+            if (r.Kind is HeatSourceKind or ProbeKind or MeshRegionKind or EffectiveBlockKind or LumpedElementKind) SetPlaceShown(r.Name, visible);
             else if (r.Kind == ThermalBoundaryKindName) SetBoundaryShown(r.Name, visible);
             else if (r.Kind == SymmetryPlaneKind) SetSymmetryPlaneShown(r.Name, visible);
             else if (r.InstanceIndex >= 0 || (r.ObjectIndex < 0 && !r.IsAirBox && !r.IsGroup && r.Kind != FieldPlotKind && r.Kind != FaceImageKind))
@@ -198,7 +198,8 @@ public sealed partial class C3dEditorViewModel
     }
 
     /// <summary>The material group an object belongs to (its header by material, and its material-filter name).</summary>
-    private static string MaterialHeaderOf(C3dObject o) => C3dValidation.EffectiveMaterial(o) is { Length: > 0 } m ? m : NoMaterialHeader;
+    private static string MaterialHeaderOf(C3dObject o)
+        => (o is C3dPhantom p ? p.Layers.FirstOrDefault()?.Material : C3dValidation.EffectiveMaterial(o)) is { Length: > 0 } m ? m : NoMaterialHeader;
 
     private bool PassesTreeFilter(C3dObject o)
         => !_hiddenTypes.Contains(TypeHeaderOf(o)) && (o is C3dPolyline || !_hiddenMaterials.Contains(MaterialHeaderOf(o)))
@@ -229,6 +230,7 @@ public sealed partial class C3dEditorViewModel
         if (image is not null && ImageProblemOf(image) is { } broken) item.Refusal = $"Its image cannot be drawn: {broken}. Resolve Path… points it at the file.";
         AddOperands(item, solid, i, corePath, o.Name);
         AddFeatures(item, o, i);
+        AddPhantomLayers(item, o);
         return item;
     }
 

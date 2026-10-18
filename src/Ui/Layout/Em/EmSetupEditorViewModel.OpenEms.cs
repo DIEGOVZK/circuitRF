@@ -26,6 +26,8 @@ public sealed partial class EmSetupEditorViewModel
     [ObservableProperty] private string _openEmsEndCriterionDbText     = "";
     [ObservableProperty] private string _openEmsMaxTimeStepsText       = "";
     [ObservableProperty] private bool   _openEmsThirdsRule             = true;
+    // brief-sar-3 R-sar3-4 — openEMS's CellConstantMaterial: off (no field) for every setup that does not ask for SAR.
+    [ObservableProperty] private bool   _openEmsCellConstantMaterial;
     [ObservableProperty] private string? _openEmsFieldError;
 
     // brief-em3d-120 R-em3d120-5 — a 3D view's own setup chooses a cylindrical grid: Grid, Axis and Origin.
@@ -83,6 +85,7 @@ public sealed partial class EmSetupEditorViewModel
         OpenEmsEndCriterionDbText     = G(o?.EndCriterionDb);
         OpenEmsMaxTimeStepsText       = o?.MaxTimeSteps?.ToString(CultureInfo.InvariantCulture) ?? "";
         OpenEmsThirdsRule             = o?.ThirdsRule ?? CircuitRF.Engine.Em3d.OpenEmsGridSettings.Default.ThirdsRule;
+        OpenEmsCellConstantMaterial   = o?.CellConstantMaterial ?? false;
         OpenEmsSaveFieldsText         = SaveFieldsText(o?.SaveFieldsGHz);         // brief-em3d-83
         OpenEmsGridChoice             = OpenEmsGridChoices.First(c => c.Value == (o?.Grid ?? OpenEmsGridKind.Cartesian));
         OpenEmsAxis                   = o?.Axis ?? OpenEmsGridAxis.Z;
@@ -96,6 +99,18 @@ public sealed partial class EmSetupEditorViewModel
         if (_suppressCommit) return;
         CommitOpenEmsField("OpenEms.ThirdsRule");
     }
+
+    /// <summary>brief-sar-3 R-sar3-4 — a check box: off is written as no field, so an existing setup stays byte for byte; on
+    /// writes true.</summary>
+    partial void OnOpenEmsCellConstantMaterialChanged(bool value)
+    {
+        if (_suppressCommit) return;
+        CommitOpenEmsField("OpenEms.CellConstantMaterial");
+    }
+
+    public const string OpenEmsCellConstantTip =
+        "Each FDTD cell takes the material at its centre (openEMS CellConstantMaterial), as averaging SAR over cubes needs. " +
+        "On by default for a setup that requests SAR.";
 
     /// <summary>
     /// Commits one openEMS field — <c>OpenEms.&lt;Field&gt;</c> is its tag. Blank writes the field as
@@ -166,6 +181,9 @@ public sealed partial class EmSetupEditorViewModel
                 section.AxisOriginUm = values;
                 break;
             }
+            case "OpenEms.CellConstantMaterial":
+                section.CellConstantMaterial = OpenEmsCellConstantMaterial ? true : null;
+                break;
             case "OpenEms.ThirdsRule":
                 section.ThirdsRule = OpenEmsThirdsRule == CircuitRF.Engine.Em3d.OpenEmsGridSettings.Default.ThirdsRule
                     ? null : OpenEmsThirdsRule;

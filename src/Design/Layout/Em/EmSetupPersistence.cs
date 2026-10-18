@@ -518,10 +518,11 @@ public sealed class CemOpenEms
         => ResolveGrid(Anchored(section, documentPath));
 
     /// <summary>brief-sar-3 R-sar3-5 — <paramref name="section"/> with its grid file's folder set to
-    /// <paramref name="documentPath"/>'s, as a copy; the section itself when there is nothing to anchor.</summary>
+    /// <paramref name="documentPath"/>'s, as a copy; the section itself when there is nothing to anchor or it is anchored
+    /// already (a setup read through <c>C3dSetups.ForRun</c> or <c>LoadFromFile</c> keeps its own document's folder).</summary>
     public static CemOpenEms? Anchored(CemOpenEms? section, string? documentPath)
     {
-        if (section?.GridLines is not { File: { Length: > 0 } } || documentPath is null) return section;
+        if (section?.GridLines is not { File: { Length: > 0 }, BaseDirectory: null } || documentPath is null) return section;
         var c = section.Clone();
         c.GridLines!.BaseDirectory = Path.GetDirectoryName(Path.GetFullPath(documentPath));
         return c;

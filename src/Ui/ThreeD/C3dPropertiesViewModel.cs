@@ -277,10 +277,44 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
         foreach (var r in RowsOf(Fields)) FieldRows.Add(r);
     }
 
+    /// <summary>brief-sar-3 R-sar3-3 — the place page shows a lumped element: its Name and its text fields (the topology, each
+    /// value with its unit, and Model), each commit one records entry through <see cref="C3dEditorViewModel.SetLumpedText"/>.</summary>
+    private bool _placeIsLumped;
+
+    private void LoadLumpedElement(string name)
+    {
+        if (editor.LumpedElement(name) is not { } le) { Heading = "Nothing selected"; return; }
+        _placeName = name;
+        _placeIsLumped = true;
+        IsThermalPlace = true;
+        NameText = name;
+        Heading = $"Lumped element {name}";
+        var r = editor.LumpedResults.FirstOrDefault(x => x.Element.Name == name);
+        Rows.Add(new C3dPropertyRow("Gap", r?.Resolved is { } g
+            ? $"current along {(Math.Abs(g.Direction.X) > 0.5 ? "x" : Math.Abs(g.Direction.Y) > 0.5 ? "y" : "z")}, found as a port's ends are"
+            : r?.Refusal ?? "not resolved yet"));
+        void Text(string label, string key, string? value, string hint)
+            => ThermalFields.Add(new C3dThermalTextField { Label = label, Key = key, Text = value ?? "", Loaded = value ?? "", Hint = hint });
+        Text("Topology", "Topology", le.Topology.ToString(), "Parallel or Series");
+        foreach (var (key, value, unit, what) in new[] { ("R", le.R, le.RUnit, "resistance"), ("L", le.L, le.LUnit, "inductance"), ("C", le.C, le.CUnit, "capacitance") })
+        {
+            var units = C3dEditorViewModel.LumpedUnits[key];
+            Text(key, key, value, $"The {what}: a number or an expression (Ctune); empty removes it");
+            Text($"{key} unit", key + "Unit", value is null ? null : unit ?? units[0], string.Join(", ", units));
+        }
+        Text("Model", "Model", le.Model ? "true" : "false", "false leaves the gap as the geometry makes it in every run");
+    }
+
     /// <summary>R-em3d75-1c — a thermal place's text field committed: one undo entry, or the refusal and the field put back.</summary>
     public void CommitThermalField(C3dThermalTextField field)
     {
         if (!IsThermalPlace || field.Text == field.Loaded) return;
+        if (_placeIsLumped)
+        {
+            Error = editor.SetLumpedText(_placeName, field.Key, field.Text) ?? "";
+            if (Error.Length > 0) field.Text = field.Loaded;
+            return;
+        }
         Error = editor.SetPlaceText(_placeName, field.Key, field.Text) ?? "";
         if (Error.Length > 0) field.Text = field.Loaded;
     }
@@ -341,6 +375,9 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
         IsAirBoxRow = false;
         AirBoxFaces.Clear();
         IsThermalPlace = false;
+        IsPhantom = false;
+        PhantomLayers.Clear();
+        _placeIsLumped = false;
         ThermalFields.Clear();
         ClearFieldPlot();
         ClearRecords();
@@ -390,6 +427,8 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
             }
             // brief-em3d-83 — a field plot's row: a record, in no scene.
             if (editor.SelectedTreeItem is { Kind: C3dEditorViewModel.FieldPlotKind } plotRow) { LoadFieldPlot(plotRow.Name); return; }
+            // brief-sar-3 — a lumped element's row: a record, drawn in the overlay only.
+            if (editor.SelectedTreeItem is { Kind: C3dEditorViewModel.LumpedElementKind } lumpedRow) { LoadLumpedElement(lumpedRow.Name); return; }
             // brief-em3d-75 — a heat source's, probe's or mesh region's row: the place is in no scene, only the tree.
             if (editor.SelectedTreeItem is { Kind: C3dEditorViewModel.HeatSourceKind or C3dEditorViewModel.ProbeKind or C3dEditorViewModel.MeshRegionKind or C3dEditorViewModel.EffectiveBlockKind } place)
             {
@@ -558,8 +597,48 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
         }
         if (obj is C3dBoolean b) { LoadBoolean(index, b); return; }
         foreach (var row in Dimensions(obj)) Rows.Add(row);
-        foreach (var f in editor.DimensionFields(obj)) Fields.Add(f);
+        foreach (var f in editor.DimensionFields(obj).Where(f => obj is not C3dPhantom ph || PhantomUses(ph, f.Path))) Fields.Add(f);
         foreach (var row in RowsOf(Fields)) FieldRows.Add(row);
+        if (obj is C3dPhantom phantom && !operand) LoadPhantomLayers(index, phantom);
+    }
+
+    // ── a phantom's layers (brief-sar-3 R-sar3-2) ────────────────────────────────────────────
+
+    /// <summary>One combobox per layer, outermost first: its material, from the technology's; a choice is one undo entry.</summary>
+    public ObservableCollection<C3dPhantomLayerRow> PhantomLayers { get; } = [];
+
+    [ObservableProperty] private bool _isPhantom;
+
+    private void LoadPhantomLayers(int index, C3dPhantom p)
+    {
+        IsPhantom = true;
+        IsMaterialEditable = false;
+        Material = null;
+        MaterialPlaceholder = "Each layer names its own, below";
+        Rows.Add(new C3dPropertyRow("Shape", $"{p.Shape}: {C3dPhantom.LayerCount(p.Shape)} layer(s), the innermost winning where they overlap"));
+        for (int i = 0; i < p.Layers.Count; i++)
+        {
+            int layer = i;
+            PhantomLayers.Add(new C3dPhantomLayerRow(p.Layers[i].Name, p.Layers[i].Material,
+                m => Error = editor.SetPhantomLayerMaterial(index, layer, m) ?? ""));
+        }
+    }
+
+    /// <summary>Whether a phantom of its shape has the dimension at <paramref name="path"/>: only those are offered.</summary>
+    public static bool PhantomUses(C3dPhantom p, string path)
+    {
+        string head = path.IndexOf('[') is >= 0 and var b ? path[..b] : path;
+        bool three = C3dPhantom.LayerCount(p.Shape) == 3;
+        return head switch
+        {
+            "SemiAxes" => p.Shape == C3dPhantomShape.Ellipsoid3,
+            "Radius" => p.Shape is C3dPhantomShape.Cylinder3 or C3dPhantomShape.Sphere1,
+            "Length" => p.Shape == C3dPhantomShape.Cylinder3,
+            "Size" => p.Shape is C3dPhantomShape.FlatBox or C3dPhantomShape.Box1,
+            "Shell1" => three || p.Shape == C3dPhantomShape.FlatBox,
+            "Shell2" => three,
+            _ => true,
+        };
     }
 
     /// <summary>
@@ -967,6 +1046,20 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
                 if (head == "Centre") return $"Centre {Xyz(k)}";
                 if (head == "Radius") return "Radius";
                 break;
+            // brief-sar-3 — an ellipsoid's semi-axes along its own x, y and z; a phantom's dimensions by its shape.
+            case C3dEllipsoid:
+                if (head == "Centre") return $"Centre {Xyz(k)}";
+                if (head == "SemiAxes") return $"Semi-axis {Xyz(k)}";
+                break;
+            case C3dPhantom ph:
+                if (head == "Centre") return $"Centre {Xyz(k)}";
+                if (head == "SemiAxes") return $"Semi-axis {Xyz(k)}";
+                if (head == "Radius") return "Radius";
+                if (head == "Length") return $"Length (along {(ph.Axis ?? C3dAxis.Z).ToString().ToLowerInvariant()})";
+                if (head == "Size") return $"{Up(Xyz(k))} size";
+                if (head == "Shell1") return ph.Shape == C3dPhantomShape.FlatBox ? "Shell" : "Outer shell";
+                if (head == "Shell2") return "Second shell";
+                break;
             case C3dWire:
                 if (head == "DiameterUm") return "Diameter";
                 // 3D editor round 4 — a wire row.
@@ -1202,7 +1295,7 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
         if (IsThermalPlace)
         {
             if (NameText.Trim() == _placeName) return;
-            Error = editor.RenameThermalPlace(_placeName, NameText) ?? "";
+            Error = (_placeIsLumped ? editor.RenameLumpedElement(_placeName, NameText) : editor.RenameThermalPlace(_placeName, NameText)) ?? "";
             if (Error.Length > 0) NameText = _placeName;
             return;
         }
@@ -1298,4 +1391,16 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
         }
         return list;
     }
+}
+
+/// <summary>brief-sar-3 R-sar3-2 — one phantom layer in the Inspector: its name and its material, written through
+/// <paramref name="commit"/> when the user picks another.</summary>
+public sealed partial class C3dPhantomLayerRow(string name, string? material, Action<string?> commit) : ObservableObject
+{
+    public string Name { get; } = name;
+
+    [ObservableProperty] private string? _material = material;
+
+    // A combobox whose items are re-read pushes null through its selection; a layer is never cleared that way.
+    partial void OnMaterialChanged(string? value) { if (value is not null) commit(value); }
 }

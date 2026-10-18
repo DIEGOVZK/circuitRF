@@ -224,7 +224,9 @@ offset there. A faint grid lies on the plane; moving the camera never moves it.
 | **L** | Polyline | construction lines, never solved; Enter or a double-click ends one |
 | **Y** | Cylinder | the centre, the radius, then the height |
 | **E** | Sphere | the centre, then the radius; it is centred on the drawing plane |
+| **O** | Ellipsoid | the centre, then one radius; its three semi-axes start equal and are set in Properties (see [Phantoms](#phantoms)) |
 | **P** | Port | two corners on the plane (see [Simulating](#simulate)) |
+| **C** | Lumped element | two corners across a gap, as a port (see [Simulating](#simulate)) |
 | **W** | Wire | two pads, then the loop height (see [Bond wires](#wires)) |
 | **H** | Heat source | two corners on the plane, then its name and power (see [Temperature](#thermal)) |
 | **T** | Probe | a click on a face: the temperature there (see [Temperature](#thermal)) |
@@ -248,6 +250,31 @@ first, they would hide the inside while you work on it.
 **Extrude** (a sheet's menu, *3D ▸ Modify*, or a polyline selected in the tree) pulls a closed polyline, a
 polygon or a rectangle into a prism: move to set the distance and click, or type it. **K** keeps the
 source.
+
+### Phantoms {#phantoms}
+
+A **phantom** is a body for SAR work, made of nested layers, each its own material. *3D ▸ Draw ▸ Phantom*
+offers five:
+
+| Phantom | Layers, outermost first | Starts as |
+|---|---|---|
+| **Head (3 ellipsoids)** | skin, skull, brain: concentric ellipsoids, each shell taken off every semi-axis | openEMS's head phantom: semi-axes 100, 80, 100 mm, shells 9 mm |
+| **Body (3 cylinders)** | skin, bone, tissue: coaxial cylinders of one length | openEMS's body phantom: radius 100 mm, 260 mm long, shells 8 and 10 mm |
+| **Flat Phantom** | shell, liquid: the liquid in an open-topped box, the shell on its floor and four walls | 200 × 150 × 100 mm, a 2 mm shell |
+| **Sphere**, **Box** | one homogeneous body | radius 50 mm; a 100 mm cube |
+
+A phantom is one object: it moves, turns, hides and is left out of the solve as one, and the tree shows its
+layers under it. Where layers overlap the **innermost wins**, so the brain is brain, not skin. Properties
+shows only the dimensions its shape uses — semi-axes, radius and length, or size, and the shell thicknesses —
+and one material per layer under *Layers, outermost first*. The layers start as the tissue library's records
+of those openEMS phantoms (*Add Tissue Materials* in the technology editor puts the library beside the
+technology; see [Materials](materials.html)); the flat phantom's shell starts with none, so pick one. Every
+layer is solved as a lossy dielectric. **Flatten Phantom** (its menu) replaces it with one ordinary solid per
+layer, `<phantom>_<layer>`, in a group named after it; the solve is the same.
+
+An **ellipsoid** on its own (**Shift+A O**) is a centre and three semi-axes along its own x, y and z, so
+turning it turns its axes. Its surface is curved: face edits, fillets and boundaries are refused on it, as on
+a sphere.
 
 ## Moving and editing {#editing}
 
@@ -1230,6 +1257,13 @@ two ports are 5 × 5 mil rectangles on the YZ plane at each lead's outer end, fr
 each runs **from `floor` (−) up to its lead (+)**. *Flip* on its menu turns it round; a wrong arrow turns
 every transmission term by 180°, so look before a run.
 
+**Lumped elements.** **Shift+A C** draws a resistor, inductor or capacitor across a gap, two corners exactly
+as a port is drawn; the gap is found the same way. Properties sets **Topology** (parallel or series) and any
+of **R**, **L** and **C**, each with its unit; an empty value is left out. A value can be a variable
+(`Ctune`), so a tuning sweep changes it by re-running. It is drawn as its outline with a capacitor mark across
+the gap and listed under *Lumped elements* in the tree. It is not a port: nothing excites it and the result
+has no row for it. openEMS solves it; Palace refuses it in this version.
+
 **A wave port on a face met by several conductors** — two strips inside one shield, a coupled pair over a
 ground — is one port with a **terminal** per signal conductor. Each terminal is its own numbered port of the
 result, with its own Z0. One conductor is the **reference**, the one every terminal's voltage is measured
@@ -1471,7 +1505,7 @@ Every step above has a command-line spelling, and none of them needs a solver ex
 | **B**, **Shift+B** | The next thing behind the selection; back toward you |
 | **Ctrl/Cmd+A** | Select every shown object (*3D ▸ Select All Objects*); hidden ones are left out |
 | **H** | Hide the selection; show it if any of it is hidden (*3D ▸ Hide / Show Selection*). In the view or the object tree |
-| **Shift+A** then a letter | Box, Sheet, polyGon, polyLine, cYlinder, Port, Wire, Heat source, Temperature probe, Mesh region |
+| **Shift+A** then a letter | Box, Sheet, polyGon, polyLine, cYlinder, sphEre, ellipsOid, Port, Capacitor (lumped element), Wire, Heat source, Temperature probe, Mesh region |
 | **W** | The Wire tool; again puts it away |
 | digits, **Tab**, **Enter** | Type a dimension instead of clicking |
 | **Esc** | Back one step: the typed box, the shape, the tool, Face/Vertex/Edge mode, the selection |

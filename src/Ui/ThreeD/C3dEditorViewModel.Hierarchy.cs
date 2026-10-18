@@ -731,6 +731,8 @@ public sealed partial class C3dEditorViewModel
         int index = SelectedInstance();
         if (index < 0)
         {
+            // brief-sar-3 — a phantom selected whole: its Flatten
+            if (SelectedPhantom() is >= 0 and var phantom) { yield return Viewer3DMenuItem.Separator; yield return FlattenPhantomItem(phantom); }
             if (Targets().Count > 0) yield return new Viewer3DMenuItem("Group into Cell…", () => _ = GroupIntoCellAsync());
             yield break;
         }

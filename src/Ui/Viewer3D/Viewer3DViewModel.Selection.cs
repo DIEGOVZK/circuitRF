@@ -189,6 +189,8 @@ public sealed class Viewer3DDrawOverlay
     public List<DrawSegment> MeshRegions { get; } = [];
     /// <summary>brief-em3d-90 — declared thermal symmetry planes: outline and hatch, in the air box's symmetry colour.</summary>
     public List<DrawSegment> SymmetryPlanes { get; } = [];
+    /// <summary>brief-sar-3 R-sar3-3 — lumped elements: the gap's outline and a capacitor glyph across it.</summary>
+    public List<DrawSegment> LumpedElements { get; } = [];
     /// <summary>The face a tool will land on (the Wire tool's pad top), each as its rings — the outline, then any holes —
     /// filled in the hover's colour.</summary>
     public List<IReadOnlyList<IReadOnlyList<CircuitRF.Engine.Em3d.Point3>>> TargetFaces { get; } = [];
@@ -197,7 +199,7 @@ public sealed class Viewer3DDrawOverlay
     {
         TargetFaces.Clear();
         Rubber.Clear(); Construction.Clear(); Selected.Clear(); Crossing.Clear(); Fixed.Clear(); Pivots.Clear(); Missing.Clear(); Labels.Clear();
-        HeatSources.Clear(); Probes.Clear(); ProbeMarks.Clear(); MeshRegions.Clear(); SymmetryPlanes.Clear();
+        HeatSources.Clear(); Probes.Clear(); ProbeMarks.Clear(); MeshRegions.Clear(); SymmetryPlanes.Clear(); LumpedElements.Clear();
     }
 }
 

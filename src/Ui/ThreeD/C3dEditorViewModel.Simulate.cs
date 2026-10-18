@@ -514,6 +514,9 @@ public sealed partial class C3dEditorViewModel
     {
         /// <summary>brief-em3d-75 R-em3d75-2 — the active thermal setup's conditioned faces, tinted by kind.</summary>
         public IReadOnlyList<Scene3DFaceTint> ThermalTints { get; init; } = [];
+
+        /// <summary>brief-sar-3 — each lumped element, resolved by the port's rule against this elaboration.</summary>
+        public IReadOnlyList<C3dLumpedResult> Lumped { get; init; } = [];
     }
 
     private readonly System.Collections.Concurrent.ConcurrentDictionary<long, RecordsView> _records = new();
@@ -548,7 +551,8 @@ public sealed partial class C3dEditorViewModel
         var ctx = C3dProblemAssembly.PortContext(setup, doc, e, box);
         var ports = e.Ok ? C3dPorts.Resolve(doc, ctx) : [];
         var boundaries = e.Ok ? C3dProblemAssembly.FaceBoundaryPreview(doc, e) : [];
-        return new RecordsView(box, ports, boundaries, ctx) { ThermalTints = ThermalTints(doc, e, setup, hiddenTints) };
+        var lumped = e.Ok ? doc.LumpedElements.Select(l => C3dLumpedElements.Resolve(l, doc.DbuPerMicron, ctx, e.Resolution)).ToList() : [];
+        return new RecordsView(box, ports, boundaries, ctx) { ThermalTints = ThermalTints(doc, e, setup, hiddenTints), Lumped = lumped };
     }
 
     /// <summary>
@@ -1240,6 +1244,7 @@ public sealed partial class C3dEditorViewModel
                 Tree.Insert(at, new C3dTreeGroup(NotModeledHeader, offPorts, C3dTreeGroupRole.NotModelled) { HeaderTip = C3dModelled.Tip });
             }
         }
+        RebuildLumpedTree();                   // brief-sar-3
         RebuildThermalTree();
         foreach (var item in Tree.Where(g => g.Role is C3dTreeGroupRole.Objects or C3dTreeGroupRole.Construction or C3dTreeGroupRole.Booleans
                                                   or C3dTreeGroupRole.NotModelled).SelectMany(g => g.Items))

@@ -124,6 +124,7 @@ public sealed partial class C3dEditorViewModel
         Document.ContactResistances = d.ContactResistances;
         Document.EffectiveBlocks = d.EffectiveBlocks;
         Document.SymmetryPlanes = d.SymmetryPlanes;
+        Document.LumpedElements = d.LumpedElements;            // brief-sar-3
         // a VAR rename rewrites the thermal setups' expressions in this same entry, so undoing it restores them
         Document.Setups = d.Setups;
         DocumentChanged();
