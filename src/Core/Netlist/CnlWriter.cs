@@ -336,7 +336,7 @@ public static class CnlWriter
         SParameterAnalysis sp         => FormatSParameterAnalysis(sp),
         DcAnalysis dc                 => $"analysis {dc.Name} type=dc",
         FieldsAnalysis fa             => $"analysis {fa.Name} type=fields block={fa.Block} freq=\"{fa.FreqExpr}\" freqUnit={fa.FreqUnit} " +
-                                         $"drive={fa.DriveExpr} norm={fa.Norm} average={fa.AverageExpr}",
+                                         $"drive={fa.DriveExpr} {(fa.WeightsExpr.Length > 0 ? $"weights=\"{fa.WeightsExpr}\" " : "")}norm={fa.Norm} average={fa.AverageExpr}",
         _                             => $"analysis {analysis.Name}",
     };
 

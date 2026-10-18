@@ -1058,6 +1058,7 @@ public sealed class CnlReader
             FreqExpr    = kv.GetValueOrDefault("freq", ""),
             FreqUnit    = kv.GetValueOrDefault("freqUnit") ?? kv.GetValueOrDefault("Unit") ?? "Hz",
             DriveExpr   = kv.GetValueOrDefault("drive", "1"),
+            WeightsExpr = kv.GetValueOrDefault("weights", ""),
             Norm        = kv.GetValueOrDefault("norm", FieldsAnalysis.NormAccepted),
             AverageExpr = kv.GetValueOrDefault("average", "yes"),
             Enabled     = ParseEnabledToken(tokens),

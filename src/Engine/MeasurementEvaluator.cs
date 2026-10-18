@@ -27,17 +27,20 @@ public sealed class MeasurementEvaluator
     private readonly ElaboratedNetlist _netlist;
     private readonly IReadOnlyDictionary<string, DataSet>            _analysisResults;
     private readonly IReadOnlyDictionary<string, ILinearBackSolver>? _backSolvers;
+    private readonly IReadOnlyDictionary<string, IFieldMetrics>?     _fields;
 
     public MeasurementEvaluator(
         TestBench                        tb,
         ElaboratedNetlist                netlist,
         IReadOnlyDictionary<string, DataSet>            analysisResults,
-        IReadOnlyDictionary<string, ILinearBackSolver>? backSolvers = null)
+        IReadOnlyDictionary<string, ILinearBackSolver>? backSolvers = null,
+        IReadOnlyDictionary<string, IFieldMetrics>?     fields = null)
     {
         _tb              = tb;
         _netlist         = netlist;
         _analysisResults = analysisResults;
         _backSolvers     = backSolvers;
+        _fields          = fields;
     }
 
     /// <summary>
@@ -73,7 +76,7 @@ public sealed class MeasurementEvaluator
         var declared = measurements ? _tb.Measurements : [];
         if (declared.Count == 0 && expressions is not { Count: > 0 }) return errors;
 
-        var ctx  = new MeasurementContext(_analysisResults, _backSolvers);
+        var ctx  = new MeasurementContext(_analysisResults, _backSolvers, _fields);
         var eval = new Evaluator(ctx);
 
         // Globals scope: inject resolved global variables so measurements can reference them.

@@ -1,6 +1,6 @@
 # circuitRF — SAR and B1 for MRI coil designers and phone SAR
 
-**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7), SAR-6 done (§8), SAR-7 done (§9), SAR-8 done (§10; the birdcage moved to SAR-8b), SAR-9 done (§11) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
+**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7), SAR-6 done (§8), SAR-7 done (§9), SAR-8 done (§10; the birdcage moved to SAR-8b), SAR-9 done (§11), SAR-10 done (§12) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
 **Reference data:** [`testdata/sar/openems-ref/`](../../testdata/sar/openems-ref/README.md) · **Builds on:**
 [`em-3d.md`](em-3d.md) (the openEMS backend) and [`em-3d-f0-findings.md`](em-3d-f0-findings.md) (its validated versions).
 
@@ -1393,4 +1393,155 @@ the 3 % tolerance.
 
 - **The birdcage's superposition** — with SAR-8b.
 - **Per-port Z0 in the Touchstone** (§11.3): the field set records each port's Z0 and the writer does not.
-- **Goals, tuning, the optimizer and yield on recombined SAR and B1** — SAR-10, which the fast path is for.
+- **Goals, tuning, the optimizer and yield on recombined SAR and B1** — SAR-10, which the fast path is for (§12).
+
+---
+
+## 12. B1 and SAR as goals: tuning, the optimizer, yield and multi-channel drive (SAR-10)
+
+SAR-9 made a field set a function of the schematic's values. SAR-10 lets everything that already varies those values read the
+field: a `measure` line, a goal, a tuning knob, the optimizer, a yield run. None of them starts an EM run.
+
+### 12.1 The field measurements (R-sar10-1)
+
+Seven functions of the one expression engine (`Evaluator.Fields.cs`), usable wherever a `measure` or `goal` expression is:
+
+| Function | Value | Normalised |
+|---|---|---|
+| `B1pMean(F, region)` | volume-weighted mean \|B1+\| over the region's cells | T per √W |
+| `B1pMin(F, region)` | the smallest \|B1+\| of those cells | T per √W |
+| `B1pCoV(F, region)` | volume-weighted standard deviation of \|B1+\| over its mean | — |
+| `psSAR(F, mass)` | peak spatial-average SAR of `mass` grams, the full average (§7) over the setup's `Region` | W/kg per W |
+| `SARwb(F, region)` | the region's absorbed power over its mass | W/kg per W |
+| `SarEff(F, region, mass)` | `B1pMean(F, region) / √psSAR(F, mass)` | T per √(W/kg) |
+| `Pabs(F)` | the power absorbed in every tissue cell | W per W |
+
+`F` is a `type=fields` analysis, **read as a name** (as `SP1` in `SP1.S`), never evaluated, so a variable of the same name
+does not shadow it. "Per W" is the analysis's own `norm=`: per watt accepted at the drive by default, per watt available with
+`norm=available`, exactly the SAR-6 normalisation (§8.4) the fields analysis already writes its scalars in; `reference goals`
+says so beside the functions.
+
+**A region** is a string. Omitted, it is the setup's own — `Sar.B1Region` for B1, `Sar.Region` (every tissue when unstated)
+for SAR. `"all"` is every tissue. A word matches a tissue's whole path (`"head/brain"`), its last part (`"brain"`), its first
+(`"head"`, every layer of that phantom) or its material; `+` joins several (`"skin+skull"`). An unknown word is refused naming
+the field set's tissues. `"box(x0, x1, y0, y1, z0, z1)"` is every cell whose centre lies inside, each number with a length unit
+(`mm`) or none for metres: B1 is taken over all of them (air too — B1 is wanted inside a coil), SAR over the tissue ones.
+A mass is in grams; zero or negative is refused.
+
+`B1pMean(F)` with no region is, to rounding, the `B1pMean` scalar the analysis already returns; `Pabs(F)` is the `Pabs` scalar.
+`FieldGoalTests` holds every function to its hand value on a synthetic two-port set, both as Simulate runs it and as an
+optimizer evaluation does (relative 2e-5, the float32 storage).
+
+### 12.2 Cheap where it can be (R-sar10-2)
+
+A fields analysis now does as much as its caller needs (`FieldsOutput`, a field of `CircuitEvaluationRequest`):
+
+| Caller | Mode | What runs |
+|---|---|---|
+| Simulate, `circuitrf fields`, the optimizer's final re-evaluation, a re-run trial | `Written` | §11.3 unchanged: the whole recombination, the averaged SAR when `average=yes`, volumes and records written |
+| a tuning knob moving | `Local` | the whole recombination, local SAR and B1 written, **no average** |
+| every optimizer, yield, centering and DOE evaluation | `OnDemand` | the circuit solve and the waves; the absorbed power from the tissue matrix; **nothing recombined, nothing written** |
+
+In every mode the evaluation leaves the field measurements a `CosimFieldMetrics` over the still-open field set, keyed by the
+analysis's result name, disposed once the measurements and goals are evaluated. It computes each value only when an expression
+asks, and keeps it for the rest of that evaluation:
+
+- `Pabs` is aᴴQa (§11.4): exact, and free once the waves are known.
+- `B1pMean`, `B1pMin`, `B1pCoV` and `SARwb` read only the cells of their region's bounding box
+  (`FieldRecombination.RegionSums`: O(N × box cells), rows outside the region skipped).
+- **`psSAR` is always the full average**: the whole field recombined and SAR-5's engine run on it at the mass asked, never a
+  sample, a coarser grid or a region's local peak standing in for it (overview R-sar10-2). `SarEff` reads the same average.
+  In `Local` mode it is refused with a sentence saying it is computed when the knob is released; an average silently skipped
+  would read as one computed.
+
+**The optimizer has no cost hint.** TO-6 built none, so there is nothing for an algorithm to read. Instead the run says which
+goals are the expensive ones (`opt.goal.full-average`, a note naming every goal whose expression calls `psSAR` or `SarEff`),
+and every evaluation that scores such a goal pays the full average. Evaluating it only every k-th iteration was the brief's
+fallback; it was not built, because a goal scored on a stale average at the points between is exactly the approximation the
+same requirement forbids, and on the loop coil the average is about a second.
+
+A goal on a field function names its analysis (`analysis=F1`), as any goal does; `GoalTemplates.AnalysisReferencedBy` also
+finds it from the function's first argument, so the Optimizer window's custom expression fills it in. The goal editor and
+`reference goals` list seven templates per fields analysis (*Fields (SAR, B1)*).
+
+### 12.3 The tuning window (R-sar10-3)
+
+While a knob moves, each tuning evaluation is `Local`: it rewrites the recombined local SAR and B1 volumes beside the field set,
+and the session's sink tells the workspace (`ITuneResultSink.FieldsWritten`), which re-reads the runs of an open 3D view of
+that `.c3d` (`RunFinished`). The plot on the view's clip plane therefore follows the knob. On release the evaluation is
+`Written`, so the averaged volumes and the psSAR readouts update then.
+
+Two findings on the way. **The view never re-read a rewritten recombination**: `Viewer3DViewModel.StampOf` dated a run by its
+first solution's file, a port's own step, which a recombination does not touch, so a second `fields` run looked like the same
+data. It now takes the latest of that and every co-simulation solution's file. And **the live path is the whole local
+recombination, not the plane-only fast path**: the 3D view draws a SAR or B1 plot from a volume file, on whatever plane the
+user has moved it to, and the evaluation does not know that plane. On the loop coil that is one pass over 201 MB per update;
+`TuneSession` already coalesces requests, so a slow update drops the intermediate positions rather than queueing them.
+Drawing the plane from the fast path inside the view is left open (§12.7).
+
+### 12.4 Multi-channel drive (R-sar10-4)
+
+```
+W2 = polar(1,-90)
+analysis F1 type=fields block=EM1 freq=298 freqUnit=MHz drive=1,2 weights=1,W2
+tune mag(W2) min=0.5 max=2 opt=1
+tune phase(W2) min=-180 deg max=0 deg opt=1
+```
+
+`drive=` takes several circuit ports, and `weights=` each one's incident-wave amplitude, comma-separated at bracket depth zero
+(so `polar(1,-90)` is one item): complex expressions over the globals, 1 each when omitted. A channel's amplitude and phase are
+then the D18 parts of a complex VAR, ordinary tunables (`tune mag(W2)`, `tune phase(W2)`). `SParameterEngine.BlockWaves` takes
+the list and solves once with every drive's Norton current; it is linear, so it is the weighted sum of the single-drive solves,
+and it returns each driven port's incident and reflected wave.
+
+**Normalisation.** The drives together make `PalaceDrive.IncidentPowerW` available, so the volumes stay at the scale the 3D view
+loads every driven field at; accepted power is Σ(|a_j|² − |b_j|²) over the driven ports. Per watt therefore means per watt of the
+drives' **total**, accepted or available, and "maximise B1pMin subject to psSAR ≤ x per W total" is an ordinary optimizer
+problem. The record and the 3D view carry an effective reflection √(1 − accepted/available) (phase 0) in place of one port's
+S_jj, and `cosim.json` lists every drive's waves (`Drives`).
+
+`FieldGoalTests.TwoCircuitPortsDriveTogether_WithTheirWeights` drives both block ports of the synthetic set through matched
+circuit ports with `weights=1,W2` and finds a2/a1 = −j to 1e-9, and every measurement at those waves equal to its hand value.
+**The quadrature birdcage is not the worked case yet**: it waits on SAR-8b, whose birdcage on circuitRF's cylindrical grid is
+not built (§11.5), so there is no birdcage field set to drive.
+
+### 12.5 Yield (R-sar10-5)
+
+A tolerance on a capacitor (`tune C2.C dist=gauss sd=2%`) and a yield spec on a field function (`goal PS = psSAR(F1, 1)
+analysis=F1 le … use=yield`) run as any yield run: every trial is an `OnDemand` evaluation, so it recombines from the kept
+fields and starts no process. Re-running one trial (`run analysis=yield trial=<n>`, or the Data Display's re-run) is `Written`
+under a label of its own, `<analysis> (trial <n>)`, beside the analysis's own results rather than over them; the 3D view of the
+`.c3d` offers it as the solution *fields 'F1 (trial n)'*.
+
+`CapacitorYieldTests` runs 200 trials on the pair's committed field set (§11.5). Port 2 of the pair is about −437 Ω at 1 GHz,
+so a lone capacitor there barely moves anything: 2 pF gave psSAR1g a spread of 0.002 %. With 100 nH in series, the 0.84 pF
+capacitor nearly resonates the port, and its 2 % moves psSAR1g by **3.9 %** (one standard deviation; 40.0 to 47.2 W/kg per W
+over the 200 trials), with no openEMS launch and at least 200 full averages counted. The worst trial re-run writes its record
+under `F1 (trial n)`.
+
+### 12.6 The loop coil, optimized
+
+`LoopCoilOptimizeTests` puts the loop coil's committed `.s4p` (§11.6) in a schematic with the three gap capacitors at 4.5 pF
+and one goal, S11 ≤ −15 dB at 298 MHz. The simplex finds **5.406 pF** in 8 evaluations, S11 −34.6 dB there; SAR-9's tutorial
+value is 5.4 pF. Where this machine still holds the coil's field set (201 MB, local only), mean |B1+| over the brain at that
+value, read on demand with `B1pMean(F1, "brain")`, is **0.2049 µT/√W, +0.00 %** of SAR-9's fixed data at 5.4 pF (tolerance
+2 %). No openEMS process starts in either test (counted).
+
+### 12.7 Not done in SAR-10, and what is open
+
+- **The quadrature birdcage as the worked multi-channel case** — with SAR-8b.
+- **The plane-only live path in the 3D view** (§12.3): the view would recombine its own clip plane from the field set with the
+  tuned waves (`FieldRecombination.Local`, already built) instead of re-reading a whole volume.
+- **A cost hint the algorithms read** (§12.2): TO-6 has none; the note names the expensive goals instead.
+- Virtual observation points, Q-matrix compression and pulse design stay out of the series (brief §3).
+
+### 12.8 Gates
+
+`tests/Ui.Tests/Sar/FieldGoalTests.cs`, all routine and with no process:
+
+- `FieldGoalTests`: every function against its hand value, Simulate's mode and the optimizer's; an on-demand evaluation writes
+  nothing; a moving knob writes local SAR and B1 and refuses psSAR until release; an unknown tissue, a mass of zero and an analysis
+  that is not a fields one are refused naming what is wrong; two circuit ports driven together.
+- `LoopCoilOptimizeTests`: §12.6 (the B1 half skips where the field set is not on the machine).
+- `CapacitorYieldTests`: §12.5.
+- `FieldsDirectiveRoundTripTests` gained `drive=2,3 weights=…` through the `.cnl` reader and writer and the schematic.

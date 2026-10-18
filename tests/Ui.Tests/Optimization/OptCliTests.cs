@@ -331,6 +331,7 @@ public sealed class OptReferenceTests
         var (_, bench) = new CnlReader().Read(string.Join('\n', CircuitRF.Cli.Reference.FunctionsBench), "tb", null);
         var templates = GoalTemplates.For(bench);
         Assert.Contains(templates, t => t.Group == GoalTemplateGroup.WsProbe);
+        Assert.Contains(templates, t => t.Group == GoalTemplateGroup.Fields);      // brief-sar-10
         Assert.Contains(templates, t => t.Id == "meas.Eff" && t.Analysis == "HB1");
         foreach (var t in templates)
         {

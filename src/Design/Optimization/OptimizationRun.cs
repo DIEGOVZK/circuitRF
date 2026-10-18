@@ -169,7 +169,12 @@ public sealed record PointEvaluation(
 public sealed record ValuePoint(
     IReadOnlyDictionary<string, string> Values,
     IStatisticalDraws?                  Draws = null,
-    string?                             Tag   = null);
+    string?                             Tag   = null)
+{
+    /// <summary>brief-sar-10 R-sar10-5 — set: the point's fields analyses are recombined and written in full, under this label
+    /// beside their own results (a re-run trial, for the 3D view). Null: they evaluate on demand and write nothing.</summary>
+    public string? WriteFieldsAs { get; init; }
+}
 
 /// <summary>What a run produced.</summary>
 public sealed class OptimizationResult
@@ -278,6 +283,10 @@ public sealed class OptimizationRun
     private readonly bool _simulates;
     private readonly int _parallelism;
     private readonly List<Diagnostic> _notes = [];
+
+    /// <summary>brief-sar-10 — a goal expression that reads a full SAR average (psSAR, or SarEff through it).</summary>
+    private static readonly System.Text.RegularExpressions.Regex FullAverage = new(@"\b(psSAR|SarEff)\s*\(",
+        System.Text.RegularExpressions.RegexOptions.CultureInvariant);
     private readonly Dictionary<string, PointOutcome> _cache = new(StringComparer.Ordinal);
 
     // Across corners (brief-yield-7): the points each candidate is evaluated at, the nominal first when it is one;
@@ -408,6 +417,8 @@ public sealed class OptimizationRun
         var named = _goals.Select(g => g.Analysis).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
         _simulates = named.Count > 0;
         _analyses  = _settings.Scope == OptimizerScope.All ? null : named;
+        var averaged = _goals.Where(g => FullAverage.IsMatch(g.Expression)).Select(g => $"'{g.Name}'").ToList();
+        if (averaged.Count > 0) _notes.Add(OptimizationDiagnostics.FullAverageGoals(string.Join(", ", averaged)));
 
         _parallelism = Math.Max(1, _settings.Parallelism ?? cores);
 
@@ -972,7 +983,7 @@ public sealed class OptimizationRun
             return [.. points.Select(p => new PointEvaluation(p.Values, PointStatus.DidNotEvaluate, refused, [], double.NaN, null, false))];
 
         var core = EvaluateKeyed([.. points.Select(p => (KeyedPoint?)new KeyedPoint(
-                                     p.Tag is null ? CacheKeyOf(p.Values) : CacheKeyOf(p.Values) + "\n#" + p.Tag, p.Values, p.Draws))],
+                                     p.Tag is null ? CacheKeyOf(p.Values) : CacheKeyOf(p.Values) + "\n#" + p.Tag, p.Values, p.Draws) { WriteFieldsAs = p.WriteFieldsAs })],
                                  keepData, ct);
         var result = new PointEvaluation[points.Count];
         for (int k = 0; k < points.Count; k++)
@@ -986,7 +997,10 @@ public sealed class OptimizationRun
     }
 
     /// <summary>A point the evaluator runs: its cache key, its value map, its trial's draws.</summary>
-    private sealed record KeyedPoint(string Key, IReadOnlyDictionary<string, string> Values, IStatisticalDraws? Draws = null);
+    private sealed record KeyedPoint(string Key, IReadOnlyDictionary<string, string> Values, IStatisticalDraws? Draws = null)
+    {
+        public string? WriteFieldsAs { get; init; }
+    }
 
     /// <summary>A value map's cache key: its lines <c>key=value</c> in the map's own order — the form a
     /// decoded unit-box point's key has always had.</summary>
@@ -1061,10 +1075,10 @@ public sealed class OptimizationRun
             _notes.Add(OptimizationDiagnostics.Serial(serialWhy));
         }
         if (serialWhy is not null || degree <= 1)
-            for (int i = 0; i < toRun.Count; i++) outcomes[i] = Keep(EvaluatePoint(toRun[i].Values, toRun[i].Draws, ct));
+            for (int i = 0; i < toRun.Count; i++) outcomes[i] = Keep(EvaluatePoint(toRun[i].Values, toRun[i].Draws, ct, toRun[i].WriteFieldsAs));
         else
             Parallel.For(0, toRun.Count, new ParallelOptions { MaxDegreeOfParallelism = degree, CancellationToken = ct },
-                         i => outcomes[i] = Keep(EvaluatePoint(toRun[i].Values, toRun[i].Draws, ct)));
+                         i => outcomes[i] = Keep(EvaluatePoint(toRun[i].Values, toRun[i].Draws, ct, toRun[i].WriteFieldsAs)));
 
         var ran = new Dictionary<string, DataSet?>(StringComparer.Ordinal);
         for (int i = 0; i < toRun.Count; i++)
@@ -1188,12 +1202,12 @@ public sealed class OptimizationRun
     }
 
     private (PointOutcome, DataSet?) EvaluatePoint(IReadOnlyDictionary<string, string> values, IStatisticalDraws? draws,
-                                                   CancellationToken ct)
+                                                   CancellationToken ct, string? writeFieldsAs = null)
     {
         Interlocked.Increment(ref _evaluations);
         try
         {
-            var (goalValues, errors, data, failure) = _simulates ? Simulate(values, draws, ct) : VariablesOnly(values, draws);
+            var (goalValues, errors, data, failure) = _simulates ? Simulate(values, draws, ct, writeFieldsAs) : VariablesOnly(values, draws);
             if (failure is not null)
             {
                 Interlocked.Increment(ref _failures);
@@ -1219,10 +1233,14 @@ public sealed class OptimizationRun
     }
 
     private (Value?[] Values, string?[] Errors, DataSet? Data, Diagnostic? Failure) Simulate(
-        IReadOnlyDictionary<string, string> tuned, IStatisticalDraws? draws, CancellationToken ct)
+        IReadOnlyDictionary<string, string> tuned, IStatisticalDraws? draws, CancellationToken ct, string? writeFieldsAs = null)
     {
         var rr = CircuitEvaluation.Evaluate(_circuit, new CircuitEvaluationRequest
         {
+            // brief-sar-10 R-sar10-2 — a fields analysis writes nothing per evaluation; each field measurement a goal names is
+            // computed when it is scored (psSAR always in full). A re-run trial writes its field for the 3D view.
+            Fields       = writeFieldsAs is null ? FieldsOutput.OnDemand : FieldsOutput.Written,
+            FieldsLabel  = writeFieldsAs,
             Statistics   = draws,
             Sets         = _options.Sets,
             Tunables     = tuned,

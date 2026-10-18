@@ -488,6 +488,10 @@ that goal's cost most. A part of a complex value is its own coordinate, so ∂co
 
 ## 13. Goal functions, the template catalog and "Add as goal" (TO-9)
 
+*(brief-sar-10: the field measurements over a `type=fields` analysis — `B1pMean`, `psSAR`, `SarEff` and four more — are goal
+functions too, with a template group of their own, and an optimizer evaluation computes each only when a goal scores it;
+`sar.md` §12.)*
+
 **Network metrics are expression built-ins** (`src/Core/Expressions/Evaluator.Network.cs`): `mu`,
 `mu_prime`, `K`, `delta_mag`, `max_gain` (dB), `max_gain_lin`, `passivity`, `group_delay`, `vswr` — the
 list and spellings are in `expressions.md` §7. Each takes the analysis's S cube (`SP1.S`) and an optional

@@ -5,7 +5,7 @@ namespace CircuitRF.Ui.ViewModels;
 
 /// <summary>
 /// brief-sar-9 — the Add/Edit Analysis dialog's body for a fields analysis: the S-parameter block whose per-port fields are
-/// recombined, the frequency (one its 3D run kept), the driving circuit port, what the results are per watt of, and whether the
+/// recombined, the frequency (one its 3D run kept), the driving circuit port or ports and their weights (brief-sar-10), what the results are per watt of, and whether the
 /// averaged SAR is computed. Every value is the directive's own text, as <see cref="FieldsAnalysis"/> stores it.
 /// </summary>
 public sealed partial class FieldsBodyViewModel : ObservableObject
@@ -17,12 +17,13 @@ public sealed partial class FieldsBodyViewModel : ObservableObject
     [ObservableProperty] private string _freq = "";
     [ObservableProperty] private string _freqUnit = "MHz";
     [ObservableProperty] private string _drive = "1";
+    [ObservableProperty] private string _weights = "";
     [ObservableProperty] private string _norm = FieldsAnalysis.NormAccepted;
     [ObservableProperty] private bool _average = true;
 
     public static FieldsBodyViewModel From(FieldsAnalysis fa) => new()
     {
-        Block = fa.Block, Freq = fa.FreqExpr, FreqUnit = fa.FreqUnit, Drive = fa.DriveExpr,
+        Block = fa.Block, Freq = fa.FreqExpr, FreqUnit = fa.FreqUnit, Drive = fa.DriveExpr, Weights = fa.WeightsExpr,
         Norm = fa.PerAvailable ? FieldsAnalysis.NormAvailable : FieldsAnalysis.NormAccepted, Average = fa.Average,
     };
 
@@ -32,6 +33,7 @@ public sealed partial class FieldsBodyViewModel : ObservableObject
     public FieldsAnalysis BuildAnalysis(string name, bool enabled) => new(name)
     {
         Enabled = enabled, Block = Block.Trim(), FreqExpr = Freq.Trim(), FreqUnit = FreqUnit,
-        DriveExpr = Drive.Trim().Length > 0 ? Drive.Trim() : "1", Norm = Norm, AverageExpr = Average ? "yes" : "no",
+        DriveExpr = Drive.Trim().Length > 0 ? Drive.Trim() : "1",
+        WeightsExpr = Weights.Trim(), Norm = Norm, AverageExpr = Average ? "yes" : "no",
     };
 }

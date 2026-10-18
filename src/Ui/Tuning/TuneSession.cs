@@ -47,6 +47,10 @@ public interface ITuneResultSink
     /// <summary>The session now evaluates at <paramref name="corner"/> (null: the nominal) — the display's chip says
     /// so (brief-yield-7 R-ya7-4).</summary>
     void AtCorner(string? corner) { }
+
+    /// <summary>brief-sar-10 R-sar10-3 — a displayed result's fields analyses rewrote their recombined SAR and B1 beside the
+    /// field set: a 3D view showing one draws it again (UI thread).</summary>
+    void FieldsWritten(IReadOnlyList<FieldsArtifact> fields) { }
 }
 
 public sealed class TuneSession : IDisposable
@@ -57,16 +61,22 @@ public sealed class TuneSession : IDisposable
     public delegate RunResult Evaluator(
         IReadOnlyDictionary<string, string> values, IReadOnlyList<string>? analyses, RunControl control);
 
+    /// <summary><see cref="Evaluator"/>, told whether the request is a slider's release (<paramref name="final"/>) — what a
+    /// fields analysis needs to know to defer its averaged SAR while the knob moves (brief-sar-10 R-sar10-3).</summary>
+    public delegate RunResult FinalAwareEvaluator(
+        IReadOnlyDictionary<string, string> values, IReadOnlyList<string>? analyses, RunControl control, bool final);
+
     /// <summary>An evaluation slower than this suggests run-on-release (R-to3-3, D7).</summary>
     public static readonly TimeSpan SlowEvaluation = TimeSpan.FromSeconds(2);
 
-    private readonly Evaluator       _evaluate;
+    private readonly FinalAwareEvaluator _evaluate;
     private readonly ITuneResultSink? _sink;
     private readonly Action<Action>  _post;
     private readonly Func<DateTime>  _clock;
     private readonly object          _gate = new();
 
     private IReadOnlyDictionary<string, string>? _pending;
+    private bool _pendingFinal;
     private CancellationTokenSource? _inFlightCts;
     private bool  _inFlight;
     private int   _generation;
@@ -80,6 +90,11 @@ public sealed class TuneSession : IDisposable
     private volatile CornerPoint? _corner;
 
     public TuneSession(Evaluator evaluate, ITuneResultSink? sink, Action<Action> postToUi,
+                       IReadOnlyList<string>? analyses = null, long sweepPoints = 0,
+                       Func<DateTime>? clock = null)
+        : this((values, scope, control, _) => evaluate(values, scope, control), sink, postToUi, analyses, sweepPoints, clock) { }
+
+    public TuneSession(FinalAwareEvaluator evaluate, ITuneResultSink? sink, Action<Action> postToUi,
                        IReadOnlyList<string>? analyses = null, long sweepPoints = 0,
                        Func<DateTime>? clock = null)
     {
@@ -102,7 +117,7 @@ public sealed class TuneSession : IDisposable
         var plan = CircuitEvaluation.Plan(circuit, new CircuitEvaluationRequest { Analyses = analyses });
         TuneSession? session = null;
         session = new TuneSession(
-            (values, scope, control) =>
+            (values, scope, control, final) =>
             {
                 // At a corner the sliders' values are the point the corner is evaluated at: its bindings over them,
                 // or its trial replayed around them (brief-yield-7 R-ya7-4).
@@ -111,6 +126,9 @@ public sealed class TuneSession : IDisposable
                 return CircuitEvaluation.Evaluate(circuit, new CircuitEvaluationRequest
                 {
                     Tunables = at.Values, Statistics = at.Draws, Analyses = scope, Control = control,
+                    // brief-sar-10 R-sar10-3 — a fields analysis draws local SAR and B1 while the knob moves; its averaged
+                    // SAR waits for the release
+                    Fields = final ? FieldsOutput.Written : FieldsOutput.Local,
                 });
             },
             sink, postToUi, analyses, plan.SweepPoints);
@@ -180,7 +198,7 @@ public sealed class TuneSession : IDisposable
             // The cancelled run starts the pending request when it returns; with nothing in flight, start now.
             if (_requested is { } values)
             {
-                if (_inFlight) _pending = values;
+                if (_inFlight) { _pending = values; _pendingFinal = true; }
                 else StartLocked(values);
             }
         }
@@ -216,28 +234,28 @@ public sealed class TuneSession : IDisposable
             if (_disposed) return;
             _requested = values;
             if (RunOnRelease && !final) return;
-            if (_inFlight) { _pending = values; return; }
-            StartLocked(values);
+            if (_inFlight) { _pending = values; _pendingFinal = final; return; }
+            StartLocked(values, final);
         }
     }
 
-    private void StartLocked(IReadOnlyDictionary<string, string> values)
+    private void StartLocked(IReadOnlyDictionary<string, string> values, bool final = true)
     {
         _inFlight = true;
         var cts        = new CancellationTokenSource();
         _inFlightCts   = cts;
         int generation = _generation;
         Interlocked.Increment(ref _evaluations);
-        Task.Run(() => Run(values, cts, generation));
+        Task.Run(() => Run(values, cts, generation, final));
     }
 
-    private void Run(IReadOnlyDictionary<string, string> values, CancellationTokenSource cts, int generation)
+    private void Run(IReadOnlyDictionary<string, string> values, CancellationTokenSource cts, int generation, bool final)
     {
         var sw = Stopwatch.StartNew();
         RunResult? result = null;
         try
         {
-            result = _evaluate(values, Analyses, new RunControl { Token = cts.Token });
+            result = _evaluate(values, Analyses, new RunControl { Token = cts.Token }, final);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
@@ -260,7 +278,7 @@ public sealed class TuneSession : IDisposable
             if (_pending is { } next && !_disposed)
             {
                 _pending = null;
-                StartLocked(next);
+                StartLocked(next, _pendingFinal);
             }
         }
     }
@@ -276,6 +294,7 @@ public sealed class TuneSession : IDisposable
             DisplayedResult = result;
             _displayedAt    = _clock();
             _sink?.Publish(data);
+            if (result.Fields.Count > 0) _sink?.FieldsWritten(result.Fields);
         }
         Changed?.Invoke(this, EventArgs.Empty);
 

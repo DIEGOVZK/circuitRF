@@ -14,13 +14,27 @@ public sealed class MeasurementContext
 {
     private readonly IReadOnlyDictionary<string, DataSet>           _results;
     private readonly IReadOnlyDictionary<string, ILinearBackSolver>? _backSolvers;
+    private readonly IReadOnlyDictionary<string, IFieldMetrics>?     _fields;
 
     public MeasurementContext(
         IReadOnlyDictionary<string, DataSet>            results,
-        IReadOnlyDictionary<string, ILinearBackSolver>? backSolvers = null)
+        IReadOnlyDictionary<string, ILinearBackSolver>? backSolvers = null,
+        IReadOnlyDictionary<string, IFieldMetrics>?     fields = null)
     {
         _results     = results;
         _backSolvers = backSolvers;
+        _fields      = fields;
+    }
+
+    /// <summary>brief-sar-10 — the recombined field of fields analysis <paramref name="name"/>, as the field measurements read
+    /// it; throws naming the run's fields analyses when it is not one.</summary>
+    public IFieldMetrics GetFieldMetrics(string name)
+    {
+        if (_fields is not null && _fields.TryGetValue(name, out var f)) return f;
+        string known = _fields is { Count: > 0 } ? string.Join(", ", _fields.Keys) : "none";
+        throw new ExpressionException(_results.ContainsKey(name)
+            ? $"'{name}' is not a fields analysis: the field measurements read a type=fields analysis (this run's: {known})."
+            : $"No fields analysis named '{name}' in this run (this run's: {known}).");
     }
 
     public DataSet GetAnalysis(string name)

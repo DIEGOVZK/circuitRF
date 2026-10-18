@@ -103,7 +103,16 @@ public static class SParameterEngine
     /// run's, so only ratios to the unit drive are meaningful: a block port's incident wave over the drive's is the square
     /// root of a power ratio in any convention.
     /// </summary>
-    public sealed record BlockPortDrive(int DrivenPort, Complex DrivenZ0, Complex Reflection, Complex[] Voltage, Complex[] Current);
+    public sealed record BlockPortDrive(int DrivenPort, Complex DrivenZ0, Complex Reflection, Complex[] Voltage, Complex[] Current)
+    {
+        /// <summary>brief-sar-10 R-sar10-4 — every driven circuit port, its Z0, the incident wave its source gives it and the
+        /// wave reflected there, in the drive's units (a unit drive: incident 1 and reflected S_jj). With several drives
+        /// <see cref="DrivenPort"/> and <see cref="Reflection"/> are the first one's, its reflection the ACTIVE one.</summary>
+        public IReadOnlyList<DrivenWave> Drives { get; init; } = [new(DrivenPort, DrivenZ0, Complex.One, Reflection)];
+    }
+
+    /// <summary>One driven circuit port of a <see cref="BlockPortDrive"/>: its incident and reflected waves.</summary>
+    public sealed record DrivenWave(int Port, Complex Z0, Complex Incident, Complex Reflected);
 
     /// <summary>
     /// brief-sar-9 R-sar9-3 — <see cref="BlockPortDrive"/> at one frequency for the block whose elaborated instance path is
@@ -113,18 +122,36 @@ public static class SParameterEngine
     /// </summary>
     public static BlockPortDrive BlockWaves(ElaboratedNetlist netlist, double freqHz, string instancePath, int drivenPort,
                                             AnalysisSettings? settings = null)
+        => BlockWaves(netlist, freqHz, instancePath, [(drivenPort, Complex.One)], settings);
+
+    /// <summary>
+    /// brief-sar-10 R-sar10-4 — <see cref="BlockWaves(ElaboratedNetlist, double, string, int, AnalysisSettings?)"/> with several
+    /// circuit ports driven at once, each by an incident wave of the complex amplitude given (multi-channel drive): the same
+    /// factorisation, one back-substitution with every drive's Norton current. Linear, so it is the weighted sum of the
+    /// single-drive solutions.
+    /// </summary>
+    public static BlockPortDrive BlockWaves(ElaboratedNetlist netlist, double freqHz, string instancePath,
+                                            IReadOnlyList<(int Port, Complex Amplitude)> drives, AnalysisSettings? settings = null)
     {
         ArgumentNullException.ThrowIfNull(netlist);
+        if (drives.Count == 0) throw new ArgumentException("No circuit port is driven.", nameof(drives));
+        if (drives.Select(d => d.Port).Distinct().Count() != drives.Count)
+            throw new ArgumentException($"A circuit port is driven twice ({string.Join(", ", drives.Select(d => d.Port))}).", nameof(drives));
         settings ??= AnalysisSettings.Default;
         double[] freqs = [freqHz];
         var p = Prepare(netlist, freqs, settings);
         if (!p.AllPortsResistive)
             throw new InvalidOperationException("A port's waves need every circuit port terminated in a resistive Z0 (Re Z0 > 0); " +
                                                 "one port's Z0 has none.");
-        int j = p.Ports.FindIndex(x => x.PortNum == drivenPort);
-        if (j < 0)
-            throw new InvalidOperationException($"The circuit has no port number {drivenPort} at its top level to drive " +
-                                                $"(ports: {string.Join(", ", p.Ports.Select(x => x.PortNum))}).");
+        var driven = new List<int>();
+        foreach (var (port, _) in drives)
+        {
+            int j = p.Ports.FindIndex(x => x.PortNum == port);
+            if (j < 0)
+                throw new InvalidOperationException($"The circuit has no port number {port} at its top level to drive " +
+                                                    $"(ports: {string.Join(", ", p.Ports.Select(x => x.PortNum))}).");
+            driven.Add(j);
+        }
         var block = netlist.Components.FirstOrDefault(c => string.Equals(c.InstancePath, instancePath, StringComparison.Ordinal));
         if (block?.Model is not SnpModel snp)
             throw new InvalidOperationException(block is null
@@ -147,18 +174,30 @@ public static class SParameterEngine
             lu = mna.Factorize(nodeNamer: p.NodeNamer, branchNamer: p.BranchNamer);
         }
 
-        // The S-parameter run's own drive: a unit incident wave, Norton current 2√(Re Z0)/Z0.
-        var driven = p.Ports[j];
-        Complex iInj = 2.0 * Math.Sqrt(driven.Z0.Real) / driven.Z0;
+        // The S-parameter run's own drive: a unit incident wave, Norton current 2√(Re Z0)/Z0, times each drive's amplitude.
         var b = new Complex[mna.Size];
         var x = new Complex[mna.Size];
-        if (driven.Node0 > 0) b[driven.Node0 - 1] = iInj;
-        if (driven.Node1 > 0) b[driven.Node1 - 1] = -iInj;
+        var inject = new Complex[driven.Count];
+        for (int d = 0; d < driven.Count; d++)
+        {
+            var port = p.Ports[driven[d]];
+            inject[d] = drives[d].Amplitude * 2.0 * Math.Sqrt(port.Z0.Real) / port.Z0;
+            if (port.Node0 > 0) b[port.Node0 - 1] += inject[d];
+            if (port.Node1 > 0) b[port.Node1 - 1] -= inject[d];
+        }
         lu.Solve(b, x);
 
-        Complex vj = GetPortVoltage(x, driven);
-        Complex ij = iInj - vj / driven.Z0;
-        Complex reflection = (vj - Complex.Conjugate(driven.Z0) * ij) / (2.0 * Math.Sqrt(driven.Z0.Real));
+        var waves = new DrivenWave[driven.Count];
+        for (int d = 0; d < driven.Count; d++)
+        {
+            var port = p.Ports[driven[d]];
+            Complex vj = GetPortVoltage(x, port);
+            Complex ij = inject[d] - vj / port.Z0;
+            waves[d] = new DrivenWave(port.PortNum, port.Z0, drives[d].Amplitude,
+                                      (vj - Complex.Conjugate(port.Z0) * ij) / (2.0 * Math.Sqrt(port.Z0.Real)));
+        }
+        var first = waves[0];
+        Complex reflection = first.Incident == Complex.Zero ? Complex.Zero : first.Reflected / first.Incident;
 
         Complex V(int node) => node > 0 ? x[node - 1] : Complex.Zero;
         int n = snp.PortCount;
@@ -169,7 +208,7 @@ public static class SParameterEngine
             voltage[k] = V(block.Nodes[k]) - V(block.ReferenceNode);
             current[k] = x[snp.PortBranchIndices[k]];     // the branch flows from port node k into the block (SnpModel.Stamp)
         }
-        return new BlockPortDrive(drivenPort, driven.Z0, reflection, voltage, current);
+        return new BlockPortDrive(first.Port, first.Z0, reflection, voltage, current) { Drives = waves };
     }
 
     /// <summary>The NDF's own per-frequency outputs, allocated only when the knob is on — the

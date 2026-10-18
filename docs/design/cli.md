@@ -3998,7 +3998,9 @@ patterns refused listing the candidates; a bare-number `--region` refused.
 **brief-sar-9.** `circuitrf fields <file.cnl|.csch> [-a name]... [--set var=expr]... [-o out.{mat,npy,txt}]` runs a
 design's `fields` analyses: the per-port fields a 3D run kept beside its `.sNp` (`Sar.PerPortFields`) recombined with
 the incident waves the circuit delivers to the block's ports, into local and averaged SAR, B1± and their scalars at one
-frequency. The method, the directive and the checks are `docs/design/sar.md` §11.
+frequency. The method, the directive and the checks are `docs/design/sar.md` §11. Several circuit ports can drive at once
+(`drive=1,2 weights=1,W2`, brief-sar-10), and the field measurements (`B1pMean(F1)`, `psSAR(F1, 10)` …) read the result in a
+`measure` or `goal` line; `sar.md` §12.
 
 ### 28.1 It owns no recombination
 

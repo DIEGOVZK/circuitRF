@@ -197,6 +197,12 @@ Under mismatch, `wsp_loadpull_margin` returns `{…, gS, gL, freq, env}` and
 NDF locus and `wsp_loadpull_ndf_enc` the Real encirclement count. The pairs are two functions rather
 than one because a cube is single-kind and the two answers of each pair differ in rank or kind.
 
+### 3b. Field measurements over a fields analysis (brief-sar-10)
+
+`B1pMean(F1, "brain")`, `psSAR(F1, 10)` and five more read a `type=fields` analysis's recombined field by the analysis's name,
+each one Real, per watt as the analysis normalises; the recombined field is held open for the measurements and goals of the
+evaluation that produced it and computed only where one asks (`sar.md` §12, `expressions.md` §7).
+
 ### 4. Reductions over an axis, and the statistics of a sample
 
 `Evaluator.Reductions.cs`. Every reduction takes `f(x [, fixed…] [, lo, hi] [, "axis"])`: the axis defaults to

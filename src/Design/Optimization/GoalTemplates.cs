@@ -7,7 +7,7 @@ using CircuitRF.Design.Circuit;
 namespace CircuitRF.Design.Optimization;
 
 /// <summary>The sections the goal editor lists templates under (brief-tuneopt-9 R-to9-3).</summary>
-public enum GoalTemplateGroup { SParameters, WsProbe, Measurements, Custom }
+public enum GoalTemplateGroup { SParameters, WsProbe, Fields, Measurements, Custom }
 
 /// <summary>One field a template asks for — a port, a probe, a scale — with its choices and default.</summary>
 /// <param name="Key">The name <see cref="GoalTemplate.Make"/> reads it by.</param>
@@ -86,6 +86,8 @@ public static class GoalTemplates
         if (probes.Count > 0)
             foreach (var sp in tb.Analyses.OfType<SParameterAnalysis>())
                 list.AddRange(WsProbeTemplates(sp, probes));
+        foreach (var fa in tb.Analyses.OfType<FieldsAnalysis>())
+            list.AddRange(FieldsTemplates(fa));
         foreach (var m in tb.Measurements)
         {
             string name = m.Name, analysis = AnalysisReferencedBy(m.Expression, tb) ?? "";
@@ -131,9 +133,13 @@ public static class GoalTemplates
 
         string? Find(string text)
         {
+            string? previous = null;
             foreach (var (word, dotted) in Words(text))
             {
                 if (dotted && analyses.Contains(word)) return word;
+                // brief-sar-10 — a field measurement names its fields analysis as its first argument: psSAR(F1, 10)
+                if (!dotted && previous is { } fn && FieldMetricFunctions.IsFieldMetric(fn) && analyses.Contains(word)) return word;
+                previous = word;
                 if (!dotted && measures.TryGetValue(word, out var inner) && seen.Add(word) && Find(inner) is { } a)
                     return a;
             }
@@ -243,6 +249,26 @@ public static class GoalTemplates
                     };
                 });
         }
+    }
+
+    // ── fields (brief-sar-10 R-sar10-1) ──────────────────────────────────────
+
+    /// <summary>The field measurements over one fields analysis, each over the setup's own region (B1's, or SAR's); the
+    /// region and mass are text the user edits in the goal (sar.md §12).</summary>
+    private static IEnumerable<GoalTemplate> FieldsTemplates(FieldsAnalysis fa)
+    {
+        string a = fa.Name;
+        var mass = new GoalTemplateField("mass", "Averaging mass (g)", ["10", "1"], "10");
+        GoalTemplate One(string id, string label, string name, string expr, GoalType type, GoalTemplateField[]? fields = null)
+            => new($"{a}.{id}", label, GoalTemplateGroup.Fields, a, fields ?? [],
+                   v => new OptimizationGoal { Name = name, Expression = expr.Replace("<mass>", fields is null ? "" : v("mass")), Analysis = a, Type = type });
+        yield return One("b1mean", "Mean |B1+| over a region (T/√W)", "B1mean", $"B1pMean({a})", GoalType.Ge);
+        yield return One("b1min", "Smallest |B1+| over a region (T/√W)", "B1min", $"B1pMin({a})", GoalType.Ge);
+        yield return One("b1cov", "|B1+| non-uniformity, std/mean", "B1cov", $"B1pCoV({a})", GoalType.Le);
+        yield return One("pssar", "Peak spatial-average SAR (W/kg per W)", "psSAR", $"psSAR({a}, <mass>)", GoalType.Le, [mass]);
+        yield return One("sarwb", "Whole-region SAR (W/kg per W)", "SARwb", $"SARwb({a})", GoalType.Le);
+        yield return One("sareff", "SAR efficiency, B1pMean/√psSAR", "SarEff", $"SarEff({a}, \"all\", <mass>)", GoalType.Ge, [mass]);
+        yield return One("pabs", "Absorbed power fraction (W per W)", "Pabs", $"Pabs({a})", GoalType.Le);
     }
 
     private static GoalTemplate Custom() => new("custom", "Custom expression", GoalTemplateGroup.Custom, null, [],

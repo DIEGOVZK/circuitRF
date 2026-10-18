@@ -48,6 +48,15 @@ public sealed record CircuitEvaluationRequest
     /// <summary>Where a breadcrumb line goes as each analysis starts and ends — the GUI's crash
     /// reporter. Null discards them.</summary>
     public Action<string>? Breadcrumb { get; init; }
+
+    /// <summary>brief-sar-10 R-sar10-2 — what a fields analysis does beyond its circuit solve: Simulate writes everything;
+    /// a moving tuning knob writes local SAR and B1 only; an optimizer, yield or DOE evaluation writes nothing and computes
+    /// each field measurement when an expression asks for it.</summary>
+    public FieldsOutput Fields { get; init; } = FieldsOutput.Written;
+
+    /// <summary>brief-sar-10 R-sar10-5 — a written recombination's results go to <c>&lt;analysis&gt; (&lt;label&gt;)</c> beside
+    /// the analysis's own, so a re-run yield trial does not overwrite the nominal's. Null: the analysis's own folder.</summary>
+    public string? FieldsLabel { get; init; }
 }
 
 /// <summary>
@@ -73,7 +82,7 @@ public static class CircuitEvaluation
         request ??= new CircuitEvaluationRequest();
         var plan   = Plan(circuit, request);
         var result = Execute(plan, request.Control, request.Measurements, request.Expressions ?? [],
-                             request.Breadcrumb);
+                             request.Breadcrumb, request.Fields, request.FieldsLabel);
         // Simulate prints the plan's notes before the run and the result's after it; a caller of this
         // one call has only the result, so the plan's notes (a promotion, a tuned key that resolved
         // to nothing) lead it.
@@ -308,7 +317,8 @@ public static class CircuitEvaluation
     /// evaluations.
     /// </summary>
     public static RunResult Execute(RunPlan plan, RunControl? control, bool measurements,
-                                    IReadOnlyList<string> expressions, Action<string>? breadcrumb)
+                                    IReadOnlyList<string> expressions, Action<string>? breadcrumb,
+                                    FieldsOutput fieldsOutput = FieldsOutput.Written, string? fieldsLabel = null)
     {
         if (plan.Status != RunStatus.Success
             || plan.Nl is not { } nl || plan.Tb is not { } tb || plan.Lib is not { } lib)
@@ -316,7 +326,8 @@ public static class CircuitEvaluation
 
         try
         {
-            return ExecuteCore(plan, nl, tb, lib, control, measurements, expressions, breadcrumb);
+            return ExecuteCore(plan, nl, tb, lib, control, measurements, expressions, breadcrumb,
+                               new FieldsRun(fieldsOutput, fieldsLabel));
         }
         finally
         {
@@ -324,12 +335,29 @@ public static class CircuitEvaluation
         }
     }
 
+    /// <summary>brief-sar-10 — one evaluation's fields analyses: how they run, what they wrote, and the recombined field each
+    /// leaves for the field measurements, by result name — open until the measurements are evaluated, then disposed.</summary>
+    private sealed class FieldsRun(FieldsOutput output, string? label) : IDisposable
+    {
+        public FieldsOutput Output { get; } = output;
+        public string? Label { get; } = label;
+        public List<FieldsArtifact> Artifacts { get; } = [];
+        public Dictionary<string, IFieldMetrics> Metrics { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public void Dispose()
+        {
+            foreach (var m in Metrics.Values) (m as IDisposable)?.Dispose();
+            Metrics.Clear();
+        }
+    }
+
     private static RunResult ExecuteCore(RunPlan plan, ElaboratedNetlist nl, TestBench tb, Library lib,
                                          RunControl? control, bool measurements,
-                                         IReadOnlyList<string> expressions, Action<string>? breadcrumb)
+                                         IReadOnlyList<string> expressions, Action<string>? breadcrumb, FieldsRun fieldsRun)
     {
+        using var disposeFields = fieldsRun;
         var results     = new List<AnalysisResult>();
-        var fields      = new List<FieldsArtifact>();
+        var fields      = fieldsRun.Artifacts;
         var notes       = new List<string>();
         var errors      = new List<string>();
         var convergence = new List<AnalysisConvergence>();
@@ -352,7 +380,7 @@ public static class CircuitEvaluation
 
                 bool? converged = true;
                 var ds = pa.Typed is not null
-                    ? RunTypedAnalysis(pa.Typed, nl, tb, lib, notes, plan.BaseDirectory, inner, out converged, fields)
+                    ? RunTypedAnalysis(pa.Typed, nl, tb, lib, notes, plan.BaseDirectory, inner, out converged, fieldsRun, pa.ResultName)
                     : RunRawSparam(pa.RawLine!, nl, inner);
 
                 if (ds is not null)
@@ -397,7 +425,7 @@ public static class CircuitEvaluation
                     foreach (var r in results) analysisResults[r.Name] = r.Data;
 
                     var measDs     = new DataSet();
-                    var measErrors = new MeasurementEvaluator(tb, nl, analysisResults)
+                    var measErrors = new MeasurementEvaluator(tb, nl, analysisResults, fields: fieldsRun.Metrics)
                         .EvaluateInto(measDs, expressions, measurements, out outcomes);
                     foreach (var kv in measDs.Cubes)
                         grouped.AddToGroup(DataSet.MeasurementsGroup, kv.Key, kv.Value);  // reached even if some failed
@@ -488,7 +516,8 @@ public static class CircuitEvaluation
                 return ($"DC '{analysis.Name}': operating point", 1, false);
 
             case FieldsAnalysis fa:
-                return ($"Fields '{fa.Name}': '{fa.Block}' recombined at {fa.FreqExpr} {fa.FreqUnit}, driven from port {fa.DriveExpr}", 1, false);
+                return ($"Fields '{fa.Name}': '{fa.Block}' recombined at {fa.FreqExpr} {fa.FreqUnit}, driven from " +
+                        $"{(fa.DriveExpr.Contains(',') ? "ports" : "port")} {fa.DriveExpr}", 1, false);
 
             default:
                 return ($"Analysis type '{analysis.GetType().Name}' is not dispatched.", 0, false);
@@ -530,7 +559,8 @@ public static class CircuitEvaluation
         string?           baseDirectory,
         RunControl?       control,
         out bool?         converged,
-        List<FieldsArtifact>? fields = null)
+        FieldsRun?        fields = null,
+        string?           resultName = null)
     {
         // A linear analysis has nothing to converge; a sweep and a loadpull carry convergence per point,
         // in their data. The two single solves below say for themselves.
@@ -586,7 +616,9 @@ public static class CircuitEvaluation
 
             // brief-sar-9 — an EM block's per-port fields recombined by this circuit's waves; no EM run
             case FieldsAnalysis fa:
-                return CircuitRF.Design.Em3d.FieldCosimulation.Run(fa, nl, notes, control, fields);
+                return CircuitRF.Design.Em3d.FieldCosimulation.Run(fa, nl, notes, control, fields?.Artifacts,
+                    fields?.Output ?? FieldsOutput.Written, fields?.Label,
+                    fields is null ? null : m => fields.Metrics[resultName ?? fa.Name] = m);
 
             case DcAnalysis:
             {

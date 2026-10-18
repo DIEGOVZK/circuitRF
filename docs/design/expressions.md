@@ -173,6 +173,12 @@ returns `{…, freq}`. `group_delay(z)` is −dφ/dω along `freq` of a complex 
 renormalization. `vswr(Γ)` is (1 + |Γ|)/(1 − |Γ|) element-wise, +∞ at and beyond |Γ| = 1. A name such
 as `K` stays usable as a variable or measurement: only a CALL `K(…)` is the function.
 
+**Field measurements** (measurement context only, over a `type=fields` analysis; brief-sar-10): `B1pMean(F, region)`,
+`B1pMin(F, region)`, `B1pCoV(F, region)`, `psSAR(F, mass)`, `SARwb(F, region)`, `SarEff(F, region, mass)`, `Pabs(F)`. `F` is
+the analysis's NAME, read as a name and never evaluated; a region is a string (a tissue, tissues joined by `+`, `"all"`, or
+`"box(x0, x1, y0, y1, z0, z1)"`), optional where the setup's own applies; a mass is in grams. Each returns one Real, per watt
+as the analysis normalises. The full table and the regions are `sar.md` §12.1.
+
 They are reserved like every other built-in (§2). Three of the WSProbe functions are worth knowing about from the
 grammar's side alone: **`_dB` is a legal identifier** (the tokenizer has always accepted a leading
 underscore) and is `10·log10|M|`, a POWER dB, which is why it is not `dB`; the `y_to_*`/`z_to_*`

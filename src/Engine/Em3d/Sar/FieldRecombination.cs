@@ -78,6 +78,27 @@ public sealed record RecombinedField(SarGrid Grid, float[]? B1Plus, float[]? B1M
 /// <summary>brief-sar-9 — the fast path's answer over one box: local SAR (W/kg) and |B1±| (T) per box cell, C order over the box.</summary>
 public sealed record RecombinedBox(FieldBox Box, float[] LocalSar, float[]? B1Plus, float[]? B1Minus, RecombinationCounts Counts);
 
+/// <summary>brief-sar-10 — a region's sums from the fast path: |B1+| (T) volume-weighted over the region's cells, and the
+/// absorbed power (W) and mass (kg) of its tissue cells, all as solved at the weights given.</summary>
+public sealed record FieldRegionSums(long B1Cells, double B1VolumeM3, double B1VolumeSum, double B1VolumeSumSq, double B1Min,
+                                     long TissueCells, double AbsorbedPowerW, double MassKg, RecombinationCounts Counts)
+{
+    /// <summary>Volume-weighted mean |B1+|, T; NaN without B1 cells.</summary>
+    public double B1Mean => B1VolumeM3 > 0 ? B1VolumeSum / B1VolumeM3 : double.NaN;
+
+    /// <summary>Volume-weighted standard deviation of |B1+| over its mean; NaN without B1 cells or with a zero mean.</summary>
+    public double B1CoV
+    {
+        get
+        {
+            double mean = B1Mean;
+            if (!(mean > 0)) return double.NaN;
+            double variance = Math.Max(0, B1VolumeSumSq / B1VolumeM3 - mean * mean);
+            return Math.Sqrt(variance) / mean;
+        }
+    }
+}
+
 public static class FieldRecombination
 {
     /// <summary>Roughly how many cells each slab holds across all ports: ~2 M cells is ~100 MB of buffers at four ports.</summary>
@@ -184,6 +205,67 @@ public static class FieldRecombination
                 cells += nz;
             }
         return new RecombinedBox(box, sar, plus, minus, new RecombinationCounts(cells, reads, used.Count));
+    }
+
+    /// <summary>
+    /// brief-sar-10 R-sar10-2 — the fast path's sums over a region: the cells of <paramref name="box"/> that
+    /// <paramref name="inRegion"/> keeps (by full-grid cell index; null keeps every one), reading nothing outside the box.
+    /// |B1+| is summed over every kept cell (B1 is wanted in air too), the absorbed power ½σ|E|²V and mass ρV over the kept
+    /// cells that are tissue (ρ &gt; 0). Region statistics, SARwb and a goal on them need nothing else.
+    /// </summary>
+    public static FieldRegionSums RegionSums(IPortFieldSet set, IReadOnlyList<Complex> weights, FieldBox box, Func<long, bool>? inRegion,
+                                             bool b1, int b0Axis = 2, int b0Sign = 1)
+    {
+        if (box.I0 < 0 || box.J0 < 0 || box.K0 < 0 || box.I1 > set.X.Count || box.J1 > set.Y.Count || box.K1 > set.Z.Count || box.Count <= 0)
+            throw new ArgumentException($"The box [{box.I0}, {box.I1}) × [{box.J0}, {box.J1}) × [{box.K0}, {box.K1}) is not inside the " +
+                                        $"{set.X.Count} × {set.Y.Count} × {set.Z.Count} grid.");
+        var used = Used(set, weights);
+        bool withH = b1 && set.HasH;
+        int nz = box.Nz;
+        var buffer = new float[6 * nz];
+        var ex = new Complex[nz];
+        var ey = new Complex[nz];
+        var ez = new Complex[nz];
+        var sigma = new float[nz];
+        var rho = new float[nz];
+        var vol = new float[nz];
+        var keep = new bool[nz];
+        double bVol = 0, bSum = 0, bSq = 0, bMin = double.PositiveInfinity, power = 0, mass = 0;
+        long bCells = 0, tissue = 0, reads = 0, cells = 0;
+        for (int i = box.I0; i < box.I1; i++)
+            for (int j = box.J0; j < box.J1; j++)
+            {
+                long start = ((long)i * set.Y.Count + j) * set.Z.Count + box.K0;
+                bool any = false;
+                for (int k = 0; k < nz; k++) any |= keep[k] = inRegion?.Invoke(start + k) ?? true;
+                if (!any) continue;
+                set.ReadCells(start, nz, sigma, rho, vol);
+                reads += Sum(set, used, weights, start, nz, buffer, ex, ey, ez, h: false);
+                for (int k = 0; k < nz; k++)
+                    if (keep[k] && rho[k] > 0)
+                    {
+                        power += 0.5 * sigma[k] * (MagSq(ex[k]) + MagSq(ey[k]) + MagSq(ez[k])) * vol[k];
+                        mass += (double)rho[k] * vol[k];
+                        tissue++;
+                    }
+                if (withH)
+                {
+                    reads += Sum(set, used, weights, start, nz, buffer, ex, ey, ez, h: true);
+                    for (int k = 0; k < nz; k++)
+                    {
+                        if (!keep[k]) continue;
+                        double bp = SarB1.FromH(ex[k], ey[k], ez[k], b0Axis, b0Sign).Plus.Magnitude;
+                        bVol += vol[k];
+                        bSum += bp * vol[k];
+                        bSq += bp * bp * vol[k];
+                        bMin = Math.Min(bMin, bp);
+                        bCells++;
+                    }
+                }
+                cells += nz;
+            }
+        return new FieldRegionSums(bCells, bVol, bSum, bSq, bCells > 0 ? bMin : double.NaN, tissue, power, mass,
+                                   new RecombinationCounts(cells, reads, used.Count));
     }
 
     /// <summary>

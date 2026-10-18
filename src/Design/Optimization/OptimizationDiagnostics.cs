@@ -103,6 +103,13 @@ public static class OptimizationDiagnostics
         "opt.snap.nothing", DiagnosticSeverity.Error,
         "Snap and polish needs an integer, stepped or preferred value among the optimized values, and a run that found a point.");
 
+    /// <summary>brief-sar-10 R-sar10-2 — no cost hint exists for an algorithm to read, so the expensive goals are said.</summary>
+    public static Diagnostic FullAverageGoals(string names) => Diagnostic.Create(
+        "opt.goal.full-average", DiagnosticSeverity.Info,
+        "{names} read psSAR: every evaluation that scores them recombines the whole field set and averages it in full, never an " +
+        "approximation, and that average is most of the evaluation's cost. B1, SARwb and Pabs read only their region or the tissue matrix.",
+        ("names", names));
+
     public static Diagnostic Serial(string reason) => Diagnostic.Create(
         "opt.parallel.serial", DiagnosticSeverity.Info,
         "Evaluating one point at a time: {reason}", ("reason", reason));

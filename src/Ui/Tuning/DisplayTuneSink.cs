@@ -20,8 +20,12 @@ public sealed class DisplayTuneSink(
     string? fileNameOverride,
     Func<IEnumerable<DataSourceLibraryViewModel>> openLibraries,
     IMessageSink? messages,
-    string chip = DataSourceLibraryViewModel.TuningChip) : ITuneResultSink, Optimization.IOptimizerDisplay
+    string chip = DataSourceLibraryViewModel.TuningChip,
+    Action<IReadOnlyList<CircuitRF.Design.Circuit.FieldsArtifact>>? fieldsWritten = null) : ITuneResultSink, Optimization.IOptimizerDisplay
 {
+    /// <summary>brief-sar-10 R-sar10-3 — the 3D views showing a recombined field draw it again.</summary>
+    public void FieldsWritten(IReadOnlyList<CircuitRF.Design.Circuit.FieldsArtifact> fields) => fieldsWritten?.Invoke(fields);
+
     /// <summary>The results file every published DataSet stands in for.</summary>
     public string ResultsPath { get; } = Path.GetFullPath(Path.Combine(
         ResultsWriter.ResultsDirectory(baseDir), RunResultsWriter.ResolveFileName(fileNameOverride, schematicKey)));

@@ -334,7 +334,8 @@ expression evaluates to the same bits.
 ## 8. YA-4 — the run service
 
 `StatisticalRun` (`src/Design/Statistics`) is the one Monte Carlo and yield implementation: the GUI, the CLI and MCP
-call it, and it evaluates through the optimizer's evaluator (D11).
+call it, and it evaluates through the optimizer's evaluator (D11). *(brief-sar-10: a fields analysis in a trial recombines nothing until a
+spec reads it, and a re-run trial writes its field as `<analysis> (trial n)` for the 3D view; `sar.md` §12.5.)*
 
 | Piece | Where |
 |---|---|

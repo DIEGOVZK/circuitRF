@@ -400,10 +400,17 @@ public sealed partial class Viewer3DViewModel
         if (changed) ThermalResultsChanged?.Invoke();
     }
 
-    /// <summary>When the run's collection was written: a re-run with the same steps is still new data.</summary>
+    /// <summary>When the run's collection was written: a re-run with the same steps is still new data. A fields analysis's
+    /// recombined field is rewritten without the run (brief-sar-10: every tuning step), so its files count too.</summary>
     private static DateTime StampOf(FieldRun run)
     {
-        try { return run.Solutions.Count > 0 ? File.GetLastWriteTimeUtc(run.Solutions[0].VolumePvtu!) : default; }
+        try
+        {
+            var stamp = run.Solutions.Count > 0 ? File.GetLastWriteTimeUtc(run.Solutions[0].VolumePvtu!) : default;
+            foreach (var s in run.Solutions)
+                if (s.Cosim is not null && s.VolumePvtu is { } file && File.GetLastWriteTimeUtc(file) is var t && t > stamp) stamp = t;
+            return stamp;
+        }
         catch (IOException) { return default; }
     }
 

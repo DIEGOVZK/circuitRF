@@ -429,7 +429,9 @@ public sealed class StatisticalRun
                 continue;
             }
             slots.Add((i, values, entrySample, draws));
-            points.Add(new ValuePoint(PointValues(values.Values), draws, rerun ? $"trial {t} (re-run)" : $"trial {t}"));
+            // brief-sar-10 R-sar10-5 — a re-run trial (the worst one, say) writes its recombined fields for the 3D view
+            points.Add(new ValuePoint(PointValues(values.Values), draws, rerun ? $"trial {t} (re-run)" : $"trial {t}")
+                       { WriteFieldsAs = rerun ? $"trial {t}" : null });
         }
 
         IReadOnlyList<PointEvaluation> evaluated;

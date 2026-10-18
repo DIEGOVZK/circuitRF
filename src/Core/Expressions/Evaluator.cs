@@ -215,6 +215,9 @@ public sealed partial class Evaluator
         // from every quantity the Data Display derives from an S cube.
         if (IsNetworkBuiltin(cl.Name)) return EvalNetworkCall(cl, scope);
 
+        // The field measurements over a fields analysis (Evaluator.Fields.cs, brief-sar-10).
+        if (IsFieldMetric(cl.Name)) return EvalFieldMetric(cl, scope);
+
         // The distribution functions (Evaluator.Statistical.cs): their nominal outside a trial, a draw inside one.
         // `limit` with three arguments is the clamp, told apart by its arity.
         if (IsStatisticalCall(cl)) return EvalStatistical(cl, scope);

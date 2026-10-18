@@ -164,7 +164,7 @@
                     CornerRadius="6"
                     Padding="10,10"
                     IsVisible="False">
-                <Grid x:Name="FieldsBodyGrid" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                <Grid x:Name="FieldsBodyGrid" ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
                       RowSpacing="6" ColumnSpacing="8">
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Block:" FontSize="12" VerticalAlignment="Center"/>
                     <TextBox   Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2" FontSize="12" Text="{Binding FieldsBody.Block}"
@@ -175,11 +175,15 @@
                     <ComboBox  Grid.Row="1" Grid.Column="2" FontSize="12" ItemsSource="{x:Static vm:FieldsBodyViewModel.FreqUnits}"
                                SelectedItem="{Binding FieldsBody.FreqUnit}"/>
                     <TextBlock Grid.Row="2" Grid.Column="0" Text="Drive port:" FontSize="12" VerticalAlignment="Center"/>
-                    <TextBox   Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" FontSize="12" Text="{Binding FieldsBody.Drive}"/>
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Per watt:" FontSize="12" VerticalAlignment="Center"/>
-                    <ComboBox  Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" FontSize="12" ItemsSource="{x:Static vm:FieldsBodyViewModel.Norms}"
+                    <TextBox   Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" FontSize="12" Text="{Binding FieldsBody.Drive}"
+                               PlaceholderText="1, or several: 1,2"/>
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Weights:" FontSize="12" VerticalAlignment="Center"/>
+                    <TextBox   Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" FontSize="12" Text="{Binding FieldsBody.Weights}"
+                               PlaceholderText="each drive's amplitude, e.g. W1,W2 (empty: 1 each)"/>
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Per watt:" FontSize="12" VerticalAlignment="Center"/>
+                    <ComboBox  Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" FontSize="12" ItemsSource="{x:Static vm:FieldsBodyViewModel.Norms}"
                                SelectedItem="{Binding FieldsBody.Norm}"/>
-                    <CheckBox  Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" FontSize="12" Content="Averaged SAR"
+                    <CheckBox  Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2" FontSize="12" Content="Averaged SAR"
                                IsChecked="{Binding FieldsBody.Average}"/>
                 </Grid>
             </Border>

@@ -39755,3 +39755,13 @@ technology every layout shares.
 - **Follow-up, same day: the prompt is parented to the document's OWN window** (`HostWindowOf`, as the tab
   menu's Save already was), not `ResolveOwner(null)`. Parented to the shell, showing the modal brought the
   shell forward and a Cancel left the floating window behind it. Applies to the tab ✕ and Close All too.
+
+## A rewritten co-simulation result was never re-read by an open 3D view (brief-sar-10, 2026-10-18)
+
+`Viewer3DViewModel.AdoptRead` decides whether a run's fields changed by `StampOf(run)` — and that dated a run by its FIRST
+solution's file, a port's own openEMS step. A schematic's `fields` analysis (SAR-9) rewrites only the recombined volumes in
+`<stem>.fields/cosim/<analysis>/`, which that first file does not include, so a second recombination (another capacitor value)
+compared "same", kept the cached steps and drew the old field. SAR-9 hid it because "Open in 3D view" usually opened a fresh
+view. SAR-10's tuning window rewrites the volumes on every knob move, which made it plain. `StampOf` now takes the latest of
+the first solution's file and every co-simulation solution's file. The live update itself is `ITuneResultSink.FieldsWritten`
+→ `C3dEditorViewModel.RunFinished` on any open view of the `.c3d` (docs/design/sar.md §12.3).

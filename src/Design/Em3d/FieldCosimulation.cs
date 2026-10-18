@@ -47,6 +47,10 @@ public sealed class CosimRecord
     /// <summary>The drive port's reflection, S_jj of the circuit with every other circuit port terminated.</summary>
     public double ReflectionRe { get; set; }
     public double ReflectionIm { get; set; }
+    /// <summary>brief-sar-10 R-sar10-4 — several circuit ports driven together: [port, incident re, im, reflected re, im] each, in
+    /// the drive's own units (only ratios mean anything); null when one port drives.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public List<double[]>? Drives { get; set; }
     /// <summary>The block's ports, in the field set's order, and the incident and reflected waves the circuit gives them, √W.</summary>
     public List<int> Ports { get; set; } = [];
     public List<double[]> Incident { get; set; } = [];
@@ -107,9 +111,14 @@ public static class FieldCosimulation
     /// Runs <paramref name="fa"/> on <paramref name="nl"/>: the DataSet of its scalars (the caller groups it under the analysis's
     /// name), with the volumes, the SAR record and the co-simulation record written beside the field set. Throws
     /// <see cref="InvalidOperationException"/> with the refusal's sentence when it cannot run.
+    /// <para>brief-sar-10 — <paramref name="output"/> says how much of that a caller wants (<see cref="FieldsOutput"/>);
+    /// <paramref name="metrics"/>, when given, receives the recombined field for the field measurements, and owns the open
+    /// field set from then on (the caller disposes it once the measurements are evaluated).</para>
     /// </summary>
     public static DataSet Run(FieldsAnalysis fa, ElaboratedNetlist nl, List<string> notes, RunControl? control = null,
-                              List<CircuitRF.Design.Circuit.FieldsArtifact>? artifacts = null)
+                              List<CircuitRF.Design.Circuit.FieldsArtifact>? artifacts = null,
+                              CircuitRF.Design.Circuit.FieldsOutput output = CircuitRF.Design.Circuit.FieldsOutput.Written,
+                              string? label = null, Action<CosimFieldMetrics>? metrics = null)
     {
         ArgumentNullException.ThrowIfNull(fa);
         ArgumentNullException.ThrowIfNull(nl);
@@ -118,11 +127,7 @@ public static class FieldCosimulation
         double hz;
         try { hz = FreqUnit.ResolveHz(fa.FreqExpr, fa.FreqUnit, nl.ResolvedGlobals, nl.GlobalsWithExplicitUnit); }
         catch (Exception e) { throw new InvalidOperationException($"{who}: freq='{fa.FreqExpr}' could not be resolved ({e.Message})."); }
-        int drivePort;
-        // a port number, or an expression over the globals (evaluated by the frequency resolver with no unit: ×1)
-        try { drivePort = int.TryParse(fa.DriveExpr.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int d) ? d
-                          : (int)Math.Round(FreqUnit.ResolveHz(fa.DriveExpr, null, nl.ResolvedGlobals, null)); }
-        catch (Exception e) { throw new InvalidOperationException($"{who}: drive='{fa.DriveExpr}' is not a port number ({e.Message})."); }
+        var drives = Drives(fa, nl, who);
 
         var block = nl.Components.FirstOrDefault(c => string.Equals(c.InstancePath, fa.Block, StringComparison.Ordinal))
                     ?? throw new InvalidOperationException($"{who}: the circuit has no instance '{fa.Block}'.");
@@ -131,7 +136,8 @@ public static class FieldCosimulation
 
         var (set, refusal) = PortFieldSet.Open(snp.FilePath, hz);
         if (set is null) throw new InvalidOperationException($"{who}: {refusal}");
-        using (set)
+        bool handedOver = false;
+        try
         {
             if (set.PortCount != snp.PortCount)
                 throw new InvalidOperationException($"{who}: '{fa.Block}' has {snp.PortCount} ports and its field set {set.PortCount}.");
@@ -139,14 +145,40 @@ public static class FieldCosimulation
             Interlocked.Increment(ref _runs);
             var lines = new List<string>();
             var warnings = new List<string>();
-            var data = Recombine(fa, set, snp.FilePath, SParameterEngine.BlockWaves(nl, hz, fa.Block, drivePort), lines, warnings, control);
+            var waves = SParameterEngine.BlockWaves(nl, hz, fa.Block, drives);
+            DataSet data;
+            CosimFieldMetrics provider;
+            if (output == CircuitRF.Design.Circuit.FieldsOutput.OnDemand)
+            {
+                // R-sar10-2 — an optimizer's, yield's or DOE's evaluation: the waves and the tissue matrix's absorbed power, nothing
+                // recombined; each field measurement reads only what it needs when an expression asks for it
+                var w = Weigh(fa, set, waves);
+                provider = new CosimFieldMetrics(fa, set, snp.FilePath, w, output, null, null);
+                data = DataSetOf(hz, w, set.Manifest, provider.AbsorbedAllW);
+                lines.Add($"Fields '{fa.Name}' at {MaterialDispersion.Hz(hz)}: the circuit's waves at '{fa.Block}', recombined only where a measurement reads them.");
+            }
+            else
+            {
+                bool average = output == CircuitRF.Design.Circuit.FieldsOutput.Written && fa.Average;
+                string folder = label is null ? fa.Name : $"{fa.Name} ({label})";
+                (data, provider) = RecombineCore(fa, set, snp.FilePath, waves, lines, warnings, control, average, folder, output);
+                artifacts?.Add(new CircuitRF.Design.Circuit.FieldsArtifact(folder, C3dOf(set.Folder), set.Manifest.Setup, hz,
+                                                                           OutputFolder(set.Folder, folder), set.HasH && set.Manifest.B1));
+            }
             // the detail as the run's notes (the Messages pane's Info), the first line as the analysis's summary
             for (int i = 0; i < lines.Count; i++) nl.AddNoteOnce($"fields:{fa.Name}:{i}", lines[i]);
-            foreach (string w in warnings) nl.AddWarning(w);
+            foreach (string warning in warnings) nl.AddWarning(warning);
             if (lines.Count > 0) notes.Add(lines[0]);
-            artifacts?.Add(new CircuitRF.Design.Circuit.FieldsArtifact(fa.Name, C3dOf(set.Folder), set.Manifest.Setup, hz,
-                                                                       OutputFolder(set.Folder, fa.Name), set.HasH && set.Manifest.B1));
+            if (metrics is not null)
+            {
+                metrics(provider);
+                handedOver = true;
+            }
             return data;
+        }
+        finally
+        {
+            if (!handedOver) set.Dispose();
         }
     }
 
@@ -154,12 +186,28 @@ public static class FieldCosimulation
     /// circuit solve, and a test's entry with waves of its own.</summary>
     public static DataSet Recombine(FieldsAnalysis fa, PortFieldSet set, string snpPath, SParameterEngine.BlockPortDrive drive,
                                     List<string> notes, List<string> warnings, RunControl? control = null)
+        => RecombineCore(fa, set, snpPath, drive, notes, warnings, control, fa.Average, fa.Name,
+                         CircuitRF.Design.Circuit.FieldsOutput.Written).Data;
+
+    /// <summary>brief-sar-10 — the block's waves for one excitation of the circuit, in each port's Z0, scaled so the drives
+    /// together make <see cref="PalaceDrive.IncidentPowerW"/> available, and what the excitation accepts and reflects.</summary>
+    internal sealed record CosimWaves(Complex[] A, Complex[] B, SParameterEngine.BlockPortDrive Drive, double AvailableW,
+                                      double AcceptedW, Complex Reflection, double DivisorW, bool PerAvailable)
+    {
+        public double Accepts => AvailableW > 0 ? AcceptedW / AvailableW : 0;
+        public bool Multi => Drive.Drives.Count > 1;
+    }
+
+    internal static CosimWaves Weigh(FieldsAnalysis fa, PortFieldSet set, SParameterEngine.BlockPortDrive drive)
     {
         var m = set.Manifest;
         int n = set.PortCount;
-        double hz = set.Frequency.Hz;
         double pAvail = PalaceDrive.IncidentPowerW;
-        double root = Math.Sqrt(pAvail);
+        double incident = drive.Drives.Sum(d => d.Incident.Magnitude * d.Incident.Magnitude);
+        double reflected = drive.Drives.Sum(d => d.Reflected.Magnitude * d.Reflected.Magnitude);
+        if (!(incident > 0)) throw new InvalidOperationException($"Fields '{fa.Name}': every drive's weight is zero, so nothing is driven.");
+        // the drives together make P available: one unit drive is the SAR-9 scale √P, several share it
+        double root = Math.Sqrt(pAvail / incident);
         var a = new Complex[n];
         var b = new Complex[n];
         for (int k = 0; k < n; k++)
@@ -169,12 +217,26 @@ public static class FieldCosimulation
             a[k] = (drive.Voltage[k] + z0 * drive.Current[k]) / (2 * sq) * root;
             b[k] = (drive.Voltage[k] - z0 * drive.Current[k]) / (2 * sq) * root;
         }
-        double accepts = 1 - drive.Reflection.Magnitude * drive.Reflection.Magnitude;
+        double accepts = 1 - reflected / incident;
+        // one drive: its own S_jj; several: the reflection a single drive accepting the same fraction would have
+        Complex gamma = drive.Drives.Count == 1 ? drive.Reflection : new Complex(Math.Sqrt(Math.Max(0, 1 - accepts)), 0);
         double pAcc = pAvail * accepts;
+        return new CosimWaves(a, b, drive, pAvail, pAcc, gamma, fa.PerAvailable ? pAvail : pAcc, fa.PerAvailable);
+    }
+
+    private static (DataSet Data, CosimFieldMetrics Metrics) RecombineCore(
+        FieldsAnalysis fa, PortFieldSet set, string snpPath, SParameterEngine.BlockPortDrive drive, List<string> notes,
+        List<string> warnings, RunControl? control, bool average, string folderName, CircuitRF.Design.Circuit.FieldsOutput output)
+    {
+        var m = set.Manifest;
+        int n = set.PortCount;
+        double hz = set.Frequency.Hz;
+        var w = Weigh(fa, set, drive);
+        var (a, b) = (w.A, w.B);
+        double pAvail = w.AvailableW, pAcc = w.AcceptedW, accepts = w.Accepts;
         double pDel = Enumerable.Range(0, n).Sum(k => a[k].Magnitude * a[k].Magnitude - b[k].Magnitude * b[k].Magnitude);
         var settingsB1 = SarSettings.ParseB0Axis(m.B0Axis) ?? (2, 1);
         var method = Enum.TryParse<SarMethod>(m.Method, out var meth) ? meth : SarMethod.Cube;
-        bool average = fa.Average;
 
         // ── the summed field, then SAR-5's engine on it ─────────────────────────────────────────────
         var field = FieldRecombination.Recombine(set, a, m.B1, settingsB1.Item1, settingsB1.Item2, control: control);
@@ -203,10 +265,10 @@ public static class FieldCosimulation
         for (int c = 0; c < field.Grid.Count; c++)
             if (field.Grid.Density[c] > 0) pAbsAll += (double)field.Grid.PowerDensity[c] * field.Grid.Volume[c];
         var checks = Checks(pAbsAll, pAbsQ, pDel, pDelS, loss, q, set.Frequency, out var failed);
-        warnings.AddRange(failed.Select(w => $"Fields '{fa.Name}': {w}"));
+        warnings.AddRange(failed.Select(x => $"Fields '{fa.Name}': {x}"));
 
         // ── the record, the volumes, the co-simulation record ────────────────────────────────────────
-        string outDir = OutputFolder(set.Folder, fa.Name);
+        string outDir = OutputFolder(set.Folder, folderName);
         Directory.CreateDirectory(outDir);
         var grid = field.Grid;
         int[] shape = [grid.Nx, grid.Ny, grid.Nz];
@@ -245,9 +307,10 @@ public static class FieldCosimulation
 
         var cosim = new CosimRecord
         {
-            Analysis = fa.Name, Block = fa.Block, Snp = Path.GetFileName(snpPath), Stamp = m.Stamp, FrequencyHz = hz,
+            Analysis = folderName, Block = fa.Block, Snp = Path.GetFileName(snpPath), Stamp = m.Stamp, FrequencyHz = hz,
             DrivePort = drive.DrivenPort, DriveZ0Re = drive.DrivenZ0.Real, DriveZ0Im = drive.DrivenZ0.Imaginary,
-            ReflectionRe = drive.Reflection.Real, ReflectionIm = drive.Reflection.Imaginary,
+            ReflectionRe = w.Reflection.Real, ReflectionIm = w.Reflection.Imaginary,
+            Drives = w.Multi ? [.. drive.Drives.Select(d => new[] { d.Port, d.Incident.Real, d.Incident.Imaginary, d.Reflected.Real, d.Reflected.Imaginary })] : null,
             Ports = [.. m.Ports.Select(p => p.Number)],
             Incident = [.. a.Select(x => new[] { x.Real, x.Imaginary })], Reflected = [.. b.Select(x => new[] { x.Real, x.Imaginary })],
             AvailablePowerW = pAvail, AcceptedPowerW = pAcc, DeliveredPowerW = pDel, DeliveredFromSW = pDelS,
@@ -259,18 +322,83 @@ public static class FieldCosimulation
 
         // ── what the run says, and the DataSet ───────────────────────────────────────────────────────
         string per = fa.PerAvailable ? "per 1 W available" : "per 1 W accepted";
+        string drivenBy = w.Multi
+            ? $"driven from circuit ports {string.Join(", ", drive.Drives.Select(d => d.Port))} together ({Pct(accepts)} of their available power accepted)"
+            : $"driven from circuit port {drive.DrivenPort} (|Γ| {Db(drive.Reflection.Magnitude)} dB, {Pct(accepts)} of the available power accepted)";
         notes.Add($"Fields '{fa.Name}' at {MaterialDispersion.Hz(hz)}: '{fa.Block}' recombined from {field.Counts.PortsUsed} of {n} port fields " +
-                  $"({field.Counts.CellsRead:N0} cells), driven from circuit port {drive.DrivenPort} (|Γ| {Db(drive.Reflection.Magnitude)} dB, " +
-                  $"{Pct(accepts)} of the available power accepted), {per}.");
+                  $"({field.Counts.CellsRead:N0} cells), {drivenBy}, {per}" +
+                  (output == CircuitRF.Design.Circuit.FieldsOutput.Local ? "; local SAR and B1 only while the knob moves." : "."));
         notes.Add(OpenEmsSarResults.Readout(record).Replace(OpenEmsSarResults.Normalisation, per, StringComparison.Ordinal)
-                  .Replace($"port {record.Port} driven", $"circuit port {record.Port} driven", StringComparison.Ordinal));
+                  .Replace($"port {record.Port} driven", w.Multi ? "circuit ports driven together" : $"circuit port {record.Port} driven", StringComparison.Ordinal));
         notes.Add($"Fields '{fa.Name}': {G(pDel / Math.Max(pAcc, double.Epsilon) * 100)} % of the accepted power reaches the block; of that, " +
                   $"{Pct(pAbsAll / Math.Max(pDel, double.Epsilon))} is absorbed in tissue and " +
                   $"{Pct(cosim.OtherLossW / Math.Max(pDel, double.Epsilon))} is radiated or lost in conductors.");
         notes.AddRange(checks);
         notes.Add($"Fields '{fa.Name}': the results are beside the field set, in '{Path.GetRelativePath(Path.GetDirectoryName(snpPath) ?? "", outDir)}'.");
 
-        return DataSetOf(record, cosim, m, a, b, drive.Reflection);
+        var provider = new CosimFieldMetrics(fa, set, snpPath, w, output, field.Grid, average ? result : null);
+        return (DataSetOf(record, cosim, m, a, b, w.Reflection), provider);
+    }
+
+    /// <summary>brief-sar-10 R-sar10-4 — the circuit ports <paramref name="fa"/> drives and the incident-wave amplitude of each:
+    /// <c>drive=</c>'s port numbers (or expressions over the globals), <c>weights=</c>'s complex expressions in the same order.</summary>
+    internal static List<(int Port, Complex Amplitude)> Drives(FieldsAnalysis fa, ElaboratedNetlist nl, string who)
+    {
+        var ports = SplitList(fa.DriveExpr.Trim().Length == 0 ? "1" : fa.DriveExpr);
+        var weights = SplitList(fa.WeightsExpr);
+        if (weights.Count > 0 && weights.Count != ports.Count)
+            throw new InvalidOperationException($"{who}: drive='{fa.DriveExpr}' names {ports.Count} port{(ports.Count == 1 ? "" : "s")} and " +
+                                                $"weights='{fa.WeightsExpr}' {weights.Count} weight{(weights.Count == 1 ? "" : "s")}: give one weight a port.");
+        var eval = new Evaluator();
+        var scope = new Scope("globals");
+        foreach (var (name, value) in nl.ResolvedGlobals)
+        {
+            scope.Bind(name, value.ToString()!);
+            eval.InjectResolved("globals", name, value);
+        }
+        var list = new List<(int, Complex)>();
+        for (int i = 0; i < ports.Count; i++)
+        {
+            int port;
+            // a port number, or an expression over the globals
+            try
+            {
+                port = int.TryParse(ports[i], NumberStyles.Integer, CultureInfo.InvariantCulture, out int d) ? d
+                     : (int)Math.Round(eval.Eval(ports[i], scope, null).AsReal());
+            }
+            catch (Exception e) { throw new InvalidOperationException($"{who}: drive='{ports[i]}' is not a port number ({e.Message})."); }
+            Complex weight = Complex.One;
+            if (weights.Count > 0)
+            {
+                try { weight = eval.Eval(weights[i], scope, null).ToComplex(); }
+                catch (Exception e) { throw new InvalidOperationException($"{who}: weight '{weights[i]}' of port {port} is not a number ({e.Message})."); }
+                if (!double.IsFinite(weight.Real) || !double.IsFinite(weight.Imaginary))
+                    throw new InvalidOperationException($"{who}: weight '{weights[i]}' of port {port} is not finite.");
+            }
+            list.Add((port, weight));
+        }
+        return list;
+    }
+
+    /// <summary>A comma-separated list, split only at bracket depth zero, so <c>polar(1,-90)</c> stays one item.</summary>
+    private static List<string> SplitList(string text)
+    {
+        var items = new List<string>();
+        int depth = 0, start = 0;
+        for (int i = 0; i <= text.Length; i++)
+        {
+            if (i < text.Length)
+            {
+                char ch = text[i];
+                if (ch is '(' or '[') depth++;
+                else if (ch is ')' or ']') depth--;
+                if (ch != ',' || depth != 0) continue;
+            }
+            string item = text[start..i].Trim();
+            if (item.Length > 0) items.Add(item);
+            start = i + 1;
+        }
+        return items;
     }
 
     // ── the pieces ──────────────────────────────────────────────────────────────────────────────────────
@@ -378,6 +506,25 @@ public static class FieldCosimulation
         double root = Math.Sqrt(r.PerWattDivisor);
         data.Add(IncidentCube, new DataCube([f, port], [.. a.Select(x => x / root)]) { Unit = "sqrt(W)" });
         data.Add(ReflectedCube, new DataCube([f, port], [.. b.Select(x => x / root)]) { Unit = "sqrt(W)" });
+        return data;
+    }
+
+    /// <summary>brief-sar-10 R-sar10-2 — an on-demand evaluation's scalars: the reflection, what the drive accepts and the
+    /// block receives, the absorbed power from the tissue matrix, and the waves — all per watt, nothing recombined.</summary>
+    private static DataSet DataSetOf(double hz, CosimWaves w, PortFieldManifest m, double absorbedW)
+    {
+        var data = new DataSet();
+        var f = new Axis("f", [hz], "Hz");
+        int n = w.A.Length;
+        double pDel = Enumerable.Range(0, n).Sum(k => w.A[k].Magnitude * w.A[k].Magnitude - w.B[k].Magnitude * w.B[k].Magnitude);
+        data.Add(OpenEmsSarResults.AbsorbedCube, new DataCube([f], [absorbedW / w.DivisorW]) { Unit = "W" });
+        data.Add(OpenEmsSarResults.AcceptedCube, new DataCube([f], [w.AcceptedW / w.DivisorW]) { Unit = "W" });
+        data.Add(DeliveredCube, new DataCube([f], [pDel / w.DivisorW]) { Unit = "W" });
+        data.Add(ReflectionCube, new DataCube([f], [w.Reflection]));
+        var port = new Axis("Port", [.. m.Ports.Select(p => (double)p.Number)], "");
+        double root = Math.Sqrt(w.DivisorW);
+        data.Add(IncidentCube, new DataCube([f, port], [.. w.A.Select(x => x / root)]) { Unit = "sqrt(W)" });
+        data.Add(ReflectedCube, new DataCube([f, port], [.. w.B.Select(x => x / root)]) { Unit = "sqrt(W)" });
         return data;
     }
 

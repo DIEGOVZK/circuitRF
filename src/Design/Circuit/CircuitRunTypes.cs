@@ -30,6 +30,25 @@ public sealed record AnalysisConvergence(string Name, bool? Converged, string? D
 public sealed record FieldsArtifact(string Analysis, string? C3dPath, string Setup, double FrequencyHz, string Folder, bool HasB1);
 
 /// <summary>
+/// brief-sar-10 R-sar10-2 — what a fields analysis does beyond its circuit solve, by who asked for the evaluation.
+/// </summary>
+public enum FieldsOutput
+{
+    /// <summary>Simulate's: the whole recombination, averaged SAR when the analysis asks, every volume and record written
+    /// beside the field set for the 3D view.</summary>
+    Written,
+
+    /// <summary>A tuning knob moving (R-sar10-3): local SAR and B1 written for the 3D view, no average — the averaged
+    /// readouts wait for the knob's release, which is a <see cref="Written"/> evaluation.</summary>
+    Local,
+
+    /// <summary>An optimizer, yield or DOE evaluation: nothing recombined and nothing written; the circuit's waves, the
+    /// absorbed power from the tissue matrix, and every field measurement computed when an expression asks for it —
+    /// B1 and SARwb over their region's cells only, psSAR always as the full average.</summary>
+    OnDemand,
+}
+
+/// <summary>
 /// Result returned by <see cref="CircuitEvaluation.Execute"/>: status, message, and the collected
 /// per-analysis results.
 /// </summary>

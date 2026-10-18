@@ -481,6 +481,7 @@ internal static partial class Reference
             {
                 GoalTemplateGroup.SParameters  => "S-parameters",
                 GoalTemplateGroup.WsProbe      => "WSProbe (stability-wsprobe metrics of one probe)",
+                GoalTemplateGroup.Fields       => "Fields (SAR and B1 of a type=fields analysis, per watt as it normalises)",
                 GoalTemplateGroup.Measurements => "Measurements (any measure line, by name)",
                 _                              => "Custom",
             };
@@ -492,6 +493,18 @@ internal static partial class Reference
             string expr = g.Expression.Length > 0 ? g.Expression : "<expression>";
             sb.AppendLine($"    {t.Label,-44} goal {g.Name} = {expr}{(g.Analysis is { } a ? $" analysis={a}" : "")} {type} {limit}");
         }
+        sb.AppendLine();
+        foreach (var line in Wrap(
+            "The field functions read a type=fields analysis by name: B1pMean(F, region), B1pMin(F, region), B1pCoV(F, region), " +
+            "psSAR(F, mass), SARwb(F, region), SarEff(F, region, mass) and Pabs(F). A region is a string: a tissue (\"brain\", or " +
+            "its whole path \"head/brain\"), tissues joined by + (\"skin+skull\"), a phantom's name for all its layers, \"all\", or " +
+            "\"box(x0, x1, y0, y1, z0, z1)\" with a length unit on each number (none is metres); omitted, the setup's own " +
+            "(Sar.B1Region for B1, Sar.Region for SAR). A mass is in grams. Each value is per watt as the analysis's norm= says " +
+            "(accepted by default): B1 in T per sqrt(W), SAR in W/kg per W, Pabs in W per W, SarEff in T per sqrt(W/kg). B1 and " +
+            "SARwb read only their region's cells; psSAR is always the full average of the whole field, once per evaluation that " +
+            "scores it, so a goal on psSAR is the expensive one; Pabs is free. A goal on them names the fields analysis " +
+            "(analysis=F1) and runs no EM.", 96))
+            sb.AppendLine("  " + line);
         sb.AppendLine();
     }
 
@@ -509,6 +522,7 @@ internal static partial class Reference
         "measure Pout_W = 0.5*real(HB1.V(\"out\", 1)*conj(HB1.I(\"P2\", 1)))",
         "measure Pdc_W = real(HB1.V(\"vdd\", 0)*HB1.I(\"Vdd\", 0))",
         "measure Eff = 100*Pout_W/Pdc_W",
+        "analysis F1 type=fields block=EM1 freq=298 freqUnit=MHz",
     ];
 
     /// <summary>A complete netlist both worked examples build on, so either one can be copied into a

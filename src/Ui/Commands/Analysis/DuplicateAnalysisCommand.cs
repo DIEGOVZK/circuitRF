@@ -61,7 +61,7 @@ internal sealed class DuplicateAnalysisCommand : IUiCommand
             new FieldsAnalysis(newName)
             {
                 Enabled = a.Enabled, Block = f.Block, FreqExpr = f.FreqExpr, FreqUnit = f.FreqUnit, DriveExpr = f.DriveExpr,
-                Norm = f.Norm, AverageExpr = f.AverageExpr,
+                WeightsExpr = f.WeightsExpr, Norm = f.Norm, AverageExpr = f.AverageExpr,
             },
 
         SParameterAnalysis sp =>

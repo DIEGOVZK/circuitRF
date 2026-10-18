@@ -366,6 +366,7 @@ public sealed partial class GoalEditorViewModel : ObservableObject
     {
         GoalTemplateGroup.SParameters  => "S-parameters",
         GoalTemplateGroup.WsProbe      => "WSProbe",
+        GoalTemplateGroup.Fields       => "Fields (SAR, B1)",
         GoalTemplateGroup.Measurements => "Existing measurements",
         _                              => "Custom",
     };

@@ -101,6 +101,7 @@ public sealed class CschAnalysis
     public string?   FieldsFreqExpr    { get; set; }
     public string?   FieldsFreqUnit    { get; set; }
     public string?   FieldsDriveExpr   { get; set; }
+    public string?   FieldsWeightsExpr { get; set; }
     public string?   FieldsNorm        { get; set; }
     public string?   FieldsAverageExpr { get; set; }
     public string?   SweepVarName      { get; set; }
@@ -303,7 +304,8 @@ public static class AnalysisSerialization
         FieldsAnalysis f => new CschAnalysis
         {
             Type = "fields", Name = a.Name, Enabled = a.Enabled, FieldsBlock = f.Block, FieldsFreqExpr = f.FreqExpr,
-            FieldsFreqUnit = f.FreqUnit, FieldsDriveExpr = f.DriveExpr, FieldsNorm = f.Norm, FieldsAverageExpr = f.AverageExpr,
+            FieldsFreqUnit = f.FreqUnit, FieldsDriveExpr = f.DriveExpr,
+            FieldsWeightsExpr = f.WeightsExpr.Length > 0 ? f.WeightsExpr : null, FieldsNorm = f.Norm, FieldsAverageExpr = f.AverageExpr,
         },
 
         SParameterAnalysis sp => new CschAnalysis
@@ -466,7 +468,7 @@ public static class AnalysisSerialization
         "fields" => new FieldsAnalysis(dto.Name)
         {
             Enabled = dto.Enabled, Block = dto.FieldsBlock ?? "", FreqExpr = dto.FieldsFreqExpr ?? "", FreqUnit = dto.FieldsFreqUnit ?? "Hz",
-            DriveExpr = dto.FieldsDriveExpr ?? "1", Norm = dto.FieldsNorm ?? FieldsAnalysis.NormAccepted, AverageExpr = dto.FieldsAverageExpr ?? "yes",
+            DriveExpr = dto.FieldsDriveExpr ?? "1", WeightsExpr = dto.FieldsWeightsExpr ?? "", Norm = dto.FieldsNorm ?? FieldsAnalysis.NormAccepted, AverageExpr = dto.FieldsAverageExpr ?? "yes",
         },
 
         "sp" when dto.Sweeps is { Count: > 0 } =>

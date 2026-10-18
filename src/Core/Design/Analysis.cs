@@ -86,8 +86,14 @@ public sealed class FieldsAnalysis(string name) : Analysis(name)
     /// <summary>The unit of <see cref="FreqExpr"/>.</summary>
     public string FreqUnit { get; init; } = "Hz";
 
-    /// <summary>The circuit port number that drives the circuit; every other circuit port is terminated in its Z0.</summary>
+    /// <summary>The circuit port number that drives the circuit; every other circuit port is terminated in its Z0. Several,
+    /// comma-separated (<c>1,2</c>), drive at once (brief-sar-10 R-sar10-4), each with its <see cref="WeightsExpr"/>.</summary>
     public string DriveExpr { get; init; } = "1";
+
+    /// <summary>brief-sar-10 R-sar10-4 — each driven port's incident-wave amplitude, comma-separated in <see cref="DriveExpr"/>'s
+    /// order: complex expressions over the globals (<c>W1,W2</c>, or <c>1,polar(1,-90)</c>), so a channel's magnitude and phase
+    /// are tunables of a complex VAR (<c>tune mag(W2)</c>, <c>tune phase(W2)</c>). Empty: 1 for every one.</summary>
+    public string WeightsExpr { get; init; } = "";
 
     /// <summary><c>accepted</c> (the default) or <c>available</c>: the power at the drive every result is per watt of.</summary>
     public string Norm { get; init; } = NormAccepted;

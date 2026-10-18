@@ -15794,7 +15794,14 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         => new(baseDir, schematicKey, fileNameOverride,
                () => _openDocsByPath.Values.OfType<DataDisplayDocument>().Concat(_scratchDataDisplays)
                          .Select(dd => dd.ViewModel.Window.DataSourceLibrary).ToList(),
-               Messages, chip);
+               Messages, chip,
+               // brief-sar-10 R-sar10-3 — a tuned fields analysis rewrote its recombined SAR and B1: an open 3D view of its
+               // .c3d reads them again, so its plot follows the knob
+               fields =>
+               {
+                   foreach (var path in fields.Select(f => f.C3dPath).OfType<string>().Distinct(StringComparer.Ordinal))
+                       OpenC3dEditorFor(path)?.RunFinished();
+               });
 
     private async Task RefreshOpenDataDisplaysAsync(IReadOnlyList<string> changedPaths)
     {

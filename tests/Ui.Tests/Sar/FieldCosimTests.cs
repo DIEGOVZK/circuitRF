@@ -273,11 +273,12 @@ public sealed class FieldsDirectiveRoundTripTests
     public void AFieldsAnalysisSurvivesTheNetlistAndTheSchematic()
     {
         var (_, tb) = new CircuitRF.Core.Netlist.CnlReader().Read(
-            "R:R1 a 0 R=50 Ohm\nanalysis F2 type=fields block=X1.EM1 freq=\"f0*2\" freqUnit=MHz drive=2 norm=available average=no enabled=false\n");
+            "R:R1 a 0 R=50 Ohm\nanalysis F2 type=fields block=X1.EM1 freq=\"f0*2\" freqUnit=MHz drive=2,3 weights=\"1,polar(1,-90)\" norm=available average=no enabled=false\n");
         var fa = Assert.IsType<CircuitRF.Core.Design.FieldsAnalysis>(Assert.Single(tb.Analyses));
         void Same(CircuitRF.Core.Design.FieldsAnalysis x)
         {
-            Assert.Equal(("F2", "X1.EM1", "f0*2", "MHz", "2"), (x.Name, x.Block, x.FreqExpr, x.FreqUnit, x.DriveExpr));
+            Assert.Equal(("F2", "X1.EM1", "f0*2", "MHz", "2,3"), (x.Name, x.Block, x.FreqExpr, x.FreqUnit, x.DriveExpr));
+            Assert.Equal("1,polar(1,-90)", x.WeightsExpr);      // brief-sar-10 R-sar10-4
             Assert.True(x.PerAvailable);
             Assert.False(x.Average);
             Assert.False(x.Enabled);
