@@ -44,6 +44,7 @@ public static class C3dPhantoms
         if (shells.Any(t => t <= 0)) return $"has a shell that is not positive (a {p.Shape} phantom has {shells.Length} shell(s), Shell1 outermost)";
         if (want < 3 && p.Shell2 != 0) return $"states Shell2, which a {p.Shape} phantom does not have";
         if (want < 2 && p.Shell1 != 0) return $"states Shell1, which a {p.Shape} phantom does not have";
+        if (p.Voxel < 0) return "has a voxel size that is negative (0 gives the smooth layers)";
         long wall = shells.Sum();
         switch (p.Shape)
         {
@@ -135,6 +136,9 @@ public static class C3dPhantoms
         if (index < 0 || index >= doc.Objects.Count || doc.Objects[index] is not C3dPhantom p)
             return ([], "There is no phantom there to flatten.");
         if (ShapeFault(p) is { } why) return ([], $"The phantom '{p.Name}' {why}, so it cannot be flattened.");
+        // brief-sar-8 — its layers as ordinary objects would be smooth solids, a different problem from its voxels.
+        if (p.Voxel > 0)
+            return ([], $"The phantom '{p.Name}' is voxelized, and its flattened layers would be smooth solids: set its Voxel to 0 to flatten it.");
         var taken = new HashSet<string>(doc.Objects.Select(o => o.Name).Concat(doc.Instances.Select(i => i.Name)), StringComparer.Ordinal);
         string group = p.Group is { Length: > 0 } outer ? $"{outer}/{p.Name}" : p.Name;
         var made = new List<C3dObject>();

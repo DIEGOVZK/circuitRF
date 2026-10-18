@@ -1059,6 +1059,7 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
                 if (head == "Size") return $"{Up(Xyz(k))} size";
                 if (head == "Shell1") return ph.Shape == C3dPhantomShape.FlatBox ? "Shell" : "Outer shell";
                 if (head == "Shell2") return "Second shell";
+                if (head == "Voxel") return "Voxel size";
                 break;
             case C3dWire:
                 if (head == "DiameterUm") return "Diameter";

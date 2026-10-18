@@ -291,7 +291,33 @@ public sealed record Em3dShapeEdge(string Name, string FaceA, string FaceB, stri
 /// ever infers it.
 /// </summary>
 public sealed record Em3dSolid(string Name, string Material, Em3dRole Role, Em3dPrimitive Primitive,
-                               int Order);
+                               int Order)
+{
+    /// <summary>brief-sar-8 — the voxel lattice of the phantom this solid is a layer of, when the phantom is voxelized: the
+    /// solid holds a point exactly when its primitive holds the centre of the voxel the point lies in. Null — every other
+    /// solid — is the primitive itself.</summary>
+    public Em3dVoxelLattice? Voxel { get; init; }
+
+    /// <summary>Whether the solid holds <paramref name="q"/>: <paramref name="inside"/> asked of the primitive at <paramref name="q"/>,
+    /// or at its voxel's centre when the solid is voxelized.</summary>
+    public bool Holds(Point3 q, Func<Em3dPrimitive, Point3, bool> inside) => inside(Primitive, Voxel?.CentreOf(q) ?? q);
+}
+
+/// <summary>
+/// brief-sar-8 — a voxelized phantom's lattice: cubes of side <paramref name="PitchM"/> on the world's axes, with a corner at
+/// <paramref name="Anchor"/> (the phantom's centre). Each voxel is the innermost layer whose shape holds the voxel's centre —
+/// the rule openEMS's bundled phantoms are made by — so an FDTD cell takes the voxel its own centre lies in.
+/// </summary>
+public sealed record Em3dVoxelLattice(string Phantom, Point3 Anchor, double PitchM)
+{
+    /// <summary>The centre of the voxel holding <paramref name="q"/>.</summary>
+    public Point3 CentreOf(Point3 q) => new(Centre(q.X, Anchor.X), Centre(q.Y, Anchor.Y), Centre(q.Z, Anchor.Z));
+
+    /// <summary>The voxel index along one axis of the voxel holding <paramref name="v"/>, counted from the anchor.</summary>
+    public long Index(double v, double anchor) => (long)Math.Floor((v - anchor) / PitchM);
+
+    private double Centre(double v, double anchor) => anchor + (Index(v, anchor) + 0.5) * PitchM;
+}
 
 /// <summary>
 /// A conductor thin enough to be a surface (§6.1): a polygon at one height carrying its

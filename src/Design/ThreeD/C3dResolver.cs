@@ -482,8 +482,9 @@ public static class C3dResolver
     private static HashSet<string> Closure(C3dResolution r, C3dDocument doc, C3dCell cell)
     {
         var used = new HashSet<string>(r.Uses.Keys, StringComparer.Ordinal);
-        // brief-em3d-73 — a VAR a heat source's power or a thermal setup reads is used, though no dimension reads it.
-        foreach (string text in ThermalExpressions(doc))
+        // brief-em3d-73 — a VAR a heat source's power or a thermal setup reads is used, though no dimension reads it; brief-sar-8 —
+        // and so is one a lumped element's R, L or C reads.
+        foreach (string text in ThermalExpressions(doc).Concat(doc.LumpedElements.SelectMany(le => new[] { le.R, le.L, le.C }).OfType<string>()))
             try { used.UnionWith(AstWalker.CollectRefs(Parser.Parse(Units.LiftInlineUnit(text).Expression))); }
             catch (ExpressionException) { }
         var stack = new Stack<string>(used);

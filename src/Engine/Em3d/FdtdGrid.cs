@@ -1071,6 +1071,11 @@ public static partial class FdtdGrid
         return Math.Abs(nearest - at) <= CoincidenceTolerance(lines[^1] - lines[0]) ? at : nearest;
     }
 
+    /// <summary>brief-sar-8 — the grid line nearest <paramref name="at"/>, as its own value: what a coordinate already known to
+    /// be on a line (to rounding) is written as, since openEMS tests a box or polygon against its lines with no tolerance.</summary>
+    public static double NearestLine(IReadOnlyList<double> lines, double at)
+        => lines.Count == 0 ? at : lines.MinBy(l => Math.Abs(l - at));
+
     // ── the thirds pair's invariant (brief-em3d-122 R-em3d122-1) ─────────────────────────────
 
     /// <summary>

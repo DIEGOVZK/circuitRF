@@ -1,6 +1,6 @@
 # circuitRF — SAR and B1 for MRI coil designers and phone SAR
 
-**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7), SAR-6 done (§8), SAR-7 done (§9) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
+**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7), SAR-6 done (§8), SAR-7 done (§9), SAR-8 done (§10; the birdcage moved to SAR-8b) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
 **Reference data:** [`testdata/sar/openems-ref/`](../../testdata/sar/openems-ref/README.md) · **Builds on:**
 [`em-3d.md`](em-3d.md) (the openEMS backend) and [`em-3d-f0-findings.md`](em-3d-f0-findings.md) (its validated versions).
 
@@ -1053,3 +1053,169 @@ back into one line, as the script has it, at the cost of not modelling the drawn
 - `NearFieldSurfaceTests` (routine): §9.3.
 - `DipoleSarRerunTests` (`Benchmark`): both setups through the CLI as a process, held to the same; `CRF_WRITE_SAR7_OUTPUTS=1`
   writes the committed output.
+
+---
+
+## 10. `MRI_Loop_Coil` rebuilt in circuitRF — the coil gate (SAR-8)
+
+openEMS's `MRI_Loop_Coil` tutorial rebuilt from `.c3d` objects alone (`testdata/sar/circuitrf/loop/`, its README lists every
+file), run by circuitRF, and compared with SAR-1's reference (§3.1). **The gate passes on the reference's grid**, after one
+circuitRF defect was fixed (§10.2), the phantom was made to match the tutorial's voxel for voxel (§10.3), and two comparisons were
+made like with like (§10.4, §10.5; both settled by the owner, 2026-10-18). On circuitRF's own grid the coil resonates 7 % high, and
+the cause is found (§10.7). **The birdcage (R-sar8-5) moved to its own brief** (owner, 2026-10-18): circuitRF's cylindrical grid
+carries no lumped element, port, given line or SAR, and a Cartesian rebuild could not be held to the reference's cylindrical run
+(`brief-sar-8b-replicate-birdcage.md`).
+
+### 10.1 The `.c3d` (R-sar8-1)
+
+| Tutorial | `.c3d` |
+|---|---|
+| 80 (z) × 60 (y) mm loop of 5 mm strips at x = −130 mm, gaps of w/3, as eight `AddBox` metals of zero x extent | eight PEC `Sheet`s on YZ at offset −130 mm, the same rectangles |
+| `caps_z` × 2 and `caps_y`, 5.4 pF, at the sides' and the top's midpoints, g × g boxes | three `LumpedElements`, `C = Cgap` (a VAR, 5.4, `CUnit` pF), the same rectangles; directions inferred (z, z, y) |
+| `AddLumpedPort` 2.5 Ω, y, in the bottom gap | a lumped port, Z0 2.5, the same rectangle; polarity inferred (the script excites −y; a sign on every field changes no magnitude) |
+| `phantom_head_298MHz.h5` (`DiscMaterial`) over the body box | a `Phantom`, `Ellipsoid3` at the origin, semi-axes 100/80/100 mm, shells 9 and 9 mm, the bundled phantom's tissues (§4.3) with their densities, **`Voxel` 2.5 mm** (§10.3) |
+| `['MUR']*6` on the mesh box ± 200 mm | `AirBox` paddings to the grid's extent, `PmlCells` 0 (`MUR`, §5.5) |
+| `EndCriteria` 1e-4, `CellConstantMaterial`, NrTS default | `EndCriterionDb` −40, `CellConstantMaterial` true, `MaxTimeSteps` 1,000,000 |
+| Gaussian f0 298 MHz, fc 300 MHz; `freq` −2…598 MHz, 501 points | the sweep 0.4–595.6 MHz in 497 points: the reference's own 1.2 MHz points, centred on 298 MHz, so the writer's pulse (§9.1) is f0 298 MHz, fc 297.6 MHz |
+| SAR and H plane dumps at f0 | `Sar`: `FrequenciesGHz` [0.298], `MassesGrams` [10], `Cube`, `B1` on, `B0Axis` +z, `CrossCheck` |
+
+`check` passes it with two notes (the voxelized phantom; the inferred feed polarity) and no warning.
+
+### 10.2 The first divergence: a feed excited by nothing
+
+The first run injected **no energy at all** (openEMS printed 0 energy for 5,856 steps; circuitRF then stopped it on its "decayed"
+ports, and the run ended on a singular-port refusal). openEMS places a lumped port's source on every E edge whose midpoint lies
+inside the excitation box, with **no tolerance** (`CSPrimBox::IsInside`). The feed's z extent was written from its DBU, −38.333333
+to −36.666667 mm, and the tutorial's lines are at −38.3333333333 and −36.6666666667 mm: both lines fell 0.3 nm outside the box,
+and no edge was excited. The writer now writes a lumped port's width and its sheet's plane as the lines' own values
+(`FdtdGrid.NearestLine`); circuitRF's own grids are unchanged (their lines are those values; the em3d writer goldens pass). The
+tutorial never meets this because its Python run hands CSXCAD full-precision coordinates in memory: its XML on disk has seven
+figures, and **openEMS run from that file excites nothing either** (measured: U = 0 for the first 5 ns, past the pulse's peak). A sheet's polygon is tested
+the same way and is left as it is: the loop's strips overlap their lines by 0.3 nm in the safe direction (`src/Design/RESOLVED.md`).
+
+### 10.3 The phantom, voxel by voxel (R-sar8-1)
+
+**The bundled phantom is a 2.5 mm voxel model** (`create_phantoms.py`: 92 × 72 × 92 voxels from −115 mm, each the innermost
+ellipsoid holding the voxel's centre), and with `CellConstantMaterial` each FDTD cell takes the voxel its centre lies in. The
+reference's material grid was dumped by openEMS itself — the tutorial's own XML, with its FDTD settings and one raw SAR dump added,
+20 steps (`tools/dump_loop_material.py`, `MRI_Loop_Coil/material_raw.h5`) — and compared, cell for cell, with circuitRF's raw dump
+on the same lines:
+
+| circuitRF's phantom | tissue cells differing in ρ and σ, of 463,363 | local-SAR planes' correlation with the reference |
+|---|---|---|
+| smooth `Ellipsoid3` | **22,362** (air ↔ skin 9,282; skin ↔ skull 7,362; skull ↔ brain 5,718) | 0.914 (xy), 0.925 (xz) |
+| the reference's own `.h5` swapped into circuitRF's XML (diagnostic) | 0 | 1.0000, 1.0000 |
+| **`Voxel` 2.5 mm** | **0** | 1.0000, 1.0000 |
+
+**`C3dPhantom.Voxel`** (DBU; 0, not written, is the smooth layers): openEMS is given the phantom as one CSXCAD `DiscMaterial`
+(`CsxcadWriter.Voxels`, written by SAR-4's `DiscMaterialWriter`), each voxel the innermost layer — the highest construction order
+— holding the voxel's centre, on a lattice along the world's axes with a corner on the phantom's centre: `create_phantoms.py`'s
+rule, so the same dimensions and pitch give the same voxels (`VoxelPhantomTests` evaluates the ellipsoids independently). The file
+covers the layers' bounds out to the lattice's planes. What follows from the format:
+
+- **The box is written at priority 0, under everything.** CSXCAD gives a voxel holding 0 the property's own material rather than
+  passing the cell to the next property, so the box claims all of its cells; anything overlapping it wins there, and the run names it.
+- **A voxel carries εr, σ and ρ only**: a layer with a tensor permittivity or μr ≠ 1 is refused.
+- The file rides the kernel-file path into each port's directory, and its hash is checked before openEMS starts (CSXCAD reads a
+  missing `DiscFile` as nothing, with exit code 0, as it does a `PolyhedronReader`'s).
+- **A cell's tissue is asked of its voxel's centre** (`Em3dSolid.Holds`), so a named region, B1's region and a peak's tissue are the
+  ones CSXCAD gave the cell; the SAR dump box reaches the voxels' faces (up to half a voxel past the smooth surface).
+- Palace and the thermal solver mesh the smooth layers, and the elaboration says so; the 3D view draws them smooth. Flatten is
+  refused on a voxelized phantom, since its layers would become smooth solids.
+
+### 10.4 B1+ at the centre: the tutorial's sampling, and the field at the centre
+
+The script dumps H with **DumpMode 0**, which gives each component where the Yee grid holds it: at the dump's label for x = 0, Hx is
+on the x line 1 mm towards the coil and Hy on the y line 0.83 mm off the axis. circuitRF's B1 is cell-interpolated (mode 2). On
+**one** circuitRF run carrying both dumps, read with openEMS's own reader as the script reads them, |B1+| at the centre is
+0.24755 µT/√W in mode 0 and 0.24032 in mode 2: **3.0 % from the dump mode alone**, of which Hx's offset is 1.7 % and Hy's 1.3 %.
+openEMS's mode 2 is exactly the mean of the two mode-0 samples either side (Hx to 1.4e-5 on that run). The reference kept B1+ and
+B1− complex, so its Hx and Hy are recovered (B1± = ½μ0(Hx ± jHy)) and put through that rule: **0.2416 µT/√W at the cell centre,
+against the printed 0.2489**. The gate compares circuitRF's with that value (owner, 2026-10-18); both are reported. The planes'
+correlations are taken on the planes as kept (0.9997 and 1.0000).
+
+### 10.5 The S11 null, and the ring-down (R-sar8-4)
+
+**Both runs stop on openEMS's energy criterion; circuitRF's port-decay rule never fires.** circuitRF stopped at **72,468** steps
+(−41.0 dB) and the reference at **77,409** (−40.5 dB) — openEMS checks the criterion on wall-clock time (§3.2) — and the port
+signals were then still 36.1 dB (circuitRF) and 38.9 dB (the reference) below their peaks, short of the −40 dB that would have let
+circuitRF stop it first. The coil rings for **245 ns after a 9.6 ns pulse**, 25 pulse lengths: 72,468 steps against 2,843 for the
+pulse. That ratio is SAR-9's motivation.
+
+**Where a run stops sets the S11 null's depth.** The reference's own probes give −63.4 dB run to their end (2 kHz steps) and −41.8 dB
+cut at circuitRF's first run's end (225 ns); at 1.2 MHz steps, where the script reads it, −24.35 dB. So S11 and Yin are compared
+**over the time both ran** (owner, 2026-10-18), the same tolerance:
+
+| | each to its own end | over the first 245.4 ns of both |
+|---|---|---|
+| S11 minimum | 298.18 MHz, −50.42 dB (reference −55.95 dB) | **298.18 MHz, −50.42 dB (reference 298.18 MHz, −50.41 dB)** |
+| largest \|ΔYin\|/\|Yin\|, 198–398 MHz | 3.42 % (at 205 MHz) | **0.025 %** |
+| Yin at 298 MHz | 0.3931 + j0.0471 S (reference 0.3955 + j0.0481) | 0.3931 + j0.0471 S (reference 0.3931 + j0.0471) |
+
+The B1 and SAR dumps accumulate to each run's own end, and agree with the reference's to 0.7 % (§10.6).
+
+### 10.6 The numbers, run (a) (R-sar8-3)
+
+Run (a) on the reference's 154 × 122 × 162 lines, the committed output, per watt accepted:
+
+| Quantity | Reference | circuitRF | Tolerance (§4) |
+|---|---|---|---|
+| S11 minimum, over 245.4 ns of both (§10.5) | 298.18 MHz, −50.41 dB | 298.18 MHz, −50.42 dB | 0.5 MHz, 1 dB |
+| \|B1+\| at the phantom centre (§10.4) | 0.2416 µT/√W (printed 0.2489) | **0.2408 (−0.34 %)** | 3 % |
+| peak local SAR, axial / sagittal plane | 5.675 / 5.088 W/kg | **5.638 / 5.056 (−0.64 % / −0.64 %)** | 5 % |
+| local SAR planes' correlation | | 1.0000 / 1.0000 | ≥ 0.99 |
+| \|B1+\| planes' correlation | | 0.9997 / 1.0000 | ≥ 0.99 |
+| Yin at 298 MHz, over both runs' time | 0.3931 + j0.0471 S | 0.3931 + j0.0471 S | reported |
+| openEMS stopped at | 77,409 steps, −40.51 dB | 72,468 steps, −41.0 dB | reported |
+
+Beyond what the tutorial computes, for SAR-9: psSAR10g **1.814 W/kg** per W at (−83.3, −29.2, −11.3) mm in the skin; peak local
+SAR in the volume 8.665 W/kg at (−97.2, −18.5, −5.6) mm; whole-phantom SAR 0.1935 W/kg over 4.169 kg; 80.7 % of the accepted power
+absorbed (the rest leaves through the Mur faces); mean |B1+| over the brain 0.2019 µT/√W; `sar_calc`'s 10 g peak identical.
+
+### 10.7 Run (b): circuitRF's own grid, and why it resonates 7 % high
+
+`CellsPerWavelength` 34.67 (2 mm in the brain at 595.6 MHz, the script's phantom target): 138 × 120 × 142 = 2.35 M cells against
+the script's 3.04 M, the same 1.667 mm smallest cell (the gaps) and time step. **The coil resonates at 319.75 MHz (−24.1 dB), not
+298.18 MHz**, so at 298 MHz it is off resonance (|S11| −0.07 dB, 1.6 % of the incident power accepted), and every per-watt number at
+298 MHz is a different operating point: psSAR10g 2.924, |B1+| at the centre 0.2829 µT/√W, absorbed 113 % of accepted (an accepted
+power that small is the difference of two nearly equal waves).
+
+**The grid property responsible is the cells normal to the coil's plane.** In y and z the two grids put lines within 0.13 mm of each
+other around every strip edge, gap and capacitor. In x the script's mesh box and smoothing give the coil plane 2 mm cells on both
+sides (−132.8, −130, −128, −126 mm); circuitRF's generator sizes a cell by the material it is in, nothing about a sheet in YZ asks
+for fine cells along x, and the plane sits between an 11.2 mm and an 8.7 mm cell (−141.2, −130, −121.3 mm). The strips' and gaps'
+near fields — the loop's inductance and its gaps' capacitance — are resolved across x by those cells. **Confirmed:** circuitRF's own
+grid with only the reference's x lines from −142 to −120 mm spliced in resonates at **300.70 MHz** (−38.7 dB): 19 of the 21.6 MHz
+come from those few lines, the rest from the grids' other differences. **A generator change is the owner's to decide**: grade the
+cells normal to a sheet down to the size of its smallest in-plane feature (here the 1.667 mm gap) near its plane, as the script's
+smoothing does.
+
+### 10.8 Costs
+
+| | (a) | (b) |
+|---|---|---|
+| openEMS | 371 s, 72,468 steps, 600 MC/s | 316 s, 50,640 steps |
+| whole run, Release | 6.4 min | 5.5 min |
+
+The H dump for B1 (VTK, 276 bytes a cell at its peak, §8.3) is the largest file a run writes: 0.92 M cells, ~250 MB, removed after.
+
+### 10.9 Gates
+
+`tests/Ui.Tests/Sar/LoopCoilReplicationTests.cs`:
+
+- `LoopCoilReplicationTests` (routine, fixed data, no process): run (a) — the S11 minimum over both runs' time within 0.5 MHz and
+  1 dB, |B1+| at the centre within 3 % of the reference's at the cell centre, peak local SAR on each plane within 5 %, the four
+  planes correlated ≥ 0.99; Yin and the ring-down reported. Skipped without SAR-1's data.
+- `LoopPhantomVoxelTests` (routine, needs openEMS and SAR-1's `material_raw.h5`, 4 s): the replication's setup lowered by circuitRF on
+  the reference's lines and loaded by openEMS for 20 steps gives every cell the density and conductivity openEMS gives the
+  tutorial's own structure.
+- `VoxelPhantomTests` (routine): §10.3's writer, against the ellipsoids evaluated independently.
+- `LoopCoilRerunTests` (`Benchmark`): both setups through the CLI; (a) held to the same, (b) reported; `CRF_WRITE_SAR8_OUTPUTS=1`
+  writes the committed output.
+
+### 10.10 Not done in SAR-8, and what is open
+
+- **The birdcage** (R-sar8-5) — `brief-sar-8b-replicate-birdcage.md`.
+- **Run (b)'s generator change** (§10.7) — the owner's.
+- **A sheet a hair short of its line** loses that line's edges in openEMS as the feed did (§10.2); not seen here, not fixed.
+- **`--exact-endcriteria`** would make a run repeatable (§3.2), still not equal to the reference's stop step; the owner's, as in §9.2.

@@ -1,0 +1,89 @@
+{
+  "Port": 1,
+  "FrequencyHz": 298000000,
+  "Index": 1,
+  "AcceptedPowerW": 7.466477455555197E-27,
+  "RadiationEfficiency": null,
+  "Region": "all tissue",
+  "AbsorbedPowerW": 8.42064405650179E-27,
+  "TissueMassKg": 4.162282558995812,
+  "UncountedPowerW": 0,
+  "Peaks": [
+    {
+      "Quantity": "SAR",
+      "Value": 8.182820889788116E-26,
+      "Cell": [
+        6,
+        62,
+        49
+      ],
+      "CentreM": [
+        -0.0898492999454405,
+        0.034781776820627455,
+        -0.007582929959946269
+      ],
+      "CubeLoM": null,
+      "CubeHiM": null,
+      "CubeMassKg": null,
+      "Kind": null,
+      "Object": "head/skin",
+      "Material": "openEMS head phantom skin (298 MHz)"
+    },
+    {
+      "Quantity": "SAR10g",
+      "Value": 2.182946836209668E-26,
+      "Cell": [
+        8,
+        29,
+        46
+      ],
+      "CentreM": [
+        -0.0853389529330709,
+        -0.0258333335,
+        -0.01328197129207655
+      ],
+      "CubeLoM": [
+        -0.09531339111580316,
+        -0.03580777168273226,
+        -0.02325640947480881
+      ],
+      "CubeHiM": [
+        -0.07536451475033863,
+        -0.015858895317267738,
+        -0.0033075331093442902
+      ],
+      "CubeMassKg": 0.010000000000002458,
+      "Kind": "Valid",
+      "Object": "head/skin",
+      "Material": "openEMS head phantom skin (298 MHz)"
+    }
+  ],
+  "B1Region": "head/brain",
+  "B1pMeanT": 2.0364150325219293E-20,
+  "B0Axis": "\u002Bz",
+  "Shape": [
+    103,
+    87,
+    107
+  ],
+  "Volumes": [
+    "SAR",
+    "SAR10g",
+    "B1p",
+    "B1m"
+  ],
+  "CrossCheck": [
+    {
+      "MassGrams": 10,
+      "Peak": 2.182946836209668E-26,
+      "SarCalcPeak": 2.1829469902840635E-26,
+      "RelativeDifference": 7.058091480770654E-08
+    }
+  ],
+  "WholeSarPerWatt": 0.2709555135116968,
+  "AbsorbedFraction": 1.1277934081534895,
+  "B1pMeanPerSqrtWatt": 2.3567223215075928E-07,
+  "PowerBudget": null,
+  "EfficiencyQuantity": "SAR10g",
+  "SarEfficiency": 1.3783030423910777E-07
+}

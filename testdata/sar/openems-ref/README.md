@@ -78,6 +78,7 @@ dump matches `sar_10g.npy` to the run-to-run spread, not exactly; for an exact p
 | `MRI_Loop_Coil/summary.json` | accepted power, the S11 minimum, Yin at f0, peak local SAR per watt on each plane, the SAR files' attributes |
 | `MRI_Loop_Coil/port_ut_1`, `MRI_Loop_Coil/port_it_1` | the port's time-domain probes: **SAR-8's 0.5 MHz S11 gate is finer than the script's 1.2 MHz step**, so it evaluates S11 from these |
 | `MRI_Loop_Coil/run.log` | the run's console output; `figures/` the script's five plots |
+| `MRI_Loop_Coil/material_raw.h5` | SAR-8: the material openEMS gives each cell of the script's own structure — its grid, its loop, its bundled phantom — as a raw SAR dump (DumpType 29) over the phantom's voxel extent: `/CellData/Density`, `Conductivity` and `Volume` per cell, (113, 91, 121) cells. Made by `tools/dump_loop_material.py` (below), not by the script: the XML holds the structure only, so the tool adds the script's FDTD settings and the dump, and runs 20 steps. It is what circuitRF's own phantom is compared with voxel by voxel (`LoopPhantomVoxelTests`) |
 
 ### `MRI_LP_Birdcage/`
 
@@ -123,6 +124,7 @@ python testdata/sar/openems-ref/tools/run_analytic.py ${OPENEMS_PROJECT}/openEMS
 octave --no-gui --norc testdata/sar/openems-ref/tools/run_birdcage.m ${OPENEMS_PROJECT}/openEMS/matlab/Tutorials/MRI_LP_Birdcage.m \
        ${SIM_ROOT} <out dir> ~/opt/openEMS/share/openEMS/matlab ~/opt/openEMS/share/CSXCAD/matlab ~/opt/openEMS/bin/openEMS [setup-only]
 python testdata/sar/openems-ref/tools/birdcage_to_npy.py <out dir>
+python testdata/sar/openems-ref/tools/dump_loop_material.py ~/opt/openEMS/bin/openEMS ~/opt/openEMS <scratch> testdata/sar/openems-ref
 ```
 
 What each wrapper replaces, and nothing else: the plot backend (Agg, figures saved rather than shown), the geometry

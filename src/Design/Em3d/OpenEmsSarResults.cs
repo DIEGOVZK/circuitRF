@@ -269,7 +269,7 @@ public static class OpenEmsSarResults
                     var q = new Point3(x, y, grid.Z.Centre(k));
                     int found = -1;
                     for (int t = 0; t < tissue.Count && found < 0; t++)
-                        if (C3dThermal.Inside(tissue[t].Primitive, q, 0)) found = t;
+                        if (Holds(tissue[t], q)) found = t;
                     if (found < 0)
                     {
                         double best = double.PositiveInfinity;
@@ -305,9 +305,13 @@ public static class OpenEmsSarResults
         };
     }
 
+    /// <summary>Whether <paramref name="s"/> holds <paramref name="q"/> — through its voxel's centre when its phantom is voxelized
+    /// (brief-sar-8), so a cell is the tissue CSXCAD gave it.</summary>
+    private static bool Holds(Em3dSolid s, Point3 q) => s.Holds(q, (p, at) => C3dThermal.Inside(p, at, 0));
+
     private static int OwnerAt(Point3 q, IReadOnlyList<Em3dSolid> tissue)
     {
-        for (int t = 0; t < tissue.Count; t++) if (C3dThermal.Inside(tissue[t].Primitive, q, 0)) return t;
+        for (int t = 0; t < tissue.Count; t++) if (Holds(tissue[t], q)) return t;
         return -1;
     }
 
@@ -349,7 +353,7 @@ public static class OpenEmsSarResults
                     p[c] = (float)bp.Magnitude;
                     n[c] = (float)bm.Magnitude;
                     bool inRegion = owner[c] >= 0 ? b1Set.Contains(tissue[owner[c]].Name)
-                                  : b1Solids.Any(b => C3dThermal.Inside(b.Primitive, new Point3(grid.X.Centre(i), grid.Y.Centre(jj), grid.Z.Centre(k)), 0));
+                                  : b1Solids.Any(b => Holds(b, new Point3(grid.X.Centre(i), grid.Y.Centre(jj), grid.Z.Centre(k))));
                     if (!inRegion) continue;
                     double v = grid.Volume[c];
                     ls += bp.Magnitude * v;

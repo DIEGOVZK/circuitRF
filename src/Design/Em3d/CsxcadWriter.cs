@@ -284,8 +284,29 @@ public static partial class CsxcadWriter
         var items = problem.Solids.Select(s => (s.Order, Solid: (Em3dSolid?)s, Sheet: (Em3dSheet?)null))
                            .Concat(problem.Sheets.Select(s => (s.Order, Solid: (Em3dSolid?)null, Sheet: (Em3dSheet?)s)))
                            .OrderBy(x => x.Order).ToList();
+        var voxelsWritten = new HashSet<string>(StringComparer.Ordinal);
         foreach (var item in items)
         {
+            // brief-sar-8 — a voxelized phantom's layers are ONE DiscMaterial, written where its first layer would be.
+            if (item.Solid is { Voxel: { } lattice })
+            {
+                if (!voxelsWritten.Add(lattice.Phantom)) continue;
+                var layers = problem.Solids.Where(x => x.Voxel?.Phantom == lattice.Phantom).OrderBy(x => x.Order).ToList();
+                var (xml, file, refusal) = VoxelPhantom(lattice, layers, materials, fitHz, run.Sar?.Densities, id++);
+                if (refusal is not null) return No(refusal);
+                props.Append(xml);
+                kernelFiles.Add(file!);
+                var box = layers.Select(x => Em3dProblem.Bounds(x.Primitive)).ToList();
+                var over = problem.Solids.Where(x => x.Voxel?.Phantom != lattice.Phantom).Select(x => (x.Name, B: Em3dProblem.Bounds(x.Primitive)))
+                                  .Concat(problem.Sheets.Select(x => (x.Name, B: x.WorldBounds())))
+                                  .Where(o => o.B.X0 < box.Max(b => b.X1) && o.B.X1 > box.Min(b => b.X0) && o.B.Y0 < box.Max(b => b.Y1) &&
+                                              o.B.Y1 > box.Min(b => b.Y0) && o.B.Z0 < box.Max(b => b.Z1) && o.B.Z1 > box.Min(b => b.Z0))
+                                  .Select(o => o.Name).ToList();
+                notes.Add($"The phantom '{lattice.Phantom}' is written as a DiscMaterial of {FdtdGrid.FormatLength(lattice.PitchM)} voxels " +
+                          $"({file!.FileName}), each the innermost layer holding its centre, under every other object" +
+                          (over.Count > 0 ? $": {Names(over)} reach{(over.Count == 1 ? "es" : "")} into its box and take{(over.Count == 1 ? "s" : "")} the volume they share." : "."));
+                continue;
+            }
             if (item.Solid is { } s)
             {
                 var m = materials[s.Material];
@@ -354,11 +375,22 @@ public static partial class CsxcadWriter
             // openEMS snaps a LumpedElement's box and the probes to the nearest line, but its excitation takes every E edge
             // lying geometrically inside the box. So the port's width is written ON the line, the same one openEMS would snap
             // the element to, and excitation, element and probes all span the same edges.
+            // brief-sar-8 — ON the line means the line's own value, and the sheet's plane too: openEMS's box test has no
+            // tolerance, so an extent "on a line to rounding" a hair inside it (given lines in mm against an extent in DBU:
+            // the loop coil's feed, 0.3 nm in from both) holds no edge, and the port is excited by nothing, in silence.
             if (FdtdGrid.PortWidthAxis(p) is int across)
             {
-                start = With(start, across, FdtdGrid.SnapToLine(grid.Axis((FdtdAxis)across).Lines, Get(start, across)));
-                stop = With(stop, across, FdtdGrid.SnapToLine(grid.Axis((FdtdAxis)across).Lines, Get(stop, across)));
+                var lines = grid.Axis((FdtdAxis)across).Lines;
+                start = With(start, across, FdtdGrid.NearestLine(lines, Get(start, across)));
+                stop = With(stop, across, FdtdGrid.NearestLine(lines, Get(stop, across)));
             }
+            for (int n = 0; n < 3; n++)
+                if (Get(start, n) == Get(stop, n))
+                {
+                    double plane = FdtdGrid.NearestLine(grid.Axis((FdtdAxis)n).Lines, Get(start, n));
+                    start = With(start, n, plane);
+                    stop = With(stop, n, plane);
+                }
             Open(props, "LumpedElement", id++, $"port{p.Number}_resist", Colors.Port,
                  $" Direction=\"{axis}\" Caps=\"1\" R=\"{R(p.Z0.Real)}\" LEtype=\"0\"");
             AppendPrimitives(props, Box(portPriority, start, stop));

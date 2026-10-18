@@ -95,7 +95,9 @@ public static class OpenEmsRun
         }
     }
 
-    private static readonly Regex PolyhedronReaderFile = new("<PolyhedronReader FileName=\"([^\"]*)\"", RegexOptions.CultureInvariant);
+    // brief-sar-8 — a voxelized phantom's DiscMaterial file is read the same way, and dropped the same way when it cannot be.
+    private static readonly Regex PolyhedronReaderFile = new("<(?:PolyhedronReader FileName|DiscFile Type=\"\\d+\" File)=\"([^\"]*)\"",
+                                                             RegexOptions.CultureInvariant);
 
     /// <summary>
     /// brief-em3d-65 R-em3d65-3c — null when every <c>PolyhedronReader</c> file <paramref name="xml"/> names exists in

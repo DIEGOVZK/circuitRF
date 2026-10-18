@@ -678,7 +678,7 @@ public static class C3dHierarchy
             case C3dEllipsoid el: el.Centre = Mul(el.Centre, k); el.SemiAxes = Mul(el.SemiAxes, k); break;
             case C3dPhantom ph:
                 ph.Centre = Mul(ph.Centre, k); ph.SemiAxes = Mul(ph.SemiAxes, k); ph.Size = Mul(ph.Size, k);
-                ph.Radius *= k; ph.Length *= k; ph.Shell1 *= k; ph.Shell2 *= k;
+                ph.Radius *= k; ph.Length *= k; ph.Shell1 *= k; ph.Shell2 *= k; ph.Voxel *= k;
                 break;
             case C3dSheet s:
                 s.Offset *= k;

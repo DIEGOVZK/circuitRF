@@ -1,0 +1,383 @@
+{
+ "FormatVersion": 1,
+ "DbuPerMicron": 1000,
+ "DisplayUnit": "Mm",
+ "SnapDbu": 1000,
+ "Objects": [
+  {
+   "$type": "Sheet",
+   "Name": "bottomLeft",
+   "Material": "PEC",
+   "Plane": "YZ",
+   "Offset": -130000000,
+   "Rect": {
+    "Min": [
+     -30000000,
+     -40000000
+    ],
+    "Size": [
+     29166667,
+     5000000
+    ]
+   }
+  },
+  {
+   "$type": "Sheet",
+   "Name": "topLeft",
+   "Material": "PEC",
+   "Plane": "YZ",
+   "Offset": -130000000,
+   "Rect": {
+    "Min": [
+     -30000000,
+     35000000
+    ],
+    "Size": [
+     29166667,
+     5000000
+    ]
+   }
+  },
+  {
+   "$type": "Sheet",
+   "Name": "bottomRight",
+   "Material": "PEC",
+   "Plane": "YZ",
+   "Offset": -130000000,
+   "Rect": {
+    "Min": [
+     833333,
+     -40000000
+    ],
+    "Size": [
+     29166667,
+     5000000
+    ]
+   }
+  },
+  {
+   "$type": "Sheet",
+   "Name": "topRight",
+   "Material": "PEC",
+   "Plane": "YZ",
+   "Offset": -130000000,
+   "Rect": {
+    "Min": [
+     833333,
+     35000000
+    ],
+    "Size": [
+     29166667,
+     5000000
+    ]
+   }
+  },
+  {
+   "$type": "Sheet",
+   "Name": "leftLower",
+   "Material": "PEC",
+   "Plane": "YZ",
+   "Offset": -130000000,
+   "Rect": {
+    "Min": [
+     -30000000,
+     -35000000
+    ],
+    "Size": [
+     5000000,
+     34166667
+    ]
+   }
+  },
+  {
+   "$type": "Sheet",
+   "Name": "leftUpper",
+   "Material": "PEC",
+   "Plane": "YZ",
+   "Offset": -130000000,
+   "Rect": {
+    "Min": [
+     -30000000,
+     833333
+    ],
+    "Size": [
+     5000000,
+     34166667
+    ]
+   }
+  },
+  {
+   "$type": "Sheet",
+   "Name": "rightLower",
+   "Material": "PEC",
+   "Plane": "YZ",
+   "Offset": -130000000,
+   "Rect": {
+    "Min": [
+     25000000,
+     -35000000
+    ],
+    "Size": [
+     5000000,
+     34166667
+    ]
+   }
+  },
+  {
+   "$type": "Sheet",
+   "Name": "rightUpper",
+   "Material": "PEC",
+   "Plane": "YZ",
+   "Offset": -130000000,
+   "Rect": {
+    "Min": [
+     25000000,
+     833333
+    ],
+    "Size": [
+     5000000,
+     34166667
+    ]
+   }
+  },
+  {
+   "$type": "Phantom",
+   "Name": "head",
+   "Shape": "Ellipsoid3",
+   "Centre": [
+    0,
+    0,
+    0
+   ],
+   "SemiAxes": [
+    100000000,
+    80000000,
+    100000000
+   ],
+   "Shell1": 9000000,
+   "Shell2": 9000000,
+   "Voxel": 2500000,
+   "Layers": [
+    {
+     "Name": "skin",
+     "Material": "openEMS head phantom skin (298 MHz)"
+    },
+    {
+     "Name": "skull",
+     "Material": "openEMS head phantom skull (298 MHz)"
+    },
+    {
+     "Name": "brain",
+     "Material": "openEMS head phantom brain (298 MHz)"
+    }
+   ]
+  }
+ ],
+ "Variables": [
+  {
+   "Name": "Cgap",
+   "Expression": "5.4"
+  }
+ ],
+ "Ports": [
+  {
+   "Number": 1,
+   "Name": "feed",
+   "Kind": "Lumped",
+   "Plane": "YZ",
+   "Offset": -130000000,
+   "Rect": {
+    "Min": [
+     -833333,
+     -38333333
+    ],
+    "Size": [
+     1666666,
+     1666666
+    ]
+   },
+   "Z0": "2.5"
+  }
+ ],
+ "LumpedElements": [
+  {
+   "Name": "capLeft",
+   "Plane": "YZ",
+   "Offset": -130000000,
+   "Rect": {
+    "Min": [
+     -28333333,
+     -833333
+    ],
+    "Size": [
+     1666666,
+     1666666
+    ]
+   },
+   "C": "Cgap",
+   "CUnit": "pF"
+  },
+  {
+   "Name": "capRight",
+   "Plane": "YZ",
+   "Offset": -130000000,
+   "Rect": {
+    "Min": [
+     26666667,
+     -833333
+    ],
+    "Size": [
+     1666666,
+     1666666
+    ]
+   },
+   "C": "Cgap",
+   "CUnit": "pF"
+  },
+  {
+   "Name": "capTop",
+   "Plane": "YZ",
+   "Offset": -130000000,
+   "Rect": {
+    "Min": [
+     -833333,
+     36666667
+    ],
+    "Size": [
+     1666666,
+     1666666
+    ]
+   },
+   "C": "Cgap",
+   "CUnit": "pF"
+  }
+ ],
+ "Setups": [
+  {
+   "FormatVersion": 1,
+   "Name": "ReferenceGrid",
+   "Frequency": {
+    "StartExpr": "0.4",
+    "StopExpr": "595.6",
+    "StepExpr": "",
+    "NumPoints": 497,
+    "Mode": "PointCount",
+    "Kind": "Linear",
+    "StartUnit": "MHz",
+    "StopUnit": "MHz",
+    "StepUnit": "MHz"
+   },
+   "Solver3D": "OpenEms",
+   "AirBox": {
+    "XMin": {
+     "PaddingUm": 190000,
+     "Boundary": "Absorbing"
+    },
+    "XMax": {
+     "PaddingUm": 200000,
+     "Boundary": "Absorbing"
+    },
+    "YMin": {
+     "PaddingUm": 200000,
+     "Boundary": "Absorbing"
+    },
+    "YMax": {
+     "PaddingUm": 200000,
+     "Boundary": "Absorbing"
+    },
+    "ZMin": {
+     "PaddingUm": 220000,
+     "Boundary": "Absorbing"
+    },
+    "ZMax": {
+     "PaddingUm": 220000,
+     "Boundary": "Absorbing"
+    }
+   },
+   "OpenEms": {
+    "PmlCells": 0,
+    "EndCriterionDb": -40,
+    "MaxTimeSteps": 1000000,
+    "SaveFieldsGHz": [],
+    "CellConstantMaterial": true,
+    "GridLines": {
+     "File": "../../../../openems-ref/MRI_Loop_Coil/MRI_Loop_Coil.xml"
+    }
+   },
+   "Sar": {
+    "FrequenciesGHz": [
+     0.298
+    ],
+    "MassesGrams": [
+     10
+    ],
+    "Method": "Cube",
+    "B1": true,
+    "B0Axis": "+z",
+    "CrossCheck": true
+   }
+  },
+  {
+   "FormatVersion": 1,
+   "Name": "OwnGrid",
+   "Frequency": {
+    "StartExpr": "0.4",
+    "StopExpr": "595.6",
+    "StepExpr": "",
+    "NumPoints": 497,
+    "Mode": "PointCount",
+    "Kind": "Linear",
+    "StartUnit": "MHz",
+    "StopUnit": "MHz",
+    "StepUnit": "MHz"
+   },
+   "Solver3D": "OpenEms",
+   "AirBox": {
+    "XMin": {
+     "PaddingUm": 190000,
+     "Boundary": "Absorbing"
+    },
+    "XMax": {
+     "PaddingUm": 200000,
+     "Boundary": "Absorbing"
+    },
+    "YMin": {
+     "PaddingUm": 200000,
+     "Boundary": "Absorbing"
+    },
+    "YMax": {
+     "PaddingUm": 200000,
+     "Boundary": "Absorbing"
+    },
+    "ZMin": {
+     "PaddingUm": 220000,
+     "Boundary": "Absorbing"
+    },
+    "ZMax": {
+     "PaddingUm": 220000,
+     "Boundary": "Absorbing"
+    }
+   },
+   "OpenEms": {
+    "PmlCells": 0,
+    "EndCriterionDb": -40,
+    "MaxTimeSteps": 1000000,
+    "SaveFieldsGHz": [],
+    "CellConstantMaterial": true,
+    "CellsPerWavelength": 34.67
+   },
+   "Sar": {
+    "FrequenciesGHz": [
+     0.298
+    ],
+    "MassesGrams": [
+     10
+    ],
+    "Method": "Cube",
+    "B1": true,
+    "B0Axis": "+z",
+    "CrossCheck": true
+   }
+  }
+ ]
+}

@@ -147,6 +147,13 @@ public static class Em3dSar
         foreach (var s in problem.Solids.Where(s => densities.ContainsKey(s.Name)))
         {
             var b = Em3dProblem.Bounds(s.Primitive);
+            // brief-sar-8 — a voxelized layer reaches its voxels' faces, up to half a voxel past its smooth surface
+            if (s.Voxel is { } v)
+            {
+                double Lo(double c, double a) => a + Math.Floor((c - a) / v.PitchM + 1e-9) * v.PitchM;
+                double Hi(double c, double a) => a + Math.Ceiling((c - a) / v.PitchM - 1e-9) * v.PitchM;
+                b = (Lo(b.X0, v.Anchor.X), Lo(b.Y0, v.Anchor.Y), Lo(b.Z0, v.Anchor.Z), Hi(b.X1, v.Anchor.X), Hi(b.Y1, v.Anchor.Y), Hi(b.Z1, v.Anchor.Z));
+            }
             x0 = Math.Min(x0, b.X0); y0 = Math.Min(y0, b.Y0); z0 = Math.Min(z0, b.Z0);
             x1 = Math.Max(x1, b.X1); y1 = Math.Max(y1, b.Y1); z1 = Math.Max(z1, b.Z1);
         }

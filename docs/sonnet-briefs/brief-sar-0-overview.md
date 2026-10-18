@@ -64,6 +64,7 @@ networks and lumped-tuned resonators.
 | SAR-6 | `brief-sar-6-sar-and-b1-results.md` | SAR and B1± as run results: field plots, peak markers, readouts, `.npy`, CLI and MCP | SAR-3, SAR-5 |
 | SAR-7 | `brief-sar-7-replicate-dipole-sar.md` | `Dipole_SAR` rebuilt in circuitRF, matching SAR-1's reference (the phone-SAR gate) | SAR-6 |
 | SAR-8 | `brief-sar-8-replicate-mri-loop-coil.md` | `MRI_Loop_Coil` rebuilt in circuitRF, matching SAR-1's reference (the coil gate) | SAR-6 |
+| SAR-8b | `brief-sar-8b-replicate-birdcage.md` | `MRI_LP_Birdcage` on circuitRF's cylindrical grid: lumped elements, ports, given lines and SAR there; the quadrature feed by superposition (moved out of SAR-8, owner 2026-10-18) | SAR-8 |
 | SAR-9 | `brief-sar-9-port-field-cosimulation.md` | Capacitors as ports, per-port fields, the circuit's solution recombining them into B1 and SAR | SAR-8 |
 | SAR-10 | `brief-sar-10-field-goals-tuning-yield.md` | B1 and SAR metrics as tuning, optimizer and yield goals; multi-channel drive (RF shimming) | SAR-9, TO, YA |
 | SAR-11 | `brief-sar-11-voxel-and-mesh-import.md` | Segmented voxel models (NIfTI, raw) and per-tissue surface meshes into `.c3d` | SAR-3, SAR-4 |

@@ -53,7 +53,7 @@ A **fast path** computes B1 and local SAR only, on a clip plane or a region, for
 **R-sar9-6 — The validations.**
 - **The loop coil with ports for capacitors** (4 ports) and the schematic's 5.4 pF capacitors must reproduce SAR-8's
   lumped-capacitor run (a) to overview §4: B1+ within 2 %, psSAR10g within 3 %.
-- **Superposition.** SAR-8's birdcage two-run combination, plus a two-port case where a
+- **Superposition.** SAR-8b's birdcage two-run combination, plus a two-port case where a
   simultaneous two-port run must equal the weighted sum of two single-port runs.
 
 Both committed as circuitRF output and compared on fixed data.

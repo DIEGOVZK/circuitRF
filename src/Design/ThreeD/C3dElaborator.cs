@@ -942,8 +942,20 @@ public sealed class C3dElaborator(TechnologyCache? technologies = null, Geometry
             if (obj is C3dPhantom phantom)
             {
                 if (C3dPhantoms.ShapeFault(phantom) is { } fault) { _refusals.Add($"The phantom '{name}' {fault}."); return; }
+                int first = _solids.Count;
                 foreach (var (layer, solid) in C3dPhantoms.Layers(phantom))
                     Managed(solid, C3dPhantoms.LayerName(name, layer.Name), world, doc, tech, prefix, path, exact);
+                // brief-sar-8 — a voxelized phantom's layers share one lattice, a corner on its centre in the world.
+                if (phantom.Voxel > 0 && _solids.Count > first)
+                {
+                    var frame = C3dLowering.InMetres(phantom.Placement.ToTransform(), doc.DbuPerMicron).Then(world);
+                    double M(long v) => C3dLowering.Metres(v, doc.DbuPerMicron);
+                    var lattice = new Em3dVoxelLattice(name, C3dLowering.Apply(frame, new Point3(M(phantom.Centre.X), M(phantom.Centre.Y), M(phantom.Centre.Z))),
+                                                       M(phantom.Voxel));
+                    for (int i = first; i < _solids.Count; i++) _solids[i] = _solids[i] with { Voxel = lattice };
+                    _notes.Add($"The phantom '{name}' is given to openEMS in {FdtdGrid.FormatLength(lattice.PitchM)} voxels, each the innermost " +
+                               "layer holding its centre; Palace and the thermal solver mesh its smooth layers.");
+                }
                 return;
             }
             Managed(obj, name, world, doc, tech, prefix, path, exact);

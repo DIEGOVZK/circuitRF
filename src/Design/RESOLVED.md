@@ -1,5 +1,37 @@
 # src/Design — resolved findings (detail, off the CLAUDE.md growth path)
 
+## A lumped port a hair inside its lines was excited by nothing; voxelized phantoms (2026-10-18, brief-sar-8)
+
+- **openEMS tests an excitation box against its grid lines with no tolerance** (`CSPrimBox::IsInside`, `CoordInRange`), and
+  places the source on every E edge whose midpoint lies inside it. The loop coil's feed spans z from −38.333333 to
+  −36.666667 mm — its extent in DBU, a nanometre grid — and the tutorial's lines are at −38.3333333333 and −36.6666666667 mm,
+  so both lines fell 0.3 nm OUTSIDE the box: no edge, no excitation, zero energy for 5,856 steps until circuitRF stopped the
+  run on its "decayed" ports, and then a singular-port refusal. `FdtdGrid.SnapToLine` keeps a coordinate already "on a line
+  to rounding" as it is, which is right for the grid's own notes and wrong for what openEMS reads. The writer now writes a
+  lumped port's width and its sheet's plane as the line's own value (`FdtdGrid.NearestLine`); the lumped element itself is
+  untouched (openEMS snaps it, `SnapBox2Mesh`). Byte-identical on circuitRF's own grids, where the lines ARE those values.
+  The Python tutorials never hit this because their run hands CSXCAD full-precision doubles in memory; their XML on disk is
+  seven figures, and re-running it from the file would excite nothing either.
+  **Not fixed, and worth knowing:** a sheet's polygon is tested the same way (`CSPrimPolygon::IsInside`). The loop's strips
+  happen to overlap their lines by 0.3 nm in the safe direction; a sheet edge 0.3 nm short of a line would lose that line's
+  edges as silently.
+- **openEMS's bundled MRI phantoms are 2.5 mm voxel models, not smooth shells.** Sampled at a 2 mm grid's cell centres,
+  circuitRF's smooth `C3dPhantom` differed from the tutorial's in 22,362 of 463,363 tissue cells, and the local-SAR planes
+  correlated only 0.91. `C3dPhantom.Voxel` (DBU, 0 = smooth) gives openEMS the phantom as one `DiscMaterial`
+  (`CsxcadWriter.Voxels`, SAR-4's `DiscMaterialWriter.ToBytes`), each voxel the innermost layer holding its centre on a lattice
+  with a corner at the phantom's centre — `create_phantoms.py`'s rule — and the loop's phantom then matches the tutorial's in
+  every cell. Things that follow from it: the box is written at priority 0, because CSXCAD gives a voxel holding 0 the
+  property's own material (it is not transparent), so anything overlapping the box wins there and the run names it; the file
+  rides the kernel-file path and its hash is checked before openEMS starts (`CheckKernelFiles` now reads `DiscFile` too,
+  since CSXCAD skips an unreadable one with exit code 0); `OpenEmsSarResults` asks a voxelized solid about the CENTRE of the
+  voxel a cell lies in (`Em3dSolid.Holds`), so a cell's tissue is the one CSXCAD gave it; `Em3dSar`'s dump box reaches the
+  voxels' faces; Flatten is refused on a voxelized phantom, since its layers would be smooth solids; a layer with a tensor εr
+  or μr ≠ 1 is refused (the file has εr, σ and ρ only).
+- **A VAR read only by a lumped element's R, L or C was reported as unused** ("used by no dimension"): `C3dResolver`'s
+  closure now counts those expressions, as it counts a heat source's power.
+
+Design note: `docs/design/sar.md` §10. Gates: `VoxelPhantomTests`, `LoopPhantomVoxelTests`, `LoopCoilReplicationTests`.
+
 ## The radiation pattern's surface sat inside the PML on given grid lines (2026-10-18, brief-sar-7)
 
 `OpenEmsFarField.Place` counted its 3-cell margin from the air box's face, which is the PML's inner edge only on

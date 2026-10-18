@@ -717,7 +717,10 @@ internal static class DocumentSchema
             Cylinder3 (Centre, Radius, Length, Axis, Shell1, Shell2: radial shells, every layer the
             full length), FlatBox (Centre, Size, Shell1: liquid in a shell on its floor and four
             walls, open on top), Sphere1 (Centre, Radius) or Box1 (Centre, Size). Its own Material is
-            not used. In the solved problem each layer is the solid "<phantom>/<layer>".
+            not used. In the solved problem each layer is the solid "<phantom>/<layer>". Voxel (DBU,
+            omitted = 0, the smooth layers) gives openEMS the phantom in cubes of that side, each the
+            innermost layer holding its centre, on a lattice with a corner at Centre: how openEMS's own
+            phantoms are made. Palace and the thermal solver mesh the smooth layers whatever it says.
           * "LumpedElements" are R, L and C across gaps, each a gap exactly as a lumped port's is (Name,
             Plane, Offset, Rect, and optional Positive/Negative), with Topology Parallel (default) or
             Series and any of R, L, C as expressions with RUnit, LUnit, CUnit (base SI when omitted):

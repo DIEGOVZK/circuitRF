@@ -364,6 +364,15 @@ public sealed class C3dPhantom : C3dObject
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public long Shell2 { get; set; }
 
+    /// <summary>
+    /// brief-sar-8 — the side of the cubes openEMS is given the phantom in, DBU; 0 (not written) gives it the smooth layers. A
+    /// voxel is the innermost layer holding its centre, on a lattice with a corner at <see cref="Centre"/> along the world's
+    /// axes, and is written as one CSXCAD DiscMaterial — how openEMS's own phantoms are made, so its examples can be matched
+    /// cell for cell. Palace and the thermal solver mesh the smooth layers whatever this says.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public long Voxel { get; set; }
+
     public List<C3dPhantomLayer> Layers { get; set; } = [];
 
     /// <summary>

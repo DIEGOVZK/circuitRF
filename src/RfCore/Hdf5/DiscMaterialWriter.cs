@@ -48,6 +48,17 @@ public static class DiscMaterialWriter
     /// <paramref name="tissues"/>[0] is the background entry.
     /// </summary>
     public static void Write(string path, double[] x, double[] y, double[] z, byte[] indices, IReadOnlyList<DiscTissue> tissues)
+        => Build(x, y, z, indices, tissues).Write(path, new H5WriteOptions { PreferCompactDatasetLayout = false });
+
+    /// <summary>brief-sar-8 — <see cref="Write"/>'s file as bytes, for a writer that hands its files to a run rather than to disk.</summary>
+    public static byte[] ToBytes(double[] x, double[] y, double[] z, byte[] indices, IReadOnlyList<DiscTissue> tissues)
+    {
+        using var stream = new System.IO.MemoryStream();
+        Build(x, y, z, indices, tissues).Write(stream, new H5WriteOptions { PreferCompactDatasetLayout = false });
+        return stream.ToArray();
+    }
+
+    private static H5File Build(double[] x, double[] y, double[] z, byte[] indices, IReadOnlyList<DiscTissue> tissues)
     {
         int nx = x.Length - 1, ny = y.Length - 1, nz = z.Length - 1;
         foreach (var (lines, axis) in new[] { (x, "x"), (y, "y"), (z, "z") })
@@ -90,7 +101,7 @@ public static class DiscMaterialWriter
             },
         };
         file.Attributes = new() { ["Version"] = Version };
-        file.Write(path, new H5WriteOptions { PreferCompactDatasetLayout = false });
+        return file;
     }
 
     private static OpenEmsHdf5Exception Refused(string objectPath, string why) =>

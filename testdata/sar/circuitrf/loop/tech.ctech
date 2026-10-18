@@ -1,0 +1,31 @@
+{
+ "FormatVersion": 1,
+ "Name": "MRI_Loop_Coil",
+ "Materials": [
+  {
+   "Name": "PEC",
+   "Sigma20": 1e+30
+  },
+  {
+   "Name": "openEMS head phantom skin (298 MHz)",
+   "Epsr": 38.9,
+   "Sigma20": 0.84,
+   "DensityKgM3": 1100,
+   "Source": "The value openEMS 0.37.0 states for the 'Skin' tissue of its bundled head phantom (resources/phantoms/create_phantoms.py, phantom_head_298MHz.h5), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 298 MHz, not circuitRF's Gabriel tissue: the Skin (wet) record above gives εr 51.96, σ 0.63 S/m there. Density as the same script states it."
+  },
+  {
+   "Name": "openEMS head phantom skull (298 MHz)",
+   "Epsr": 11.4,
+   "Sigma20": 0.29,
+   "DensityKgM3": 1908,
+   "Source": "The value openEMS 0.37.0 states for the 'Skull' tissue of its bundled head phantom (resources/phantoms/create_phantoms.py, phantom_head_298MHz.h5), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 298 MHz, not circuitRF's Gabriel tissue: the Bone (cortical) record above gives εr 13.45, σ 0.08249 S/m there. Density as the same script states it."
+  },
+  {
+   "Name": "openEMS head phantom brain (298 MHz)",
+   "Epsr": 52.7,
+   "Sigma20": 0.95,
+   "DensityKgM3": 1046,
+   "Source": "The value openEMS 0.37.0 states for the 'Brain' tissue of its bundled head phantom (resources/phantoms/create_phantoms.py, phantom_head_298MHz.h5), read by the MRI_Loop_Coil tutorial, kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 298 MHz, not circuitRF's Gabriel tissue: the Brain (grey matter) record above gives εr 60.09, σ 0.6915 S/m there. Density as the same script states it."
+  }
+ ]
+}

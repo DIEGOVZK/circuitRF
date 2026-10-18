@@ -1,0 +1,89 @@
+{
+  "Port": 1,
+  "FrequencyHz": 298000000,
+  "Index": 1,
+  "AcceptedPowerW": 3.1668620846331036E-25,
+  "RadiationEfficiency": null,
+  "Region": "all tissue",
+  "AbsorbedPowerW": 2.555185675542348E-25,
+  "TissueMassKg": 4.169182270782895,
+  "UncountedPowerW": 0,
+  "Peaks": [
+    {
+      "Quantity": "SAR",
+      "Value": 2.7441487026265002E-24,
+      "Cell": [
+        3,
+        33,
+        50
+      ],
+      "CentreM": [
+        -0.09719166666666665,
+        -0.018493589743589764,
+        -0.0055787037037037055
+      ],
+      "CubeLoM": null,
+      "CubeHiM": null,
+      "CubeMassKg": null,
+      "Kind": null,
+      "Object": "head/skin",
+      "Material": "openEMS head phantom skin (298 MHz)"
+    },
+    {
+      "Quantity": "SAR10g",
+      "Value": 5.745802509531127E-25,
+      "Cell": [
+        10,
+        27,
+        47
+      ],
+      "CentreM": [
+        -0.08330833333333335,
+        -0.029166666666666664,
+        -0.01127314814814815
+      ],
+      "CubeLoM": [
+        -0.09315810772058658,
+        -0.0390164410539199,
+        -0.021122922535401392
+      ],
+      "CubeHiM": [
+        -0.07345855894608011,
+        -0.019316892279413425,
+        -0.00142337376089491
+      ],
+      "CubeMassKg": 0.01000000000041515,
+      "Kind": "Valid",
+      "Object": "head/skin",
+      "Material": "openEMS head phantom skin (298 MHz)"
+    }
+  ],
+  "B1Region": "head/brain",
+  "B1pMeanT": 1.136405042271013E-19,
+  "B0Axis": "\u002Bz",
+  "Shape": [
+    105,
+    87,
+    107
+  ],
+  "Volumes": [
+    "SAR",
+    "SAR10g",
+    "B1p",
+    "B1m"
+  ],
+  "CrossCheck": [
+    {
+      "MassGrams": 10,
+      "Peak": 5.745802509531127E-25,
+      "SarCalcPeak": 5.745802509531127E-25,
+      "RelativeDifference": 0
+    }
+  ],
+  "WholeSarPerWatt": 0.1935273863585721,
+  "AbsorbedFraction": 0.8068509481171103,
+  "B1pMeanPerSqrtWatt": 2.0193824463770512E-07,
+  "PowerBudget": null,
+  "EfficiencyQuantity": "SAR10g",
+  "SarEfficiency": 1.4991938939138625E-07
+}

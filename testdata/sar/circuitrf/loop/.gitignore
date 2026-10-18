@@ -1,0 +1,3 @@
+# A run of the .c3d writes here (openEMS run directories with the SAR and H dumps: hundreds of MB).
+# What is kept of each run is copied into reference-grid/ and own-grid/ (LoopCoilRerunTests, CRF_WRITE_SAR8_OUTPUTS=1).
+results/

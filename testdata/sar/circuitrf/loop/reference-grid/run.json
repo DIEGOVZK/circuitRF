@@ -1,0 +1,14 @@
+{
+  "note": "circuitRF OUTPUT, not a reference: setup ReferenceGrid of Loop.c3d, run by circuitRF on openEMS (brief-sar-8). The reference it is compared with is testdata/sar/openems-ref/MRI_Loop_Coil.",
+  "setup": "ReferenceGrid",
+  "grid_lines": [
+    154,
+    122,
+    162
+  ],
+  "timestep_s": 3.38654E-12,
+  "stopped_at_timestep": 72468,
+  "stopped_by": "openEMS: the energy end criterion",
+  "energy_at_stop_db": -41,
+  "openems_wall_s": 370.96
+}
