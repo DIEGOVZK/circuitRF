@@ -1,6 +1,6 @@
 # circuitRF — SAR and B1 for MRI coil designers and phone SAR
 
-**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
+**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
 **Reference data:** [`testdata/sar/openems-ref/`](../../testdata/sar/openems-ref/README.md) · **Builds on:**
 [`em-3d.md`](em-3d.md) (the openEMS backend) and [`em-3d-f0-findings.md`](em-3d-f0-findings.md) (its validated versions).
 
@@ -469,3 +469,137 @@ openEMS's `BoundaryCond` reads the same text from circuitRF's file. Nothing was 
 ### 5.7 Not in SAR-3
 
 Voxel and mesh import (SAR-11); a lumped element on Palace (its own series); a lumped element on a cylindrical grid.
+
+---
+
+## 6. openEMS's HDF5 through PureHDF (SAR-4)
+
+The raw SAR dump, `sar_calc`'s result, HDF5 field dumps and `DiscMaterial` voxel files are HDF5. circuitRF reads and
+writes them through **PureHDF 2.1.2**, the managed, MIT, no-native library `src/RfCore` already references for the
+`.mat` export (overview O1). There is no HDF5 code of circuitRF's own and no new dependency. The adapter is
+`src/RfCore/Hdf5/`: `OpenEmsHdf5` (the reader), `DiscMaterialWriter`, `OpenEmsArrayOrder` (the one place that knows
+array order) and `OpenEmsHdf5Diagnostics` (the refusals, as coded diagnostics).
+
+### 6.1 What openEMS 0.37.0 writes (R-sar4-1)
+
+Taken with `h5dump -H -p -B` and h5py from SAR-1's raw dipole dump, `sar_calc`'s 10 g result on it, the SAR-4 field
+dumps (§6.5) and the bundled head phantom (as an example of a `DiscMaterial` file CSXCAD reads; it is not committed,
+L3). **PureHDF 2.1.2 reads every row**, checked by reading each file with it: the phantom's chunked, deflated
+`/DiscData` gives the same per-tissue voxel counts as h5py (394,928 / 111,736 / 45,952 / 56,792).
+
+| | Raw SAR dump (DumpType 29) | FD field dump (DumpType 10, 11) | `sar_calc` result | `DiscMaterial` (bundled phantom) |
+|---|---|---|---|---|
+| Superblock | version 2 | 2 | 2 | 0 (symbol-table groups) |
+| Groups | `/Mesh`, `/CellWidth`, `/CellData`, `/FieldData/FD` | `/Mesh`, `/FieldData/FD` | `/Mesh`, `/FieldData/FD` | `/mesh`; `/DiscData` is a dataset at the root |
+| Layout | contiguous throughout | contiguous | contiguous | `/DiscData` chunked (23, 18, 46); `/mesh/*` contiguous |
+| Filters | none | none | none | `/DiscData` deflate level 9, no shuffle |
+| Datasets | `/Mesh/{x,y,z}`, `/CellWidth/{x,y,z}` float64; `/CellData/{Conductivity,Density,Volume}` float32 (nx, ny, nz); `/FieldData/FD/f<k>` (3, nx, ny, nz), a compound {`r` float32, `i` float32} | `/Mesh/*` float64 (one line per node); `f<k>` the same compound, (3, nx, ny, nz) | `/Mesh/*` float64; `f<k>` float32 (nx, ny, nz) | `/DiscData` uint8 **(nz, ny, nx)**; `/mesh/{x,y,z}` float32, the voxel boundaries |
+| Numeric attributes | root `openEMS_HDF5_version` float64 0.3, `dump_type` int32 29, `dual_mesh` uint8 1; `/Mesh` `mesh_type` int32 0, `mesh_scaling` float64; `/FieldData/FD` `frequency` float64[n] | root the same with `dump_type` **0 (E) or 1 (H)** and `dual_mesh` 0; `f<k>` also `frequency` float64 | root `mass` float64, `proc_time` float64, no `dump_type`; `/FieldData/FD` `frequency` **float32**[n] and `valid_cubes`, `used_cubes`, `unused_cubes`, `air_cubes` uint64; `f<k>` `frequency`, `maxSAR`, `power` float32, `maxSAR_idx` uint32[3] | root `Version` float64 2; `/DiscData` `DB_Size` int32, `epsR`, `kappa`, `density` float32[DB_Size] |
+| String attributes | `d_order` scalar, variable-length UTF-8, null-terminated: `'XYZ'` on the cell data, `'NXYZ'` on the field | `'NXYZ'` | `'XYZ'` | `Name`, the same form, the entries joined by commas |
+
+Three things the table settles that a reader could get wrong:
+
+- **`dump_type` is the field, not the DumpType.** A frequency-domain E dump (DumpType 10) says `dump_type = 0`, an H
+  dump (11) says 1; that it is frequency-domain is the `/FieldData/FD` group. The raw dump says 29.
+- **Mesh lines are in metres** in every openEMS file. `mesh_scaling` is the setup's drawing unit (1e-3 for a mm
+  setup, 1 in `sar_calc`'s output), stated beside the lines and never to be applied to them; openEMS's own reader
+  documents it so. The raw dump's `/Mesh` lines are the **cell centres** (`dual_mesh = 1`), with each cell's widths in
+  `/CellWidth`.
+- **The frequency's float width differs** between openEMS (float64) and `sar_calc` (float32). Both are the pinned
+  layout; the reader takes any integer or float width for a number and refuses anything else.
+
+### 6.2 Array order (`OpenEmsArrayOrder`)
+
+circuitRF holds a cell array in **C order over (x, y, z)**: cell (ix, iy, iz) is at (ix·ny + iy)·nz + iz, z fastest.
+That is the order NumPy hands back for openEMS's own reader, so a reference `.npy` compares element for element.
+
+- **0.37.0's dumps and `sar_calc` say `d_order = XYZ`** (a vector `NXYZ`, component first) with dimensions
+  (nx, ny, nz): circuitRF's own order. Nothing is permuted. Pinned by `sar_calc`'s own `maxSAR_idx` = (14, 44, 45):
+  in the array this reads, that cell holds the array's maximum.
+- **`ZYX`/`NZYX` is the legacy form** `--legacyHDF5Dumps` writes (it also splits a complex dataset into `_real` and
+  `_imag`). 0.37.0 does not write it by default, so it is **refused**, naming `d_order`, rather than read.
+- **CSXCAD's `/DiscData` has no `d_order`.** `CSPropDiscMaterial` reads it into one flat buffer and indexes it
+  ix + iy·Nx + iz·Nx·Ny: **x fastest**, so the dataset's dimensions are (nz, ny, nx), as the body phantom's
+  (104, 92, 92) against its 93 × 93 × 105 mesh lines shows. `DiscMaterialWriter` permutes into that through
+  `OpenEmsArrayOrder.ToCsxcadOrder`, and nowhere else. Pinned by the CSXCAD gate (§6.5): a transposed 3 × 2 × 2 file
+  gives the wrong tissue to 10 of its 12 voxels.
+
+### 6.3 The reader (R-sar4-2)
+
+| Call | Reads | Returns |
+|---|---|---|
+| `OpenEmsHdf5.ReadSarRaw(path, frequencyIndex, xStart, xCount)` | a raw SAR dump | `OpenEmsSarRaw`: the cell-centre mesh, cell widths, the frequency, complex Ex, Ey, Ez, σ, ρ and volume per cell — optionally only an x slab |
+| `OpenEmsHdf5.ReadField(path, frequencyIndex)` | an FD E or H dump | `OpenEmsField`: the quantity, mesh, every frequency in the file, three complex components |
+| `OpenEmsHdf5.ReadSarResult(path, frequencyIndex)` | `sar_calc`'s output | `OpenEmsSarResult`: SAR per cell, mass, power, `maxSAR` and its cell, the four cube counts |
+
+- **One dataset at a time.** Every array is read on its own through a PureHDF hyperslab selection: a vector field one
+  component at a time, and `ReadSarRaw` reads only the x slab it is asked for, so SAR-5 can stream a dump larger than
+  memory through in pieces. Mesh lines and attributes are small and read whole.
+- **Refusals.** A file whose groups, datasets or attributes differ from §6.1 — an object missing, a dataset where a
+  group belongs, another type or shape, a legacy `d_order`, a cylindrical mesh (`mesh_type` ≠ 0), another
+  `openEMS_HDF5_version`, a time-domain-only dump — throws `OpenEmsHdf5Exception`. Its `ObjectPath` is the HDF5 path
+  (an attribute as `/Mesh/@mesh_type`), and its diagnostic (`hdf5.openems.missing`, `hdf5.openems.unexpected`) says
+  what the pinned layout has there. The path is walked link by link, so a missing parent group is named, not its
+  child.
+- **E and H stay complex64** (`ComplexF`, the file's own `r`/`i` floats). A whole body at 2 mm is about 34 M cells;
+  `System.Numerics.Complex` would double what is already the largest array of a SAR run. A consumer widens a value
+  when it computes with it, and comparing against openEMS's reader is exact because nothing is converted.
+- **Where SAR-5's `SarGrid` comes from.** RfCore cannot name a `src/Engine` type, and the engine never opens a file
+  (R-sar4-5). So the reader returns `OpenEmsSarRaw`, plain arrays, and `src/Design` builds SAR-5's `SarGrid` from
+  them. The engine receives arrays.
+
+### 6.4 `DiscMaterialWriter` (R-sar4-3)
+
+`DiscMaterialWriter.Write(path, x, y, z, indices, tissues)` writes the version-2 layout of §6.1's last column, with
+PureHDF's writer (the API `MatWriter` uses): `/@Version` float64 2.0; `/DiscData` uint8 in CSXCAD's order with
+`DB_Size` int32 and `epsR`, `kappa`, `density` float32[DB_Size] and `Name`; `/mesh/x|y|z` float32 voxel boundaries
+in metres. Entry 0 is background. A setup's `DiscFile` gives `Scale` = 1 / its drawing unit (1000 for mm), as
+`MRI_Loop_Coil.xml` does for the bundled phantom.
+
+- **The index is uint8, and that is CSXCAD's limit, not a choice.** The brief allowed uint8 or uint16. CSXCAD reads
+  `/DiscData` with `H5T_NATIVE_UINT8` into a uint8 buffer, so a uint16 file would be converted on read and every
+  index above 255 lost. The writer writes uint8 and **refuses more than 256 entries**; a model with more tissues needs
+  CSXCAD to change, or the model split across several `DiscMaterial` properties. **Finding for the owner** (SAR-11).
+- **Plain layout.** Contiguous and unfiltered, the form openEMS's own dumps take. No size forces deflate: a contiguous
+  HDF5 dataset has no size limit, and a whole body at 1 mm is about 34 MB of uint8 indices.
+- **Where PureHDF's file differs from the phantom's, and why it does not matter.** PureHDF writes superblock 2 and
+  pads variable-length strings with nulls (`H5T_STR_NULLPAD`) where the phantom terminates them; CSXCAD does not read
+  `Name` at all (it reads `Version`, `DB_Size`, `epsR`, `kappa`, `mueR`, `sigma`, `density`, `/DiscData` and the mesh,
+  and notes the absent `mueR` and `sigma` and skips them). The voxel boundaries are float32 because CSXCAD reads
+  them as float; at metres that is 1e-7 relative, a tenth of a micron on a 1 m body.
+- **Refusals** (`hdf5.discmaterial.refused`): fewer than two lines, or lines not strictly increasing; an index count
+  that is not the voxel count; no entries or more than 256; an index past the last entry; a name containing a comma.
+- **Permittivity is not checked by the gate.** No openEMS dump states it per cell (the `--debug-material` dump holds
+  edge-averaged values). It is read by the same CSXCAD call as conductivity and density, which the gate checks.
+
+### 6.5 Gates and samples
+
+The samples are made by `testdata/sar/openems-ref/tools/make_hdf5_samples.py` (README, "SAR-4's HDF5 samples"): the
+raw dump's arrays as openEMS's `HDF5Dump` reads them; `sar_calc` (IEEE_62704, 10 g) on that same raw dump, which
+**reproduces SAR-1's `sar_10g.npy` bit for bit** — so the kept raw dump and `SAR_10g.h5` are an exact pair for SAR-5,
+not a pair from two runs; and one small run's HDF5 E and H field dumps at two frequencies. Like the rest of the
+reference data they are on the developer machine only.
+
+`tests/Ui.Tests/Sar/OpenEmsHdf5Tests.cs`:
+- the raw dipole dump reads to exactly what openEMS's reader wrote (E, σ, ρ, volume, mesh lines; float32, exact), an
+  x slab is the same cells read on their own, and a cell's volume is the product of its stated widths;
+- `sar_calc`'s result reads to `sar_10g.npy` exactly, its `maxSAR_idx` cell holds the array's maximum (the order pin),
+  and its mass, power and cube count are SAR-1's `summary.json`'s;
+- the E and H field dumps, both frequencies, read to what openEMS's reader wrote;
+- a file whose `/CellWidth` is a dataset where openEMS writes a group is refused naming `/CellWidth` (built in the
+  test, so it always runs).
+
+`tests/Ui.Tests/Sar/DiscMaterialWriterTests.cs`: a 3 × 2 × 2 file written by circuitRF, every voxel a different
+tissue, loaded by the installed openEMS in a 20-step run with a raw SAR dump over it. openEMS's dump, read back
+through `OpenEmsHdf5`, gives each of the 12 voxels the conductivity and density the file declares, and air around
+them. Skipped with a reason when openEMS is absent. **CSXCAD accepts the file** as PureHDF writes it; nothing had to
+be worked around.
+
+### 6.6 Not in SAR-4
+
+- **openEMS's own SAR dumps** (DumpType 20, 21, 22: `MRI_Loop_Coil`'s and the birdcage's local-SAR planes). They are
+  written by openEMS, not `sar_calc`, and no sample of them is kept; SAR-6 or SAR-8 pins them when it needs them.
+- **Cylindrical meshes** (`mesh_type` 1, the birdcage's dumps): refused. Time-domain dumps: refused. The legacy
+  format: refused (§6.2).
+- **The far-field path stays on VTK** (`OpenEmsFarField.cs`'s header): `VtrFile` serves every openEMS field path, and
+  the radiation gates validated the transform on it. Moving it would buy a re-validation and nothing else.

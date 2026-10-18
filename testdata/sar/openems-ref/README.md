@@ -4,7 +4,7 @@ What openEMS 0.37.0's own SAR and MRI tutorials computed, run unmodified on the 
 fixed data (`docs/sonnet-briefs/brief-sar-1-openems-reference-set.md`). Every later phase of the SAR series gates
 against these numbers. What they mean is in `docs/design/sar.md` §3. Produced on 2026-10-17.
 
-**The data is not in the repository** (owner, 2026-10-18): it is kept on the developer machine, in the four folders
+**The data is not in the repository** (owner, 2026-10-18): it is kept on the developer machine, in the folders
 `.gitignore` names. What the repository holds is how it was made: this README (every file, the versions, the
 commands) and `tools/`. Where the data is absent, `SarReferenceSetTests` skips with a reason, and the commands below
 make it again.
@@ -32,6 +32,7 @@ Dipole_SAR/       Python tutorial Dipole_SAR.py: 1 GHz dipole 20 mm from a three
 MRI_Loop_Coil/    Python tutorial MRI_Loop_Coil.py: 7 T (298 MHz) loop beside the bundled ellipsoid head phantom
 MRI_LP_Birdcage/  Octave tutorial MRI_LP_Birdcage.m: 3 T (128 MHz) 8-rung low-pass birdcage, quadrature feed
 analytic/         test_sar_analytic.py's unittest log, and its two phantoms through the installed sar_calc
+field_dump/       SAR-4: one small run's HDF5 E and H field dumps, and what openEMS's reader reads from them
 tools/            the wrappers that ran them (reference-generation material, see above)
 ```
 
@@ -150,6 +151,21 @@ structure and its grid); the birdcage's XML holds them all:
 | MRI_Loop_Coil | 3,043,656 | 3.39e-12 s | 77,409 | end criterion, at −40.51 dB | 265.6 s; 900 MC/s |
 | MRI_LP_Birdcage | 4,023,030 (cylindrical, multigrid) | 3.65e-13 s | 225,918 | end criterion, at −40.49 dB | 3,170 s (53 min); 288 MC/s on 4 threads, the engine's own choice |
 | analytic | — | — | — | — | 0.3 s |
+
+## SAR-4's HDF5 samples
+
+`OpenEmsHdf5Tests` (brief-sar-4) holds circuitRF's HDF5 reader to what openEMS's own Python reader makes of the same
+files. `tools/make_hdf5_samples.py` makes them, after the dipole has been run with `--keep-raw`; it takes 0.6 s:
+
+```
+python testdata/sar/openems-ref/tools/make_hdf5_samples.py ~/opt/openEMS/bin/sar_calc <scratch> testdata/sar/openems-ref
+```
+
+| Where | What it is |
+|---|---|
+| in `Dipole_SAR/`: `raw_e.npy`, `raw_conductivity.npy`, `raw_density.npy`, `raw_volume.npy`, `raw_mesh_{x,y,z}_m.npy` | the raw dump as `HDF5Dump` reads it: E (3, 83, 90, 91) complex64, the three cell arrays float32, the cell-centre lines in metres |
+| in `Dipole_SAR/`: `SAR_10g.h5` | the installed `sar_calc` on the raw dump, `--method IEEE_62704 --mass 10`, as the tutorial asks. The script checks its array equals `sar_10g.npy` **bit for bit**, so the raw dump and this file are an exact pair |
+| `field_dump/` (git-ignored like the rest) | `E_fd.h5` and `H_fd.h5`: DumpType 10 and 11, HDF5, node-interpolated, at 0.8 and 1.2 GHz, from a 15 × 12 × 9-line run whose physics does not matter (a soft source beside a lossy block, 600 steps); `{E,H}_fd_f{0,1}.npy` what `HDF5Dump.GetFieldAtIndex` reads, `{E,H}_fd_mesh_{x,y,z}_m.npy` and `{E,H}_fd_freq_hz.npy` its mesh and frequencies |
 
 ## The rule
 

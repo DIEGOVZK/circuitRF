@@ -140,7 +140,7 @@ public sealed class SarReferenceSetTests
     }
 
     /// <summary>A plain NumPy .npy (version 1 or 2, C order) of float32/64 or complex64/128 — what the reference set holds.</summary>
-    private sealed record Npy(int[] Shape, double[] Real, Complex[]? Values)
+    internal sealed record Npy(int[] Shape, double[] Real, Complex[]? Values)
     {
         public int Count => Real.Length;
 

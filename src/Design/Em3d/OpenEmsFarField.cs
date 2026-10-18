@@ -3,7 +3,10 @@
 //
 // THE SURFACE. A box of six planar faces on grid lines, each a frequency-domain E dump (DumpType 10) and an
 // H dump (DumpType 11), node-interpolated (DumpMode 1: E and H at the SAME points, the grid's own nodes), as
-// VTK (FileType 0) — openEMS's HDF5 output would need a reader circuitRF does not carry. It sits:
+// VTK (FileType 0). That is a choice, not a gap: VtrFile is the reader every openEMS field path here shares, and
+// the dipole and patch radiation gates validated this transform on it; moving the surface to HDF5 would buy a
+// re-validation and nothing else. openEMS's HDF5 output (the raw SAR dump, sar_calc's result, HDF5 field dumps) is
+// read through RfCore's PureHDF adapter, RfCore.Hdf5.OpenEmsHdf5 (brief-sar-4). It sits:
 //
 //   * PmlMarginCells = 3 cells inside every absorbing face. The first requirement is that no sample's
 //     interpolation stencil reaches the PML: a node-interpolated H averages the dual cells either side of
