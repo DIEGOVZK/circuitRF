@@ -221,7 +221,7 @@ public sealed partial class Viewer3DViewModel
         }
         layer.TempAllFaces = p.IsTemperature && p.On == C3dFieldPlotOn.Surfaces;
         layer.TempOnClip = p.IsTemperature && p.On == C3dFieldPlotOn.ClipPlane;
-        var item = FieldPlotResolver.PickSolution(p.Solution, p.Solver, read.Items, Scene.Problem);
+        var item = FieldPlotResolver.PickSolution(p.Solution, p.Solver, read.Items, Scene.Problem, p.Quantity);
         // brief-em3d-100 — a drive that cannot be shown there (Accepted with no reflection recorded) draws nothing, and says why
         string? driveProblem = item is null ? null : FieldPlotResolver.Drive(p, item.Solution).Problem;
         if (driveProblem is not null) item = null;
@@ -258,7 +258,8 @@ public sealed partial class Viewer3DViewModel
     }
 
     /// <summary>The plane a layer cuts on: a ClipPlane plot's own, or the view's clip plane.</summary>
-    private ClipPlane3D PlaneOf(FieldLayer layer) => layer.Request is { On: C3dFieldPlotOn.ClipPlane } p ? p.Plane : View.Clip;
+    private ClipPlane3D PlaneOf(FieldLayer layer) => layer.Request is { On: C3dFieldPlotOn.ClipPlane } p
+        ? p.Mip && layer.MipPlane is { } mip ? mip : p.Plane : View.Clip;
 
     /// <summary>The plane the focused layer cuts on.</summary>
     private ClipPlane3D FieldPlane => PlaneOf(_focused);

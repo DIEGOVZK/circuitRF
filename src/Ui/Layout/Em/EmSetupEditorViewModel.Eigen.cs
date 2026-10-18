@@ -99,6 +99,7 @@ public sealed partial class EmSetupEditorViewModel
     {
         OnPropertyChanged(nameof(IsPortKindSetup));
         OnPropertyChanged(nameof(IsEigenmodeSetup));
+        OnPropertyChanged(nameof(IsSarSetup));
     }
 
     private void SyncEigenFields()

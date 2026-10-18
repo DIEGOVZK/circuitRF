@@ -125,6 +125,31 @@ public sealed class Viewer3DOverlay : Control
                 Text(ctx, label, new Point(at.X + 12, at.Y - 20), ink, 12, dark);
             }
 
+        // brief-sar-6 R-sar6-5 — a SAR plot's peak: the averaging cube as a wireframe (a ring for local SAR), and its value.
+        if (vm.ShowField)
+            foreach (var (corners, at, label) in vm.SarPeaks)
+            {
+                var halo = new Pen(dark ? Brushes.Black : Brushes.White, 4);
+                var pen = new Pen(HotBrush, 1.75);
+                if (corners is not null)
+                {
+                    var p = new (double X, double Y, bool Visible)[8];
+                    for (int k = 0; k < 8; k++) p[k] = cam.Project(corners[k], (float)w, (float)h);
+                    foreach (var line in new[] { halo, pen })
+                        for (int a = 0; a < 8; a++)
+                            for (int bit = 1; bit < 8; bit <<= 1)
+                                if ((a & bit) == 0 && p[a].Visible && p[a | bit].Visible)
+                                    ctx.DrawLine(line, new Point(p[a].X, p[a].Y), new Point(p[a | bit].X, p[a | bit].Y));
+                }
+                if (cam.Project(at, (float)w, (float)h) is not (var px, var py, true)) continue;
+                if (corners is null)
+                {
+                    ctx.DrawEllipse(null, halo, new Point(px, py), 6, 6);
+                    ctx.DrawEllipse(null, pen, new Point(px, py), 6, 6);
+                }
+                Text(ctx, label, new Point(px + 12, py - 20), ink, 12, dark);
+            }
+
         // Vertex mode: a dot for the candidate, a larger one for each selected vertex.
         var accent = new SolidColorBrush(Color.FromRgb(255, 90, 255));
         var ring = new Pen(dark ? Brushes.Black : Brushes.White, 1.5);

@@ -440,6 +440,9 @@ public partial class WorkspaceViewModel
         // the dialog as well on macOS (owner-reported: Cancel on the warning dismissed the Materials dialog).
         var dialog = new Views.Dialogs.MaterialPickerDialog(picker);
         picker.ConfirmDeleteExisting = (name, library) => ConfirmPickerMaterialDelete(dialog, tech, techPath, name, library);
+        // brief-sar-6 (sar.md §4.4) — a setup that requests SAR evaluates its tissue at its SAR frequency: the card reads there
+        if (vm.ActiveSetup is { RequestsSar: true } sarSetup && SarSettings.Resolve(sarSetup.Sar!).FrequenciesHz is [var sarHz, ..])
+            picker.Table.ReadoutFrequencyHz = sarHz;
         // The Built-in toggle opens the way it was last left in this window.
         picker.Table.ShowBuiltIns = _materialPickerShowsBuiltIns;
         if (current is not null && picker.Table.SelectedRow is null) picker.Table.Select(current);

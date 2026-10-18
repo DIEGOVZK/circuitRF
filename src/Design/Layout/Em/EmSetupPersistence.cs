@@ -711,6 +711,10 @@ public sealed record OpenEmsRunSettings(double EndCriterionDb, long? MaxTimeStep
     /// <summary>brief-sar-3 R-sar3-4 — write <c>CellConstantMaterial="1"</c>. Off by default: what every run wrote before it.</summary>
     public bool CellConstantMaterial { get; init; }
 
+    /// <summary>brief-sar-6 R-sar6-2 — the SAR the run is asked for, resolved against its problem: the tissue's densities are
+    /// written and the raw SAR and B1 dumps added. Null — every run without a Sar group — writes exactly what it wrote before.</summary>
+    public CircuitRF.Design.Em3d.Em3dSarPlan? Sar { get; init; }
+
     /// <summary>The default ceiling as a multiple of the grid's step estimate.</summary>
     public const int DefaultStepsFactor = 10;
 
@@ -1359,6 +1363,9 @@ public sealed class CemFile
     /// <summary>brief-em3d-73 — a thermal setup's section (read when <c>Problem3D</c> is <c>Thermal</c>). Null when there is
     /// none.</summary>
     public CemThermal? Thermal { get; set; }
+
+    /// <summary>brief-sar-6 R-sar6-1 — SAR and B1 as results of a driven openEMS run. Null when the setup asks for none.</summary>
+    public CemSar? Sar { get; set; }
 }
 
 /// <summary>Reads and writes <c>.cem</c> files. Framework-free (no Avalonia / Skia).</summary>
@@ -1521,6 +1528,7 @@ public static class EmSetupPersistence
         Eigenmode      = s.Eigenmode is { } e && (e.Count is not null || e.TargetGHz is not null)
             ? new CemEigenmode { Count = e.Count, TargetGHz = e.TargetGHz } : null,
         Thermal        = s.Thermal,
+        Sar            = s.Sar,
     };
 
     private static CemAirBoxFace? ToFace(EmAirBoxFace? f)
@@ -1592,6 +1600,7 @@ public static class EmSetupPersistence
             : [],
         Eigenmode             = f.Eigenmode is { } em ? new EmEigenmode3D(em.Count, em.TargetGHz) : null,
         Thermal               = f.Thermal,
+        Sar                   = f.Sar,
     };
 
     /// <summary>

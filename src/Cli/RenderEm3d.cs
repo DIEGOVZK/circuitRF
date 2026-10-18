@@ -40,6 +40,9 @@ internal static class RenderEm3d
         public Func<RenderEm3dRealistic.FieldPart, int>? FieldSink { get; init; }
         public bool ListFields { get; init; }
         public double? Phase { get; init; }
+        /// <summary>brief-sar-6 R-sar6-8 — <c>--mip x|y|z</c>: a SAR plot drawn as its maximum-intensity projection along that
+        /// axis, whatever its own plane.</summary>
+        public string? Mip { get; init; }
         public bool NoLegend { get; init; }
         public bool NoThin { get; init; }
         /// <summary>brief-em3d-88 Q2 — each solid labelled with its material.</summary>
@@ -78,7 +81,7 @@ internal static class RenderEm3d
 
         // brief-em3d-84 — a field plot is a .c3d's record: a .cem has none, and every field option says which it is.
         string? fieldOption = req.Field is not null ? "--field" : req.ListFields ? "--list-fields" : req.Phase is not null ? "--phase"
-                            : req.NoLegend ? "--no-legend" : req.NoThin ? "--no-thin" : req.Labels ? "--labels" : req.Tight ? "--tight"
+                            : req.Mip is not null ? "--mip" : req.NoLegend ? "--no-legend" : req.NoThin ? "--no-thin" : req.Labels ? "--labels" : req.Tight ? "--tight"
                             : req.ViewDir is not null ? "--view-dir" : req.Region is not null ? "--region" : req.NoMirror ? "--no-mirror" : null;
         if (fieldOption is not null && DocumentKinds.Classify(Path.GetFullPath(path)) != DocumentKind.ThreeD)
             return JsonRun.Fail(CliDiagnostics.RenderFieldOnCem(fieldOption, path));

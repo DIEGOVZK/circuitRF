@@ -439,6 +439,9 @@
                         </ComboBox.ItemTemplate>
                     </ComboBox>
                 </StackPanel>
+                <!-- brief-sar-6 R-sar6-5 -->
+                <CheckBox IsChecked="{Binding PlotMip}" Content="Maximum-intensity projection" IsVisible="{Binding PlotCanMip}"
+                          ToolTip.Tip="Each point of the plane shows the largest SAR on the line through it along the plane's axis, so the hottest tissue shows wherever it lies. The plane is drawn through the middle of the tissue."/>
                 <CheckBox IsChecked="{Binding PlotFixRange}" Content="Fix range across the sweep" IsVisible="{Binding PlotIsTemperature}"
                           ToolTip.Tip="The colour range is the minimum and maximum over EVERY sweep point, so stepping the sweep never rescales. Off: each point its own true minimum and maximum."/>
                 <!-- The view's: the phase animation — ONE clock for every drawn plot (brief-em3d-96). Not saved. -->

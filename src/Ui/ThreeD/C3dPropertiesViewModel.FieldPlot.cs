@@ -88,6 +88,9 @@ public sealed partial class C3dPropertiesViewModel
     [ObservableProperty] private bool _plotDb;
     [ObservableProperty] private double _plotPercentile = 99;
     [ObservableProperty] private bool _plotFixRange;
+    /// <summary>brief-sar-6 R-sar6-5 — a SAR clip plane drawn as its maximum-intensity projection; offered for SAR only.</summary>
+    [ObservableProperty] private bool _plotMip;
+    [ObservableProperty] private bool _plotCanMip;
     /// <summary>brief-em3d-100 — the plot shows a driven solution: its drive rows are shown.</summary>
     [ObservableProperty] private bool _plotIsDriven;
     [ObservableProperty] private string _plotDriveText = "";
@@ -153,7 +156,7 @@ public sealed partial class C3dPropertiesViewModel
         PlotSolution = chosen is null ? null : PlotSolutions[solutions.IndexOf(chosen)];
 
         // The Quantity picker: only what the step offers (the plot's own quantity kept, marked, when it does not).
-        var item = FieldPlotResolver.PickSolution(p.Solution, request.Solver, mine, editor.Viewer.Scene.Problem);
+        var item = FieldPlotResolver.PickSolution(p.Solution, request.Solver, mine, editor.Viewer.Scene.Problem, p.Quantity);
         var offered = item is null ? [] : !p.Hidden && editor.Viewer.FieldLayers.FirstOrDefault(l => l.Name == p.Name) is { Quantities.Count: > 0 } layer
             ? [.. layer.Quantities] : editor.OfferedQuantities(item);
         List<C3dPlotQuantityChoice> quantities = [.. offered.Select(q => new C3dPlotQuantityChoice(q.Label, q.Array.Name, q.Mode.ToString()))];
@@ -180,6 +183,8 @@ public sealed partial class C3dPropertiesViewModel
         PlotDb = p.Db;
         PlotPercentile = p.Percentile;
         PlotFixRange = p.FixRange;
+        PlotMip = p.Mip;
+        PlotCanMip = p.On == C3dFieldPlotOn.ClipPlane && FieldNames.IsSar(p.Quantity);
         // brief-em3d-100 — the drive, for a driven solution only (eigenmode, static and thermal normalise their own way)
         PlotIsDriven = item?.Solution.Kind == FieldProblemKind.Driven ||
                        item is null && p.Solution?.GHz is not null;
@@ -367,6 +372,7 @@ public sealed partial class C3dPropertiesViewModel
     }
 
     partial void OnPlotDbChanged(bool value) => CommitPlot($"{_plotName} in {(value ? "dB" : "linear units")}", p => p.Db = value);
+    partial void OnPlotMipChanged(bool value) => CommitPlot($"{_plotName} as {(value ? "a maximum-intensity projection" : "a clip plane")}", p => p.Mip = value);
     partial void OnPlotPercentileChanged(double value) => CommitPlot($"{_plotName}'s range to the {value} percentile", p => p.Percentile = value);
     partial void OnPlotFixRangeChanged(bool value) => CommitPlot($"{(value ? "Fix" : "Free")} the range of {_plotName}", p => p.FixRange = value);
 }

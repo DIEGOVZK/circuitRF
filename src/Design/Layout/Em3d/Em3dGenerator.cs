@@ -76,6 +76,10 @@ public sealed record Em3dGenerationResult(Em3dProblem? Problem, string? Refusal,
     /// <summary>Why a solve would have refused the geometry, when it was generated with <c>padsOptional</c> and drawn
     /// anyway: no conductor artwork, or a wire end over no pad. Null otherwise.</summary>
     public string? PadRefusal { get; init; }
+
+    /// <summary>brief-sar-6 — each phantom of a <c>.c3d</c>'s problem and its layers' solid names, outermost first: what a
+    /// SAR region may name a phantom by, and the innermost layer B1's mean is taken over by default. Empty for a layout's.</summary>
+    public IReadOnlyList<(string Phantom, IReadOnlyList<string> Layers)> Phantoms { get; init; } = [];
 }
 
 /// <summary>What kind of thing in the design a solid or sheet of the 3D problem is.</summary>

@@ -2432,7 +2432,30 @@ namespace RfCore.Export
         /// holds no kernel object, so every earlier report is unchanged.</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Em3dGeometryKernelJson? GeometryKernel { get; init; }
+
+        /// <summary>brief-sar-6 R-sar6-8 — the setup's Sar group as a run would read it; null when it asks for no SAR, so every
+        /// earlier report is unchanged.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Em3dSarJson? Sar { get; init; }
     }
+
+    /// <summary>
+    /// brief-sar-6 R-sar6-8 — a Sar group resolved: its frequencies (Hz), masses (g), method, the region and its objects, B1 and
+    /// its axis and region, the cross-check, every tissue object with the values the solver receives (εr and σ at the SAR
+    /// frequency) and its density, and the dump box's cells and the disk the run's SAR files take. <see cref="Refusal"/> is the
+    /// sentence a run would stop on, and the rest is then empty.
+    /// </summary>
+    public sealed record Em3dSarJson(
+        IReadOnlyList<double> FrequenciesHz, IReadOnlyList<double> MassesGrams, string Method, string Region,
+        IReadOnlyList<string> RegionObjects, bool B1, string B0Axis,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? B1Region,
+        bool CrossCheck, IReadOnlyList<Em3dTissueJson> Tissue,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? DumpCells,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? DumpBytes,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Refusal);
+
+    /// <summary>brief-sar-6 — a tissue object: written with its density, so openEMS's raw SAR dump counts it.</summary>
+    public sealed record Em3dTissueJson(string Object, string Material, double DensityKgM3, double Epsr, double SigmaSm);
 
     /// <summary>brief-em3d-64 R-em3d64-6b — whether the geometry kernel is here, where it was found and which OCCT it is;
     /// with it absent, the reason and the action.</summary>

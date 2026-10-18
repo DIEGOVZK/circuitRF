@@ -56,8 +56,8 @@ public sealed record FieldQuantity(FieldArrayInfo Array, bool OnBoundary, FieldM
         _ => 4,
     };
 
-    /// <summary>"|E|", "Re{E·e^{jφ}}", "V".</summary>
-    public string Symbol => (IsVector, Mode) switch
+    /// <summary>"|E|", "Re{E·e^{jφ}}", "V" — and a SAR or B1 array by its own name (brief-sar-6), already a magnitude.</summary>
+    public string Symbol => FieldNames.IsMagnitude(Array.Name) ? Array.Name : (IsVector, Mode) switch
     {
         (true, FieldMode.Instantaneous) => $"|Re{{{Array.Name}·e^{{jφ}}}}|",
         (true, _) => $"|{Array.Name}|",
@@ -81,7 +81,9 @@ public sealed record FieldQuantity(FieldArrayInfo Array, bool OnBoundary, FieldM
             if (a.Components is not (1 or 3)) return;
             if (a.Components == 3 || a.IsComplex) list.Add(new(a, onBoundary, FieldMode.Peak));
             if (a.IsComplex) list.Add(new(a, onBoundary, FieldMode.Instantaneous));
-            if (a.Components == 1 && !a.IsComplex) list.Add(new(a, onBoundary, FieldMode.Value));
+            // brief-sar-6 R-sar6-5 — SAR and B1 are real magnitudes: read as Peak, on a sequential map from zero, never signed
+            if (a.Components == 1 && !a.IsComplex)
+                list.Add(new(a, onBoundary, FieldNames.IsMagnitude(a.Name) ? FieldMode.Peak : FieldMode.Value));
         }
         foreach (var a in volume) Add(a, false);
         // A boundary array the volume also holds (E, B) adds nothing a slice or a solid's face does not

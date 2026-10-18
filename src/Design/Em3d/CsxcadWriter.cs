@@ -303,7 +303,9 @@ public static partial class CsxcadWriter
                 {
                     Open(props, "Material", id++, s.Name, Colors.Dielectric, $" Isotropy=\"{(m.EpsrTensor is null ? 1 : 0)}\"");
                     AppendPrimitives(props, prim);
-                    props.Append("                ").Append(MaterialProperty(m, fitHz)).Append('\n');
+                    // brief-sar-6 R-sar6-2 — a tissue's density, so openEMS's raw SAR dump carries it (Em3dSar's header).
+                    double density = run.Sar?.Densities.GetValueOrDefault(s.Name) ?? 0;
+                    props.Append("                ").Append(MaterialProperty(m, fitHz, density)).Append('\n');
                     props.Append("                <Weight Epsilon=\"1,1,1\" Mue=\"1,1,1\" Kappa=\"1,1,1\" Sigma=\"1,1,1\" Density=\"1\" />\n");
                     props.Append("            </Material>\n");
                 }
@@ -416,6 +418,30 @@ public static partial class CsxcadWriter
                 AppendPrimitives(props, Box(0, problem.Boundary.Min, problem.Boundary.Max));
                 props.Append("            </DumpBox>\n");
             }
+
+        // ── brief-sar-6 R-sar6-2 — per SAR frequency, the raw SAR dump (DumpType 29, HDF5, cell interpolation) and, for B1, an H
+        // dump (DumpType 11, VTK, cell centres, as the E path's) over the same box: the tissue's bounding box plus one cell. Both
+        // take the probes' oversampling, for the reason the far-field dumps below give.
+        if (run.Sar is { } sar)
+        {
+            var (lo, hi) = Em3dSar.DumpBox(sar, grid);
+            var c = Colors.Probe;
+            for (int k = 0; k < sar.Settings.FrequenciesHz.Count; k++)
+                foreach (var (name, type, file) in sar.Settings.B1
+                             ? new[] { (Em3dSar.RawDump(k), 29, 1), (Em3dSar.HDump(k), 11, 0) } : [(Em3dSar.RawDump(k), 29, 1)])
+                {
+                    props.Append($"            <DumpBox ID=\"{id++}\" Name=\"{name}\" Visible=\"0\" Number=\"0\" Type=\"0\" Weight=\"1\" " +
+                                 $"NormDir=\"-1\" StartTime=\"0\" StopTime=\"0\" DumpType=\"{type}\" DumpMode=\"2\" FileType=\"{file}\" MultiGridLevel=\"0\" OverSampling=\"{OverSampling}\">\n");
+                    props.Append($"                <FillColor R=\"{c.R}\" G=\"{c.G}\" B=\"{c.B}\" a=\"{c.A}\" />\n");
+                    props.Append($"                <EdgeColor R=\"{c.R}\" G=\"{c.G}\" B=\"{c.B}\" a=\"{c.A}\" />\n");
+                    props.Append($"                <FD_Samples>{R(sar.Settings.FrequenciesHz[k])}</FD_Samples>\n");
+                    AppendPrimitives(props, Box(0, lo, hi));
+                    props.Append("            </DumpBox>\n");
+                }
+            notes.AddRange(sar.Notes);
+            if (sar.Densities.Count > 0)
+                notes.Add($"Tissue written with its density for SAR: {string.Join("; ", sar.Densities.OrderBy(d => d.Key, StringComparer.Ordinal).Select(d => $"'{d.Key}' {G(d.Value)} kg/m³"))}.");
+        }
 
         // ── brief-em3d-31 R-em3d31-2 — the radiation pattern's equivalence surface ──────────────────
         // One E and one H frequency-domain dump per face (DumpType 10/11), node-interpolated (DumpMode 1) so E
@@ -815,12 +841,12 @@ public static partial class CsxcadWriter
         return new Point3(x[0], x[1], x[2]);
     }
 
-    private static string MaterialProperty(Em3dMaterial m, double fitHz)
+    private static string MaterialProperty(Em3dMaterial m, double fitHz, double density = 0)
     {
         var eps = m.EpsrTensor is { Count: 3 } t ? t : [m.Epsr, m.Epsr, m.Epsr];
         string k = string.Join(",", eps.Select(e => R(Kappa(m, e, fitHz))));
         return $"<Property Epsilon=\"{string.Join(",", eps.Select(R))}\" Mue=\"{R(m.Mur)},{R(m.Mur)},{R(m.Mur)}\" " +
-               $"Kappa=\"{k}\" Sigma=\"0,0,0\" Density=\"0\" />";
+               $"Kappa=\"{k}\" Sigma=\"0,0,0\" Density=\"{(density > 0 ? R(density) : "0")}\" />";
     }
 
     /// <summary>R-em3d9-2d: κ = σ + 2π·f_c·ε₀·εr·tanδ — the loss tangent exact at f_c only.</summary>

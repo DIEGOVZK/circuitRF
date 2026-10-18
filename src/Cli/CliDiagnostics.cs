@@ -2570,6 +2570,18 @@ internal static class CliDiagnostics
         "render: --phase picks an instant of the cycle, and field plot '{name}' shows {quantity}, which does not change over "
       + "one. A plot reading a quantity instantaneously (Re{E}) takes a phase.", ("name", name), ("quantity", quantity));
 
+    /// <summary>brief-sar-6 R-sar6-8 — <c>--mip</c> names no axis.</summary>
+    public static Diagnostic RenderFieldMipMalformed(string text) => Diagnostic.Create(
+        "render.field.mip-malformed", DiagnosticSeverity.Error,
+        "render: --mip takes the axis the projection runs along — x, y or z — got '{text}'.", ("text", text));
+
+    /// <summary>brief-sar-6 R-sar6-5 — a maximum-intensity projection of anything but SAR.</summary>
+    public static Diagnostic RenderFieldMipNotSar(string name, string quantity) => Diagnostic.Create(
+        "render.field.mip-not-sar", DiagnosticSeverity.Error,
+        "render: field plot '{name}' shows {quantity}, and a maximum-intensity projection is drawn for SAR only: the largest SAR "
+      + "along a line is where tissue is hottest, which no other quantity's projection says. Name a SAR plot, or leave --mip off.",
+        ("name", name), ("quantity", quantity));
+
     public static Diagnostic RenderFieldPhaseMalformed(string text) => Diagnostic.Create(
         "render.field.phase-malformed", DiagnosticSeverity.Error,
         "render: --phase expects an angle in degrees, got '{text}'.", ("text", text));

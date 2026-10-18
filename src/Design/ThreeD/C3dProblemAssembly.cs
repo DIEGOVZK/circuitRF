@@ -358,16 +358,19 @@ public static class C3dProblemAssembly
             notes.Add($"The 3D view's own {document.Setups.Count} embedded setup(s) are not consulted: this .cem is the setup.");
 
         // ── The geometry: the elaboration the editor draws, less what is not modelled (brief-em3d-93) ──
-        // brief-sar-2 R-sar2-3 — every dispersive material is evaluated once, before lowering. A setup that requests SAR names
-        // the frequency (SAR-6); until then it is the sweep's centre, and the elaboration's note says so.
-        double materialHz = MaterialFrequency(frequency);
+        // brief-sar-2 R-sar2-3 — every dispersive material is evaluated once, before lowering: at the sweep's centre, or — for a
+        // setup that requests SAR (brief-sar-6 R-sar6-1) — at its SAR frequency, and the elaboration's note says which.
+        var sar = setup.RequestsSar ? SarSettings.Resolve(setup.Sar!) : null;
+        if (sar is not null && SarFrequencyRefusal(sar, fMin, fMax) is { } outside) return No(outside);
+        double materialHz = sar is { FrequenciesHz: [var sarHz, ..] } ? sarHz : MaterialFrequency(frequency);
         var drawn = (elaborator ?? new C3dElaborator()).Elaborate(document, path, workspaceCws, new C3dElaborationOptions(fMax, tempC)
         {
-            MaterialFrequencyHz = materialHz, MaterialFrequencyBasis = "the sweep's centre",
+            MaterialFrequencyHz = materialHz, MaterialFrequencyBasis = sar is null ? "the sweep's centre" : "the SAR frequency",
         });
         var e = C3dModelled.Filter(document, drawn);
         notes.AddRange(e.Notes);
         if (!e.Ok) return No(string.Join(" ", e.Refusals), e.Warnings);
+        if (sar is not null && SarDispersiveRefusal(sar, e) is { } twoFrequencies) return No(twoFrequencies, e.Warnings);
         if (e.Extent() is not { } extent)
             return No(drawn.Extent() is not null ? EverythingOff : NothingToSolve(e), e.Warnings);
         if (NotModelledBoundary(document, drawn) is { } offBoundary) return No(offBoundary, e.Warnings);
@@ -475,6 +478,7 @@ public static class C3dProblemAssembly
             EigenmodeCount = setup.Eigenmode?.Count ?? EmEigenmode3D.DefaultCount,
             EigenmodeTargetHz = setup.Eigenmode?.TargetGHz is { } target ? target * 1e9 : fMin,
             LumpedElements = lumped,
+            SolidDensities = sar is null ? new Dictionary<string, double>() : SolidDensities(e, solids),
         };
         return new Em3dGenerationResult(problem, null, notes)
         {
@@ -483,6 +487,10 @@ public static class C3dProblemAssembly
             Origins = e.Origins,
             MaterialSources = materialSources,
             FilesRead = e.FilesRead,
+            Phantoms = [.. document.Objects.OfType<C3dPhantom>()
+                .Select(ph => (ph.Name, (IReadOnlyList<string>)[.. ph.Layers.Select(l => C3dPhantoms.LayerName(ph.Name, l.Name))
+                                                                         .Where(n => solids.Any(s => s.Name == n))]))
+                .Where(ph => ph.Item2.Count > 0)],
         };
     }
 
@@ -519,6 +527,43 @@ public static class C3dProblemAssembly
     /// </summary>
     public static TechMaterial? ObjectMaterial(Technology? tech, string? name)
         => tech?.FindMaterial(name) ?? (IsFreeSpace(name) ? new TechMaterial { Name = name!, Epsr = 1, TanD = 0, Mur = 1 } : null);
+
+    /// <summary>brief-sar-6 R-sar6-1 — a SAR frequency outside the sweep: an openEMS run's excitation carries no energy there.</summary>
+    public static string? SarFrequencyRefusal(SarSettings sar, double fMinHz, double fMaxHz)
+    {
+        foreach (double f in sar.FrequenciesHz)
+            if (f < fMinHz * (1 - 1e-9) || f > fMaxHz * (1 + 1e-9))
+                return $"Sar.FrequenciesGHz asks for SAR at {MaterialDispersion.Hz(f)}, outside the sweep ({MaterialDispersion.Hz(fMinHz)} to " +
+                       $"{MaterialDispersion.Hz(fMaxHz)}): the excitation carries no energy there. Choose a frequency inside the sweep.";
+        return null;
+    }
+
+    /// <summary>
+    /// brief-sar-6 R-sar6-1 (overview L6) — two SAR frequencies with a frequency-dependent material: an openEMS run sees each
+    /// material at one frequency, so SAR at the second would be computed in tissue that has the first frequency's values.
+    /// </summary>
+    public static string? SarDispersiveRefusal(SarSettings sar, C3dElaboration e)
+    {
+        if (sar.FrequenciesHz.Count < 2) return null;
+        var dispersive = e.SolidMaterials.Values.Select(v => v.Technology.FindMaterial(v.Material)).OfType<TechMaterial>()
+                          .Where(MaterialDispersion.IsDispersive).Select(m => m.Name).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+        if (dispersive.Count == 0) return null;
+        return $"Sar.FrequenciesGHz names {sar.FrequenciesHz.Count} frequencies, and {string.Join(", ", dispersive.Select(n => $"'{n}'"))} " +
+               $"{(dispersive.Count == 1 ? "is" : "are")} frequency-dependent: an openEMS run sees each material at one frequency " +
+               $"({MaterialDispersion.Hz(sar.FrequenciesHz[0])} here), so SAR at the others would be computed in tissue that is not " +
+               "what it is there. Name one frequency, and run a second setup for the next.";
+    }
+
+    /// <summary>brief-sar-6 — each solid's material density, kg/m³, where its record states one (the record it was built from,
+    /// in the technology it was built from).</summary>
+    private static Dictionary<string, double> SolidDensities(C3dElaboration e, IReadOnlyList<Em3dSolid> solids)
+    {
+        var map = new Dictionary<string, double>(StringComparer.Ordinal);
+        foreach (var s in solids)
+            if (e.SolidMaterials.TryGetValue(s.Name, out var rec) && rec.Technology.FindMaterial(rec.Material)?.DensityKgM3 is { } rho)
+                map[s.Name] = rho;
+        return map;
+    }
 
     /// <summary>
     /// brief-sar-2 R-sar2-3 — the frequency a setup with no SAR frequency evaluates its dispersive materials at: the sweep's

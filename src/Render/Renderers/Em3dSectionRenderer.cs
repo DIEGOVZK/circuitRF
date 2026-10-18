@@ -275,6 +275,8 @@ public static partial class Em3dSectionRenderer
             canvas.DrawLine(Map(l.A), Map(l.B), stroke);
         }
         if (style.Labels) DrawMaterialLabels(canvas, scene, page, style, st, small);
+        // brief-sar-6 R-sar6-5 — a SAR plot's peak cube, over the outlines
+        if (field is not null) Em3dSectionField.DrawMarkers(canvas, field, Map, fs * 0.85f);
         canvas.Restore();
 
         if (thermal)

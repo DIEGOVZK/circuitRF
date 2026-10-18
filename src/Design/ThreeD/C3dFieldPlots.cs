@@ -210,6 +210,12 @@ public sealed class C3dFieldPlot
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public C3dDriveReferredTo DriveReferredTo { get; set; }
 
+    /// <summary>brief-sar-6 R-sar6-5 — a SAR <see cref="C3dFieldPlotOn.ClipPlane"/> plot drawn as the maximum-intensity projection
+    /// along its <see cref="Axis"/>: each point of the plane shows the largest value on the line through it, so the hottest
+    /// tissue shows wherever it lies. Offered for SAR quantities only; the plane is drawn through the middle of the volume.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Mip { get; set; }
+
     /// <summary>The tree's tick, as <see cref="C3dObject.Hidden"/>. One plot is drawn at a time: showing one hides the others.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Hidden { get; set; }

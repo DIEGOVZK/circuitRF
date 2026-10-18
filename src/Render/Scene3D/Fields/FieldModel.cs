@@ -84,7 +84,26 @@ public static class FieldNames
         ["Rank"]      = ("MPI rank", "", 0),
         // brief-em3d-75 — the thermal run's temperature, °C at every boundary a user or a file touches (overview §1i).
         [TemperatureArray] = ("Temperature", "°C", 0),
+        // brief-sar-6 R-sar6-5 — a SAR run's volumes (FieldRun.OpenSar): a power per mass follows the drive as P, B1 as √P.
+        [LocalSar] = ("Local SAR", "W/kg", 1),
+        [B1Plus] = ("B1+", "µT", 0.5),
+        [B1Minus] = ("B1−", "µT", 0.5),
     };
+
+    /// <summary>brief-sar-6 — the local-SAR array, and B1+ and B1− (magnitudes, µT as loaded).</summary>
+    public const string LocalSar = "SAR", B1Plus = "B1p", B1Minus = "B1m";
+
+    private static readonly Regex AveragedSar = new(@"^SAR(\d+(?:\.\d+)?)g$", RegexOptions.CultureInvariant);
+
+    /// <summary>brief-sar-6 — a SAR array: local SAR, or an averaged one (<c>SAR10g</c>, any mass).</summary>
+    public static bool IsSar(string name) => name == LocalSar || AveragedSar.IsMatch(name);
+
+    /// <summary>brief-sar-6 — B1+ or B1−.</summary>
+    public static bool IsB1(string name) => name is B1Plus or B1Minus;
+
+    /// <summary>brief-sar-6 R-sar6-5 — a real array that is a magnitude, never negative: drawn on a sequential map from zero, as
+    /// a field's |E| is, rather than as a signed value. SAR and B1.</summary>
+    public static bool IsMagnitude(string name) => IsSar(name) || IsB1(name);
 
     /// <summary>
     /// brief-em3d-100 — the power of the drive ratio array <paramref name="name"/> scales by: ½ for an amplitude, 1 for a power
@@ -92,7 +111,7 @@ public static class FieldNames
     /// driven field). Null for an array the table does not know, which is drawn as written and said to be not referred.
     /// </summary>
     public static double? DriveExponent(string name)
-        => Known.TryGetValue(name, out var k) ? k.Drive : PortMode.IsMatch(name) ? 0 : null;
+        => Known.TryGetValue(name, out var k) ? k.Drive : PortMode.IsMatch(name) ? 0 : AveragedSar.IsMatch(name) ? 1 : null;
 
     /// <summary>brief-em3d-75 — the array a thermal run writes its temperature in (ThermalFieldFiles).</summary>
     public const string TemperatureArray = "T_C";
@@ -102,11 +121,12 @@ public static class FieldNames
     /// <summary>A display name for array <paramref name="name"/>: the friendly one, or the name itself.</summary>
     public static string Friendly(string name)
         => Known.TryGetValue(name, out var k) ? k.Friendly
-         : PortMode.Match(name) is { Success: true } m ? $"Port {m.Groups[1].Value} mode field" : name;
+         : PortMode.Match(name) is { Success: true } m ? $"Port {m.Groups[1].Value} mode field"
+         : AveragedSar.Match(name) is { Success: true } a ? $"{a.Groups[1].Value} g averaged SAR" : name;
 
     /// <summary>The unit of array <paramref name="name"/>, or "" when it is not a known one.</summary>
     public static string Unit(string name)
-        => Known.TryGetValue(name, out var k) ? k.Unit : PortMode.IsMatch(name) ? "V/m" : "";
+        => Known.TryGetValue(name, out var k) ? k.Unit : PortMode.IsMatch(name) ? "V/m" : AveragedSar.IsMatch(name) ? "W/kg" : "";
 
     /// <summary>Geometry and bookkeeping, never a quantity to draw.</summary>
     public static bool IsBookkeeping(string name) => name is "attribute" or "Rank" or "material";

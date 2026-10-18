@@ -381,7 +381,8 @@ public static class Em3dRunService
             // brief-em3d-136 §6 — the device is Palace's setting; openEMS is unaffected by it.
             if (device == PalaceDevice.Gpu) log.Notes.Add("Device GPU applies to Palace; openEMS runs on the CPU.");
             gridSettings = CemOpenEms.ResolveGrid(setup.OpenEms);
-            runSettings  = CemOpenEms.ResolveRun(setup.OpenEms);
+            // brief-sar-6 R-sar6-1 — a Sar group turns CellConstantMaterial on unless the section says otherwise (SAR-3).
+            runSettings  = CemOpenEms.ResolveRun(setup.OpenEms, setup.RequestsSar);
             if (gridSettings.Problems().Concat(runSettings.Problems()).ToList() is { Count: > 0 } bad)
                 openEmsStop = new(EmRunStatus.Refused, EmDiagnostics.Forwarded("openems-settings", string.Join(" ", bad)));
         }
@@ -416,6 +417,22 @@ public static class Em3dRunService
             palace = false;
             palaceStop = null;
             if (openEmsStop is { } openEmsRefused) return log.Result(openEmsRefused.Status, openEmsRefused.Diagnostic);
+        }
+
+        // ── brief-sar-6 R-sar6-1 — the Sar group, resolved against the problem: openEMS's run, a Cartesian grid ─────────
+        if (setup.RequestsSar)
+        {
+            if (!openEms)
+                return log.Result(EmRunStatus.Refused, EmDiagnostics.Forwarded(SarSource,
+                    "This setup asks for SAR, and only openEMS writes the raw SAR dump it is computed on: set its 3D solver to openEMS, or Both."));
+            if (gridSettings!.Cylindrical is not null)
+                return log.Result(EmRunStatus.Refused, EmDiagnostics.Forwarded(SarSource,
+                    "This setup asks for SAR on a cylindrical grid, and SAR is averaged over cubes of a Cartesian grid: set OpenEms.Grid " +
+                    "to Cartesian."));
+            var (sarPlan, sarRefusal) = Em3dSar.Resolve(SarSettings.Resolve(setup.Sar!), problem, generated.Phantoms);
+            if (sarPlan is null) return log.Result(EmRunStatus.Refused, EmDiagnostics.Forwarded(SarSource, sarRefusal));
+            runSettings = runSettings! with { Sar = sarPlan };
+            if (both) log.Notes.Add("SAR and B1 come with openEMS's result only; Palace's carries none.");
         }
 
         // ── each backend's lowering: no process yet ──────────────────────────────────────────
@@ -1277,6 +1294,13 @@ public static class Em3dRunService
         if (!lowering.Ok) { stop = new(EmRunStatus.Refused, EmDiagnostics.Forwarded("openems-lowering", lowering.Refusal)); return null; }
         log.Notes.AddRange(lowering.Notes);
         int n = lowering.Ports.Count;
+        // brief-sar-6 R-sar6-2 — what the SAR dumps will take on disk, before anything is written.
+        if (runSettings.Sar is { } sar)
+        {
+            var (diskNote, diskWarning) = Em3dSar.DiskNote(sar, grid, n);
+            log.Notes.Add(diskNote);
+            if (diskWarning is not null) log.Warnings.Add(diskWarning);
+        }
         var s0 = grid.Smallest;
         if (grid.Cylinder is { } cyl)
             log.Notes.Add($"openEMS cylindrical grid about {cyl.Describe()}: {grid.X.Lines.Count:N0} ρ × {cyl.AzimuthCells:N0} α × " +
@@ -1385,13 +1409,27 @@ public static class Em3dRunService
         log.Notes.AddRange(LineNotes(runs, lowering, freqs, data));
 
         // ── brief-em3d-31 R-em3d31-2 — the radiation pattern, from the surface each port's run dumped ─────
+        var efficiencies = new List<(double Hz, int Port, double Efficiency)>();
         if (lowering.FarField is { } surface)
         {
-            if (OpenEmsPattern(surface, result, lowering, runDir, setup, maxCores, control, ct, log.Notes, data) is { } patternError)
+            if (OpenEmsPattern(surface, result, lowering, runDir, setup, maxCores, control, ct, log.Notes, data, efficiencies) is { } patternError)
             {
                 if (ct.IsCancellationRequested) return Leg.Failed(Me, EmRunStatus.Cancelled, EmDiagnostics.Cancelled());
                 return Failed(patternError);
             }
+        }
+
+        // ── brief-sar-6 — SAR and B1 from each port's raw dump, normalised to the power that port accepted ─────────────
+        if (runSettings.Sar is { } sarPlan)
+        {
+            if (SarDrives(sarPlan, runs, lowering, ports) is not { } drives)
+                return Failed("the ports' accepted power at the SAR frequencies could not be formed from their probes.");
+            var sar = OpenEmsSarResults.Process(sarPlan, problem, runDir, drives, efficiencies.Count > 0 ? efficiencies : null, openEms,
+                                                maxCores, control, ct);
+            if (sar.Error is { } sarError) return Failed(sarError);
+            log.Notes.AddRange(sar.Notes);
+            log.Warnings.AddRange(sar.Warnings);
+            OpenEmsSarResults.AddTo(data, sar.Records, sarPlan.Settings);
         }
 
         string? snpPath = snpBase + $".s{ports.Count}p";
@@ -1416,6 +1454,26 @@ public static class Em3dRunService
                    ? $" at {Db(worst)} against {Db(runSettings.EndCriterionDb)}" : "") + ": not converged.";
         return new Leg(Me, EmRunStatus.Ok, null, data, npyPath, snpPath, "openEMS " + openEms.DescribeVersion(), comparisonFacts,
                        NotConverged: notConverged);
+    }
+
+    /// <summary>brief-sar-6 — the source a SAR refusal is forwarded under.</summary>
+    public const string SarSource = "em3d-sar";
+
+    /// <summary>
+    /// brief-sar-6 R-sar6-3 — each driven port's own U and I at each SAR frequency, from the probes S was formed from
+    /// (FdtdPortTransform.Solve at those frequencies): what each dump is normalised by. Null when the transform cannot be formed.
+    /// </summary>
+    internal static List<SarPortDrive>? SarDrives(Em3dSarPlan plan, IReadOnlyList<OpenEmsPortRun> runs, CsxcadLowering lowering,
+                                                  IReadOnlyList<Em3dPort> ports)
+    {
+        double[] hz = [.. plan.Settings.FrequenciesHz];
+        var at = FdtdPortTransform.Solve([.. runs.Select(r => r.Probes!)], hz, lowering.Ports, [.. ports.Select(p => p.Z0)]);
+        if (at.Error is not null) return null;
+        var drives = new List<SarPortDrive>();
+        for (int k = 0; k < lowering.Ports.Count; k++)
+            for (int i = 0; i < hz.Length; i++)
+                drives.Add(new SarPortDrive(lowering.Ports[k], hz[i], at.U[i][k, k], at.I[i][k, k]));
+        return drives;
     }
 
     /// <summary>brief-em3d-116 — the cubes of each wave-port terminal's measured line in the openEMS group.</summary>
@@ -1468,7 +1526,8 @@ public static class Em3dRunService
     /// Null on success; otherwise the error the leg fails with.
     /// </summary>
     internal static string? OpenEmsPattern(Nf2ffSurface surface, FdtdPortResult result, CsxcadLowering lowering, string runDir,
-                                          EmSetup setup, int? maxCores, RunControl? control, CancellationToken ct, List<string> notes, DataSet data)
+                                          EmSetup setup, int? maxCores, RunControl? control, CancellationToken ct, List<string> notes, DataSet data,
+                                          List<(double Hz, int Port, double Efficiency)>? efficiencies = null)
     {
         var grid = surface.Hemisphere ? PlanarFarFieldGrid.Hemisphere() : FarFieldStage.Sphere();
         var freqs = result.FrequenciesHz;
@@ -1493,6 +1552,8 @@ public static class Em3dRunService
                                                        maxCores, ct);
                 double accepted = 0.5 * (c / u).Real;       // ½·Re(V·I*) at |V| = 1 V
                 points[i * n + k] = new Em3dPatternPoint(pattern, accepted, result.S[i][k, k]);
+                // brief-sar-6 R-sar6-6 — the power budget's radiated share, at each sweep point
+                efficiencies?.Add((freqs[i], lowering.Ports[k], accepted > 0 ? pattern.RadiatedPowerW / accepted : double.NaN));
                 control?.TickStage();
             }
             freed += OpenEmsFarField.DeletePhaseSnapshots(dir);

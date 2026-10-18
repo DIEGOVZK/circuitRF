@@ -91,6 +91,7 @@ public sealed partial class EmSetupEditorViewModel
         OpenEmsAxis                   = o?.Axis ?? OpenEmsGridAxis.Z;
         OpenEmsAxisOriginText         = o?.AxisOriginUm is { } origin ? string.Join(", ", origin.Select(v => G(v))) : "";
         OpenEmsFieldError = null;
+        SyncSarFields();                                                         // brief-sar-6
     }
 
     /// <summary>The thirds rule is a check box: on is the default (written as no field), off writes false.</summary>

@@ -1,6 +1,6 @@
 # circuitRF — SAR and B1 for MRI coil designers and phone SAR
 
-**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
+**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7), SAR-6 done (§8) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
 **Reference data:** [`testdata/sar/openems-ref/`](../../testdata/sar/openems-ref/README.md) · **Builds on:**
 [`em-3d.md`](em-3d.md) (the openEMS backend) and [`em-3d-f0-findings.md`](em-3d-f0-findings.md) (its validated versions).
 
@@ -742,3 +742,185 @@ cells.
   data is absent).
 - `SarCalcCrossCheckTests`: the installed `sar_calc` on the dipole dump, both peaks within 0.5 % and no warning (skipped
   without openEMS or the dump); with no `sar_calc` beside openEMS the cross-check is one note, and nothing is started.
+
+---
+
+## 8. SAR and B1± as results of a `.c3d` run (SAR-6)
+
+A driven openEMS setup with a `Sar` group gives, per driven port and SAR frequency, local SAR, the spatial-average SAR of
+each mass, B1+ and B1− as field plots, the peaks with their cubes, and the readouts and `.npy` scalars of §8.6. Nothing in
+it starts a process but openEMS (and `sar_calc`, when asked): everything after the run is read from what the run left
+in its port directories, which is why the gate drives it from SAR-1's kept dipole dump.
+
+### 8.1 The `Sar` group (R-sar6-1)
+
+`CemSar` (`src/Design/Layout/Em/CemSar.cs`), on the `.cem` schema, so a `.c3d`'s embedded setup and a `.cem` carry the same
+keys and `reference em-setup` documents them from the type:
+
+| Key | Default | |
+|---|---|---|
+| `FrequenciesGHz` | none: required | each inside the sweep; one only with a frequency-dependent material (L6) |
+| `MassesGrams` | `[1, 10]` | any positive mass; the peak cube is `psSAR<m>g` |
+| `Method` | `Cube` | `Cube` = `sar_calc --method IEEE_62704`, `Simple` = `SIMPLE` (§7.2) |
+| `Region` | every lossy dielectric | object names; a phantom's name stands for all its layers |
+| `B1` | on when every SAR frequency is below 500 MHz | |
+| `B0Axis` | `+z` | `±x`, `±y`, `±z` |
+| `B1Region` | the first phantom's innermost layer, else `Region` | where the mean \|B1+\| is taken |
+| `CrossCheck` | off | §7.6 |
+
+**The units are in the key names** (`FrequenciesGHz`, `MassesGrams`), where the brief wrote `Frequencies` and `Masses`,
+as `SaveFieldsGHz` and `OffsetUm` already are: a bare SAR frequency could be Hz, MHz or GHz, and all three are plausible.
+`SarSettings` is the group resolved, and the one place its defaults live. The group turns `OpenEms.CellConstantMaterial`
+on unless the section states it (`CemOpenEms.ResolveRun(section, requestsSar)`, SAR-3), and the writer's existing note says
+so. Every dispersive material is evaluated at the **first** SAR frequency (`C3dProblemAssembly.Assemble`), and the
+elaboration's note names it "the SAR frequency"; `explain --materials` says the same.
+
+**Refusals**, each before any process: a SAR frequency outside the sweep; two SAR frequencies with a frequency-dependent
+material, naming the material and a second setup as the way to the next frequency (L6); a setup whose solver is Palace
+alone (only openEMS writes the raw dump); a cylindrical grid (cubes are averaged on a Cartesian one); a non-driven problem;
+no lossy dielectric at all; a `Region` or `B1Region` naming no object; a region solid with no density (below). A setup with
+`Both` runs, and the openEMS leg carries the SAR.
+
+### 8.2 Which cells are tissue
+
+openEMS's raw dump carries ρ per cell and every SAR tool treats ρ = 0 as air, so **tissue is decided by which materials are
+written with a density**. `Em3dSar.Resolve`:
+
+- a solid is **lossy** when it is a dielectric (not a conductor, not air) whose evaluated σ is above zero. A board whose loss
+  is a tanδ (FR4: σ 0) is never tissue, whatever density its record states for the thermal solver: it dissipates nothing,
+  and counting its mass would dilute every cube that reaches it;
+- the **region** is `Region`'s solids, or every lossy one. A region solid whose material states no density is **refused**,
+  naming the material (§4.3: eight shipped tissues state none) — openEMS would write it as air. The escape is to add the
+  density with its source, or to name a region without it;
+- **tissue** is every lossy solid that states a density, in or out of the region, because a cube averages what surrounds its
+  centre. A lossy solid outside a stated region with no density is written as background, and the run says so.
+
+The densities ride the problem as `Em3dProblem.SolidDensities` (by solid name, from the record each solid was built from,
+`C3dElaboration.SolidMaterials`), which no lowering but a SAR run reads; the writer writes `Density` on exactly the tissue
+solids and `0` elsewhere, as before. Which tissue a dump cell is (a named region, B1's region, a peak's tissue) is
+answered by testing its centre against the tissue solids, the last-constructed first (the one CSXCAD gives the cell), with
+the nearest density as the fallback for a centre no test claims.
+
+### 8.3 What is dumped (R-sar6-2)
+
+Per SAR frequency `j`: `sar<j>` — the raw SAR dump (`DumpType 29`, HDF5, `DumpMode 2`) — and, with B1, `b1h<j>` — an H dump
+(`DumpType 11`, VTK, `DumpMode 2`, as the E path's) — both over **the tissue's bounding box widened to the grid lines
+outside it and one cell more on every side** (`Em3dSar.DumpLines`), and both with the probes' `OverSampling`, for the
+reason the far-field dumps give (§2). A tissue face very often has a line on it; the box then starts one cell outside that
+line, so the cube search sees the background beyond the surface.
+
+**Disk** is estimated before the run (`Em3dSar.EstimateBytes`): per port and frequency, 36 bytes a cell for the raw dump
+(measured: 24,505,463 bytes for the dipole's 0.68 M cells), 276 a cell for a VTK H dump at its peak (magnitude, phase and
+the 21 phase snapshots openEMS adds, removed after the run as the radiation pattern's are), and 4 a cell per volume. It is a
+note, and a warning above 4 GB naming what reduces it. `explain` prints the same estimate.
+
+### 8.4 As solved, and per watt accepted (R-sar6-3)
+
+**As solved means openEMS's own scale.** The volumes are the dump's values unchanged, and `Pacc` is the accepted power in
+openEMS's own DFT convention. circuitRF's `FdtdPortTransform.Dft` carries no ×2 against openEMS's (the convention
+`FieldDrive.OpenEmsDumpScale` records), so `Pacc = 2·Re(U·I*)` of its U and I — ½·Re of openEMS's own, each twice
+circuitRF's. With both on one scale, SAR/Pacc and B1/√Pacc are per watt accepted exactly as openEMS's tutorials compute
+them. **Measured on SAR-1's dipole:** the port's own probes, through `FdtdPortTransform.Dft` at 1 GHz, give
+**1.60969e-27 W, the tutorial's `accepted_power_w` to six figures**, and psSAR10g per watt **2.43496 W/kg**, its printed
+value. The drive U and I come from `FdtdPortTransform.Solve` at the SAR frequencies, from the probes S was formed from; each
+driven port's run is its own record.
+
+The readouts and every `.npy` scalar are **per 1 W accepted**. A field plot is drawn at 1 W accepted unless it states a
+drive of its own: a SAR or B1 plot with no `DrivePowerW` reads `FieldDrive.DefaultSarPowerW` (1 W) and `Accepted`, and a
+stated one is honoured with its `DriveReferredTo` (brief-em3d-100). SAR follows the drive as P, B1 as √P
+(`FieldNames.DriveExponent`).
+
+### 8.5 B1± (R-sar6-4)
+
+`SarB1` (`src/Engine/Em3d/Sar`, numbers only): B = μ0·H, then for B0 along +z, B1± = (Bx ± jBy)/2 — §1.5's derivation, which
+is the code's reference. For ±x and ±y the transverse pair is taken cyclically, (By, Bz) and (Bz, Bx), so the frame stays
+right-handed; a negative axis looks at the plane from the other side and swaps the two. The H dump's cells are matched to
+the raw dump's by their centres (each within a quarter cell, else B1 is not computed and the run says why). The volumes are
+|B1+| and |B1−| in T as solved. The mean |B1+| is **volume-weighted** over B1's region, and the SAR efficiency is
+\|B1+\|mean / √psSAR10g (the largest averaged mass when 10 g is not one), the same number per watt or as solved.
+
+### 8.6 Results (R-sar6-6, R-sar6-7)
+
+Beside each raw dump, in the port's run directory:
+
+```
+p<k>/sar<j>.h5         openEMS's raw dump
+p<k>/sar<j>.json       SarRunRecord: everything the readouts show, as solved, and the volumes' names
+p<k>/sar<j>.<Q>.npy    SAR (local), SAR<m>g per mass, B1p, B1m — float32, C order over (x, y, z)
+p<k>/sar<j>.x.npy …    the cell centres, float64, metres
+```
+
+**The volumes are in the run directory, not beside the run's `.npy` in `results/`** as the brief put it: the Data Display
+lists every `.npy` in `results/` as a data source, and a bare array is not one. The record names them, and nothing inlines
+them into the DataSet.
+
+The run's grouped `.npy` gains a **`sar` group**, each cube over (f, Port) — the SAR frequencies and the driven ports — and
+NaN where a value was not produced:
+
+| Cube | Unit | |
+|---|---|---|
+| `psSAR<m>g` | W/kg | per W accepted |
+| `SARwb` | W/kg | P_abs / mass over the region, per W accepted |
+| `Pabs` | W | per W accepted (the absorbed fraction) |
+| `Pacc` | W | **as solved** — the one cube that is, so the solved scale can be recovered |
+| `Prad` | W | per W accepted; only with a radiation pattern (interpolated between sweep points) |
+| `PowerBudget` | | (Pabs + Prad) / Pacc; only with a radiation pattern |
+| `Mass` | kg | the region's tissue |
+| `B1pMean` | T | per √W accepted; only with B1 |
+| `SarEff` | T/√(W/kg) | only with B1 |
+
+The **readouts** are the setup editor's table after a run (`EmSetupEditorViewModel.AdoptSar`, read from the records):
+psSAR per mass with the cube's centre and its tissue, peak local SAR, whole-region SAR, absorbed, accepted (1 W, and the
+value as solved), radiated and the budget, mass, mean |B1+| and the efficiency, and `sar_calc`'s peak under `CrossCheck`.
+Numbers only; a line says why only where a value is missing (owner preference). The run also prints one line per record
+(`OpenEmsSarResults.Readout`), which is what `circuitrf em` shows.
+
+### 8.7 Field plots (R-sar6-5)
+
+A SAR run's volumes are **two solutions of their own** at the dump's frequency and port, labelled `(SAR)` and `(B1)`, because a
+step has one mesh and the two want different ones: the SAR step's mesh holds only the lattice cells that touch a tissue node
+(so **air is transparent**), the B1 step's the whole box (B1 is wanted in the air inside a coil). `FieldSolution.Offers`
+names the arrays each holds, and `FieldPlotResolver.PickSolution` picks by the plot's quantity, so a plot of `E` at the same
+frequency still reads the E dump. Each volume's cell centres are the step's nodes, six tetrahedra a lattice cell as an E dump
+is split, so clip planes, surfaces and the GPU pass draw SAR with no special case. SAR and B1 are offered as **magnitudes**
+(`FieldNames.IsMagnitude`): a sequential map from zero, linear by default, the existing percentile top.
+
+- **Maximum-intensity projection** — `C3dFieldPlot.Mip` on a SAR clip-plane plot: each lattice line along the plane's axis
+  carries its largest value (`FieldStep.WithMip`), so the plane, drawn through the middle of the volume, shows the hottest
+  tissue wherever it lies. Offered for SAR only; the Inspector's check box, and `render --mip x|y|z`.
+- **Peak marker** — the record's peak cube, at the plot's drive: a wireframe in the 3D view (`Viewer3DViewModel.SarPeaks`,
+  drawn with the hot spot), and in a section its square, solid where the plane cuts the cube (or on a projection), dashed
+  with its distance where it does not (`Em3dSectionField.PeakMarkers`). Local SAR, which has no cube, is a cross.
+
+### 8.8 Headless (R-sar6-8)
+
+`circuitrf em` runs the same `Em3dRunService` and writes the same files. `render x.c3d --field <plot>` draws a SAR or B1 plot
+(a plot by its name, as every field plot is) and `--list-fields` lists it; `--mip <axis>` draws a SAR plot's projection and is
+refused for any other quantity. `explain` (and `explain --materials`) reports the `Sar` group: frequencies, masses, method,
+the region and its objects, B1's axis and region, every tissue object with ρ, εr and σ as the solver receives them, the
+dump's cells and its disk estimate, or the sentence a run would stop on. MCP's `reference em-setup` is generated from
+`CemFile`'s types, so the group is documented from `CemSar`'s own summaries.
+
+### 8.9 Gates
+
+`tests/Ui.Tests/Sar/SarResultsTests.cs`:
+
+- `SarSetupTests`: the group round-trips through a `.cem`, an embedding and `Clone`, with its defaults; two SAR frequencies with
+  a Gabriel muscle are refused naming it, and one evaluates it there; on the dipole beside Dipole_SAR's head, both dumps are the
+  tissue's box plus one cell on the grid's own lines, with `DumpMode 2`, `OverSampling` and the frequency, each tissue is
+  written with its density, the cell-constant material is on, and a region tissue with no density is refused naming it.
+- `B1ConventionTests`: H₀(x̂ − jŷ) is all B1+ with |B1+| = μ0·H₀ for +z and all B1− for −z; the opposite rotation the reverse;
+  the cyclic axis for +x.
+- `SarResultsWiringTests` (skipped without SAR-1's data): the dipole's raw dump and probes laid where a run of the setup leaves
+  them, through `OpenEmsSarResults` with no openEMS process — the 10 g peak, its cell, P_abs and mass are SAR-5's (`sar_calc`'s)
+  to 1e-6; P_acc is the tutorial's to 1e-4, so psSAR10g and whole-phantom SAR per watt are its printed values; the `sar` group
+  carries them; the volume holds the peak at its cell; and `render --field`, `--mip z` and `--list-fields` run as a process.
+
+### 8.10 Not done in SAR-6, and what is open
+
+- **The B1 read is not gated against reference data.** SAR-1's set keeps B1 as the loop coil's planes, not an H dump of
+  circuitRF's own; SAR-8's replication is its gate. `B1ConventionTests` holds the arithmetic.
+- **`check` does not validate the `Sar` group**; a run and `explain` do.
+- **Prad** is the pattern stage's radiated-over-accepted at the SAR frequency, interpolated linearly between sweep points
+  when it is not one; with no radiation pattern it is absent, and the readout says how to get it.
+- **The 3D view's projection plane** is drawn through the middle of the volume, whatever the plot's stored offset.

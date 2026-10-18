@@ -36,7 +36,7 @@ internal static class RenderEm3dField
     public static int List(string path, RenderEm3d.Request req)
     {
         string? alone = req.OutputStated ? "-o" : req.Field is not null ? "--field" : req.Sections.Count > 0 ? "--section"
-                      : req.Iso ? "--iso" : req.Phase is not null ? "--phase" : req.NoLegend ? "--no-legend" : req.NoThin ? "--no-thin"
+                      : req.Iso ? "--iso" : req.Phase is not null ? "--phase" : req.Mip is not null ? "--mip" : req.NoLegend ? "--no-legend" : req.NoThin ? "--no-thin"
                       : req.Labels ? "--labels" : req.Tight ? "--tight" : req.ViewDir is not null ? "--view-dir"
                       : req.Region is not null ? "--region" : req.NoMirror ? "--no-mirror" : null;
         if (alone is not null) return JsonRun.Fail(CliDiagnostics.RenderFieldListAlone(alone));
@@ -64,7 +64,7 @@ internal static class RenderEm3dField
             if (why is null)
             {
                 var found = FieldPlotResolver.Discover(run, root, problem);
-                var item = FieldPlotResolver.PickSolution(request.Solution, request.Solver, found.Items, problem);
+                var item = FieldPlotResolver.PickSolution(request.Solution, request.Solver, found.Items, problem, request.Quantity);
                 why = item is null ? Missing(request, found, problem) : QuantityProblem(item, request);
             }
             list.Add(new RenderFieldPlotJson(
@@ -99,6 +99,26 @@ internal static class RenderEm3dField
         if (plot is null)
             return JsonRun.Fail(CliDiagnostics.RenderFieldUnknown(req.Field!, path,
                 doc.FieldPlots.Count == 0 ? "(none)" : string.Join(", ", doc.FieldPlots.Select(p => p.Name))));
+        // brief-sar-6 R-sar6-5/8 — a SAR plot's maximum-intensity projection: --mip's axis, or the plot's own Mip along its plane's.
+        // It is drawn as a clip plane on that axis, through the middle of the tissue (below, once the volume is read).
+        int? mip = null;
+        if (req.Mip is { } mipText)
+        {
+            if (mipText.Trim().ToLowerInvariant() is not ("x" or "y" or "z") || mipText.Trim().Length != 1)
+                return JsonRun.Fail(CliDiagnostics.RenderFieldMipMalformed(mipText));
+            mip = "xyz".IndexOf(mipText.Trim().ToLowerInvariant()[0]);
+        }
+        else if (plot.Mip && plot.On == C3dFieldPlotOn.ClipPlane) mip = (int)(plot.Axis ?? C3dAxis.Z);
+        if (mip is int mipAxis)
+        {
+            if (!FieldNames.IsSar(plot.Quantity)) return JsonRun.Fail(CliDiagnostics.RenderFieldMipNotSar(plot.Name, FieldPlotResolver.QuantitySymbol(plot)));
+            if (req.Sections.Count > 0)
+                return JsonRun.Fail(CliDiagnostics.RenderFieldOptionNotApplicable("--section", plot.Name,
+                    "a maximum-intensity projection is drawn on its own plane, through the middle of the tissue along its axis."));
+            plot.On = C3dFieldPlotOn.ClipPlane;          // this process's copy of the document; nothing is saved
+            plot.Axis = (C3dAxis)mipAxis;
+            plot.Mip = true;
+        }
         var asked = req.Sections.Select(s => $"--section {s}").ToList();
         if (req.Iso) asked.Add("--iso");
         if (req.ViewDir is { } vd) asked.Add($"--view-dir {vd}");
@@ -168,7 +188,7 @@ internal static class RenderEm3dField
         string root = ResultsRoot.For(full, DocumentKinds.AncestorCws(full));
         var request = FieldPlotResolver.Request(plot, setupName, run, null, run);
         var found = FieldPlotResolver.Discover(run, root, problem);
-        var item = FieldPlotResolver.PickSolution(request.Solution, request.Solver, found.Items, problem);
+        var item = FieldPlotResolver.PickSolution(request.Solution, request.Solver, found.Items, problem, request.Quantity);
         if (item is null) return JsonRun.Fail(CliDiagnostics.RenderFieldMissingData(plot.Name, Missing(request, found, problem)));
         string? runDir = found.DirectoryOf(item);
         if (runDir is not null) Console.Error.WriteLine($"[circuitRF] fields: {runDir}");
@@ -189,6 +209,16 @@ internal static class RenderEm3dField
         // brief-em3d-100 — the plot's drive, read from its record as the 3D view reads it: no flag, and its refusal in the same words
         var drive = FieldPlotResolver.Drive(request, item.Solution);
         if (drive.Problem is { } noDrive) return JsonRun.Fail(CliDiagnostics.RenderFieldMissingData(plot.Name, noDrive));
+        if (mip is int along)
+        {
+            if (volume?.WithMip(q.Array.Name, along) is not { } projected)
+                return JsonRun.Fail(CliDiagnostics.RenderFieldMissingData(plot.Name, $"The run's {FieldNames.Friendly(q.Array.Name)} is not on a grid a projection can be taken along."));
+            volume = projected;
+            plot.Offset = (long)Math.Round(projected.Middle(along) / C3dLowering.Metres(1, doc.DbuPerMicron));
+            own = OwnView(plot, doc);
+        }
+        // brief-sar-6 R-sar6-5 — the peak averaging cube, drawn where the plane meets it (or always, on a projection)
+        var peak = volume is not null ? FieldSarPeak.Of(volume, q.Array.Name, item.Solution.DumpScale, drive.Factor) : null;
 
         // A stale run still draws (as in the 3D view), and says so: the one comparison the editor's banner makes.
         bool stale = false;
@@ -232,12 +262,14 @@ internal static class RenderEm3dField
         double phaseDeg = q.Animated ? req.Phase ?? 0 : 0;
         var legend = req.NoLegend ? [] : FieldPlotResolver.LegendLines(plot.Name, q, cut.Scale, item.Label, phaseDeg, loopSeconds: null,
                                                                         stepLabel: item.Label, hotSpot: hotSpot, drive: drive);
+        if (mip is int shown && legend.Count > 0) legend.Add($"Maximum along {"xyz"[shown]} (projection)");
+        var markers = peak is null ? [] : Em3dSectionField.PeakMarkers(peak, cut.Axis, own.At, projection: mip is not null);
         int? thin = req.NoThin ? null : ThinLimit();
 
         Em3dFieldLayer Layer(Em3dScene scene) => Em3dSectionField.Build(cut, phaseDeg * Math.PI / 180, raster: req.Format == "png", thin, legend,
             q.IsTemperature ? new Em3dThermalPage(wires, crossings, marks,
                                                   Em3dSectionThermal.Caption(scene, setupName, item.Label, marks, wires.Select(w => w.Wire).Distinct().Count()))
-                            : null);
+                            : null, markers);
         RenderFieldJson Report(Em3dFieldLayer l) => new(
             plot.Name, setupName, request.Solver, SolutionJson(plot.Solution), item.Label, q.Array.Name, q.Mode.ToString(), plot.On.ToString(),
             l.Triangles, l.TrianglesDrawn,

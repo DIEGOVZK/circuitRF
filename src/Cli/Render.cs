@@ -125,6 +125,8 @@ internal static class Render
         public string?      Field;
         public bool         ListFields;
         public double?      Phase;
+        // brief-sar-6 R-sar6-8 — a SAR plot's maximum-intensity projection along an axis.
+        public string?      Mip;
         public bool         NoLegend;
         public bool         NoThin;
         // brief-em3d-88 Q2 — material labels, and the page cropped to the section.
@@ -205,7 +207,7 @@ internal static class Render
             "  a .cdd adds:          [--data file]... [--tab name|n] [--plot n] [--all-tabs]\n" +
             "  a 3D .cem takes:      --section z=<len> | --section xz@y=<len> | --section yz@x=<len> | --iso\n" +
             "                        [--axes] [--scale-bar]\n" +
-            "  a .c3d also takes:    --field <plot> [--phase <deg>] [--no-legend] [--no-thin] [--labels] [--tight]\n" +
+            "  a .c3d also takes:    --field <plot> [--phase <deg>] [--mip x|y|z] [--no-legend] [--no-thin] [--labels] [--tight]\n" +
             "                        a Surfaces or Faces plot, as a .png: --iso | --view-dir top|bottom|front|back|left|right\n" +
             "                        | --view-dir x,y,z (toward the viewer) [--region <object>] [--no-mirror]\n" +
             "                        | --list-fields\n" +
@@ -374,6 +376,7 @@ internal static class Render
                     o.Phase = deg;
                     continue;
                 }
+                case "--mip" when i + 1 < args.Length: o.Mip = args[++i]; continue;
                 case "--no-legend": o.NoLegend = true; continue;
                 case "--no-thin":   o.NoThin = true;   continue;
                 case "--labels":    o.Labels = true;   continue;
@@ -642,7 +645,7 @@ internal static class Render
             themeOf: path => { var (theme, name, from, refusal) = ResolveTheme(o, path); return (theme, name, from, refusal); },
             emit: (w, h, draw) => Emit(o, w, h, draw))
         {
-            Field = o.Field, ListFields = o.ListFields, Phase = o.Phase, NoLegend = o.NoLegend, NoThin = o.NoThin,
+            Field = o.Field, ListFields = o.ListFields, Phase = o.Phase, Mip = o.Mip, NoLegend = o.NoLegend, NoThin = o.NoThin,
             Labels = o.Labels, Tight = o.Tight, Axes = o.Axes, ScaleBar = o.ScaleBar,
             ViewDir = o.ViewDir, Region = o.Region, NoMirror = o.NoMirror, Transparency = o.Transparency,
             Setup = o.Setup, OutputStated = o.Output is not null,
@@ -653,7 +656,7 @@ internal static class Render
     /// <summary>brief-em3d-84 — the first field-plot option typed, for the refusal on a document that has no field plots.</summary>
     private static string? FieldOptionNamed(Options o)
         => o.Field is not null ? "--field" : o.ListFields ? "--list-fields" : o.Phase is not null ? "--phase"
-         : o.NoLegend ? "--no-legend" : o.NoThin ? "--no-thin" : o.Labels ? "--labels" : o.Tight ? "--tight"
+         : o.Mip is not null ? "--mip" : o.NoLegend ? "--no-legend" : o.NoThin ? "--no-thin" : o.Labels ? "--labels" : o.Tight ? "--tight"
          : o.ViewDir is not null ? "--view-dir" : o.Region is not null ? "--region" : o.NoMirror ? "--no-mirror" : null;
 
     /// <summary>

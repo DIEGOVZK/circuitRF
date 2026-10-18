@@ -453,7 +453,9 @@ public sealed partial class Viewer3DViewModel
     {
         if (layer.Disposed || layer.Item is not { } item) return;
         var run = item.Run;
-        if (layer.Loaded == item.Solution && layer.Volume is not null)
+        // brief-sar-6 R-sar6-5 — a SAR plot's projection is a step of its own: the axis it was taken along is part of what is loaded
+        int? mip = layer.Request is { Mip: true } rq ? (int)rq.Plane.Axis : null;
+        if (layer.Loaded == item.Solution && layer.Volume is not null && layer.LoadedMip == mip)
         {
             // brief-em3d-83 — the plot's quantity, by name, among what this step offers.
             if (layer.Request is { } p0 && !PickPlotQuantity(layer, p0)) return;
@@ -476,6 +478,7 @@ public sealed partial class Viewer3DViewModel
             {
                 var vol = volStep?.Value;
                 var bnd = bndStep?.Value;
+                if (mip is int along && layer.Request is { } mq && vol?.WithMip(mq.Quantity, along) is { } projected) vol = projected;
                 cts.Token.ThrowIfCancellationRequested();
                 var offered = FieldQuantity.Offered(vol?.Arrays ?? [], bnd?.Arrays ?? []);
                 _post(() =>
@@ -488,6 +491,10 @@ public sealed partial class Viewer3DViewModel
                     layer.Volume = vol;
                     layer.Boundary = bnd;
                     layer.Loaded = sol;
+                    layer.LoadedMip = mip;
+                    layer.MipPlane = mip is int ax && vol is not null && layer.Request is { } rp
+                        ? rp.Plane with { Offset = (float)(vol.Middle(ax) - (ax == 0 ? Scene.Origin.X : ax == 1 ? Scene.Origin.Y : Scene.Origin.Z)) }
+                        : null;
                     layer.Run = run;
                     layer.VolumeSampler = layer.BoundarySampler = null;
                     var keep = layer.Quantity;

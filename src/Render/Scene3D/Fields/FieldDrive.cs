@@ -46,6 +46,10 @@ public static class FieldDrive
     /// <summary>D3 — the legend of an openEMS run with no port record.</summary>
     public const string NotReferredLine = "Drive: not referred, this run kept no port record (relative values)";
 
+    /// <summary>brief-sar-6 R-sar6-3 — the drive a SAR or B1 plot that states none is shown at: 1 W accepted, as openEMS's own SAR
+    /// and MRI examples normalise.</summary>
+    public const double DefaultSarPowerW = 1;
+
     /// <summary>Below this, 1 − |Γ|² is a port that accepts nothing: Accepted is refused rather than scaled toward infinity.</summary>
     public const double MinAccepted = 1e-6;
 
@@ -209,6 +213,8 @@ public static class FieldDrive
         if (FieldNames.DriveExponent(array) is not { } x)
             return new FieldDriveReading(1, $"Drive: {FieldNames.Friendly(array)} is not referred to the drive", null, false);
         if (x == 0) return FieldDriveReading.None;
+        // brief-sar-6 R-sar6-3 (overview L7) — SAR and B1 are shown at 1 W accepted unless the plot states a drive of its own
+        if (powerW is null && FieldNames.IsMagnitude(array)) (powerW, to) = (DefaultSarPowerW, C3dDriveReferredTo.Accepted);
         double p = powerW is > 0 ? powerW.Value : PalaceDrive.IncidentPowerW;
         double k = p / PalaceDrive.IncidentPowerW;
         string what;

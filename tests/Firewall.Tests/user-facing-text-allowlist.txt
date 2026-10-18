@@ -1012,7 +1012,7 @@ src/Engine/Mom/FarFieldStage.cs|A pattern on this grid has {grid.DirectionCount}
 # reaches the user INSIDE a MaterialLibraryException whose problems already carry `check` ids
 # (material.library-unreadable, material.conflict) and name the library and the technology. The two "already
 # exists" refusals are New Library… and Add Generic Materials declining to overwrite a user's file.
-src/Design/Layout/MaterialLibraries.cs|'{target}' already exists and is not circuitRF's generic library. Rename or move it, or add it 
+src/Design/Layout/MaterialLibraries.cs|'{target}' already exists and is not circuitRF's {what} library. Rename or move it, or add it 
 src/Design/Layout/MaterialLibraries.cs|circuitRF ships no material library named '{fileName}'.
 src/Design/Layout/MaterialLibraries.cs|it is a directory, not a .cmat file.
 src/Design/Layout/MaterialLibraries.cs|the file does not exist.
@@ -1180,3 +1180,37 @@ src/Design/Imaging/Plots/TraceJoin.cs|Nothing to join.
 src/Design/Layout/Recognition/Image/BoardPhoto.cs|A refused reading cannot be traced.
 src/Design/Schematic/Recognition/KnownWords.cs|the embedded word list '{Resource}' is missing from {typeof(KnownWords).Assembly.GetName().Name}
 src/Design/Schematic/Recognition/SchematicPasteOutcome.cs|The reading made no circuit.
+
+# ── brief-sar-6 (2026-10-18): a SAR run's own files and a caller's invariant ──────────────
+# The volumes SarVolumeFiles writes beside the raw dump, read back by the 3D view (src/Render rethrows them as
+# FieldReadException), and a frequency the setup does not hold. What a user reads about a SAR run is the run's
+# refusals and notes, built as sentences by Em3dSar and OpenEmsSarResults.
+src/Design/Em3d/OpenEmsSarResults.cs|{hz} Hz is not one of the setup's SAR frequencies.
+src/Design/Em3d/SarVolumeFiles.cs|'{path}' holds {descr}; a SAR volume is float32.
+src/Design/Em3d/SarVolumeFiles.cs|'{path}' holds {descr}; mesh lines are float64.
+src/Design/Em3d/SarVolumeFiles.cs|'{path}' is in Fortran order; a SAR volume is C order.
+src/Design/Em3d/SarVolumeFiles.cs|'{path}' is not a NumPy array.
+
+# ── briefs sar-3 and sar-5 (2026-10-18): a grid file's form, and the SAR engine's own invariants ─────────
+# A given-grid file with no RectilinearGrid (its sentence is completed by CemGridLines' refusal), sar_calc started by
+# nothing, and the engine's argument checks on arrays its callers build. What a user reads about SAR is the run's own
+# refusals and notes (Em3dSar, OpenEmsSarResults, OpenEmsSarCalc's cross-check).
+src/Design/Em3d/OpenEmsSarCalc.cs|the operating system started nothing
+src/Design/Layout/Em/EmSetupPersistence.cs|it holds no RectilinearGrid
+src/Engine/Em3d/Sar/SarEngine.cs|An averaging mass of {g} g; every mass is positive.
+src/Engine/Em3d/Sar/SarEngine.cs|The grid's {grid.Count} cells are too many for one table.
+src/Engine/Em3d/Sar/SarGrid.cs|A slab of {cells} cells needs {2 * cells} floats per E component (re, im pairs).
+src/Engine/Em3d/Sar/SarGrid.cs|A slab of {cells} cells needs {cells} conductivities, densities and volumes.
+src/Engine/Em3d/Sar/SarGrid.cs|A slab of {cells} cells needs {cells} values per E component.
+src/Engine/Em3d/Sar/SarGrid.cs|An axis has at least one cell.
+src/Engine/Em3d/Sar/SarGrid.cs|Cell {at} has density {density}, volume {volume} and power density {powerDensity}; 
+src/Engine/Em3d/Sar/SarGrid.cs|Cell {i} has width {widths[i]}; every cell width is positive.
+src/Engine/Em3d/Sar/SarGrid.cs|x index {i} was already added.
+src/Engine/Em3d/Sar/SarGrid.cs|x index {missing} was never added.
+src/Engine/Em3d/Sar/SarGrid.cs|{centres.Length} cell centres and {widths.Length} widths.
+src/Engine/Em3d/Sar/SarGrid.cs|{n} cells is more than one array can hold.
+src/Engine/Em3d/Sar/SarGrid.cs|{typeof(T).Name} is not a pair of floats.
+src/Engine/Em3d/Sar/SarResults.cs|A region box holds at least one cell.
+src/Engine/Em3d/Sar/SarResults.cs|The region '{Name}' has {_mask.Length} entries for a grid of {grid.Count} cells.
+src/Engine/Em3d/Sar/SarResults.cs|The region '{Name}' reaches outside the grid.
+src/Engine/Em3d/Sar/SarResults.cs|The region '{name}' holds no cell centre.

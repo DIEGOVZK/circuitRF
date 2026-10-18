@@ -58,6 +58,9 @@ public sealed class Em3dFieldLayer
     /// <summary>brief-em3d-89 — a Surfaces or Faces plot: the surfaces seen along a direction, depth-buffered; null for a section.</summary>
     public Em3dSurfaceLayer? Surface { get; init; }
 
+    /// <summary>brief-sar-6 R-sar6-5 — a SAR plot's peak markers, in the section's plane (<see cref="Em3dSectionField.PeakMarkers"/>).</summary>
+    public IReadOnlyList<Em3dFieldMarker> Markers { get; init; } = [];
+
     /// <summary>The slice's triangles (a surface plot's field triangles).</summary>
     public int Triangles => Surface?.Triangles ?? Vertices.Length / 3;
 
@@ -65,8 +68,61 @@ public sealed class Em3dFieldLayer
     public int TrianglesDrawn => Raster ? Triangles : Pieces.Count;
 }
 
+/// <summary>
+/// brief-sar-6 R-sar6-5 — a peak marker in a section's plane: the averaging cube's outline (a point for local SAR), solid where
+/// the plane cuts the cube, dashed where it is the cube seen along the section's axis, and its label.
+/// </summary>
+public sealed record Em3dFieldMarker(Uv Lo, Uv Hi, string Label, bool OnPlane, bool Point);
+
 public static class Em3dSectionField
 {
+    /// <summary>
+    /// brief-sar-6 R-sar6-5 — <paramref name="peak"/> in a section across axis <paramref name="axis"/> at <paramref name="at"/>
+    /// (metres): the cube's square in the plane, solid when the plane passes through the cube or the picture is a
+    /// <paramref name="projection"/> (which shows the whole line through it), dashed otherwise, the label saying how far off the
+    /// plane it is.
+    /// </summary>
+    public static IReadOnlyList<Em3dFieldMarker> PeakMarkers(FieldSarPeak peak, int axis, double at, bool projection)
+    {
+        var r = peak.Record;
+        Uv InPlane(double[] p) => axis switch { 0 => new Uv(p[1], p[2]), 1 => new Uv(p[0], p[2]), _ => new Uv(p[0], p[1]) };
+        double[] lo = r.CubeLoM ?? r.CentreM, hi = r.CubeHiM ?? r.CentreM;
+        bool on = projection || at >= lo[axis] - 1e-12 && at <= hi[axis] + 1e-12;
+        string where = on ? "" : $", {"xyz"[axis]} = {(r.CentreM[axis] * 1e3).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)} mm";
+        return [new Em3dFieldMarker(InPlane(lo), InPlane(hi), peak.Label + where, on, r.CubeLoM is null)];
+    }
+
+    /// <summary>Each marker: its square (or cross) and its label over a halo.</summary>
+    internal static void DrawMarkers(SKCanvas canvas, Em3dFieldLayer layer, Func<Uv, SKPoint> map, float fontSize)
+    {
+        if (layer.Markers.Count == 0) return;
+        using var ink = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1.5f, Color = SKColors.White };
+        using var halo = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 3.5f, Color = SKColors.Black.WithAlpha(0xB0) };
+        using var font = new SKFont(SkiaFonts.PlexSemiBold, fontSize);
+        using var text = new SKPaint { IsAntialias = true, Color = SKColors.White };
+        using var textHalo = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = fontSize * 0.3f, Color = SKColors.Black.WithAlpha(0xC0),
+                                           StrokeJoin = SKStrokeJoin.Round };
+        using var dash = SKPathEffect.CreateDash([5f, 3f], 0);
+        foreach (var m in layer.Markers)
+        {
+            SKPoint a = map(m.Lo), b = map(m.Hi);
+            var rect = new SKRect(Math.Min(a.X, b.X), Math.Min(a.Y, b.Y), Math.Max(a.X, b.X), Math.Max(a.Y, b.Y));
+            if (m.Point || rect.Width < 4 || rect.Height < 4) rect = new SKRect(rect.MidX - 5, rect.MidY - 5, rect.MidX + 5, rect.MidY + 5);
+            ink.PathEffect = m.OnPlane ? null : dash;
+            foreach (var p in new[] { halo, ink })
+            {
+                if (m.Point)
+                {
+                    canvas.DrawLine(rect.Left, rect.MidY, rect.Right, rect.MidY, p);
+                    canvas.DrawLine(rect.MidX, rect.Top, rect.MidX, rect.Bottom, p);
+                }
+                else canvas.DrawRect(rect, p);
+            }
+            canvas.DrawText(m.Label, rect.Right + fontSize * 0.4f, rect.Top + fontSize * 0.9f, SKTextAlign.Left, font, textHalo);
+            canvas.DrawText(m.Label, rect.Right + fontSize * 0.4f, rect.Top + fontSize * 0.9f, SKTextAlign.Left, font, text);
+        }
+    }
+
     /// <summary>
     /// The triangle count above which a vector slice is thinned. Measured (brief-em3d-84): the committed cavity's mid-height z
     /// slice is 144 triangles; a 120,000-cell second-order connector run slices to 3,784 – 11,565 triangles (x, y, z through its
@@ -93,7 +149,7 @@ public static class Em3dSectionField
     /// <paramref name="thinAbove"/> triangles (null: never).
     /// </summary>
     public static Em3dFieldLayer Build(FieldSectionCut cut, double phase, bool raster, int? thinAbove, IReadOnlyList<string> legend,
-                                       Em3dThermalPage? thermal = null)
+                                       Em3dThermalPage? thermal = null, IReadOnlyList<Em3dFieldMarker>? markers = null)
     {
         var s = cut.Slice;
         int n = s.VertexCount, ch = s.Channels;
@@ -161,7 +217,7 @@ public static class Em3dSectionField
         return new Em3dFieldLayer
         {
             Vertices = uv, RasterVertices = [.. rasterUv], VertexColours = [.. vertexColours], Pieces = pieces, Raster = raster, Legend = legend, Map = cut.Map, Scale = cut.Scale,
-            Thermal = thermal,
+            Thermal = thermal, Markers = markers ?? [],
         };
     }
 

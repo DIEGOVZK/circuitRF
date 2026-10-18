@@ -224,6 +224,9 @@ public partial class EmSetupEditorView : UserControl
             case { } openEms when openEms.StartsWith("OpenEms.", StringComparison.Ordinal):
                 vm.CommitOpenEmsField(openEms);
                 break;
+            case { } sar when sar.StartsWith("Sar.", StringComparison.Ordinal):       // brief-sar-6
+                vm.CommitSarField(sar);
+                break;
             default:        vm.CommitMeshField(tag); break;
         }
     }

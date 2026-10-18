@@ -20129,3 +20129,30 @@ Gate: `tests/Ui.Tests/Em3d/TissueMaterialTests.cs` (`ColeColeTests`, `TissueLibr
   `C3dSetups.ForRun` set `CemGridLines.BaseDirectory` (`CemOpenEms.Anchored`), and `check` passes the path.
 Design note: `docs/design/sar.md` §5. Gate: `tests/Ui.Tests/Em3d/SarPhantomsLumpedGridTests.cs`.
 
+
+## SAR and B1± as results of a `.c3d` run (brief-sar-6, 2026-10-18)
+
+- **Tissue is decided by which materials are written with a density.** openEMS's raw dump carries ρ per cell and every SAR
+  tool treats ρ = 0 as air, so `Em3dSar` writes a density on exactly the lossy dielectrics (σ above zero after evaluation)
+  that state one. A board whose loss is a tanδ is never tissue, even though generic materials state densities for the
+  thermal solver; a region solid with no density is refused, naming the material, rather than averaged as air.
+- **openEMS's DFT carries ×2 against `FdtdPortTransform.Dft`, and P_acc must be on openEMS's side to match its tutorials.**
+  `SarPortDrive.AcceptedPowerW` is 2·Re(U·I*) of circuitRF's U and I. Measured on SAR-1's dipole probes: 1.60969e-27 W, the
+  tutorial's `accepted_power_w` to six figures, and psSAR10g per watt 2.43496, its printed value. The volumes stay on the
+  dump's own scale ("as solved"), so the two meet without a factor anywhere else.
+- **The SAR volumes are in the openEMS run directory, not in `results/`.** The Data Display lists every `.npy` in `results/`
+  as a data source and a bare float32 array is not one; the run's grouped `.npy` gets the scalars (`sar` group) and the
+  record beside the dump names the volumes.
+- **A grid line very often sits ON the tissue's face** (the ellipsoid's extent is a required line), so "plus one cell" is one
+  cell outside that line. A test that wrote the face as the literal 0.02 m missed a line at 0.020000000000000004 m by
+  4e-18; the gate takes the bounds from the solid.
+- **A string literal reading "…from openEMS…" trips the GPL-boundary scan** (`SolverBoundaryTests`' import pattern,
+  `\b(from|import)\s+openems`, case-insensitive): it cannot tell a sentence from a Python import. Three new sentences were
+  reworded ("on the raw SAR dump openEMS writes"); word a sentence so, rather than widen the scan.
+- **A SAR plot needs its own solution, not an array added to the E step.** A step has one mesh: SAR's air must be transparent
+  (its mesh holds only the cells touching tissue) while B1 is wanted in the air inside a coil, and an E dump's box and
+  frequencies are not the SAR dump's. `FieldSolution.Offers` and `PickSolution(…, quantity)` keep a plot of E and a plot of
+  SAR at one frequency and port each on its own step.
+- **SAR and B1 are magnitudes, not signed values**: a real scalar is offered as `Value` and drawn on a diverging map with a
+  symmetric range; `FieldNames.IsMagnitude` offers them as `Peak`, a sequential map from zero.
+Design note: `docs/design/sar.md` §8. Gate: `tests/Ui.Tests/Sar/SarResultsTests.cs`.

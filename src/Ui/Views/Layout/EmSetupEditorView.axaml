@@ -783,6 +783,74 @@
                                    Text="{Binding ViewModel.OpenEmsFieldError}"
                                    IsVisible="{Binding ViewModel.OpenEmsFieldError, Converter={x:Static ObjectConverters.IsNotNull}}"/>
                     </Grid>
+                    <!-- brief-sar-6 R-sar6-1 / R-sar6-6: SAR and B1 as results of a driven openEMS run, and what the last run found. -->
+                    <StackPanel IsVisible="{Binding ViewModel.IsSarSetup}" Spacing="2" Margin="0,6,0,0">
+                        <CheckBox Content="SAR and B1" IsChecked="{Binding ViewModel.SarEnabled}"
+                                  ToolTip.Tip="{x:Static em:EmSetupEditorViewModel.SarTip}"/>
+                        <Grid IsVisible="{Binding ViewModel.SarEnabled}" ColumnDefinitions="Auto,170" ColumnSpacing="8" RowSpacing="2"
+                              RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" HorizontalAlignment="Left">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Classes="colhdr" Text="At (GHz)" VerticalAlignment="Center"/>
+                            <TextBox   Grid.Row="0" Grid.Column="1" Classes="num" Tag="Sar.FrequenciesGHz"
+                                       Text="{Binding ViewModel.SarFrequenciesText}"
+                                       LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"
+                                       ToolTip.Tip="The frequencies SAR and B1 are computed at, inside the sweep. With a frequency-dependent tissue, one only: the run sees each material at the first."/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Classes="colhdr" Text="Masses (g)" VerticalAlignment="Center"/>
+                            <TextBox   Grid.Row="1" Grid.Column="1" Classes="num" Tag="Sar.MassesGrams"
+                                       Text="{Binding ViewModel.SarMassesText}"
+                                       PlaceholderText="{x:Static em:EmSetupEditorViewModel.SarDefaultMasses}"
+                                       LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"
+                                       ToolTip.Tip="The averaging masses, grams."/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Classes="colhdr" Text="Averaging" VerticalAlignment="Center"/>
+                            <ComboBox  Grid.Row="2" Grid.Column="1" Classes="cell"
+                                       ItemsSource="{x:Static em:EmSetupEditorViewModel.SarMethodChoices}"
+                                       SelectedItem="{Binding ViewModel.SarMethod}"
+                                       ToolTip.Tip="{x:Static em:EmSetupEditorViewModel.SarMethodTip}"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Classes="colhdr" Text="Region" VerticalAlignment="Center"/>
+                            <TextBox   Grid.Row="3" Grid.Column="1" Classes="cell" Tag="Sar.Region"
+                                       Text="{Binding ViewModel.SarRegionText}" PlaceholderText="all tissue"
+                                       LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"
+                                       ToolTip.Tip="The objects or phantoms every SAR number is reported over, comma-separated."/>
+                            <TextBlock Grid.Row="4" Grid.Column="0" Classes="colhdr" Text="B1" VerticalAlignment="Center"/>
+                            <ComboBox  Grid.Row="4" Grid.Column="1" Classes="cell"
+                                       ItemsSource="{x:Static em:EmSetupEditorViewModel.SarB1Choices}"
+                                       SelectedItem="{Binding ViewModel.SarB1Choice}"/>
+                            <TextBlock Grid.Row="5" Grid.Column="0" Classes="colhdr" Text="B0 along" VerticalAlignment="Center"/>
+                            <ComboBox  Grid.Row="5" Grid.Column="1" Classes="cell"
+                                       ItemsSource="{x:Static em:EmSetupEditorViewModel.SarB0AxisChoices}"
+                                       SelectedItem="{Binding ViewModel.SarB0Axis}"
+                                       ToolTip.Tip="The static field's direction. A negative axis swaps B1+ and B1−."/>
+                            <TextBlock Grid.Row="6" Grid.Column="0" Classes="colhdr" Text="B1 mean over" VerticalAlignment="Center"/>
+                            <TextBox   Grid.Row="6" Grid.Column="1" Classes="cell" Tag="Sar.B1Region"
+                                       Text="{Binding ViewModel.SarB1RegionText}" PlaceholderText="innermost layer"
+                                       LostFocus="OnFieldLostFocus" KeyDown="OnFieldKeyDown"
+                                       ToolTip.Tip="The objects or phantoms whose mean |B1+| is reported. Blank: the first phantom's innermost layer."/>
+                            <CheckBox  Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="2" Content="Cross-check with sar_calc"
+                                       IsChecked="{Binding ViewModel.SarCrossCheck}"
+                                       ToolTip.Tip="Also runs openEMS's sar_calc on the same dump, when it is installed beside openEMS, and shows its peak beside circuitRF's."/>
+                        </Grid>
+                        <SelectableTextBlock FontSize="10" TextWrapping="Wrap" Foreground="{DynamicResource CrfWarningBrush}"
+                                   Text="{Binding ViewModel.SarFieldError}"
+                                   IsVisible="{Binding ViewModel.SarFieldError, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                        <ItemsControl ItemsSource="{Binding ViewModel.SarRows}" IsVisible="{Binding ViewModel.HasSarRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="em:SarReadoutRow">
+                                    <StackPanel Spacing="1" Margin="0,4,0,0">
+                                        <TextBlock Classes="colhdr" Text="{Binding Heading}"/>
+                                        <ItemsControl ItemsSource="{Binding Lines}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="em:SarReadoutLine">
+                                                    <Grid ColumnDefinitions="150,*" ColumnSpacing="6">
+                                                        <TextBlock Grid.Column="0" Text="{Binding Label}"/>
+                                                        <SelectableTextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
                     <!-- brief-em3d-120 R-em3d120-5: a 3D view's own setup may ask for a cylindrical grid, round about one axis. -->
                     <Grid Margin="0,6,0,0" ColumnDefinitions="Auto,140" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="8" RowSpacing="2"
                           HorizontalAlignment="Left">

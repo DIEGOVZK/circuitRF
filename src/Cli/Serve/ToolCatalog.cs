@@ -839,6 +839,10 @@ internal static class ToolCatalog
                         new("phase", "--phase", OptKind.Number,
                             "With field: the instant of the cycle to draw, degrees (default 0). Only for a plot reading a "
                           + "quantity instantaneously; refused otherwise."),
+                        new("mip", "--mip", OptKind.Str,
+                            "With field: x, y or z. A SAR plot drawn as its maximum-intensity projection along that axis: each "
+                          + "point shows the largest SAR on the line through it, on a plane through the middle of the tissue. "
+                          + "Refused for any quantity but SAR; a plot whose own Mip is on is drawn so without it."),
                         new("noLegend", "--no-legend", OptKind.Flag, "With field: leave the field's legend off."),
                         new("noThin", "--no-thin", OptKind.Flag,
                             "With field: draw every slice triangle in an svg or pdf, however many. By default a vector "

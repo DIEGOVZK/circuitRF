@@ -59,6 +59,9 @@ public sealed record FieldPlotRequest
     public double Percentile { get; init; } = 99;
     public bool FixRange { get; init; }
 
+    /// <summary>brief-sar-6 R-sar6-5 — a SAR ClipPlane plot drawn as its maximum-intensity projection along its axis.</summary>
+    public bool Mip { get; init; }
+
     /// <summary>brief-em3d-100 — the plot's drive power, W (null: the solver's own), and what it is referred to.</summary>
     public double? DrivePowerW { get; init; }
     public C3dDriveReferredTo DriveReferredTo { get; init; }
@@ -110,6 +113,7 @@ public static class FieldPlotResolver
             Name = p.Name, SetupName = setupName, RunSetup = run, SetupProblem = setupProblem, Solver = solver,
             Solution = p.Solution, Quantity = p.Quantity, On = p.On, Db = p.Db, Percentile = p.Percentile, FixRange = p.FixRange,
             DrivePowerW = p.DrivePowerW, DriveReferredTo = p.DriveReferredTo,
+            Mip = p.Mip && p.On == C3dFieldPlotOn.ClipPlane && FieldNames.IsSar(p.Quantity),
             Mode = Enum.TryParse<FieldMode>(p.Mode, ignoreCase: true, out var m) ? m : null,
         };
     }
@@ -169,11 +173,17 @@ public static class FieldPlotResolver
 
     // ── the solution, by value ──────────────────────────────────────────────────────────────
 
-    /// <summary>The saved solution a plot shows: its value among the run's (of its solver), or the first when it names none.</summary>
-    public static FieldSolutionItem? PickSolution(C3dFieldSolution? wanted, string? solver, IEnumerable<FieldSolutionItem> items, Em3dProblem? problem)
+    /// <summary>The saved solution a plot shows: its value among the run's (of its solver), or the first when it names none.
+    /// brief-sar-6 — of the solutions at that value, the one whose step holds <paramref name="quantity"/> (a SAR run's SAR or
+    /// B1 volumes, FieldSolution.Offers), else an ordinary field step.</summary>
+    public static FieldSolutionItem? PickSolution(C3dFieldSolution? wanted, string? solver, IEnumerable<FieldSolutionItem> items, Em3dProblem? problem,
+                                                  string? quantity = null)
     {
         var mine = items.Where(i => solver is null || string.Equals(i.Run.Solver, solver, StringComparison.OrdinalIgnoreCase));
-        return wanted is null ? mine.FirstOrDefault() : mine.FirstOrDefault(i => SolutionKey(i.Solution, problem).SameAs(wanted));
+        var at = (wanted is null ? mine : mine.Where(i => SolutionKey(i.Solution, problem).SameAs(wanted))).ToList();
+        return at.FirstOrDefault(i => quantity is not null && i.Solution.Offers?.Contains(quantity) == true)
+               ?? at.FirstOrDefault(i => i.Solution.Offers is null && (quantity is null || !FieldNames.IsMagnitude(quantity)))
+               ?? (quantity is not null && FieldNames.IsMagnitude(quantity) ? null : at.FirstOrDefault());
     }
 
     /// <summary>A saved step as a plot names it, by value.</summary>
@@ -199,7 +209,12 @@ public static class FieldPlotResolver
         if (mine.Count == 0)
             return ran ? $"The run of setup {p.SetupName} saved no fields — set Save fields at in its setup and Simulate again."
                        : $"No run of setup {p.SetupName} yet — Simulate to draw this plot.";
-        if (PickSolution(p.Solution, p.Solver, mine, problem) is not null) return null;
+        if (PickSolution(p.Solution, p.Solver, mine, problem, p.Quantity) is not null) return null;
+        // brief-sar-6 — a SAR or B1 plot of a run that computed none
+        if (FieldNames.IsMagnitude(p.Quantity) && !mine.Any(i => i.Solution.Offers?.Contains(p.Quantity) == true))
+            return mine.Any(i => i.Solution.Offers is not null)
+                ? $"The run of setup {p.SetupName} saved no {FieldNames.Friendly(p.Quantity)}: add its mass to Sar.MassesGrams (or turn Sar.B1 on) and Simulate again."
+                : $"The run of setup {p.SetupName} computed no SAR: give the setup a Sar group and Simulate again.";
         var w = p.Solution!;
         string G(double v) => v.ToString("G6", CultureInfo.InvariantCulture);
         var keys = mine.Select(i => SolutionKey(i.Solution, problem)).ToList();
@@ -287,7 +302,9 @@ public static class FieldPlotResolver
     {
         string G(double v) => v.ToString("G6", CultureInfo.InvariantCulture);
         int port = s.Excitation > 0 ? s.Excitation : s.Drive?.Port ?? 0;
-        return s.Kind switch
+        // brief-sar-6 — a SAR run's volumes are their own solutions at the dump's frequency and port
+        string sar = s.OffersLabel is { } what ? $" ({what})" : "";
+        return sar.Length > 0 ? SolutionLabel(s with { Offers = null }, modes, problem, solver) + sar : s.Kind switch
         {
             FieldProblemKind.Driven => $"{G(s.Timestep)} GHz" + (port <= 0 ? ""
                 : solver is null or "Palace" && ModeOf(port, problem) is { } mode ? $", {mode} driven" : $", port {port} driven"),

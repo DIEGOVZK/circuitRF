@@ -548,6 +548,12 @@ public sealed class EmSetup
     /// <summary>brief-em3d-73 R-em3d73-5b — a thermal setup's section; null when the setup states none.</summary>
     public CemThermal? Thermal { get; set; }
 
+    /// <summary>brief-sar-6 R-sar6-1 — the setup's Sar group; null when it asks for no SAR.</summary>
+    public CemSar? Sar { get; set; }
+
+    /// <summary>brief-sar-6 — true when the setup asks for SAR (a driven 3D setup with a Sar group).</summary>
+    public bool RequestsSar => Sar is not null && Is3D && Problem3D == Em3dProblemType.Driven;
+
     /// <summary>R-em3d22-2a — a static solve's terminals, in matrix order.</summary>
     public List<EmTerminal3D> Terminals3D { get; set; } = [];
 
@@ -678,6 +684,7 @@ public sealed class EmSetup
         Ports3D                = [.. Ports3D],       // records, immutable
         Eigenmode              = Eigenmode,
         Thermal                = Thermal?.Clone(),
+        Sar                    = Sar?.Clone(),
     };
 
     /// <summary>The extraction settings this setup implies — the one place the two are married,

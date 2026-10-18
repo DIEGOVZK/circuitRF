@@ -54,6 +54,11 @@ public sealed class FieldLayer
     /// <summary>The step files this layer reads (the viewer's step cache keys), so a step no layer reads is released.</summary>
     internal string? VolumeKey, BoundaryKey;
 
+    /// <summary>brief-sar-6 R-sar6-5 — the step was loaded as a maximum-intensity projection (its axis), and the plane the
+    /// projection is drawn on: through the middle of the volume.</summary>
+    internal int? LoadedMip;
+    internal ClipPlane3D? MipPlane;
+
     // ── what it built ────────────────────────────────────────────────────────────────────────
 
     internal IReadOnlyList<FieldSurface> Surfaces = [];

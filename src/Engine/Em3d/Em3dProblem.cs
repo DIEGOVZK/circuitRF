@@ -580,6 +580,11 @@ public sealed record Em3dProblem(
     /// them — lowers byte for byte as before.</summary>
     public IReadOnlyList<Em3dLumpedElement> LumpedElements { get; init; } = [];
 
+    /// <summary>brief-sar-6 R-sar6-1 — each solid's material density, kg/m³, by solid name, where its material states one. Only a
+    /// SAR run reads it (it writes the tissue cells' density, which openEMS's raw SAR dump carries); every other lowering ignores
+    /// it, so a problem without it lowers byte for byte as before.</summary>
+    public IReadOnlyDictionary<string, double> SolidDensities { get; init; } = new Dictionary<string, double>();
+
     /// <summary>brief-em3d-74 R-em3d74-4b — boxes with a target element size, honoured by every lowering that meshes with Gmsh
     /// (Palace and thermal). Empty — every problem written before them — lowers byte for byte as before.</summary>
     public IReadOnlyList<Em3dMeshRegion> MeshRegions { get; init; } = [];

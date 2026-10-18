@@ -404,7 +404,7 @@ public sealed partial class C3dEditorViewModel
     internal string? PlotDriveProblem(C3dFieldPlot p, C3dDriveReferredTo to)
     {
         var request = PlotRequest(p, resolveScene: false) with { DriveReferredTo = to };
-        var item = FieldPlotResolver.PickSolution(request.Solution, request.Solver, Discovered(request).Items, Viewer.Scene.Problem);
+        var item = FieldPlotResolver.PickSolution(request.Solution, request.Solver, Discovered(request).Items, Viewer.Scene.Problem, request.Quantity);
         return item is null ? null : FieldPlotResolver.Drive(request, item.Solution).Problem;
     }
 

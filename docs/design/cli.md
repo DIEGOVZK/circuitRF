@@ -2216,6 +2216,10 @@ scan holds it to that.
   merged, area kept, and `Triangles`/`TrianglesDrawn` both reported; `--no-thin` draws every one.
 - **`--phase <deg>`** (Q3) is refused on a quantity that is not read instantaneously, and never written to
   the document. A hidden plot renders as a shown one: hiding chooses the window's plot, `--field` names one.
+- **A SAR or B1 plot** (brief-sar-6, `sar.md` §8.7) is drawn like any other, at 1 W accepted unless the plot states a drive,
+  with its peak averaging cube marked. **`--mip x|y|z`** draws a SAR plot's maximum-intensity projection along that axis, on
+  a plane through the middle of the tissue (a plot whose own `Mip` is on is drawn so without it); it is refused for any
+  other quantity and together with `--section`, and never written to the document.
 - **`--json`** adds `render.em3d.field` — plot, setup, solver, the solution as the file spells it, label,
   quantity and mode, the triangle counts, the range, `stale`, and the run directory read (`explain`'s rule:
   the walk is what a caller cannot otherwise see). `--list-fields --json` returns `fieldPlots`.

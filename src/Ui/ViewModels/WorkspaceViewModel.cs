@@ -9096,6 +9096,9 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         // brief-em3d-23 — an eigenmode run's modes, in the panel's table.
         if (setup.Problem3D == CircuitRF.Engine.Em3d.Em3dProblemType.Eigenmode && setup.Is3D && result.Data is { } modes)
             vm.AdoptEigenmodes(modes);
+        // brief-sar-6 R-sar6-6 — the SAR readouts, from the records the openEMS run left beside its dumps.
+        if (setup.RequestsSar && setup.Solver3D is Em3dSolver.OpenEms or Em3dSolver.Both)
+            vm.AdoptSar(CircuitRF.Design.Em3d.Em3dRunService.RunDirectory(resultsRoot, setup, Em3dSolver.OpenEms));
         if (result.PlanarMesh is { } planarMesh)
         {
             vm.AdoptPlanarResult(planarMesh, result.PlanarSolve);

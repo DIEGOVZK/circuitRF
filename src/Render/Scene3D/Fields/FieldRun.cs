@@ -42,10 +42,18 @@ public sealed record FieldSolution(FieldProblemKind Kind, int Excitation, double
     /// <summary>The complex scale this solution's arrays are loaded with: an openEMS dump's referral to its incident wave
     /// (R-em3d100-1), 1 otherwise.</summary>
     public Complex DumpScale => Drive?.DumpScale ?? Complex.One;
+
+    /// <summary>brief-sar-6 — the arrays this solution's step holds, when it is one of a SAR run's (its SAR volumes, or its B1
+    /// volumes), so a plot of SAR10g picks it and a plot of E picks the field dump at the same frequency and port. Null for an
+    /// ordinary field step, which offers whatever its file lists.</summary>
+    public IReadOnlyCollection<string>? Offers { get; init; }
+
+    /// <summary>brief-sar-6 — what <see cref="Offers"/> holds, as the picker labels it: <c>SAR</c>, <c>B1</c>, or nothing.</summary>
+    public string? OffersLabel => Offers is null ? null : Offers.Any(FieldNames.IsB1) ? "B1" : "SAR";
 }
 
 /// <summary>A run's fields: every solution, and (Palace) the error indicator.</summary>
-public sealed class FieldRun
+public sealed partial class FieldRun
 {
     /// <summary>Where the field files are: Palace's paraview folder, or openEMS's run directory.</summary>
     public required string Directory { get; init; }
@@ -141,6 +149,8 @@ public sealed class FieldRun
                 if (!File.Exists(ArgFile(file))) continue;
                 solutions.Add(new FieldSolution(FieldProblemKind.Driven, port, hz / 1e9, file, null, "openEMS"));
             }
+            // brief-sar-6 — a SAR run's volumes, as solutions of their own (FieldSar.cs)
+            solutions.AddRange(SarSolutions(portDir, port));
         }
         if (solutions.Count == 0) return null;
         return new FieldRun
@@ -205,7 +215,7 @@ public sealed class FieldRun
 /// One step of a collection, opened: every piece's header read, the pieces' geometry MERGED into one
 /// <see cref="FieldMesh"/>, and the arrays listed. An array is read only when <see cref="Load"/> asks.
 /// </summary>
-public sealed class FieldStep
+public sealed partial class FieldStep
 {
     public required string Pvtu { get; init; }
     public required IReadOnlyList<VtuPiece> Pieces { get; init; }
@@ -233,6 +243,7 @@ public sealed class FieldStep
     public static FieldStep Open(string pvtu, double toMetres, Complex dumpScale)
     {
         if (pvtu.EndsWith("_abs.vtr", StringComparison.Ordinal)) return OpenOpenEms(pvtu, toMetres, dumpScale);
+        if (IsSarStep(pvtu)) return OpenSar(pvtu, toMetres, dumpScale);
         var pieces = FieldRun.Pieces(pvtu).Select(VtuReader.ReadPiece).ToList();
         if (pieces.Count == 0) throw new FieldReadException($"'{pvtu}' names no pieces.");
         int nodes = 0, cells = 0, npc = -1, order = 0;

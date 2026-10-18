@@ -71,7 +71,9 @@ internal static class ExplainEm3d
                 if (el.SolidMaterials.TryGetValue(s.Name, out var rec) && rec.Technology.FindMaterial(rec.Material) is { } tm
                     && MaterialDispersion.IsDispersive(tm))
                     dispersion[s.Material] = tm.ColeCole is not null ? "Cole-Cole" : "table";
-        double evaluatedAt = C3dProblemAssembly.MaterialFrequency(p.Frequency);
+        // brief-sar-6 — a setup that requests SAR evaluates them at its (first) SAR frequency instead
+        var sarSettings = setup.RequestsSar ? SarSettings.Resolve(setup.Sar!) : null;
+        double evaluatedAt = sarSettings is { FrequenciesHz: [var sarHz, ..] } ? sarHz : C3dProblemAssembly.MaterialFrequency(p.Frequency);
         var materials = p.Materials.Select(m => new Em3dMaterialJson(
             m.Name, m.Epsr, m.EpsrTensor, m.TanD, m.Mur, m.SigmaSm,
             g.MaterialSources.TryGetValue(m.Name, out var from) ? from : "unrecorded",
@@ -159,7 +161,25 @@ internal static class ExplainEm3d
             Eigenmode = p.Type != Em3dProblemType.Eigenmode ? null
                 : new Em3dEigenmodeJson(p.EigenmodeCount, setup.Eigenmode?.Count is null ? "default" : "field",
                                         p.EigenmodeTargetHz, setup.Eigenmode?.TargetGHz is null ? "default (the sweep's start)" : "field"),
+            Sar = sarSettings is null ? null : Sar(sarSettings, p, g, grid.Grid),
         };
+    }
+
+    /// <summary>brief-sar-6 R-sar6-8 — the Sar group as a run resolves it (Em3dSar.Resolve), with its dump box on the grid.</summary>
+    private static Em3dSarJson Sar(SarSettings s, Em3dProblem p, Em3dGenerationResult g, FdtdGridResult? grid)
+    {
+        var (plan, refusal) = Em3dSar.Resolve(s, p, g.Phantoms);
+        if (plan is null)
+            return new Em3dSarJson(s.FrequenciesHz, s.MassesGrams, s.Method.ToString(), "", [], s.B1, s.B0AxisName, null, s.CrossCheck, [],
+                                   null, null, refusal);
+        var materials = p.Materials.ToDictionary(m => m.Name, StringComparer.Ordinal);
+        var tissue = p.Solids.Where(x => plan.Densities.ContainsKey(x.Name)).OrderBy(x => x.Order)
+                      .Select(x => new Em3dTissueJson(x.Name, x.Material, plan.Densities[x.Name], materials[x.Material].Epsr, materials[x.Material].SigmaSm))
+                      .ToList();
+        long? cells = grid is { Cylinder: null } ? Em3dSar.DumpCells(plan, grid) : null;
+        return new Em3dSarJson(s.FrequenciesHz, s.MassesGrams, s.Method.ToString(), plan.RegionName, plan.Region, s.B1, s.B0AxisName,
+                               s.B1 ? plan.B1RegionName : null, s.CrossCheck, tissue, cells,
+                               cells is { } c ? Em3dSar.EstimateBytes(plan, c, p.Ports.Count) : null, null);
     }
 
     /// <summary>
@@ -470,8 +490,25 @@ internal static class ExplainEm3d
         if (r.Refusal is { } refusal) { Console.WriteLine($"  materials    the 3D problem could not be built: {refusal}"); return; }
         PrintMaterialRows(r);
         if (r.Materials.FirstOrDefault(m => m.EvaluatedAtHz is not null)?.EvaluatedAtHz is { } f)
-            Console.WriteLine($"  {"",-12} frequency-dependent materials are evaluated once, at {MaterialDispersion.Hz(f)} (the sweep's " +
-                              "centre), and the solver sees those values at every frequency of the sweep.");
+            Console.WriteLine($"  {"",-12} frequency-dependent materials are evaluated once, at {MaterialDispersion.Hz(f)} " +
+                              $"({(r.Sar is null ? "the sweep's centre" : "the SAR frequency")}), and the solver sees those values at every " +
+                              "frequency of the sweep.");
+        if (r.Sar is { } sar) PrintSar(sar);
+    }
+
+    /// <summary>brief-sar-6 R-sar6-8 — the Sar group: what a run computes, over which tissue, and what it writes.</summary>
+    private static void PrintSar(Em3dSarJson s)
+    {
+        static string G(double v) => v.ToString("G4", CultureInfo.InvariantCulture);
+        Console.WriteLine($"  sar          at {string.Join(", ", s.FrequenciesHz.Select(MaterialDispersion.Hz))}; " +
+                          $"{string.Join(", ", s.MassesGrams.Select(m => G(m) + " g"))} averaged ({s.Method})" +
+                          (s.B1 ? $"; B1 with B0 along {s.B0Axis}" : "; no B1") + (s.CrossCheck ? "; cross-checked with sar_calc" : ""));
+        if (s.Refusal is { } no) { Console.WriteLine($"  {"",-12} a run would stop here: {no}"); return; }
+        Console.WriteLine($"  {"",-12} region {s.Region}: {string.Join(", ", s.RegionObjects)}" + (s.B1Region is { } b ? $"; B1's mean over {b}" : ""));
+        foreach (var t in s.Tissue)
+            Console.WriteLine($"    {t.Object,-28} {t.Material,-20} ρ {G(t.DensityKgM3)} kg/m³  εr {G(t.Epsr)}  σ {G(t.SigmaSm)} S/m");
+        if (s.DumpCells is { } cells && s.DumpBytes is { } bytes)
+            Console.WriteLine($"  {"",-12} dump {cells:N0} cells, about {MachineMemory.Format(bytes)} on disk; values are reported per 1 W accepted");
     }
 
     private static void PrintMaterialRows(ExplainEm3dJson r)
@@ -559,6 +596,7 @@ internal static class ExplainEm3d
         }
         if (r.Eigenmode is { } eig)
             Console.WriteLine($"  eigenmode    {eig.Count} mode(s) ({eig.CountFrom}) above {G(eig.TargetHz / 1e9)} GHz ({eig.TargetFrom})");
+        if (r.Sar is { } sarGroup) PrintSar(sarGroup);
 
         if (r.Static is { } st)
         {

@@ -135,6 +135,7 @@ public sealed partial class EmSetupEditorViewModel
         OnPropertyChanged(nameof(Is3DSetup));
         OnPropertyChanged(nameof(IsPalaceSetup));
         OnPropertyChanged(nameof(IsOpenEmsSetup));
+        OnPropertyChanged(nameof(IsSarSetup));
         OnPropertyChanged(nameof(Solver3DDescription));
         RaiseSolverKindVisibility();
         RaiseStaticVisibility();
