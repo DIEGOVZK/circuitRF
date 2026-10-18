@@ -73,6 +73,10 @@ public sealed record OpenEmsSarRaw(
     ComplexF[] Ex, ComplexF[] Ey, ComplexF[] Ez,
     float[] Conductivity, float[] Density, float[] Volume);
 
+/// <summary>brief-sar-5 — a raw SAR dump's cell-centre mesh, cell widths and frequencies, without its cell data.</summary>
+public sealed record OpenEmsSarRawLayout(
+    OpenEmsMesh Mesh, double[] CellWidthX, double[] CellWidthY, double[] CellWidthZ, double[] FrequenciesHz);
+
 /// <summary>A frequency-domain E or H dump at one of its frequencies: three components, C order over (x, y, z).</summary>
 public sealed record OpenEmsField(
     OpenEmsFieldQuantity Quantity, OpenEmsMesh Mesh, bool DualMesh,
@@ -107,18 +111,7 @@ public static class OpenEmsHdf5
     public static OpenEmsSarRaw ReadSarRaw(string path, int frequencyIndex = 0, int xStart = 0, int xCount = -1)
     {
         using var r = new Reader(path);
-        r.RequireRootHeader(out int dumpType);
-        if (dumpType != SarRawDumpType)
-            throw r.Unexpected("/@dump_type", $"dump type {dumpType}", $"dump type {SarRawDumpType} (a raw SAR dump)");
-        var mesh = r.ReadMesh();
-        var widths = new[] { "x", "y", "z" }.Select((a, n) =>
-        {
-            string p = "/CellWidth/" + a;
-            var ds = r.Dataset(p, "the cell widths along " + a);
-            r.RequireFloat(ds, p, 8);
-            r.RequireShape(ds, p, [(ulong)mesh.LengthOf(n)]);
-            return ds.Read<double[]>();
-        }).ToArray();
+        var (mesh, widths) = ReadSarRawHeader(r);
 
         int nx = mesh.Nx, ny = mesh.Ny, nz = mesh.Nz;
         ArgumentOutOfRangeException.ThrowIfNegative(xStart);
@@ -142,6 +135,34 @@ public static class OpenEmsHdf5
         var slab = mesh with { X = mesh.X[xStart..(xStart + count)] };
         return new OpenEmsSarRaw(slab, widths[0][xStart..(xStart + count)], widths[1], widths[2], freqs[frequencyIndex], xStart,
                                  e[0], e[1], e[2], cellData[0], cellData[1], cellData[2]);
+    }
+
+    /// <summary>
+    /// brief-sar-5 — a raw SAR dump's layout without its cell data: the cell-centre mesh, the cell widths and every
+    /// frequency, so a caller can size what it builds before streaming the cells through <see cref="ReadSarRaw"/> in x slabs.
+    /// </summary>
+    public static OpenEmsSarRawLayout ReadSarRawLayout(string path)
+    {
+        using var r = new Reader(path);
+        var (mesh, widths) = ReadSarRawHeader(r);
+        return new OpenEmsSarRawLayout(mesh, widths[0], widths[1], widths[2], r.ReadFrequencies());
+    }
+
+    private static (OpenEmsMesh Mesh, double[][] Widths) ReadSarRawHeader(Reader r)
+    {
+        r.RequireRootHeader(out int dumpType);
+        if (dumpType != SarRawDumpType)
+            throw r.Unexpected("/@dump_type", $"dump type {dumpType}", $"dump type {SarRawDumpType} (a raw SAR dump)");
+        var mesh = r.ReadMesh();
+        var widths = new[] { "x", "y", "z" }.Select((a, n) =>
+        {
+            string p = "/CellWidth/" + a;
+            var ds = r.Dataset(p, "the cell widths along " + a);
+            r.RequireFloat(ds, p, 8);
+            r.RequireShape(ds, p, [(ulong)mesh.LengthOf(n)]);
+            return ds.Read<double[]>();
+        }).ToArray();
+        return (mesh, widths);
     }
 
     /// <summary>A frequency-domain E (DumpType 10) or H (11) field dump, at frequency index <paramref name="frequencyIndex"/>.</summary>

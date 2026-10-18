@@ -2959,3 +2959,28 @@ exploring. `Bayesian` therefore has no `warp` option; the class remark records w
 **A related limit seen while gating Auto:** Levenberg–Marquardt on the L-section stalls at
 |S11| = 1.2e-6 against a `le 1e-6` goal — its 1e-6-of-the-box difference step is too coarse for a
 log-scaled 50:1 range at that depth. Not Auto's defect; the Auto gate uses 1e-5.
+
+## SAR engine: cube-averaged SAR with summed-volume tables, and sar_calc as a cross-check (brief-sar-5, 2026-10-18)
+
+- **A cube's mass is O(1) whatever its size.** The partial-cell fractions are separable (a cell's fraction is the
+  product of three axis fractions, 1 except at each axis's two end cells), so the cube's sums are a weighted
+  combination of at most 4 × 4 × 4 entries of one 3D prefix table of (ρV, V, background V, power):
+  `−Ws·P[S] + (Ws−1)·P[S+1] + (1−We)·P[E] + We·P[E+1]` per axis. Searching for the cube of mass m is then a 1D root
+  search on the half-width; a secant on the mass's CUBE ROOT is nearly exact in homogeneous tissue, about 4 evaluations
+  per search. 10.05 M cells, 1 g and 10 g: 1.6 s and 1.25 GB on the 10-core developer machine (`docs/design/sar.md` §7.4).
+- **"Largest containing valid average" is a painter's pass, not a per-cube loop.** Valid cubes in falling order of
+  value claim unclaimed cells through a per-row skip list; only cubes holding a candidate (a prefix count) are visited.
+  Looping over each valid cube's cells, as the straightforward description reads, is O(cells × cube volume).
+- **Agreement with openEMS's sar_calc on the dipole's raw dump is exact in structure**: the same peak value and cell,
+  the same valid/used/unused/air counts, every cell within 7.8e-7. So the validity rules in `sar.md` §7.2 are sar_calc's
+  as it behaves, including two that are easy to miss: a cube must touch tissue on all SIX faces (not just stay under
+  10 % background), and a face-grown cube that reaches the grid's edge is clipped and still accepted.
+- **sar_calc's own choice points that circuitRF does NOT copy** (`sar.md` §7.3): its iterative size search can call a
+  cube invalid at a smaller iterate (identical on convex tissue); a sub-cell cube's fraction is applied twice; SIMPLE
+  accepts any iterate within 5 % of the mass. circuitRF finds the exact mass.
+- **E is reduced to ½σ|E|² as each slab arrives** (`SarGridBuilder`), 4 bytes a cell instead of 28; background cells'
+  dissipation is reported as `UncountedPowerW`, never silently dropped.
+- **sar_calc is found only beside the openEMS discovery chose** (`SolverDiscovery.SarCalcBeside`), judged by its output
+  file (its exit status is inverted), absent = a note, > 0.5 % peak difference = a warning (`OpenEmsSarCalc`). The
+  `Sar.CrossCheck` setup key arrives with SAR-6's `Sar` group.
+Gate: `tests/Ui.Tests/Sar/SarEngineTests.cs`. Design note: `docs/design/sar.md` §7.

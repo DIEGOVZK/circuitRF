@@ -1,6 +1,6 @@
 # circuitRF — SAR and B1 for MRI coil designers and phone SAR
 
-**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
+**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
 **Reference data:** [`testdata/sar/openems-ref/`](../../testdata/sar/openems-ref/README.md) · **Builds on:**
 [`em-3d.md`](em-3d.md) (the openEMS backend) and [`em-3d-f0-findings.md`](em-3d-f0-findings.md) (its validated versions).
 
@@ -603,3 +603,142 @@ be worked around.
   format: refused (§6.2).
 - **The far-field path stays on VTK** (`OpenEmsFarField.cs`'s header): `VtrFile` serves every openEMS field path, and
   the radiation gates validated the transform on it. Moving it would buy a re-validation and nothing else.
+
+---
+
+## 7. circuitRF's own SAR engine, and `sar_calc` as a cross-check (SAR-5)
+
+`src/Engine/Em3d/Sar/` computes local SAR, the spatial-average SAR of any mass by cube averaging, and a region's
+absorbed power, tissue mass and whole-region SAR. It is MIT code written from openEMS's own public description of its
+`IEEE_62704` method (the `SAR_Calculation.SetAveragingMethod` docstring, `python/openEMS/sar_calculation.pyx` at the
+`v0.37.0` tag) and from how `sar_calc` behaves on real dumps. Its C++ (`tools/sar_calculation.cpp`) was read to learn
+that behaviour. Nothing was copied (overview L3). IEC/IEEE 62704-1 is a purchased standard and was not consulted (L2),
+and no other published description was used. So where this section says "the procedure", it means the procedure as
+openEMS implements it, and every choice point below records what openEMS does and whether circuitRF does the same.
+
+### 7.1 Input (R-sar5-1)
+
+`SarGrid`: three `SarAxis` (cell widths in metres, faces cumulative from the first) and, per cell, the dissipated power
+density ½σ|E|² (W/m³), ρ (kg/m³) and the volume (m³), in C order over (x, y, z). `SarGridBuilder` takes the brief's
+quantities, the peak complex Ex, Ey, Ez with σ, ρ and V, **one x slab at a time**. As each slab arrives it reduces E and
+σ to ½σ|E|². That is the engine's only use for them, and it needs 4 bytes a cell where E and σ take 28. A complex64
+dump is taken as interleaved floats with no copy (`SarComplex64.AsFloats`). A cell with ρ = 0 is background: its power
+density is kept as zero, as `sar_calc` zeroes it. Whatever it dissipated is summed into `UncountedPowerW`, so a lossy
+material given no density shows up instead of vanishing.
+
+`OpenEmsSarGrid.Read` (`src/Design/Em3d`) streams openEMS's raw dump through `OpenEmsHdf5.ReadSarRaw` in slabs of about
+2 M cells, after `OpenEmsHdf5.ReadSarRawLayout` has read the mesh, widths and frequencies alone. The engine never opens
+a file (L5).
+
+### 7.2 The procedure, per mass m (R-sar5-2, R-sar5-3)
+
+**Local SAR** is σ|E|²/(2ρ), zero where ρ = 0. **P_abs** = Σ ½σ|E|²V and **mass** = Σ ρV over the region's tissue,
+and whole-region SAR = P_abs / mass (§1.2).
+
+**A cube** about a cell is the box [c − h, c + h] on each axis, c the cell's centre and h its half-width. Its mass is
+Σ ρᵢVᵢfᵢ over the cells it touches, where fᵢ is the fraction of cell i inside it (the partial-cell treatment). fᵢ is the
+product of the three axis fractions, and each axis fraction is 1 except at the cube's two end cells on that axis. Its
+average is Σ ½σᵢ|Eᵢ|²Vᵢfᵢ / Σ ρᵢVᵢfᵢ, and its background fraction is Σ_{ρ=0} Vᵢfᵢ / Σ Vᵢfᵢ.
+
+`SarMethod.Cube` (`sar_calc --method IEEE_62704`):
+
+1. **Centred cubes.** For each tissue cell, find the h at which the centred cube holds m. The cube is **valid** when
+   (a) it stays inside the grid; (b) its background fraction is **below 10 %**; and (c) the outermost layer of cells on
+   each of its six faces holds at least one tissue cell. A valid cube's average is its centre cell's value.
+2. **Used cells.** A tissue cell that is not the centre of a valid cube but lies **wholly** inside one or more valid
+   cubes takes the largest of their averages. An end cell counts as wholly inside only when its fraction is exactly 1.
+3. **Unused cells.** For every other tissue cell, grow six cubes, one from each face of the cell: on that face's axis
+   the cube runs 2h from the face, outward through the cell, and it is centred on the other two. Each is clipped where
+   it reaches the grid's edge. No background or face rule applies, and each is grown until it holds m. A direction that
+   cannot reach m gives nothing. Among the directions that did, those whose volume is within **5 %** of the smallest
+   are kept, and the largest of their averages is the cell's value. A cell with no direction is `NoCube`, value zero
+   (`sar_calc` prints `can't find fitting cubical averaging volume`).
+
+`SarMethod.Simple` (`--method SIMPLE`): step 1 accepts every centred cube that reaches m, clipped by the grid's edge
+where it reaches it, with no background or face rule. Step 2 counts a cell partly inside a cube. Step 3 keeps only the
+smallest-volume directions.
+
+The cube statistics are each cell's `SarCubeKind` (`Valid`, `Used`, `Unused`, `NoCube`, `Background`) and their counts.
+The peak carries its cell, its centre and the cube it came from: its own cube if valid, the containing valid cube if
+used, the face-grown cube if unused. It is restricted to the region, and a tie goes to a valid cell.
+
+### 7.3 Where the description leaves a choice, and what was chosen
+
+| # | Point | openEMS (`sar_calc` 0.37.0) | circuitRF | Effect |
+|---|---|---|---|---|
+| 1 | How the cube's size is found | iterates from half the edge (a cube-root rescale, then secant steps kept inside known bounds) and stops at the first size whose mass is within **1e-6** of m | a secant on the mass's cube root, kept inside a bracket and halved when it stalls, to **1e-9** | the cube is the same to 1e-6 in mass; values agree to ≤ 1e-6 |
+| 2 | An iterate *smaller* than the final cube with an all-air face and too little mass | the cube is declared invalid at that point, before the mass is reached | only the final cube is judged | identical for convex tissue: if a face of a smaller cube about a tissue point is all air, so is every larger cube's face on that side. Measured identical cube counts on the dipole (§7.5). A non-convex body could differ at a few surface cells |
+| 3 | A cube narrower than one cell along an axis | that cell's fraction is applied twice (once as the start cell and once as the stop cell) | applied once (2h/w) | never reached at 1 g or 10 g with tissue-resolution cells |
+| 4 | Background and face test | by volume including partial cells; strictly below 10 %; the face layer includes partial cells | the same | — |
+| 5 | Face-grown cubes reaching the grid's edge | clipped there and accepted if they reach m | the same, so such a cube is truncated by the grid | the random phantom (§7.5) depends on it |
+| 6 | The 5 % volume rule | compares each direction's volume, background included, with the smallest | the same | — |
+| 7 | `Simple`'s mass tolerance | 5 %, and the first iterate inside it is taken | the exact mass (1e-9) | `Simple` can differ from `SIMPLE` by the 5 % mass window. The cross-check runs `SIMPLE` for `Simple` and `IEEE_62704` for `Cube` |
+| 8 | A region (R-sar5-4) | none (`--autorange` only bounds the work) | restricts every reported number, the peak, P_abs and mass. Averaging always uses all tissue, since a cube centred in the region may reach tissue outside it | head-only SAR is a region, not a code path |
+| 9 | `IEEE_C95_3` | offered | not offered (the brief asks for two methods) | — |
+
+### 7.4 Cost (R-sar5-5)
+
+A cube's three sums are separable, so they are a weighted combination of at most **4 × 4 × 4 entries of a
+summed-volume table** (a 3D prefix sum of ρV, V, background V and power). One evaluation is a fixed 64 table reads,
+whatever the cube's size. Finding the cube of mass m takes a few evaluations: the mass's cube root is close to linear in
+h, so the secant is nearly exact in homogeneous tissue. The face test reads a prefix count of tissue cells.
+
+Step 2 is a painter's pass. The valid cubes that wholly hold any candidate cell (a second prefix count) are taken in
+falling order of value. Each claims the unclaimed candidates inside it through a skip list along z per (x, y) row, so a
+claimed cell is never visited again. Threads own disjoint ranges of x. Nothing loops over a cube's cells.
+
+`SarOperationCountTests` holds this with a counter, not a timing. On the same block at 1 mm and at 0.5 mm, a 1 g cube
+spans 8× the cells, and mass evaluations per cube search do not grow (3.9 on the dipole's dump and on the 10 M-cell head below).
+
+**Measured** (the developer machine: 10 cores, 16 GB; Release; 2026-10-18): a synthetic three-layer ellipsoid head (100 × 80 × 100
+mm semi-axes, shells 9 mm, 4.22 kg) at **1 mm in a 230 × 190 × 230 grid, 10.05 M cells (3.35 M tissue)**, with
+1 g and 10 g together: **1.6 s**, **1.25 GB** peak resident. That is 6.7 M cube searches at 3.9 mass evaluations each,
+and 359 M rows walked by the painter. The dipole's raw dump (83 × 90 × 91, 0.68 M cells), 10 g: **0.17 s**.
+
+### 7.5 Agreement with `sar_calc` (the gate)
+
+| Case | Peak | Cells within 1 % | Worst cell | Cube counts |
+|---|---|---|---|---|
+| `Dipole_SAR` raw dump, 10 g, `IEEE_62704` (SAR-4's exact pair) | **identical** (3.91953e-27 at (14, 44, 45)) | **100 %** of 216,116 | 7.8e-7 | valid 165,776 / used 49,620 / unused 720 / air 463,654: **identical** |
+| Random phantom, 1 g, `IEEE_62704` (10 × 10 × 10, 8 g in all) | identical | **100 %** of 1,000 | 1.1e-7 | circuitRF's: 64 valid, 448 used, 488 unused (that run's result was kept as `.npy` only, without its counts) |
+
+P_abs and mass agree with `sar_calc`'s attributes to 5e-8 (float32 inputs summed in a different order). Overview §4 asks for 0.5 % on the peak and 1 % on ≥ 99 % of
+cells.
+
+### 7.6 `sar_calc` alongside (R-sar5-6, overview O3)
+
+- **Found beside openEMS**: `SolverDiscovery.SarCalcBeside(openEms)` looks in the directory of the openEMS discovery
+  chose, and in that of its link target, and nowhere else. A cross-check only means something against the openEMS
+  that wrote the dump. An openEMS in the Linux subsystem gives none.
+- **`OpenEmsSarCalc.CrossCheck(enabled, openEms, rawDump, ours, method, workDir)`** runs `sar_calc -i <raw> -o <out>
+  --method IEEE_62704 --mass <g>` (`SIMPLE` for `Simple`) once per averaged mass, through `Em3dProcessLauncher`, with
+  its console output in `<out>.log`. **It is judged by its output file**, which is deleted first, because its exit
+  status is inverted (§2). The result carries both peaks and their relative difference.
+- **What it says.** Off: nothing. sar_calc absent: a **note**. sar_calc failed: a **warning** naming its log. Peaks
+  more than **0.5 %** apart: a **warning** with both values.
+- **The setup key.** `Sar.CrossCheck` belongs to the setup's `Sar` group, which SAR-6 creates (R-sar6-1). This phase
+  provides the step that the key switches on.
+
+### 7.7 Handed to SAR-6
+
+- `Sar.CrossCheck` in the `Sar` group, passed to `OpenEmsSarCalc.CrossCheck` after the run.
+- **A lossy tissue with no density** (§4.3: eight shipped tissues state none). openEMS writes such a cell as ρ = 0, and
+  every SAR tool then treats it as air. SAR-6 refuses the setup, naming the material. The engine's `UncountedPowerW` is
+  the backstop that would show one that got through.
+- Naming a region after a phantom or tissue set: the engine takes a mask (`SarRegion.Mask`), which SAR-6 builds from
+  the problem's solids.
+
+### 7.8 Gates
+
+`tests/Ui.Tests/Sar/SarEngineTests.cs`:
+
+- `SarLocalTests`: openEMS's analytic 4 × 4 × 4 block, built in C#. Local SAR is 2.5e-4 W/kg to 1e-6, and P_abs, mass
+  and whole SAR follow.
+- `SarAveragingTests`: a 40 mm uniform block, where the 10 g average equals the local value everywhere and the centre's
+  cube is valid; a two-layer block, where the 1 g cube across the interface is (4.5·1e-4 + 5.5·3e-4)/10 W/kg (half-cells
+  at every end); a block corner, which is unused and takes a face-grown cube.
+- `SarOperationCountTests`: §7.4.
+- `SarAgainstSarCalcTests`: §7.5's two rows, from fixed data, with no openEMS process (skipped with a reason where the
+  data is absent).
+- `SarCalcCrossCheckTests`: the installed `sar_calc` on the dipole dump, both peaks within 0.5 % and no warning (skipped
+  without openEMS or the dump); with no `sar_calc` beside openEMS the cross-check is one note, and nothing is started.
