@@ -20639,3 +20639,79 @@ classes under `tests/Ui.Tests/SchematicImport/`.
 - **A symbol cell's value row shows its cell name**, which is the only text it has; a native part's type row is hidden.
 - **Defect fixed on the way: an EDIF `designator` written as a `stringDisplay`** — which the standard allows — read as
   empty, so the part was skipped as a title block.
+
+## MBEND's arms end at the model's reference planes (2026-10-16)
+
+Found while laying out a meander from a schematic: `MBendPCell` drew each arm `StubLengthFactor`·W
+(2.5 W) from the corner to its pin, but the MBEND model is a lumped L-C-L with NO length of its own,
+whose reference planes are the edges of the W × W corner square (the convention its published
+coefficients assume, and the one a comparison against an external EM solver confirmed earlier). Every
+MLIN abutted at those pins therefore sat about 2 W further out than the schematic placed it: about
+4 W of line per bend in the copper that the circuit simulation never saw. On a meander with eight
+bends at W = 1.1 mm that is 35 mm of unsimulated line.
+
+**Fix.** Each arm now ends at the plane through the inner corner, (W/2)·tan(θ/2) from the
+centre-line corner (W/2 at 90°, so an unmitred right-angle bend is exactly the corner square). When
+the chamfer is deeper than that plane — an oblique bend, where the fixed-fraction rule removes more
+than the plane leaves — the pin moves out to where the strip is full width again, max(s, leg − s), the
+rule MMITER already uses, so an abutting MLIN never fills the cut back in. The chamfer leg itself is
+unchanged and is now computed from the corner alone, before the arms are sized; it no longer needs a
+0.95 cap. A straight-through "bend" (0° or 180°) has no corner and keeps the legacy stubs.
+`PCellRegistry` MBEND → version 3, so generated cells already on disk regenerate.
+
+**Two rounding traps, both of which the mesher found before a reader would have.**
+- With the arm ending at the plane, the inner corner, pin 1's inner end-cap corner and pin 2's
+  inner end-cap corner are ONE point, computed three ways. Rounding the arm length to a whole DBU
+  left them up to 1 nm apart: a 1 nm edge, or a pin-1 end cap tilted by 1 nm. The mesher staircases
+  that as an oblique edge, and an isolated 45° bend went to 4 µm cells. The outline now keeps the
+  EXACT points — pin 1's corners lie on the axes — and drops a computed corner or chamfer end within
+  1 DBU of one.
+- The CLI renders a placed PCell by regenerating it from its parameters with ITS OWN build, not from
+  the generated cell on disk. A stale Release CLI therefore drew v2 artwork at v3 placements: a
+  picture that looked like an orientation bug and was a build artifact.
+
+**Meshing an isolated oblique bend is heavier now, and only isolated.** On its own, an oblique bend is
+now just its corner: at 30° to 45° a small polygon whose one oblique edge runs vertex to vertex, which
+the planar mesher staircases into ~4,500 to 6,900 unknowns, over R17's 5,000 ceiling once EdgeCells is
+raised. The same bend with 2 W of line on each pin, which is what a layout contains and what the old
+2.5 W arms stood in for, meshes to 1,187 to 3,781 at 45°. `PlanarMeshPCellTests.E0b` now meshes the
+bend with leads (its `WithLeads` pushes each end cap out exactly, no boolean, so no seam). Whether the
+mesher should handle the bare corner better is a mesher question, left open.
+
+Gates: `testdata/PCells/pcell-geometry.txt` (re-recorded: the 90° bends are the 300 µm corner
+square, both chamfer legs unchanged, the 45° chamfer the same 368 µm now running pin corner to pin
+corner), the MBEND vertex-count and handle tests updated with the reason in each, and
+`PlanarMeshPCellTests.T6_1` asserting what it is about: the mesh removes the area the mitre removes
+(1.7 % at 10 GHz), not that the mitred mesh has fewer cells. It used to have fewer only because 2.5 W of
+straight arm dominated both meshes.
+
+Not changed: the Fifty/Optimal chamfer leg is still M·W per edge, half the Douville-James cut (whose
+50 % runs corner to corner, 2·M·W). That is a separate question about which geometry the model's
+mitred coefficients describe.
+
+## A Palace sweep's default field save could abort the run (2026-10-16)
+
+**Symptom.** A driven Palace run with an odd point count and non-round ends could stop before solving with
+`Save frequency … not found in sample frequencies!` (Palace 0.18.1, `configfile.cpp`). Reproduced with a
+single headless `em` run of the Via 3D example at 1 GHz to 1173913043.478261 Hz, 3 points. It showed up
+first on frequency sub-bands, whose ends are arbitrary points of a larger sweep.
+
+**Cause.** The default field save is the sweep's centre, written as its own `Point` sample with
+`SaveStep: 1`. For an odd count the centre is also a sweep point. The two are computed differently:
+circuitRF takes `0.5·(start+stop)` in hertz, divided by 1e9, while Palace takes `min + (i/(n-1))·(max-min)`
+in GHz. The results can differ in the last bit: 1.0869565217391306 against Palace's 1.0869565217391304.
+Palace merges samples closer than 1e-9 GHz and keeps the lower one. It then looks up each SaveStep
+frequency with `!=`, so when circuitRF's value is the higher one it is gone and the run aborts. When it is
+the lower one, the run works by luck. The old comment said a duplicate of a sweep point is merged harmlessly.
+That holds only when the two values are bit-identical, as in the 2/4/6 GHz case it was measured on. A
+log sweep's geometric centre is never bit-identical to Palace's `pow(10, …)`, so every odd log sweep was
+exposed too, and so was a listed `SaveFieldsGHz` entry typed at a sweep point.
+
+**Fix.** `PalaceConfigWriter.SplitSaves` computes the samples the way Palace does (`PalaceSamplesGHz`).
+Any save within 1 kHz of a sample goes in Driven's `Save` list, written as that sample's value. Palace
+matches that list to the nearest sample within its own 1e-9 tolerance, so a last-bit libm difference
+cannot break it either. A save that is not a sweep point keeps its `SaveStep` Point sample, as before. A
+save on the sweep adds no row to `port-S.csv`, so `WithoutSaveOnlyRows` has nothing to drop. Every
+committed golden is an even sweep and none of them moved. Gate:
+`FieldTests.SaveFrequencies_AnOddSweepsCentre_IsSavedAsTheSweepsOwnSample_NotAsAPointThatPalaceMerges`.
+The same headless run now completes, writes its fields, and its `.s2p` holds exactly the three sweep points.

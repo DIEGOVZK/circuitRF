@@ -656,6 +656,21 @@ public static class ComponentTypeRegistry
             Category: ComponentCategory.TransmissionLine,
             SearchTerms: ["TLIN", "TLine", "transmission line", "tline", "ideal", "lossless", "line"],
             IsCommon: true),
+        // CLIN — the ideal coupled pair, TLIN's four-port sibling: same category, same ideal/lossless
+        // standing, no substrate and no layout. Prefix "CL" (no other kind or alias spells it).
+        [SymbolKind.CLine]         = new("CLIN", "CL",
+            Category: ComponentCategory.TransmissionLine,
+            SearchTerms: ["CLIN", "CLine", "coupled line", "coupled lines", "coupled pair", "coupler",
+                          "even mode", "odd mode", "Ze", "Zo", "ideal", "lossless", "line"],
+            IsCommon: false),
+        // BCLIN — the offset broadside-coupled STRIPLINE pair: a transmission line first (no microstrip
+        // substrate), its cross-section resolved from two adjacent conductors of the stackup.
+        [SymbolKind.BCLine]        = new("BCLIN", "BCL",
+            Category: ComponentCategory.TransmissionLine,
+            SearchTerms: ["BCLIN", "broadside", "broadside coupled", "stripline", "offset stripline",
+                          "coupled stripline", "coupled lines", "coupler", "3 dB coupler", "even mode",
+                          "odd mode", "Shelton", "field solver"],
+            IsCommon: false),
         // Match — a synthesised bandpass matching network (match.md §8.4). Prefix "MN", NOT "M":
         // "M" is Mutual. The search terms deliberately cover what it SOLVES (match, interstage, Cgs,
         // Ropt) as well as how it works (Fano, Norton, Chebyshev), because the people who reach for
@@ -717,6 +732,23 @@ public static class ComponentTypeRegistry
             Category: ComponentCategory.Microstrip,
             SearchTerms: ["MCURVE", "microstrip curve", "curved bend", "radiused bend", "arc", "smooth bend",
                           "bend", "radius"],
+            ExtraCategories: [ComponentCategory.TransmissionLine]),
+        // MCLIN — the edge-coupled microstrip pair, MLIN's four-port sibling, wired as CLIN.
+        [SymbolKind.MCLine]        = new("MCLIN", "MCL",
+            Category: ComponentCategory.Microstrip,
+            SearchTerms: ["MCLIN", "coupled microstrip", "edge coupled", "coupled lines", "coupled line",
+                          "coupler", "directional coupler", "even mode", "odd mode", "Kirschning", "Jansen"],
+            ExtraCategories: [ComponentCategory.TransmissionLine]),
+        // MBCLIN — broadside-coupled microstrip: one strip buried, one above it, a single ground.
+        [SymbolKind.MBCLine]       = new("MBCLIN", "MBCL",
+            Category: ComponentCategory.Microstrip,
+            SearchTerms: ["MBCLIN", "broadside", "broadside coupled", "broadside microstrip", "coupled lines",
+                          "coupler", "multilayer coupler", "even mode", "odd mode", "field solver"],
+            ExtraCategories: [ComponentCategory.TransmissionLine]),
+        [SymbolKind.MMiter]        = new("MMITER", "MMT",
+            Category: ComponentCategory.Microstrip,
+            SearchTerms: ["MMITER", "mitred bend", "mitered bend", "chamfered bend", "chamfer", "miter", "mitre",
+                          "bend", "corner", "45 degree bend"],
             ExtraCategories: [ComponentCategory.TransmissionLine]),
         [SymbolKind.MTee]         = new("MTEE",  "MT",
             Category: ComponentCategory.Microstrip,
@@ -908,6 +940,11 @@ public static class ComponentTypeRegistry
         SymbolKind.Tline or SymbolKind.Mlin or SymbolKind.Cpwg or SymbolKind.Slin =>
             "The two terminals are interchangeable: the line is uniform, so neither end is the input.",
 
+        SymbolKind.CLine or SymbolKind.MCLine or SymbolKind.BCLine or SymbolKind.MBCLine =>
+            "Terminals 1 and 2 are the two ends of one line, 3 and 4 the two ends of the other; 3 sits "
+          + "beside 1 and 4 beside 2. Driving 1 of a matched pair, 2 is the through port, 3 the "
+          + "coupled port and 4 the isolated port.",
+
         SymbolKind.Atten or SymbolKind.Filter =>
             "The two terminals are interchangeable — this block is symmetric, and its parameters "
           + "describe both ports at once.",
@@ -919,6 +956,10 @@ public static class ComponentTypeRegistry
         SymbolKind.MCurve =>
             "The two terminals are interchangeable. One width, one radius and one angle describe the "
           + "whole curve, so the pins differ only in which way it turns on the canvas.",
+
+        SymbolKind.MMiter =>
+            "The two terminals are interchangeable. The chamfer is symmetric about the corner's bisector, "
+          + "so the pins differ only in which way it turns on the canvas.",
 
         // ── Symmetric ALONE, and not once coupled ────────────────────────────
         // The dot convention, which is a property of the pair rather than of either inductor. It is
@@ -1082,6 +1123,10 @@ public static class ComponentTypeRegistry
         SymbolKind.NonlinearC    => "NonlinearC",
         SymbolKind.Mutual        => "Mutual",
         SymbolKind.Tline         => "TLIN",
+        SymbolKind.CLine         => "CLIN",
+        SymbolKind.MCLine        => "MCLIN",
+        SymbolKind.BCLine        => "BCLIN",
+        SymbolKind.MBCLine       => "MBCLIN",
         SymbolKind.Match         => "Match",
         // All three tuner tiles place the identical engine component.
         SymbolKind.Tuner         => "Tuner",
@@ -1092,6 +1137,7 @@ public static class ComponentTypeRegistry
         SymbolKind.Slin          => "SLIN",
         SymbolKind.MBend         => "MBEND",
         SymbolKind.MCurve        => "MCURVE",
+        SymbolKind.MMiter        => "MMITER",
         SymbolKind.MTee          => "MTEE",
         SymbolKind.MCross        => "MCROSS",
         SymbolKind.Mtaper        => "MTAPER",
@@ -1270,6 +1316,7 @@ public static class ComponentTypeRegistry
          : SystemBlockParameterDescription(kind, parameterName) is { Length: > 0 } sysDesc ? sysDesc
          : ViaParameterDescription(kind, parameterName) is { Length: > 0 } viaDesc ? viaDesc
          : MmicParameterDescription(kind, parameterName) is { Length: > 0 } mmicDesc ? mmicDesc
+         : CoupledPairParameterDescription(kind, parameterName) is { Length: > 0 } cpDesc ? cpDesc
          : WBondParameterDescription(kind, parameterName) is { Length: > 0 } wbDesc ? wbDesc
          : PlanarLineParameterDescription(kind, parameterName) is { Length: > 0 } plDesc ? plDesc
          : TlineParameterDescription(kind, parameterName) is { Length: > 0 } tlDesc ? tlDesc
@@ -1446,6 +1493,41 @@ public static class ComponentTypeRegistry
             "C"           => "Replaces the computed capacitance outright. Empty: computed from the pad, the "
                            + "antipad and the dielectric, which is an estimate (see the component's help).",
             _             => "",
+        };
+    }
+
+    /// <summary>The physical coupled pairs' parameter meanings (MCLIN, BCLIN, MBCLIN). The broadside
+    /// pairs' cross-section rows say what EMPTY does, because empty — follow the stackup — is the
+    /// default and is not zero.</summary>
+    private static string CoupledPairParameterDescription(SymbolKind kind, string parameterName)
+    {
+        const string Empty = " Empty: from the stackup between LayerA and LayerB, else the standalone default.";
+        return (kind, parameterName) switch
+        {
+            (SymbolKind.MCLine, "W") => "Width of each strip. Both strips are the same width; the pair is symmetric.",
+            (SymbolKind.MCLine, "S") => "Edge-to-edge gap between the strips. Smaller is tighter coupling; the "
+                                      + "published model covers S/H from 0.1 to 10.",
+            (SymbolKind.MCLine, "L") => "Length of the coupled section. Coupling peaks where it is a quarter "
+                                      + "wavelength, between the even and odd modes' own.",
+            (SymbolKind.BCLine or SymbolKind.MBCLine, "W") => "Width of each strip (both the same).",
+            (SymbolKind.BCLine or SymbolKind.MBCLine, "O") => "Lateral offset between the strips' centres. 0 puts "
+                                      + "one directly over the other (tightest coupling); the coupling falls as it grows.",
+            (SymbolKind.BCLine or SymbolKind.MBCLine, "L") => "Length of the coupled section.",
+            (SymbolKind.BCLine or SymbolKind.MBCLine, "Hs") => "Separation between the strips' facing surfaces." + Empty,
+            (SymbolKind.BCLine, "Ha") => "Strip A's top surface to the upper ground plane." + Empty,
+            (SymbolKind.BCLine or SymbolKind.MBCLine, "Hb") => "Strip B's bottom surface to the lower ground plane." + Empty,
+            (SymbolKind.MBCLine, "Hd") => "Dielectric thickness over the ground. Empty: strip A sits on the top "
+                                      + "surface (Hd = Hb + T + Hs), unless the stackup puts dielectric over it.",
+            (SymbolKind.BCLine or SymbolKind.MBCLine, "T") => "Strip thickness (both strips). Empty: each strip "
+                                      + "takes its own conductor's thickness from the stackup, else 18 µm.",
+            (SymbolKind.BCLine or SymbolKind.MBCLine, "Er") => "Relative permittivity of the dielectric (one value: "
+                                      + "a stack of several is thickness-averaged)." + Empty,
+            (SymbolKind.BCLine or SymbolKind.MBCLine, BroadsideSubstrateInjection.LayerAParam) =>
+                "The conductor strip A (pins 1 and 2) is drawn on. Default: the first conductor with a signal "
+              + "conductor directly beneath it" + (kind == SymbolKind.BCLine ? " and ground planes above and below." : " and a ground plane below."),
+            (SymbolKind.BCLine or SymbolKind.MBCLine, BroadsideSubstrateInjection.LayerBParam) =>
+                "The conductor strip B (pins 3 and 4) is drawn on. Default: the next conductor below LayerA.",
+            _ => "",
         };
     }
 
@@ -1682,6 +1764,22 @@ public static class ComponentTypeRegistry
         (SymbolKind.Atten, "RL") =>
             "Return loss of both ports. The 200 dB default means exactly matched — no reflection "
           + "entry is stamped at all.",
+
+        (SymbolKind.CLine, "Ze") =>
+            "Even-mode characteristic impedance, in ohms: what each line looks like when both are "
+          + "driven in phase. Never below Zo. The pair is matched to Z0 when Ze x Zo = Z0 squared.",
+        (SymbolKind.CLine, "Zo") =>
+            "Odd-mode characteristic impedance, in ohms: what each line looks like when the two are "
+          + "driven in antiphase. At a quarter wave the coupling is (Ze - Zo) / (Ze + Zo).",
+        (SymbolKind.CLine, "E") =>
+            "Electrical length at F, in degrees — the even mode's, and the odd mode's too unless Eo "
+          + "is set. 90 is a quarter wave, where the coupling peaks.",
+        (SymbolKind.CLine, "F") =>
+            "The frequency E (and Eo) are quoted at. Both scale in proportion to frequency.",
+        (SymbolKind.CLine, "Eo") =>
+            "Odd-mode electrical length at F, in degrees. Leave it blank for a homogeneous medium "
+          + "(stripline), where both modes travel together; set it to model an inhomogeneous one such "
+          + "as microstrip, where the odd mode is faster and so electrically shorter.",
 
         // PIM and PIMPc are one specification in two fields and are worded as a pair, because
         // either number alone says nothing: a product level means nothing without the carriers it
@@ -2764,6 +2862,43 @@ public static class ComponentTypeRegistry
                         new("E", "90", "deg", true, UnitDimension.Angle),
                         new("F", "1",  "GHz", true, UnitDimension.Frequency)];
 
+            // CLIN: ideal coupled pair. Ze/Zo = even/odd-mode impedances, E = (even-mode) electrical
+            // length in degrees at F. The defaults are CLineModel's own: a 50-ohm, 10 dB, quarter-wave
+            // pair. Eo (odd-mode length) is OPTIONAL and starts blank — blank means "the same as E",
+            // the homogeneous case — and NetExtractor drops a blank Eo rather than emit `Eo=`.
+            case SymbolKind.CLine:
+                return [new("Ze", "69.37", "Ω",   true,  UnitDimension.Resistance),
+                        new("Zo", "36.04", "Ω",   true,  UnitDimension.Resistance),
+                        new("E",  "90",    "deg", true,  UnitDimension.Angle),
+                        new("F",  "1",     "GHz", true,  UnitDimension.Frequency),
+                        new("Eo", "",      "deg", false, UnitDimension.Angle)];
+
+            // BCLIN / MBCLIN: the strips' W, O and L are the user's; every cross-section row starts EMPTY,
+            // which means "from the stackup between LayerA and LayerB" (BroadsideSubstrateInjection), and
+            // with no stackup the model's own standalone default. A typed value wins for that row only.
+            case SymbolKind.BCLine:
+                return [new("W",  "0.4", "mm", true,  UnitDimension.Length),
+                        new("O",  "0",   "mm", true,  UnitDimension.Length),
+                        new("L",  "10",  "mm", true,  UnitDimension.Length),
+                        new("Hs", "",    "µm", false, UnitDimension.Length),
+                        new("Ha", "",    "µm", false, UnitDimension.Length),
+                        new("Hb", "",    "µm", false, UnitDimension.Length),
+                        new("T",  "",    "µm", false, UnitDimension.Length),
+                        new("Er", "",    "",   false, UnitDimension.None),
+                        new(BroadsideSubstrateInjection.LayerAParam, "", "", false, UnitDimension.None),
+                        new(BroadsideSubstrateInjection.LayerBParam, "", "", false, UnitDimension.None)];
+            case SymbolKind.MBCLine:
+                return [new("W",  "0.4", "mm", true,  UnitDimension.Length),
+                        new("O",  "0",   "mm", true,  UnitDimension.Length),
+                        new("L",  "10",  "mm", true,  UnitDimension.Length),
+                        new("Hs", "",    "µm", false, UnitDimension.Length),
+                        new("Hb", "",    "µm", false, UnitDimension.Length),
+                        new("Hd", "",    "µm", false, UnitDimension.Length),
+                        new("T",  "",    "µm", false, UnitDimension.Length),
+                        new("Er", "",    "",   false, UnitDimension.None),
+                        new(BroadsideSubstrateInjection.LayerAParam, "", "", false, UnitDimension.None),
+                        new(BroadsideSubstrateInjection.LayerBParam, "", "", false, UnitDimension.None)];
+
             // Match: `Design` is the WHOLE design, base64 of its JSON (match.md §7.2) — hidden, never
             // a text row (ParameterEditorViewModel.IsMatchPanelParameter), and the only input the
             // model reads. The rest are ECHO parameters: the Designer writes them so the design can be
@@ -2874,6 +3009,16 @@ public static class ComponentTypeRegistry
                         new("L", "10",   "mm", true, UnitDimension.Length),
                         SignalGroundLayerParams[0]];
 
+            // MCLIN: edge-coupled pair — W (each strip), S (edge gap), L. Substrate as MLIN's: resolved
+            // from the technology at extraction, never a declared parameter. 2.9 mm / 0.5 mm is the
+            // FR-4 baseline; MicrostripSubstrateInjection rewrites W to the technology's 50-ohm width and
+            // S to the same at placement.
+            case SymbolKind.MCLine:
+                return [new("W", "2.9", "mm", true, UnitDimension.Length),
+                        new("S", "0.5", "mm", true, UnitDimension.Length),
+                        new("L", "10",  "mm", true, UnitDimension.Length),
+                        .. SignalGroundLayerParams];
+
             // MBend: microstrip bend — W, Angle (deg, CCW from the input arm), Miter
             // (0=None/square corner, 1=Fifty/50% chamfer, 2=Optimal/Douville-James — brief-
             // mtaper-mklopf.md §1A). Default Optimal (owner follow-up, 2026-07-29 — the real
@@ -2894,6 +3039,16 @@ public static class ComponentTypeRegistry
                 return [new("W",      "2.9", "mm",  true, UnitDimension.Length),
                         new("Angle",  "90",  "deg", true, UnitDimension.Angle),
                         new("Radius", "8.7", "mm",  true, UnitDimension.Length),
+                        .. SignalGroundLayerParams];
+
+            // MMiter: chamfered bend — W, Angle (deg, CCW from the input arm, as MBend's), M (the
+            // Douville-James miter fraction of the outer-to-inner corner diagonal; 0.5 cuts corner to
+            // corner at 90 deg). M defaults to 0.5 here; MicrostripSubstrateInjection replaces it at
+            // placement with the Douville-James optimum for the technology's own 50-ohm width.
+            case SymbolKind.MMiter:
+                return [new("W",     "2.9", "mm",  true, UnitDimension.Length),
+                        new("Angle", "90",  "deg", true, UnitDimension.Angle),
+                        new("M",     "0.5", "",    true, UnitDimension.None),
                         .. SignalGroundLayerParams];
 
             // MTee: microstrip T-junction — W1/W2 (through arms, may differ), W3 (branch), and each
@@ -3097,6 +3252,14 @@ public static class ComponentTypeRegistry
             case "MUT":    kind = SymbolKind.Mutual;       return true;
             case "TLIN":
             case "TL":     kind = SymbolKind.Tline;        return true;
+            case "CLIN":
+            case "CL":     kind = SymbolKind.CLine;        return true;
+            case "MCLIN":
+            case "MCL":    kind = SymbolKind.MCLine;       return true;
+            case "BCLIN":
+            case "BCL":    kind = SymbolKind.BCLine;       return true;
+            case "MBCLIN":
+            case "MBCL":   kind = SymbolKind.MBCLine;      return true;
             case "MATCH":
             case "MN":     kind = SymbolKind.Match;        return true;
             case "TUNER":  kind = SymbolKind.Tuner;         return true;
@@ -3120,6 +3283,8 @@ public static class ComponentTypeRegistry
             case "MB":       kind = SymbolKind.MBend;        return true;
             case "MCURVE":
             case "MCV":      kind = SymbolKind.MCurve;       return true;
+            case "MMITER":
+            case "MMT":      kind = SymbolKind.MMiter;       return true;
             case "MTEE":
             case "MT":       kind = SymbolKind.MTee;         return true;
             case "MCROSS":
@@ -3515,6 +3680,9 @@ public static class ComponentTypeRegistry
                 ViaSubstrateInjection.GroundLayerParam => LayerChoiceKind.Ground,
                 _ => null,
             };
+        // A broadside pair's two strips each take a signal conductor.
+        if (BroadsideSubstrateInjection.IsBroadsideKind(kind))
+            return BroadsideSubstrateInjection.LayerParams.Contains(paramName) ? LayerChoiceKind.Signal : null;
         if (!PlanarLineSubstrateInjection.IsStackupLineKind(kind)) return null;
         return paramName switch
         {

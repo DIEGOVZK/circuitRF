@@ -4,7 +4,7 @@ slug: reference/components.html
 doc-kind: Reference Guide
 breadcrumb: Docs > Reference > Components
 lede: Every component in the standard library — its symbol, what it does, and its parameters.
-keywords: resistor, capacitor, inductor, transmission line, microstrip, MLIN, CPWG, GCPW, coplanar waveguide, SLIN, stripline, via, VIA, VIAGND, part, symbol, library, bead, ferrite, MMIC, MIMCAP, MIM capacitor, SPIRAL, spiral inductor, OSPIRAL, octagonal spiral, TFR, thin-film resistor, AIRBRIDGE, air bridge
+keywords: resistor, capacitor, inductor, transmission line, microstrip, MLIN, CPWG, GCPW, coplanar waveguide, SLIN, stripline, via, VIA, VIAGND, part, symbol, library, bead, ferrite, MMIC, MIMCAP, MIM capacitor, SPIRAL, spiral inductor, OSPIRAL, octagonal spiral, TFR, thin-film resistor, AIRBRIDGE, air bridge, coupled line, CLIN, MCLIN, BCLIN, MBCLIN, MMITER, broadside
 ---
 
 Symbols are rendered from the live drawing engine, with their connection leads and their pins shown
@@ -696,6 +696,51 @@ TLIN:TL1 a b Z=50 Ohm L=25 mm Eeff=3.2 Ac=4 Ad=2 F=2 GHz
 
 {{table: components/Tline}}
 
+### Coupled Line (CLIN) {#cline}
+
+{{symbol: cline}}
+
+An ideal, lossless pair of coupled transmission lines over a common ground, specified by its even-mode
+impedance `Ze`, odd-mode impedance `Zo` and electrical length `E` at a reference frequency `F`. Like
+TLIN it has no substrate and no layout; it is the four-port to reach for when designing a coupler or a
+coupled-line filter section before committing to a geometry.
+
+- **Match.** All four ports are matched to `Z0` when `Ze · Zo = Z0²`; the default 69.37 Ω / 36.04 Ω
+  pair is matched to 50 Ω.
+- **Coupling.** At a quarter wave (`E = 90°` at `F`) the coupled-port voltage is
+  `(Ze − Zo) / (Ze + Zo)` — about −10 dB for the defaults.
+- **Inhomogeneous media.** `Eo` is the odd mode's electrical length. Left blank, both modes share
+  `E`, which is the homogeneous (stripline) case with ideal isolation. Set it shorter than `E` to model
+  a medium such as microstrip, where the odd mode travels faster and the directivity is finite.
+
+{{table: components/CLine}}
+
+### Broadside-Coupled Stripline (BCLIN) {#bcline}
+
+{{symbol: bcline}}
+
+A pair of strips on two adjacent conductor layers, one above the other, between two ground planes in
+one dielectric — the offset broadside-coupled stripline used for tight (3 dB and closer) couplers. Its
+pins are CLIN's: 1 and 2 are strip A (the upper one), 3 and 4 strip B, with 3 beside 1.
+
+- **Geometry.** `W` is the strip width (both strips), `O` the lateral offset between their centres
+  (0 puts one directly over the other) and `L` the length. The cross-section — `Hs` between the strips'
+  facing surfaces, `Ha` from strip A up to its ground, `Hb` from strip B down to its ground, the
+  thickness `T` and `Er` — starts **empty**, which means *from the stackup*: `LayerA` (default: the first
+  signal conductor with another signal conductor directly beneath it and a ground plane above and below)
+  and `LayerB` (the next conductor down) are resolved on the technology, every layer between two surfaces
+  counting toward their spacing. Typing a value into one of those rows overrides the stackup for that row
+  only; with no technology the run says which rows take their standalone defaults.
+- **Physics.** The cross-section is solved by circuitRF's own 2D quasi-static field solver (finite
+  differences on a graded grid, thick strips, the two grounds), once per geometry. Both modes travel at
+  c/√εr; the even- and odd-mode impedances follow from the capacitance matrix. An asymmetric stack
+  (`Ha` ≠ `Hb`, unequal thicknesses) is described by the symmetric average of the two strips, and the run
+  says so when they differ by more than 5 %.
+- **Loss.** Conductor loss is integrated over the solved surface-charge distribution (both strips and
+  both grounds), dielectric loss is exact for the homogeneous medium.
+
+{{table: components/BCLine}}
+
 ### Microstrip Line (MLIN) {#mlin}
 
 {{symbol: mlin}}
@@ -766,6 +811,41 @@ with the component, so swapping straight back gives the original line exactly. E
 from the technology. An MBEND, MTEE, MCROSS or MTAPER next to a swapped line stays a microstrip
 discontinuity, and Messages says so.
 
+### Coupled Microstrip Lines (MCLIN) {#mcline}
+
+{{symbol: mcline}}
+
+A symmetric pair of edge-coupled microstrip lines on the technology's substrate: strip width `W`,
+edge-to-edge gap `S` and length `L`. Its pins are CLIN's (1/2 line A, 3/4 line B, 3 beside 1), so a CLIN
+in a schematic can be replaced by one without rewiring.
+
+The even- and odd-mode impedances and effective permittivities come from the Kirschning–Jansen
+coupled-microstrip equations, with their frequency dispersion and a correction for the strips'
+thickness; the two modes keep their own εeff, so the odd mode is faster and the isolation of a coupler
+is finite, as on a real board. Conductor, roughness and dielectric loss are MLIN's, per mode. The
+published range is W/h and S/h from 0.1 to 10 and εr up to 18; outside it the result is still computed
+and the run says it is an extrapolation. On placement `W` starts at the workspace's 50 Ω width and `S`
+at the same value.
+
+{{table: components/MCLine}}
+
+### Broadside-Coupled Microstrip (MBCLIN) {#mbcline}
+
+{{symbol: mbcline}}
+
+BCLIN's broadside pair without the upper ground: strip B is buried in the dielectric `Hb` above the
+ground plane, strip A sits `Hs` above it — on the top surface by default (`Hd` empty), or buried too when
+`Hd` or the stackup puts dielectric over it — and there is air above. Its pins are CLIN's.
+
+Because the medium is not uniform, the field solver runs twice — with the dielectric and with air — and
+each mode gets its own impedance and its own εeff; as with MCLIN the modes travel at different speeds,
+which limits the directivity. The two strips are never symmetric here (they sit at different heights),
+so the pair is always described by the symmetric average of the two, and the run says how far apart
+they are. The cross-section rows and `LayerA`/`LayerB` follow the stackup exactly as BCLIN's do, with the
+one ground plane below strip B.
+
+{{table: components/MBCLine}}
+
 ### Microstrip Bend (MBEND) {#mbend}
 
 {{symbol: mbend}}
@@ -792,6 +872,32 @@ ends of the arc, so an MCURVE butts straight onto an MLIN with no overlap to sub
 drawn with true arc edges, which EM, DRC and the exporters flatten to the technology's own tolerance.
 
 {{table: components/MCurve}}
+
+### Microstrip Mitred Bend (MMITER) {#mmiter}
+
+{{symbol: mmiter}}
+
+A chamfered (mitred) microstrip corner: width `W`, turn `Angle` (counter-clockwise positive, as MBEND's,
+anywhere up to 120°) and miter `M`. `M` is the fraction of the corner's outer-to-inner diagonal that
+is cut away, measured from the outer corner — the Douville–James definition — so at 90° `M = 0.5` runs
+the cut corner to corner across the W×W corner square, and larger values cut deeper. On placement `M`
+starts at the Douville–James optimum for the workspace's 50 Ω line, which is the cut that best cancels
+the corner's reflection on a right-angle bend; at other angles that same fraction is a reasonable
+starting point rather than an optimum.
+
+Electrically the bend is the line it is drawn as — an MLIN of the corner's own centre-line length —
+plus a small correction for what the corner does that a straight line would not. That correction comes
+from a table characterised with circuitRF's own planar EM over W/h, εr, angle and miter, and is
+interpolated in between, so any angle and miter inside the range work, not only 45° and 90°.
+
+The pins sit where the strip is full width again: at 90° with `M` up to 0.5 these are the edges of the
+W×W corner square (MBEND's planes); a deeper chamfer moves them out a little, and the extra line is part
+of the part. Draw the MLINs either side from the pins. W/h between 0.35 and 7 and εr between 2.2 and 13
+are characterised; outside that the result is still computed and the run says it is an extrapolation.
+An angle past 120° or a miter deeper than the table covers (0.6 at 45° and below, 0.8 from 90°) is
+refused. Conductor thickness enters through the line part only.
+
+{{table: components/MMiter}}
 
 ### Microstrip T-Junction (MTEE) {#mtee}
 

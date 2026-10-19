@@ -135,7 +135,8 @@ public sealed class MBendMiterResolutionTests : IDisposable
     /// FIXED, and this asserts the fix directly: at the default W=2.9mm/Angle=90° (no technology),
     /// None/Fifty/Optimal produce three genuinely DISTINCT outlines (R-pc-18), and both mitered modes
     /// have strictly MORE vertices than None (a real chamfer adds one vertex where the sharp corner
-    /// used to be — 6 → 7 for this specific L-shape).
+    /// used to be — 4 → 5 here, the arms ending at the model's reference planes so the unmitered bend
+    /// is just the W×W corner square).
     /// </summary>
     [Fact]
     public void ThreeMiterModes_ProduceThreeDistinctOutlines_ForARightAngleBend()
@@ -153,7 +154,7 @@ public sealed class MBendMiterResolutionTests : IDisposable
         Assert.False(noneXy.SequenceEqual(optimalXy));
         Assert.False(fiftyXy.SequenceEqual(optimalXy));
 
-        Assert.Equal(6, noneXy.Length / 2);
+        Assert.Equal(4, noneXy.Length / 2);
         Assert.True(fiftyXy.Length / 2 > noneXy.Length / 2);
         Assert.True(optimalXy.Length / 2 > noneXy.Length / 2);
 
@@ -200,11 +201,13 @@ public sealed class MBendMiterResolutionTests : IDisposable
         var withoutXy = ((PolygonShape)withoutMiter.Shapes[0]).Xy;
         var withXy = ((PolygonShape)withMiter.Shapes[0]).Xy;
 
-        // The unmitered oblique bend is a clean six-vertex outline (two end caps, a real outer corner
-        // and a real inner one) — never a union of two overlapping stubs.
-        Assert.Equal(6, withoutXy.Length / 2);
-        // The mitered one replaces that outer corner with two cut vertices, and is genuinely smaller.
-        Assert.Equal(7, withXy.Length / 2);
+        // The unmitered oblique bend is a clean four-vertex outline — the two end caps meet at the real
+        // inner corner, because each arm ends at the reference plane through it, and the real outer
+        // corner closes it — never a union of two overlapping stubs.
+        Assert.Equal(4, withoutXy.Length / 2);
+        // The mitered one cuts that outer corner. At 45° the chamfer is deeper than the plane, so it runs
+        // pin corner to pin corner and the pins move out: the inner corner becomes a vertex of its own.
+        Assert.Equal(5, withXy.Length / 2);
         Assert.False(withoutXy.SequenceEqual(withXy));
 
         Assert.Null(withoutMiter.Diagnostics);

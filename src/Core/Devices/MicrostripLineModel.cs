@@ -61,21 +61,41 @@ public sealed class MicrostripLineModel : ComponentModel, IPlanarLineModel
     /// than a second evaluation of the same closed forms that could drift from it. Validity-range
     /// findings go to this instance's reporter, drained by <see cref="DrainWarnings"/>.
     /// </summary>
-    public MicrostripLineParameters LineParameters(double freqHz)
-    {
-        double u = _wMeters / _hMeters;
+    public MicrostripLineParameters LineParameters(double freqHz) =>
+        LineParametersOf(freqHz, _wMeters, _hMeters, _tMeters, _epsR, _sigmaSPerM, _tanD, _roughnessMeters, _reporter);
 
-        var (z0Static, eeff0) = HammerstadJensen.Compute(_wMeters, _hMeters, _tMeters, _epsR, _reporter);
+    /// <summary>
+    /// The line's Z₀ (Ω) and propagation constant γ = α + jβ (per metre) at <paramref name="freqHz"/>,
+    /// for a part that needs the SAME line inside a larger network (MMITER's corner section): it reaches
+    /// the closed forms here rather than through a second copy. At DC it returns the static Z₀ and γ = 0.
+    /// </summary>
+    public static (double Z0, Complex Gamma) Propagation(double freqHz, double wMeters, double hMeters,
+        double tMeters, double epsR, double sigmaSPerM, double tanD, double roughnessMeters,
+        MicrostripValidityReporter reporter)
+    {
+        var p = LineParametersOf(freqHz, wMeters, hMeters, tMeters, epsR, sigmaSPerM, tanD, roughnessMeters, reporter);
+        return (p.Z0, new Complex(p.AlphaNpPerM, p.BetaRadPerM));
+    }
+
+    /// <summary>The five-layer model this class documents, in one place: <see cref="LineParameters"/>
+    /// and <see cref="Propagation"/> both evaluate it here.</summary>
+    private static MicrostripLineParameters LineParametersOf(double freqHz, double wMeters, double hMeters,
+        double tMeters, double epsR, double sigmaSPerM, double tanD, double roughnessMeters,
+        MicrostripValidityReporter reporter)
+    {
+        double u = wMeters / hMeters;
+
+        var (z0Static, eeff0) = HammerstadJensen.Compute(wMeters, hMeters, tMeters, epsR, reporter);
 
         double z0 = z0Static, eeff = eeff0;
         if (freqHz > 0.0)
-            (z0, eeff) = KirschningJansen.Compute(freqHz, u, _epsR, _hMeters, z0Static, eeff0, _reporter);
+            (z0, eeff) = KirschningJansen.Compute(freqHz, u, epsR, hMeters, z0Static, eeff0, reporter);
 
         double alphaC = 0.0, alphaD = 0.0;
         if (freqHz > 0.0)
         {
-            alphaC = MicrostripLoss.ConductorLossNpPerM(freqHz, _sigmaSPerM, _wMeters, z0, _roughnessMeters);
-            alphaD = MicrostripLoss.DielectricLossNpPerM(freqHz, _epsR, eeff, _tanD);
+            alphaC = MicrostripLoss.ConductorLossNpPerM(freqHz, sigmaSPerM, wMeters, z0, roughnessMeters);
+            alphaD = MicrostripLoss.DielectricLossNpPerM(freqHz, epsR, eeff, tanD);
         }
 
         double betaRadPerM = freqHz > 0.0

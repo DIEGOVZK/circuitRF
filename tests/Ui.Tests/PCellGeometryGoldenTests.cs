@@ -63,6 +63,12 @@ public sealed class PCellGeometryGoldenTests
 
         ("MKLOPF", new() { ["Z1"] = 50, ["Z2"] = 100, ["L"] = 5e-3, ["GammaMax"] = 0.05 }),
         ("MKLOPF", new() { ["Z1"] = 75, ["Z2"] = 25,  ["L"] = 2e-3, ["GammaMax"] = 0.02, ["Offset"] = 1e-4 }),
+
+        // The coupled pairs (2026-10): the gap and the offset, each at a non-trivial value.
+        ("MCLIN",  new() { ["W"] = 300e-6, ["S"] = 150e-6, ["L"] = 2e-3 }),
+        ("BCLIN",  new() { ["W"] = 400e-6, ["O"] = 0,      ["L"] = 3e-3 }),
+        ("BCLIN",  new() { ["W"] = 300e-6, ["O"] = 250e-6, ["L"] = 1e-3 }),
+        ("MBCLIN", new() { ["W"] = 300e-6, ["O"] = 100e-6, ["L"] = 2e-3 }),
     ];
 
     [Fact]

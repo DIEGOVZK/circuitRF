@@ -83,6 +83,10 @@ public static class SymbolArtworkGenerator
         (SymbolKind.VProbe,          "vprobe",            1),
         (SymbolKind.WSProbe,         "wsprobe",           2),
         (SymbolKind.Tline,           "tline",             2),
+        (SymbolKind.CLine,           "cline",             4),
+        (SymbolKind.MCLine,          "mcline",            4),
+        (SymbolKind.BCLine,          "bcline",            4),
+        (SymbolKind.MBCLine,         "mbcline",           4),
         (SymbolKind.Mutual,          "mutual",            2),
         (SymbolKind.Snp,             "snp",               2),
         // The UNCONFIGURED glyph, which is what the palette tile shows and therefore what the
@@ -106,6 +110,7 @@ public static class SymbolArtworkGenerator
         (SymbolKind.Slin,            "slin",              2),
         (SymbolKind.MBend,           "mbend",             2),
         (SymbolKind.MCurve,          "mcurve",            2),
+        (SymbolKind.MMiter,          "mmiter",            2),
         (SymbolKind.MTee,            "mtee",              3),
         (SymbolKind.MCross,          "mcross",            4),
         (SymbolKind.Mtaper,          "mtaper",            2),

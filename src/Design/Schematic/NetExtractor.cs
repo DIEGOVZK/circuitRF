@@ -2208,6 +2208,10 @@ public static class NetExtractor
             // engine as raw overrides, so no .cnl quoting/Elaborator string-param handling is needed
             // for them at all.
             .Where(p => p.Name is not "CvData" and not "ShowBias" and not "SignalLayer" and not "GroundReference")
+            // CLIN's Eo is optional and placed blank (blank = "same as E"). It is DROPPED rather than
+            // emitted: `Eo=` with nothing after it is the empty-parameter-value trap, where the .cnl
+            // reader takes the next token as the value.
+            .Where(p => !(comp.Symbol == SymbolKind.CLine && string.IsNullOrWhiteSpace(p.Expression)))
             .Select(p =>
             {
                 var unit = UnitNormalizer.ToEngineUnit(p.Unit);
@@ -2286,6 +2290,18 @@ public static class NetExtractor
             // A via to ground draws one pin and binds two nets, the far end being the reference.
             if (comp.Symbol == SymbolKind.ViaGnd) viaNets.Add("0");
             return new Instance(comp.InstanceName, reference, viaNets, overrides2);
+        }
+
+        // The broadside-coupled pairs (BCLIN, MBCLIN): the layer choices and every cross-section row left
+        // empty are resolution INPUTS, exactly as a via's are — never engine parameters, and an empty
+        // value must not reach the .cnl. What the stackup resolves for them is appended in their place.
+        if (BroadsideSubstrateInjection.IsBroadsideKind(comp.Symbol))
+        {
+            overrides2.RemoveAll(o => BroadsideSubstrateInjection.LayerParams.Contains(o.Name)
+                                      || string.IsNullOrWhiteSpace(o.Expression));
+            var pair = BroadsideSubstrateInjection.Build(microstripTech, comp.Symbol, comp.Parameters);
+            overrides2.AddRange(pair.Overrides);
+            foreach (var m in pair.Messages) warningsOut?.Add($"{comp.InstanceName}: {m}");
         }
 
         // R-pc-8: microstrip components get their substrate injected as extra parameter overrides,

@@ -63,6 +63,9 @@ public static class InstanceNetContract
         MimCapModel or SpiralInductorModel or ThinFilmResistorModel                          => 2,
         AirbridgeModel                                                                        => 4,
         MicrostripCrossModel                                                                  => 4,
+        // The coupled pairs: four signal terminals over the implicit reference, in CLIN's port order.
+        CLineModel or MicrostripCoupledLineModel
+            or StriplineBroadsideCoupledModel or MicrostripBroadsideCoupledModel              => 4,
 
         // The mutual-inductance element names two inductors by parameter, not two nets by position.
         MutualInductanceModel                                                                 => 0,

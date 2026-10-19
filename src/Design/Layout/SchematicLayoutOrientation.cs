@@ -115,10 +115,45 @@ public static class SchematicLayoutOrientation
             double cx = ck.X - c1.X, cy = ck.Y - c1.Y;
             if ((sx == 0 && sy == 0) || (cx == 0 && cy == 0)) continue;
 
-            double deg = (Math.Atan2(sy, sx) - Math.Atan2(cy, cx)) * 180.0 / Math.PI;
-            return new VisualOrientation(false, LayoutAngle.OfCardinal(LayoutAngle.NearestCardinal(deg)));
+            var rotated = new VisualOrientation(false, Snap(Math.Atan2(sy, sx) - Math.Atan2(cy, cx)));
+            if (PinsFace(rotated, symbolPorts[0], symbolPorts[k - 1], c1, ck) is not false) return rotated;
+
+            // A rotation cannot change a part's HANDEDNESS. A bend symbol turns one way and its cell
+            // may be drawn turning the other (MBEND/MMITER at a positive Angle turn counter-clockwise
+            // in the layout's Y-up frame, while their symbol at R0 turns clockwise), and the rotation
+            // that lines the pins' POSITIONS up then points both pins the wrong way: the copper is
+            // the mirror image of the drawing. Mirrored, the pins face the way the symbol's do.
+            var mirrored = new VisualOrientation(true, Snap(Math.Atan2(sy, sx) - Math.Atan2(cy, -cx)));
+            return PinsFace(mirrored, symbolPorts[0], symbolPorts[k - 1], c1, ck) == true ? mirrored : rotated;
         }
         return identity;
+
+        static double Snap(double rad) => LayoutAngle.OfCardinal(LayoutAngle.NearestCardinal(rad * 180.0 / Math.PI));
+    }
+
+    /// <summary>
+    /// Whether <paramref name="v"/> points both cell pins out the way the symbol's ports point — a port's
+    /// direction being its bearing from the symbol's origin (a bend's corner, a line's centre). Null when
+    /// a port sits ON the origin and so has no direction to compare.
+    /// </summary>
+    private static bool? PinsFace(VisualOrientation v, (double X, double Y) port1, (double X, double Y) portK,
+                                  LayoutPin pin1, LayoutPin pinK)
+    {
+        bool? Faces((double X, double Y) port, LayoutPin pin)
+        {
+            if (port.X == 0 && port.Y == 0) return null;
+            double symbolDeg = Math.Atan2(-port.Y, port.X) * 180.0 / Math.PI;                 // into Y-up
+            double cellDeg = (v.Mirror ? 180.0 - pin.OutwardDeg : pin.OutwardDeg) + v.Deg;
+            double d = Math.Abs(LayoutAngle.Normalize(symbolDeg - cellDeg));
+            return Math.Min(d, 360.0 - d) < 45.0;
+        }
+
+        return (Faces(port1, pin1), Faces(portK, pinK)) switch
+        {
+            (false, _) or (_, false) => false,
+            (true, true) => true,
+            _ => null,
+        };
     }
 
     /// <summary>

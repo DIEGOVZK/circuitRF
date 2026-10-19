@@ -913,6 +913,13 @@ public sealed class NdfTests(ITestOutputHelper output)
         ["BeadModel"]             = Activity.Passive,
         ["MutualInductanceModel"] = Activity.Passive,
         ["TLineModel"]            = Activity.Passive,
+        // CLIN is two ideal modal lines recombined; lossless and reciprocal, passive for TLIN's reason.
+        ["CLineModel"]            = Activity.Passive,
+        // The physical coupled pairs stamp through CLIN's modal recombination with real, positive modal
+        // impedances and attenuations α ≥ 0 — passive for the same reason, with loss only adding to it.
+        ["MicrostripCoupledLineModel"]      = Activity.Passive,
+        ["StriplineBroadsideCoupledModel"]  = Activity.Passive,
+        ["MicrostripBroadsideCoupledModel"] = Activity.Passive,
         ["MicrostripLineModel"]   = Activity.Passive,
         ["MicrostripBendModel"]   = Activity.Passive,
         // MCURVE is an MLIN over an effective length and stamps through one, so it is passive for
