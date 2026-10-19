@@ -32,7 +32,7 @@ namespace CircuitRF.Design.Layout.PCells;
 /// stated extrapolation.</b> Douville &amp; James 1978 fitted a RIGHT-ANGLE bend and says nothing
 /// about oblique ones, and no equivalently-validated fit for arbitrary angles was found — so
 /// <c>Optimal</c> at 90° is still exactly <see cref="MicrostripDiscontinuities.MiterCutLength"/> and
-/// <c>Fifty</c> is still a 0.5·W per-edge leg. Away from 90°, <see cref="TryMiterLegDbu"/> holds the
+/// <c>Fifty</c> is still a 0.5·W per-edge leg. Away from 90°, <see cref="MiterLegDbu"/> holds the
 /// FRACTION of the corner removed constant instead (the corner being the outer-to-inner diagonal),
 /// which reduces to the published leg at 90° by construction, and every oblique bend reports through
 /// <see cref="PCellResult.Diagnostics"/> that its chamfer is an engineering extrapolation rather
@@ -66,22 +66,37 @@ public static class MBendPCell
 
         int dbuPerMicron = LayoutUnits.DefaultDbuPerMicron;
         long w = PCellUnits.MetresToDbu(wMeters, dbuPerMicron);
-        long stubLen = (long)Math.Round(PCellGeometryHelpers.StubLengthFactor * w, MidpointRounding.AwayFromZero);
         long halfW = w / 2;
 
         var signalLayer = SubstrateResolver.ResolveSignalLayerKey(technology, layerSelection, out _);
 
-        long cornerX = stubLen, cornerY = 0;
         double angleRad = angleDeg * Math.PI / 180.0;
         double d2X = Math.Cos(angleRad), d2Y = Math.Sin(angleRad);
 
+        List<string>? diagnostics = null;
+        bool straightThrough = Math.Abs(Math.Sin(angleRad)) <= 1e-9;
+
+        // Each arm ends at the MODEL's reference plane: the line through the inner corner, square to
+        // the arm, (W/2)·tan(θ/2) from the centre-line corner — at 90° the edges of the W×W corner
+        // square. The L-C-L model has no length of its own, so an arm drawn past that plane is line
+        // the schematic never simulated: the arms used to be 2.5·W each, about 4·W of unsimulated
+        // line per bend once MLINs were abutted at the pins. A chamfer deep enough to run past the
+        // plane moves the pin out to where the strip is full width again, as MMITER's does, so an
+        // abutting MLIN never fills the cut back in. A straight-through "bend" has no corner and no
+        // plane, and keeps the legacy stubs.
+        double leg = straightThrough || miter == MicrostripBendMiter.None
+            ? 0.0
+            : MiterLegDbu(w, angleRad, wMeters, miter, technology, layerSelection, dbuPerMicron, ref diagnostics);
+        double plane = w / 2.0 * Math.Tan(Math.Abs(angleRad) / 2.0);
+        long stubLen = straightThrough
+            ? (long)Math.Round(PCellGeometryHelpers.StubLengthFactor * w, MidpointRounding.AwayFromZero)
+            : (long)Math.Round(Math.Max(plane, leg - plane), MidpointRounding.AwayFromZero);
+
+        long cornerX = stubLen, cornerY = 0;
         double pin2X = cornerX + stubLen * d2X;
         double pin2Y = cornerY + stubLen * d2Y;
         long pin2XDbu = (long)Math.Round(pin2X, MidpointRounding.AwayFromZero);
         long pin2YDbu = (long)Math.Round(pin2Y, MidpointRounding.AwayFromZero);
-
-        List<string>? diagnostics = null;
-        bool straightThrough = Math.Abs(Math.Sin(angleRad)) <= 1e-9;
 
         LayoutShape merged;
         if (straightThrough)
@@ -96,9 +111,7 @@ public static class MBendPCell
         }
         else
         {
-            merged = BuildBendOutline(cornerX, cornerY, stubLen, halfW, angleRad, wMeters, w,
-                                      miter, technology, layerSelection, signalLayer, dbuPerMicron,
-                                      ref diagnostics);
+            merged = BuildBendOutline(cornerX, cornerY, stubLen, halfW, angleRad, leg, signalLayer, ref diagnostics);
         }
 
         var pins = new[]
@@ -170,35 +183,42 @@ public static class MBendPCell
     /// can silently miss the geometry (the exact failure this file's own history records twice).</para>
     /// </summary>
     private static LayoutShape BuildBendOutline(
-        long cornerX, long cornerY, long stubLen, long halfW, double angleRad,
-        double wMeters, long wDbu, MicrostripBendMiter miter,
-        Technology? technology, PCellLayerSelection layerSelection, LayerKey signalLayer, int dbuPerMicron,
-        ref List<string>? diagnostics)
+        long cornerX, long cornerY, long stubLen, long halfW, double angleRad, double leg,
+        LayerKey signalLayer, ref List<string>? diagnostics)
     {
         double d1X = 1.0, d1Y = 0.0;
-        double d2X = Math.Cos(angleRad), d2Y = Math.Sin(angleRad);
-
-        // Outer side = right of travel for a CCW (left) turn, left of travel for a CW (right) turn.
-        double turnSign = Math.Sign(d1X * d2Y - d1Y * d2X);
-        double n1X = turnSign > 0 ? d1Y : -d1Y, n1Y = turnSign > 0 ? -d1X : d1X;
-        double n2X = turnSign > 0 ? d2Y : -d2Y, n2Y = turnSign > 0 ? -d2X : d2X;
+        var (d2X, d2Y, n1X, n1Y, n2X, n2Y, outerX, outerY, innerX, innerY) = Corners(cornerX, cornerY, halfW, angleRad);
 
         double pin1X = 0, pin1Y = 0;
         double pin2X = cornerX + stubLen * d2X, pin2Y = cornerY + stubLen * d2Y;
-
-        // Outer/inner corners: where each pair of parallel-offset edge lines actually crosses.
-        var (outerX, outerY) = LineIntersect(
-            cornerX + n1X * halfW, cornerY + n1Y * halfW, d1X, d1Y,
-            cornerX + n2X * halfW, cornerY + n2Y * halfW, d2X, d2Y);
-        var (innerX, innerY) = LineIntersect(
-            cornerX - n1X * halfW, cornerY - n1Y * halfW, d1X, d1Y,
-            cornerX - n2X * halfW, cornerY - n2Y * halfW, d2X, d2Y);
 
         // End caps, perpendicular to each arm's own direction at its own pin.
         double a1X = pin1X + n1X * halfW, a1Y = pin1Y + n1Y * halfW;   // pin1, outer side
         double b1X = pin1X - n1X * halfW, b1Y = pin1Y - n1Y * halfW;   // pin1, inner side
         double a2X = pin2X + n2X * halfW, a2Y = pin2Y + n2Y * halfW;   // pin2, outer side
         double b2X = pin2X - n2X * halfW, b2Y = pin2Y - n2Y * halfW;   // pin2, inner side
+
+        // Never cut past the end of either outer edge — that would fold the outline through itself.
+        // The arms are sized so the chamfer fits, so this only guards rounding.
+        double avail = Math.Min(Math.Sqrt((outerX - a1X) * (outerX - a1X) + (outerY - a1Y) * (outerY - a1Y)),
+                                Math.Sqrt((outerX - a2X) * (outerX - a2X) + (outerY - a2Y) * (outerY - a2Y)));
+        if (leg > avail + 1.0)
+        {
+            leg = avail;
+            (diagnostics ??= []).Add(
+                "MBend: the miter chamfer was limited by the arm length available — the corner cut " +
+                "is shorter than the miter rule asks for.");
+        }
+        leg = Math.Min(leg, avail);
+
+        // The arms end at the reference planes, so the inner corner IS both inner end-cap corners at
+        // every angle, and a chamfer that ends exactly at a pin meets that pin's outer corner. The
+        // END-CAP corners are the exact ones — square to their arm, through the pin — so a computed
+        // corner or chamfer point within one DBU of one of them is dropped, never the cap corner: the
+        // arm length is a whole number of DBU, and keeping the computed point instead would tilt the
+        // cap by a nanometre and hand the mesher an oblique edge to staircase.
+        static bool Near(double ax, double ay, double bx, double by)
+            => Math.Abs(Math.Round(ax) - Math.Round(bx)) <= 1 && Math.Abs(Math.Round(ay) - Math.Round(by)) <= 1;
 
         var xy = new List<long>(16);
         void Add(double x, double y)
@@ -208,25 +228,47 @@ public static class MBendPCell
         }
 
         Add(a1X, a1Y);
-        if (miter != MicrostripBendMiter.None &&
-            TryMiterLegDbu(outerX, outerY, innerX, innerY, a1X, a1Y, a2X, a2Y,
-                           d1X, d1Y, d2X, d2Y, angleRad, wMeters, wDbu,
-                           miter, technology, layerSelection, dbuPerMicron,
-                           ref diagnostics, out double leg))
+        if (leg > 0)
         {
-            Add(outerX - d1X * leg, outerY - d1Y * leg);
-            Add(outerX + d2X * leg, outerY + d2Y * leg);
+            double c1X = outerX - d1X * leg, c1Y = outerY - d1Y * leg;
+            double c2X = outerX + d2X * leg, c2Y = outerY + d2Y * leg;
+            if (!Near(c1X, c1Y, a1X, a1Y)) Add(c1X, c1Y);
+            if (!Near(c2X, c2Y, a2X, a2Y)) Add(c2X, c2Y);
         }
         else
         {
             Add(outerX, outerY);
         }
         Add(a2X, a2Y);
-        Add(b2X, b2Y);
-        Add(innerX, innerY);
+        // Pin 2's corners are rotated and so rounded; pin 1's lie on the axes and are exact. Where an
+        // arm ends at its plane all three inner points are one, and pin 1's is the one kept.
+        if (!Near(b2X, b2Y, b1X, b1Y)) Add(b2X, b2Y);
+        if (!Near(innerX, innerY, b2X, b2Y) && !Near(innerX, innerY, b1X, b1Y)) Add(innerX, innerY);
         Add(b1X, b1Y);
 
         return new PolygonShape { Layer = signalLayer, Xy = [.. xy] };
+    }
+
+    /// <summary>Arm 2's direction, both arms' outward normals (outer side = right of travel for a CCW
+    /// turn, left for a CW one), and the outer and inner corners — where each pair of parallel-offset
+    /// edge lines crosses — for a bend whose centre-line corner is at (<paramref name="cornerX"/>,
+    /// <paramref name="cornerY"/>) and whose arm 1 runs along +X.</summary>
+    private static (double D2X, double D2Y, double N1X, double N1Y, double N2X, double N2Y,
+                    double OuterX, double OuterY, double InnerX, double InnerY)
+        Corners(double cornerX, double cornerY, double halfW, double angleRad)
+    {
+        double d1X = 1.0, d1Y = 0.0;
+        double d2X = Math.Cos(angleRad), d2Y = Math.Sin(angleRad);
+        double turnSign = Math.Sign(d1X * d2Y - d1Y * d2X);
+        double n1X = turnSign > 0 ? d1Y : -d1Y, n1Y = turnSign > 0 ? -d1X : d1X;
+        double n2X = turnSign > 0 ? d2Y : -d2Y, n2Y = turnSign > 0 ? -d2X : d2X;
+        var (outerX, outerY) = LineIntersect(
+            cornerX + n1X * halfW, cornerY + n1Y * halfW, d1X, d1Y,
+            cornerX + n2X * halfW, cornerY + n2Y * halfW, d2X, d2Y);
+        var (innerX, innerY) = LineIntersect(
+            cornerX - n1X * halfW, cornerY - n1Y * halfW, d1X, d1Y,
+            cornerX - n2X * halfW, cornerY - n2Y * halfW, d2X, d2Y);
+        return (d2X, d2Y, n1X, n1Y, n2X, n2Y, outerX, outerY, innerX, innerY);
     }
 
     /// <summary>
@@ -249,20 +291,17 @@ public static class MBendPCell
     /// extrapolation through <see cref="PCellResult.Diagnostics"/> so nobody reads an oblique bend's
     /// chamfer as carrying the paper's accuracy.</para>
     ///
-    /// <para>The leg is clamped to the outer edge actually available on each side, so a shallow bend
-    /// (where the fractional rule alone would run the chamfer off the end of an arm) produces a valid
-    /// polygon rather than a self-intersecting one.</para>
+    /// <para>The leg is the corner's alone: the arms are sized afterwards so that it fits (see
+    /// <see cref="Generate"/>), which is what lets a shallow bend take its full chamfer instead of a
+    /// clamped one.</para>
     /// </summary>
-    private static bool TryMiterLegDbu(
-        double outerX, double outerY, double innerX, double innerY,
-        double a1X, double a1Y, double a2X, double a2Y,
-        double d1X, double d1Y, double d2X, double d2Y,
-        double angleRad, double wMeters, long wDbu, MicrostripBendMiter miter,
+    private static double MiterLegDbu(
+        long wDbu, double angleRad, double wMeters, MicrostripBendMiter miter,
         Technology? technology, PCellLayerSelection layerSelection, int dbuPerMicron,
-        ref List<string>? diagnostics, out double leg)
+        ref List<string>? diagnostics)
     {
-        leg = 0;
-        if (wDbu <= 0) return false;
+        double leg = 0;
+        if (wDbu <= 0) return 0;
 
         // The 90°-equivalent leg, in DBU — the published quantity, whatever the actual angle is.
         double leg90Meters;
@@ -281,7 +320,7 @@ public static class MBendPCell
                 : MicrostripDiscontinuities.MiterCutLengthAsymptotic(wMeters);
         }
         double leg90 = PCellUnits.MetresToDbu(leg90Meters, dbuPerMicron);
-        if (leg90 <= 0) return false;
+        if (leg90 <= 0) return 0;
 
         if (IsRightAngleBend(angleRad))
         {
@@ -293,15 +332,19 @@ public static class MBendPCell
             // bisector. A 90° corner's bisector depth for leg m is m/√2, so f = (m/√2)/(W·√2) = m/(2W).
             double f = leg90 / (2.0 * wDbu);
 
+            // The leg is a property of the corner alone, so it is measured at a corner on the origin
+            // before the arms are sized to fit it.
+            var (_, _, _, _, _, _, outerX, outerY, innerX, innerY) = Corners(0, 0, wDbu / 2, angleRad);
+            double d1X = 1.0, d1Y = 0.0;
             double diagX = innerX - outerX, diagY = innerY - outerY;
             double diagLen = Math.Sqrt(diagX * diagX + diagY * diagY);
-            if (diagLen <= 0) return false;
+            if (diagLen <= 0) return 0;
             double bx = diagX / diagLen, by = diagY / diagLen;
 
             // Both outer edges leave O at the same angle to the bisector, so either dot product is
             // the same cos(half-angle); take arm 1's.
             double cosHalf = -d1X * bx + -d1Y * by;
-            if (cosHalf <= 1e-9) return false;
+            if (cosHalf <= 1e-9) return 0;
 
             leg = f * diagLen / cosHalf;
 
@@ -312,19 +355,7 @@ public static class MBendPCell
                 "extrapolation, not a validated fit.");
         }
 
-        // Never cut past the end of either outer edge — that would fold the outline through itself.
-        double avail1 = Math.Sqrt((outerX - a1X) * (outerX - a1X) + (outerY - a1Y) * (outerY - a1Y));
-        double avail2 = Math.Sqrt((outerX - a2X) * (outerX - a2X) + (outerY - a2Y) * (outerY - a2Y));
-        double cap = 0.95 * Math.Min(avail1, avail2);
-        if (cap <= 0) return false;
-        if (leg > cap)
-        {
-            leg = cap;
-            (diagnostics ??= []).Add(
-                "MBend: the miter chamfer was limited by the arm length available — the corner cut " +
-                "is shorter than the miter rule asks for. Lengthen the arms for the full chamfer.");
-        }
-        return leg > 0;
+        return Math.Max(leg, 0);
     }
 
     /// <summary>Intersection of two lines given as point + direction. The caller guarantees they are

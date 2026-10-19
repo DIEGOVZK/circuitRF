@@ -38,6 +38,43 @@ public class PlanarMeshPCellTests
         return gen(map, tech, PCellLayerSelection.Default).Shapes;
     }
 
+    private static PCellResult Generated(
+        string generatorId, Technology tech, params (string Name, double Value)[] parameters)
+    {
+        Assert.True(PCellRegistry.TryGet(generatorId, out var gen), $"no generator '{generatorId}'");
+        var map = new Dictionary<string, PCellValue>(StringComparer.Ordinal);
+        foreach (var (n, v) in parameters) map[n] = PCellValue.Real(v);
+        return gen(map, tech, PCellLayerSelection.Default);
+    }
+
+    /// <summary>
+    /// The part's single outline with <paramref name="leadM"/> of full-width line run out of every pin:
+    /// each pin's end-cap edge — the two consecutive vertices square to the pin through it — is pushed
+    /// out along the pin's outward direction. Exact (no boolean, so no seam or sliver at the joint),
+    /// which is the copper an abutting MLIN gives.
+    /// </summary>
+    private static IReadOnlyList<LayoutShape> WithLeads(PCellResult part, double leadM)
+    {
+        var poly = Assert.IsType<PolygonShape>(Assert.Single(part.Shapes));
+        var v = Enumerable.Range(0, poly.Xy.Length / 2).Select(i => (X: (double)poly.Xy[2 * i], Y: (double)poly.Xy[2 * i + 1])).ToList();
+        double lead = leadM * Dbu * 1e6;
+        var outXy = new List<long>();
+        for (int i = 0; i < v.Count; i++)
+        {
+            var p = v[i]; var q = v[(i + 1) % v.Count];
+            outXy.AddRange([(long)Math.Round(p.X), (long)Math.Round(p.Y)]);
+            foreach (var pin in part.Pins)
+            {
+                double ox = Math.Cos(pin.OutwardDirectionDeg * Math.PI / 180), oy = Math.Sin(pin.OutwardDirectionDeg * Math.PI / 180);
+                bool OnCap((double X, double Y) a) => Math.Abs((a.X - pin.X) * ox + (a.Y - pin.Y) * oy) <= 2;
+                if (!OnCap(p) || !OnCap(q)) continue;
+                outXy.AddRange([(long)Math.Round(p.X + lead * ox), (long)Math.Round(p.Y + lead * oy),
+                                (long)Math.Round(q.X + lead * ox), (long)Math.Round(q.Y + lead * oy)]);
+            }
+        }
+        return [new PolygonShape { Layer = poly.Layer, Xy = [.. outXy] }];
+    }
+
     private static (PlanarProblem Problem, PlanarMeshReport Report) MeshOf(
         IReadOnlyList<LayoutShape> shapes, Technology tech, double fHz, PlanarMeshSettings? settings = null)
     {
@@ -123,8 +160,13 @@ public class PlanarMeshPCellTests
             $"cell size = {mi.MaxCellEdgeM * 1e6:G4} µm");
 
         Assert.True(trueCut > 0, "the mitre removed no area — the fixture is wrong, not the mesher");
-        Assert.True(cellsCut > 0,
-            $"the staircased mitre removed NO cells at the mesher's own cell size ({mi.MaxCellEdgeM * 1e6:G4} µm) " +
+        // The mitre is THERE after staircasing when the mesh removes the area the cut removes. A cell
+        // count used to stand in for that, while the bend carried 2.5·W arms: now that each arm ends at
+        // the model's reference plane the unmitred bend is a bare W×W square, which meshes into fewer
+        // cells than the mitred one, whose oblique edge has to be staircased.
+        Assert.True(areaErr < 0.10,
+            $"the staircased mitre removed {meshCut * 1e6:G4} mm² where the cut is {trueCut * 1e6:G4} mm² " +
+            $"({areaErr:P1}) at the mesher's own cell size ({mi.MaxCellEdgeM * 1e6:G4} µm) " +
             "— the mesh cannot represent the discontinuity L8's phase gate is about");
         Assert.NotEqual(sq.UnknownCount, mi.UnknownCount);
     }
@@ -492,7 +534,12 @@ public class PlanarMeshPCellTests
 
         foreach (double angle in new[] { 45.0, 90.0, 135.0 })
         {
-            var shapes = Generate("MBEND", tech, ("W", 2.9e-3), ("Angle", angle), ("Miter", 2));
+            // As it sits in a layout: an MLIN abutting each pin. The bend's own arms end at the model's
+            // reference planes, so on its own an oblique one is only the corner — a small polygon whose
+            // single oblique edge runs vertex to vertex, which the mesher staircases into several
+            // thousand unknowns. Nobody meshes a corner with no line on it; the leads are what the old
+            // 2.5·W arms stood in for.
+            var shapes = WithLeads(Generated("MBEND", tech, ("W", 2.9e-3), ("Angle", angle), ("Miter", 2)), 2 * 2.9e-3);
             var x = PlanarExtractor.Extract(shapes, tech, Dbu, Fghz10);
             Assert.True(x.Ok, x.Refusal);
 

@@ -20661,3 +20661,52 @@ classes under `tests/Ui.Tests/SchematicImport/`.
   end-of-file, so a fake that reads stdin to the end passed with the fix reverted. `SolverDiscoveryTests.Gate10`
   checks that the launched child's `StandardInput` is a closed stream, which fails without the fix on every platform.
   The deadlock itself is reproducible only on Windows under a client holding the pipe open.
+
+## MBEND's arms end at the model's reference planes (2026-10-16)
+
+Found while laying out a meander from a schematic: `MBendPCell` drew each arm `StubLengthFactor`·W
+(2.5 W) from the corner to its pin, but the MBEND model is a lumped L-C-L with NO length of its own,
+whose reference planes are the edges of the W × W corner square (the convention its published
+coefficients assume, and the one a comparison against an external EM solver confirmed earlier). Every
+MLIN abutted at those pins therefore sat about 2 W further out than the schematic placed it: about
+4 W of line per bend in the copper that the circuit simulation never saw. On a meander with eight
+bends at W = 1.1 mm that is 35 mm of unsimulated line.
+
+**Fix.** Each arm now ends at the plane through the inner corner, (W/2)·tan(θ/2) from the
+centre-line corner (W/2 at 90°, so an unmitred right-angle bend is exactly the corner square). When
+the chamfer is deeper than that plane — an oblique bend, where the fixed-fraction rule removes more
+than the plane leaves — the pin moves out to where the strip is full width again, max(s, leg − s), the
+rule MMITER already uses, so an abutting MLIN never fills the cut back in. The chamfer leg itself is
+unchanged and is now computed from the corner alone, before the arms are sized; it no longer needs a
+0.95 cap. A straight-through "bend" (0° or 180°) has no corner and keeps the legacy stubs.
+`PCellRegistry` MBEND → version 3, so generated cells already on disk regenerate.
+
+**Two rounding traps, both of which the mesher found before a reader would have.**
+- With the arm ending at the plane, the inner corner, pin 1's inner end-cap corner and pin 2's
+  inner end-cap corner are ONE point, computed three ways. Rounding the arm length to a whole DBU
+  left them up to 1 nm apart: a 1 nm edge, or a pin-1 end cap tilted by 1 nm. The mesher staircases
+  that as an oblique edge, and an isolated 45° bend went to 4 µm cells. The outline now keeps the
+  EXACT points — pin 1's corners lie on the axes — and drops a computed corner or chamfer end within
+  1 DBU of one.
+- The CLI renders a placed PCell by regenerating it from its parameters with ITS OWN build, not from
+  the generated cell on disk. A stale Release CLI therefore drew v2 artwork at v3 placements: a
+  picture that looked like an orientation bug and was a build artifact.
+
+**Meshing an isolated oblique bend is heavier now, and only isolated.** On its own, an oblique bend is
+now just its corner: at 30° to 45° a small polygon whose one oblique edge runs vertex to vertex, which
+the planar mesher staircases into ~4,500 to 6,900 unknowns, over R17's 5,000 ceiling once EdgeCells is
+raised. The same bend with 2 W of line on each pin, which is what a layout contains and what the old
+2.5 W arms stood in for, meshes to 1,187 to 3,781 at 45°. `PlanarMeshPCellTests.E0b` now meshes the
+bend with leads (its `WithLeads` pushes each end cap out exactly, no boolean, so no seam). Whether the
+mesher should handle the bare corner better is a mesher question, left open.
+
+Gates: `testdata/PCells/pcell-geometry.txt` (re-recorded: the 90° bends are the 300 µm corner
+square, both chamfer legs unchanged, the 45° chamfer the same 368 µm now running pin corner to pin
+corner), the MBEND vertex-count and handle tests updated with the reason in each, and
+`PlanarMeshPCellTests.T6_1` asserting what it is about: the mesh removes the area the mitre removes
+(1.7 % at 10 GHz), not that the mitred mesh has fewer cells. It used to have fewer only because 2.5 W of
+straight arm dominated both meshes.
+
+Not changed: the Fifty/Optimal chamfer leg is still M·W per edge, half the Douville-James cut (whose
+50 % runs corner to corner, 2·M·W). That is a separate question about which geometry the model's
+mitred coefficients describe.

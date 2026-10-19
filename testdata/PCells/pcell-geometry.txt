@@ -10,25 +10,25 @@
   pin 1 at (0,0) w=1200000 dir=180 layer=LayerKey { Layer = 1, Datatype = 0 }
   pin 2 at (250000,0) w=1200000 dir=0 layer=LayerKey { Layer = 1, Datatype = 0 }
 
-== MBEND v2 Angle=90 Miter=0 W=0.0003
-  poly   layer=LayerKey { Layer = 1, Datatype = 0 } [0,-150000,900000,-150000,900000,750000,600000,750000,600000,150000,0,150000]
+== MBEND v3 Angle=90 Miter=0 W=0.0003
+  poly   layer=LayerKey { Layer = 1, Datatype = 0 } [0,-150000,300000,-150000,300000,150000,0,150000]
   pin 1 at (0,0) w=300000 dir=180 layer=LayerKey { Layer = 1, Datatype = 0 }
-  pin 2 at (750000,750000) w=300000 dir=90 layer=LayerKey { Layer = 1, Datatype = 0 }
+  pin 2 at (150000,150000) w=300000 dir=90 layer=LayerKey { Layer = 1, Datatype = 0 }
 
-== MBEND v2 Angle=90 Miter=1 W=0.0003
-  poly   layer=LayerKey { Layer = 1, Datatype = 0 } [0,-150000,750000,-150000,900000,0,900000,750000,600000,750000,600000,150000,0,150000]
+== MBEND v3 Angle=90 Miter=1 W=0.0003
+  poly   layer=LayerKey { Layer = 1, Datatype = 0 } [0,-150000,150000,-150000,300000,0,300000,150000,0,150000]
   pin 1 at (0,0) w=300000 dir=180 layer=LayerKey { Layer = 1, Datatype = 0 }
-  pin 2 at (750000,750000) w=300000 dir=90 layer=LayerKey { Layer = 1, Datatype = 0 }
+  pin 2 at (150000,150000) w=300000 dir=90 layer=LayerKey { Layer = 1, Datatype = 0 }
 
-== MBEND v2 Angle=90 Miter=2 W=0.0003
-  poly   layer=LayerKey { Layer = 1, Datatype = 0 } [0,-150000,744000,-150000,900000,6000,900000,750000,600000,750000,600000,150000,0,150000]
+== MBEND v3 Angle=90 Miter=2 W=0.0003
+  poly   layer=LayerKey { Layer = 1, Datatype = 0 } [0,-150000,144000,-150000,300000,6000,300000,150000,0,150000]
   pin 1 at (0,0) w=300000 dir=180 layer=LayerKey { Layer = 1, Datatype = 0 }
-  pin 2 at (750000,750000) w=300000 dir=90 layer=LayerKey { Layer = 1, Datatype = 0 }
+  pin 2 at (150000,150000) w=300000 dir=90 layer=LayerKey { Layer = 1, Datatype = 0 }
 
-== MBEND v2 Angle=45 Miter=2 W=0.0005
-  poly   layer=LayerKey { Layer = 1, Datatype = 0 } [0,-250000,985858,-250000,1613553,10000,2310660,707107,1957107,1060660,1146447,250000,0,250000]
+== MBEND v3 Angle=45 Miter=2 W=0.0005
+  poly   layer=LayerKey { Layer = 1, Datatype = 0 } [0,-250000,627695,10000,274142,363553,160589,250000,0,250000]
   pin 1 at (0,0) w=500000 dir=180 layer=LayerKey { Layer = 1, Datatype = 0 }
-  pin 2 at (2133883,883883) w=500000 dir=45 layer=LayerKey { Layer = 1, Datatype = 0 }
+  pin 2 at (450919,186777) w=500000 dir=45 layer=LayerKey { Layer = 1, Datatype = 0 }
   ! MBend: no published optimum-miter fit exists for a 45° bend (Douville & James 1978 is a right-angle formula) — the corner is chamfered by the same FRACTION of the corner that formula removes at 90°, which is an engineering extrapolation, not a validated fit.
 
 == MTEE v2 W1=0.0003 W2=0.0003 W3=0.0005
@@ -78,3 +78,38 @@
   pin 1 at (0,0) w=1361000 dir=180 layer=LayerKey { Layer = 1, Datatype = 0 }
   pin 2 at (2000000,100000) w=8312030 dir=0 layer=LayerKey { Layer = 1, Datatype = 0 }
   ! MKLOPF: R-klp-4a: SmoothSteps' blend is 3x the local trace width from each end (4.083 mm / 24.936 mm), which is longer than this taper (2.004 mm) allows — it is clamped to half the taper per end (1.002 mm / 1.002 mm) so the drawn width still reaches W1/W2 smoothly rather than stepping. Lengthen L, or narrow the ends, for the full 3x approach.
+
+== MCLIN v1 L=0.002 S=0.00015 W=0.0003
+  rect   layer=LayerKey { Layer = 1, Datatype = 0 } (0,-150000)-(2000000,150000)
+  rect   layer=LayerKey { Layer = 1, Datatype = 0 } (0,-600000)-(2000000,-300000)
+  pin 1 at (0,0) w=300000 dir=180 layer=LayerKey { Layer = 1, Datatype = 0 }
+  pin 2 at (2000000,0) w=300000 dir=0 layer=LayerKey { Layer = 1, Datatype = 0 }
+  pin 3 at (0,-450000) w=300000 dir=180 layer=LayerKey { Layer = 1, Datatype = 0 }
+  pin 4 at (2000000,-450000) w=300000 dir=0 layer=LayerKey { Layer = 1, Datatype = 0 }
+
+== BCLIN v1 L=0.003 O=0 W=0.0004
+  rect   layer=LayerKey { Layer = 1, Datatype = 0 } (0,-200000)-(3000000,200000)
+  rect   layer=LayerKey { Layer = 2, Datatype = 0 } (0,-200000)-(3000000,200000)
+  pin 1 at (0,0) w=400000 dir=180 layer=LayerKey { Layer = 1, Datatype = 0 }
+  pin 2 at (3000000,0) w=400000 dir=0 layer=LayerKey { Layer = 1, Datatype = 0 }
+  pin 3 at (0,0) w=400000 dir=180 layer=LayerKey { Layer = 2, Datatype = 0 }
+  pin 4 at (3000000,0) w=400000 dir=0 layer=LayerKey { Layer = 2, Datatype = 0 }
+  ! no technology resolved for this document — strip A drawn on layer 1/0, strip B on 2/0
+
+== BCLIN v1 L=0.001 O=0.00025 W=0.0003
+  rect   layer=LayerKey { Layer = 1, Datatype = 0 } (0,-150000)-(1000000,150000)
+  rect   layer=LayerKey { Layer = 2, Datatype = 0 } (0,-400000)-(1000000,-100000)
+  pin 1 at (0,0) w=300000 dir=180 layer=LayerKey { Layer = 1, Datatype = 0 }
+  pin 2 at (1000000,0) w=300000 dir=0 layer=LayerKey { Layer = 1, Datatype = 0 }
+  pin 3 at (0,-250000) w=300000 dir=180 layer=LayerKey { Layer = 2, Datatype = 0 }
+  pin 4 at (1000000,-250000) w=300000 dir=0 layer=LayerKey { Layer = 2, Datatype = 0 }
+  ! no technology resolved for this document — strip A drawn on layer 1/0, strip B on 2/0
+
+== MBCLIN v1 L=0.002 O=0.0001 W=0.0003
+  rect   layer=LayerKey { Layer = 1, Datatype = 0 } (0,-150000)-(2000000,150000)
+  rect   layer=LayerKey { Layer = 2, Datatype = 0 } (0,-250000)-(2000000,50000)
+  pin 1 at (0,0) w=300000 dir=180 layer=LayerKey { Layer = 1, Datatype = 0 }
+  pin 2 at (2000000,0) w=300000 dir=0 layer=LayerKey { Layer = 1, Datatype = 0 }
+  pin 3 at (0,-100000) w=300000 dir=180 layer=LayerKey { Layer = 2, Datatype = 0 }
+  pin 4 at (2000000,-100000) w=300000 dir=0 layer=LayerKey { Layer = 2, Datatype = 0 }
+  ! no technology resolved for this document — strip A drawn on layer 1/0, strip B on 2/0

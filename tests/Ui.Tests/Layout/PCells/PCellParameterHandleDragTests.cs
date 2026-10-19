@@ -799,12 +799,20 @@ public sealed class PCellParameterHandleDragTests : IDisposable
 
         Assert.Equal(angleBefore + 20.0, ParametersOf(vm, 0).Real("Angle"), precision: 0);
 
-        // The end the user did NOT grab holds its world position and its heading, so whatever is
-        // connected there stays connected.
+        // The end the user did NOT grab holds its heading and stays on its own line, so whatever is
+        // connected there stays in line with it. It moves ALONG that line by exactly the change in the
+        // model's arm length: each arm ends at the bend's reference plane, (W/2)·tan(θ/2) from the
+        // corner, so a tighter bend has longer arms.
         var pin2After = Pin2AngleGrip(vm);
-        Assert.InRange(pin2After.X, pin2Before.X - 3_000, pin2Before.X + 3_000);
-        Assert.InRange(pin2After.Y, pin2Before.Y - 3_000, pin2Before.Y + 3_000);
         AssertSameBearing(headingBefore, Pin2Heading(vm));
+        double h = headingBefore * Math.PI / 180.0;
+        double dx = pin2After.X - pin2Before.X, dy = pin2After.Y - pin2Before.Y;
+        double along = dx * Math.Cos(h) + dy * Math.Sin(h);
+        double across = -dx * Math.Sin(h) + dy * Math.Cos(h);
+        double halfWDbu = ParametersOf(vm, 0).Real("W") * 1e9 / 2.0;
+        double expected = halfWDbu * (Math.Tan((angleBefore + 20.0) * Math.PI / 360.0) - Math.Tan(angleBefore * Math.PI / 360.0));
+        Assert.InRange(across, -3_000, 3_000);
+        Assert.InRange(along, expected - 3_000, expected + 3_000);
     }
 
     [Fact]

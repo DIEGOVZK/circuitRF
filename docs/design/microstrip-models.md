@@ -511,11 +511,112 @@ planar kernel is not used as the oracle for R ≥ 3W. A 3D (FEM) check of the sa
 reasonable time (GMRES > 350 iterations on the first solve, against ~30 for a comparable meander) and was
 stopped. **Outstanding:** a converged 3D or measured comparison at R/W 3–7.
 
+### 10.6 MMiter — the chamfered bend, any miter, any angle to 120°
+
+`MMITER` (`MicrostripMiterBendModel`, geometry and table in `MicrostripMiterBend` /
+`MicrostripMiterBendTable`) is a chamfered corner of width `W`, turn `Angle` and **Douville-James miter
+fraction `M`**: the cut is perpendicular to the outer-to-inner corner diagonal `d = W / cos(θ/2)` at
+`M·d` from the outer corner. At 90° `M = 0.5` therefore runs the cut corner to corner across the W×W
+square (a `W` leg on each outer edge; in general the leg is `2·M·W / sin θ`). Absent `M` means the
+Douville-James optimum `0.52 + 0.65·e^(−1.35·W/h)` — a right-angle fit, applied as the same fraction at
+other angles and reported as such; an optimum past the table's deepest miter is capped and reported.
+
+- **Reference planes** are perpendicular to each arm through the INNER corner, `(W/2)·tan(θ/2)` from the
+  centre-line corner — MBend's planes at 90°, so the MLINs either side are drawn to the same points. A
+  chamfer deeper than `sin²(θ/2)` reaches past the planes into the arms; the model owns that copper (it was
+  characterised with the full-width line de-embedded back to the planes).
+- **Electrical form.** MLIN over the corner's own centre-line length `W·tan(θ/2)` — the same line physics,
+  through `MicrostripLineModel.Propagation`, not a copy — split in half around a lumped EXCESS: series
+  `ΔL/2`, shunt `ΔC`, series `ΔL/2`. In that form the excess is close to frequency-independent (≤ 4 %
+  drift from 1 to 11 GHz on every reference structure), which a single L-C-L for the whole corner is not
+  (8–9 %). `ΔL` is usually negative: the current cuts the corner.
+- **Where the excess comes from.** Quasi-static scaling, `ΔL = μ₀·h·λ(W/h, εr, θ, M)`,
+  `ΔC = ε₀·h·κ(…)`, tabulated from circuitRF's own planar MoM and interpolated monotone-cubically
+  (Fritsch-Carlson) in `ln(W/h)`, `M`, `θ`, `εr`; `θ = 0` is an exact zero node. How the table was made
+  is in the generated file's own header; the two things that decided how it was made are below.
+- **Validity.** `0.35 ≤ W/h ≤ 7` and `2.2 ≤ εr ≤ 13` are reported outside (continued linearly);
+  `0 < |θ| ≤ 120°` and `0 ≤ M ≤ MaxMiter(θ)` (0.6 to 45°, 0.8 from 90°) are refusals. Conductor thickness
+  is not a table axis (the excess was characterised on a thin sheet); the corner's line section does use `T`.
+
+**Two measurement findings that shaped the table.**
+
+1. **An oblique line is not the same line to the planar kernel.** A 45° straight strip meshed by the
+   rectangular-cell kernel reads Z_c +10 % and β +5 % against the identical axis-aligned strip at the
+   default 40 cells/λ, and does not converge monotonically with conformal cut cells (56.4 → 52.4 → 55.1 →
+   51.9 Ω at 40/80/120/160 cells/λ). Staircase cells converge monotonically (53.1 → 52.4 Ω at 80/160).
+   Oblique bends were therefore characterised staircase at the finest mesh the dense solver accepts, as a
+   two-corner "dogleg" with axis-aligned ports, and the oblique middle line was MEASURED with a second,
+   longer dogleg (its own γ from the two-length eigenvalue, its own Z_c from the fit) rather than assumed to
+   equal the axis-aligned line — de-embedding it with the axis-aligned line put the line's error into the
+   corner and flipped the sign of a 45° corner's ΔL. Right-angle corners have axis-aligned arms and only a
+   short oblique chamfer edge; they are converged conformal at 40 cells/λ (≤ 1 % from 40 to 160).
+2. **The miter fraction is referenced to the corner diagonal, and the cut at 50 % is corner to corner.**
+   An independent reference planar solver puts the Douville-James optimum (M = 0.545 at W/h = 2.43) at a
+   near-perfect match — the corner's series-L and shunt-C contributions almost cancel — with the cut placed
+   this way. `MBendPCell`'s chamfer (`MicrostripDiscontinuities.MiterCutLength`) projects the same fraction
+   to a leg of `M·W`, half of `2·M·W`; that is not changed here and is recorded in `src/Core/RESOLVED.md`.
+
+**Validation status.** Against an independent reference planar solver on five structures on a 367 µm
+εr 3.0 laminate (sharp 90°; 90° at M 0.5; 90° at the Douville-James optimum for W/h 2.43 and 0.82; 45° at
+M 0.2), 0.25–12 GHz: see `src/Core/RESOLVED.md` §MMITER for the numbers. Against circuitRF's own planar
+MoM at 24 off-grid geometries (hold-out, never in the table): same section.
+
+### 10.7 The coupled pairs — one modal stamp, three cross-sections
+
+All four coupled-line parts (CLIN, MCLIN, BCLIN, MBCLIN) stamp through ONE function,
+`CLineModel.StampModalPair`: the even and odd modes are each a uniform line of their own real Z and
+their own γl = αl + jβl, and the pair's 4×4 Y is `(Yᵉ ± Yᵒ)/2` in the coupled-pair port order (1/2 line
+A, 3/4 line B, 3 beside 1). CLIN passes γl = jθ and is bit-identical to its earlier stamp. What differs
+between the parts is only where the four modal numbers come from.
+
+**MCLIN — Kirschning-Jansen, 1984 (corr. 1985).** Static εeff,e/o and Z₀e/o as closed-form corrections of
+the single line's Hammerstad-Jensen values at the same width; dispersion of both permittivities by their
+P₁-P₁₅ forms and of both impedances by Q₁₁-Q₂₉, written over the single line's own dispersed values (the
+even-mode exponent is the single line's R₁₇, reached through `KirschningJansen.ImpedanceDispersionExponent`
+rather than a second copy). Published range W/h, S/h 0.1-10, εr ≤ 18; dispersion to ~25 GHz·mm
+(provisional). Thickness: the strips are widened by the single line's Δu reduced for the neighbour
+(Jansen 1978), each εeff is lowered by (εr − 1)(t/h)/(4.6√u), and the odd mode gains the side walls'
+2ε₀t/s — combined in capacitance terms. Loss per mode is MLIN's (Wheeler form at the mode's Z, roughness,
+filling-factor dielectric loss at the mode's εeff). **Checked** against circuitRF's own field solver
+(below): zero-thickness statics within ~1 % in Z and 0.3 % in εeff over eight geometries; with t/h up to
+0.1, within 2.5 % and 1.5 %. The constants are a single transcription of the published equations
+(provenance caveat as §2's Kirschning-Jansen note); f → 0 continuity and the wide-gap limit are tested.
+
+**BCLIN and MBCLIN — a 2D quasi-static field solver** (`src/Core/Devices/Coupled/QuasiStaticSolver2D`).
+Finite volumes on a graded tensor grid: every strip edge, interface and ground is a grid line, thick strips
+are Dirichlet regions, spacing smallest/8 at the strip edges (×8 finer for a zero-thickness strip) growing
+×1.25 per cell to a sixth of the structure's height, ×1.4 beyond it; side walls at 4 ground spacings
+(stripline) or a lid and walls at 25 structure sizes (open). Banded Cholesky, one back-substitution per
+strip; the charge on a strip is the discrete Gauss law over its links. Maxwell C (with dielectric) and C₀
+(vacuum; = C/εr for a homogeneous stripline) give per mode Z_m = 1/(c√(C_m C₀_m)), εeff,m = C_m/C₀_m, with
+C_e/o = C̄11 ± C12 where C̄11 is the mean of C11 and C22 — exact for a symmetric pair, the documented
+symmetric-average convention otherwise (MBCLIN always; reported above 5 % asymmetry). Conductor loss is
+the perturbational integral over the vacuum solution's surface charge, α_c = Rs·∮σ₀²dl/(4·Z·Q̄₀²), over
+both strips and every ground plane; dielectric loss MLIN's form (exact π√εr·tanδ/λ₀ when homogeneous).
+Solved once per geometry and cached process-wide. **Measured accuracy**: Cohn's exact zero-thickness
+stripline within 1.2 % (the solver errs low); wide thin strips add exactly the parallel-plate capacitance
+(0.5 %); a symmetric pair's odd mode equals one strip over the mid-plane (1 %); a 3D FEM electrostatic
+reference of the 25 µm / 18 µm, Hs 76 µm, εr 3.0 stack (C11 3.557e-10, C22 3.445e-10, C12 −1.551e-10 F/m):
+this solver is 2-2.6 % lower on all three; MBCLIN's far-offset strip A is Hammerstad-Jensen's microstrip
+to 1 %; MBCLIN covered at its dielectric surface reproduces BCLIN to 1e-9. Cost: ~25 ms per stripline
+solve, ~200 ms per open solve (two per MBCLIN) — Core is built unoptimised. Shelton's 1966 closed form
+for thin offset broadside strips was not implemented as a check (its implicit conformal-mapping
+parameters could not be reproduced reliably here); the exact checks above stand in for it.
+
+**Stackup resolution** (`SubstrateResolver.ResolveBroadsidePair`): strip A on `LayerA` (default: the first
+signal conductor with a signal conductor directly beneath it, a ground below that and — for BCLIN — a
+ground above), strip B on the next conductor down; every stackup layer between two surfaces counts toward
+their spacing (copper slabs at full thickness), εr/tanδ thickness-weighted over the span. Each empty
+cross-section row of the part is filled from it at extraction (`BroadsideSubstrateInjection`); a typed row
+wins for that row only.
+
 ## 9. Open / deferred
 
 - **Surface-roughness correction** (§2 layer 4) — include or not; decide during implementation and record.
 - **Stripline**, and the warning that fires when the selected layers form one (`pcell-contract.md` R12).
-- **Coupled lines** (MCLIN) and the even/odd-mode models they need.
+- ~~**Coupled lines** (MCLIN) and the even/odd-mode models they need.~~ Built: MCLIN, BCLIN, MBCLIN (§10.7).
+  Still open: coupled-line END effects (open-end and gap capacitances at the four ends), asymmetric
+  (unequal-width) pairs, and the true c/π modes of an asymmetric broadside pair.
 - **Discontinuity models** (§4).
 - **Whether dispersion is applied to the loss terms** as well as to Z₀ and εeff.
 - **MKlopf's Z1/Z2↔W1/W2 and L↔F3db entry routes now have a real UI switch** (2026-07-29 follow-up,

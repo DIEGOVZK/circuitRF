@@ -600,6 +600,29 @@ public enum SymbolKind
     /// <summary>Stripline, centred or offset (engine "SLIN"), brief-artsch-1. 2-port, W/L; the planes
     /// above and below the signal layer come from the technology.</summary>
     Slin,
+
+    /// <summary>Ideal coupled transmission-line pair (engine "CLIN"). 4-port, ground-referenced like
+    /// <see cref="Tline"/>: pin 1 = line A near end (top-left), 2 = line A far end (top-right),
+    /// 3 = line B near end (bottom-left), 4 = line B far end (bottom-right). Ze/Zo/E/F, optional Eo.
+    /// Appended last so no existing kind's ordinal moves.</summary>
+    CLine,
+
+    /// <summary>Edge-coupled microstrip pair (engine "MCLIN"). 4-port in CLIN's pin order; W/S/L plus the
+    /// substrate MLIN injects. Appended after <see cref="CLine"/> so no existing ordinal moves.</summary>
+    MCLine,
+
+    /// <summary>Offset broadside-coupled stripline pair (engine "BCLIN"). 4-port in CLIN's pin order;
+    /// strip A on <c>LayerA</c>, strip B on the next conductor down, between two ground planes.</summary>
+    BCLine,
+
+    /// <summary>Broadside-coupled microstrip pair (engine "MBCLIN"). 4-port in CLIN's pin order; strip B
+    /// buried over the one ground, strip A above it, air above the dielectric.</summary>
+    MBCLine,
+
+    /// <summary>Chamfered (mitred) microstrip bend (engine "MMITER"). 2-port, W/Angle/M parameters; M is
+    /// the Douville-James miter fraction of the corner diagonal. Pins as MBend's: 1 left, 2 down.
+    /// Appended so no existing kind's ordinal moves.</summary>
+    MMiter,
 }
 
 public enum PortConnectionState { Unconnected, Connected }

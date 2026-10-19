@@ -3474,3 +3474,100 @@ worth knowing that the code alone does not make obvious:
 - **MCURVE is an MLIN, not a copy of one.** It constructs `MicrostripLineModel` over `(R − 0.2W)·|θ|`;
   the stamps are gated bit for bit against an MLIN built at that length
   (`MicrostripCurveModelTests.Stamps_AreExactlyAnMlinOfTheEffectiveLength`).
+
+## MMITER — the chamfered microstrip bend, any miter, any angle to 120° (2026-10-16)
+
+Owner request: a mitred/chamfered bend for the library, checked against an independent EM reference.
+Model and validity are in `docs/design/microstrip-models.md` §10.6. What the code alone does not show:
+
+- **No published closed form covers an arbitrary miter or angle.** KJK's L-C-L (MBEND) has 0 % and
+  50 % at 90° only; against the reference solver it read a sharp corner's series L as 22 pH where the
+  reference gave 35 (C within 3 %). A 2-D planar-waveguide solve of the corner shape (Wolff/Menzel) was
+  tried first and was worse (L 12.5 pH, C +6 %). The excess is therefore tabulated from circuitRF's own
+  planar MoM: 1,207 corners over W/h 0.2-7, εr 2.2/4.5/13, θ 30-120° (15° steps from 60°), M 0-0.8,
+  interpolated in between; 113 grid holes (W/h 0.2 rows, wide strips on εr 13 at oblique angles, deep
+  miters on shallow bends) are continued and listed in the generated table's header.
+- **The planar kernel does not see an oblique strip as the same line.** A 45° strip reads Z_c +10 % and β
+  +5 % at 40 cells/λ against the same strip axis-aligned; conformal cut cells do not converge
+  monotonically (56.4/52.4/55.1/51.9 Ω at 40/80/120/160 cells/λ), staircase does (53.1 → 52.4 Ω). Even at
+  160/9 staircase oblique lines read Z_c +1-6 % and β +1-3.6 %. Anyone routing at 30-60° in planar EM
+  inherits this; it is not fixed here. The table measures the oblique line with its own two-length
+  standard instead of assuming the axis-aligned one — doing the latter flipped the sign of a 45° corner's ΔL.
+- **The accelerated solve stalls just short of tolerance on fine staircase meshes** (relative residual
+  1.8e-8 against 1e-8 after 400 iterations) and narrow strips on low εr push the de-embedding standard past
+  the dense ceiling into the same stall; the database used the dense solve and the finest mesh that fits.
+- **A dogleg turning more than 90° must have arms longer than its middle's backward reach**, or the
+  middle sits behind the port face and the edge-port calibration refuses ("metal … behind the end face").
+- **The Douville-James fraction is of the corner DIAGONAL, so 50 % cuts corner to corner** (a W leg at
+  90°). The reference solver puts the D-J optimum at a near-perfect match with the cut placed that way.
+  `MicrostripDiscontinuities.MiterCutLength` (MBEND's artwork) projects the fraction to an `M·W` leg —
+  half of it. MBEND is unchanged; this is recorded, not fixed.
+- **Validation.** Five structures on a 367 µm εr 3.0 laminate vs the reference solver (port-corrected),
+  0.25-12 GHz, MLIN + MMITER + MLIN: max |ΔS| 0.013-0.031, S21 phase within 0.4° at 6 GHz on the 890.7 µm
+  line (1.2° on the 300 µm line, mostly MLIN's own β). MBEND on the same 90° structures: 0.021-0.057.
+  Hold-out (24 off-grid geometries, circuitRF EM, f·h ≤ 1.85 GHz·mm): max |ΔS| median 0.003, 22 of 24
+  ≤ 0.033; the two others are wide strips on εr > 10, where the EM extraction itself becomes non-passive.
+- **The excess is a constant; the corner's LINE carries dispersion and loss.** That split is what keeps
+  the excess within a few percent from 1 to 11 GHz. `MicrostripLineModel.Propagation` was factored out of
+  MLIN's `Stamp` so the corner uses the same line physics; MLIN's stamps are unchanged.
+
+## CLIN — the ideal coupled-line pair (2026-10-16)
+
+Owner request: an ideal four-port coupled line beside TLIN, for coupler and coupled-filter work before
+any geometry exists. `CLineModel` (linear, nodal-admittance stamp, no branch currents); placeable as
+`SymbolKind.CLine` with no substrate, no PCell and no ground pour, exactly as TLIN.
+
+- **Even/odd assembly.** Each mode is an ideal uniform line of its own impedance and length, stamped in
+  `TLineModel.StampUniformLine`'s form (Y11 = coth(γl)/Z, Y12 = −1/(Z·sinh γl)). The 4×4 admittance is
+  then the symmetric-pair recombination: same-line entries (Yᵉ + Yᵒ)/2, cross-line entries
+  (Yᵉ − Yᵒ)/2. The θ = kπ (and DC) degeneracy is clamped with TLIN's own floor.
+- **Port order** is 1/2 = line A near/far, 3/4 = line B near/far, 3 beside 1. Driving 1: 2 through,
+  3 coupled, 4 isolated. The symbol draws 1/2 on the top line and 3/4 on the bottom one, so the pin
+  ORDER and the picture agree.
+- **Defaults** are a 50 Ω, 10 dB, quarter-wave pair at 1 GHz: Ze 69.37 Ω, Zo 36.04 Ω (Ze·Zo ≈ 50²,
+  (Ze − Zo)/(Ze + Zo) ≈ 0.316), E 90°, F 1 GHz. E and Eo arrive in RADIANS, as TLIN's E does.
+- **Eo is optional.** Absent, it equals E (homogeneous, ideal isolation). The schematic places it
+  blank, and `NetExtractor` drops a blank Eo rather than emit `Eo=` — the empty-value trap, where the
+  `.cnl` reader would swallow the next token.
+- **Refusals** are coded: `clin.zo.not-positive`, `clin.ze.below-zo` (refused, not swapped — a
+  swapped pair is a typo, and no pair of conductors over one ground has Ze < Zo),
+  `clin.length.negative`, `clin.f.not-positive`.
+
+## MCLIN, BCLIN, MBCLIN — the physical coupled pairs, and a 2D field solver (2026-10-16)
+
+Owner request: an edge-coupled microstrip pair and a broadside stripline pair as full library parts, then
+(added mid-task) a broadside microstrip pair. Physics and validation are in
+`docs/design/microstrip-models.md` §10.7. What the code alone does not show:
+
+- **One modal stamp.** `CLineModel.StampModalPair` (per-mode Z, per-mode γl) was factored out of CLIN and
+  is what all four coupled parts stamp through; CLIN passes γl = jθ and its stamps are bit-identical
+  (its own tests unchanged and green).
+- **The Kirschning-Jansen coupled formulas reproduce the field solver to ~1 % at zero thickness, but its
+  commonly quoted thickness split (Δu_o = Δu_e + Δt, each mode at its own width) did not**: against the
+  solver it put the odd mode's Z 3-9 % high and εeff,o 5-12 % high at t/h 0.02-0.05. The adopted
+  correction evaluates both modes at the even-mode width, lowers εeff by the single-line thickness term and
+  adds the side walls' 2ε₀t/s to the odd mode in C and C₀ — within 2.5 % / 1.5 % up to t/h 0.1.
+- **MLIN's conductor-loss form Rs/(Z·W) is roughly twice the field-integrated loss of a W/h = 2 line**
+  (0.174 vs 0.085 Np/m at 1 GHz for a 1 mm strip on 0.5 mm εr 4.4; Pucel's closed form gives ~0.09). The
+  parallel-plate form counts strip and ground currents over W only. MCLIN keeps MLIN's form for
+  consistency between the two parts; the broadside pairs use the field integral. Not changed in MLIN —
+  recorded, not fixed.
+- **`src/Core` is built with optimisation off** (`<Optimize>false</Optimize>` in its project, for every
+  configuration, including the Release CLI), so the solver's banded Cholesky runs ~3.4× slower than the
+  same loop optimised; `AggressiveOptimization` helps little and `Vector<double>` made it slower. Hence
+  the moderate default grid (Z ~0.3 % from converged on thick strips), the process-wide geometry cache,
+  and ~200 ms per open (MBCLIN) solve.
+- **A zero-thickness strip converges slowly** (r^−½ edge field; ~O(h^0.7)) and non-nested graded grids
+  make Richardson extrapolation unreliable (tried: it made the error worse), so thin strips are simply
+  gridded 8× finer. The loss integral of a zero-thickness strip grows with refinement (log-divergent
+  edge current) — give T.
+- **The external 3D FEM reference for the 25/18 µm stack is 2-2.6 % above this solver on C11, C22 and
+  C12 alike**, while the solver matches Cohn's exact stripline (thin) to ~1 % low and its own 4× finer
+  grid to 0.5 %. A uniform offset on all three entries points at the reference's own box or mesh rather
+  than the coupling; the test holds 3.5 %.
+- **Shelton's 1966 offset-broadside closed form was not used as a check**: its implicit
+  conformal-mapping parameters could not be reproduced reliably, and a remembered Cohn broadside
+  formula disagreed wildly with the solver and was dropped. The exact checks (Cohn single strip, the
+  parallel-plate increment of wide strips, the odd mode's mid-plane image, the uncoupled limits) stand in.
+- **`InstanceNetContract` now states 4 nets for CLIN as well** as for the three new parts; CLIN had none,
+  which `NetlistContractTests` reports as an unstated primitive.

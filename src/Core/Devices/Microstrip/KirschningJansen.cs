@@ -64,29 +64,37 @@ public static class KirschningJansen
     public static double DispersiveZ0(double u, double epsR, double z0Static, double eeff0,
         double eeffAtF, double fn)
     {
-        double r1 = Math.Min(0.03891 * Math.Pow(epsR, 1.4), 20.0);
-        double r2 = Math.Min(0.2671 * Math.Pow(u, 7.0), 20.0);
         double r3 = 4.766 * Math.Exp(-3.228 * Math.Pow(u, 0.641));
         double r4 = 0.016 + Math.Pow(0.0514 * epsR, 4.524);
         double r5 = Math.Pow(fn / 28.843, 12.0);
         double r6 = Math.Min(22.20 * Math.Pow(u, 1.92), 20.0);
-        double r7 = 1.206 - 0.3144 * Math.Exp(-r1) * (1.0 - Math.Exp(-r2));
         double r8 = 1.0 + 1.275 * (1.0 - Math.Exp(-0.004625 * r3 * Math.Pow(epsR, 1.674) * Math.Pow(fn / 18.365, 2.745)));
         double epsRm1 = epsR - 1.0;
         double epsRm1p6 = Math.Pow(epsRm1, 6.0);
         double r9 = 5.086 * r4 * r5 / (0.3838 + 0.386 * r4) * Math.Exp(-r6) / (1.0 + 1.2992 * r5)
                     * epsRm1p6 / (1.0 + 10.0 * epsRm1p6);
+        double r13 = 0.9408 * Math.Pow(eeffAtF, r8) - 0.9603;
+        double r14 = (0.9408 - r9) * Math.Pow(eeff0, r8) - 0.9603;
+        double r17 = ImpedanceDispersionExponent(u, epsR, fn);
+
+        return z0Static * Math.Pow(r13 / r14, r17);
+    }
+
+    /// <summary>R17, the exponent of <see cref="DispersiveZ0"/>'s ratio — also the exponent the
+    /// coupled-line even-mode impedance dispersion (<see cref="KirschningJansenCoupled"/>) takes from the
+    /// single line, so it is reached here rather than through a second copy of R1-R17.</summary>
+    public static double ImpedanceDispersionExponent(double u, double epsR, double fn)
+    {
+        double r1 = Math.Min(0.03891 * Math.Pow(epsR, 1.4), 20.0);
+        double r2 = Math.Min(0.2671 * Math.Pow(u, 7.0), 20.0);
+        double r7 = 1.206 - 0.3144 * Math.Exp(-r1) * (1.0 - Math.Exp(-r2));
         double r10 = 0.00044 * Math.Pow(epsR, 2.136) + 0.0184;
         double r11term = Math.Pow(fn / 19.47, 6.0);
         double r11 = r11term / (1.0 + 0.0962 * r11term);
         double r12 = 1.0 / (1.0 + 0.00245 * u * u);
-        double r13 = 0.9408 * Math.Pow(eeffAtF, r8) - 0.9603;
-        double r14 = (0.9408 - r9) * Math.Pow(eeff0, r8) - 0.9603;
         double r15 = 0.707 * r10 * Math.Pow(fn / 12.3, 1.097);
         double r16 = 1.0 + 0.0503 * epsR * epsR * r11 * (1.0 - Math.Exp(-Math.Pow(u / 15.0, 6.0)));
-        double r17 = r7 * (1.0 - 1.1241 * r12 / r16 * Math.Exp(-0.026 * Math.Pow(fn, 1.15656) - r15));
-
-        return z0Static * Math.Pow(r13 / r14, r17);
+        return r7 * (1.0 - 1.1241 * r12 / r16 * Math.Exp(-0.026 * Math.Pow(fn, 1.15656) - r15));
     }
 
     /// <summary>

@@ -113,13 +113,17 @@ public sealed class PCellGeneratorVersioningTests : IDisposable
         var recorded = new Dictionary<string, (int Version, string Fingerprint)>(StringComparer.OrdinalIgnoreCase)
         {
             { "AIRBRIDGE", (2, "2327f8e71ab15d8a") },
+            { "BCLIN",     (1, "b370447e6f8f97a1") },
             { "CPWG",      (1, "e730cfa94852b2bc") },
-            { "MBEND",     (2, "29da574becb2a6ae") },
+            { "MBCLIN",    (1, "b370447e6f8f97a1") },
+            { "MBEND",     (3, "80f9396ad325bd7e") },
+            { "MCLIN",     (1, "488d1a069953cc52") },
             { "MCROSS",    (1, "f1a45766bd0cf635") },
             { "MCURVE",    (2, "6804e6ddbbae6c36") },
             { "MIMCAP",    (1, "737cbbe2de2e2d49") },
             { "MKLOPF",    (2, "536d3e0bcb7fdf36") },
             { "MLIN",      (1, "d959192817a03f9f") },
+            { "MMITER",    (1, "00e9fa36114ed484") },
             { "MTAPER",    (1, "c94d21d51b1b12c6") },
             { "MTEE",      (2, "97c5e024b02f10fe") },
             { "OSPIRAL",   (1, "c8c3edac9f941c3f") },

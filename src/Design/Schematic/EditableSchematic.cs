@@ -112,6 +112,17 @@ public static class SymbolPortDefs
             // TLIN: horizontal 2-port — port 1 left, port 2 right. Both ground-referenced
             // (the reference net is implicit; only these two signal nets are netlisted).
             case SymbolKind.Tline:   return [("1", -200f, 0f), ("2", 200f, 0f)];
+            // CLIN: the coupled pair as two horizontal lines, line A on top and line B below.
+            // Pin ORDER is the contract CLineModel reads: 1 = A near (top-left), 2 = A far
+            // (top-right), 3 = B near (bottom-left, beside 1), 4 = B far (bottom-right, beside 2).
+            // Ground-referenced, as TLIN: no reference pin is drawn or netlisted.
+            case SymbolKind.CLine:   return [("1", -200f, -100f), ("2", 200f, -100f),
+                                             ("3", -200f,  100f), ("4", 200f,  100f)];
+            // The physical coupled pairs keep CLIN's pins exactly — same corners, same ORDER — so a
+            // CLIN in a schematic is swapped for one of them without rewiring.
+            case SymbolKind.MCLine or SymbolKind.BCLine or SymbolKind.MBCLine:
+                                     return [("1", -200f, -100f), ("2", 200f, -100f),
+                                             ("3", -200f,  100f), ("4", 200f,  100f)];
             // MLIN: horizontal 2-port, matching TLIN's own left/right convention.
             case SymbolKind.Mlin:    return [("1", -200f, 0f), ("2", 200f, 0f)];
             case SymbolKind.Cpwg:    return [("1", -200f, 0f), ("2", 200f, 0f)];
@@ -126,6 +137,8 @@ public static class SymbolPortDefs
             case SymbolKind.MBend:   return [("1", -200f, 0f), ("2", 0f, 200f)];
             // MCurve: MBend's pins exactly — the same 90° turn, drawn round.
             case SymbolKind.MCurve:  return [("1", -200f, 0f), ("2", 0f, 200f)];
+            // MMiter: MBend's pins exactly — the same turn, with the corner cut.
+            case SymbolKind.MMiter:  return [("1", -200f, 0f), ("2", 0f, 200f)];
             // MTee: through line left/right (pins 1/2), branch on the bottom (pin 3) — R-pc-3's own
             // "pin 1 origin, through +X to pin 2, branch +Y to pin 3" convention, mapped onto the
             // schematic canvas with the branch drawn downward (+Y is down in this codebase).

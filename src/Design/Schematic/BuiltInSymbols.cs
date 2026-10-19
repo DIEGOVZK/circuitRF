@@ -87,6 +87,10 @@ public static class BuiltInSymbols
     private static readonly Symbol _nonlinearC   = BuildNonlinearC();
     private static readonly Symbol _mutual        = BuildMutual();
     private static readonly Symbol _tline         = BuildTline();
+    private static readonly Symbol _cline         = BuildCLine();
+    private static readonly Symbol _mcline        = BuildMCLine();
+    private static readonly Symbol _bcline        = BuildBCLine();
+    private static readonly Symbol _mbcline       = BuildMBCLine();
     private static readonly Symbol _match         = BuildMatch();
     private static readonly Symbol _tuner         = BuildTuner();
     private static readonly Symbol _sourceTuner   = BuildSourceTuner();
@@ -96,6 +100,7 @@ public static class BuiltInSymbols
     private static readonly Symbol _slin          = BuildSlin();
     private static readonly Symbol _mbend         = BuildMBend();
     private static readonly Symbol _mcurve        = BuildMCurve();
+    private static readonly Symbol _mmiter        = BuildMMiter();
     private static readonly Symbol _mtee          = BuildMTee();
     private static readonly Symbol _mcross        = BuildMCross();
     private static readonly Symbol _mtaper        = BuildMtaper();
@@ -214,12 +219,17 @@ public static class BuiltInSymbols
             case SymbolKind.NonlinearC: return _nonlinearC;
             case SymbolKind.Mutual:     return _mutual;
             case SymbolKind.Tline:      return _tline;
+            case SymbolKind.CLine:      return _cline;
+            case SymbolKind.MCLine:     return _mcline;
+            case SymbolKind.BCLine:     return _bcline;
+            case SymbolKind.MBCLine:    return _mbcline;
             case SymbolKind.Match:      return _match;
             case SymbolKind.Mlin:       return _mlin;
             case SymbolKind.Cpwg:       return _cpwg;
             case SymbolKind.Slin:       return _slin;
             case SymbolKind.MBend:      return _mbend;
             case SymbolKind.MCurve:     return _mcurve;
+            case SymbolKind.MMiter:     return _mmiter;
             case SymbolKind.MTee:       return _mtee;
             case SymbolKind.MCross:     return _mcross;
             case SymbolKind.Mtaper:     return _mtaper;
@@ -1519,6 +1529,71 @@ public static class BuiltInSymbols
         L( -60,   0,   60,   0),            // centre conductor line through the body
     ], SymbolKind.Tline);
 
+    // ── CLIN — ideal coupled line pair: two parallel horizontal lines in one rounded body ──
+    // Pins: 1 (−200,−100) top-left · 2 (+200,−100) top-right · 3 (−200,+100) bottom-left ·
+    // 4 (+200,+100) bottom-right. Line A (pins 1→2) runs on top, line B (pins 3→4) below it,
+    // lead to lead through TLIN's own rounded body, so the pair reads as two TLINs side by side.
+    // The port numbers sit just outside the body by each lead, as the coupler's do.
+    private static Symbol BuildCLine() => Sym([
+        RRect( 0,  0,  180, 300,  18),      // body, x∈[−90,90], y∈[−150,150]
+        L(-200, -100,  200, -100),          // line A, lead to lead
+        L(-200,  100,  200,  100),          // line B, lead to lead
+        Txt("1", -145, -135, fontSize: MixerPortFontSize),
+        Txt("2",  145, -135, fontSize: MixerPortFontSize),
+        Txt("3", -145,  140, fontSize: MixerPortFontSize),
+        Txt("4",  145,  140, fontSize: MixerPortFontSize),
+    ], SymbolKind.CLine);
+
+    // ── The physical coupled pairs — CLIN's four pins (1/2 line A on top, 3/4 line B below), each lead
+    // jogging in to a strip drawn as MLIN's unfilled trace body, so they read as microstrip artwork. ──
+
+    // MCLIN — two strips side by side, a narrow gap between them: the plan view of an edge-coupled pair.
+    private static Symbol BuildMCLine() => Sym([
+        PLine(-200, -100,  -95, -100,  -95, -40),     // pin 1 lead into strip A's left end
+        PLine( 200, -100,   95, -100,   95, -40),     // pin 2
+        PLine(-200,  100,  -95,  100,  -95,  40),     // pin 3 into strip B
+        PLine( 200,  100,   95,  100,   95,  40),     // pin 4
+        RRect(0, -25, 230, 30, 8),                     // strip A
+        RRect(0,  25, 230, 30, 8),                     // strip B
+        Txt("1", -150, -125, fontSize: MixerPortFontSize),
+        Txt("2",  150, -125, fontSize: MixerPortFontSize),
+        Txt("3", -150,  130, fontSize: MixerPortFontSize),
+        Txt("4",  150,  130, fontSize: MixerPortFontSize),
+    ], SymbolKind.MCLine);
+
+    // BCLIN — two strips on different layers, offset from each other, with a ground plane drawn above
+    // and below them: the broadside stripline pair.
+    private static Symbol BuildBCLine() => Sym([
+        PLine(-200, -100,  -95, -100,  -95, -32),
+        PLine( 200, -100,   95, -100,   95, -32),
+        PLine(-200,  100,  -95,  100,  -95,  32),
+        PLine( 200,  100,   95,  100,   95,  32),
+        RRect(-10, -18, 210, 28, 8),                    // strip A, upper layer
+        RRect( 10,  18, 210, 28, 8),                    // strip B, lower layer, offset
+        L(-75, -70, 75, -70),                           // upper ground
+        L(-75,  70, 75,  70),                           // lower ground
+        Txt("1", -150, -125, fontSize: MixerPortFontSize),
+        Txt("2",  150, -125, fontSize: MixerPortFontSize),
+        Txt("3", -150,  130, fontSize: MixerPortFontSize),
+        Txt("4",  150,  130, fontSize: MixerPortFontSize),
+    ], SymbolKind.BCLine);
+
+    // MBCLIN — BCLIN's two offset strips over ONE ground: no plane above, the microstrip variant.
+    private static Symbol BuildMBCLine() => Sym([
+        PLine(-200, -100,  -95, -100,  -95, -32),
+        PLine( 200, -100,   95, -100,   95, -32),
+        PLine(-200,  100,  -95,  100,  -95,  32),
+        PLine( 200,  100,   95,  100,   95,  32),
+        RRect(-10, -18, 210, 28, 8),
+        RRect( 10,  18, 210, 28, 8),
+        L(-75,  70, 75,  70),                           // the one ground
+        L(-55,  80, 55,  80),
+        Txt("1", -150, -125, fontSize: MixerPortFontSize),
+        Txt("2",  150, -125, fontSize: MixerPortFontSize),
+        Txt("3", -150,  130, fontSize: MixerPortFontSize),
+        Txt("4",  150,  130, fontSize: MixerPortFontSize),
+    ], SymbolKind.MBCLine);
+
     // ── Match — the standard filter glyph: three stacked sine waves in a square body, with a ─────
     // slash struck through every wave the network BLOCKS (match.md §8.4).
     // Pins: (−200,0) left = port 1 = Termination 1 side / (+200,0) right, matching TLIN's own
@@ -2021,6 +2096,15 @@ public static class BuiltInSymbols
         L(-180,  25, -180,-25),
         L(   0, 180,    0, 200),
     ], SymbolKind.MCurve);
+
+    // MMiter — MBend's pins and arms with the outer corner cut by a deep 45° chamfer and a thin
+    // dashed diagonal marking the cut: the glyph says "mitred bend" where MBend's square L says
+    // "corner". Symbolic only; the instance's own M and Angle shape the artwork.
+    private static Symbol BuildMMiter() => Sym([
+        L(-200,   0, -180,   0),
+        Poly(false, -180,-25,  -35,-25,  25,35,  25,180,  -25,180,  -25,25,  -180,25),   // chamfered L outline
+        L(   0, 180,    0, 200),
+    ], SymbolKind.MMiter);
 
     // Through line (pins 1/2, left/right) + branch (pin 3, DOWN — +Y is down in this codebase) —
     // R-pc-3's own "pin 1 origin, through +X to pin 2, branch +Y to pin 3" convention. The body is

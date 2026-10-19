@@ -119,9 +119,10 @@ public sealed class MBendMiterGeometryTests
         long expectedLegDbu = (long)Math.Round(expectedLegMeters * 1_000_000_000); // metres -> nm (DbuPerMicron=1000)
 
         var xy = ((PolygonShape)result.Shapes[0]).Xy;
-        Assert.Equal(7, xy.Length / 2); // one sharp corner replaced by two cut vertices
+        Assert.Equal(5, xy.Length / 2); // one sharp corner replaced by two cut vertices
 
-        // The two NEW vertices (not present in the unmitered 6-vertex L) must each sit exactly
+        // The two NEW vertices (not present in the unmitered 4-vertex corner square — the arms end at
+        // the model's reference planes, W/2 from the corner) must each sit exactly
         // expectedLegDbu away from the sharp corner, along one arm's own outer edge.
         var none = MBendPCell.Generate(
             new Dictionary<string, PCellValue> { ["W"] = wMeters, ["Angle"] = 90.0, ["Miter"] = 0.0 },

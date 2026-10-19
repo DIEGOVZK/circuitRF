@@ -65,7 +65,8 @@ public sealed class PCellHandleContractTests : IDisposable
         // The direct statement of the rule the frozen name above enforces indirectly: adding a handle
         // to a generator must never bump its content key.
         //
-        // MTEE (branch direction), MBEND (the hexagon outline) and MKLOPF (SmoothSteps' end blend
+        // MTEE (branch direction), MBEND (the hexagon outline, then arms ending at the model's reference
+        // planes) and MKLOPF (SmoothSteps' end blend
         // clamped rather than skipped) are each >1 for their own pre-existing reason — a fix that
         // genuinely moved geometry, which is exactly what the field is for. They are asserted here by
         // NAME so that a bump for a real geometry change stays deliberate and visible, rather than
@@ -74,7 +75,7 @@ public sealed class PCellHandleContractTests : IDisposable
         Assert.Equal("1", PCellRegistry.GeneratorContentKey("MTAPER"));
         Assert.Equal("1", PCellRegistry.GeneratorContentKey("MCROSS"));
         Assert.Equal("2", PCellRegistry.GeneratorContentKey("MTEE"));
-        Assert.Equal("2", PCellRegistry.GeneratorContentKey("MBEND"));
+        Assert.Equal("3", PCellRegistry.GeneratorContentKey("MBEND"));
         Assert.Equal("2", PCellRegistry.GeneratorContentKey("MKLOPF"));
     }
 
@@ -288,7 +289,7 @@ public sealed class PCellHandleContractTests : IDisposable
         Assert.All(angles, a => Assert.Equal(PCellHandleKind.Angular, a.Kind));
         Assert.All(angles, a => Assert.True(a.KeepAnchorFixed));
 
-        long stubLen = (long)Math.Round(PCellGeometryHelpers.StubLengthFactor * 300_000, MidpointRounding.AwayFromZero);
+        long stubLen = 150_000;   // each arm ends at the model's reference plane, W/2 from the corner at 90°
 
         // PIN 2 swings about the PIVOT — its real geometric path, so the anchor is both the correct
         // measurement frame and an accurate hint arc. Asserted rather than assumed, because a grip
@@ -338,10 +339,14 @@ public sealed class PCellHandleContractTests : IDisposable
     [InlineData("MLIN")]
     [InlineData("MBEND")]
     [InlineData("MCURVE")]
+    [InlineData("MMITER")]
     [InlineData("MTEE")]
     [InlineData("MCROSS")]
     [InlineData("MTAPER")]
     [InlineData("MKLOPF")]
+    [InlineData("MCLIN")]
+    [InlineData("BCLIN")]
+    [InlineData("MBCLIN")]
     public void EveryBuiltInNowDeclaresAtLeastOneUsableGrip(string generatorId)
     {
         Assert.True(PCellRegistry.TryGet(generatorId, out var generate));
@@ -357,7 +362,8 @@ public sealed class PCellHandleContractTests : IDisposable
     {
         // R2's one list. A handle naming something outside it is a defect in the cell; catching it
         // here means no shipping built-in can develop one unnoticed.
-        foreach (string id in (string[])["MLIN", "MBEND", "MCURVE", "MTEE", "MCROSS", "MTAPER", "MKLOPF"])
+        foreach (string id in (string[])["MLIN", "MBEND", "MCURVE", "MMITER", "MTEE", "MCROSS", "MTAPER", "MKLOPF",
+                                         "MCLIN", "BCLIN", "MBCLIN"])
         {
             Assert.True(PCellRegistry.TryGet(id, out var generate));
             var parameters = DefaultsFor(id);
@@ -414,10 +420,14 @@ public sealed class PCellHandleContractTests : IDisposable
             "MLIN"   => new() { ["W"] = 300e-6, ["L"] = 2e-3 },
             "MBEND"  => new() { ["W"] = 300e-6, ["Angle"] = 90, ["Miter"] = 2 },
             "MCURVE" => new() { ["W"] = 300e-6, ["Angle"] = 90, ["Radius"] = 900e-6 },
+            "MMITER" => new() { ["W"] = 300e-6, ["Angle"] = 90, ["M"] = 0.55 },
             "MTEE"   => new() { ["W1"] = 300e-6, ["W2"] = 300e-6, ["W3"] = 500e-6 },
             "MCROSS" => new() { ["W1"] = 300e-6, ["W2"] = 300e-6, ["W3"] = 300e-6, ["W4"] = 300e-6 },
             "MTAPER" => new() { ["W1"] = 300e-6, ["W2"] = 1e-3, ["L"] = 2e-3 },
             "MKLOPF" => new() { ["Z1"] = 50, ["Z2"] = 100, ["L"] = 5e-3, ["GammaMax"] = 0.05, ["Offset"] = 1e-4 },
+            "MCLIN"  => new() { ["W"] = 300e-6, ["S"] = 150e-6, ["L"] = 2e-3 },
+            "BCLIN"  => new() { ["W"] = 300e-6, ["O"] = 100e-6, ["L"] = 2e-3 },
+            "MBCLIN" => new() { ["W"] = 300e-6, ["O"] = 100e-6, ["L"] = 2e-3 },
             _        => new Dictionary<string, double>(),
         });
 }

@@ -342,6 +342,9 @@ internal static class ArtworkRoundTripBoards
                                params (string Pin, double Deg)[] facing)
     {
         var inst = Inst(view, id);
+        // Update Layout from Schematic places a bend in its symbol's hand, which can be mirrored; this
+        // board is drawn top-side, so the instance is un-mirrored before it is turned.
+        inst.MirrorX = false;
         foreach (var rot in Enum.GetValues<LayoutRotation>())
         {
             (inst.Rot, inst.X, inst.Y) = (rot, 0, 0);

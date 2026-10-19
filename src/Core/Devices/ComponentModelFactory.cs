@@ -85,7 +85,7 @@ public static class ComponentModelFactory
             // The JFET pair. Two types over one law, like the BJT's polarities: a channel type is a
             // sign, and a sign the symbol has to show.
             "JFET_N", "JFET_P",
-            "TLIN", "MLIN", "MBEND", "MCURVE", "MTEE", "MCROSS", "MTAPER", "MKLOPF", "Chain",
+            "TLIN", "CLIN", "MLIN", "MCLIN", "BCLIN", "MBCLIN", "MBEND", "MCURVE", "MMITER", "MTEE", "MCROSS", "MTAPER", "MKLOPF", "Chain",
             // Grounded coplanar waveguide and stripline (brief-artsch-1), bound to the stackup as MLIN is.
             "CPWG", "SLIN",
             // The two vias (brief-via-component.md): a signal via changing layers, and a via to ground.
@@ -179,16 +179,26 @@ public static class ComponentModelFactory
             return CreateBjtModel(typeName, parameters, ambientC);
         if (typeName.Equals("TLIN", StringComparison.OrdinalIgnoreCase))
             return CreateTLineModel(parameters);
+        if (typeName.Equals("CLIN", StringComparison.OrdinalIgnoreCase))
+            return CreateCLineModel(parameters);
         if (typeName.Equals("MLIN", StringComparison.OrdinalIgnoreCase))
             return CreateMicrostripLineModel(parameters);
         if (typeName.Equals("CPWG", StringComparison.OrdinalIgnoreCase))
             return CreateCoplanarLineModel(parameters);
         if (typeName.Equals("SLIN", StringComparison.OrdinalIgnoreCase))
             return CreateStriplineModel(parameters);
+        if (typeName.Equals("MCLIN", StringComparison.OrdinalIgnoreCase))
+            return CreateMicrostripCoupledLineModel(parameters);
+        if (typeName.Equals("BCLIN", StringComparison.OrdinalIgnoreCase))
+            return CreateStriplineBroadsideCoupledModel(parameters);
+        if (typeName.Equals("MBCLIN", StringComparison.OrdinalIgnoreCase))
+            return CreateMicrostripBroadsideCoupledModel(parameters);
         if (typeName.Equals("MBEND", StringComparison.OrdinalIgnoreCase))
             return CreateMicrostripBendModel(parameters);
         if (typeName.Equals("MCURVE", StringComparison.OrdinalIgnoreCase))
             return CreateMicrostripCurveModel(parameters);
+        if (typeName.Equals("MMITER", StringComparison.OrdinalIgnoreCase))
+            return CreateMicrostripMiterBendModel(parameters);
         if (typeName.Equals("MTEE", StringComparison.OrdinalIgnoreCase))
             return CreateMicrostripTeeModel(parameters);
         if (typeName.Equals("MCROSS", StringComparison.OrdinalIgnoreCase))
@@ -2057,6 +2067,19 @@ public static class ComponentModelFactory
 
     // ── TLIN (ideal/lossless transmission line) ─────────────────────────────────
 
+    // CLIN: ideal coupled pair. E (and the optional Eo) arrive in RADIANS exactly as TLIN's E does;
+    // Eo absent (NaN) means the homogeneous case, both modes at E. Defaults are a 50-ohm, 10 dB,
+    // quarter-wave pair at 1 GHz so an unparameterised placement simulates something meaningful.
+    private static CLineModel CreateCLineModel(IReadOnlyDictionary<string, Value> parameters)
+    {
+        double ze = GetReal(parameters, "Ze", 69.37);
+        double zo = GetReal(parameters, "Zo", 36.04);
+        double eRad = GetReal(parameters, "E", Math.PI / 2.0);
+        double eoRad = GetReal(parameters, "Eo", double.NaN);
+        double fRefHz = GetReal(parameters, "F", 1e9);
+        return new CLineModel(ze, zo, eRad, double.IsNaN(eoRad) ? eRad : eoRad, fRefHz);
+    }
+
     private static TLineModel CreateTLineModel(IReadOnlyDictionary<string, Value> parameters)
     {
         string name = parameters.TryGetValue("TLineName", out var nm) && nm.Kind == ValueKind.String
@@ -2196,6 +2219,75 @@ public static class ComponentModelFactory
             GetReal(parameters, "Sigma", DefaultSubstrateSigmaSPerM), GetReal(parameters, "TanD", DefaultSubstrateTanD),
             MicrostripInstanceName(parameters, "SLIN"), GetReal(parameters, "Roughness", 0.0));
         return Of(PlanarLineLength(parameters, Of));
+    }
+
+    // ── The physical coupled pairs: MCLIN (edge-coupled microstrip), BCLIN (broadside stripline) and
+    // MBCLIN (broadside microstrip). Lengths SI metres. Port order is CLIN's. A bare .cnl instance falls
+    // back to these defaults: MCLIN a 2.9 mm pair 0.5 mm apart on the FR-4 every microstrip falls back to;
+    // the broadside pair the 0.4 mm strips of a thin laminate stack, on the same FR-4 permittivity.
+    public const double DefaultCoupledGapMeters = 0.5e-3;
+    public const double DefaultBroadsideWidthMeters = 0.4e-3;
+    public const double DefaultBroadsideHsMeters = 76e-6;
+    public const double DefaultBroadsideHaMeters = 73e-6;
+    public const double DefaultBroadsideHbMeters = 77e-6;
+    public const double DefaultBroadsideTMeters = 18e-6;
+    public const double DefaultMicrostripBroadsideHbMeters = 0.2e-3;
+    public const double DefaultMicrostripBroadsideHsMeters = 0.1e-3;
+
+    private static MicrostripCoupledLineModel CreateMicrostripCoupledLineModel(IReadOnlyDictionary<string, Value> parameters)
+    {
+        double w = GetReal(parameters, "W", 2.9e-3);
+        double gap = GetReal(parameters, "S", DefaultCoupledGapMeters);
+        double l = GetReal(parameters, "L", 10e-3);
+        double h = GetReal(parameters, "H", DefaultSubstrateHMeters);
+        double t = GetReal(parameters, "T", DefaultSubstrateTMeters);
+        double er = GetReal(parameters, "Er", DefaultSubstrateEpsR);
+        double sigma = GetReal(parameters, "Sigma", DefaultSubstrateSigmaSPerM);
+        double tanD = GetReal(parameters, "TanD", DefaultSubstrateTanD);
+        double roughness = GetReal(parameters, "Roughness", 0.0);
+        return new MicrostripCoupledLineModel(w, gap, l, h, t, er, sigma, tanD,
+            MicrostripInstanceName(parameters, "MCLIN"), roughness);
+    }
+
+    // BCLIN: one T for both strips, or Ta/Tb each (absent = T).
+    private static StriplineBroadsideCoupledModel CreateStriplineBroadsideCoupledModel(IReadOnlyDictionary<string, Value> parameters)
+    {
+        double t = GetReal(parameters, "T", DefaultBroadsideTMeters);
+        return new StriplineBroadsideCoupledModel(
+            w:       GetReal(parameters, "W", DefaultBroadsideWidthMeters),
+            offset:  GetReal(parameters, "O", 0.0),
+            l:       GetReal(parameters, "L", 10e-3),
+            hs:      GetReal(parameters, "Hs", DefaultBroadsideHsMeters),
+            ha:      GetReal(parameters, "Ha", DefaultBroadsideHaMeters),
+            hb:      GetReal(parameters, "Hb", DefaultBroadsideHbMeters),
+            ta:      GetReal(parameters, "Ta", t),
+            tb:      GetReal(parameters, "Tb", t),
+            epsR:    GetReal(parameters, "Er", DefaultSubstrateEpsR),
+            sigmaSPerM: GetReal(parameters, "Sigma", DefaultSubstrateSigmaSPerM),
+            tanD:    GetReal(parameters, "TanD", DefaultSubstrateTanD),
+            instancePath: MicrostripInstanceName(parameters, "BCLIN"),
+            roughnessMeters: GetReal(parameters, "Roughness", 0.0));
+    }
+
+    // MBCLIN: Hd absent (NaN) puts strip A on the dielectric's top surface; Ha (absent = open) adds a cover.
+    private static MicrostripBroadsideCoupledModel CreateMicrostripBroadsideCoupledModel(IReadOnlyDictionary<string, Value> parameters)
+    {
+        double t = GetReal(parameters, "T", DefaultBroadsideTMeters);
+        return new MicrostripBroadsideCoupledModel(
+            w:       GetReal(parameters, "W", DefaultBroadsideWidthMeters),
+            offset:  GetReal(parameters, "O", 0.0),
+            l:       GetReal(parameters, "L", 10e-3),
+            hb:      GetReal(parameters, "Hb", DefaultMicrostripBroadsideHbMeters),
+            hs:      GetReal(parameters, "Hs", DefaultMicrostripBroadsideHsMeters),
+            ta:      GetReal(parameters, "Ta", t),
+            tb:      GetReal(parameters, "Tb", t),
+            hd:      GetReal(parameters, "Hd", double.NaN),
+            epsR:    GetReal(parameters, "Er", DefaultSubstrateEpsR),
+            sigmaSPerM: GetReal(parameters, "Sigma", DefaultSubstrateSigmaSPerM),
+            tanD:    GetReal(parameters, "TanD", DefaultSubstrateTanD),
+            instancePath: MicrostripInstanceName(parameters, "MBCLIN"),
+            roughnessMeters: GetReal(parameters, "Roughness", 0.0),
+            haCover: GetReal(parameters, "Ha", double.NaN));
     }
 
     // ── VIA / VIAGND (brief-via-component.md) ──────────────────────────────────────────────────
@@ -2348,6 +2440,25 @@ public static class ComponentModelFactory
         string name = MicrostripInstanceName(parameters, "MCURVE");
 
         return new MicrostripCurveModel(w, angleDeg, radius, h, t, er, sigma, tanD, name, roughness);
+    }
+
+    // MMITER: Angle arrives in RADIANS exactly as MCURVE's does and is converted back once; the model
+    // refuses |Angle| outside (0, 120] deg, which is what catches an authored bare "Angle=90" (90 rad).
+    // M absent means the Douville-James optimum for the instance's own W/h (NaN to the model).
+    private static MicrostripMiterBendModel CreateMicrostripMiterBendModel(IReadOnlyDictionary<string, Value> parameters)
+    {
+        double w = GetReal(parameters, "W", 0.0);
+        double angleDeg = GetReal(parameters, "Angle", Math.PI / 2.0) * 180.0 / Math.PI;
+        double miter = GetReal(parameters, "M", double.NaN);
+        double h = GetReal(parameters, "H", DefaultSubstrateHMeters);
+        double t = GetReal(parameters, "T", DefaultSubstrateTMeters);
+        double er = GetReal(parameters, "Er", DefaultSubstrateEpsR);
+        double sigma = GetReal(parameters, "Sigma", DefaultSubstrateSigmaSPerM);
+        double tanD = GetReal(parameters, "TanD", DefaultSubstrateTanD);
+        double roughness = GetReal(parameters, "Roughness", 0.0);
+        string name = MicrostripInstanceName(parameters, "MMITER");
+
+        return new MicrostripMiterBendModel(w, angleDeg, miter, h, t, er, sigma, tanD, name, roughness);
     }
 
     private static MicrostripTeeModel CreateMicrostripTeeModel(IReadOnlyDictionary<string, Value> parameters)

@@ -17,8 +17,12 @@ public static class PCellRegistry
         new(StringComparer.OrdinalIgnoreCase)
         {
             { "MLIN",   MlinPCell.Generate   },
+            { CoupledLinePCells.McLinId,  CoupledLinePCells.GenerateMclin  },
+            { CoupledLinePCells.BcLinId,  CoupledLinePCells.GenerateBclin  },
+            { CoupledLinePCells.MbcLinId, CoupledLinePCells.GenerateMbclin },
             { "MBEND",  MBendPCell.Generate  },
             { MCurvePCell.GeneratorId, MCurvePCell.Generate },
+            { MMiterPCell.GeneratorId, MMiterPCell.Generate },
             { "MTEE",   MTeePCell.Generate   },
             { "MCROSS", MCrossPCell.Generate },
             { "MTAPER", MTaperPCell.Generate },
@@ -255,7 +259,9 @@ public static class PCellRegistry
             // corners) instead of a union of two overlapping arm rectangles, so an oblique bend stops
             // rendering as two merged stubs. The 90° shape is unchanged, but the oblique ones are not,
             // and a generated cell already on disk was written by the old algorithm.
-            { "MBEND", 2 },
+            // v3: each arm ends at the model's reference plane, (W/2)·tan(θ/2) from the corner, instead of
+            // 2.5·W out — the extra line was artwork the L-C-L model never simulated.
+            { "MBEND", 3 },
             // SmoothSteps' end blend is CLAMPED to half the taper instead of being skipped outright
             // when 3x the end width exceeds the taper's own length. Every taper short relative to its
             // end widths — an ordinary impedance transformer on a low-permittivity board — was

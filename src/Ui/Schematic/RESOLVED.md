@@ -2,6 +2,45 @@
 
 Per-topic notes that don't belong in the standing `CLAUDE.md` file. Newest first.
 
+## A bend's copper came out as the mirror image of its symbol (2026-10-16)
+
+Found by laying out a meander (9 MLIN, 8 MMITER) with Update Layout from Schematic and snapping the
+placed parts pin to pin: the bends at +90° had their chamfer on the inside of the turn and the line
+after them sat a strip-width off; the ones at −90° were right. MBEND and MCURVE did the same.
+
+**A rotation cannot change handedness, and the pin alignment only ever rotated.** MBEND, MCURVE and
+MMITER all draw a positive `Angle` turning COUNTER-clockwise in the layout's Y-up frame, while their
+symbol at R0 (pin 1 left, pin 2 down) turns CLOCKWISE. `PinAlignment` lines up the pin-1→pin-2
+DIRECTION, which a rotation can always match — so the pins landed in the right places with both of them
+pointing the wrong way. Every bend dropped from the palette at its default Angle, and every mirrored
+symbol at a negative one, was placed as the mirror image of the drawing. Nothing reported it: the
+netlist is the same either way (the electrical models depend on |Angle| only), and LVS compares
+connectivity, not which side of a corner the copper is on.
+
+**Fix, in the alignment rather than in any generator.** `SchematicLayoutOrientation.PinAlignment` now
+checks that the rotation it chose also points each pin OUT the way the symbol's port points — a port's
+direction being its bearing from the symbol's origin, which is a bend's corner — and, when it does not
+and a mirrored alignment does, returns the mirrored one. A port on the origin has no direction, so it
+votes for neither. A straight part never flips: mirroring across its own pin axis leaves both pins
+where they were, and both candidates agree or disagree together. The generators were deliberately left
+alone: changing what a positive `Angle` draws would re-shape every bend already placed by hand in a
+layout.
+
+**A placed bend whose cell turns the other way after an edit is turned with it.** Changing `Angle` from
++90 to −90 regenerates a cell of the opposite hand, and the link-based carry only follows the SYMBOL's
+turns. When an update replaces an instance's cell, the alignment of the old and new cells is compared,
+and if it differs the placement becomes `current ∘ old⁻¹ ∘ new`, which keeps any turn the layout made of
+its own, and the run says so. Both cells must resolve, or nothing turns: an unresolved alignment is the
+identity, and the difference against it would be a turn nobody asked for.
+
+Gate: `tests/Ui.Tests/Layout/BendHandednessTests.cs` — MBEND, MMITER and MCURVE at ±90°, symbol plain
+and mirrored, each pin's placed outward direction against its port's bearing on the sheet; an MLIN that
+must never mirror; and the Angle sign flip on a placed bend. With the mirrored branch disabled, exactly
+the five +90° cases fail.
+
+**Found the same way, and fixed the same day: MBEND's artwork was longer than its model** — see
+`src/Design/RESOLVED.md`, *MBEND's arms end at the model's reference planes*.
+
 ## Update Layout/Schematic carry ROTATION, and Sort Placement (2026-09-22)
 
 Owner: a component turned in one view should turn in the other when the Update commands run; and a

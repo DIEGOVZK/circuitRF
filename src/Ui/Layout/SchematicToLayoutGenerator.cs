@@ -358,6 +358,8 @@ public static class SchematicToLayoutGenerator
                 var rot = CarryRotation(comp, before, schematicId,
                     () => PinAlignment(comp, schematicDir, before.CellRef, targetLayoutBaseDir, technology), linkOrientation);
                 if (rot.Unlinked) unlinkedDiffering++;
+                if (cellRefChanged)
+                    rot = Realign(rot, comp, before, schematicId, resolvedCellRef, schematicDir, targetLayoutBaseDir, technology);
 
                 if (!cellRefChanged && !rot.Changes && oldName is null)
                 {
@@ -658,6 +660,33 @@ public static class SchematicToLayoutGenerator
                       $"{SchematicLayoutOrientation.Describe(target)}" +
                       (layoutMoved ? " (a layout rotation is being overwritten)" : " (from schematic)");
         return new(true, target, link, line, layoutMoved, false);
+    }
+
+    /// <summary>
+    /// A regenerated cell whose pins are arranged differently from the one it replaces — a bend whose
+    /// <c>Angle</c> changed sign turns the other way, so its alignment gains or loses a mirror — is
+    /// turned by exactly that difference: <c>placement = symbol ∘ alignment</c>, so the new placement
+    /// is <c>current ∘ old⁻¹ ∘ new</c>, which keeps any turn the layout made of its own. Nothing moves
+    /// when either cell does not resolve, because an unresolved alignment is the identity and the
+    /// difference against it would be a turn nobody asked for.
+    /// </summary>
+    private static RotationCarry Realign(RotationCarry rot, EditableComponent comp, LayoutInstance before,
+                                         string schematicId, string newCellRef, string? schematicDir,
+                                         string layoutBaseDir, Technology? technology)
+    {
+        if (CellLayoutResolver.Resolve(before.CellRef, layoutBaseDir) is not { State: CellLayoutState.Resolved, View: { } oldCell } ||
+            CellLayoutResolver.Resolve(newCellRef, layoutBaseDir) is not { State: CellLayoutState.Resolved, View: { } newCell })
+            return rot;
+        var oldAlign = PinAlignment(comp, schematicDir, oldCell, technology);
+        var newAlign = PinAlignment(comp, schematicDir, newCell, technology);
+        if (oldAlign.SameAs(newAlign)) return rot;
+
+        var from = rot.Changes ? rot.Target : SchematicLayoutOrientation.FromLayout(before);
+        var target = from.Compose(oldAlign.Inverse()).Compose(newAlign);
+        var link = SchematicLayoutOrientation.Link((int)comp.Rotation, comp.MirrorX, target);
+        string line = $"{schematicId} — turned from {SchematicLayoutOrientation.Describe(from)} to " +
+                      $"{SchematicLayoutOrientation.Describe(target)} so its pins still face the way the symbol's do";
+        return new(true, target, link, rot.Line is { } carried ? carried + "; " + line : line, rot.Overwrote, rot.Unlinked);
     }
 
     /// <summary>
@@ -1193,6 +1222,19 @@ public static class SchematicToLayoutGenerator
                     continue;
                 }
                 if (string.IsNullOrWhiteSpace(p.Expression) || p.Name is "IncludeC" or "C") continue;
+            }
+
+            // A broadside pair's (BCLIN/MBCLIN) layer choices are conductor NAMES for its generator, as a
+            // via's are; its cross-section rows are the MODEL's alone (the artwork is W, O and L on the
+            // two layers), and an empty one follows the technology.
+            if (BroadsideSubstrateInjection.IsBroadsideKind(comp.Symbol))
+            {
+                if (BroadsideSubstrateInjection.LayerParams.Contains(p.Name))
+                {
+                    if (p.Expression.Trim() is { Length: > 0 } layerName) resolved[p.Name] = PCellValue.Text(layerName);
+                    continue;
+                }
+                if (p.Name is not ("W" or "O" or "L")) continue;
             }
 
             // A parameter this generator does not declare is not its parameter. A kit part carries
