@@ -52,7 +52,8 @@ public static class CellReferenceRepair
         !string.IsNullOrWhiteSpace(cellRef)
         && !PdkKitRegistry.IsKitRef(cellRef!)
         && !WBondSymbolProvider.IsWBondRef(cellRef!)
-        && SpiceModelSymbolProvider.Parse(cellRef!) is null;
+        && SpiceModelSymbolProvider.Parse(cellRef!) is null
+        && !ComposedFetSymbolProvider.IsComposedFetRef(cellRef);
 
     /// <summary>
     /// Looks for the cell <paramref name="cellRef"/> names, without asking the user anything.

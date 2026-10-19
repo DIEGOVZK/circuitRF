@@ -288,7 +288,9 @@ public static class BuiltInSymbols
             case SymbolKind.FetCurticeCubic:
             case SymbolKind.FetStatz:
             case SymbolKind.FetMaterka:
-            case SymbolKind.FetAngelov:  return _fet;
+            case SymbolKind.FetAngelov:
+            // A composed FET falls back to the same glyph when its own symbol does not resolve.
+            case SymbolKind.ComposedFet: return _fet;
             // The p-channel laws share one glyph with each other and none with the n-channel ones:
             // the gate arrow is the only thing on the drawing that says which channel this is.
             case SymbolKind.PFetCurtice:

@@ -49,7 +49,13 @@ internal static class NpyReader
     public static (DataSet DataSet, ImportedLinearNetwork? LinearNetwork) Read(string path)
     {
         using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-        using var r  = new BinaryReader(fs, Encoding.ASCII, leaveOpen: false);
+        return Read(fs);
+    }
+
+    /// <summary>The path form's reader over a caller's stream, which is left open.</summary>
+    public static (DataSet DataSet, ImportedLinearNetwork? LinearNetwork) Read(Stream stream)
+    {
+        using var r  = new BinaryReader(stream, Encoding.ASCII, leaveOpen: true);
 
         // ── 1. Preamble: magic, version, header length ───────────────────────
 

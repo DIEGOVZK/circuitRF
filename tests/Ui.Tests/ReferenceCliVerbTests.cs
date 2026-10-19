@@ -393,7 +393,7 @@ public sealed class ReferenceCliVerbTests(ITestOutputHelper output)
     {
         // "WSProbe" left this list on 2026-09-08: WSP-4 gave the probe a palette tile, so the engine
         // primitive is now drawn by a SymbolKind like every other placeable one.
-        string[] expected = ["Chain", "ExtDevice", "I_nTone", "SemiC", "Short", "Term", "V_nTone"];
+        string[] expected = ["Chain", "ComposedCore", "ExtDevice", "I_nTone", "SemiC", "Short", "Term", "V_nTone"];
 
         var drawn = Enum.GetValues<SymbolKind>()
             .Where(k => !LibraryCatalog.InternalOnlyKinds.Contains(k))

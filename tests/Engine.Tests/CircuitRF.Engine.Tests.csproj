@@ -65,6 +65,8 @@
          runner's OS locale (brief-localization-groundwork.md R-loc-4). Shared by all seven test
          projects; see tests/TestCulture.cs for why it is a ModuleInitializer. -->
     <Compile Include="../TestCulture.cs" Link="TestCulture.cs" />
+    <!-- The composed-FET test model (brief-modelcomposer-1), shared with Core.Tests and Ui.Tests. -->
+    <Compile Include="../Core.Tests/Composed/Support/ComposedTestModels.cs" Link="Composed/Support/ComposedTestModels.cs" />
   </ItemGroup>
 
 </Project>

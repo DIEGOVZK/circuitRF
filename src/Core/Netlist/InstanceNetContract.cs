@@ -102,6 +102,7 @@ public static class InstanceNetContract
         Devices.Mos.VdmosModel                                                                => 3,   // drain, gate, source
         Devices.Jfet.JfetModel                                                                => 3,   // drain, gate, source
         Devices.Mos.MosfetModelBase                                                           => 4,   // drain, gate, source, bulk
+        Devices.Composed.ComposedCoreModel                                                    => 3,   // gi, di, si
 
         // ── Parameterised counts, answered from the model's own resolved state ──
         // Two nets per port, both differential: this is the case CLAUDE.md already calls out as
@@ -256,6 +257,11 @@ public static class InstanceNetContract
         ["OpAmp"] =
             "3 nets (in+, in−, out; the output referenced to ground), or 5 with Pins=5, adding the "
           + "supply pins V+ and V−, which carry no current.",
+        ["ComposedFet"] =
+            "3 nets: g d s, bound to the symbol's pins 1, 2 and 3. A fourth, t, is the thermal node of " +
+            "a model that has one.",
+        ["ComposedCore"] =
+            "3 nets: the intrinsic gate, drain and source — gi di si inside a ComposedFet.",
         ["VerilogA"] =
             "Set by the compiled model the File parameter names: one net per declared terminal, " +
             "which the module's own source states and no registry here can.",

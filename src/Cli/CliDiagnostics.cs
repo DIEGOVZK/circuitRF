@@ -1037,6 +1037,20 @@ internal static class CliDiagnostics
         "check.file.unreadable", DiagnosticSeverity.Error,
         "{path}: could not be read ({message}).", ("path", path), ("message", message));
 
+    // ── Composed FET model (`.cmodel`) ───────────────────────────────────────
+
+    /// <summary>The <c>.cmodel</c> validator's own sentence, which names the field.</summary>
+    public static Diagnostic CheckComposedModelRefused(string path, string message) => Diagnostic.Create(
+        "check.cmodel.refused", DiagnosticSeverity.Error,
+        "{path}: {message}", ("path", path), ("message", message));
+
+    /// <summary>What a valid <c>.cmodel</c> is: its base periphery and the temperatures it covers.</summary>
+    public static Diagnostic CheckComposedModelSummary(string path, int fingers, string unitWidth, string temperature)
+        => Diagnostic.Create(
+            "check.cmodel.summary", DiagnosticSeverity.Info,
+            "{path}: a composed FET model of {fingers} finger(s) × {unitWidth}, valid at {temperature}.",
+            ("path", path), ("fingers", fingers), ("unitWidth", unitWidth), ("temperature", temperature));
+
     // ── railRF (`.crail`) ────────────────────────────────────────────────────
 
     /// <summary>What the document holds, and the ORDER its rails solve in — the one thing about a

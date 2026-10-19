@@ -58,6 +58,20 @@ internal static class NpyWriter
         ExportOptions         opts,
         ILinearNetworkPayload? payload)
     {
+        using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+        Write(fs, ds, opts, payload);
+    }
+
+    /// <summary>
+    /// The same bytes the path form puts in a file, into a caller's stream, which is left open — for
+    /// a container that holds <c>.npy</c> entries, such as a <c>.cmodel</c>'s <c>arrays/</c>.
+    /// </summary>
+    public static void Write(
+        Stream                stream,
+        DataSet               ds,
+        ExportOptions         opts,
+        ILinearNetworkPayload? payload)
+    {
         // 0. Build cube → field-name mappings once; shared by meta + data passes.
         var cubeMappings = BuildCubeMappings(ds);
 
@@ -91,8 +105,7 @@ internal static class NpyWriter
         preamble = useV2 ? 12 : 10;
 
         // 5. Write the file.
-        using var fs = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
-        using var w  = new BinaryWriter(fs, Encoding.ASCII, leaveOpen: false);
+        using var w  = new BinaryWriter(stream, Encoding.ASCII, leaveOpen: true);
 
         w.Write(Magic);                     // 6 bytes: magic
         w.Write((byte)(useV2 ? 2 : 1));    // major version

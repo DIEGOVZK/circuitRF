@@ -3571,3 +3571,32 @@ Owner request: an edge-coupled microstrip pair and a broadside stripline pair as
   parallel-plate increment of wide strips, the odd mode's mid-plane image, the uncoupled limits) stand in.
 - **`InstanceNetContract` now states 4 nets for CLIN as well** as for the three new parts; CLIN had none,
   which `NetlistContractTests` reports as an unstated primitive.
+
+## brief-modelcomposer-1 — the `.cmodel` format and `ComposedFet` (2026-10-19)
+
+Design note: `docs/design/model-composer.md` §3–§4. Findings worth keeping:
+
+- **A device that elaborates AS A CELL is intercepted before the primitive branch**, not built by the
+  factory. `ComposedFet` is a registered token (so the reader, the catalogue and `IsPrimitive` know it)
+  whose `TryCreate` refuses; `Elaborator.ComposedFetCell` synthesises a `Cell` and hands it to
+  `FlattenCell`, which is what makes `X1.rg` and `V(X1.gi)` ordinary paths. The core it places,
+  `ComposedCore`, IS a factory type, built from `File`/`N` through the load cache — so the synthesised
+  cell is plain `.cnl`-shaped instances all the way down.
+- **`m` cannot simply be stamped on every element of such a cell.** Inductors and `Mutual` allocate
+  branch currents, which `MultipliedMnaContext` refuses by design. `m` parallel copies of the network
+  is every admittance times `m`, so `L` and the mutual's `M` are DIVIDED by `m` and everything else
+  (the core included) carries `m` as its multiplier. Watch the case: the mutual's coupling is `M`, the
+  multiplier is `m`, and resolved parameters compare ordinally.
+- **The synthesised values are literals, written with `ToString("R")`**, so the elaborator's re-parse
+  returns the identical double. The DC equivalence against the SDD reference came out bit-identical
+  (same register compiler on both sides), so the 1e-12 gate has real margin rather than sitting on
+  the edge of rounding.
+- **`CompiledSddExpr.EvalDual` allocates its gradient per call**; `EvalDualInto` writes into caller
+  memory and is what `EvaluateInto` uses, so an HB grid evaluates a composed core with no allocation
+  per sample. `CompileNamed` seeds physical names (`vgs`, `vds`, `T`) instead of `_v1…`.
+- **The load counter is PER FILE** (`ComposedModelCache.LoadCountFor`). A process-wide count reset by
+  one test class is disturbed by any other class loading a model in parallel — xUnit runs classes
+  concurrently — so a "loaded once" assertion on a global counter is a load-dependent flake.
+- **`.npy` entries inside a ZIP** go through RfCore's own codec via new stream overloads
+  (`DataSetExporter.ExportNpy` / `DataSetImporter.ImportNpy`); the path forms now delegate to them, so
+  there is still one writer and one reader.

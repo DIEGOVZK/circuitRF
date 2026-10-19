@@ -1900,6 +1900,33 @@ glyph, the pins and the parameter table.</p>
 
 {{table: components/VerilogA}}
 
+### Composed FET model (ComposedFet) {#composedfet}
+
+{{symbol: composed-fet}}
+
+A transistor model built from measured or simulated device data, placed from its `.cmodel` file:
+
+```
+ComposedFet:X1  g d s  File="gan_8x125.cmodel"  N=8
+```
+
+It simulates as the circuit it is: the model's extrinsic network as ordinary resistors, inductors,
+capacitors and mutuals, and one nonlinear core on the intrinsic nets `gi`, `di` and `si`. So `V(X1.gi)`
+is the intrinsic gate voltage, and each network element has a path of its own (`X1.rg`). `File` is
+resolved the way an SnP's is.
+
+`N` is the finger count; blank is the model's own. The core scales by `N/N0`, and each network element
+by its rule — fixed, per finger, or inversely per finger. `m` places whole devices in parallel, so
+`m=2 N=8` is two 8-finger devices.
+
+A model extracted at one temperature is used as it is at any other, with one warning naming both. A
+model over a temperature range follows `temp`, held to that range.
+
+The glyph is the model's own symbol, which the `Symbol` row changes per instance; pins 1, 2 and 3 are
+`g`, `d` and `s`. A symbol that cannot be found draws as the standard FET, with one warning.
+
+{{table: components/ComposedFet}}
+
 ## System-level blocks
 
 The blocks a **system block diagram** is drawn out of: the level above a transistor, where a signal

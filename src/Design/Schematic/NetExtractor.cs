@@ -2194,6 +2194,42 @@ public static class NetExtractor
             return new Instance(comp.InstanceName, reference, wbNets, wbOverrides);
         }
 
+        // A composed FET (brief-modelcomposer-1): pins 1/2/3 are g d s BY NUMBER, whatever symbol draws
+        // them. `Symbol` is artwork and never reaches the engine; a blank `N` means the model's own
+        // base finger count and is dropped rather than written as `N=` (the empty-value trap).
+        if (comp.Symbol == SymbolKind.ComposedFet)
+        {
+            var cfNets = new List<string>();
+            foreach (var def in GetEffectivePortDefs(model, comp, cellRefResolutions).OrderBy(d => d.PortIndex))
+            {
+                var (px, py) = model.PortWorldOf(comp, def);
+                cfNets.Add(NetForPort(comp, def.PortIndex, px, py, uf, QK, netNames, detachedKeys));
+            }
+
+            string? Param(string name) => comp.Parameters.FirstOrDefault(p => p.Name == name)?.Expression;
+            if (warningsOut is not null
+                && ComposedFetSymbolProvider.Diagnose(comp.InstanceName, Param(ComposedFetSymbolProvider.FileParameter),
+                                                      Param(ComposedFetSymbolProvider.SymbolParameter),
+                                                      model.SchematicDirectory) is { } symbolWarning)
+                warningsOut.Add(symbolWarning);
+
+            var cfOverrides = comp.Parameters
+                .Where(p => p.Name != ComposedFetSymbolProvider.SymbolParameter && !string.IsNullOrWhiteSpace(p.Expression))
+                .Select(p => p.Name == ComposedFetSymbolProvider.FileParameter
+                    ? new ParameterAssignment(p.Name, QuotedPath(p.Expression), null)
+                    : new ParameterAssignment(p.Name, p.Expression,
+                          UnitNormalizer.ToEngineUnit(p.Unit) is { Length: > 0 } u ? u : null))
+                .ToList();
+
+            static string QuotedPath(string v)
+            {
+                string t = v.Trim();
+                return t.Length >= 2 && t[0] == '"' && t[^1] == '"' ? t : $"\"{t}\"";
+            }
+
+            return new Instance(comp.InstanceName, reference, cfNets, cfOverrides);
+        }
+
         var overrides2 = comp.Parameters
             // CvData is editor-only: the raw C-V table persists in .csch for re-editing, but it is
             // not an engine parameter (the NonlinearC model reads only C0..Cn). Keep it out of the

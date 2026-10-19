@@ -217,6 +217,7 @@ public static class MoveRefRegistry
         if (PdkKitRegistry.IsKitRef(stored)) return null;
         if (WBondSymbolProvider.IsWBondRef(stored)) return null;
         if (SpiceModelSymbolProvider.IsSpiceModelRef(stored)) return null;
+        if (ComposedFetSymbolProvider.IsComposedFetRef(stored)) return null;
         return ExternalCellRef.ResolveCellDir(stored, baseDir);
     }
 

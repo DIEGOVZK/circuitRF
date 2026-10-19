@@ -108,7 +108,17 @@ public static class ComponentModelFactory
             // The op-amp: Pins (3 or 5) sets how many nets the line binds, so it is known at
             // construction rather than read at stamp time.
             "OpAmp",
+            // The composed FET (brief-modelcomposer-1): a .cmodel placed as a device. It ELABORATES AS
+            // A CELL — the network's R/L/C/Mutual plus one ComposedCore — so the elaborator expands it
+            // before the factory is ever asked; ComposedCore is the nonlinear core it places.
+            ComposedFetTypeName, ComposedCoreTypeName,
         };
+
+    /// <summary>The <c>.cnl</c> token of a placed <c>.cmodel</c> (D3).</summary>
+    public const string ComposedFetTypeName  = "ComposedFet";
+
+    /// <summary>The <c>.cnl</c> token of a composed FET's intrinsic nonlinear core alone.</summary>
+    public const string ComposedCoreTypeName = "ComposedCore";
 
     /// <summary>
     /// Returns a new ComponentModel, using resolved parameters when needed.
@@ -137,6 +147,12 @@ public static class ComponentModelFactory
 
         if (typeName.Equals("SnP",    StringComparison.OrdinalIgnoreCase))
             return CreateSnpModel(parameters);
+        if (typeName.Equals(ComposedCoreTypeName, StringComparison.OrdinalIgnoreCase))
+            return CreateComposedCoreModel(parameters, ambientC);
+        if (typeName.Equals(ComposedFetTypeName, StringComparison.OrdinalIgnoreCase))
+            throw new ParameterRefusalException(
+                "a ComposedFet elaborates as a cell — its network and its ComposedCore — and is never " +
+                "built as one model.");
         if (typeName.Equals("Mutual", StringComparison.OrdinalIgnoreCase))
             return CreateMutualModel(parameters);
         if (typeName.Equals("OpAmp",  StringComparison.OrdinalIgnoreCase))
@@ -608,6 +624,45 @@ public static class ComponentModelFactory
     }
 
     private const string ExternalDeviceProviderReservedPrefix = DeviceWorkerProvider.ReservedPrefix;
+
+    /// <summary>
+    /// The core of a composed FET: the <c>.cmodel</c> its <c>File</c> names (an absolute path once the
+    /// elaborator has resolved it), loaded through <see cref="Composed.ComposedModelCache"/>, at
+    /// <c>N</c> fingers (default <c>N0</c>).
+    /// </summary>
+    private static Composed.ComposedCoreModel CreateComposedCoreModel(
+        IReadOnlyDictionary<string, Value> parameters, double ambientC)
+    {
+        string file = parameters.TryGetValue("File", out var f) && f.Kind == ValueKind.String ? f.AsString() : "";
+        if (string.IsNullOrWhiteSpace(file))
+            throw new ParameterRefusalException("no .cmodel file is specified; set 'File'.");
+
+        Composed.LoadedComposedModel loaded;
+        try { loaded = Composed.ComposedModelCache.Load(file); }
+        catch (Composed.CmodelFormatException ex)
+        {
+            throw new ParameterRefusalException($"'{file}' cannot be used: {ex.Message}");
+        }
+
+        int n = loaded.N0;
+        if (parameters.TryGetValue("N", out var nv))
+            n = ComposedFingerCount(nv);
+        return new Composed.ComposedCoreModel(loaded, n, ambientC);
+    }
+
+    /// <summary>
+    /// <c>N</c> as a finger count: a positive integer, refused otherwise with a sentence that says what
+    /// <c>N</c> is — the one rule <c>ComposedFet</c> and <c>ComposedCore</c> share.
+    /// </summary>
+    public static int ComposedFingerCount(Value nv)
+    {
+        double n = nv.Kind == ValueKind.Real ? nv.AsReal() : double.NaN;
+        if (!double.IsFinite(n) || n < 1 || n != Math.Round(n) || n > int.MaxValue)
+            throw new ParameterRefusalException(
+                $"N={(double.IsNaN(n) ? nv.ToString() : n.ToString("G6", CultureInfo.InvariantCulture))} " +
+                "is not a finger count; N is the number of gate fingers, a positive whole number.");
+        return (int)n;
+    }
 
     private static SnpModel CreateSnpModel(IReadOnlyDictionary<string, Value> parameters)
     {

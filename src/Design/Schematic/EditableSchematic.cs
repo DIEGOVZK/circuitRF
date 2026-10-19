@@ -161,6 +161,8 @@ public static class SymbolPortDefs
             case SymbolKind.FetStatz:
             case SymbolKind.FetMaterka:
             case SymbolKind.FetAngelov:
+            // A composed FET binds g d s exactly as the FET laws do (brief-modelcomposer-1 R-mc1-9).
+            case SymbolKind.ComposedFet:
             // The p-channel laws keep the SAME pin order and the same geometry — they are the same
             // component with every sign reversed, and the elaborator's FET branch reads both.
             case SymbolKind.PFetCurtice:
@@ -669,6 +671,14 @@ public sealed class EditableComponent
                       // The section too: two sections of one file are two different parts, and the
                       // reference IS the symbol cache's key.
                       Parameters.FirstOrDefault(p => p.Name == SpiceModelSymbolProvider.SectionParameter)?.Expression)
+                : null)
+        // A composed FET draws the symbol its model (or this instance) names — a library symbol or a
+        // .csym beside the .cmodel — and the standard FET glyph when that does not resolve. Both the
+        // file and the choice are in the reference, which is the symbol cache's key.
+        ?? (Symbol == SymbolKind.ComposedFet
+                ? ComposedFetSymbolProvider.RefFor(
+                      Parameters.FirstOrDefault(p => p.Name == ComposedFetSymbolProvider.FileParameter)?.Expression,
+                      Parameters.FirstOrDefault(p => p.Name == ComposedFetSymbolProvider.SymbolParameter)?.Expression)
                 : null);
 
     public double         X            { get; set; }

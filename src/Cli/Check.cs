@@ -1,4 +1,5 @@
 using CircuitRF.Core.Devices;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Design;
 using CircuitRF.Core.Elaboration;
 using CircuitRF.Core.Netlist;
@@ -226,6 +227,8 @@ internal static class Check
                                           Scoped(path, kind, f, () => CheckDataDisplay(path, f)); break;
             case DocumentKind.Rail:       Scoped(path, kind, f, () => CheckRail(path, f)); break;
             case DocumentKind.Smith:      Scoped(path, kind, f, () => CheckSmith(path, f)); break;
+            case DocumentKind.ComposedModel:
+                                          Scoped(path, kind, f, () => CheckComposedModel(path, f)); break;
 
             case DocumentKind.Foreign:
                 f.Begin(path, kind);
@@ -1141,6 +1144,27 @@ internal static class Check
 
         f.Add(CliDiagnostics.CheckSmithSummary(
             path, design.Elements.Count, design.Generator.Rows.Count, design.DesignFrequencyHz));
+    }
+
+    /// <summary>
+    /// A <c>.cmodel</c>, through <see cref="CmodelFile.Read(string)"/> — the reader a placed
+    /// <c>ComposedFet</c> loads it with, which validates before it returns. No rule of its own: the
+    /// refusal printed is the validator's sentence, naming the field.
+    /// </summary>
+    private static void CheckComposedModel(string path, Findings f)
+    {
+        ComposedModel model;
+        try { model = CmodelFile.Read(path); }
+        catch (CmodelFormatException ex) { f.Add(CliDiagnostics.CheckComposedModelRefused(path, ex.Message)); return; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        { f.Add(CliDiagnostics.CheckUnreadable(path, ex.Message)); return; }
+
+        var t = model.Temperature;
+        f.Add(CliDiagnostics.CheckComposedModelSummary(
+            path, model.BasePeriphery.Fingers, model.BasePeriphery.UnitWidth,
+            t.Mode == TemperatureMode.Single
+                ? $"{t.T0.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} °C only"
+                : $"{t.Tmin.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} to {t.Tmax.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} °C"));
     }
 
     private static void CheckDataDisplay(string path, Findings f)

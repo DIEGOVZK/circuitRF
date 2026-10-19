@@ -1006,6 +1006,7 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
         RefreshMatchProperties();
         RefreshVerilogAPanel();
         SyncVerilogAFromModelFile();
+        SyncComposedFetSymbol();
     }
 
     /// <summary>
@@ -1224,6 +1225,55 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
         // to re-apply the Pins read-only state that went with them. This cannot loop: nothing differs
         // now, so it reaches the "no change" return above without executing anything.
         SyncVerilogAFromModelFile();
+    }
+
+    // ── ComposedFet: the model's symbol follows its File (brief-modelcomposer-1 R-mc1-9) ──────────
+
+    /// <summary>The File this composed FET carried when last looked at; null until the target is
+    /// first seen, so opening the dialog is never mistaken for an edit.</summary>
+    private string? _composedFetFile;
+    private EditableComponent? _composedFetTarget;
+    private bool _syncingComposedFet;
+
+    /// <summary>
+    /// Copies the model's own <c>Symbol</c> into a composed FET when its <c>File</c> changes — what
+    /// placing one does — unless the instance carries a symbol of its own choosing (one that is not
+    /// the previous model's). One <see cref="SetParametersCommand"/>, so it is one undo step with the
+    /// File edit's own.
+    /// </summary>
+    private void SyncComposedFetSymbol()
+    {
+        if (_syncingComposedFet) return;
+        // Per COMPONENT, not per SetTarget: a parameter command rebuilds the rows through SetTarget
+        // on the same component, and that must not forget the File it carried before the edit.
+        if (!ReferenceEquals(_target, _composedFetTarget))
+        {
+            _composedFetTarget = _target;
+            _composedFetFile   = null;
+        }
+        if (_target is null || _schematicVm is null || _target.Symbol != SymbolKind.ComposedFet) return;
+
+        string  file     = ParamValue(_target, ComposedFetSymbolProvider.FileParameter);
+        string? previous = _composedFetFile;
+        _composedFetFile = file;
+        if (previous is null || previous.Equals(file, StringComparison.Ordinal)) return;
+
+        string? dir      = _schematicVm.EditModel.SchematicDirectory;
+        string  current  = ParamValue(_target, ComposedFetSymbolProvider.SymbolParameter);
+        if (current.Length > 0 && current != (ComposedFetSymbolProvider.ModelSymbol(previous, dir) ?? "")) return;
+
+        string desired = ComposedFetSymbolProvider.ModelSymbol(file, dir) ?? "";
+        if (desired.Equals(current, StringComparison.Ordinal)) return;
+
+        var updated = _target.Parameters.Select(p => p.Clone()).ToList();
+        if (updated.FirstOrDefault(p => p.Name == ComposedFetSymbolProvider.SymbolParameter) is { } row)
+            row.Expression = desired;
+        else
+            updated.Add(new EditableParameter { Name = ComposedFetSymbolProvider.SymbolParameter, Expression = desired, ShowOnSchematic = false });
+
+        _syncingComposedFet = true;
+        try { _schematicVm.Execute(new SetParametersCommand(_schematicVm.EditModel, _target, updated)); }
+        finally { _syncingComposedFet = false; }
     }
 
     /// <summary>True for a VerilogA component — the only one whose parameters come from a file.</summary>
@@ -1830,6 +1880,7 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
         RefreshFromModel();
         UpdateCanRemoveTopGroup();
         SyncVerilogAFromModelFile();
+        SyncComposedFetSymbol();
     }
 
     private void UpdateFromSelection()

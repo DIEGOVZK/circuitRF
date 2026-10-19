@@ -110,7 +110,10 @@ public static class CellSymbolResolver
         // no base either. Both have to work on an unsaved scratch schematic, where a component that
         // resolved to nothing would render pin-less and read as the drop having failed.
         || (SpiceModelSymbolProvider.Parse(cellRef) is { } r
-                && (r.File.Length == 0 || System.IO.Path.IsPathRooted(r.File)));
+                && (r.File.Length == 0 || System.IO.Path.IsPathRooted(r.File)))
+        // A composed FET always draws SOMETHING — its fallback is the standard FET glyph — so an
+        // unsaved schematic must still get its pins.
+        || ComposedFetSymbolProvider.IsComposedFetRef(cellRef);
 
     /// <summary>
     /// Resolves <paramref name="cellRef"/> relative to <paramref name="baseDir"/> and returns
@@ -150,6 +153,8 @@ public static class CellSymbolResolver
         //     placement and the same reason as the two above: the reference is not a cell path.
         if (SpiceModelSymbolProvider.IsSpiceModelRef(cellRef))
             return SpiceModelSymbolProvider.Resolve(cellRef, baseDir);
+        if (ComposedFetSymbolProvider.IsComposedFetRef(cellRef))
+            return ComposedFetSymbolProvider.Resolve(cellRef, baseDir);
 
         // 1. Resolve path. A cell reference is relative to the schematic's own directory, so an
         //    unsaved schematic has nothing to resolve it against — NotFound, not a crash. A ws://
@@ -306,6 +311,7 @@ public static class CellSymbolResolver
         // and therefore no published parameter interface. Answered here rather than left to fall
         // through, so the path branch is never handed a reference that is not a path.
         if (WBondSymbolProvider.IsWBondRef(cellRef)) return null;
+        if (ComposedFetSymbolProvider.IsComposedFetRef(cellRef)) return null;
 
         try
         {

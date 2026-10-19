@@ -68,6 +68,8 @@ visually until you draw one.
       <tr><td><code>.charm</code></td><td>harmonicaRF document — the DUT, the source and load termination planes at every harmonic, the package, the display configuration and the markers. See <a href="harmonicarf.html">harmonicaRF</a>.</td></tr>
       <tr><td><code>.wBond</code></td><td>wBond design — bondwire geometry: the wires, their arrays and profiles, the substrate and the solver settings. Self-contained and shareable. See <a href="wbond.html">wBond</a>.</td></tr>
       <tr><td><code>.crail</code></td><td>railRF document — the rails, their sources, loads and reference, the parts and the part library they resolve against, the target and the band. See <a href="railrf.html">railRF</a>.</td></tr>
+      <tr><td><code>.cmodel</code></td><td>Composed FET model — a nonlinear transistor model placed as a <code>ComposedFet</code>: its extrinsic network, its current and charge constituents, the finger count and gate width it was measured at, the temperatures it is valid at, its symbol and where it came from. A ZIP holding a readable <code>model.json</code> and any arrays as <code>.npy</code>. See <a href="#cmodel">The composed FET model</a>.</td></tr>
+      <tr><td><code>.cmc</code></td><td>Model Composer document — reserved for the Model Composer's own document, from which a <code>.cmodel</code> is exported.</td></tr>
       <tr><td><code>.csmith</code></td><td>Smith Chart document — a generator impedance over frequency and an ordered cascade of two-pin elements, plus what the chart is normalized to, the overlays, the markers and the constant-Q setting. Numbers are in base SI. See <a href="smith-chart.html">Smith Chart</a>.</td></tr>
     </tbody>
   </table>
@@ -123,6 +125,25 @@ hand-written or scripted file must follow.
   the `.c3d`; the source it came from is only remembered.
 - **Without the kernel** a 3D view holding any of these — even disabled — is not opened, and `check`
   reports one error per object; see [The 3D Editor](drawing-in-3d.html#operations).
+
+## The composed FET model {#cmodel}
+
+A `.cmodel` is a ZIP container. `model.json` is the model itself, readable as text; `arrays/<name>.npy`
+holds any array it needs (a table, a network's weights), in circuitRF's own `.npy` format. The same
+model always writes the same bytes.
+
+| Field | What it holds |
+|---|---|
+| `FormatVersion` | `1`. A file from a newer circuitRF is refused, saying so. |
+| `Kind`, `Terminals` | `Fet`; `G`, `D`, `S` — the symbol's pins 1, 2 and 3. |
+| `BasePeriphery` | `Fingers` (N0) and `UnitWidth` (`"125 um"`) of the device the model was extracted from. |
+| `Temperature` | `{ "Mode": "Single", "T0": 25 }` — valid at one temperature, with no temperature input — or `{ "Mode": "Range", "Tmin": …, "Tmax": … }`, in °C. |
+| `Network` | `Netlist`: `.cnl` text holding one `define` block with exactly six pins — extrinsic gate, drain, source, then intrinsic gate, drain, source — and its element values as variables. `Scaling`: each variable's rule, `fixed` (the default), `perFinger` or `perFingerInverse`. |
+| `Core.Constituents` | `Id`, `Ig`, `Qg` and `Qd`, each `{ "Method", "Inputs", … }`. An `Equation` constituent carries `Expression` and `Parameters` (named constants); `Ig` carries two expressions, `IgGs` and `IgGd`. Inputs are `vgs` and `vds` in volts, and `T` in °C for a `Range` model. Currents are in A, charges in C. |
+| `Symbol` | A library symbol's name, or a `.csym` path relative to the `.cmodel`. |
+| `Provenance` | `Created`, `CircuitRfVersion`, `Sources` (`Path`, `Sha256`) and `SettingsDigest`. |
+
+`circuitrf check` reads a `.cmodel` and names the field of anything it refuses.
 
 ## Workspace › Library › Cell {#hierarchy}
 

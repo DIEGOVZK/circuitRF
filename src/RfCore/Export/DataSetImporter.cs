@@ -45,4 +45,11 @@ public static class DataSetImporter
 
         return NpyReader.Read(path);
     }
+
+    /// <summary>Reads one circuitRF <c>.npy</c> from <paramref name="stream"/>, which is left open.</summary>
+    public static DataSet ImportNpy(Stream stream)
+    {
+        if (stream is null) throw new ArgumentNullException(nameof(stream));
+        return NpyReader.Read(stream).DataSet;
+    }
 }

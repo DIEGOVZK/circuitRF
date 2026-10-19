@@ -1,6 +1,7 @@
 using System.Globalization;
 using CircuitRF.Core.Design;
 using CircuitRF.Core.Devices;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Devices.External;
 using CircuitRF.Core.Expressions;
 using CircuitRF.Core.Matching;
@@ -836,6 +837,20 @@ public sealed class Elaborator
                 continue;
             }
 
+            // A composed FET elaborates AS A CELL (brief-modelcomposer-1 D3): its extrinsic network's
+            // elements and one ComposedCore, flattened through the ordinary hierarchy path below, so
+            // X1.rg is a component path and V(X1.gi) an intrinsic voltage like in any sub-cell.
+            if (inst.Reference.Equals(ComponentModelFactory.ComposedFetTypeName, StringComparison.OrdinalIgnoreCase))
+            {
+                var composed = ComposedFetCell(inst, childPath, currentScope);
+                var portMap  = new Dictionary<string, string>(StringComparer.Ordinal);
+                for (int i = 0; i < composed.Ports.Count; i++)
+                    portMap[composed.Ports[i]] = ResolveNet(inst.NetBindings[i]);
+                var scope = new Scope(childPath, currentScope) { InstancePath = childPath };
+                FlattenCell(composed, childPath, portMap, scope, globalScope, netlist);
+                continue;
+            }
+
             if (ComponentModelFactory.IsPrimitive(inst.Reference))
             {
                 // Primitive — resolve nodes and parameters first; model creation may need params (e.g. SnP).
@@ -1097,6 +1112,25 @@ public sealed class Elaborator
                     resolvedNodes = pins.ToArray();
                 }
 
+                // ComposedCore: three nets (gi, di, si) onto two ports sharing the source, exactly as
+                // the FET family — then one ground-referenced pair per internal state node, minted as
+                // ordinary unknowns for the reason every internal node here is (HB sees its harmonics).
+                if (model is ComposedCoreModel core && resolvedNodes.Length == 3)
+                {
+                    var pins = new List<int>(4 + 2 * core.InternalStateNodeCount)
+                    {
+                        resolvedNodes[0], resolvedNodes[2],   // gate, source
+                        resolvedNodes[1], resolvedNodes[2],   // drain, source
+                    };
+                    for (int k = 0; k < core.InternalStateNodeCount; k++)
+                    {
+                        pins.Add(netlist.Nodes.GetOrAssign($"__composed_{childPath}_x{k}"));
+                        pins.Add(0);
+                    }
+                    resolvedNodes = pins.ToArray();
+                    WarnComposedTemperature(core, netlist);
+                }
+
                 // ExtDevice: the provider reports currents per NODE, so every node becomes its own
                 // ground-referenced port — [n, 0] per node — and the internal nodes are minted here
                 // exactly like any other internal net. They therefore get ordinary rows in the
@@ -1168,6 +1202,9 @@ public sealed class Elaborator
             return ResolvePnToneParameters(inst, parentScope);
         if (inst.Reference.Equals("SnP", StringComparison.OrdinalIgnoreCase))
             return ResolveSnpParameters(inst, parentScope);
+        // A .cmodel path is not an expression, for SnP's reason.
+        if (inst.Reference.Equals(ComponentModelFactory.ComposedCoreTypeName, StringComparison.OrdinalIgnoreCase))
+            return ResolveComposedParameters(inst, parentScope);
         // Both name a device somebody else supplies, so both need the same rule: most of their
         // parameters belong to that model and must NOT be expression-evaluated. VerilogA's `File` is
         // the sharpest case — a leading '/' alone crashes the expression parser at position 0.
@@ -1991,6 +2028,133 @@ public sealed class Elaborator
         if (string.IsNullOrEmpty(BaseDirectory))   return file;   // no workspace root → legacy behavior
         var rel = file.Replace('\\', '/');                        // tolerate Windows-authored separators
         return Path.GetFullPath(Path.Combine(BaseDirectory, rel));
+    }
+
+    // ── Composed FET (brief-modelcomposer-1) ──────────────────────────────────
+
+    /// <summary>The cell each distinct (<c>.cmodel</c>, <c>N</c>, <c>m</c>) elaborates as, built once
+    /// per elaboration. Never added to a library, the palette or a file.</summary>
+    private readonly Dictionary<(string Path, long Stamp, int N, double M), Cell> _composedCells = [];
+
+    /// <summary>What a ComposedFet line may carry. <c>Symbol</c> is the schematic's alone and is read by
+    /// nothing here.</summary>
+    private static readonly string[] ComposedParams = ["File", "N", MultiplierParamName, "M", "Symbol"];
+
+    /// <summary>
+    /// The in-memory cell one <c>ComposedFet</c> instance elaborates as (R-mc1-5): its <c>.cmodel</c>
+    /// loaded through the cache, its network scaled to <c>N</c> fingers (R-mc1-7), and the
+    /// <c>ComposedCore</c> on <c>gi di si</c>. Every refusal names the instance.
+    /// </summary>
+    private Cell ComposedFetCell(Instance inst, string childPath, Scope parentScope)
+    {
+        string who = $"ComposedFet '{childPath}'";
+
+        if (inst.NetBindings.Count == 4)
+            throw new InvalidOperationException(
+                $"{who}: a fourth net is the thermal node t, and a model in this circuitRF has none; " +
+                "bind three nets, g d s.");
+        if (inst.NetBindings.Count != 3)
+            throw new InvalidOperationException(
+                $"{who}: expected 3 nets (g d s); got {inst.NetBindings.Count}.");
+
+        foreach (var ov in inst.Overrides)
+            if (!ComposedParams.Contains(ov.Name, StringComparer.Ordinal))
+                throw new InvalidOperationException(
+                    $"{who}: '{ov.Name}' is not a parameter of a ComposedFet; it takes File, N and m.");
+
+        var fileOv = inst.Overrides.FirstOrDefault(o => o.Name == "File");
+        string file = fileOv is null ? "" : Unquote(fileOv.Expression.Trim());
+        if (string.IsNullOrWhiteSpace(file))
+            throw new FileNotFoundException($"{who}: no model file is specified; set 'File' to a .cmodel file.");
+        file = ResolveSnpFilePath(file);
+        if (Directory.Exists(file))
+            throw new FileNotFoundException($"{who}: its 'File' parameter names a folder, not a .cmodel file: '{file}'.", file);
+        if (!File.Exists(file))
+            throw new FileNotFoundException($"{who}: model file not found: '{file}'.", file);
+
+        LoadedComposedModel loaded;
+        try { loaded = ComposedModelCache.Load(file); }
+        catch (CmodelFormatException ex)
+        {
+            throw new InvalidOperationException($"{who}: '{file}' cannot be read — {ex.Message}");
+        }
+        catch (IOException ex)
+        {
+            throw new InvalidOperationException($"{who}: '{file}' cannot be read — {ex.Message}");
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            throw new InvalidOperationException($"{who}: '{file}' cannot be read — {ex.Message}");
+        }
+
+        int n = loaded.N0;
+        if (inst.Overrides.FirstOrDefault(o => o.Name == "N") is { } nOv)
+        {
+            try { n = ComponentModelFactory.ComposedFingerCount(EvalOverride(inst, nOv, parentScope)); }
+            catch (ParameterRefusalException ex) { throw new ParameterRefusalException($"'{childPath}': {ex.Message}"); }
+        }
+
+        double m = 1.0;
+        foreach (string mName in (string[])[MultiplierParamName, "M"])
+            if (inst.Overrides.FirstOrDefault(o => o.Name == mName) is { } mOv)
+                m = ResolveMultiplicity(
+                    new Dictionary<string, Value> { [MultiplierParamName] = EvalOverride(inst, mOv, parentScope) },
+                    childPath);
+
+        long stamp = File.GetLastWriteTimeUtc(file).Ticks;
+        if (_composedCells.TryGetValue((file, stamp, n, m), out var cached)) return cached;
+
+        var coreParams = new List<ParameterAssignment>
+        {
+            new("File", $"\"{file}\""),
+            new("N", n.ToString(CultureInfo.InvariantCulture)),
+        };
+        if (m != 1.0) coreParams.Add(new(MultiplierParamName, ComposedNetworkTemplate.Literal(m)));
+        var core = new Instance(ComposedNetworkTemplate.CoreInstanceName,
+            ComponentModelFactory.ComposedCoreTypeName, ComposedNetworkTemplate.IntrinsicNets, coreParams);
+
+        var cell = loaded.Network.Synthesize(
+            $"ComposedFet({Path.GetFileName(file)},N={n})", n, loaded.N0, m, core);
+        _composedCells[(file, stamp, n, m)] = cell;
+        return cell;
+    }
+
+    /// <summary>
+    /// The temperature rule of D8, said once per run per model: a single-temperature model run at
+    /// another temperature is used as it is; a ranged one is clamped to its range.
+    /// </summary>
+    private void WarnComposedTemperature(ComposedCoreModel core, ElaboratedNetlist netlist)
+    {
+        var    t    = core.Loaded.Model.Temperature;
+        string name = Path.GetFileName(core.Loaded.Path);
+        string ta   = _ambientC.ToString("0.##", CultureInfo.InvariantCulture);
+
+        if (t.Mode == TemperatureMode.Single)
+        {
+            if (Math.Abs(_ambientC - t.T0) > 1e-9)
+                netlist.AddWarningOnce($"cmodel-temp:{core.Loaded.Path}",
+                    $"'{name}' is a one-temperature model, valid at {t.T0.ToString("0.##", CultureInfo.InvariantCulture)} °C; " +
+                    $"this run's temp is {ta} °C and the model is used as it is.");
+            return;
+        }
+
+        if (_ambientC < t.Tmin || _ambientC > t.Tmax)
+            netlist.AddWarningOnce($"cmodel-temp:{core.Loaded.Path}",
+                $"'{name}' covers {t.Tmin.ToString("0.##", CultureInfo.InvariantCulture)} to " +
+                $"{t.Tmax.ToString("0.##", CultureInfo.InvariantCulture)} °C; this run's temp is {ta} °C, " +
+                $"so the model is evaluated at {core.TemperatureC.ToString("0.##", CultureInfo.InvariantCulture)} °C.");
+    }
+
+    /// <summary><c>ComposedCore</c>'s <c>File</c> is a path, kept verbatim and resolved as SnP's is;
+    /// <c>N</c> and <c>m</c> are evaluated.</summary>
+    private IReadOnlyDictionary<string, Value> ResolveComposedParameters(Instance inst, Scope parentScope)
+    {
+        var result = new Dictionary<string, Value>(StringComparer.Ordinal);
+        foreach (var ov in inst.Overrides)
+            result[ov.Name] = ov.Name.Equals("File", StringComparison.OrdinalIgnoreCase)
+                ? new Value(ResolveSnpFilePath(Unquote(ov.Expression.Trim())))
+                : EvalOverride(inst, ov, parentScope);
+        return result;
     }
 
     // ── Match parameter resolution ────────────────────────────────────────────

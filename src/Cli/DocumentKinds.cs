@@ -23,6 +23,8 @@ internal enum DocumentKind
     EmSetup,
     Rail,
     Smith,
+    /// <summary>A composed FET model, a <c>.cmodel</c> (brief-modelcomposer-1 R-mc1-2).</summary>
+    ComposedModel,
     Netlist,
     AssemblyRules,
     DataDisplay,
@@ -66,6 +68,7 @@ internal static class DocumentKinds
         DocumentKind.EmSetup       => "em-setup",
         DocumentKind.Rail          => "rail",
         DocumentKind.Smith         => "smith",
+        DocumentKind.ComposedModel => "composed-model",
         DocumentKind.Netlist       => "netlist",
         DocumentKind.AssemblyRules => "assembly-rules",
         DocumentKind.DataDisplay   => "data-display",
@@ -126,6 +129,9 @@ internal static class DocumentKinds
             // so `check`, `explain` and `find` name it rather than calling it unreadable; the
             // `smith` verb that EVALUATES one is brief 10's.
             ".csmith" => DocumentKind.Smith,
+            // A composed FET model (brief-modelcomposer-1 R-mc1-2). A ZIP container, so classified by
+            // name; `check` reads it through the model's own validator.
+            ".cmodel" => DocumentKind.ComposedModel,
             ".cnl"   => DocumentKind.Netlist,
             ".wasm"  => DocumentKind.AssemblyRules,
             // A data display. `render` draws one (RND-4); `check`/`explain` do not read it yet, and

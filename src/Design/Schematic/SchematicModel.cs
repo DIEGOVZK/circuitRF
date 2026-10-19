@@ -623,6 +623,12 @@ public enum SymbolKind
     /// the Douville-James miter fraction of the corner diagonal. Pins as MBend's: 1 left, 2 down.
     /// Appended so no existing kind's ordinal moves.</summary>
     MMiter,
+
+    /// <summary>A composed FET model placed as a device (engine "ComposedFet", brief-modelcomposer-1):
+    /// the <c>.cmodel</c> its <c>File</c> names, at <c>N</c> fingers. Pins g, d, s in the FET family's
+    /// order and geometry; the glyph is the model's own symbol (<c>Symbol</c>), drawn through
+    /// <see cref="ComposedFetSymbolProvider"/>. Appended so no existing kind's ordinal moves.</summary>
+    ComposedFet,
 }
 
 public enum PortConnectionState { Unconnected, Connected }

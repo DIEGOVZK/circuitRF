@@ -89,6 +89,18 @@ public static class DataSetExporter
         }
     }
 
+    /// <summary>
+    /// Writes <paramref name="ds"/> as one <c>.npy</c> into <paramref name="stream"/>, which is left
+    /// open — the bytes <see cref="Export"/> would write to a file with default options. For a
+    /// container that carries <c>.npy</c> entries rather than a file per array.
+    /// </summary>
+    public static void ExportNpy(DataSet ds, Stream stream)
+    {
+        if (ds is null)     throw new ArgumentNullException(nameof(ds));
+        if (stream is null) throw new ArgumentNullException(nameof(stream));
+        NpyWriter.Write(stream, ds, ExportOptions.Default, null);
+    }
+
     // ── Size estimate ─────────────────────────────────────────────────────────
 
     private static void EstimateAndWarn(

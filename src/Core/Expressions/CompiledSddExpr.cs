@@ -114,6 +114,65 @@ public sealed class CompiledSddExpr
     }
 
     /// <summary>
+    /// Compiles <paramref name="ast"/> with its seeded inputs NAMED rather than spelled
+    /// <c>_v1</c>…<c>_vN</c>: input <c>i</c> of <paramref name="seedNames"/> takes slot <c>i</c> and
+    /// gradient lane <c>i</c>. For an equation whose variables are physical quantities — a composed
+    /// FET's <c>vgs</c>, <c>vds</c> and <c>T</c> (brief-modelcomposer-1 R-mc1-3) — rather than port
+    /// numbers. No control currents.
+    /// </summary>
+    public static CompiledSddExpr CompileNamed(
+        Expr ast, IReadOnlyList<string> seedNames, IReadOnlyDictionary<string, double> parameters,
+        string modelName)
+    {
+        var slotOf = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (int i = 0; i < seedNames.Count; i++) slotOf[seedNames[i]] = i;
+
+        var paramValues = new double[parameters.Count];
+        int pi = 0;
+        foreach (var kv in parameters)
+        {
+            if (!slotOf.ContainsKey(kv.Key)) slotOf[kv.Key] = seedNames.Count + pi;
+            paramValues[pi] = kv.Value;
+            pi++;
+        }
+
+        if (!SddRegisterCompiler.ContainsConditional(ast))
+        {
+            var (code, mathFns, exFns, rootReg) = SddRegisterCompiler.Compile(ast, slotOf, seedNames.Count + paramValues.Length, modelName);
+            return new CompiledSddExpr(seedNames.Count, 0, paramValues, code, mathFns, exFns, rootReg, root: null);
+        }
+
+        var root = SddCompiler.CompileNode(ast, slotOf, modelName);
+        return new CompiledSddExpr(seedNames.Count, 0, paramValues, code: null, [], [], 0, root);
+    }
+
+    /// <summary>
+    /// The allocation-free form of <see cref="EvalDual"/> for an equation compiled with no control
+    /// references: the gradient is written into <paramref name="grad"/> (length
+    /// <see cref="GradWidth"/>) and the value returned. What a model's <c>EvaluateInto</c> calls once
+    /// per sample of an HB grid.
+    /// </summary>
+    public double EvalDualInto(ReadOnlySpan<double> seeds, Span<double> grad, string modelName)
+    {
+        if (_nC != 0)
+            throw new InvalidOperationException(
+                $"'{modelName}': this equation reads control currents and has no allocation-free form.");
+
+        int total = _code is null ? _totalSlots : _totalSlots + _code.Length;
+        Span<Dual> slots = total <= 96 ? stackalloc Dual[total] : new Dual[total];
+        for (int i = 0; i < _nV; i++) slots[i] = Dual.Seed(seeds[i], _n, i);
+        for (int i = 0; i < _paramDuals.Length; i++) slots[_n + i] = _paramDuals[i];
+
+        AdWarnings.CurrentModel = modelName;
+        Dual result = _code is null
+            ? SddCompiler.Eval<Dual>(_root!, slots)
+            : SddRegisterCompiler.Run(_code, _mathFns, _exFns, _totalSlots, _rootReg, slots);
+
+        for (int i = 0; i < _n; i++) grad[i] = result.GetGrad(i);
+        return result.Value;
+    }
+
+    /// <summary>
     /// Evaluates in Dual (forward-mode AD) arithmetic. <paramref name="controlCurrents"/> must be
     /// empty when this was compiled with no control refs — pass <c>[]</c> in that case.
     /// </summary>

@@ -125,6 +125,9 @@ public static class SymbolArtworkGenerator
         (SymbolKind.Tfr,             "tfr",               2),
         (SymbolKind.Airbridge,       "airbridge",         4),
         (SymbolKind.VerilogA,        "verilog-a",         3),
+        // A composed FET draws its model's own symbol; the figure is the standard FET glyph it falls
+        // back to, which is what a freshly placed one with no file shows.
+        (SymbolKind.ComposedFet,     "composed-fet",      3),
         (SymbolKind.WBond,           "wbond",             0),
         // The five large-signal FET laws SHARE one glyph and one 3-pin geometry on purpose (the
         // topology genuinely is identical; only the drain-current equation differs, and the type
