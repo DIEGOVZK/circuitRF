@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Dock.Model.Controls;
 using Dock.Model.Core;
 
@@ -66,11 +67,21 @@ public static class DockPanelHiding
     /// <summary>
     /// Hides <paramref name="tool"/>, leaving the dock it came from exactly as it is.
     ///
-    /// <para>A one-line wrapper on purpose. It is a named seam rather than a call to
-    /// <c>HideDockable</c> at the call site so that the reasoning above — in particular everything this
-    /// deliberately does NOT do to the emptied dock — has somewhere to live.</para>
+    /// <para>A named seam rather than a call to <c>HideDockable</c> at the call site so that the reasoning
+    /// above — in particular everything this deliberately does NOT do to the emptied dock — has somewhere
+    /// to live. The one thing it adds is the panel's TAB POSITION, which the library does not keep: see
+    /// <see cref="Restore"/>.</para>
     /// </summary>
-    public static void Hide(IFactory factory, IDockable tool) => factory.HideDockable(tool);
+    public static void Hide(IFactory factory, IDockable tool)
+    {
+        if (tool.Owner is IDock { VisibleDockables: { } tabs } && tabs.IndexOf(tool) is var at and >= 0)
+            HiddenAt.AddOrUpdate(tool, new StrongBox<int>(at));
+
+        factory.HideDockable(tool);
+    }
+
+    /// <summary>The tab index each hidden panel had in its owner, weakly keyed so a dropped tool frees it.</summary>
+    private static readonly ConditionalWeakTable<IDockable, StrongBox<int>> HiddenAt = new();
 
     /// <summary>
     /// Puts <paramref name="tool"/> back where <see cref="Hide"/> found it.
@@ -82,9 +93,26 @@ public static class DockPanelHiding
     /// took the tool back</b>: an orphaned dock accepts it just as readily and reports success while the
     /// panel is nowhere on screen.
     /// </returns>
+    /// <remarks>
+    /// <b>Back in the same TAB position, not at the end.</b> <c>RestoreDockable</c> appends to its owner, so
+    /// Properties hidden from the front of Properties | Analyses | Tuning | Optimizer | Yield came back
+    /// behind Yield, and Messages behind DRC and LVS. The index recorded by <see cref="Hide"/> is clamped,
+    /// since tabs may have come or gone while the panel was away.
+    /// </remarks>
     public static bool Restore(IFactory factory, IRootDock root, IDockable tool)
     {
         factory.RestoreDockable(tool);
+
+        if (HiddenAt.TryGetValue(tool, out var hiddenAt))
+        {
+            HiddenAt.Remove(tool);
+
+            if (tool.Owner is IDock { VisibleDockables: { } tabs } owner && tabs.IndexOf(tool) is var now and >= 0)
+            {
+                int want = System.Math.Clamp(hiddenAt.Value, 0, tabs.Count - 1);
+                if (want != now) factory.MoveDockable(owner, tool, tabs[want]);
+            }
+        }
 
         return tool.Owner is IDock back
             && back.VisibleDockables?.Contains(tool) == true

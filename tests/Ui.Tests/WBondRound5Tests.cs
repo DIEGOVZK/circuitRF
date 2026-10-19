@@ -2310,6 +2310,36 @@ public class WBondRound5Tests
     }
 
     /// <summary>
+    /// <b>A restored panel takes back its own tab position.</b> Dock's <c>RestoreDockable</c> appends, so
+    /// Properties toggled off the front of Properties | Analyses | Tuning | Optimizer | Yield came back as
+    /// the last tab — and Messages behind DRC and LVS.
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(2)]
+    public void HidingAndRestoringATab_PutsItBackInItsOwnTabPosition(int position)
+    {
+        var factory = new Dock.Model.Mvvm.Factory();
+
+        var tools = new[] { DockPanelIds.Properties, DockPanelIds.Analyses, DockPanelIds.Tuning, DockPanelIds.Optimizer, DockPanelIds.Yield }
+            .Select(id => (Dock.Model.Core.IDockable)new Dock.Model.Mvvm.Controls.Tool { Id = id, Title = id })
+            .ToArray();
+        var shared = new Dock.Model.Mvvm.Controls.ToolDock
+        {
+            Id = "Shared", Proportion = 0.3,
+            VisibleDockables = factory.CreateList(tools),
+            ActiveDockable = tools[position],
+        };
+        var root = RootAround(factory, shared);
+        var hidden = tools[position];
+
+        DockPanelHiding.Hide(factory, hidden);
+        Assert.True(DockPanelHiding.Restore(factory, root, hidden));
+
+        Assert.Equal(tools.Select(t => t.Id), shared.VisibleDockables!.Select(t => t.Id));
+    }
+
+    /// <summary>
     /// If the dock the panel belonged to has left the tree — a shell rebuilt underneath a hidden panel —
     /// the restore REFUSES, and the caller falls back to rebuilding from the remembered placement.
     ///

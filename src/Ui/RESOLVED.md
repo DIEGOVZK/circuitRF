@@ -39902,3 +39902,17 @@ Messages panel lines for "Saved" before the crash, and whether the restart offer
 the answer, so Later — and a launch with no window to ask from — discarded the only copy of a scratch document's work.
 Only Restore and Discard settle the offer now (`RecoveryManager.AnswerSettlesOffer`). Gate:
 `DesignerRound21CrashTests`.
+
+## A toggled-back panel came back as the LAST tab (2026-10-18)
+
+**Dock's `RestoreDockable` appends.** The toolbar toggle hides a docked panel with `HideDockable` and
+brings it back with `RestoreDockable` (`DockPanelHiding`), which puts the dockable back into its
+original owner but at the END of its tab strip. So Properties, toggled off the front of
+Properties | Analyses | Tuning | Optimizer | Yield, came back behind Yield, and Messages behind DRC
+and LVS. The other two restore paths already kept the position: the in-place insert takes
+`PanelHome.Index`, and the rebuild takes the captured `Order`. `DockPanelHiding.Hide` now records the
+tab index (a `ConditionalWeakTable` keyed by the tool), and `Restore` moves the tool back there with
+`MoveDockable`, clamped because tabs may have come or gone in the meantime. It is the panel's own
+position rather than "first" by rule, which is the same answer for both reported cases, since both
+panels are `Order = 0` in every shipped layout. Gate:
+`WBondRound5Tests.HidingAndRestoringATab_PutsItBackInItsOwnTabPosition` (front and middle tab).
