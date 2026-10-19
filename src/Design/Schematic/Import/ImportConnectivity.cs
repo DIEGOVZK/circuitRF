@@ -16,8 +16,11 @@ namespace CircuitRF.Design.Schematic.Import;
 /// <summary>One comparison: matched, or each difference as a sentence naming the pins.</summary>
 public sealed record ConnectivityComparison(string Against, bool Matched, IReadOnlyList<string> Differences);
 
-/// <summary>The check's verdict (R-si1-7): against the source's geometry, and against its declared nets when it has any.</summary>
-public sealed record ImportConnectivityResult(ConnectivityComparison Geometric, ConnectivityComparison? Declared)
+/// <summary>The check's verdict (R-si1-7): against the source's geometry, and against its declared nets when it has any.
+/// <paramref name="SourceAgreement"/> is the source against ITSELF — its declared nets beside its drawing (R-si3-3): when
+/// they differ, the file's own record disagrees with its picture, and no import can match both.</summary>
+public sealed record ImportConnectivityResult(ConnectivityComparison Geometric, ConnectivityComparison? Declared,
+                                              ConnectivityComparison? SourceAgreement = null)
 {
     public bool Matched => Geometric.Matched && Declared?.Matched != false;
 
@@ -53,15 +56,19 @@ public static class ImportConnectivity
         }
         var geometric = new ConnectivityComparison("the source's drawing", differences.Count == 0, differences);
 
-        ConnectivityComparison? declared = null;
+        ConnectivityComparison? declared = null, agreement = null;
         // A hierarchical design's declared nets span its sheets while its cells are compared one at a time, so they are
         // not compared here; each cell is still checked against its own sheet's drawing.
         if (source.DeclaredNets is { } nets && built.Top is { } top && !source.Hierarchical)
         {
             var d = Differences(nets, produced, top.Excluded);
             declared = new ConnectivityComparison("the source's declared nets", d.Count == 0, d);
+            var self = Differences(nets, top.GeometricNets, top.Excluded)
+                .Select(x => x.Replace("the source", "the declared nets", StringComparison.Ordinal)
+                              .Replace("the import", "the drawing", StringComparison.Ordinal)).ToList();
+            agreement = new ConnectivityComparison("the source's drawing, by its declared nets", self.Count == 0, self);
         }
-        return new ImportConnectivityResult(geometric, declared);
+        return new ImportConnectivityResult(geometric, declared, agreement);
     }
 
     /// <summary>The built schematic's nets, as source pins: NetExtractor's instances read back through the build's own

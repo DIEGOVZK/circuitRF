@@ -20458,3 +20458,24 @@ the run settings behind each: `docs/design/sar.md` §9.4, §10.5, §10.7, §11.6
   global labels and power symbols — is still refused ("has no ports"). Importing it would
   also need global nets joined across cells, which D5's cell-local nets do not do.
 
+
+## Import Schematic: the EDIF 2.0.0 reader (brief-schimp-3, 2026-10-19)
+
+- **R-si3-1, measured against `PcbSexpr`'s own rules: it cannot read EDIF text faithfully, so `EdifSexpr` is separate.**
+  `PcbSexpr` treats `\x` inside a string as an escape for `x`; in EDIF a backslash is an ordinary character (EDIF escapes
+  with `%<decimal>%`, a quote is `%34%`), so a path property "C:\lib\parts.lib" would arrive as "C:libparts.lib" with no
+  diagnostic. And EDIF keywords are case-insensitive while `PcbNode.Child` is ordinal. Both live inside the tokenizer
+  (the `ComponentPlxSexpr` situation), so `EdifSexpr` is ~70 lines that reuse `PcbNode` and lowercase each tag once.
+- **The brief's §2 facts** (where the pin type lives, `IMPLICITPORTCLASS`'s meaning, whether `joined` lists hidden
+  power pins, the connector cell naming, the unit-suffix properties) are implemented as stated and held by
+  hand-written fixtures. The cross-check against the editor's own netlist export (§4's "third comparison") is not
+  written.
+- **Code pages come from the framework.** `CodePagesEncodingProvider.Instance` is in the shared framework on .NET 10, so
+  1252 and every other ANSI page decode with no package added — the DXF reader's hand-written 1252 table predates that
+  being checked. The provider's encoding is cloned with an exception decoder fallback, so an undefined byte fails the
+  decode (and falls to Latin-1, counted) rather than becoming '?'.
+- **A source can disagree with itself (R-si3-3).** `ImportConnectivityResult.SourceAgreement` compares a flat source's
+  declared nets with its own drawing's nets (`ImportBuiltSchematic.GeometricNets`). Without it, a file whose `joined`
+  lists and wire figures differ shows up only as two failed comparisons against the import.
+- **Seen, not changed (SI-1's map):** a resistor whose value is a bare number ("100") is read as "not a resistance" and
+  becomes a variable defaulting to 1 kOhm, because `BomTablePaste.TryReadValue` gives a bare number no dimension.

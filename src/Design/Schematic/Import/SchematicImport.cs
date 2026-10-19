@@ -238,6 +238,8 @@ public static class SchematicImport
         lines.Add(connectivity.Summary);
         lines.AddRange(connectivity.Geometric.Differences.Select(d => $"Against the drawing: {d}."));
         lines.AddRange(connectivity.Declared?.Differences.Select(d => $"Against the declared nets: {d}.") ?? []);
+        if (connectivity.SourceAgreement is { Matched: false } self)
+            lines.AddRange(self.Differences.Select(d => $"The source disagrees with itself — its declared nets against its drawing: {d}."));
         return lines;
     }
 

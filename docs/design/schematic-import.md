@@ -1,7 +1,7 @@
 # Import Schematic
 
 **Status:** SI-1 implemented (the neutral model, the map, the build, the check, the two write paths); SI-2 implemented
-(the `.kicad_sch` reader, §8). Readers still to come: SI-3 (EDIF 2.0.0), SI-4 (the binary `.DSN` design in a CFBF container). Entry points: SI-5. Source of
+(the `.kicad_sch` reader, §8); SI-3 implemented (the EDIF 2.0.0 reader, §9). Reader still to come: SI-4 (the binary `.DSN` design in a CFBF container). Entry points: SI-5. Source of
 decisions: `docs/sonnet-briefs/brief-schimp-0-overview.md` (D1–D11). Each phase keeps this note current.
 
 ## 1. The pipeline
@@ -105,6 +105,10 @@ design whose format declares nets, with those. Single-pin nets, no-connect pins 
 both sides. Each difference names its pins: "joined in the source, split in the import" or the converse. The import still
 completes; the report carries the verdict.
 
+When a flat source declares nets, its declared nets are also compared with its OWN drawing (`SourceAgreement`, R-si3-3):
+a difference there is the file's record disagreeing with its picture, which no import can reconcile, and the report says
+so in those words rather than leaving the user to infer it from two failed comparisons.
+
 ## 6. The writes — `SchematicImport.cs`
 
 `Import(source, parentDir, cellName, options)` refuses a name `NameValidator` rejects or one already there; decides every
@@ -155,3 +159,45 @@ no nets, so the geometric check is the check.
 
 Fixtures: `testdata/schematic-import/sexpr/` (authored, tiny). The gate is
 `tests/Ui.Tests/SchematicImport/SchematicSexprReaderTests.cs`.
+
+## 9. The EDIF 2.0.0 reader — `EdifReader.cs`, `EdifSexpr.cs`, `EdifText.cs` (SI-3)
+
+`EdifReader.Read(path, EdifReadOptions?) → ForeignSchematicRead`. Written from the standard.
+
+- **Tokenizer.** `EdifSexpr` gives `PcbNode`s with tags lowercased (EDIF keywords are case-insensitive) and strings raw:
+  a backslash is a character in EDIF, which `PcbSexpr` would eat (R-si3-1, `src/Design/RESOLVED.md`). Identifiers compare
+  case-insensitively. `rename` is honoured everywhere: the display name is the renamed text, references use the id.
+- **Text.** `%d%` escapes and `%d d%` groups; adjacent escapes are ONE run, decoded as one byte string — UTF-8, else the
+  code page (`EdifReadOptions.CodePage`, default 1252), else Latin-1 — and the notes count each. In a run CR LF / CR / LF
+  are one newline and other C0 controls are dropped; a trailing newline is dropped. A malformed `%` stays as written.
+- **Units and axes.** Each library's `numberDefinition` distance scale (`(scale 1 (e 254 -6) (unit DISTANCE))` = 10 mil),
+  a library without one taking the file's first; a file with none is refused. Sheet points are negated (Y up, content at
+  y ≤ 0); symbol points stay Y up.
+- **Orientation.** The standard mirrors first (MX: y → −y, MY: x → −x), then turns counter-clockwise. In `ForeignInstance`
+  terms: `Rn` → rotation 360−n; MY → mirrored, 0; MX → mirrored, 180; MXR90 → mirrored, 90; MYR90 → mirrored, 270. All
+  eight are tested against the standard's matrices. An unknown word is read as R0 and counted.
+- **Symbols.** A cell whose view has no `page`. Ports from `interface`; figures and `portImplementation`s from `contents`
+  or `interface/symbol`, whichever is used. The lead (the implementation's own figure) gives side and length; no lead, or
+  `INVISIBLEPIN`, is hidden. A hidden pin with `IMPLICITPORTCLASS`, or a hidden `POWER` pin, carries `ImplicitNet` = its
+  name. Units = the longest `PackagePortNumbers` list. Pin types: `PAS IO IN OUT POWER HIZ OC OE 3ST DBO_IN DBO_OUT` and
+  the standard's `direction` words; unknown → passive. Symbol text is not drawn (counted).
+- **Pin numbers**, in order: the placed part's `portInstance` designator → the port's designator → `PackagePortNumbers`
+  [unit−1] → the pin name → the port id. Every source past the first is counted in the notes. A placed part that renumbers
+  a pin gets a variant symbol (`key#n`).
+- **Placed parts.** `designator` is the reference; a `Designator` property is the unit suffix (stripped from it) and
+  `PositionInPackage` the 0-based unit (else the suffix letter). No designator → a title block or border, skipped and
+  counted. A cell whose view has pages is a hierarchical sheet instead.
+- **Connectors.** A page's `portImplementation` is a label at its connection dot named by its display name: off-page
+  when its connector cell's name ends `_OFF_PAGE_CONNECTOR`, hierarchical when a sheet cell's interface has a port of
+  that name, otherwise power.
+- **Nets.** Each `net`'s `joined` `portRef`s are the declared connectivity; its `figure`s' paths are wires and its dots
+  junctions. Nets are joined across pages through connectors of the same name. A non-generated net name (not `N<digits>`)
+  becomes one local label per touching group of its wires, which is how one alias joins separate stretches on a page.
+  A hidden power pin no net lists is joined to the net its name gives (counted). Buses (`netBundle`, `portBundle`,
+  `member` refs) are not imported (counted).
+- **Hierarchy.** A sheet instance's pins are its cell's own block symbol's connection dots, placed like a part. A
+  hierarchical cell of more than one page is refused by name. Declared nets are populated for flat designs only — the
+  check compares a hierarchical design per sheet against its drawing.
+
+Fixtures: `testdata/schematic-import/edif/` (written by hand). Gate:
+`tests/Ui.Tests/SchematicImport/EdifReaderTests.cs`.
