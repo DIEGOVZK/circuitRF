@@ -26,14 +26,26 @@ endif()
 set(ZLIB_USE_STATIC_LIBS ON)
 set(QHULL_REQUIRED_TYPE STATIC)
 
+# Searched for ONLY under CMAKE_PREFIX_PATH and the *_ROOT hints. gdstk's FindQhull tries
+# find_package(Qhull CONFIG) before its QHULL_ROOT search, and the system paths (PATH's prefixes, cmake's
+# own install prefix) reach Homebrew's /opt/homebrew/lib/cmake/Qhull -- an arm64 archive, which the
+# osx-x64 build then failed to link, and which osx-arm64 linked in place of ours without a word. Our deps/
+# installs no Qhull config, so with these off the CONFIG attempt finds nothing and QHULL_ROOT answers.
+# The cached Qhull_DIR is dropped so a build directory configured before this cannot keep the old answer.
+set(CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH OFF)
+set(CMAKE_FIND_USE_CMAKE_SYSTEM_PATH OFF)
+unset(Qhull_DIR CACHE)
+
 # Found here first, with gdstk's own FindQhull.cmake, so the targets are visible in this directory too
 # (gdstk's FindQhull returns early when QHULL::QHULL already exists).
 list(APPEND CMAKE_MODULE_PATH "${GDSTK_SOURCE_DIR}/cmake_modules")
 find_package(ZLIB 1.2.7 REQUIRED)
 find_package(Qhull 8 REQUIRED)
+if(TARGET Qhull::qhullstatic_r OR TARGET Qhull::qhull_r)
+  message(FATAL_ERROR "qhull came from an installed Qhull config (${Qhull_DIR}), not the static archive under QHULL_ROOT")
+endif()
 message(STATUS "zlib: ${ZLIB_LIBRARIES} (${ZLIB_VERSION})")
-get_target_property(_qh QHULL::QHULL INTERFACE_LINK_LIBRARIES)
-message(STATUS "qhull: ${_qh}")
+message(STATUS "qhull: ${QHULL_LIBRARY}")
 
 add_subdirectory(${GDSTK_SOURCE_DIR} gdstk EXCLUDE_FROM_ALL)
 

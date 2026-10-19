@@ -114,3 +114,19 @@ workers in `~/.circuitRF-build/gdstk/1.0.1/<rid>/spike/` are the G0 binaries, an
 them. Only `run-session.ps1` steps 0 and 3 depend on the Windows machine; steps 1, 2 and 4 are mirrored by
 `replay_session.py` under Wine (`docker/run-check.sh win-x64|win-x86`, with `CRF_GDSTK_WORKER_TEST=1` for the
 validate-off cases).
+
+## macOS: the worker linked Homebrew's qhull, and osx-x64 stopped building (2026-10-18)
+
+`build-macos.sh` warned GD001 for osx-x64: the link pulled `/opt/homebrew/lib/libqhullstatic_r.a`, an arm64
+archive, and failed on every `qh_*` symbol. gdstk's `FindQhull.cmake` tries `find_package(Qhull CONFIG)` **before**
+its `QHULL_ROOT` search, and CMake's system search (PATH's prefixes, cmake's own install prefix, both
+`/opt/homebrew` on a Homebrew machine) reached Homebrew's `lib/cmake/Qhull`. The cache's `deps/` installs no
+Qhull config, so nothing of ours could win that race. **osx-arm64 had the same defect with no symptom**: it
+linked Homebrew's archive in place of ours, and the D3 `otool -L` check cannot see a static archive. Linux and
+Windows builds never had a Homebrew prefix to find (their caches read `Qhull_DIR-NOTFOUND`).
+
+`CMakeLists.txt` now turns off `CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH` and `CMAKE_FIND_USE_CMAKE_SYSTEM_PATH`,
+so only `CMAKE_PREFIX_PATH` and the `*_ROOT` hints are searched. It drops the cached `Qhull_DIR`, because a build
+directory configured earlier would otherwise keep the Homebrew answer. It also stops configuring if a `Qhull::`
+config target turns up anyway. Both macOS RIDs were rebuilt from their existing build directories, and both
+configure logs name the cache's `deps/lib/libqhullstatic_r.a`.
