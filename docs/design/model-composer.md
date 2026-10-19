@@ -2,7 +2,8 @@
 
 **Status:** MC-1 built (the `.cmodel` format and the `ComposedFet` device, equation constituents);
 MC-2 built (table and ANN constituents, guided extrapolation, drain–source symmetry, grid evaluation);
-MC-3 built (the `.cmc` document, data sets, importers, the cache, data hygiene) ·
+MC-3 built (the `.cmc` document, data sets, importers, the cache, data hygiene);
+MC-4 built (pads, the six-pin network, de-embedding, intrinsic re-referencing and quantities) ·
 **Source:** `docs/sonnet-briefs/brief-modelcomposer-0-overview.md` (decisions D1–D16) and the phase briefs
 `brief-modelcomposer-1` … `-16` · **Primary reference:** [P1] J. C. Pedro, D. E. Root, J. Xu, L. C. Nunes,
 *Nonlinear Circuit Simulation and Modeling*, Cambridge University Press, 2018.
@@ -363,7 +364,88 @@ conditions, whose current differs by more than 2 % + 1 µA or whose S differs by
 tolerance is a `HygieneSettings` property. `DataHygiene.Coverage` is the convex hull of the non-excluded
 (Vgs, Vds).
 
-## 6. Where it lives
+## 6. Pads, the network and the intrinsic data (MC-4)
+
+### 6.1 The blocks (R-mc4-1, R-mc4-2)
+
+`Pads` and `Network` stay `JsonNode`s on `CmcDocument`, written back verbatim, and `CmcExtrinsic` is their one
+reader and writer: `CmcFile.Validate` parses both through it, so a misspelt key is refused by field like the rest.
+`PadsSettings` is `Kind` (`None`, `OpenShort`, `TwoPorts`, `Network`) and the paths that kind needs; a path another
+kind would read is refused, not ignored. `NetworkSettings` is the `Schematic`, per variable `Min`, `Max`, `Lock`,
+`Tie` (`To`, `Factor`; a chain of ties is refused) and `Scaling` (a `PeripheryScaling` name), and an optional
+`FlatnessBand`.
+
+### 6.2 Networks as schematics (`PinNetwork`)
+
+A network is read the way the application reads any schematic — `SchematicCircuit.Extract`, `CnlTextOf`,
+`RoundTrip` — and solved by the engine as it is. Nothing here stamps a matrix.
+
+- **Pins.** Exactly N `Pin` symbols numbered 1…N, each once, or a refusal listing what was found
+  (`found 1, 2, 3, 4, 4, 6`). Two pins on one net are refused too: the extraction names a net once, so the second
+  pin's name would reach no element. Join them through a `Short`.
+- **Variables.** The VAR block, each with its value in base SI (the elaborator's `ResolvedGlobals`) and the kind of
+  element whose value names it (R, L, C, mutual M, or other) — which is what its default bounds follow: `Min` 0 for
+  the four, `Max` 100× the starting value. Overrides replace a variable's expression with its number before
+  elaboration, so a trial point is a different circuit, never a patched matrix.
+- **The coupling constraint.** `CouplingFactors` gives `|M|/√(L1·L2)` per mutual at any values; a fit holds it below
+  1 as a constraint, never as a bound on `M`.
+- **Pin 3 is ground.** Data is common-source, so the source pin is node 0 of every bench, as it is in the
+  measurement and in any simulation that generated the data. Ports C (4–6) and D (5–6) float on pin 6, which the
+  engine handles as any port with a reference.
+
+`SixPinNetwork.Blocks` runs one S-parameter analysis with four 50 Ω ports and converts to Y (`RFNetwork.SToY`):
+`Y_N = [[Y_aa, Y_ab], [Y_ba, Y_bb]]` per frequency. `SixPinNetwork.Dc` is the DC solve of R-mc4-4 — `LinearDcEngine`
+with `Vdc` sources on pins 1 and 2 and `I_1Tone` DC sources (circuitRF's only DC current source) drawing from 4 and
+5 into 6 — done once per unit source: the network is linear, so the four solves are its `DcTransfer` and every
+point is a dot product. `PadNetwork` is the two-pin form for `Network` pads.
+
+**Stock networks** (`StockNetworks`, resources `src/Design/Modeling/StockNetworks/*.csch`): GaN two-shell (D5's
+values), classic single shell and series only. They were drawn from their netlists by `NetlistSchematic`, with six
+numbered pins on labelled stubs. `Choose` copies one beside the `.cmc` (never over an existing file:
+`-2`, `-3`, …) and writes a network block with every variable at its defaults and D9's scaling rules.
+
+### 6.3 The algebra (`src/Engine/Modeling/NetworkAlgebra.cs`)
+
+`C2`, a 2×2 complex matrix, carries everything: a FET's two ports, a pad, each block of the 4-port. Closed forms
+throughout. The condition number is `σmax²/|det|` from the Frobenius norm and the determinant — no eigen-solve,
+and no cancellation in `σmin`.
+
+- Open-short: `Y_dev = ((Y_m − Y_o)⁻¹ − (Y_s − Y_o)⁻¹)⁻¹`.
+- Two-ports: `T_dev = T_gate⁻¹ · T_meas · reverse(T_drain)⁻¹`, in ABCD from S directly (finite for a pure series
+  or shunt pad, where Y or Z is not). Each pad file has port 1 at the probe.
+- Through the network: `Y_int = Y_ba (Y_aa − Y_ext)⁻¹ Y_ab − Y_bb`, the exact inverse of
+  `Y_ext = Y_aa − Y_ab (Y_bb + Y_int)⁻¹ Y_ba`. A point and frequency where the condition number of
+  `(Y_aa − Y_ext)`, `Y_ab` or `Y_ba` exceeds 1e10 is flagged and left out of the flatness metric.
+- A pad is interpolated linearly in its own form (Y or ABCD) between samples; outside its axis it is a refusal
+  naming both ranges.
+
+### 6.4 Re-referencing and the quantities (R-mc4-4, R-mc4-5)
+
+A set's plane defaults to `probe`. `instrument` subtracts the bias-path drops (the source path carries `Ig + Id`);
+`instrument` and `probe` then pass through a network pad's DC map; every plane but `intrinsic` then goes through the
+network's `DcTransfer`. A missing gate current is taken as 0 A with one note; a missing drain current is a refusal
+when anything between the stated plane and the core drops volts, because the answer would depend on it. A set that
+carries intrinsic voltages of its own gets `max |ΔV|` in one note.
+
+`IntrinsicQuantities.Of` gives `Gm`, `Gds`, `C11…C22`, `Cgs`, `Cgd`, `Cds`, `Cm` and `Tau = −Cm/Gm` from one
+`Y_int`; `Flatness` is `(max − min)/|mean|` over the band, flagged frequencies left out.
+
+### 6.5 The result and its cache (R-mc4-6, R-mc4-7)
+
+`IntrinsicExtraction.Run` returns one `DataSet` per data set, on a `point` axis carrying the point ids:
+`Vgs`, `Vds`, `Ig`, `Id` as measured and `Vgsi`, `Vdsi` computed (both clouds, for [P1] Fig. 6.5), `Excluded`;
+for S data also `Y [point, freq, port, port]`, `Cond`, `Flagged`, a cube per quantity on `(point, freq)`,
+`Flatness [point, quantity]`, the `Band` used, and `Notes` (a label axis) when there were any. `Compute` is the same
+work for one set with no cache — what MC-5 calls at each trial point.
+
+The cache is `<name>.cmc-cache/intrinsic/<key>.npy`, the key a SHA-256 over the data's own `.npy` bytes, the set's
+conditions and exclusions as the `.cmc` writes them, the pads block and each pad file's bytes, the network file's
+bytes, the variable values and the band. An unchanged network reopens with no solve (`Computations` counts sets
+computed). Entries are written only when every set is done — a cancellation writes nothing — each by a temporary
+file and a rename, and entries no set uses are removed. `CmcCache`'s folder swap carries the subfolder across.
+**Known gap:** a file a network schematic itself references (an `SnP` block) is not in the key.
+
+## 7. Where it lives
 
 | Path | What |
 |---|---|
@@ -374,8 +456,10 @@ tolerance is a `HygieneSettings` property. `DataHygiene.Coverage` is the convex 
 | `src/Cli/Check.cs`, `DocumentKinds.cs` | `check` on a `.cmodel` and a `.cmc` |
 | `src/Design/Modeling/` | MC-3: `CmcDocument`, `CmcFile` (with `BiasPattern`), `NormalisedData`, `DataImport`, `CmcCache`, `DataHygiene` |
 | `src/RfCore/Export/MatReader.cs` | MAT v5 and v7.3 |
+| `src/Design/Modeling/` | MC-4: `CmcExtrinsic`, `PinNetwork` (with `ModelingException`), `SixPinNetwork` and `PadNetwork`, `StockNetworks` and `StockNetworks/*.csch`, `PadDeembedding`, `IntrinsicExtraction`, `IntrinsicQuantities` |
+| `src/Engine/Modeling/NetworkAlgebra.cs` | MC-4: `C2` and the conversions and de-embeddings |
 
-## 7. Gates (MC-1, MC-2, MC-3)
+## 8. Gates (MC-1 … MC-4)
 
 `tests/Core.Tests/Composed/CmodelFormatTests`; `tests/Engine.Tests/Composed/` — `ComposedFetEquivalenceTests`
 (against an SDD with the same expressions in the same network: DC to 1e-12, S at three biases to 1e-9, HB
@@ -396,3 +480,11 @@ out as the expression they compute, and a table-and-ANN model over a pentagon wi
 MC-3: `tests/Ui.Tests/ModelComposer/` — `CmcFormatTests`, `TouchstoneSetImportTests`, `CmcCacheTests`,
 `DataHygieneTests`; `tests/RfCore.Tests/Export/MatReaderTests` (a v5 file the test writes byte by byte and
 a v7.3 file from `MatWriter` read the same arrays; a cell array refused by name).
+
+MC-4: `tests/Ui.Tests/ModelComposer/` — `DeembedThroughNetworkTests` (a known linear core inside the GaN and the
+classic networks, written by hand, de-embeds through the stock schematics to its own Y — measured ~1e-15 relative;
+the pin refusal; the cache), `PadDeembedTests` (open-short and two-port pads around the core removed to 1e-9; a short
+pad refused naming both ranges), `IntrinsicReReferencingTests` (intrinsic voltages against the SDD truth's internal
+nodes to 1e-9; instrument with bias-path R equals device), `IntrinsicQuantitiesTests` (the elements to 1e-8 —
+measured ~1e-14; a 1.5× `Lg` takes `Cgs` flatness from ~1e-15 to ~0.11). The truth is
+`Support/SyntheticFetData.cs`.

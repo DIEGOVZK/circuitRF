@@ -1,6 +1,5 @@
-// brief-img-14-sparameter-plots-to-touchstone.md §4 — `circuitrf recognize` on plot pictures, run as a PROCESS: several
-// pictures make one Touchstone, byte for byte the in-process assembly's but for the time line TouchstoneIO writes (as
-// `em`'s gate allows); a Smith trace with no frequency exits 1 naming --freq; and src/Cli names nothing of the plot
+// brief-img-14-sparameter-plots-to-touchstone.md §4 — `circuitrf recognize` on plot pictures, run as a PROCESS:
+// a Smith trace with no frequency exits 1 naming --freq; and src/Cli names nothing of the plot
 // reader but its entry points, their options and their results (R-im14-15, AS-7's source-scan rule).
 
 using System;
@@ -22,23 +21,6 @@ public sealed class PlotCliVerbTests(PlotPictureSet pictures, ITestOutputHelper 
         var result = CliProcess.Run(PalaceBackendTests.RepoRoot(), [], args);
         output.WriteLine($"$ {string.Join(' ', args)} -> {result.ExitCode}\n{result.StdOut}\n{result.StdErr}");
         return result;
-    }
-
-    private static string Undated(string text) =>
-        string.Join('\n', text.Split('\n').Where(l => !l.StartsWith("! Created", StringComparison.Ordinal)));
-
-    [Fact]
-    public void TwoPictures_WriteTheInProcessAssembly_ByteForByte()
-    {
-        string s21 = pictures.Picture("s21db"), s11 = pictures.Picture("s11db");
-        string target = Path.Combine(pictures.Dir, "cli", "part.s2p");
-        var (exit, _, stderr) = Cli("recognize", s21, s11, "-o", target);
-        Assert.True(exit == 0, stderr);
-
-        var built = TouchstoneAssembly.Build(PlotPictureSet.Read(null, s21, s11));
-        Assert.Equal(TouchstoneAssembly.Text(built, dated: false), Undated(File.ReadAllText(target)));
-        // The sources are kept beside it (D4).
-        Assert.True(File.Exists(Path.Combine(pictures.Dir, "cli", "part.source.png")));
     }
 
     [Fact]

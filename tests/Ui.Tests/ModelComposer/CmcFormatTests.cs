@@ -59,10 +59,11 @@ public sealed class CmcFormatTests
     }
 
     [Fact]
-    public void LaterPhaseBlocks_ArePreserved()
+    public void PadsNetworkAndLaterPhaseBlocks_ArePreserved()
     {
-        const string pads = """{"Method":"OpenShort","Open":"pads/open.s2p","Future":{"x":[1,2.5,null]}}""";
-        const string network = """{"Stock":"GaN two-shell","Locks":["Lg"],"Values":{"rg":5.2}}""";
+        // Pads and Network are MC-4's (CmcExtrinsic validates them); Steps is still carried opaquely.
+        const string pads = """{"Kind":"OpenShort","Open":"pads/open.s2p","Short":"pads/short.s2p"}""";
+        const string network = """{"Schematic":"gan-two-shell.csch","Variables":{"Lg":{"Min":0,"Lock":true},"rg":{"Tie":{"To":"rd","Factor":0.5},"Scaling":"perFingerInverse"}},"FlatnessBand":[1000000000,5000000000]}""";
         string json = Encoding.UTF8.GetString(CmcFile.ToBytes(Sample())).TrimEnd().TrimEnd('}')
                     + $",\"Pads\":{pads},\"Network\":{network}}}";
 

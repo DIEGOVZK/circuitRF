@@ -4,8 +4,8 @@
 //
 // STRICT ON NAMES. An unknown key anywhere is a refusal naming it: a misspelt condition that was silently
 // dropped would leave a data set measured under conditions nobody stated, and the step that needed it would
-// report it missing with the typo still sitting in the file. Pads, Network and Steps are the exception —
-// opaque to this phase and carried verbatim (CmcDocument).
+// report it missing with the typo still sitting in the file. Pads and Network are kept as JSON and carried
+// verbatim, but validated through CmcExtrinsic (MC-4), their one reader; Steps is still opaque (CmcDocument).
 
 using System.Globalization;
 using System.Text;
@@ -292,6 +292,10 @@ public static class CmcFile
                 if (!seen.Add(p)) throw new CmcFormatException($"{f}.Exclusions[{k}].Point", $"'{p}' is excluded twice.");
             }
         }
+
+        // MC-4's blocks: CmcExtrinsic is their one reader, and a parse is their validation.
+        CmcExtrinsic.Pads(d);
+        CmcExtrinsic.Network(d);
     }
 
     private static bool IsPulsed(DataSetKind k) => k is DataSetKind.PulsedIv or DataSetKind.PulsedSParams;

@@ -1,0 +1,1063 @@
+{
+  "FormatVersion": 2,
+  "CellName": "gan-two-shell",
+  "GridSize": 100,
+  "GridSnap": true,
+  "AuthorGridDivisor": 20,
+  "Components": [
+    {
+      "InstanceName": "C1",
+      "Symbol": "Capacitor",
+      "X": 0,
+      "Y": 1000,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "C",
+          "Expression": "Cpga",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "Capacitance"
+        }
+      ],
+      "LabelOffsets": [
+        [
+          280,
+          -325
+        ]
+      ]
+    },
+    {
+      "InstanceName": "C4",
+      "Symbol": "Capacitor",
+      "X": 200,
+      "Y": -0,
+      "Rotation": "R270",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "C",
+          "Expression": "Cpdga",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "Capacitance"
+        }
+      ]
+    },
+    {
+      "InstanceName": "C6",
+      "Symbol": "Capacitor",
+      "X": 1200,
+      "Y": 1600,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "C",
+          "Expression": "Cpda",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "Capacitance"
+        }
+      ],
+      "LabelOffsets": [
+        [
+          280,
+          -325
+        ]
+      ]
+    },
+    {
+      "InstanceName": "L1",
+      "Symbol": "Inductor",
+      "X": -1200,
+      "Y": 1000,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "L",
+          "Expression": "Lg",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "Inductance"
+        }
+      ],
+      "LabelOffsets": [
+        [
+          276,
+          -325
+        ]
+      ]
+    },
+    {
+      "InstanceName": "L2",
+      "Symbol": "Inductor",
+      "X": 1400,
+      "Y": -0,
+      "Rotation": "R270",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "L",
+          "Expression": "Ld",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "Inductance"
+        }
+      ]
+    },
+    {
+      "InstanceName": "L3",
+      "Symbol": "Inductor",
+      "X": 2200,
+      "Y": 1600,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "L",
+          "Expression": "Ls",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "Inductance"
+        }
+      ],
+      "LabelOffsets": [
+        [
+          276,
+          -325
+        ]
+      ]
+    },
+    {
+      "InstanceName": "R1",
+      "Symbol": "Resistor",
+      "X": -2000,
+      "Y": 1600,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "R",
+          "Expression": "rg",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "Resistance"
+        }
+      ],
+      "LabelOffsets": [
+        [
+          260,
+          -325
+        ]
+      ]
+    },
+    {
+      "InstanceName": "R2",
+      "Symbol": "Resistor",
+      "X": 2600,
+      "Y": -0,
+      "Rotation": "R270",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "R",
+          "Expression": "rd",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "Resistance"
+        }
+      ]
+    },
+    {
+      "InstanceName": "R3",
+      "Symbol": "Resistor",
+      "X": 3400,
+      "Y": 2200,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "R",
+          "Expression": "rs",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "Resistance"
+        }
+      ],
+      "LabelOffsets": [
+        [
+          260,
+          -325
+        ]
+      ]
+    },
+    {
+      "InstanceName": "C2",
+      "Symbol": "Capacitor",
+      "X": 200,
+      "Y": 2200,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "C",
+          "Expression": "Cpgi",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "Capacitance"
+        }
+      ],
+      "LabelOffsets": [
+        [
+          280,
+          -325
+        ]
+      ]
+    },
+    {
+      "InstanceName": "C3",
+      "Symbol": "Capacitor",
+      "X": -1100,
+      "Y": 2200,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "C",
+          "Expression": "Cpdgi",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "Capacitance"
+        }
+      ],
+      "LabelOffsets": [
+        [
+          280,
+          -325
+        ]
+      ]
+    },
+    {
+      "InstanceName": "C5",
+      "Symbol": "Capacitor",
+      "X": 1400,
+      "Y": 2800,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "C",
+          "Expression": "Cpdi",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "Capacitance"
+        }
+      ],
+      "LabelOffsets": [
+        [
+          280,
+          -325
+        ]
+      ]
+    },
+    {
+      "InstanceName": "M1",
+      "Symbol": "Mutual",
+      "X": 100,
+      "Y": -2200,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "Inductor1",
+          "Expression": "\u0022L1\u0022",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Inductor2",
+          "Expression": "\u0022L2\u0022",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "M",
+          "Expression": "M_feedback",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "Inductance"
+        }
+      ]
+    },
+    {
+      "InstanceName": "VAR1",
+      "Symbol": "Var",
+      "X": -2000,
+      "Y": -4000,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "Cpga",
+          "Expression": "7",
+          "Unit": "fF",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Cpda",
+          "Expression": "7",
+          "Unit": "fF",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Cpdga",
+          "Expression": "0.5",
+          "Unit": "fF",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Cpgi",
+          "Expression": "4.9",
+          "Unit": "fF",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Cpdi",
+          "Expression": "21",
+          "Unit": "fF",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Cpdgi",
+          "Expression": "1",
+          "Unit": "fF",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Lg",
+          "Expression": "39.5",
+          "Unit": "pH",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Ld",
+          "Expression": "46.4",
+          "Unit": "pH",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Ls",
+          "Expression": "5.25",
+          "Unit": "pH",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "M_feedback",
+          "Expression": "1",
+          "Unit": "pH",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "rg",
+          "Expression": "5.2",
+          "Unit": "Ohm",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "rd",
+          "Expression": "9.2",
+          "Unit": "Ohm",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "rs",
+          "Expression": "6.6",
+          "Unit": "Ohm",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        }
+      ]
+    },
+    {
+      "InstanceName": "",
+      "Symbol": "Pin",
+      "X": -4400,
+      "Y": -2200,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "Num",
+          "Expression": "1",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        }
+      ]
+    },
+    {
+      "InstanceName": "",
+      "Symbol": "Pin",
+      "X": -4400,
+      "Y": -1400,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "Num",
+          "Expression": "2",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        }
+      ]
+    },
+    {
+      "InstanceName": "",
+      "Symbol": "Pin",
+      "X": -4400,
+      "Y": -600,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "Num",
+          "Expression": "3",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        }
+      ]
+    },
+    {
+      "InstanceName": "",
+      "Symbol": "Pin",
+      "X": -4400,
+      "Y": 600,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "Num",
+          "Expression": "4",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        }
+      ]
+    },
+    {
+      "InstanceName": "",
+      "Symbol": "Pin",
+      "X": -4400,
+      "Y": 1400,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "Num",
+          "Expression": "5",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        }
+      ]
+    },
+    {
+      "InstanceName": "",
+      "Symbol": "Pin",
+      "X": -4400,
+      "Y": 2200,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "Num",
+          "Expression": "6",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        }
+      ]
+    }
+  ],
+  "Wires": [
+    {
+      "Points": [
+        [
+          0,
+          0
+        ],
+        [
+          -200,
+          0
+        ],
+        [
+          -200,
+          600
+        ],
+        [
+          0,
+          600
+        ],
+        [
+          0,
+          800
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          -200,
+          600
+        ],
+        [
+          -1200,
+          600
+        ],
+        [
+          -1200,
+          800
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          400,
+          0
+        ],
+        [
+          1200,
+          0
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          1000,
+          0
+        ],
+        [
+          1000,
+          1200
+        ],
+        [
+          1200,
+          1200
+        ],
+        [
+          1200,
+          1400
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          0,
+          1200
+        ],
+        [
+          0,
+          1800
+        ],
+        [
+          900,
+          1800
+        ],
+        [
+          900,
+          2000
+        ],
+        [
+          1200,
+          2000
+        ],
+        [
+          1200,
+          1800
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          900,
+          1800
+        ],
+        [
+          900,
+          1100
+        ],
+        [
+          2200,
+          1100
+        ],
+        [
+          2200,
+          1400
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          -1200,
+          1200
+        ],
+        [
+          -1200,
+          1400
+        ],
+        [
+          -1800,
+          1400
+        ],
+        [
+          -1800,
+          1200
+        ],
+        [
+          -2000,
+          1200
+        ],
+        [
+          -2000,
+          1400
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          -1200,
+          1400
+        ],
+        [
+          200,
+          1400
+        ],
+        [
+          200,
+          2000
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          -1100,
+          1400
+        ],
+        [
+          -1100,
+          2000
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          2200,
+          1800
+        ],
+        [
+          2200,
+          2000
+        ],
+        [
+          3200,
+          2000
+        ],
+        [
+          3200,
+          1800
+        ],
+        [
+          3400,
+          1800
+        ],
+        [
+          3400,
+          2000
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          2200,
+          2000
+        ],
+        [
+          2200,
+          2400
+        ],
+        [
+          500,
+          2400
+        ],
+        [
+          500,
+          2600
+        ],
+        [
+          200,
+          2600
+        ],
+        [
+          200,
+          2400
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          1100,
+          2400
+        ],
+        [
+          1100,
+          3200
+        ],
+        [
+          1400,
+          3200
+        ],
+        [
+          1400,
+          3000
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          1600,
+          0
+        ],
+        [
+          2400,
+          0
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          1800,
+          0
+        ],
+        [
+          1800,
+          500
+        ],
+        [
+          -600,
+          500
+        ],
+        [
+          -600,
+          2600
+        ],
+        [
+          -1100,
+          2600
+        ],
+        [
+          -1100,
+          2400
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          1700,
+          500
+        ],
+        [
+          1700,
+          2300
+        ],
+        [
+          1400,
+          2300
+        ],
+        [
+          1400,
+          2600
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          -4300,
+          -2200
+        ],
+        [
+          -3700,
+          -2200
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          -4300,
+          -1400
+        ],
+        [
+          -3700,
+          -1400
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          -4300,
+          -600
+        ],
+        [
+          -3700,
+          -600
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          -4300,
+          600
+        ],
+        [
+          -3700,
+          600
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          -4300,
+          1400
+        ],
+        [
+          -3700,
+          1400
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          -4300,
+          2200
+        ],
+        [
+          -3700,
+          2200
+        ]
+      ]
+    }
+  ],
+  "NetLabels": [
+    {
+      "X": -700,
+      "Y": 600,
+      "Name": "P1",
+      "OwnerWireIndex": 1,
+      "SegmentIndex": 0,
+      "AlongT": 0.5,
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "X": 800,
+      "Y": 0,
+      "Name": "P2",
+      "OwnerWireIndex": 2,
+      "SegmentIndex": 0,
+      "AlongT": 0.5,
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "X": 600,
+      "Y": 500,
+      "Name": "n3",
+      "OwnerWireIndex": 13,
+      "SegmentIndex": 1,
+      "AlongT": 0.5,
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "X": 2800,
+      "Y": -0,
+      "Name": "P5",
+      "SegmentIndex": 0,
+      "AlongT": 0,
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "X": 1500,
+      "Y": 1100,
+      "Name": "P3",
+      "OwnerWireIndex": 5,
+      "SegmentIndex": 1,
+      "AlongT": 0.46153846153846156,
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "X": -500,
+      "Y": 1400,
+      "Name": "n1",
+      "OwnerWireIndex": 7,
+      "SegmentIndex": 0,
+      "AlongT": 0.5,
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "X": 1300,
+      "Y": 2400,
+      "Name": "n2",
+      "OwnerWireIndex": 10,
+      "SegmentIndex": 1,
+      "AlongT": 0.5294117647058824,
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "X": -2000,
+      "Y": 1800,
+      "Name": "P4",
+      "SegmentIndex": 0,
+      "AlongT": 0,
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "X": 3400,
+      "Y": 2400,
+      "Name": "P6",
+      "SegmentIndex": 0,
+      "AlongT": 0,
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "X": -4000,
+      "Y": -2200,
+      "Name": "P1",
+      "OwnerWireIndex": 15,
+      "SegmentIndex": 0,
+      "AlongT": 0.5,
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "X": -4000,
+      "Y": -1400,
+      "Name": "P2",
+      "OwnerWireIndex": 16,
+      "SegmentIndex": 0,
+      "AlongT": 0.5,
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "X": -4000,
+      "Y": -600,
+      "Name": "P3",
+      "OwnerWireIndex": 17,
+      "SegmentIndex": 0,
+      "AlongT": 0.5,
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "X": -4000,
+      "Y": 600,
+      "Name": "P4",
+      "OwnerWireIndex": 18,
+      "SegmentIndex": 0,
+      "AlongT": 0.5,
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "X": -4000,
+      "Y": 1400,
+      "Name": "P5",
+      "OwnerWireIndex": 19,
+      "SegmentIndex": 0,
+      "AlongT": 0.5,
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "X": -4000,
+      "Y": 2200,
+      "Name": "P6",
+      "OwnerWireIndex": 20,
+      "SegmentIndex": 0,
+      "AlongT": 0.5,
+      "OffsetX": 0,
+      "OffsetY": 0
+    }
+  ],
+  "Dots": [],
+  "CanvasObjects": [],
+  "View": {
+    "PanX": 0,
+    "PanY": 0,
+    "Zoom": 1
+  }
+}

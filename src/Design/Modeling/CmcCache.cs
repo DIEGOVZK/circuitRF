@@ -262,6 +262,10 @@ public sealed class CmcCache
             string? retired = null;
             if (Directory.Exists(Folder))
             {
+                // MC-4's intrinsic results live in a subfolder, keyed by the data they came from; carried across, they
+                // stay valid where the data did not change and are simply never read where it did.
+                string intrinsic = Path.Combine(Folder, IntrinsicExtraction.CacheFolder);
+                if (Directory.Exists(intrinsic)) Directory.Move(intrinsic, Path.Combine(tmp, IntrinsicExtraction.CacheFolder));
                 retired = Folder + ".old-" + Guid.NewGuid().ToString("N")[..8];
                 Directory.Move(Folder, retired);
             }

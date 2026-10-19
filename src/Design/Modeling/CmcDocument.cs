@@ -8,8 +8,8 @@
 // NUMBERS ARE BASE SI: volts, amps, seconds, ohms, hertz. The one exception is temperature, in °C,
 // because that is what a chuck is set to and what the elaborator's `temp` is.
 //
-// Pads, Network and Steps belong to later phases (MC-4 onward). This phase carries them as opaque JSON
-// and writes them back exactly, so a document saved by this build loses nothing a later one wrote.
+// Pads, Network and Steps are carried as JSON and written back exactly, so a document saved by one build loses
+// nothing a later one wrote. Pads and Network are read and validated through CmcExtrinsic (MC-4).
 
 using System.Text.Json.Nodes;
 using CircuitRF.Core.Devices.Composed;
@@ -157,7 +157,7 @@ public sealed record CmcDocument
     public BasePeriphery? BasePeriphery { get; init; }
     public IReadOnlyList<CmcDataSet> DataSets { get; init; } = [];
 
-    /// <summary>Later phases' blocks, carried verbatim.</summary>
+    /// <summary>Carried verbatim; <see cref="CmcExtrinsic"/> reads Pads and Network, later phases Steps.</summary>
     public JsonNode? Pads { get; init; }
     public JsonNode? Network { get; init; }
     public JsonNode? Steps { get; init; }

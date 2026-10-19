@@ -20710,3 +20710,25 @@ straight arm dominated both meshes.
 Not changed: the Fifty/Optimal chamfer leg is still M·W per edge, half the Douville-James cut (whose
 50 % runs corner to corner, 2·M·W). That is a separate question about which geometry the model's
 mitred coefficients describe.
+
+## Model Composer MC-4: de-embedding through a schematic (2026-10-19)
+
+**A network is solved by the engine as written, never re-stamped.** `PinNetwork` reads a `.csch` through
+`SchematicCircuit`'s extraction and `.cnl` round trip, renames pin 3's net to `0`, adds engine `Port`s (or DC
+sources) as ordinary `Instance`s and elaborates. A known linear core inside the GaN and classic networks de-embeds
+to its own Y at ~1e-15 relative, so no private MNA was needed for the floating intrinsic ports (R-mc4-3's stop
+condition never arose).
+
+**Two pins on one net silently lose a pin.** `NetExtractor.BuildCellPorts` lists `P{num}` for every pin, but a net
+takes the FIRST pin's name only, so the second pin's port name is on no element and a bench built on it is a
+floating node. `PinNetwork` refuses it by checking every port name reaches an element.
+
+**There is no plain DC current source.** `I_1Tone` with `Idc` is the one that stamps at ω = 0 (`ToneSourceModelBase.
+ExcitationAt` returns `Idc` there); it injects into its FIRST net, so drawing a current out of pin 4 into pin 6 is
+`I_1Tone … P6 P4 Idc=…`.
+
+**`NetlistSchematic` draws no `Pin`.** The stock networks were drawn from their netlists and then given six pins
+on short stubs carrying net labels `P1…P6`; same-name labels join the stubs to the drawn nets.
+
+MC-3's `CmcFormatTests` wrote arbitrary JSON into `Pads`/`Network` to prove later-phase blocks survive; those two
+are validated now, so the test round-trips valid MC-4 blocks and the opaque claim stays with `Steps`.

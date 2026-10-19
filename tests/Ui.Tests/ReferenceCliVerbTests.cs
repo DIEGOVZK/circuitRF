@@ -460,7 +460,7 @@ public sealed class ReferenceCliVerbTests(ITestOutputHelper output)
         Assert.Equal(
             ReferenceLibrary.TopicNames.Concat(["data-display", "technology", "layout", "em-setup", "wbond",
                                                "3d-view", "materials", "schematic", "analyses", "tuning", "goals",
-                                               "optimizers", "component-index",
+                                               "optimizers", "statistics", "component-index",
                                                "components", "technologies", "shipped-materials"]),
             names);
 

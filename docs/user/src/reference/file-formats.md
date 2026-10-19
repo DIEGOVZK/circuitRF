@@ -160,7 +160,9 @@ except temperatures, in °C.
 | `Kind` | `Active` (a FET) or `Passive` (an N-port). |
 | `BasePeriphery` | `Fingers` and `UnitWidth` (`"125 um"`) of the measured device. `Active` only. |
 | `DataSets` | Each with a `Name`, a `Kind`, its `Sources`, its `Conditions`, its `Import` settings and any `Exclusions`. |
-| `Pads`, `Network`, `Steps` | The later steps' settings. |
+| `Pads` | How the probe pads are removed — see below. Absent when the data is at the device plane. |
+| `Network` | The six-pin extrinsic network and its variables' settings — see below. Absent when the data is intrinsic. |
+| `Steps` | The later steps' settings. |
 | `Panels` | `Hidden`: the window panels switched off. Absent when every panel shows. |
 
 A data set's `Kind` is `DcIv`, `PulsedIv`, `SParams` (CW multi-bias), `PulsedSParams`, `SimulatedTables`
@@ -193,6 +195,28 @@ A data set's `Kind` is `DcIv`, `PulsedIv`, `SParams` (CW multi-bias), `PulsedSPa
 
 `Exclusions` lists the points left out of every fit — `Point`, a point's id, and the `Reason`. A
 Touchstone point's id is its file; a CSV row's is `<file>:<line>`; an array point's is `<file>#<index>`.
+
+`Pads` has a `Kind` and the files that kind needs, relative to the `.cmc`:
+
+- `OpenShort` — `Open` and `Short`, the open and short dummy structures as 2-port Touchstone files.
+- `TwoPorts` — `Gate` and `Drain`, a Touchstone 2-port per side, port 1 at the probe and port 2 facing
+  the device.
+- `Network` — `Gate` and `Drain`, a schematic per side with pin 1 at the probe and pin 2 facing the
+  device, returning through ground. Series resistance in one also drops the bias voltage.
+
+A pad file must cover the data's frequencies; one that does not is refused, naming both ranges.
+
+`Network` holds:
+
+| Field | What it holds |
+|---|---|
+| `Schematic` | The network, a `.csch` with exactly six pins: 1, 2, 3 the extrinsic gate, drain and source, 4, 5, 6 the intrinsic ones. Its VAR block's variables are its element values. |
+| `Variables` | Per variable: `Min`, `Max`, `Lock` (`true` holds it at its value), `Tie` (`To` another variable, times `Factor`) and `Scaling` (`fixed`, `perFinger` or `perFingerInverse`). |
+| `FlatnessBand` | `[low, high]` in Hz: the band the frequency flatness of the intrinsic elements is measured over. Absent: 1/10 to 1/2 of the data's highest frequency. |
+
+A stock network — GaN two-shell, classic single shell or series only — is copied beside the `.cmc` when
+chosen and is then an ordinary schematic. An R, L, C or mutual value starts with `Min` 0 and `Max` 100 times
+its starting value.
 
 The data read from the sources is cached in `<name>.cmc-cache/`. When a source changes it is read
 again; when one goes missing the cached copy is used, with a warning. The cache can be deleted at any

@@ -1257,3 +1257,92 @@ src/Engine/SParameterEngine.cs|A circuit port is driven twice ({string.Join(
 src/Engine/SParameterEngine.cs|A port's waves need every circuit port terminated in a resistive Z0 (Re Z0 > 0); 
 src/Engine/SParameterEngine.cs|No circuit port is driven.
 src/Engine/SParameterEngine.cs|The circuit has no port number {port} at its top level to drive 
+
+# ── Model Composer MC-1 … MC-4 (2026-10-19) ─────────────────────────────────────────
+# The ComposedFet's elaboration refusals are worded and routed exactly as the SnP ones above
+# ('{who}: model file not found'): the elaborator's sentence reaches the run's error line. The
+# rest are internal invariants of the composed core — array shapes, spline axes, ANN widths and
+# rule names that CmodelFile's validator has already refused by field before any of these can
+# throw — a TensorSplineFit or cache invariant, and the stock-network lookup, whose ids come from
+# StockNetworks.All and whose resources are part of this build.
+src/Core/Devices/ComponentModelFactory.cs|'{file}' cannot be used: {ex.Message}
+src/Core/Devices/ComponentModelFactory.cs|N={(double.IsNaN(n) ? nv.ToString() : n.ToString(
+src/Core/Devices/ComponentModelFactory.cs|a ComposedFet elaborates as a cell — its network and its ComposedCore — and is never 
+src/Core/Devices/ComponentModelFactory.cs|no .cmodel file is specified; set 'File'.
+src/Core/Devices/Composed/ComposedCoreModel.cs|'{System.IO.Path.GetFileName(loaded.Path)}' carries IdRF, the DC/RF dispersion, 
+src/Core/Devices/Composed/ComposedCoreProgram.cs|input '{inputs[k]}' has no seed in this model.
+src/Core/Devices/Composed/CubicBSpline.cs|a spline axis needs at least two sites.
+src/Core/Devices/Composed/GuidedExtrapolation.cs|'{name}' is not an input.
+src/Core/Devices/Composed/PeripheryScaling.cs|'{rule}' is not a known scaling rule.
+src/Core/Devices/Composed/RuntimeEvaluators.cs|a table has 1 to {MaxInputs} axes.
+src/Core/Devices/Composed/RuntimeEvaluators.cs|an ANN has 1 to {MaxHiddenLayers} hidden layers and an output layer.
+src/Core/Devices/Composed/RuntimeEvaluators.cs|an ANN has 1 to {MaxInputs} inputs, with one offset and one scale each.
+src/Core/Devices/Composed/RuntimeEvaluators.cs|an ANN's output layer has one neuron.
+src/Core/Devices/Composed/RuntimeEvaluators.cs|layer {k + 1}'s weights are not {outputs} × {_widths[k]}.
+src/Core/Devices/Composed/RuntimeEvaluators.cs|the coefficients hold {coefficients.Length} values; the grid needs {size}.
+src/Core/Elaboration/Elaborator.cs|{who}: '{file}' cannot be read — {ex.Message}
+src/Core/Elaboration/Elaborator.cs|{who}: '{ov.Name}' is not a parameter of a ComposedFet; it takes File, N and m.
+src/Core/Elaboration/Elaborator.cs|{who}: a fourth net is the thermal node t, and a model in this circuitRF has none; 
+src/Core/Elaboration/Elaborator.cs|{who}: expected 3 nets (g d s); got {inst.NetBindings.Count}.
+src/Core/Elaboration/Elaborator.cs|{who}: its 'File' parameter names a folder, not a .cmodel file: '{file}'.
+src/Core/Elaboration/Elaborator.cs|{who}: model file not found: '{file}'.
+src/Core/Elaboration/Elaborator.cs|{who}: no model file is specified; set 'File' to a .cmodel file.
+src/Core/Expressions/CompiledSddExpr.cs|'{modelName}': this equation reads control currents and has no allocation-free form.
+src/Design/Modeling/NormalisedData.cs|The cached data has no point ids.
+src/Engine/Modeling/TensorSplineFit.cs|the spline's normal equations are not positive definite.
+src/Engine/Modeling/TensorSplineFit.cs|the values do not fill the grid.
+src/Design/Modeling/StockNetworks.cs|'{id}' is not a stock network; the stock networks are {string.Join(
+src/Design/Modeling/StockNetworks.cs|The stock network '{id}' is missing from this build.
+
+# ── Binary readers: MAT-files and compound files (2026-10-19) ───────────────────────
+# MatReader (MC-3) and the compound-file and binary .DSN readers (the schematic-import series).
+# Format invariants of the same kind as the interchange readers' at the top of this file — a
+# truncated element, a looping chain, an unsupported MATLAB class named by the variable — each
+# caught by its importer and reported prefixed with the file it came from.
+src/Design/Schematic/Import/BinaryDsn/DsnLibrary.cs|the Library stream holds no string table
+src/Design/Schematic/Import/BinaryDsn/DsnLibrary.cs|the Library stream is too short to state a version
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|It is not a compound file (no compound-file signature).
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file has no directory.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file is damaged: {what} loops back to a sector it has read.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file is damaged: {what} names a sector ({sector:X}) it does not hold.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file is truncated: it ends inside its header.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file is truncated: its header lists more FAT sectors than it holds.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file is truncated: its {what} sector {sector} is past its end.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file is truncated: {what} ends before its size.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file is truncated: {what} runs past its end.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file is version {major} with {(shift < 31 ? 1L << shift : 0)}-byte sectors; only version 3 (512) and 4 (4096) are read.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file's DIFAT chain loops.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file's DIFAT lists fewer FAT sectors than its header says.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file's byte-order mark is wrong.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file's directory entry {id} is neither a storage nor a stream.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file's directory names an entry ({id}) it does not hold.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file's directory tree loops.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file's first directory entry is not its root.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file's mini sector is not 64 bytes.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The compound file's {what} names no sector.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The stream '{entry.Path}' is larger than can be read.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The stream '{what}' is truncated: it runs past the mini stream.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The stream '{what}' is truncated: its mini chain ends early.
+src/Design/Schematic/Import/Cfb/CompoundFile.cs|The stream '{what}' loops: its mini chain returns to a sector it has read.
+src/RfCore/Export/MatReader.cs|'{name}' holds object references (a cell array or an object); only numeric arrays are read.
+src/RfCore/Export/MatReader.cs|'{name}' holds {real.Length} values for its shape ({string.Join(
+src/RfCore/Export/MatReader.cs|'{name}' is a cell array; only numeric arrays and structs of them are read.
+src/RfCore/Export/MatReader.cs|'{name}' is a character array, not a numeric one.
+src/RfCore/Export/MatReader.cs|'{name}' is a compound type that is not a complex number {{real, imag}}.
+src/RfCore/Export/MatReader.cs|'{name}' is a sparse matrix; only full numeric arrays are read.
+src/RfCore/Export/MatReader.cs|'{name}' is a struct array of {count} elements; only a 1 × 1 struct is read.
+src/RfCore/Export/MatReader.cs|'{name}' is an object of class {cls}; only numeric arrays and structs of them are read.
+src/RfCore/Export/MatReader.cs|'{name}' is an object; only numeric arrays and structs of them are read.
+src/RfCore/Export/MatReader.cs|'{name}' is not a numeric array.
+src/RfCore/Export/MatReader.cs|'{name}' stores its data as type {type}, which is not a numeric type.
+src/RfCore/Export/MatReader.cs|A compressed element is empty.
+src/RfCore/Export/MatReader.cs|A compressed element is truncated.
+src/RfCore/Export/MatReader.cs|A data element at byte {pos} runs past the end of the file.
+src/RfCore/Export/MatReader.cs|A dataset of {t.Class} size {t.Size} is not a number type this reader knows.
+src/RfCore/Export/MatReader.cs|A matrix element is truncated.
+src/RfCore/Export/MatReader.cs|A matrix sub-element runs past its matrix.
+src/RfCore/Export/MatReader.cs|A matrix's dimensions are not 32-bit integers.
+src/RfCore/Export/MatReader.cs|The MAT-file header has no endian indicator; it is not a version 5 MAT-file.
+src/RfCore/Export/MatReader.cs|The MAT-file header is truncated.
+src/RfCore/Export/MatReader.cs|{Path.GetFileName(path)} is not a MAT-file: it begins with neither a MATLAB header nor an HDF5 signature.
+src/RfCore/Export/MatReader.cs|{Path.GetFileName(path)} is not a MAT-file: it is {n} bytes long.
