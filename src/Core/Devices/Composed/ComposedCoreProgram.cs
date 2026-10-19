@@ -5,12 +5,14 @@ namespace CircuitRF.Core.Devices.Composed;
 
 /// <summary>
 /// The constituents of one <c>.cmodel</c>, compiled ONCE when the file is loaded and shared by every
-/// <see cref="ComposedCoreModel"/> built on it (R-mc1-3).
+/// <see cref="ComposedCoreModel"/> built on it (R-mc1-3, R-mc2-1/2/3).
 ///
 /// <para><b>Inputs are seeds.</b> <c>vgs</c> and <c>vds</c> always, and <c>T</c> when the model is
-/// over a temperature range, occupy the first gradient lanes in that order, so one dual-number
-/// evaluation returns a constituent's value and its derivative by each — the SDD's own arithmetic
-/// (<see cref="CompiledSddExpr.CompileNamed"/>), not a second implementation of it.</para>
+/// over a temperature range, occupy the first gradient lanes in that order, so one evaluation returns
+/// a constituent's value and its derivative by each. An equation runs through the SDD's own
+/// dual-number arithmetic (<see cref="CompiledSddExpr.CompileNamed"/>); a table or an ANN runs through
+/// its evaluator inside its <see cref="GuidedExtrapolation"/>, its inputs gathered from the seeds and
+/// its gradient scattered back into their lanes.</para>
 /// </summary>
 public sealed class ComposedCoreProgram
 {
@@ -27,16 +29,19 @@ public sealed class ComposedCoreProgram
     /// <summary>Gradient width: 2, or 3 with <c>T</c>.</summary>
     public int Width => Seeds.Count;
 
-    // One compiled equation per payload entry, in a fixed order the core reads by index.
-    internal readonly CompiledSddExpr Id, IgGs, IgGd, Qg, Qd;
+    /// <summary>The drain–source symmetry option (R-mc2-4).</summary>
+    public DrainSourceSymmetry Symmetry { get; }
+
+    // One compiled function per payload entry, in a fixed order the core reads by field.
+    internal readonly ComposedFunction Id, IgGs, IgGd, Qg, Qd;
 
     private readonly string _label;
 
-    private ComposedCoreProgram(IReadOnlyList<string> seeds, string label,
-                                CompiledSddExpr id, CompiledSddExpr igGs, CompiledSddExpr igGd,
-                                CompiledSddExpr qg, CompiledSddExpr qd)
+    private ComposedCoreProgram(IReadOnlyList<string> seeds, string label, DrainSourceSymmetry symmetry,
+                                ComposedFunction id, ComposedFunction igGs, ComposedFunction igGd,
+                                ComposedFunction qg, ComposedFunction qd)
     {
-        Seeds = seeds; _label = label;
+        Seeds = seeds; _label = label; Symmetry = symmetry;
         Id = id; IgGs = igGs; IgGd = igGd; Qg = qg; Qd = qd;
     }
 
@@ -47,17 +52,41 @@ public sealed class ComposedCoreProgram
             ? [Vgs, Vds, T]
             : [Vgs, Vds];
 
-        CompiledSddExpr One(Constituent c, string key)
+        ComposedFunction One(Constituent c, string name, string key, double[]? ownBranch)
         {
-            var parameters = new Dictionary<string, double>(StringComparer.Ordinal);
-            foreach (var p in c.Parameters) parameters[p.Key] = p.Value;
-            return CompiledSddExpr.CompileNamed(Parser.Parse(c.Expression(key)!), seeds, parameters, label);
+            if (c.Method == Constituent.EquationMethod)
+            {
+                var parameters = new Dictionary<string, double>(StringComparer.Ordinal);
+                foreach (var p in c.Parameters) parameters[p.Key] = p.Value;
+                return new EquationFunction(
+                    CompiledSddExpr.CompileNamed(Parser.Parse(c.Expression(key)!), seeds, parameters, label), label);
+            }
+
+            var evaluator = RuntimePayload.Build(model, c, key, $"Core.Constituents.{name}.{key}");
+            double gx = ownBranch is null ? 0.0 : model.Extrapolation!.Gx[GxKey(name, key)];
+            return new RuntimeFunction(
+                new GuidedExtrapolation(evaluator, c.Domain!, c.Inputs, gx, ownBranch), c.Inputs, seeds);
         }
 
         var k = model.Core;
-        return new ComposedCoreProgram(seeds, label,
-            One(k.Id, "Expression"), One(k.Ig, "IgGs"), One(k.Ig, "IgGd"),
-            One(k.Qg, "Expression"), One(k.Qd, "Expression"));
+        return new ComposedCoreProgram(seeds, label, k.Symmetry,
+            One(k.Id, "Id", k.Id.PayloadKey, Branch(k.Id.Inputs, vgs: 0, vds: 1)),
+            One(k.Ig, "Ig", "IgGs", Branch(k.Ig.Inputs, vgs: 1, vds: 0)),
+            One(k.Ig, "Ig", "IgGd", Branch(k.Ig.Inputs, vgs: 1, vds: -1)),
+            One(k.Qg, "Qg", k.Qg.PayloadKey, null),
+            One(k.Qd, "Qd", k.Qd.PayloadKey, null));
+    }
+
+    /// <summary>The <c>Extrapolation.Gx</c> key of a current payload: <c>Id</c>, <c>IgGs</c>, <c>IgGd</c>.</summary>
+    internal static string GxKey(string constituent, string key) => constituent == "Ig" ? key : constituent;
+
+    /// <summary>A branch voltage <c>a·vgs + b·vds</c> as a vector over <paramref name="inputs"/>.</summary>
+    private static double[] Branch(IReadOnlyList<string> inputs, double vgs, double vds)
+    {
+        var own = new double[inputs.Count];
+        for (int k = 0; k < own.Length; k++)
+            own[k] = inputs[k] == Vgs ? vgs : inputs[k] == Vds ? vds : 0.0;
+        return own;
     }
 
     /// <summary>
@@ -65,9 +94,9 @@ public sealed class ComposedCoreProgram
     /// <paramref name="grad"/>. A NaN or infinite value or derivative is a named failure — never a
     /// silent zero, which would be a device that conducts nothing exactly where its equation broke.
     /// </summary>
-    internal double Eval(CompiledSddExpr expr, string name, ReadOnlySpan<double> seeds, Span<double> grad)
+    internal double Eval(ComposedFunction f, string name, ReadOnlySpan<double> seeds, Span<double> grad)
     {
-        double v = expr.EvalDualInto(seeds, grad, _label);
+        double v = f.Evaluate(seeds, grad);
         bool finite = double.IsFinite(v);
         for (int i = 0; i < Width && finite; i++) finite = double.IsFinite(grad[i]);
         if (!finite) throw new ComposedEvaluationException(Describe(name, v, seeds));
@@ -81,6 +110,52 @@ public sealed class ComposedCoreProgram
             at.Add($"{Seeds[i]}={seeds[i].ToString("G6", CultureInfo.InvariantCulture)}");
         string what = double.IsFinite(v) ? "a derivative that is not finite" : v.ToString(CultureInfo.InvariantCulture);
         return $"'{_label}': constituent {name} evaluated to {what} at {string.Join(", ", at)}.";
+    }
+}
+
+/// <summary>One compiled constituent payload: value and gradient over the core's seed lanes.</summary>
+internal abstract class ComposedFunction
+{
+    public abstract double Evaluate(ReadOnlySpan<double> seeds, Span<double> grad);
+}
+
+internal sealed class EquationFunction(CompiledSddExpr expr, string label) : ComposedFunction
+{
+    public override double Evaluate(ReadOnlySpan<double> seeds, Span<double> grad)
+        => expr.EvalDualInto(seeds, grad, label);
+}
+
+/// <summary>A table or ANN: its inputs gathered from the seeds, its gradient scattered back.</summary>
+internal sealed class RuntimeFunction : ComposedFunction
+{
+    private readonly GuidedExtrapolation _f;
+    private readonly int[] _lane;      // input k reads seed lane _lane[k]
+    private readonly int _width;
+
+    public RuntimeFunction(GuidedExtrapolation f, IReadOnlyList<string> inputs, IReadOnlyList<string> seeds)
+    {
+        _f = f;
+        _width = seeds.Count;
+        _lane = new int[inputs.Count];
+        for (int k = 0; k < inputs.Count; k++)
+        {
+            int lane = -1;
+            for (int s = 0; s < seeds.Count; s++) if (seeds[s] == inputs[k]) lane = s;
+            _lane[k] = lane >= 0 ? lane
+                : throw new InvalidOperationException($"input '{inputs[k]}' has no seed in this model.");
+        }
+    }
+
+    public override double Evaluate(ReadOnlySpan<double> seeds, Span<double> grad)
+    {
+        int d = _lane.Length;
+        Span<double> x = stackalloc double[RuntimeEvaluator.MaxInputs];
+        Span<double> g = stackalloc double[RuntimeEvaluator.MaxInputs];
+        for (int k = 0; k < d; k++) x[k] = seeds[_lane[k]];
+        double v = _f.Evaluate(x[..d], g);
+        grad[.._width].Clear();
+        for (int k = 0; k < d; k++) grad[_lane[k]] = g[k];
+        return v;
     }
 }
 

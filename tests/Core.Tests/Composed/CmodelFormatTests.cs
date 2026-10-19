@@ -30,7 +30,7 @@ public sealed class CmodelFormatTests
     }
 
     [Theory]
-    [InlineData("\"Method\": \"Equation\"", "\"Method\": \"Table\"", "Core.Constituents.Id.Method")]
+    [InlineData("\"Method\": \"Equation\"", "\"Method\": \"Spline\"", "Core.Constituents.Id.Method")]
     [InlineData("\"Fingers\": 4", "\"Fingers\": 0", "BasePeriphery.Fingers")]
     [InlineData("\"Inputs\": [\n          \"vgs\",\n          \"vds\"\n        ],\n        \"Expression\": \"beta",
                 "\"Inputs\": [\n          \"vgs\",\n          \"T\"\n        ],\n        \"Expression\": \"beta",

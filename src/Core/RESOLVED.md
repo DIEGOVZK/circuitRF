@@ -3600,3 +3600,30 @@ Design note: `docs/design/model-composer.md` §3–§4. Findings worth keeping:
 - **`.npy` entries inside a ZIP** go through RfCore's own codec via new stream overloads
   (`DataSetExporter.ExportNpy` / `DataSetImporter.ImportNpy`); the path forms now delegate to them, so
   there is still one writer and one reader.
+
+## brief-modelcomposer-2 — tables, ANNs, guided extrapolation, symmetry (2026-10-19)
+
+Design note: `docs/design/model-composer.md` §4.7–§4.11. Findings worth keeping:
+
+- **The linear continuation's derivative is NOT the boundary gradient.** `f(p_b) + ∇f(p_b)·(p − p_b)`
+  has `p_b` moving with `p`, so its exact gradient is `∇f(p_b) + Pᵀ H(p_b)(p − p_b)` with `P` the
+  projection's Jacobian. Dropping the Hessian term leaves a Jacobian that disagrees with the value
+  everywhere beyond an edge (not in a vertex cone, where `P = 0`) — Newton still converges, slowly, and
+  the small-signal result is inconsistent with the large-signal one. Hence both evaluators return the
+  Hessian along a direction; `GuidedExtrapolationTests` checks the Jacobian against finite differences
+  beyond an oblique edge, where an axis-aligned shortcut would also be caught.
+- **The training polygon must be convex, and the validator refuses one that is not.** For a
+  non-convex polygon the nearest point jumps across the medial axis outside it, and the continued
+  VALUE jumps with it — not merely the gradient.
+- **Distances are measured in domain-normalised coordinates.** `d` mixes volts and degrees, and
+  "5 % of the domain's extent" only means one thing per axis once each axis is scaled by its extent.
+- **Not-a-knot, not natural, for the table spline.** A natural spline's zero-curvature end condition
+  costs O(h²) at the grid edges, where a device's interesting region often sits; not-a-knot is O(h⁴)
+  up to the ends and keeps one coefficient per site. Axes of two or three sites (a two-temperature
+  model) are one cubic piece carrying the line or parabola exactly.
+- **The base `ComponentModel.EvaluateGrid` allocates five scratch arrays per call** on its
+  `EvaluateInto` path — per grid, not per sample, but HB calls it every Newton iteration. A model that
+  must be allocation-free overrides `EvaluateGrid` and writes into the `GridResult` directly.
+- **Two DC operating points reached by different Newton paths agree only to the solve's tolerance.**
+  The default `NonlinearAbsTol` is 1e-6 A; behind 10 Ω that is ~1e-5 V, far looser than a 1e-9
+  comparison. Gates that compare two different solves tighten it (1e-12) rather than the comparison.

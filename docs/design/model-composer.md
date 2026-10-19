@@ -1,6 +1,7 @@
 # circuitRF — Model Composer and the composed FET
 
-**Status:** MC-1 built (the `.cmodel` format and the `ComposedFet` device, equation constituents) ·
+**Status:** MC-1 built (the `.cmodel` format and the `ComposedFet` device, equation constituents);
+MC-2 built (table and ANN constituents, guided extrapolation, drain–source symmetry, grid evaluation) ·
 **Source:** `docs/sonnet-briefs/brief-modelcomposer-0-overview.md` (decisions D1–D16) and the phase briefs
 `brief-modelcomposer-1` … `-16` · **Primary reference:** [P1] J. C. Pedro, D. E. Root, J. Xu, L. C. Nunes,
 *Nonlinear Circuit Simulation and Modeling*, Cambridge University Press, 2018.
@@ -83,9 +84,35 @@ line can carry.
 ```
 
 `Temperature` is `{ "Mode": "Range", "Tmin": …, "Tmax": … }` for a ranged model. `Symbol` is omitted for
-the standard FET symbol. `Extrapolation` (MC-2), `Thermal` (MC-9) and `Traps` (MC-10) are absent until
-their phases; a file carrying `Extrapolation` or `Thermal` is refused by field until then, and `Traps.Model`
-must name a known model (`None` today).
+the standard FET symbol. `Thermal` (MC-9) and `Traps` (MC-10) are absent until their phases; a file
+carrying `Thermal` is refused by field until then, and `Traps.Model` must name a known model (`None` today).
+
+**Table and ANN constituents (MC-2)** name arrays instead of carrying expressions, and store the domain
+they were trained over. `Core.Symmetry` and the top-level `Extrapolation` appear only when used:
+
+```json
+"Core": {
+  "Symmetry": "Exchange",
+  "Constituents": {
+    "Id": { "Method": "Table", "Inputs": ["vgs", "vds"], "Table": "Id", "Smoothing": 0,
+            "Domain": { "Polygon": [[-3, 0], [1, 0], [1, 8], [0, 10], [-3, 10]] } },
+    "Ig": { "Method": "ANN", "Inputs": ["vgs", "vds"], "IgGs": "IgGs", "IgGd": "IgGd", "Activation": "Sigmoid",
+            "Domain": { "Polygon": [ … ] } },
+    "Qg": { "Method": "ANN", "Inputs": ["vgs", "vds", "T"], "Network": "Qg", "Activation": "Tanh",
+            "Domain": { "Polygon": [ … ], "Box": { "T": [25, 125] } } },
+    "Qd": { … }
+  }
+},
+"Extrapolation": { "Gx": { "Id": 2.0, "IgGs": 0.1, "IgGd": 0.1 } }
+```
+
+- A **table** `name` is `arrays/name.values.npy` (the grid, one axis per input, named for it and carrying
+  its sites) and `arrays/name.coefficients.npy` (the spline's coefficients, one axis per input at its
+  Greville abscissae). `ComposedArrays.Table` builds both; `TensorSplineFit.TableArrays` fits and builds.
+- An **ANN** `name` is `name.inputOffset`, `name.inputScale` (`x̂ = (x − offset)·scale`), `name.W1 … name.WL`
+  (`outputs × inputs`) with `name.b1 … name.bL`, the last layer being the single linear output, and
+  `name.outputOffset`, `name.outputScale` (`y = offset + scale·ŷ`). `ComposedArrays.Ann` builds them.
+- `Ig` names two payloads, `IgGs` and `IgGd`, under one method, one activation and one domain.
 
 ### 3.2 What the validator refuses
 
@@ -101,10 +128,21 @@ Every refusal is a `CmodelFormatException` whose message begins with the field: 
   resolve to a finite real number; an internal net named `gi`/`di`/`si`, or an element named `core`
   (the names the synthesised cell gives the intrinsic pins and the core).
 - `Network.Scaling.<var>`: an unknown rule, by name; a variable the network does not have.
-- A constituent: an unknown `Method`, by name; an input other than `vgs`/`vds` (and `T` for a `Range`
-  model) — `T` on a single-temperature model and `phi1`/`phi2` without traps say why; an expression that
-  does not parse or names something that is neither an input nor a parameter; a parameter sharing an
-  input's name or not finite. `Ig` must carry exactly `IgGs` and `IgGd`; the others `Expression`.
+- A constituent: an unknown `Method`, by name; an input listed twice, or other than `vgs`/`vds` (and `T`
+  for a `Range` model) — `T` on a single-temperature model and `phi1`/`phi2` without traps say why. `Ig`
+  must carry exactly `IgGs` and `IgGd`; the others their method's key (`Expression`, `Table`, `Network`).
+- An equation: an expression that does not parse or names something that is neither an input nor a
+  parameter; a parameter sharing an input's name or not finite; a `Domain`, `Smoothing` or `Activation`
+  (an equation is global and is not extrapolated).
+- A table or ANN: inputs without both `vgs` and `vds`; any `Parameters`; a missing `Domain`; a polygon of
+  fewer than three vertices, with no area, or not convex; a `Box` missing an input other than `vgs`/`vds`,
+  naming one it does not have, or with `lo ≥ hi`; a missing or misshapen array, named; a value that is
+  not finite. A table additionally: an axis not named for its input in order, fewer than two sites, sites
+  not strictly increasing, coefficients that do not match the grid, a domain reaching outside the grid,
+  a negative `Smoothing`, an `Activation`. An ANN: no hidden layer or more than four, more than 64 neurons
+  in one, an output layer wider than one, a zero input scale, a `Smoothing`.
+- `Extrapolation.Gx`: missing for a table or ANN current, present for an equation current or an unknown
+  key, or not a positive number. `Core.Symmetry`: anything but `None`/`Exchange`.
 
 ## 4. The device
 
@@ -145,6 +183,9 @@ the FET family's arrangement and the elaborator's same three-to-four net expansi
   built-in FETs.
 - A model carrying `IdRF` is refused at construction until MC-7 evaluates it.
 - `ComposedCore` is also a `.cnl` token in its own right — the intrinsic device alone.
+- A table or ANN payload compiles to a `RuntimeFunction`: its inputs gathered from the seed lanes, the
+  evaluator run inside its `GuidedExtrapolation`, its gradient scattered back (zero in a lane it does not
+  read).
 
 ### 4.3 Periphery scaling (R-mc1-7, D9)
 
@@ -181,19 +222,103 @@ instance carries a symbol of its own choosing. `Symbol` never reaches the netlis
 `DocumentKinds` classifies `.cmodel` as `composed-model`; `check` calls `CmodelFile.Read` and reports
 its sentence (error, exit 1) or a one-line summary (periphery and temperatures). It has no rule of its own.
 
+### 4.7 Tables (R-mc2-1)
+
+`TableEvaluator`: a tensor-product cubic B-spline over a rectilinear grid, non-uniform axes allowed.
+The knot vector is not stored — `CubicBSpline.Knots` derives it from the sites by one rule the fitter and
+the evaluator share:
+
+- four or more sites: the **not-a-knot** spline (end knots of multiplicity four, every interior site a
+  simple knot except the second and the second-to-last) — one coefficient per site, C² at every knot, and
+  O(h⁴) error up to the ends, where a natural spline's zero-curvature end condition costs O(h²);
+- two or three sites: one cubic piece over the axis, carrying the line or parabola through them exactly.
+
+Value, gradient and the second derivatives come from the basis (Cox–de Boor with derivatives), never from
+a difference. **Never bilinear**: its slope jumps at every knot, which is what makes table models wrong at
+low drive ([P1] §6.2.6.2). Even a C² cubic has piecewise-constant third derivatives and none beyond, so a
+table cannot predict high-order distortion at very low drive ([X06] §I); where low-level IM matters, an
+ANN is the default.
+
+`TensorSplineFit` (`src/Engine/Modeling/`) fits the coefficients once, when a model is written. It is
+separable — one-dimensional fits along each axis in turn — and with a smoothing weight λ > 0 each axis
+minimises `Σ (yᵢ − s(xᵢ))² + λ ∫ s″(u)² du` over the axis mapped to [0, 1], so one λ means the same on
+every axis. The normal equations are banded (half-bandwidth three) and solved by a banded Cholesky factor
+computed once per axis. λ = 0 is interpolation; an axis of two or three sites is never smoothed.
+
+### 4.8 ANNs (R-mc2-2)
+
+`AnnEvaluator`: affine input normalisation, one to four hidden layers of one to 64 neurons (`Tanh`, the
+default, or logistic `Sigmoid`, [P1] Fig. 6.10), a linear output and its de-normalisation. The gradient
+with respect to the inputs is carried forward through the layers alongside the value — the derivative
+network of [P1] §6.2.7 — and, when asked, the Hessian along one direction with it. Scratch is on the
+stack (64 neurons × 5 inputs), so the evaluator is immutable, thread-safe and allocates nothing.
+
+### 4.9 Guided extrapolation (R-mc2-3)
+
+Each table or ANN constituent stores its training domain (`TrainingDomain`): a convex polygon in
+(`vgs`, `vds`) and an interval per other input. `GuidedExtrapolation` works in coordinates normalised by
+the domain's extent along each input, so a distance mixes volts and degrees on equal terms. Inside, it
+is the evaluator. Outside, with `p_b` the nearest domain point and `d = |p − p_b|`:
+
+```
+f(p) = f(p_b) + ∇f(p_b)·(p − p_b)                     charges stop here
+     + G_x · (v_own − v_own,b) · d / d₀                currents; d₀ = 0.05 (5 % of the extent)
+```
+
+`v_own` is `vds` for `Id`, `vgs` for `IgGs`, `vgs − vds` for `IgGd`. The added term is a conductance on
+the constituent's own branch that grows with distance and vanishes, with its derivative, at the boundary
+([P1] Fig. 6.12b). `G_x` is stored per current in `Extrapolation.Gx`; `GuidedExtrapolation.DefaultGx` is
+ten times the largest training conductance, for the phases that write models.
+
+**The gradient is exact.** `p_b` moves with `p`, so the derivative of the linear continuation is
+`∇f(p_b) + Pᵀ H(p_b)(p − p_b)`, `P` being the projection's Jacobian — `ê êᵀ` beyond an edge, zero in a
+vertex's normal cone, one along an unclamped box axis. That is why the evaluators return the Hessian
+along a direction. Value and gradient are continuous across the boundary; across a vertex's normal cone,
+outside the domain, the gradient may jump. The polygon must be convex, or the nearest point — and with
+it the value — would jump outside it.
+
+Equations are not extrapolated: an equation is global by construction ([P1] §6.2.5.2).
+
+### 4.10 Drain–source symmetry (R-mc2-4)
+
+`Core.Symmetry: "Exchange"` (off by default — a field-plated power device is deliberately asymmetric,
+[P1] §6.5.5). The constituents are read for `vds ≥ 0`; for `vds < 0` the core evaluates them at the image
+`(vgs − vds, −vds)` ([P1] eq. 6.61) and transforms back: `Id` changes sign, `IgGs` and `IgGd` exchange
+([P1] eq. 6.64), `Qg` carries over and `Qd = −Qg′ − Qd′` ([P1] eq. 6.63 in charge form). Each gradient
+maps through the image's Jacobian (`∂/∂vgs = ∂′/∂vgs′`, `∂/∂vds = −∂′/∂vgs′ − ∂′/∂vds′`). Continuity at
+`vds = 0` is a property of correct data; MC-7/MC-8 report the jump.
+
+### 4.11 Grid evaluation (R-mc2-5)
+
+`ComposedCoreModel.EvaluateGrid` writes an HB time grid straight into the caller's `GridResult` — no
+per-sample arrays and no per-grid scratch (the base class's `EvaluateInto` loop allocates five buffers per
+call, and HB calls once per Newton iteration). `ComposedCoreGridTests` holds it at zero bytes with an
+allocation counter, never a timing.
+
 ## 5. Where it lives
 
 | Path | What |
 |---|---|
-| `src/Core/Devices/Composed/` | `ComposedModel` (records), `CmodelFile`, `ComposedNetworkTemplate`, `ComposedCoreProgram`, `ComposedModelCache`, `ComposedCoreModel`, `PeripheryScaling` |
+| `src/Core/Devices/Composed/` | `ComposedModel` (records), `CmodelFile`, `ComposedNetworkTemplate`, `ComposedCoreProgram`, `ComposedModelCache`, `ComposedCoreModel`, `PeripheryScaling`; MC-2: `CubicBSpline`, `RuntimeEvaluators` (`TableEvaluator`, `AnnEvaluator`), `GuidedExtrapolation` (with `TrainingDomain`), `ComposedArrays` (the payload arrays, built and validated) |
+| `src/Engine/Modeling/TensorSplineFit.cs` | fitting a table's coefficients, with smoothing |
 | `src/Core/Elaboration/Elaborator.cs` | `ComposedFetCell`, `ResolveComposedParameters`, the core's node expansion and temperature warnings |
 | `src/Design/Schematic/ComposedFetSymbolProvider.cs` | the symbol rule above |
 | `src/Cli/Check.cs`, `DocumentKinds.cs` | `check` on a `.cmodel` |
 
-## 6. Gates (MC-1)
+## 6. Gates (MC-1, MC-2)
 
 `tests/Core.Tests/Composed/CmodelFormatTests`; `tests/Engine.Tests/Composed/` — `ComposedFetEquivalenceTests`
 (against an SDD with the same expressions in the same network: DC to 1e-12, S at three biases to 1e-9, HB
 harmonics to 1e-9), `PeripheryScalingTests`, `ComposedFetProbeTests`, `ComposedFetTemperatureTests`;
 `tests/Ui.Tests/ModelComposer/` — `CheckCmodelTests`, `ComposedFetSymbolTests`. The shared device is
 `tests/Core.Tests/Composed/Support/ComposedTestModels.cs`, linked into the other two projects.
+
+MC-2: `tests/Core.Tests/Composed/AnnEvaluatorTests` (value, gradient and Hessian-along-a-direction
+against finite differences, both activations); `tests/Engine.Tests/Composed/` — `TableEvaluatorTests`
+(the cubic's error bound, C² across a knot, λ = 0 is interpolation), `GuidedExtrapolationTests`
+(continuity across three edges, the exact Jacobian outside edges and vertices, 10⁴ finite points over ±10×
+the domain, a DC solve from 2.5 extents outside landing on the in-domain answer), `DrainSourceSymmetryTests`
+(eq. 6.55 at the terminals in both half-spaces, the swapped-terminal circuit), `ComposedCoreGridTests`
+(zero bytes per grid; an ANN model against its equation twin in DC, S and HB to 1e-9). Their models are
+`tests/Engine.Tests/Composed/Support/RuntimeTestModels.cs`: hand-set networks that also write themselves
+out as the expression they compute, and a table-and-ANN model over a pentagon with an oblique edge.

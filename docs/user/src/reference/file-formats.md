@@ -139,7 +139,10 @@ model always writes the same bytes.
 | `BasePeriphery` | `Fingers` (N0) and `UnitWidth` (`"125 um"`) of the device the model was extracted from. |
 | `Temperature` | `{ "Mode": "Single", "T0": 25 }` — valid at one temperature, with no temperature input — or `{ "Mode": "Range", "Tmin": …, "Tmax": … }`, in °C. |
 | `Network` | `Netlist`: `.cnl` text holding one `define` block with exactly six pins — extrinsic gate, drain, source, then intrinsic gate, drain, source — and its element values as variables. `Scaling`: each variable's rule, `fixed` (the default), `perFinger` or `perFingerInverse`. |
-| `Core.Constituents` | `Id`, `Ig`, `Qg` and `Qd`, each `{ "Method", "Inputs", … }`. An `Equation` constituent carries `Expression` and `Parameters` (named constants); `Ig` carries two expressions, `IgGs` and `IgGd`. Inputs are `vgs` and `vds` in volts, and `T` in °C for a `Range` model. Currents are in A, charges in C. |
+| `Core.Constituents` | `Id`, `Ig`, `Qg` and `Qd`, each `{ "Method", "Inputs", … }`, the method one of `Equation`, `Table` or `ANN`. An `Equation` carries `Expression` and `Parameters` (named constants). A `Table` names its arrays in `Table` — a grid of values and the coefficients of the smooth spline through them — and records its `Smoothing`. An `ANN` names its arrays in `Network` and its hidden layers' `Activation`, `Tanh` or `Sigmoid`. `Ig` carries two of whichever its method uses, `IgGs` and `IgGd`. Inputs are `vgs` and `vds` in volts, and `T` in °C for a `Range` model. Currents are in A, charges in C. |
+| `Domain` (Table, ANN) | Where the constituent was trained: `Polygon`, a convex list of `[vgs, vds]` vertices, and `Box`, an interval per other input. Outside it the constituent is continued in a straight line from the nearest point of the domain; a current also gains a conductance that grows with the distance. |
+| `Core.Symmetry` | `Exchange`: the constituents describe `vds ≥ 0`, and a negative `vds` is the same device with drain and source exchanged. Absent for an asymmetric device. |
+| `Extrapolation` | `Gx`: for each table or ANN current (`Id`, `IgGs`, `IgGd`), the conductance in S that current gains outside its domain. |
 | `Symbol` | A library symbol's name, or a `.csym` path relative to the `.cmodel`. |
 | `Provenance` | `Created`, `CircuitRfVersion`, `Sources` (`Path`, `Sha256`) and `SettingsDigest`. |
 

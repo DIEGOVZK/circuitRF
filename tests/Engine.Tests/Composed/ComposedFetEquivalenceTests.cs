@@ -109,10 +109,10 @@ public sealed class ComposedFetEquivalenceTests(ITestOutputHelper output)
         return new Elaborator(lib).Elaborate(tb);
     }
 
-    internal static Dictionary<string, double> Dc(string cnl)
+    internal static Dictionary<string, double> Dc(string cnl, AnalysisSettings? settings = null)
     {
         var nl = Elaborate(cnl);
-        var dc = NonlinearDcEngine.Run(nl);
+        var dc = NonlinearDcEngine.Run(nl, settings);
         Assert.True(dc.Converged);
         var map = new Dictionary<string, double>(StringComparer.Ordinal);
         var (rows, names) = nl.Nodes.ResultRows(excludeInternal: false);

@@ -33,6 +33,10 @@ public sealed record ComposedModel
 
     public required CoreConstituents Core { get; init; }
 
+    /// <summary>Guided extrapolation's settings (R-mc2-3): present when a current constituent is a
+    /// table or an ANN, absent for an all-equation model.</summary>
+    public ModelExtrapolation? Extrapolation { get; init; }
+
     /// <summary>A library symbol name, or a <c>.csym</c> path relative to the <c>.cmodel</c>. Null =
     /// the standard three-terminal FET symbol.</summary>
     public string? Symbol { get; init; }
@@ -73,22 +77,74 @@ public sealed record ScalingRule(string Variable, string Rule);
 
 /// <summary>The four constituents of D4, and the optional dispersive <c>IdRF</c>.</summary>
 public sealed record CoreConstituents(
-    Constituent Id, Constituent Ig, Constituent Qg, Constituent Qd, Constituent? IdRF = null);
+    Constituent Id, Constituent Ig, Constituent Qg, Constituent Qd, Constituent? IdRF = null)
+{
+    /// <summary>The drain–source symmetry option (R-mc2-4). Off by default: a field-plated power
+    /// device is deliberately asymmetric ([P1] §6.5.5).</summary>
+    public DrainSourceSymmetry Symmetry { get; init; } = DrainSourceSymmetry.None;
+}
 
 /// <summary>
-/// One constituent: its method, the inputs it may read, and the method's payload. For an
-/// <see cref="Method"/> of <c>Equation</c> the payload is <see cref="Expressions"/> — one entry,
-/// <c>Expression</c>, for <c>Id</c>/<c>Qg</c>/<c>Qd</c>/<c>IdRF</c>; two, <c>IgGs</c> and <c>IgGd</c>, for
-/// <c>Ig</c> — and <see cref="Parameters"/>, the named constants the expressions read.
+/// <see cref="Exchange"/>: the constituents are defined for <c>vds ≥ 0</c>, and a point with
+/// <c>vds &lt; 0</c> is evaluated at its image <c>(vgs − vds, −vds)</c> with drain and source exchanged
+/// ([P1] §6.5, eqs. 6.61–6.64).
+/// </summary>
+public enum DrainSourceSymmetry { None, Exchange }
+
+/// <summary>
+/// <c>Extrapolation</c>: the added conductance <c>G_x</c> of each current payload that is a table or
+/// an ANN, by payload — <c>Id</c>, <c>IgGs</c>, <c>IgGd</c> (and <c>IdRF</c>). In siemens, at the
+/// base periphery.
+/// </summary>
+public sealed record ModelExtrapolation(IReadOnlyDictionary<string, double> Gx)
+{
+    /// <summary>The order the writer puts them in.</summary>
+    public static readonly IReadOnlyList<string> Keys = ["Id", "IgGs", "IgGd", "IdRF"];
+}
+
+/// <summary>
+/// One constituent: its method, the inputs it may read, and the method's payload, held in
+/// <see cref="Expressions"/> by key — one entry for <c>Id</c>/<c>Qg</c>/<c>Qd</c>/<c>IdRF</c>, keyed by the
+/// method (<see cref="PayloadKey"/>); two, <c>IgGs</c> and <c>IgGd</c>, for <c>Ig</c>.
+/// <list type="bullet">
+/// <item><c>Equation</c>: each entry is an expression; <see cref="Parameters"/> are the named
+/// constants it reads.</item>
+/// <item><c>Table</c>: each entry names arrays <c>&lt;name&gt;.values</c> and
+/// <c>&lt;name&gt;.coefficients</c>; <see cref="Smoothing"/> is the λ the coefficients were fitted with.</item>
+/// <item><c>ANN</c>: each entry names a network's arrays (<see cref="ComposedArrays.Ann"/>);
+/// <see cref="Activation"/> is its hidden layers' activation.</item>
+/// </list>
+/// A table or ANN carries its training <see cref="Domain"/>; an equation is global and has none.
 /// </summary>
 public sealed record Constituent
 {
     public const string EquationMethod = "Equation";
+    public const string TableMethod    = "Table";
+    public const string AnnMethod      = "ANN";
 
     public required string Method { get; init; }
     public required IReadOnlyList<string> Inputs { get; init; }
     public IReadOnlyList<KeyValuePair<string, string>> Expressions { get; init; } = [];
     public IReadOnlyList<KeyValuePair<string, double>> Parameters  { get; init; } = [];
+
+    /// <summary>Where a table or ANN was trained (R-mc2-3). Null for an equation.</summary>
+    public TrainingDomain? Domain { get; init; }
+
+    /// <summary>A table's smoothing weight λ; 0 is interpolation (R-mc2-1).</summary>
+    public double? Smoothing { get; init; }
+
+    /// <summary>An ANN's hidden-layer activation (R-mc2-2).</summary>
+    public AnnActivation? Activation { get; init; }
+
+    /// <summary>The single-payload key of this method: <c>Expression</c>, <c>Table</c> or <c>Network</c>.</summary>
+    public string PayloadKey => PayloadKeyOf(Method);
+
+    public static string PayloadKeyOf(string method) => method switch
+    {
+        TableMethod => "Table",
+        AnnMethod   => "Network",
+        _           => "Expression",
+    };
 
     /// <summary>One equation by its payload key, or null.</summary>
     public string? Expression(string key)
@@ -102,6 +158,29 @@ public sealed record Constituent
             Inputs      = inputs,
             Expressions = [new("Expression", expression)],
             Parameters  = [.. parameters.Select(p => new KeyValuePair<string, double>(p.Name, p.Value))],
+        };
+
+    /// <summary>A table constituent naming the arrays under <paramref name="name"/>.</summary>
+    public static Constituent Table(string name, IReadOnlyList<string> inputs, TrainingDomain domain,
+                                    double smoothing = 0.0)
+        => new() { Method = TableMethod, Inputs = inputs, Expressions = [new("Table", name)],
+                   Domain = domain, Smoothing = smoothing };
+
+    /// <summary>An ANN constituent naming the arrays under <paramref name="name"/>.</summary>
+    public static Constituent Ann(string name, IReadOnlyList<string> inputs, TrainingDomain domain,
+                                  AnnActivation activation = AnnActivation.Tanh)
+        => new() { Method = AnnMethod, Inputs = inputs, Expressions = [new("Network", name)],
+                   Domain = domain, Activation = activation };
+
+    /// <summary>A gate-conduction pair by table or ANN: the two branches' array names.</summary>
+    public static Constituent Gate(string method, string igGs, string igGd, IReadOnlyList<string> inputs,
+                                   TrainingDomain domain)
+        => new()
+        {
+            Method = method, Inputs = inputs, Expressions = [new("IgGs", igGs), new("IgGd", igGd)],
+            Domain = domain,
+            Smoothing  = method == TableMethod ? 0.0 : null,
+            Activation = method == AnnMethod ? AnnActivation.Tanh : null,
         };
 
     /// <summary>A gate-conduction equation pair: the gate–source and gate–drain branch currents.</summary>

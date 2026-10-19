@@ -37,8 +37,9 @@ public static class CmodelFile
     public const string ModelEntry    = "model.json";
     public const string ArraysFolder  = "arrays/";
 
-    /// <summary>The methods a constituent may name in this build. MC-2 adds Table and ANN.</summary>
-    public static readonly IReadOnlyList<string> KnownMethods = [Constituent.EquationMethod];
+    /// <summary>The methods a constituent may name in this build.</summary>
+    public static readonly IReadOnlyList<string> KnownMethods =
+        [Constituent.EquationMethod, Constituent.TableMethod, Constituent.AnnMethod];
 
     /// <summary>The trap models this build knows (D10). MC-10 adds the rest.</summary>
     public static readonly IReadOnlyList<string> KnownTrapModels = ["None"];
@@ -116,9 +117,21 @@ public static class CmodelFile
         if (version < 1)
             throw new CmodelFormatException("FormatVersion", $"{version} is not a format version.");
 
-        foreach (string later in (string[])["Extrapolation", "Thermal"])
-            if (root.TryGetProperty(later, out _))
-                throw new CmodelFormatException(later, "this circuitRF does not read this field yet.");
+        if (root.TryGetProperty("Thermal", out _))
+            throw new CmodelFormatException("Thermal", "this circuitRF does not read this field yet.");
+
+        ModelExtrapolation? extrapolation = null;
+        if (root.TryGetProperty("Extrapolation", out var ex))
+        {
+            var gxe = Obj(ex, "Gx", "Extrapolation.Gx");
+            var gx = new Dictionary<string, double>(StringComparer.Ordinal);
+            foreach (var p in gxe.EnumerateObject())
+                gx[p.Name] = Num(gxe, p.Name, $"Extrapolation.Gx.{p.Name}");
+            foreach (var p in ex.EnumerateObject())
+                if (p.Name != "Gx")
+                    throw new CmodelFormatException($"Extrapolation.{p.Name}", "it is not a field of Extrapolation; the field is Gx.");
+            extrapolation = new ModelExtrapolation(gx);
+        }
 
         if (root.TryGetProperty("Traps", out var traps))
         {
@@ -152,7 +165,19 @@ public static class CmodelFile
             }
         }
 
-        var core = Obj(Obj(root, "Core"), "Constituents", "Core.Constituents");
+        var coreObj = Obj(root, "Core");
+        var symmetry = DrainSourceSymmetry.None;
+        if (coreObj.TryGetProperty("Symmetry", out _))
+        {
+            string option = Str(coreObj, "Symmetry", "Core.Symmetry");
+            symmetry = option switch
+            {
+                "None"     => DrainSourceSymmetry.None,
+                "Exchange" => DrainSourceSymmetry.Exchange,
+                _ => throw new CmodelFormatException("Core.Symmetry", $"'{option}' is not None or Exchange."),
+            };
+        }
+        var core = Obj(coreObj, "Constituents", "Core.Constituents");
         Constituent One(string name, bool optional = false)
         {
             string field = $"Core.Constituents.{name}";
@@ -200,7 +225,8 @@ public static class CmodelFile
                                               Str(bp, "UnitWidth", "BasePeriphery.UnitWidth")),
             Temperature   = temperature,
             Network       = new ExtrinsicNetwork(Str(net, "Netlist", "Network.Netlist"), scaling),
-            Core          = new CoreConstituents(One("Id"), One("Ig"), One("Qg"), One("Qd"), idRf),
+            Core          = new CoreConstituents(One("Id"), One("Ig"), One("Qg"), One("Qd"), idRf) { Symmetry = symmetry },
+            Extrapolation = extrapolation,
             Symbol        = symbol,
             Provenance    = provenance,
         };
@@ -213,12 +239,30 @@ public static class CmodelFile
 
         var expressions = new List<KeyValuePair<string, string>>();
         var parameters  = new List<KeyValuePair<string, double>>();
+        TrainingDomain? domain = null;
+        double? smoothing = null;
+        AnnActivation? activation = null;
         foreach (var p in c.EnumerateObject())
         {
             switch (p.Name)
             {
                 case "Method":
                 case "Inputs":
+                    break;
+                case "Domain":
+                    domain = ParseDomain(p.Value, $"{field}.Domain");
+                    break;
+                case "Smoothing":
+                    smoothing = Num(c, "Smoothing", $"{field}.Smoothing");
+                    break;
+                case "Activation":
+                    string act = Str(c, "Activation", $"{field}.Activation");
+                    activation = act switch
+                    {
+                        "Tanh"    => AnnActivation.Tanh,
+                        "Sigmoid" => AnnActivation.Sigmoid,
+                        _ => throw new CmodelFormatException($"{field}.Activation", $"'{act}' is not Tanh or Sigmoid."),
+                    };
                     break;
                 case "Parameters":
                     if (p.Value.ValueKind != JsonValueKind.Object)
@@ -244,7 +288,44 @@ public static class CmodelFile
             Inputs      = Strings(c, "Inputs", $"{field}.Inputs"),
             Expressions = expressions,
             Parameters  = parameters,
+            Domain      = domain,
+            Smoothing   = smoothing,
+            Activation  = activation,
         };
+    }
+
+    private static TrainingDomain ParseDomain(JsonElement e, string field)
+    {
+        if (e.ValueKind != JsonValueKind.Object) throw new CmodelFormatException(field, "it is not an object.");
+        if (!e.TryGetProperty("Polygon", out var poly) || poly.ValueKind != JsonValueKind.Array)
+            throw new CmodelFormatException($"{field}.Polygon", "it is missing or not a list of [vgs, vds] vertices.");
+        var vertices = new List<(double, double)>();
+        foreach (var v in poly.EnumerateArray())
+        {
+            if (v.ValueKind != JsonValueKind.Array || v.GetArrayLength() != 2
+                || v[0].ValueKind != JsonValueKind.Number || v[1].ValueKind != JsonValueKind.Number)
+                throw new CmodelFormatException($"{field}.Polygon", "a vertex is not [vgs, vds].");
+            vertices.Add((v[0].GetDouble(), v[1].GetDouble()));
+        }
+
+        var box = new List<KeyValuePair<string, (double, double)>>();
+        if (e.TryGetProperty("Box", out var b))
+        {
+            if (b.ValueKind != JsonValueKind.Object)
+                throw new CmodelFormatException($"{field}.Box", "it is not an object of input → [lo, hi].");
+            foreach (var p in b.EnumerateObject())
+            {
+                var r = p.Value;
+                if (r.ValueKind != JsonValueKind.Array || r.GetArrayLength() != 2
+                    || r[0].ValueKind != JsonValueKind.Number || r[1].ValueKind != JsonValueKind.Number)
+                    throw new CmodelFormatException($"{field}.Box.{p.Name}", "it is not [lo, hi].");
+                box.Add(new(p.Name, (r[0].GetDouble(), r[1].GetDouble())));
+            }
+        }
+        foreach (var p in e.EnumerateObject())
+            if (p.Name is not ("Polygon" or "Box"))
+                throw new CmodelFormatException($"{field}.{p.Name}", "it is not a field of a Domain; the fields are Polygon and Box.");
+        return new TrainingDomain(vertices, box);
     }
 
     // ── Validation ────────────────────────────────────────────────────────────
@@ -285,22 +366,26 @@ public static class CmodelFile
         var inputs = new HashSet<string>(StringComparer.Ordinal) { ComposedCoreProgram.Vgs, ComposedCoreProgram.Vds };
         if (t.Mode == TemperatureMode.Range) inputs.Add(ComposedCoreProgram.T);
 
-        ValidateConstituent(m.Core.Id, "Id", ["Expression"], inputs);
-        ValidateConstituent(m.Core.Ig, "Ig", ["IgGs", "IgGd"], inputs);
-        ValidateConstituent(m.Core.Qg, "Qg", ["Expression"], inputs);
-        ValidateConstituent(m.Core.Qd, "Qd", ["Expression"], inputs);
-        if (m.Core.IdRF is { } idRf) ValidateConstituent(idRf, "IdRF", ["Expression"], inputs);
+        ValidateConstituent(m, m.Core.Id, "Id", inputs);
+        ValidateConstituent(m, m.Core.Ig, "Ig", inputs);
+        ValidateConstituent(m, m.Core.Qg, "Qg", inputs);
+        ValidateConstituent(m, m.Core.Qd, "Qd", inputs);
+        if (m.Core.IdRF is { } idRf) ValidateConstituent(m, idRf, "IdRF", inputs);
+        ValidateExtrapolation(m);
 
         if (m.Symbol is { Length: 0 })
             throw new CmodelFormatException("Symbol", "it is empty; leave it out for the standard FET symbol.");
     }
 
-    private static void ValidateConstituent(Constituent c, string name, string[] keys, HashSet<string> allowed)
+    private static void ValidateConstituent(ComposedModel m, Constituent c, string name, HashSet<string> allowed)
     {
         string field = $"Core.Constituents.{name}";
         if (!KnownMethods.Contains(c.Method, StringComparer.Ordinal))
             throw new CmodelFormatException($"{field}.Method",
                 $"'{c.Method}' is not a known method; the known methods are {string.Join(", ", KnownMethods)}.");
+        string[] keys = name == "Ig" ? ["IgGs", "IgGd"] : [c.PayloadKey];
+        if (c.Inputs.Distinct(StringComparer.Ordinal).Count() != c.Inputs.Count)
+            throw new CmodelFormatException($"{field}.Inputs", "an input is listed twice.");
 
         foreach (string input in c.Inputs)
         {
@@ -317,7 +402,19 @@ public static class CmodelFile
         foreach (var e in c.Expressions)
             if (!keys.Contains(e.Key))
                 throw new CmodelFormatException($"{field}.{e.Key}",
-                    $"an {c.Method} {name} is {string.Join(" and ", keys)}; '{e.Key}' is not one of them.");
+                    $"{(c.Method == Constituent.TableMethod ? "a" : "an")} {c.Method} {name} is {string.Join(" and ", keys)}; '{e.Key}' is not one of them.");
+
+        if (c.Method != Constituent.EquationMethod)
+        {
+            ValidateRuntime(m, c, field, keys);
+            return;
+        }
+        if (c.Domain is not null)
+            throw new CmodelFormatException($"{field}.Domain", "an Equation is global and has no training domain.");
+        if (c.Smoothing is not null)
+            throw new CmodelFormatException($"{field}.Smoothing", "only a Table has a smoothing weight.");
+        if (c.Activation is not null)
+            throw new CmodelFormatException($"{field}.Activation", "only an ANN has an activation.");
 
         var names = new HashSet<string>(c.Inputs, StringComparer.Ordinal);
         foreach (var p in c.Parameters)
@@ -341,6 +438,103 @@ public static class CmodelFile
                     throw new CmodelFormatException(ef,
                         $"'{r}' is neither one of its inputs ({string.Join(", ", c.Inputs)}) nor one of its parameters.");
         }
+    }
+
+    /// <summary>A table or ANN: its inputs, its domain, its method's settings, and every array it names.</summary>
+    private static void ValidateRuntime(ComposedModel m, Constituent c, string field, string[] keys)
+    {
+        foreach (string needed in (string[])[ComposedCoreProgram.Vgs, ComposedCoreProgram.Vds])
+            if (!c.Inputs.Contains(needed))
+                throw new CmodelFormatException($"{field}.Inputs",
+                    $"a {c.Method} is trained over a (vgs, vds) domain, so its inputs include {needed}.");
+        if (c.Parameters.Count > 0)
+            throw new CmodelFormatException($"{field}.Parameters", "only an Equation has parameters.");
+        if (c.Method == Constituent.TableMethod)
+        {
+            if (c.Activation is not null)
+                throw new CmodelFormatException($"{field}.Activation", "only an ANN has an activation.");
+            if (c.Smoothing is { } l && !(double.IsFinite(l) && l >= 0))
+                throw new CmodelFormatException($"{field}.Smoothing", "the smoothing weight is a number ≥ 0.");
+        }
+        else if (c.Smoothing is not null)
+            throw new CmodelFormatException($"{field}.Smoothing", "only a Table has a smoothing weight.");
+
+        var domain = c.Domain ?? throw new CmodelFormatException($"{field}.Domain",
+            $"a {c.Method} stores the domain it was trained over; it is missing.");
+        ValidateDomain(domain, c.Inputs, $"{field}.Domain");
+
+        foreach (string key in keys)
+        {
+            if (c.Expression(key) is not { Length: > 0 })
+                throw new CmodelFormatException($"{field}.{key}", "it is missing; it names the payload's arrays.");
+            RuntimePayload.Build(m, c, key, $"{field}.{key}");
+        }
+    }
+
+    private static void ValidateDomain(TrainingDomain d, IReadOnlyList<string> inputs, string field)
+    {
+        var poly = d.Polygon;
+        if (poly.Count < 3)
+            throw new CmodelFormatException($"{field}.Polygon", "a polygon has at least three vertices.");
+        if (poly.Any(v => !double.IsFinite(v.Vgs) || !double.IsFinite(v.Vds)))
+            throw new CmodelFormatException($"{field}.Polygon", "a vertex is not finite.");
+
+        // Convex, with positive area: every turn has the sign of the whole (collinear turns allowed).
+        double area = 0.0;
+        int n = poly.Count;
+        for (int k = 0; k < n; k++)
+            area += poly[k].Vgs * poly[(k + 1) % n].Vds - poly[(k + 1) % n].Vgs * poly[k].Vds;
+        double scale = (poly.Max(v => v.Vgs) - poly.Min(v => v.Vgs)) * (poly.Max(v => v.Vds) - poly.Min(v => v.Vds));
+        if (!(Math.Abs(area) > 1e-12 * scale) || scale <= 0)
+            throw new CmodelFormatException($"{field}.Polygon", "the polygon encloses no area.");
+        for (int k = 0; k < n; k++)
+        {
+            var a = poly[k]; var b = poly[(k + 1) % n]; var c = poly[(k + 2) % n];
+            double turn = (b.Vgs - a.Vgs) * (c.Vds - b.Vds) - (b.Vds - a.Vds) * (c.Vgs - b.Vgs);
+            if (turn * Math.Sign(area) < -1e-12 * scale)
+                throw new CmodelFormatException($"{field}.Polygon",
+                    "the polygon is not convex; the nearest-point continuation needs a convex domain.");
+        }
+
+        var boxed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (input, (lo, hi)) in d.Box)
+        {
+            if (input is ComposedCoreProgram.Vgs or ComposedCoreProgram.Vds || !inputs.Contains(input))
+                throw new CmodelFormatException($"{field}.Box.{input}",
+                    "the box holds the inputs other than vgs and vds, and this is not one of them.");
+            if (!(double.IsFinite(lo) && double.IsFinite(hi) && lo < hi))
+                throw new CmodelFormatException($"{field}.Box.{input}", "lo must be below hi.");
+            boxed.Add(input);
+        }
+        foreach (string input in inputs)
+            if (input is not (ComposedCoreProgram.Vgs or ComposedCoreProgram.Vds) && !boxed.Contains(input))
+                throw new CmodelFormatException($"{field}.Box.{input}", "the input's training interval is missing.");
+    }
+
+    /// <summary>Every table or ANN current payload has its <c>G_x</c>, and nothing else does.</summary>
+    private static void ValidateExtrapolation(ComposedModel m)
+    {
+        var needed = new HashSet<string>(StringComparer.Ordinal);
+        if (m.Core.Id.Method != Constituent.EquationMethod) needed.Add("Id");
+        if (m.Core.Ig.Method != Constituent.EquationMethod) { needed.Add("IgGs"); needed.Add("IgGd"); }
+        if (m.Core.IdRF is { } idRf && idRf.Method != Constituent.EquationMethod) needed.Add("IdRF");
+
+        var gx = m.Extrapolation?.Gx ?? new Dictionary<string, double>();
+        foreach (var (key, value) in gx)
+        {
+            if (!ModelExtrapolation.Keys.Contains(key))
+                throw new CmodelFormatException($"Extrapolation.Gx.{key}",
+                    $"'{key}' is not a current payload; they are {string.Join(", ", ModelExtrapolation.Keys)}.");
+            if (!needed.Contains(key))
+                throw new CmodelFormatException($"Extrapolation.Gx.{key}",
+                    "that current is an Equation, which is global and is not extrapolated.");
+            if (!(double.IsFinite(value) && value > 0))
+                throw new CmodelFormatException($"Extrapolation.Gx.{key}", "it is not a positive conductance.");
+        }
+        foreach (string key in ModelExtrapolation.Keys)
+            if (needed.Contains(key) && !gx.ContainsKey(key))
+                throw new CmodelFormatException($"Extrapolation.Gx.{key}",
+                    "it is missing; a table or ANN current is extrapolated with an added conductance G_x.");
     }
 
     /// <summary>The unit width in metres, or null when the text is not a number and a length unit.</summary>
@@ -424,6 +618,7 @@ public static class CmodelFile
             w.WriteEndObject();
 
             w.WriteStartObject("Core");
+            if (m.Core.Symmetry != DrainSourceSymmetry.None) w.WriteString("Symmetry", m.Core.Symmetry.ToString());
             w.WriteStartObject("Constituents");
             WriteConstituent(w, "Id", m.Core.Id);
             WriteConstituent(w, "Ig", m.Core.Ig);
@@ -432,6 +627,16 @@ public static class CmodelFile
             if (m.Core.IdRF is { } idRf) WriteConstituent(w, "IdRF", idRf);
             w.WriteEndObject();
             w.WriteEndObject();
+
+            if (m.Extrapolation is { } ex)
+            {
+                w.WriteStartObject("Extrapolation");
+                w.WriteStartObject("Gx");
+                foreach (string key in ModelExtrapolation.Keys)
+                    if (ex.Gx.TryGetValue(key, out double gx)) w.WriteNumber(key, gx);
+                w.WriteEndObject();
+                w.WriteEndObject();
+            }
 
             if (m.Symbol is { } symbol) w.WriteString("Symbol", symbol);
 
@@ -464,9 +669,40 @@ public static class CmodelFile
         foreach (string i in c.Inputs) w.WriteStringValue(i);
         w.WriteEndArray();
         foreach (var e in c.Expressions) w.WriteString(e.Key, e.Value);
-        w.WriteStartObject("Parameters");
-        foreach (var p in c.Parameters) w.WriteNumber(p.Key, p.Value);
-        w.WriteEndObject();
+        if (c.Activation is { } act) w.WriteString("Activation", act.ToString());
+        if (c.Smoothing is { } lambda) w.WriteNumber("Smoothing", lambda);
+        if (c.Domain is { } d)
+        {
+            w.WriteStartObject("Domain");
+            w.WriteStartArray("Polygon");
+            foreach (var (vgs, vds) in d.Polygon)
+            {
+                w.WriteStartArray();
+                w.WriteNumberValue(vgs);
+                w.WriteNumberValue(vds);
+                w.WriteEndArray();
+            }
+            w.WriteEndArray();
+            if (d.Box.Count > 0)
+            {
+                w.WriteStartObject("Box");
+                foreach (var (input, (lo, hi)) in d.Box)
+                {
+                    w.WriteStartArray(input);
+                    w.WriteNumberValue(lo);
+                    w.WriteNumberValue(hi);
+                    w.WriteEndArray();
+                }
+                w.WriteEndObject();
+            }
+            w.WriteEndObject();
+        }
+        if (c.Method == Constituent.EquationMethod)
+        {
+            w.WriteStartObject("Parameters");
+            foreach (var p in c.Parameters) w.WriteNumber(p.Key, p.Value);
+            w.WriteEndObject();
+        }
         w.WriteEndObject();
     }
 
