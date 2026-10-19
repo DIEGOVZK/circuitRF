@@ -425,6 +425,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         ImportBoardCommand.NotifyCanExecuteChanged();
         ImportGerberCommand.NotifyCanExecuteChanged();
         ImportComponentCommand.NotifyCanExecuteChanged();
+        ImportSchematicCommand.NotifyCanExecuteChanged();
         ImportDataCommand.NotifyCanExecuteChanged();
         ImportPdkCommand.NotifyCanExecuteChanged();
         ImportModelCardCommand.NotifyCanExecuteChanged();

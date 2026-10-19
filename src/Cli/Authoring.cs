@@ -21,6 +21,7 @@
 using CircuitRF.Design.Cells;
 using CircuitRF.Design.Layout;
 using CircuitRF.Design.Layout.Interchange;
+using CircuitRF.Design.Schematic.Import;
 using CircuitRF.Design.Workspace;
 
 namespace CircuitRF.Cli;
@@ -325,6 +326,7 @@ public static class Authoring
         // brief-sar-11 — anatomy into a .c3d: its own argument set, and the same one-verb-with-nouns surface.
         if (noun == "voxels") return AnatomyImportVerb.RunVoxels(args[1..]);
         if (noun == "surfaces") return AnatomyImportVerb.RunSurfaces(args[1..]);
+        if (noun == "schematic") return ImportSchematic(args[1..]);
         if (noun != "part")
         {
             JsonRun.Report(CliDiagnostics.ImportUnknownNoun(noun));
@@ -593,6 +595,102 @@ public static class Authoring
         => string.Join(Environment.NewLine, candidates.Select(c =>
             $"{c.DisplayName}\t{VariantKey(c)}\t{c.Description}\t{c.FormatSummary}"));
 
+    // ── import schematic ──────────────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// brief-schimp-5 R-si5-5: a schematic design file as a new cell — the GUI's File ▸ Import ▸ Schematic…, headless.
+    /// <see cref="SchematicImport.Read"/> classifies and reads it and <see cref="SchematicImport.Import"/> builds and
+    /// writes the cell, the two calls the dialog makes; what is here is the dialog's fields as flags. Every default is
+    /// the dialog's: the cell is named after the file, every part is mapped by the map, no port is made.
+    ///
+    /// <para><b>Exit 1 when the connectivity check is not matched — with the cell written.</b> The import completes so
+    /// the user can see what is wrong (overview D8); a build machine must still not read a mismatch as success.</para>
+    /// </summary>
+    private static int ImportSchematic(string[] args)
+    {
+        string? source = null, into = null, cell = null, codePageText = null;
+        var ports = new List<string>();
+        var symbolCells = new List<string>();
+        bool list = false;
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            switch (args[i])
+            {
+                case "--into" when i + 1 < args.Length: into = args[++i]; break;
+                case "--cell" when i + 1 < args.Length: cell = args[++i]; break;
+                case "--port" when i + 1 < args.Length: ports.Add(args[++i]); break;
+                case "--symbol-cell" when i + 1 < args.Length: symbolCells.Add(args[++i]); break;
+                case "--codepage" when i + 1 < args.Length: codePageText = args[++i]; break;
+                case "--list": list = true; break;
+                default:
+                    if (args[i].StartsWith('-')) { JsonRun.Report(CliDiagnostics.ImportUnknownOption(args[i])); return ImportUsage(); }
+                    if (source is not null) { JsonRun.Report(CliDiagnostics.ImportSchematicArgs("one schematic file, please.")); return ImportUsage(); }
+                    source = args[i];
+                    break;
+            }
+        }
+
+        if (source is null) { JsonRun.Report(CliDiagnostics.ImportSchematicArgs("a schematic design file is required.")); return ImportUsage(); }
+        JsonRun.InputPath = source;
+        int? codePage = null;
+        if (codePageText is not null)
+        {
+            if (!int.TryParse(codePageText, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int cp) || cp <= 0)
+                return JsonRun.Fail(CliDiagnostics.ImportSchematicArgs($"--codepage takes a code page number (1252, 932, …), not '{codePageText}'."));
+            codePage = cp;
+        }
+        if (!File.Exists(source)) return JsonRun.Fail(CliDiagnostics.ImportSourceNotFound(source));
+
+        var read = SchematicImport.Read(source, codePage);
+        if (!read.Ok) return JsonRun.Fail(CliDiagnostics.ImportRefused(read.Refusal!));
+        var design = read.Schematic!;
+        Console.Error.WriteLine($"[circuitRF] format: {SchematicImport.FormatName(read.Kind)}"
+                              + (design.Version is { Length: > 0 } v ? $", version {v}" : ""));
+
+        var options = new SchematicImportOptions { Ports = ports, SymbolCells = symbolCells };
+        if (list) return ListSchematic(design, options);
+
+        if (into is null) { JsonRun.Report(CliDiagnostics.ImportSchematicArgs("--into <workspace-or-dir> says where the cell is created.")); return ImportUsage(); }
+        string parentDir = Path.GetFullPath(into);
+        if (File.Exists(parentDir) && Path.GetFileName(parentDir).Equals(".cws", StringComparison.OrdinalIgnoreCase))
+            parentDir = Path.GetDirectoryName(parentDir)!;
+        if (!Directory.Exists(parentDir)) return JsonRun.Fail(CliDiagnostics.NewParentNotFound(parentDir));
+        if (WorkspaceCreate.UnwritableParentRefusal(parentDir, "The schematic was not imported") is { } unwritable)
+            return JsonRun.Fail(CliDiagnostics.NewRefused(unwritable));
+
+        cell ??= SchematicImportMap.CellNameFor(Path.GetFileNameWithoutExtension(source));
+        var result = SchematicImport.Import(design, parentDir, cell, options);
+        foreach (string m in result.Messages)
+        { Console.Error.WriteLine($"[circuitRF] {m}"); JsonRun.Note(CliDiagnostics.ImportMessage(m)); }
+        if (!result.Ok) return JsonRun.Fail(CliDiagnostics.ImportRefused(result.Refusal!));
+
+        Console.WriteLine(result.CellDir);
+        JsonRun.AddOutput("cell", result.CellDir!);
+        Console.WriteLine(result.SchematicPath);
+        JsonRun.AddOutput("schematic", result.SchematicPath!);
+        foreach (string created in result.CreatedCells)
+        { Console.WriteLine(created); JsonRun.AddOutput("cell", created); }
+
+        return result.Connectivity is { Matched: false } c
+            ? JsonRun.Fail(CliDiagnostics.ImportSchematicNotMatched(c.Summary))
+            : 0;
+    }
+
+    /// <summary><c>--list</c>: the pages, what each part becomes and what may be a port — the dialog's two tables, and
+    /// nothing written.</summary>
+    private static int ListSchematic(ForeignSchematic design, SchematicImportOptions options)
+    {
+        var mapping = SchematicImportMap.Decide(design, options.SymbolCells);
+        Console.WriteLine($"{(design.Hierarchical ? "sheets" : "pages")}\t{string.Join(", ", design.Pages.Select(p => p.Name))}");
+        foreach (var d in mapping)
+            Console.WriteLine($"part\t{d.Reference}\t{d.SymbolName}\t{d.Value ?? ""}\t{d.Describe()}");
+        foreach (var p in SchematicImport.PortCandidates(design, mapping))
+            Console.WriteLine($"port\t{p.Key}\t{p.Description}");
+        Console.Error.WriteLine($"[circuitRF] {mapping.Count} part(s); nothing was written");
+        return 0;
+    }
+
     // ── usage ─────────────────────────────────────────────────────────────────────────────────────
 
     private static int NewUsage()
@@ -607,6 +705,8 @@ public static class Authoring
         Console.Error.WriteLine(
             "Usage: circuitrf import part <file-or-folder> --into <workspace-or-dir> "
             + "[--cell N] [--variant V] [--tech <file.ctech>] [--add-layers] [--list-parts]\n"
+            + "       circuitrf import schematic <file> --into <workspace-or-dir> [--cell N] [--port <ref-or-net>]... "
+            + "[--symbol-cell <ref>]... [--codepage N] [--list]\n"
             + AnatomyImportVerb.UsageText);
         return 1;
     }

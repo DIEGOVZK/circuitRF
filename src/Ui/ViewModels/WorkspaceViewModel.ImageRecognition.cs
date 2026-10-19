@@ -100,9 +100,10 @@ public partial class WorkspaceViewModel : IImageDialogHost
     }
 
     /// <summary>The live row a paste reports on, its Cancel bound, and the paste registered as in flight.</summary>
-    private (IProgressMessage Live, RunControl Control, RunCancellation Cancellation, CancellationTokenSource Cts) BeginPaste(string command, object document)
+    private (IProgressMessage Live, RunControl Control, RunCancellation Cancellation, CancellationTokenSource Cts) BeginPaste(
+        string command, object document, string what = "reading the picture")
     {
-        string reading = $"{command}: reading the picture… (Esc to cancel)";
+        string reading = $"{command}: {what}… (Esc to cancel)";
         var live = Messages.BeginProgress(reading);
         live.Update(reading, "starting", indeterminate: true);
         var cts = new CancellationTokenSource();

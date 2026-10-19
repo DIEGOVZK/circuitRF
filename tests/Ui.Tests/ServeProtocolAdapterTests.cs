@@ -976,6 +976,7 @@ public sealed class ServeProtocolAdapterTests(ITestOutputHelper output) : IDispo
             // filed under "import"; `convert` stays single-mode. brief-sar-11 gave `import` its CLI nouns
             // back as modes — every one of them brings something in.
             ["import/part"]       = ["path"],
+            ["import/schematic"]  = ["path"],
             ["import/voxels"]     = ["path"],
             ["import/surfaces"]   = ["path"],
             ["convert/"]          = ["path"],

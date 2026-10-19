@@ -43,6 +43,11 @@ public static class ComponentPreviewRenderer
         LayoutView? view, Technology? tech, LayoutRenderTheme theme, int pxW, int pxH, double scaling)
         => Wrap(ComponentPreviewRaster.RasterFootprint(view, tech, theme, pxW, pxH, scaling));
 
+    /// <summary>A whole schematic, fitted — Import Schematic's preview (brief-schimp-5 R-si5-2).</summary>
+    /// <param name="pxW">PHYSICAL pixels — see <see cref="RenderSymbol"/>.</param>
+    public static Bitmap? RenderSchematic(SchematicEditModel? model, SchematicRenderTheme theme, int pxW, int pxH)
+        => Wrap(ComponentPreviewRaster.RasterSchematic(model, theme, pxW, pxH));
+
     /// <summary>
     /// The Skia raster as an Avalonia bitmap. The pixel buffer is COPIED by the
     /// <see cref="Bitmap"/> constructor, so the <see cref="SKBitmap"/> is disposed here and the

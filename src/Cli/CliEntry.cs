@@ -2513,6 +2513,7 @@ static int PrintHelp()
     Console.WriteLine("  new workspace <dir>    (a workspace, with a technology copied in)");
     Console.WriteLine("  new cell <ws> <name>   (a cell folder with its view files)");
     Console.WriteLine("  import part <file>     (a footprint and its symbol, as a cell)");
+    Console.WriteLine("  import schematic <file> (a .kicad_sch or EDIF design, as a new cell)");
     Console.WriteLine("  check   <path>         (is it well formed, does it resolve, is it sound)");
     Console.WriteLine("  explain <path>         (what did circuitRF resolve it to, and by which walk)");
     Console.WriteLine("  lvs     <path>         (does the artwork implement the drawing?)");
@@ -2632,6 +2633,13 @@ static int PrintHelp()
     Console.WriteLine("  --list-parts            report what the source holds, create nothing");
     Console.WriteLine("  --tech <file.ctech>     the technology the layers reconcile against");
     Console.WriteLine("  --add-layers            write the part's new layers into that technology");
+    Console.WriteLine("  import schematic <file> --into <workspace-or-dir>");
+    Console.WriteLine("  --cell N                the new cell's name. Default: the file's stem");
+    Console.WriteLine("  --port <ref-or-net>     make a connector or a net a circuitRF Port (repeat; none by default)");
+    Console.WriteLine("  --symbol-cell <ref>     keep a part as the source's own symbol, not a native R/L/C (repeat)");
+    Console.WriteLine("  --codepage N            an EDIF file's non-UTF-8 text encoding. Default 1252");
+    Console.WriteLine("  --list                  report the pages, the parts and the port candidates; write nothing");
+    Console.WriteLine("                          Exit 1 when the connectivity check is not matched (the cell is written).");
     Console.WriteLine();
     Console.WriteLine("check options:");
     Console.WriteLine("  <path>                  a workspace, a cell folder, or one .csch .csym");

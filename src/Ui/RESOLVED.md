@@ -39930,3 +39930,29 @@ panels are `Order = 0` in every shipped layout. Gate:
   DataContext; the view models hold no clipboard.
 - **A fitted curve is a `Trace`-class overlay item with id `fit:T3`**, drawn thin and dashed in its own colour by the
   canvas and skipped by `ImageOverlay.HitTest`, so a click on it still selects the trace beneath.
+
+## Import Schematic's ways in: the menu, the dialog, the two drops (brief-schimp-5, 2026-10-19)
+
+- **No import logic in `src/Ui`.** The dialog, the canvas drop and the tree drop call `SchematicImport.Read`,
+  `.PortCandidates`, `.Preview`, `.Import` and `.BuildInto` (`src/Design/Schematic/Import/`) and nothing past them;
+  `SchematicImportEntryPointTests.TheEntryPoints_HoldNoImportLogicOfTheirOwn` scans for the readers, the build, the
+  merge and the connectivity check by name.
+- **The preview builds into a SCRATCH folder laid out like the target** (`<tmp>/<cell>/schematic` beside
+  `<tmp>/<stem>_parts`), because the connectivity check resolves each symbol cell from disk and a relative cell
+  reference only means the same thing when the relative layout is the same. The plan (written / reused / refused) is
+  still taken against the REAL folder, read-only. Disposing the preview deletes the scratch folder. Gate: the preview's
+  pixels equal the imported `.csch`'s, rendered by the same `ComponentPreviewRaster.RasterSchematic`.
+- **A drop onto an unsaved schematic is REFUSED**, not deferred until save — the simpler of the two choices the brief
+  offered. `SchematicImport.BuildInto` refuses it itself ("Save the schematic first…"), because the part cells are
+  written beside the schematic's cell and an unsaved one has no "beside".
+- **Esc cancels a drop only before the build starts.** The read and the build run off the UI thread on the paste's live
+  row (`BeginPaste`, now taking the row's verb), but the build WRITES the part cells, so once it has begun it finishes
+  and its cells are used rather than left behind unexplained. The build reads a SNAPSHOT of the open schematic's names,
+  grid and folder, taken on the UI thread, so the editor's live lists are never enumerated from a worker.
+- **One undo step includes the connection grid.** A design drawn on a 50-mil grid needs the schematic's GridSize
+  lowered or points half a square apart would join; `SchematicImportEditCommand` puts that change in the same
+  `CommandBatch` as the paste, so Undo restores the grid too (gate: the serialized document is identical after Undo).
+- **The tree decides by CONTENT.** A dropped `.dsn` that is a kit symbol or a routing file still becomes a known file;
+  only `SchematicFileClassifier` saying "schematic" opens the dialog. A binary `.DSN` design classifies, and the dialog
+  shows the reader's refusal until SI-4 lands.
+- The menu row is **Sc_hematic…** — `_S` is taken by STEP… in the same submenu.

@@ -238,6 +238,24 @@ public static class ComponentPreviewRaster
 
     /// <summary>Pixels per world unit that fits the box in the pane with <see cref="Padding"/> clear
     /// on each side. The symbol's counterpart to <see cref="LayoutViewport.ZoomToFit"/>.</summary>
+    /// <summary>
+    /// A whole schematic, fitted to the pane — Import Schematic's preview (brief-schimp-5 R-si5-2), drawn by the
+    /// renderer the editor draws with, so what the dialog shows is what the opened cell shows. No grid: a preview is a
+    /// picture of the drawing, not a place to draw. Null when there is nothing to draw or no room.
+    /// </summary>
+    public static SKBitmap? RasterSchematic(SchematicEditModel? model, SchematicRenderTheme theme, int pxW, int pxH)
+    {
+        if (model is null || pxW < 8 || pxH < 8) return null;
+        var (rm, idx) = model.BuildRenderModel();
+        if (DocumentExtents.SchematicBox(model, rm) is not { } bb) return null;
+        double zoom = Fit(bb.X0, bb.Y0, bb.X1, bb.Y1, pxW, pxH);
+        if (zoom <= 0) return null;
+        double panX = (bb.X0 + bb.X1) * 0.5 - pxW / (2.0 * zoom);
+        double panY = (bb.Y0 + bb.Y1) * 0.5 - pxH / (2.0 * zoom);
+        return Raster(pxW, pxH, canvas =>
+            SchematicRenderer.Draw(canvas, (pxW, pxH), rm, idx, panX, panY, zoom, theme, excludeGrid: true));
+    }
+
     private static double Fit(double minX, double minY, double maxX, double maxY, int pxW, int pxH)
     {
         double w = Math.Max(maxX - minX, 1e-9), h = Math.Max(maxY - minY, 1e-9);

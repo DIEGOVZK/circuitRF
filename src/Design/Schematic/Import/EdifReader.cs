@@ -164,6 +164,7 @@ public static class EdifReader
             {
                 DeclaredNets = declared,
                 Notes = Notes(),
+                Version = "2 0 0",
             }, null);
         }
 

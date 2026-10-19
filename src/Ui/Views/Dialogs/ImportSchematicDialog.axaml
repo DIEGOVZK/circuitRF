@@ -1,0 +1,123 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:CircuitRF.Ui.ViewModels"
+        x:Class="CircuitRF.Ui.Views.Dialogs.ImportSchematicDialog"
+        x:DataType="vm:ImportSchematicViewModel"
+        Title="Import Schematic"
+        Width="1040" Height="680"
+        MinWidth="760" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <!-- brief-schimp-5 R-si5-2: the fields and the two tables on the left, the preview the import will write on the
+         right, its connectivity check under it before Import is pressed. -->
+    <Grid RowDefinitions="*,Auto" ColumnDefinitions="440,12,*" Margin="16,14,16,14">
+
+        <Grid Grid.Row="0" Grid.Column="0" RowDefinitions="Auto,Auto,*,Auto,Auto">
+
+            <StackPanel Grid.Row="0" Spacing="4">
+                <TextBlock Text="Source" FontSize="11" Opacity="0.7"/>
+                <TextBlock Text="{Binding SourcePath}" FontSize="12" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding FormatText}" FontSize="12"/>
+                <TextBlock Text="{Binding PagesText}" FontSize="11" Opacity="0.7" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding ReadRefusal}" FontSize="12" TextWrapping="Wrap"
+                           Foreground="{DynamicResource CrfWarningBrush}"
+                           IsVisible="{Binding ReadRefusal, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+            </StackPanel>
+
+            <Grid Grid.Row="1" ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,10,0,6">
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Into folder" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding TargetFolder}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Cell name" FontSize="12" VerticalAlignment="Center" Margin="0,6,10,0"/>
+                <TextBox   Grid.Row="1" Grid.Column="1" x:Name="NameBox" Text="{Binding CellName}" FontSize="12" Margin="0,6,0,0"/>
+                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding NameError}" FontSize="11" TextWrapping="Wrap"
+                           Foreground="{DynamicResource CrfWarningBrush}"
+                           IsVisible="{Binding NameError, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                <TextBlock Grid.Row="3" Grid.Column="0" Text="Code page" FontSize="12" VerticalAlignment="Center" Margin="0,6,10,0"
+                           IsVisible="{Binding ShowCodePage}"/>
+                <TextBox   Grid.Row="3" Grid.Column="1" Text="{Binding CodePageText}" FontSize="12" Width="90" HorizontalAlignment="Left"
+                           Margin="0,6,0,0" IsVisible="{Binding ShowCodePage}"
+                           ToolTip.Tip="The ANSI code page the file's text is read in when it is not UTF-8. 1252 is Western European."/>
+            </Grid>
+
+            <!-- The parts table: reference, source symbol, value, what it becomes; a native row may be pushed to a
+                 symbol cell. -->
+            <DockPanel Grid.Row="2">
+                <Grid DockPanel.Dock="Top" ColumnDefinitions="70,110,80,*,90" Margin="4,0,4,2">
+                    <TextBlock Grid.Column="0" Text="Ref" FontSize="11" Opacity="0.7"/>
+                    <TextBlock Grid.Column="1" Text="Symbol" FontSize="11" Opacity="0.7"/>
+                    <TextBlock Grid.Column="2" Text="Value" FontSize="11" Opacity="0.7"/>
+                    <TextBlock Grid.Column="3" Text="Becomes" FontSize="11" Opacity="0.7"/>
+                    <TextBlock Grid.Column="4" Text="Symbol cell" FontSize="11" Opacity="0.7"/>
+                </Grid>
+                <Border BorderBrush="{DynamicResource CrfBorderBrush}" BorderThickness="1" CornerRadius="3">
+                    <ScrollViewer>
+                        <ItemsControl ItemsSource="{Binding Parts}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ImportSchematicPartRow">
+                                    <Grid ColumnDefinitions="70,110,80,*,90" Margin="4,1">
+                                        <TextBlock Grid.Column="0" Text="{Binding Reference}" FontSize="12" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Symbol}" FontSize="12" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Symbol}"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding Value}" FontSize="12" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Value}"/>
+                                        <TextBlock Grid.Column="3" Text="{Binding Becomes}" FontSize="12" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Becomes}"/>
+                                        <CheckBox  Grid.Column="4" IsChecked="{Binding ForceSymbolCell}" IsEnabled="{Binding CanBeSymbolCell}"
+                                                   ToolTip.Tip="Import this part as the source's own symbol, in a cell with no model, instead of a native component."/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+            </DockPanel>
+
+            <TextBlock Grid.Row="3" Text="Ports" FontSize="11" Opacity="0.7" Margin="0,10,0,2"/>
+            <Border Grid.Row="4" BorderBrush="{DynamicResource CrfBorderBrush}" BorderThickness="1" CornerRadius="3" MaxHeight="130">
+                <ScrollViewer>
+                    <StackPanel>
+                        <TextBlock Text="The design draws no connector or global port." FontSize="11" Opacity="0.6" Margin="6,4"
+                                   IsVisible="{Binding !Ports.Count}"/>
+                        <ItemsControl ItemsSource="{Binding Ports}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ImportSchematicPortRow">
+                                    <CheckBox IsChecked="{Binding MakePort}" Margin="4,0"
+                                              ToolTip.Tip="Make a circuitRF Port here. With any, the default S-parameter analysis is added.">
+                                        <TextBlock Text="{Binding Description, StringFormat='Make {0} a circuitRF Port'}" FontSize="12"/>
+                                    </CheckBox>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <Grid Grid.Row="0" Grid.Column="2" RowDefinitions="*,Auto,Auto">
+            <Border Grid.Row="0" x:Name="PreviewPane" BorderBrush="{DynamicResource CrfBorderBrush}" BorderThickness="1" CornerRadius="3"
+                    ClipToBounds="True">
+                <Grid>
+                    <Image x:Name="PreviewImage" Stretch="Uniform"/>
+                    <TextBlock x:Name="PreviewPlaceholder" FontSize="12" Opacity="0.6" TextWrapping="Wrap"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" Margin="20"/>
+                </Grid>
+            </Border>
+            <TextBlock Grid.Row="1" x:Name="ConnectivityLine" Text="{Binding ConnectivityText}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
+            <ScrollViewer Grid.Row="2" MaxHeight="120" Margin="0,4,0,0">
+                <SelectableTextBlock Text="{Binding ReportText}" FontSize="11" Opacity="0.75" TextWrapping="Wrap"/>
+            </ScrollViewer>
+        </Grid>
+
+        <Grid Grid.Row="1" Grid.ColumnSpan="3" ColumnDefinitions="*,Auto" Margin="0,12,0,0">
+            <TextBlock Grid.Column="0" Text="{Binding ImportRefusal}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center"
+                       Foreground="{DynamicResource CrfWarningBrush}"
+                       IsVisible="{Binding ImportRefusal, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button Content="Cancel" Width="80" HorizontalContentAlignment="Center" IsCancel="True" Click="OnCancel"/>
+                <Button Content="Import" Width="80" HorizontalContentAlignment="Center" IsDefault="True"
+                        IsEnabled="{Binding CanImport}" Click="OnImport"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Window>

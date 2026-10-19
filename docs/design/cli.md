@@ -63,6 +63,7 @@ Fourteen verbs run no analysis, so none of §3-§6 applies to them and §7's exi
 | `new workspace` | a directory | `WorkspaceCreate.Create` | a `.cws` and, unless `--tech none`, a copied `.ctech` |
 | `new cell` | a workspace + a name | `CellCreate.Create` | a cell folder and one empty-but-valid file per `--views` |
 | `import part` | a component file or folder | `ComponentRead` + `ComponentImport.Import` | a cell folder holding the land patterns and the symbol |
+| `import schematic` | a schematic design file (`.kicad_sch`, EDIF 2.0.0) + `--into` | `SchematicImport.Read` + `SchematicImport.Import` | a cell folder with its schematic, and a `<stem>_parts/` folder of symbol cells beside it — §30 |
 | `import voxels` | a label volume (`.nii[.gz]`, DiscMaterial `.h5`, raw, or a `.node`/`.ele` mesh voxelised) + `--into x.c3d` | `AnatomyImport.PlanVoxels` + `ApplyVoxels` | the volume copied beside the `.c3d` and one `VoxelBody` (sar.md §13) |
 | `import surfaces` | closed surfaces (STL, OBJ, PLY) or a folder of them + `--into x.c3d` | `AnatomyImport.PlanSurfaces` + `ApplySurfaces` | each file copied beside the `.c3d` and one `Mesh` per surface, outermost first |
 | `check` | a workspace, a cell folder, or one document | the validators that already exist | **nothing** — §10 |
@@ -1395,7 +1396,7 @@ be found by its name.
 | `check` | `check` |
 | `explain` | `explain`, including RND-3's `--cells` / `--layers` / `--extents`, `--footprints` and `--tunables` |
 | `create` | `new workspace` / `new cell` |
-| `import` | `import part` / `import voxels` / `import surfaces`, selected by `what` (brief-sar-11): every mode brings something in, so an export still never lands here |
+| `import` | `import part` / `import schematic` / `import voxels` / `import surfaces`, selected by `what` (brief-sar-11, brief-schimp-5): every mode brings something in, so an export still never lands here |
 | `convert` | `convert` — one import and one export between any two formats, so an export is a `convert` |
 | `render` | `render` — **one tool over every document kind**, as the verb is (R-rnd0-4/R-rnd5-2). The kind comes from the path, so there is no selector; making the view type one would advertise three modes where there is one verb |
 | `netlist` | `netlist` — the extraction Simulate performs, as a document |
@@ -4062,3 +4063,36 @@ above, by name. Nothing in it says pass or fail (sar.md §14).
 - Exit 0 when every band ran; the first band that does not exits with its own code (1 refused or failed, 130
   cancelled), and the bands before it keep what they wrote.
 - Over the protocol it is `run analysis=em bands=<sweep>`.
+
+## 30. `import schematic` — a schematic design as a new cell (brief-schimp-5)
+
+```
+circuitrf import schematic <file> --into <workspace-or-dir> [--cell <name>] [--port <ref-or-net>]...
+                                  [--symbol-cell <ref>]... [--codepage <n>] [--list] [--json]
+```
+
+File ▸ Import ▸ Schematic…, headless — a **noun on `import`**, not a verb of its own (the `new`/`import` rule). It
+**owns no import logic**: `SchematicImport.Read` classifies the file by its CONTENT and reads it with its format's
+reader, and `SchematicImport.Import` builds and writes the cell — the two calls the GUI dialog makes, and the ones the
+drop onto an open schematic and the MCP `import what=schematic` tool reach too. `src/Cli/Authoring.cs` is argument
+parsing, refusals and reporting; a comment-stripped source scan (`SchematicImportEntryPointTests`) holds that.
+
+- **Every default is the dialog's.** The cell is named after the file's stem, every part goes where the map
+  (`SchematicImportMap`) sends it, and **no port is made** — what is an RF port is the user's decision, so `--port`
+  names each one (a connector's reference or a net's name, in port order). With any port, the default S-parameter
+  analysis is added. `--symbol-cell <ref>` pushes a part the map would make a native R, L or C back to the source's
+  own symbol. `--codepage` is the ANSI code page an EDIF file's non-UTF-8 text is read in (default 1252).
+- **`--list` writes nothing.** It prints the pages, one `part` line per part (reference, symbol, value, what it
+  becomes) and one `port` line per candidate the dialog's ports list would show.
+- **The paths created are the result**: the cell, its `.csch` and every symbol or sheet cell written, on stdout and
+  as `outputs` in `--json`. The import's report — parts mapped, cells written or reused, the connectivity verdict and
+  each difference — goes to stderr and into `diagnostics`.
+- **Exit 1 when the connectivity check is not `Matched`, with the cell written.** The import completes so the
+  differences can be looked at (overview D8), and `import.schematic.not-matched` says so; a build machine must not
+  read a mismatch as success. Any refusal (unreadable file, a name already taken, a symbol cell that exists and
+  differs) writes nothing and exits 1.
+- **A binary `.DSN` design is classified and refused** until its reader lands (SI-4), with the EDIF export named as
+  the way in.
+
+Gate: `tests/Ui.Tests/SchematicImport/SchematicImportEntryPointTests.cs` — the CLI as a process against the in-process
+`SchematicImport.Import` on one committed fixture, byte for byte except the provenance timestamp.

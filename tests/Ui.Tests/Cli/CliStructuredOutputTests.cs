@@ -735,6 +735,10 @@ public sealed class CliStructuredOutputTests(ITestOutputHelper output) : IDispos
         "import.part.ambiguous",
         "import.part.not-found",
         "import.refused",
+        // brief-schimp-5 R-si5-5 — `import schematic`: an argument missing or malformed, and the connectivity check
+        // not matched (the cell written, exit 1).
+        "import.schematic.args",
+        "import.schematic.not-matched",
         "import.source.not-found",
         "import.variant.not-found",
         // AUT-9 R-aut9-4/5/6 — what the shape of a loadpull result says about the run. All three are

@@ -389,6 +389,10 @@ public partial class ProjectTreeTool : Tool, IActivatableTool
     public Task AcceptDroppedFileAsync(string sourceFile, string? destFolderDir)
         => _actions?.AcceptDroppedFileAsync(sourceFile, destFolderDir) ?? Task.CompletedTask;
 
+    /// <summary>A schematic design file dropped here from outside — the Import Schematic dialog, into that folder.</summary>
+    public Task ImportSchematicFileAsync(string sourceFile, string? destFolderDir)
+        => _actions?.ImportSchematicFileAsync(sourceFile, destFolderDir) ?? Task.CompletedTask;
+
     // ── In-workspace move (TM1) ───────────────────────────────────────────────
 
     /// <summary>Something from this tree's own workspace was dropped on a folder in it — move it

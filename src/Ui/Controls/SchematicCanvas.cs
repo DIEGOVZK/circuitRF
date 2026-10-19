@@ -12,6 +12,7 @@ using Avalonia.Rendering.SceneGraph;
 using Avalonia.Skia;
 using Avalonia.Styling;
 using Avalonia.Threading;
+using CircuitRF.Design.Schematic.Import;
 using CircuitRF.Ui.Diagnostics;
 using CircuitRF.Ui.Renderers;
 using CircuitRF.Ui.Schematic;
@@ -314,6 +315,10 @@ public sealed class SchematicCanvas : Control
         //   4. A parts table (.csv / .tsv / .txt) — places the parts it lists.
         AddHandler(DragDrop.DragOverEvent,  OnPartsTableDragOver);
         AddHandler(DragDrop.DropEvent,      OnPartsTableDrop);
+        //   5. A schematic design file (.kicad_sch / EDIF / binary .DSN) — built into this schematic at the drop
+        //      point (brief-schimp-5 R-si5-3). A picture is never one: images stay with handler 3.
+        AddHandler(DragDrop.DragOverEvent,  OnSchematicFileDragOver);
+        AddHandler(DragDrop.DropEvent,      OnSchematicFileDrop);
     }
 
     private void OnLayoutUpdated(object? sender, EventArgs e)
@@ -1362,6 +1367,33 @@ public sealed class SchematicCanvas : Control
                 $"{Path.GetFileName(path)} is not a parts table circuitRF could read — it needs a " +
                 "reference column and a type, value or case column.", path);
         InvalidateVisual();
+    }
+
+    // ── Schematic design file DnD (brief-schimp-5 R-si5-3, overview D10) ─────────────────────
+    // The drag-over accepts by extension, which is cheap; the drop classifies by CONTENT, through the workspace, which
+    // reads and builds off the UI thread with Esc to cancel and adds the design as one undo step. A file that classifies
+    // as nothing is one Messages error and nothing is placed.
+
+    private void OnSchematicFileDragOver(object? _, DragEventArgs e)
+    {
+        if (e.Handled) return;
+        if (TryExtractPath(e, SchematicImport.HasSchematicExtension) is not null)
+        { e.DragEffects = DragDropEffects.Copy; e.Handled = true; }
+    }
+
+    private void OnSchematicFileDrop(object? _, DragEventArgs e)
+    {
+        TakeKeyboardFocus();
+        if (e.Handled) return;
+        var path = TryExtractPath(e, SchematicImport.HasSchematicExtension);
+        if (path is null || _editContext is null) return;
+        e.Handled = true;
+        var pos = e.GetPosition(this);
+        if (DataContext is SchematicDocument { Hierarchy: ISchematicFileDropHost host } doc)
+            _ = host.BuildSchematicFileIntoAsync(doc, path, (ScreenToWorldX(pos.X), ScreenToWorldY(pos.Y)));
+        else
+            _editContext.MessageSink?.Error(
+                $"{Path.GetFileName(path)} was not built: open the schematic in a workspace to build a design into it.", path);
     }
 
     private static bool IsPartsTableExtension(string path)

@@ -158,7 +158,11 @@ public static class SchematicSexprReader
             foreach (var (kind, count) in _notCarried) notes.Add($"{count} {kind} not imported.");
 
             bool hierarchical = _sheets.Any(s => s.SheetInstances.Count > 0);
-            return new ForeignSchematic(Format, RootPath, _sheets, _symbols, _sheets[0].Name, hierarchical) { Notes = notes };
+            return new ForeignSchematic(Format, RootPath, _sheets, _symbols, _sheets[0].Name, hierarchical)
+            {
+                Notes = notes,
+                Version = _versions.Count > 0 ? string.Join(", ", _versions) : null,
+            };
         }
 
         /// <summary>Reads one file as one sheet, then its children; returns a refusal or null. <paramref name="sheetPath"/>

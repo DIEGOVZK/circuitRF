@@ -3192,3 +3192,13 @@ the write and the optimum) before it was changed; none turned out wrong. Gate:
 - **`ImageOverlay` moved from `src/Ui/Recognition` to `src/Design/Imaging`** unchanged but for the part labels, which
   now carry the value after the refdes (R-im11-3), and the class colours, now one table (`ImageOverlay.Colours`) the
   canvas and the PNG both read.
+
+## `import schematic` and MCP `import what=schematic` (brief-schimp-5, 2026-10-19)
+
+- A noun on `import`, holding argument parsing, refusals and reporting only: `SchematicImport.Read` +
+  `SchematicImport.Import`, the dialog's two calls. Gate: the CLI as a process writes the same tree as the in-process
+  call, byte for byte once the `ImportedUtc` provenance value is blanked (`SchematicImportEntryPointTests`).
+- **Exit 1 on a connectivity mismatch with the cell WRITTEN** (`import.schematic.not-matched`): the import completes so
+  the differences can be looked at, and a build machine still cannot read it as success.
+- `--port` and `--symbol-cell` are repeated flags (`StrRepeat` on the MCP side), passed through to the build; a `--port`
+  naming nothing is the build's own note, not a refusal, exactly as in the dialog.

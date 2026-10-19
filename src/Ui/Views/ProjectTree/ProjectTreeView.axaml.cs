@@ -9,6 +9,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
+using CircuitRF.Design.Schematic.Import;
 using CircuitRF.Ui.Controls;
 using CircuitRF.Ui.DataDisplay;
 using CircuitRF.Ui.Schematic;
@@ -625,6 +626,16 @@ public partial class ProjectTreeView : UserControl
                     ViewModels.WorkspaceViewModel.OpenDroppedWorkspace(cws);
                     return Task.CompletedTask;
                 });
+                continue;
+            }
+            // brief-schimp-5 R-si5-4: a schematic design opens Import Schematic into the folder it landed on — decided by
+            // its CONTENT, so a .dsn that is a symbol or a routing file stays a known file as before.
+            if (tool.HasWorkspace && File.Exists(path) && SchematicImport.HasSchematicExtension(path)
+                && SchematicFileClassifier.Classify(path).IsSchematic)
+            {
+                string source = path;
+                string? destFolder = DropFolderFor(e);
+                RunAfterDragCompletes(() => tool.ImportSchematicFileAsync(source, destFolder));
                 continue;
             }
             tool.AddKnownFile(path);

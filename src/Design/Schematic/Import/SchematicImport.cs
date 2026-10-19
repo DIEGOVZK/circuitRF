@@ -42,7 +42,7 @@ public sealed record SchematicImportEdit(
     public bool Ok => Refusal is null;
 }
 
-public static class SchematicImport
+public static partial class SchematicImport
 {
     /// <summary>The folder beside a target cell that symbol and child-sheet cells go in (overview D4).</summary>
     public static string PartsFolderName(ForeignSchematic source) =>
@@ -61,11 +61,9 @@ public static class SchematicImport
             new(null, null, [], [], mapping ?? [], null, messages ?? [], why);
 
         cellName = (cellName ?? "").Trim();
-        if (NameValidator.Validate(cellName) is { } bad) return Refused($"'{cellName}' cannot be a cell name: {bad}");
+        if (CellNameRefusal(parentDir, cellName) is { } nameRefusal) return Refused(nameRefusal);
         string parent = Path.GetFullPath(parentDir);
         string cellDir = Path.Combine(parent, cellName);
-        if (Directory.Exists(cellDir) || File.Exists(cellDir))
-            return Refused($"A cell named '{cellName}' already exists in {parent}; choose another name.");
 
         string partsDir = Path.Combine(parent, PartsFolderName(source));
         string schematicDir = CellFolder.SubFolderPath(cellDir, ViewType.Schematic);

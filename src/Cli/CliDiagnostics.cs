@@ -733,16 +733,26 @@ internal static class CliDiagnostics
 
     public static Diagnostic ImportNounRequired() => new(
         "import.args.noun-required", DiagnosticSeverity.Error,
-        "import: say what to import — 'import part', 'import voxels' or 'import surfaces'.");
+        "import: say what to import — 'import part', 'import schematic', 'import voxels' or 'import surfaces'.");
 
     public static Diagnostic ImportUnknownNoun(string noun) => Diagnostic.Create(
         "import.args.unknown-noun", DiagnosticSeverity.Error,
-        "import: there is nothing called '{noun}' to import. Known: part, voxels, surfaces. "
+        "import: there is nothing called '{noun}' to import. Known: part, schematic, voxels, surfaces. "
         + "For layout interchange (GDSII, DXF, Gerber, boards) use `convert`.", ("noun", noun));
 
     /// <summary>brief-sar-11 — an anatomy import's argument that is missing or does not parse; the sentence is whole.</summary>
     public static Diagnostic ImportAnatomyArgs(string noun, string why) => Diagnostic.Create(
         "import.anatomy.args", DiagnosticSeverity.Error, "import {noun}: {why}", ("noun", noun), ("why", why));
+
+    /// <summary>brief-schimp-5 R-si5-5 — an `import schematic` argument missing or malformed; the sentence is whole.</summary>
+    public static Diagnostic ImportSchematicArgs(string why) => Diagnostic.Create(
+        "import.schematic.args", DiagnosticSeverity.Error, "import schematic: {why}", ("why", why));
+
+    /// <summary>R-si5-5: the cell WAS written, and its connectivity does not match the source's — exit 1, so a build
+    /// machine cannot read the mismatch as success. The differences are in the import's own notes above it.</summary>
+    public static Diagnostic ImportSchematicNotMatched(string summary) => Diagnostic.Create(
+        "import.schematic.not-matched", DiagnosticSeverity.Error,
+        "{summary} The cell was written; the differences are listed above.", ("summary", summary));
 
     public static Diagnostic ImportUnknownOption(string option) => Diagnostic.Create(
         "import.args.unknown-option", DiagnosticSeverity.Error,

@@ -136,6 +136,10 @@ public sealed record ForeignSchematic(
     /// <summary>What the reader could not carry, one sentence each.</summary>
     public IReadOnlyList<string> Notes { get; init; } = [];
 
+    /// <summary>The format's version as the file states it (<c>20231120</c>, <c>2 0 0</c>) — reported, never branched on;
+    /// null when the file states none.</summary>
+    public string? Version { get; init; }
+
     public ForeignSymbol? Symbol(string key) => Symbols.FirstOrDefault(s => s.Key == key);
 
     public ForeignSheet? Sheet(string name) => Sheets.FirstOrDefault(s => s.Name == name);

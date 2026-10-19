@@ -676,7 +676,9 @@ internal static class ToolCatalog
         // named and described as bringing artwork IN, where an agent looking for an export does not
         // look. Both are single-mode now, like `render`.
         new("import",
-            "Bring something in: a component as a cell (a footprint and its symbol); a segmented voxel model (NIfTI, raw, a "
+            "Bring something in: a component as a cell (a footprint and its symbol); a schematic design (.kicad_sch, EDIF "
+          + "2.0.0) as a new cell with its own schematic, reporting the connectivity check against the source (exit 1 when "
+          + "it is not matched, the cell still written); a segmented voxel model (NIfTI, raw, a "
           + "DiscMaterial .h5, or a tetrahedral .node/.ele voxelised) or per-tissue closed surfaces (STL, OBJ, PLY) into a .c3d. "
           + "To convert artwork between formats, including exporting a layout, use convert.",
             "what",
@@ -694,6 +696,21 @@ internal static class ToolCatalog
                         Summary,
                     ],
                     "A footprint and its symbol, as a cell."),
+                // brief-schimp-5 R-si5-6 — the dialog's fields as arguments; every default is the dialog's.
+                new("schematic", ["import", "schematic"],
+                    [new("path", true, "The schematic design file: .kicad_sch, or EDIF 2.0.0 (.edf, .edn, .edif). Classified by content.")],
+                    [
+                        new("into",        "--into",        OptKind.Path,      "The workspace or folder the cell is created in."),
+                        new("cell",        "--cell",        OptKind.Str,       "The new cell's name. Default: the file's stem."),
+                        new("port",        "--port",        OptKind.StrRepeat, "A connector's reference or a net's name to make a circuitRF Port, in port order. "
+                                                                             + "None by default; with any, the default S-parameter analysis is added."),
+                        new("symbolCell",  "--symbol-cell", OptKind.StrRepeat, "A reference to import as the source's own symbol (a cell with no model) "
+                                                                             + "instead of a native R, L or C."),
+                        new("codepage",    "--codepage",    OptKind.Integer,   "The ANSI code page an EDIF file's non-UTF-8 text is read in. Default 1252."),
+                        new("list",        "--list",        OptKind.Flag,      "Report the pages, what each part becomes and what may be a port; write nothing."),
+                        Summary,
+                    ],
+                    "A new cell with its own schematic, and the connectivity check against the source."),
                 new("voxels", ["import", "voxels"],
                     [new("path", true, "The label volume: .nii, .nii.gz, .h5 (DiscMaterial), a raw file, or a .node/.ele mesh.")],
                     [

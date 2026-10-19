@@ -139,6 +139,10 @@
                 <MenuItem Header="_Data…"
                           Command="{Binding ImportDataCommand}"
                           CommandParameter="{Binding $parent[Window]}"/>
+                <MenuItem Header="Sc_hematic…"
+                          Command="{Binding ImportSchematicCommand}"
+                          CommandParameter="{Binding $parent[Window]}"
+                          ToolTip.Tip="Read a schematic design file and write it as a new cell with its own schematic: two-pin resistors, capacitors and inductors become native components, every other part a cell holding the design's own symbol, and the connectivity is checked against the source. Requires an open workspace."/>
                 <MenuItem Header="_GDSII…"
                           Command="{Binding ImportGdsiiLibraryCommand}"
                           CommandParameter="{Binding $parent[Window]}"/>

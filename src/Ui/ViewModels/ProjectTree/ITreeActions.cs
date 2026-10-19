@@ -333,6 +333,11 @@ public interface ITreeActions
     /// (R-mw3-11).</summary>
     Task AcceptDroppedFileAsync(string sourceFile, string? destFolderDir);
 
+    /// <summary>A schematic design file dropped from outside on a workspace or folder row: File ▸ Import ▸ Schematic…'s
+    /// dialog, targeting that folder (brief-schimp-5 R-si5-4).</summary>
+    /// <param name="destFolderDir">The folder it was dropped on; null for the workspace root.</param>
+    Task ImportSchematicFileAsync(string sourceFile, string? destFolderDir) => Task.CompletedTask;
+
     // ── In-workspace move (TM1) ───────────────────────────────────────────────
 
     /// <summary>
