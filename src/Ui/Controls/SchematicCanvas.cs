@@ -138,6 +138,7 @@ public sealed class SchematicCanvas : Control
     private StandardCursorType DesiredCursor()
     {
         if (_isLeftPanning || _isPanning) return StandardCursorType.Hand;
+        if (_editContext is null && _viewZoomBoxArmed) return StandardCursorType.Cross;
 
         // R-dup-1: Alt says the drag will leave the original where it is and take a copy. Shown while
         // the duplicate is actually armed, and also on a bare Alt with something selected, so the
@@ -221,6 +222,15 @@ public sealed class SchematicCanvas : Control
 
     // Left-button Pan tool
     private bool   _isLeftPanning;
+
+    // ── Read-only navigation — a canvas with no EditContext (a preview) ──────
+    // Z arms a zoom box, as it arms the editor's ZoomBox tool; F fits. The editor's own Z and F are
+    // the View's (OnViewKeyDownTunnel), which a preview has none of.
+    private bool _viewZoomBoxArmed;
+    private (double X, double Y)? _viewZoomBoxStart;
+
+    /// <summary>Draw the editing grid. A preview turns it off, as the static previews do.</summary>
+    public bool ShowGrid { get; set; } = true;
 
     // ── Net-label placement gaps ──────────────────────────────────────────────
     // Offset from the wire's exact coordinate to the stored net-label anchor.
@@ -406,7 +416,7 @@ public sealed class SchematicCanvas : Control
 
         context.Custom(new SchematicDrawOperation(
             new Rect(Bounds.Size), _model, _index,
-            _panX, _panY, _zoom, theme, _overlay));
+            _panX, _panY, _zoom, theme, _overlay, excludeGrid: !ShowGrid));
     }
 
     // ── Navigation ───────────────────────────────────────────────────────────
@@ -633,6 +643,11 @@ public sealed class SchematicCanvas : Control
             e.Pointer.Capture(this);
             InvalidateVisual();
         }
+        else if (_viewZoomBoxArmed)
+        {
+            _viewZoomBoxStart = (wx, wy);
+            e.Pointer.Capture(this);
+        }
         else
         {
             _isLeftPanning      = true;
@@ -682,6 +697,18 @@ public sealed class SchematicCanvas : Control
         // move is the moment the user is looking at the pointer.
         if (OperatingSystem.IsMacOS()) ReassertCursor();
 
+        if (_editContext is null && _viewZoomBoxStart is { } start)
+        {
+            _overlay = (_overlay ?? SchematicOverlay.Empty) with
+            {
+                RubberBand = (Math.Min(start.X, wx), Math.Min(start.Y, wy),
+                              Math.Abs(wx - start.X), Math.Abs(wy - start.Y)),
+                RubberBandCrossing = false,
+            };
+            InvalidateVisual();
+            return;
+        }
+
         bool leftDown = e.GetCurrentPoint(this).Properties.IsLeftButtonPressed;
         if (_editContext is not null)
         {
@@ -696,6 +723,22 @@ public sealed class SchematicCanvas : Control
     {
         if (_isPanning)     { _isPanning = false;     UpdateCursor(); e.Pointer.Capture(null); return; }
         if (_isLeftPanning) { _isLeftPanning = false; UpdateCursor(); e.Pointer.Capture(null); return; }
+
+        if (_editContext is null && _viewZoomBoxStart is { } start)
+        {
+            var pos = e.GetPosition(this);
+            double wx = ScreenToWorldX(pos.X), wy = ScreenToWorldY(pos.Y);
+            _viewZoomBoxStart = null;
+            _overlay = _overlay is null ? null : _overlay with { RubberBand = null };
+            e.Pointer.Capture(null);
+            // The editor's own rule (HandleZoomBoxRelease): a click without a drag zooms nothing, and
+            // the box disarms either way, as the ZoomBox tool returns to Select.
+            if (Math.Abs(wx - start.X) > 1 && Math.Abs(wy - start.Y) > 1)
+                ZoomToRect(Math.Min(start.X, wx), Math.Min(start.Y, wy), Math.Max(start.X, wx), Math.Max(start.Y, wy));
+            SetViewZoomBoxArmed(false);
+            InvalidateVisual();
+            return;
+        }
 
         if (_editContext is not null)
         {
@@ -1011,7 +1054,7 @@ public sealed class SchematicCanvas : Control
         // Alt-combination below it.
         if (e.Key is Key.LeftAlt or Key.RightAlt) { _altHeld = true; UpdateCursor(); }
 
-        if (_editContext is null) return;
+        if (_editContext is null) { OnViewerKeyDown(e); return; }
 
         // Typing a text: every key is the text's (the VM consumes them). A character key is left
         // unhandled so the platform still delivers it as TextInput; the editing keys are claimed.
@@ -1062,6 +1105,36 @@ public sealed class SchematicCanvas : Control
         InvalidateVisual();
     }
 
+    /// <summary>The keys a canvas with no EditContext answers: Z zoom box, F fit, Escape disarms the box,
+    /// Ctrl/⌘ +/- step the zoom. Escape is claimed only when it disarmed something, so a dialog's Cancel
+    /// still gets it otherwise.</summary>
+    private void OnViewerKeyDown(KeyEventArgs e)
+    {
+        if (_model is null) return;
+        bool ctrl = (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) != 0;
+        if (ctrl && e.Key is Key.OemPlus  or Key.Add)      { ZoomIn();  e.Handled = true; return; }
+        if (ctrl && e.Key is Key.OemMinus or Key.Subtract) { ZoomOut(); e.Handled = true; return; }
+        if (ctrl) return;
+        switch (e.Key)
+        {
+            case Key.Z: SetViewZoomBoxArmed(true); e.Handled = true; break;
+            case Key.F: ZoomToFit(); e.Handled = true; break;
+            case Key.Escape when _viewZoomBoxArmed:
+                _viewZoomBoxStart = null;
+                _overlay = _overlay is null ? null : _overlay with { RubberBand = null };
+                SetViewZoomBoxArmed(false);
+                InvalidateVisual();
+                e.Handled = true;
+                break;
+        }
+    }
+
+    private void SetViewZoomBoxArmed(bool armed)
+    {
+        _viewZoomBoxArmed = armed;
+        UpdateCursor();
+    }
+
     /// <summary>Pans on a bare arrow key when the selection is empty. Returns false (leaving the key
     /// to the nudge) whenever something is selected or a text gesture owns the keyboard.</summary>
     private bool TryArrowPan(KeyEventArgs e)
@@ -1101,6 +1174,8 @@ public sealed class SchematicCanvas : Control
 
     private void OnPointerWheel(object? _, PointerWheelEventArgs e)
     {
+        // A preview's keys (Z, F) are its own only while it has focus; scrolling it is using it, as a press is.
+        if (_editContext is null) Focus();
         ZoomAtPoint(e.GetPosition(this), e.Delta.Y);
         e.Handled = true;
     }
@@ -1465,15 +1540,16 @@ public sealed class SchematicCanvas : Control
         private readonly double                  _panX, _panY, _zoom;
         private readonly SchematicRenderTheme    _theme;
         private readonly SchematicOverlay?       _overlay;
+        private readonly bool                    _excludeGrid;
 
         public SchematicDrawOperation(
             Rect bounds, SchematicModel? model, SchematicSpatialIndex? index,
             double panX, double panY, double zoom,
-            SchematicRenderTheme theme, SchematicOverlay? overlay)
+            SchematicRenderTheme theme, SchematicOverlay? overlay, bool excludeGrid)
         {
             _bounds    = bounds; _model = model; _index = index;
             _panX = panX; _panY = panY; _zoom = zoom;
-            _theme = theme; _overlay = overlay;
+            _theme = theme; _overlay = overlay; _excludeGrid = excludeGrid;
         }
 
         public bool Equals(ICustomDrawOperation? other) => false;
@@ -1488,7 +1564,7 @@ public sealed class SchematicCanvas : Control
             SchematicRenderer.Draw(
                 lease.SkCanvas, (_bounds.Width, _bounds.Height),
                 _model, _index, _panX, _panY, _zoom, _theme,
-                _overlay);
+                _overlay, excludeGrid: _excludeGrid);
         }
 
         public void Dispose() { }

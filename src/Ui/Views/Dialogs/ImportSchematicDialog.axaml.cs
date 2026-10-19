@@ -1,17 +1,13 @@
 // File ▸ Import ▸ Schematic…'s dialog — brief-schimp-5 R-si5-2. The state is ImportSchematicViewModel's; this file only
-// draws its preview, off the UI thread as the component chooser draws its own (ComponentPreviewRaster), and closes with
-// the import's result. Import writes; Cancel writes nothing.
+// hands its preview to the schematic editor's own canvas, read-only, so it pans and zooms as the editor does, and closes
+// with the import's result. Import writes; Cancel writes nothing.
 
 using System;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Avalonia.Media.Imaging;
-using Avalonia.Styling;
 using Avalonia.Threading;
 using CircuitRF.Design.Schematic.Import;
-using CircuitRF.Ui.Renderers;
-using CircuitRF.Ui.Theming;
 using CircuitRF.Ui.ViewModels;
 
 namespace CircuitRF.Ui.Views.Dialogs;
@@ -30,9 +26,7 @@ public partial class ImportSchematicDialog : Window
         DataContext = vm;
         InitializeComponent();
         vm.PreviewChanged += () => Dispatcher.UIThread.Post(Redraw);
-        PreviewPane.SizeChanged += (_, _) => Redraw();
         Opened += (_, _) => { NameBox.Focus(); NameBox.SelectAll(); Redraw(); };
-        Closed += (_, _) => (PreviewImage.Source as IDisposable)?.Dispose();
     }
 
     private async void Redraw()
@@ -41,29 +35,24 @@ public partial class ImportSchematicDialog : Window
         int gen = ++_drawGeneration;
         var drawing = _vm.Preview?.Drawing;
         PreviewPlaceholder.Text = _vm.ReadRefusal ?? (drawing is null ? (_vm.IsBusy ? "Building the preview…" : "Nothing to draw.") : "");
-        if (drawing is null) { SetImage(null); return; }
-        if (PreviewPane.Bounds.Width < 1) return;
+        if (drawing is null) { Show(null); return; }
 
-        // Read on the UI thread and handed over by value: a worker may not touch bounds or the theme service.
-        double scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
-        int w = (int)Math.Round(PreviewPane.Bounds.Width * scaling), h = (int)Math.Round(PreviewPane.Bounds.Height * scaling);
-        var variant = ActualThemeVariant == ThemeVariant.Dark ? ColorVariant.Dark : ColorVariant.Light;
-        var theme = SchematicRenderTheme.FromTheme(ThemeService.Active, variant);
-        Bitmap? bitmap = await Task.Run(() =>
+        // Built off the UI thread, as the raster preview was; only the hand-over is on it. A rebuilt preview (a port
+        // ticked, a part made a symbol cell) keeps the view the user panned to — the canvas fits only its first model.
+        SchematicModel? model = await Task.Run(() =>
         {
-            try { return ComponentPreviewRenderer.RenderSchematic(drawing, theme, w, h); }
+            try { return drawing.BuildRenderModel().Model; }
             catch (Exception) { return null; }
         });
-        if (gen != _drawGeneration) { bitmap?.Dispose(); return; }
-        SetImage(bitmap);
-        if (bitmap is null) PreviewPlaceholder.Text = "The preview could not be drawn.";
+        if (gen != _drawGeneration) return;
+        Show(model);
+        if (model is null) PreviewPlaceholder.Text = "The preview could not be drawn.";
     }
 
-    private void SetImage(Bitmap? bitmap)
+    private void Show(SchematicModel? model)
     {
-        var old = PreviewImage.Source as IDisposable;
-        PreviewImage.Source = bitmap;
-        old?.Dispose();
+        PreviewCanvas.Model = model;
+        PreviewCanvas.IsVisible = model is not null;
     }
 
     private void OnImport(object? sender, RoutedEventArgs e)

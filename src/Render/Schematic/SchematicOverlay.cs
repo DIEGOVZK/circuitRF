@@ -8,8 +8,6 @@ namespace CircuitRF.Render;
 /// </summary>
 public sealed record class SchematicOverlay
 {
-    public static readonly SchematicOverlay Empty = new();
-
     // ── Selection ─────────────────────────────────────────────────────────────
 
     /// <summary>IDs of selected components (draws selection outline + handles).</summary>
@@ -171,6 +169,11 @@ public sealed record class SchematicOverlay
     public IReadOnlyList<(double X, double Y, double W, double H)>? DuplicateGhostRects { get; init; }
 
     private static readonly HashSet<string> HashSetEmpty = new();
+
+    // Last, after the two empty sets: static initialisers run in textual order, and declared above them this was built
+    // while both were still null, so its selection sets were null and the renderer threw on it. The editor never drew
+    // it as it stood; a canvas with no edit session does.
+    public static readonly SchematicOverlay Empty = new();
 }
 
 /// <summary>A component "ghost" shown during drag-placement.</summary>

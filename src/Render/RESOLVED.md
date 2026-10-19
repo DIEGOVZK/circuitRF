@@ -5145,3 +5145,13 @@ courtyard) — smaller than the trace under it — won the click and the port se
 A gesture (`onLayer` null) now considers only the drawing layers the stackup binds to a conductor or
 via entry; a technology with no such bindings keeps every visible layer, and a committed port
 (`onLayer` given) is untouched. Gate: `DesignerRound21PortEdgeTests.ASolderMaskOpeningOverTheEnd_…`.
+
+## `SchematicOverlay.Empty` had null selection sets (2026-10-19)
+
+`Empty = new()` was declared at the top of the record, above the two static empty sets its property initialisers
+read (`HashSetEmpty`, `EmptySegments`). Static initialisers run in textual order, so `Empty` was built while both were
+still null, and `DrawOverlay` threw a `NullReferenceException` on `SelectedComponentIds.Count`. Nothing showed it for
+as long as only the editor drew overlays: its view model rebuilds the overlay with every set filled in before the
+first frame. The Import Schematic dialog's preview, a `SchematicCanvas` with no edit session, drew its zoom box as
+`Empty with { RubberBand = … }` and threw on every frame of the drag. `Empty` is now declared last. Gate:
+`ImportSchematicPreviewNavigationTests.TheEmptyOverlay_DrawsARubberBand`.

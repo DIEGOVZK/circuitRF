@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:CircuitRF.Ui.ViewModels"
+        xmlns:ctrl="using:CircuitRF.Ui.Controls"
         x:Class="CircuitRF.Ui.Views.Dialogs.ImportSchematicDialog"
         x:DataType="vm:ImportSchematicViewModel"
         Title="Import Schematic"
@@ -43,19 +44,19 @@
             <!-- The parts table: reference, source symbol, value, what it becomes; a native row may be pushed to a
                  symbol cell. -->
             <DockPanel Grid.Row="2">
-                <Grid DockPanel.Dock="Top" ColumnDefinitions="70,110,80,*,90" Margin="4,0,4,2">
+                <Grid DockPanel.Dock="Top" ColumnDefinitions="70,110,80,*,66" Margin="4,0,4,2">
                     <TextBlock Grid.Column="0" Text="Ref" FontSize="11" Opacity="0.7"/>
                     <TextBlock Grid.Column="1" Text="Symbol" FontSize="11" Opacity="0.7"/>
                     <TextBlock Grid.Column="2" Text="Value" FontSize="11" Opacity="0.7"/>
                     <TextBlock Grid.Column="3" Text="Becomes" FontSize="11" Opacity="0.7"/>
-                    <TextBlock Grid.Column="4" Text="Symbol cell" FontSize="11" Opacity="0.7"/>
+                    <TextBlock Grid.Column="4" Text="Symbol cell" FontSize="11" Opacity="0.7" HorizontalAlignment="Center"/>
                 </Grid>
                 <Border BorderBrush="{DynamicResource CrfBorderBrush}" BorderThickness="1" CornerRadius="3">
                     <ScrollViewer>
                         <ItemsControl ItemsSource="{Binding Parts}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:ImportSchematicPartRow">
-                                    <Grid ColumnDefinitions="70,110,80,*,90" Margin="4,1">
+                                    <Grid ColumnDefinitions="70,110,80,*,66" Margin="4,1">
                                         <TextBlock Grid.Column="0" Text="{Binding Reference}" FontSize="12" VerticalAlignment="Center"/>
                                         <TextBlock Grid.Column="1" Text="{Binding Symbol}" FontSize="12" VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Symbol}"/>
@@ -63,7 +64,8 @@
                                                    TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Value}"/>
                                         <TextBlock Grid.Column="3" Text="{Binding Becomes}" FontSize="12" VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Becomes}"/>
-                                        <CheckBox  Grid.Column="4" IsChecked="{Binding ForceSymbolCell}" IsEnabled="{Binding CanBeSymbolCell}"
+                                        <CheckBox  Grid.Column="4" Padding="0" MinWidth="0" HorizontalAlignment="Center"
+                                                   IsChecked="{Binding ForceSymbolCell}" IsEnabled="{Binding CanBeSymbolCell}"
                                                    ToolTip.Tip="Import this part as the source's own symbol, in a cell with no model, instead of a native component."/>
                                     </Grid>
                                 </DataTemplate>
@@ -97,8 +99,10 @@
         <Grid Grid.Row="0" Grid.Column="2" RowDefinitions="*,Auto,Auto">
             <Border Grid.Row="0" x:Name="PreviewPane" BorderBrush="{DynamicResource CrfBorderBrush}" BorderThickness="1" CornerRadius="3"
                     ClipToBounds="True">
+                <!-- The editor's own canvas with no edit session: the wheel zooms, a drag pans, Z draws a zoom box and
+                     F fits, as in the schematic editor. Nothing is editable and nothing may be dropped on it. -->
                 <Grid>
-                    <Image x:Name="PreviewImage" Stretch="Uniform"/>
+                    <ctrl:SchematicCanvas x:Name="PreviewCanvas" ShowGrid="False" DragDrop.AllowDrop="False" IsVisible="False"/>
                     <TextBlock x:Name="PreviewPlaceholder" FontSize="12" Opacity="0.6" TextWrapping="Wrap"
                                HorizontalAlignment="Center" VerticalAlignment="Center" Margin="20"/>
                 </Grid>
