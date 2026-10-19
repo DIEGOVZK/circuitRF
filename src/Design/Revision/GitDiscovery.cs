@@ -364,6 +364,7 @@ public static class GitDiscovery
                 RedirectStandardOutput = true,
                 RedirectStandardError  = true,
                 UseShellExecute        = false,
+                RedirectStandardInput  = true,
                 CreateNoWindow         = true,
             };
             psi.ArgumentList.Add("--version");
@@ -371,6 +372,7 @@ public static class GitDiscovery
 
             using var probe = Process.Start(psi);
             if (probe is null) { why = "it could not be started"; return false; }
+            probe.StandardInput.Close();   // never the serve pipe — Em3dProcessLauncher.Start says why
 
             string stdout = probe.StandardOutput.ReadToEnd();
             string stderr = probe.StandardError.ReadToEnd();

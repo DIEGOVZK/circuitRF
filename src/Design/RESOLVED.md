@@ -20639,3 +20639,25 @@ classes under `tests/Ui.Tests/SchematicImport/`.
 - **A symbol cell's value row shows its cell name**, which is the only text it has; a native part's type row is hidden.
 - **Defect fixed on the way: an EDIF `designator` written as a `stringDisplay`** — which the standard allows — read as
   empty, so the part was skipped as a title block.
+
+## A probed or solving child never inherits stdin — Gmsh "not found" over MCP on Windows (GitHub discussion #12, 2026-10-19)
+
+- **Symptom:** on Windows, `solver list` found Gmsh but the MCP `solver` tool reported it not found, "did not answer
+  within 20 s"; naming it with `CIRCUITRF_GMSH` changed nothing.
+- **Cause:** `SolverDiscovery.RunProbe` redirected stdout and stderr but not stdin, so the child was handed this
+  process's own stdin. Under `serve` that is the MCP client's pipe, with `McpServer`'s reader thread deliberately
+  blocked in a read on it. Windows serializes I/O on a synchronous pipe handle across every process sharing it, so the
+  child stalled at start-up behind that read — which completes only on the client's next message, and the client was
+  waiting for this answer. From a console there is no pending read, which is why the CLI worked; macOS and Linux do not
+  serialize, so it never reproduced there.
+- **Wider than the probe:** the Gmsh mesh and Palace solve (`PalaceRun.RunProcess`), openEMS and its SAR calculator,
+  the memory sample (`Em3dMemory.RunTool`), `git --version` (`GitDiscovery`) and the Python probe
+  (`PythonInterpreterDiscovery`) had the same omission. The mesh and solve have no timeout, so they would have hung
+  until the client gave up.
+- **Fix:** `Em3dProcessLauncher.Start` redirects stdin for any caller that did not and closes it at once, so the child
+  reads end-of-file; a caller that redirected stdin itself keeps it. The three sites that do not go through the
+  launcher redirect and close it themselves.
+- **The test asserts on the stream, not on behaviour:** under `dotnet test` on macOS the host's own stdin is already at
+  end-of-file, so a fake that reads stdin to the end passed with the fix reverted. `SolverDiscoveryTests.Gate10`
+  checks that the launched child's `StandardInput` is a closed stream, which fails without the fix on every platform.
+  The deadlock itself is reproducible only on Windows under a client holding the pipe open.

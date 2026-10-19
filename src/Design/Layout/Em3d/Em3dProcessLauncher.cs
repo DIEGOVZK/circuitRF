@@ -51,12 +51,22 @@ public static class Em3dProcessLauncher
     /// <summary>Starts <paramref name="info"/>, counting it under <paramref name="kind"/>. Null when the
     /// operating system started nothing, exactly as <see cref="Process.Start(ProcessStartInfo)"/>
     /// reports it.</summary>
+    /// <remarks><b>The child never inherits this process's stdin.</b> A caller that did not redirect it
+    /// gets it redirected here and closed at once, so the child reads end-of-file. Under <c>serve</c>
+    /// stdin is the MCP client's pipe with the reader thread blocked on it, and Windows serializes I/O
+    /// on a synchronous pipe handle across every process sharing it: a Gmsh started with that handle
+    /// stalls at start-up until the client's next message, which never comes while it waits for this
+    /// answer. A caller that redirected stdin itself keeps it, to write or close as it chooses.</remarks>
     public static Process? Start(ProcessStartInfo info, Em3dProcessKind kind)
     {
         ArgumentNullException.ThrowIfNull(info);
         Interlocked.Increment(ref _started);
         if (kind is Em3dProcessKind.Mesher or Em3dProcessKind.Solver) Interlocked.Increment(ref _solves);
         if (kind == Em3dProcessKind.Installer) Interlocked.Increment(ref _installSteps);
-        return Process.Start(info);
+        bool closeInput = !info.RedirectStandardInput;
+        info.RedirectStandardInput = true;
+        var p = Process.Start(info);
+        if (closeInput) p?.StandardInput.Close();
+        return p;
     }
 }

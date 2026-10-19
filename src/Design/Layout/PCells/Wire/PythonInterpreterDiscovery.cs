@@ -241,6 +241,7 @@ public static class PythonInterpreterDiscovery
         {
             RedirectStandardOutput = true,
             RedirectStandardError  = true,
+            RedirectStandardInput  = true,
             UseShellExecute        = false,
             CreateNoWindow         = true,
         };
@@ -253,6 +254,7 @@ public static class PythonInterpreterDiscovery
         {
             using var probe = Process.Start(info);
             if (probe is null) { why = "it could not be started"; return false; }
+            probe.StandardInput.Close();   // never the serve pipe — Em3dProcessLauncher.Start says why
 
             output = probe.StandardOutput.ReadToEnd().Trim();
             if (!probe.WaitForExit((int)ProbeTimeout.TotalMilliseconds))

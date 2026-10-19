@@ -59,9 +59,11 @@ public static class MachineMemory
         {
             using var p = Process.Start(new ProcessStartInfo(exe, args)
             {
-                RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false, CreateNoWindow = true,
+                RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true,
+                UseShellExecute = false, CreateNoWindow = true,
             });
             if (p is null) return null;
+            p.StandardInput.Close();   // never the serve pipe — Em3dProcessLauncher.Start says why
             string text = p.StandardOutput.ReadToEnd();
             return p.WaitForExit(5000) && p.ExitCode == 0 ? text : null;
         }

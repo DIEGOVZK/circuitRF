@@ -366,6 +366,35 @@ public sealed class SolverDiscoveryTests : IDisposable
                g.TryGetProperty("AtLeast", out var atLeast) && atLeast.GetBoolean(),
                Terminal: g.TryGetProperty("Terminal", out var t) ? (t.GetString() == "(ground)" ? "" : t.GetString()) : null))];
 
+    // ── 10. a probe never hands the child this process's stdin ──────────────────────────────────
+
+    /// <summary>Under <c>serve</c> stdin is the MCP client's pipe with a read pending on it, and on Windows a Gmsh that
+    /// inherited it stalled until the probe timed out and reported Gmsh not found. Every child started through
+    /// <see cref="CircuitRF.Design.Layout.Em3d.Em3dProcessLauncher"/> gets its own stdin, closed at start — asserted on the
+    /// stream itself, because a host whose own stdin is already at end-of-file cannot tell an inherited one apart — and a
+    /// probed program that reads that stdin to the end before answering is still found.</summary>
+    [Fact]
+    public void Gate10_AProbedProgramReadsEndOfFileOnStdin_NeverThisProcesssStdin()
+    {
+        string dir = Path.Combine(_root, "stdin");
+        Directory.CreateDirectory(dir);
+        string script = Windows
+            ? $"@echo off\nfindstr \"^\" >nul\ntype \"{Banner("gmsh-version.txt")}\"\n"
+            : $"#!/bin/sh\ncat >/dev/null\ncat \"{Banner("gmsh-version.txt")}\"\n";
+        string gmsh = WriteScript(Path.Combine(dir, Command), script);
+
+        var psi = new System.Diagnostics.ProcessStartInfo(gmsh) { RedirectStandardOutput = true, UseShellExecute = false };
+        using (var p = CircuitRF.Design.Layout.Em3d.Em3dProcessLauncher.Start(psi, CircuitRF.Design.Layout.Em3d.Em3dProcessKind.Probe))
+        {
+            Assert.NotNull(p);
+            Assert.Throws<ObjectDisposedException>(() => p!.StandardInput.Write('x'));
+            p!.StandardOutput.ReadToEnd();
+            Assert.True(p.WaitForExit(10_000));
+        }
+
+        Assert.Equal((SolverHowFound.Settings, gmsh), Where(Discovery(SolverTool.Gmsh, preferred: gmsh, env: null)));
+    }
+
     // ── helpers ─────────────────────────────────────────────────────────────────────────────────
 
     private static string Command => Windows ? "crf-fake-solver.cmd" : "crf-fake-solver";
