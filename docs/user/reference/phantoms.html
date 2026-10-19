@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>circuitRF — Tissues and phantoms</title>
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/circuitrf-docs.css">
+<!--
+  GENERATED FILE - do not edit. Edit the Markdown source named below and re-run:
+      dotnet run [project tools/DocGen] [flag out] docs/user
+  (XML comments cannot contain a double hyphen; the flags are ordinary ones.)
+  Source: docs/user/src/reference/phantoms.md
+-->
+</head>
+<body>
+
+<header class="doc-header">
+  <a class="brand" href="../index.html"><img class="logo" src="../assets/img/favicon.svg" alt="circuitRF"><span class="wordmark">circuitRF</span></a>
+  <a class="doc-kind" href="index.html">Reference Guide</a>
+  <div class="doc-search" data-crf-search data-root="../" hidden>
+    <input type="search" class="search-input" autocomplete="off" spellcheck="false"
+           aria-label="Search the documentation" placeholder="Search docs"
+           role="combobox" aria-expanded="false" aria-autocomplete="list">
+    <div class="search-panel" role="listbox" hidden></div>
+  </div>
+</header>
+<hr class="doc-headrule">
+
+<main class="page">
+  <div class="page-top">
+    <p class="breadcrumb"><a href="../index.html">Docs</a> › <a href="index.html">Reference</a> › Tissues and phantoms</p>
+    <nav class="page-nav-top" aria-label="Previous and next page">
+      <a class="prev" href="cosimulation.html" title="Previous: &quot;Co-simulation: B1 and SAR from a schematic&quot;"><span class="arrow">‹</span><span class="name">&quot;Co-simulation: B1 and SAR from a schematic&quot;</span></a>
+      <a class="next" href="anatomy-import.html" title="Next: Voxel and mesh import"><span class="name">Voxel and mesh import</span><span class="arrow">›</span></a>
+    </nav>
+  </div>
+
+  <h1>Tissues and phantoms</h1>
+  <p class="lede">The materials SAR is computed in — frequency-dependent body tissues and tissue-simulating liquids, each with its source — and the parametric phantoms a 3D view draws them as.</p>
+
+<p>SAR is computed in <strong>tissue</strong>: a lossy dielectric whose material states a density. circuitRF ships a library of body
+tissues and tissue-simulating liquids, each record citing its source, and six <strong>phantoms</strong> — parametric bodies of nested
+layers — to put them in. Your own segmented anatomy comes in through <a href="anatomy-import.html">Voxel and mesh import</a>.</p>
+<div class="callout note">
+<span class="label">Research and engineering use</span>
+<p>circuitRF's SAR is for research and engineering. It is not a compliance tool, and the shipped values are reference
+data for research use, not a claim that any phantom or liquid meets a standard.</p>
+</div>
+<h2 id="library">The tissue library</h2>
+<p><strong>Add Tissue Materials</strong> copies <code>tissue-materials.cmat</code> beside the technology and names it as one of its libraries
+(see <a href="materials.html#cmat-and-ctech">Materials</a>). It is on the technology editor's Materials tab, and at the top of the
+3D view's Materials dialog (a phantom layer's <em>New Material…</em>, or <em>Assign Material…</em>), where it lists the tissues at once
+to assign and names the library when you press the dialog's OK. Either way the technology is left unsaved until you
+save it. It holds:</p>
+<table>
+<thead>
+<tr>
+<th>Records</th>
+<th>Values</th>
+<th>Density</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>16 body tissues</strong>: skin (dry, wet), fat, muscle, cortical and cancellous bone, brain grey and white matter, cerebrospinal fluid, blood, vitreous humour, lung (inflated, deflated), heart, liver, kidney</td>
+<td>the 1996 parametric (Cole-Cole) model of Gabriel, Lau and Gabriel, <em>Phys. Med. Biol.</em> 41, 2271–2293, evaluated by circuitRF at any frequency</td>
+<td>ICRU Report 44 for fat, muscle, cortical bone, blood, brain and deflated lung; <strong>the other eight state none</strong></td>
+</tr>
+<tr>
+<td><strong>Head and body tissue-simulating liquids</strong></td>
+<td>target values from 150 MHz to 5.8 GHz, FCC OET Bulletin 65 Supplement C (Edition 01-01), interpolated linearly between rows, as the bulletin prescribes, and refused outside them</td>
+<td>1000 kg/m³, as the bulletin states</td>
+</tr>
+<tr>
+<td><strong>Phantom shell (circuitRF's own)</strong></td>
+<td>εr 3.7, lossless: circuitRF's own value, inside the bounds the same bulletin gives for a shell (εr and tanδ below 5.0 and 0.05)</td>
+<td>none: a shell is never tissue</td>
+</tr>
+<tr>
+<td><strong>Saline gel (implant heating)</strong></td>
+<td>σ 0.47 S/m, εr 80, from the published implant-heating literature its record cites</td>
+<td>water's</td>
+</tr>
+<tr>
+<td><strong>openEMS's example tissues</strong></td>
+<td>the head phantom at 298 MHz, the body cylinder at 128 MHz and the dipole example's head at 1 GHz, exactly as openEMS's scripts state them</td>
+<td>the same scripts</td>
+</tr>
+</tbody>
+</table>
+<p><strong>A tissue with no density cannot carry SAR</strong>: a SAR setup whose region holds one is refused, naming it. No free source
+gave a density that could be checked for both skins, cancellous bone, cerebrospinal fluid, vitreous humour, inflated lung,
+heart, liver and kidney, so those records state none rather than an unchecked number. Add one, with its source, to your
+own copy. Thermal properties (conductivity, specific heat, perfusion, metabolic heat) are empty for every tissue, for the
+same reason.</p>
+<p><strong>openEMS's example tissues are not circuitRF's.</strong> openEMS's scripts label their phantoms' values &quot;at 298 MHz&quot; and &quot;at
+128 MHz&quot;, but they are not the Gabriel model's values there — the 298 MHz skull is εr 11.4, σ 0.29 S/m, where cortical
+bone is εr 13.4, σ 0.082 S/m. They are kept as the scripts state them so a replication of those examples compares like
+with like; for your own work, use the Gabriel records.</p>
+<h2 id="frequency">One frequency per run</h2>
+<p>A tissue's εr and σ move strongly with frequency, and an FDTD run sees each material as one constant pair. So a 3D run
+evaluates every frequency-dependent material <strong>once</strong>: at the setup's first SAR frequency when it computes SAR, otherwise at
+the sweep's centre. The run's notes give the frequency and each value — <em>&quot;Frequency-dependent materials are evaluated once,
+at 1.75 GHz (the SAR frequency) … Head tissue-simulating liquid εr 40.08, σ 1.371 S/m&quot;</em> — and <code>circuitrf explain view.c3d --materials</code> lists every material as the solver will receive it.</p>
+<p>Selecting a tissue in the Materials editor shows its <strong>Frequency dependence</strong> card: εr and σ at a frequency you type
+(<code>298M</code>, <code>1.9 GHz</code>), and both plotted against frequency. The model or the table is in the record, and is edited in the
+file.</p>
+<h2 id="phantoms">Phantoms</h2>
+<p><em>3D ▸ Draw ▸ Phantom</em> adds one:</p>
+<table>
+<thead>
+<tr>
+<th>Phantom</th>
+<th>Layers, outermost first</th>
+<th>Starts as</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Head (3 ellipsoids)</strong></td>
+<td>skin, skull, brain</td>
+<td>openEMS's head phantom: semi-axes 100, 80, 100 mm, shells 9 mm</td>
+</tr>
+<tr>
+<td><strong>Body (3 cylinders)</strong></td>
+<td>skin, bone, tissue</td>
+<td>openEMS's body phantom: radius 100 mm, 260 mm long, shells 8 and 10 mm</td>
+</tr>
+<tr>
+<td><strong>Flat Phantom</strong></td>
+<td>shell, liquid: the liquid in an open-topped box, the shell on its floor and four walls</td>
+<td>a 2.0 mm shell and 150 mm of body liquid over 296 × 196 mm</td>
+</tr>
+<tr>
+<td><strong>Generic Head (circuitRF's own)</strong></td>
+<td>ear-left, ear-right, shell, liquid</td>
+<td>an ellipsoid shell of head liquid, semi-axes 100, 78, 115 mm, a 2.0 mm shell, and a flat ear spacer each side, 4.0 mm thick and 25 mm in radius</td>
+</tr>
+<tr>
+<td><strong>Sphere</strong>, <strong>Box</strong></td>
+<td>one homogeneous body</td>
+<td>radius 50 mm; a 100 mm cube</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>One object.</strong> A phantom moves, turns, hides and is left out of the solve as one; the tree lists its layers under it,
+and Properties shows the dimensions its shape uses and one material per layer. In the solve each layer is a solid
+named <code>&lt;phantom&gt;/&lt;layer&gt;</code>, so a SAR region can name a layer (<code>head/brain</code>) or the whole phantom (<code>head</code>).</li>
+<li><strong>The innermost wins</strong> where layers overlap, so the brain is brain, not skin. Every layer is solved as a lossy
+dielectric.</li>
+<li><strong>The flat phantom</strong> follows the bulletin where it gives a value: a shell of 2.0 ± 0.2 mm and a liquid 15.0 ± 0.5 cm
+deep. The bulletin gives no floor size, so the 300 × 200 mm outside is circuitRF's own, chosen to be at least ¾ by ½ of a
+wavelength from 900 MHz up. Its named faces are <code>floor</code> (the shell's outside) and <code>liquid</code> (the liquid's surface through
+the shell, the plane a system check's spacing is measured from).</li>
+<li><strong>The generic head</strong> is circuitRF's own shape and is named so, so that nobody takes it for a standard's mannequin. x is to
+the front, y ear to ear (left is +y), z up. The spacers' 4.0 mm comes from the same bulletin; their 25 mm radius is
+circuitRF's own. Its named faces are <code>ear-left</code> and <code>ear-right</code>, each spacer's flat face: the face a handset is placed
+against (<a href="phone-sar.html#placement">Phone SAR</a>).</li>
+<li><strong>Voxelized.</strong> A head or body phantom can be given to openEMS as voxels of a stated pitch (<strong>Voxel size</strong> in
+Properties; 0 is the smooth layers): each voxel takes the innermost layer holding its centre. openEMS's own example phantoms are 2.5 mm voxels of
+exactly these ellipsoids, so a voxelized phantom reproduces them cell for cell. The 3D view, Palace and the thermal
+solver still draw and mesh the smooth layers, and the run says so.</li>
+<li><strong>Flatten Phantom</strong> (its menu) replaces it with one ordinary solid per layer, <code>&lt;phantom&gt;_&lt;layer&gt;</code>, in a group named
+after it; the solve is the same. It is refused on a voxelized phantom, whose layers would become smooth.</li>
+</ul>
+<p>What each object is in the file, field by field: <code>circuitrf reference 3d</code>.</p>
+
+<nav class="page-nav">
+  <a class="prev" href="cosimulation.html"><span class="dir">Previous</span><span class="name">&quot;Co-simulation: B1 and SAR from a schematic&quot;</span></a>
+  <a class="next" href="anatomy-import.html"><span class="dir">Next</span><span class="name">Voxel and mesh import</span></a>
+</nav>
+</main>
+
+<footer class="doc-footer">
+  <img src="../assets/img/circuitRF-mark.svg" alt="">
+  <span>circuitRF — RF circuit simulator</span>
+  <span class="spacer"></span>
+  <a href="../index.html">Documentation home</a>
+</footer>
+
+<script src="../assets/js/search-index.js" defer></script>
+<script src="../assets/js/docs-search.js" defer></script>
+</body>
+</html>

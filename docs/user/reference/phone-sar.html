@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>circuitRF — Phone SAR</title>
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/circuitrf-docs.css">
+<!--
+  GENERATED FILE - do not edit. Edit the Markdown source named below and re-run:
+      dotnet run [project tools/DocGen] [flag out] docs/user
+  (XML comments cannot contain a double hyphen; the flags are ordinary ones.)
+  Source: docs/user/src/reference/phone-sar.md
+-->
+</head>
+<body>
+
+<header class="doc-header">
+  <a class="brand" href="../index.html"><img class="logo" src="../assets/img/favicon.svg" alt="circuitRF"><span class="wordmark">circuitRF</span></a>
+  <a class="doc-kind" href="index.html">Reference Guide</a>
+  <div class="doc-search" data-crf-search data-root="../" hidden>
+    <input type="search" class="search-input" autocomplete="off" spellcheck="false"
+           aria-label="Search the documentation" placeholder="Search docs"
+           role="combobox" aria-expanded="false" aria-autocomplete="list">
+    <div class="search-panel" role="listbox" hidden></div>
+  </div>
+</header>
+<hr class="doc-headrule">
+
+<main class="page">
+  <div class="page-top">
+    <p class="breadcrumb"><a href="../index.html">Docs</a> › <a href="index.html">Reference</a> › Phone SAR</p>
+    <nav class="page-nav-top" aria-label="Previous and next page">
+      <a class="prev" href="anatomy-import.html" title="Previous: Voxel and mesh import"><span class="arrow">‹</span><span class="name">Voxel and mesh import</span></a>
+      <a class="next" href="smith-chart.html" title="Next: Smith Chart"><span class="name">Smith Chart</span><span class="arrow">›</span></a>
+    </nav>
+  </div>
+
+  <h1>Phone SAR</h1>
+  <p class="lede">A device or antenna placed against a flat phantom or a head, run at its bands, and psSAR1g and psSAR10g read at its rated power beside published reference values — shown as reference values, never as pass or fail.</p>
+
+<p>A wireless-device engineer puts an antenna or a whole device against a phantom of tissue-simulating liquid, runs it at
+the device's bands, and reads psSAR1g and psSAR10g at the device's rated power. circuitRF does each step on an ordinary 3D
+view and an ordinary openEMS setup: the <strong>placement</strong> writes transforms, the <strong>band sweep</strong> writes setups, and the
+<strong>table</strong> reads their results.</p>
+<div class="callout note">
+<span class="label">Research and engineering use</span>
+<p>circuitRF's SAR is for research and engineering. It is not a compliance tool: published limits are shown beside a
+result as reference values, and nothing says pass or fail.</p>
+</div>
+<p>The worked example is <strong>SAR: Phone Dipole</strong> (<em>File ▸ New ▸ Examples</em>): a system-check dipole under a flat phantom at
+1.75 and 1.95 GHz. The phantoms are described in <a href="phantoms.html">Tissues and phantoms</a>, and SAR itself in
+<a href="sar.html">SAR and B1</a>.</p>
+<h2 id="phantom">1. A phantom</h2>
+<p><em>3D ▸ Draw ▸ Phantom</em>:</p>
+<ul>
+<li><strong>Flat Phantom</strong> — a shell holding 150 mm of liquid, open on top; for a body-worn or flat position and for a system
+check. Set its liquid to the head or body tissue-simulating liquid.</li>
+<li><strong>Generic Head (circuitRF's own)</strong> — an ellipsoid shell of head liquid with a flat ear spacer on each side; for the
+position against the ear. It is circuitRF's own shape, not a standard's mannequin.</li>
+</ul>
+<p>Both liquids are target tables, so each band's run evaluates the liquid at that band.</p>
+<h2 id="placement">2. Placement</h2>
+<p>Select the antenna or the device — any objects, placed cells and groups — and <em>3D ▸ Draw ▸ Phantom ▸ Place Against
+Phantom…</em> (or the canvas menu on the selection).</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Phantom, Face</td>
+<td>a phantom's own box faces (<code>xmin</code> … <code>zmax</code>), and its named ones: a flat phantom's <code>floor</code> (the shell's outside) and <code>liquid</code> (the liquid's surface through the shell), the generic head's <code>ear-left</code> and <code>ear-right</code></td>
+</tr>
+<tr>
+<td>Separation</td>
+<td>from the face's plane to the device's nearest point, measured on its geometry (a STEP part on its tessellation)</td>
+</tr>
+<tr>
+<td>Tilt (°) about</td>
+<td>a turn about a world axis, applied first; the move is then solved</td>
+</tr>
+<tr>
+<td>Offset x, y, z</td>
+<td>where the device's box sits on the face, from the face's centre</td>
+</tr>
+</tbody>
+</table>
+<p>It moves the selection as <strong>one rigid body</strong> and writes <strong>ordinary transforms</strong>, what a drag would write: nothing in the
+file remembers the placement, and moving the device by hand afterwards is fine. The 3D view shows the separation as a
+dimension, measured again from the geometry whenever the view changes. <strong>Refused:</strong> placing a phantom itself; a negative
+separation; a separation from <code>liquid</code> thinner than the shell (the device would be inside it); an object whose position
+is an expression (placing it would overwrite the expression).</p>
+<p>A tilt that is not a quarter turn is for a device made of solids. openEMS cannot take a sheet tilted out of every axis
+plane, or a lumped port pointing off the axes, so a drawn strip antenna fed by a lumped port refuses such a tilt before
+the run.</p>
+<h2 id="bands">3. Bands and power</h2>
+<p>One run gives SAR at <strong>one</strong> frequency (the tissues are evaluated there). <em>3D ▸ Draw ▸ Phantom ▸ Band Sweep…</em> makes one
+setup per band from a template:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Template setup</td>
+<td>an openEMS setup with a SAR group: the grid, the boundaries, the masses</td>
+</tr>
+<tr>
+<td>Bands (GHz)</td>
+<td>the frequencies</td>
+</tr>
+<tr>
+<td>Rated power (W)</td>
+<td>the device's rated conducted power (default 1 W, so the table reads per watt), referred to the <strong>accepted</strong> (the power entering the antenna), or <strong>incident</strong> (the power the transmitter delivers into 50 Ω, of which the antenna's mismatch reflects |S11|²)</td>
+</tr>
+<tr>
+<td>Duty cycle</td>
+<td>for a transmitter that sends in bursts: its scaling factor</td>
+</tr>
+<tr>
+<td>Reference values for</td>
+<td>head and trunk, or limbs: which published values are shown</td>
+</tr>
+<tr>
+<td>Your own values, Targets</td>
+<td>reference values of your own, and target values for a known configuration</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Create Setups</strong> writes one setup per band, <code>&lt;sweep&gt; &lt;f&gt; GHz</code>: the template with its SAR at that band, 1 g and 10 g added to
+its masses, and <strong>its sweep scaled by band / template frequency</strong>, so each band keeps the template's relative bandwidth
+and a grid drawn from its own highest frequency. Creating again replaces them, so an edited template brings every band up
+to date. <strong>Run</strong> creates them and runs each in turn, as Simulate would; the dialog is not modal, because the runs take as
+long as they take. Power, duty cycle, reference values and targets are read by the table alone, so changing them never
+makes a result out of date.</p>
+<h2 id="table">4. The table</h2>
+<p>One row per band and driven port: psSAR1g and psSAR10g <strong>at the rated power</strong>, and per watt; the peak cube's centre and
+tissue; and the difference from a target where you gave one. A band not run yet says so.</p>
+<p><strong>Published reference values</strong> are shown beside each number, each with its source and date:</p>
+<table>
+<thead>
+<tr>
+<th>Reference value</th>
+<th>Source</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1.6 W/kg over 1 g, head and trunk</td>
+<td>FCC OET Bulletin 65 Supplement C (Edition 01-01, June 2001), general population, partial body</td>
+</tr>
+<tr>
+<td>4.0 W/kg over 10 g, extremities</td>
+<td>the same table</td>
+</tr>
+<tr>
+<td>2.0 W/kg over 10 g, head and trunk</td>
+<td>ICNIRP Guidelines (100 kHz to 300 GHz), <em>Health Phys.</em> 118(5):483–524 (2020), general public, local</td>
+</tr>
+<tr>
+<td>4.0 W/kg over 10 g, limbs</td>
+<td>the same</td>
+</tr>
+</tbody>
+</table>
+<p>A number above one is coloured and says which reference value it is above.</p>
+<p>Headless, <code>circuitrf em view.c3d --bands &lt;sweep&gt;</code> makes the same setups in memory, runs them and prints the table; MCP's
+<code>run analysis=em</code> takes <code>bands</code>.</p>
+<h2 id="system-check">A system check</h2>
+<p>A laboratory checks its measurement system with a half-wave dipole at a stated spacing below a flat phantom, and compares
+the measured psSAR1g with a target value for that dipole. The example reproduces the configuration the FCC bulletin gives
+for 1900 MHz — a 68.0 mm dipole, 10.0 mm from its axis to the liquid, a 2.0 mm shell, 15 cm of head liquid — and its
+results are <strong>circuitRF's own, not target values</strong>: the target values come from a standard that is not reproduced here. If
+you have them, enter them as the sweep's targets.</p>
+<p>At 1.9 GHz, per watt accepted, the same check on three grids:</p>
+<table>
+<thead>
+<tr>
+<th><code>CellsPerWavelength</code></th>
+<th>10</th>
+<th><strong>15</strong></th>
+<th>20</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>cells</td>
+<td>0.87 M</td>
+<td>2.30 M</td>
+<td>4.22 M</td>
+</tr>
+<tr>
+<td>psSAR1g</td>
+<td>39.08 W/kg</td>
+<td><strong>40.87 W/kg</strong></td>
+<td>40.21 W/kg</td>
+</tr>
+<tr>
+<td>psSAR10g</td>
+<td>20.00 W/kg</td>
+<td><strong>20.97 W/kg</strong></td>
+<td>20.78 W/kg</td>
+</tr>
+</tbody>
+</table>
+<p>From 15 cells per wavelength on, psSAR agrees with the finest grid to 2 %; at 10 it reads 3–4 % low. The approach is not
+monotonic, because each grid places the dipole's edges and feed differently and the dipole's own resonance moves with them.</p>
+<h2 id="not-here">What is not here</h2>
+<p>Hand and body-worn positions with a hand phantom, absorbed power density above 6 GHz, and compliance reports.</p>
+
+<nav class="page-nav">
+  <a class="prev" href="anatomy-import.html"><span class="dir">Previous</span><span class="name">Voxel and mesh import</span></a>
+  <a class="next" href="smith-chart.html"><span class="dir">Next</span><span class="name">Smith Chart</span></a>
+</nav>
+</main>
+
+<footer class="doc-footer">
+  <img src="../assets/img/circuitRF-mark.svg" alt="">
+  <span>circuitRF — RF circuit simulator</span>
+  <span class="spacer"></span>
+  <a href="../index.html">Documentation home</a>
+</footer>
+
+<script src="../assets/js/search-index.js" defer></script>
+<script src="../assets/js/docs-search.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>circuitRF — SAR and B1</title>
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/circuitrf-docs.css">
+<!--
+  GENERATED FILE - do not edit. Edit the Markdown source named below and re-run:
+      dotnet run [project tools/DocGen] [flag out] docs/user
+  (XML comments cannot contain a double hyphen; the flags are ordinary ones.)
+  Source: docs/user/src/reference/sar.md
+-->
+</head>
+<body>
+
+<header class="doc-header">
+  <a class="brand" href="../index.html"><img class="logo" src="../assets/img/favicon.svg" alt="circuitRF"><span class="wordmark">circuitRF</span></a>
+  <a class="doc-kind" href="index.html">Reference Guide</a>
+  <div class="doc-search" data-crf-search data-root="../" hidden>
+    <input type="search" class="search-input" autocomplete="off" spellcheck="false"
+           aria-label="Search the documentation" placeholder="Search docs"
+           role="combobox" aria-expanded="false" aria-autocomplete="list">
+    <div class="search-panel" role="listbox" hidden></div>
+  </div>
+</header>
+<hr class="doc-headrule">
+
+<main class="page">
+  <div class="page-top">
+    <p class="breadcrumb"><a href="../index.html">Docs</a> › <a href="index.html">Reference</a> › SAR and B1</p>
+    <nav class="page-nav-top" aria-label="Previous and next page">
+      <a class="prev" href="antennas.html" title="Previous: Antennas"><span class="arrow">‹</span><span class="name">Antennas</span></a>
+      <a class="next" href="cosimulation.html" title="Next: &quot;Co-simulation: B1 and SAR from a schematic&quot;"><span class="name">&quot;Co-simulation: B1 and SAR from a schematic&quot;</span><span class="arrow">›</span></a>
+    </nav>
+  </div>
+
+  <h1>SAR and B1</h1>
+  <p class="lede">Specific absorption rate and the MRI transmit field from a 3D EM run on openEMS — setting it up, what the numbers are normalised to, the B1 convention, and reading the results.</p>
+
+<p>A 3D view's openEMS setup can compute, at one or more frequencies, the <strong>specific absorption rate</strong> (SAR) in every
+lossy tissue it holds, the <strong>peak spatial-average SAR</strong> over cubes of 1 g, 10 g or any mass you name, the power the
+tissue absorbs, and for MRI work the <strong>transmit field B1+</strong> and its counter-rotating part B1−. They come out as field
+plots on the 3D model, readouts in the setup editor, and scalars in the run's <code>.npy</code>.</p>
+<div class="callout note">
+<span class="label">Research and engineering use</span>
+<p>circuitRF's SAR is for research and engineering. It is not a compliance tool and no result claims compliance with
+any standard. The averaging follows the cube-averaging procedure of IEC/IEEE 62704-1 as openEMS implements it, and
+agrees with openEMS's own <code>sar_calc</code> on the same data: the same peak, the same cell, every averaged cell
+within 1e-6. The standard itself was not consulted.</p>
+</div>
+<p>SAR needs <strong>openEMS</strong> (see <a href="em-3d.html">3D EM</a>). Palace does not write the per-cell data SAR is computed from, and a
+setup that names Palace alone is refused.</p>
+<h2 id="what">What the numbers are</h2>
+<ul>
+<li><strong>Local SAR</strong> in a cell is σ|E|²/(2ρ), in W/kg: the cell's conductivity, the peak amplitude of its electric field, and
+its density. Air has no density and no SAR.</li>
+<li><strong>psSAR</strong> of a mass <em>m</em> is the largest average of local SAR over a cube holding <em>m</em> of tissue. A cube centred on each
+tissue cell is grown until it holds the mass; it counts only if less than 10 % of it is air and every one of its six
+faces touches tissue. A cell that is the centre of no such cube takes the largest average of a valid cube it lies
+wholly inside, and a cell inside none takes a cube grown outward from one of its own faces. This is why a cube at a
+surface is not simply clipped: a phantom's skin is where the peak usually is.</li>
+<li><strong>Whole-region SAR</strong> (<code>SARwb</code>) is the region's absorbed power over its tissue mass.</li>
+<li><strong>Absorbed power</strong> (<code>Pabs</code>) is ½σ|E|² summed over the tissue's volume.</li>
+<li><strong>B1+ and B1−</strong>: <a href="#b1">the B1 convention</a>, below.</li>
+</ul>
+<h2 id="setup">Setting it up</h2>
+<p>In the EM Setup editor, an openEMS setup has a <strong>SAR and B1</strong> group. Tick it, then:</p>
+<table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Key</th>
+<th>Default</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>At (GHz)</strong></td>
+<td><code>FrequenciesGHz</code></td>
+<td>required</td>
+<td>each inside the sweep</td>
+</tr>
+<tr>
+<td><strong>Masses (g)</strong></td>
+<td><code>MassesGrams</code></td>
+<td>1, 10</td>
+<td>any positive mass; each gives <code>psSAR&lt;m&gt;g</code></td>
+</tr>
+<tr>
+<td><strong>Averaging</strong></td>
+<td><code>Method</code></td>
+<td>Cube</td>
+<td><em>Cube</em> is the procedure above; <em>Simple</em> accepts every centred cube that reaches the mass, with no air or face rule</td>
+</tr>
+<tr>
+<td><strong>Region</strong></td>
+<td><code>Region</code></td>
+<td>all tissue</td>
+<td>the objects or phantoms every number is reported over; a phantom's name stands for all its layers</td>
+</tr>
+<tr>
+<td><strong>B1</strong></td>
+<td><code>B1</code></td>
+<td>on below 500 MHz</td>
+<td></td>
+</tr>
+<tr>
+<td><strong>B0 along</strong></td>
+<td><code>B0Axis</code></td>
+<td>+z</td>
+<td>the static field's direction</td>
+</tr>
+<tr>
+<td><strong>B1 mean over</strong></td>
+<td><code>B1Region</code></td>
+<td>the first phantom's innermost layer</td>
+<td>where the mean |B1+| is taken</td>
+</tr>
+<tr>
+<td><strong>Cross-check with sar_calc</strong></td>
+<td><code>CrossCheck</code></td>
+<td>off</td>
+<td>also runs openEMS's <code>sar_calc</code> on the same data and shows its peak beside circuitRF's</td>
+</tr>
+<tr>
+<td><strong>Keep per-port fields</strong></td>
+<td><code>PerPortFields</code></td>
+<td>off</td>
+<td>keeps each port's fields for <a href="cosimulation.html">co-simulation</a></td>
+</tr>
+</tbody>
+</table>
+<p>In the <code>.c3d</code> or <code>.cem</code> this is the setup's <code>Sar</code> section; <code>circuitrf reference em-setup</code> lists every key.</p>
+<p><strong>Which cells are tissue.</strong> A solid is tissue when it is a dielectric with a conductivity above zero and its material
+states a <strong>density</strong>. A lossy material with no density in the region is refused, naming it: openEMS would write it as
+air and every SAR tool would then ignore it. Several of circuitRF's shipped tissues state no density, because no free
+source gives one; add one, with its source, to your own copy (see <a href="materials.html#tissue">Materials</a>). A board whose loss
+is a loss tangent has a conductivity of zero and is never tissue.</p>
+<p><strong>One frequency per tissue evaluation.</strong> A body tissue's εr and σ change with frequency, and an openEMS run sees each
+material as one constant pair over its whole band. circuitRF evaluates every frequency-dependent material once, at the
+<strong>first</strong> SAR frequency, so the SAR and B1 a run reports are valid at that frequency only. Two SAR frequencies with a
+frequency-dependent tissue are refused; make a second setup for the second frequency, or use a
+<a href="phone-sar.html#bands">band sweep</a>, which makes one setup per band for you.</p>
+<p><strong>What the group switches on.</strong> <em>Cell-constant material</em> (each FDTD cell takes the material at its centre), which cube
+averaging needs. It is slightly less accurate at a material's face, and the run says so. Unticking it in the openEMS
+options overrides the group.</p>
+<p><strong>Disk.</strong> Each SAR frequency and driven port writes a raw dump of the tissue's box, 36 bytes a cell, plus about 276 bytes a
+cell for B1's magnetic field while the run lasts. The run's notes and <code>circuitrf explain</code> estimate it before the run,
+and it is a warning above 4 GB.</p>
+<p><strong>Refused before any run:</strong> a SAR frequency outside the sweep; a setup with no lossy dielectric; a region that names no
+object; a non-driven problem; on a cylindrical grid, an averaging mass or the cross-check (a cube is a Cartesian grid's,
+so a cylindrical grid gives local SAR and B1 only).</p>
+<h2 id="units">Units and normalisation</h2>
+<p>The run's excitation is arbitrary and tiny, so every SAR, power and B1 number circuitRF shows is <strong>per 1 W accepted</strong> at
+the driven port: SAR divided by the accepted power, B1 divided by its square root.</p>
+<table>
+<thead>
+<tr>
+<th>Quantity</th>
+<th>Unit</th>
+<th>Per</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>local SAR, psSAR, SARwb</td>
+<td>W/kg</td>
+<td>W accepted</td>
+</tr>
+<tr>
+<td>Pabs, Prad</td>
+<td>W</td>
+<td>W accepted (a fraction)</td>
+</tr>
+<tr>
+<td>B1+, B1−, mean |B1+|</td>
+<td>µT (T in the <code>.npy</code>)</td>
+<td>√W accepted</td>
+</tr>
+<tr>
+<td>SAR efficiency</td>
+<td>µT/√(W/kg)</td>
+<td>— (mean |B1+| over √psSAR10g, the same at any power)</td>
+</tr>
+<tr>
+<td>Pacc</td>
+<td>W</td>
+<td><strong>as solved</strong>, the one value that is, so the solved scale can be recovered</td>
+</tr>
+</tbody>
+</table>
+<p>The accepted power is ½Re(V I*) at the port at the SAR frequency, the same rule openEMS's own SAR tutorials use. A field
+plot can be drawn at another power: its <strong>Drive power</strong> in the Inspector takes one (<code>250 mW</code>, <code>30 dBm</code>), referred to
+the accepted or to the incident wave, and SAR scales with the power, B1 with its square root.</p>
+<h2 id="b1">The B1 convention</h2>
+<p>With the phasor convention b(t) = Re{<strong>B</strong> e^{jωt}}, <strong>B</strong> = μ0<strong>H</strong>, and B0 along +z, the transverse field splits into two
+circularly polarised parts:</p>
+<pre><code>B1+ = (Bx + j·By) / 2        B1− = (Bx − j·By) / 2</code></pre>
+<p>|B1+| is the part rotating counter-clockwise seen from +z (from +x towards +y), |B1−| the part rotating clockwise. This is
+exactly what openEMS's own MRI tutorials compute. Which of the two is the transmit field depends on the sign convention
+for precession, and the literature uses both; circuitRF takes openEMS's definition as it stands. <strong>B0 along −z swaps the
+two.</strong> For B0 along ±x or ±y the transverse pair is taken cyclically, (By, Bz) and (Bz, Bx).</p>
+<p>The mean |B1+| is volume-weighted over <strong>B1 mean over</strong>'s objects.</p>
+<h2 id="results">Reading the results</h2>
+<ul>
+<li><strong>The setup editor's readouts</strong>, after a run, per SAR frequency and driven port: psSAR per mass with the peak cube's
+centre and tissue, peak local SAR, whole-region SAR, absorbed, accepted (1 W, and the value as solved), radiated and the
+power budget when the setup has a radiation pattern, mass, mean |B1+| and the efficiency, and <code>sar_calc</code>'s peak with the
+cross-check on. <code>circuitrf em</code> prints the same, one line per port.</li>
+<li><strong>Field plots.</strong> Each run offers its SAR and B1 as two solutions of their own, labelled <em>(SAR)</em> and <em>(B1)</em>, at the SAR
+frequency and port. The quantities are <code>SAR</code> (local), <code>SAR1g</code>, <code>SAR10g</code> and so on per mass, <code>B1p</code> and <code>B1m</code>. SAR is drawn
+over tissue only, so air is transparent; B1 is drawn over the whole box, because B1 is wanted in the air inside a coil.
+<ul>
+<li><strong>Maximum-intensity projection</strong> (a SAR clip plane's <em>Maximum-intensity projection</em> box, or <code>render --mip x|y|z</code>): each line through the volume
+along the plane's axis carries its largest value, so one plane shows the hottest tissue wherever it lies.</li>
+<li><strong>The peak marker</strong>: the peak cube as a wireframe in the 3D view, and on a section its square, solid where the plane
+cuts it and dashed, with its distance, where it does not. Local SAR has no cube and is marked with a cross.</li>
+</ul>
+</li>
+<li><strong>The <code>.npy</code></strong> gains a <code>sar</code> group, each cube over the SAR frequencies and the driven ports: <code>psSAR1g</code>, <code>psSAR10g</code> (per
+mass), <code>SARwb</code>, <code>Pabs</code>, <code>Pacc</code>, <code>Mass</code>, and with B1 <code>B1pMean</code> and <code>SarEff</code>; with a radiation pattern also <code>Prad</code> and
+<code>PowerBudget</code>, (absorbed + radiated) / accepted, which should lie a little under 1.</li>
+<li><strong>The volumes</strong> (local SAR, each mass's average, B1+, B1−) are kept as float32 <code>.npy</code> arrays in the run folder, beside
+openEMS's raw dump, with their cell centres. Their names are in the run's <code>sar&lt;j&gt;.json</code> record.</li>
+</ul>
+<p>Headless: <code>circuitrf em view.c3d --setup &lt;name&gt;</code> runs it, <code>circuitrf explain view.c3d</code> reports the group, the tissue each
+object is, ρ, εr and σ as the solver will see them and the disk estimate, and <code>circuitrf render view.c3d --field &lt;plot&gt; -o out.png</code> draws a SAR or B1 plot. MCP's <code>run analysis=em</code> and <code>render</code> do the same.</p>
+<h2 id="checked">How it was checked</h2>
+<p>circuitRF rebuilt openEMS's own SAR and MRI tutorials from 3D-view objects and ran them on openEMS 0.37.0:</p>
+<table>
+<thead>
+<tr>
+<th>Case</th>
+<th>Compared</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dipole beside a three-layer head, 1 GHz, on the tutorial's grid</td>
+<td>psSAR10g per W, whole-phantom SAR, power budget</td>
+<td>+0.09 %, +0.02 %, 97.99 % (the tutorial's 97.93 %)</td>
+</tr>
+<tr>
+<td>The same, on circuitRF's own grid</td>
+<td>psSAR10g per W</td>
+<td>−2.45 %</td>
+</tr>
+<tr>
+<td>7 T loop coil beside a head phantom, on the tutorial's grid</td>
+<td>|B1+| at the centre, peak local SAR on two planes, S11 minimum</td>
+<td>−0.34 %, −0.64 %, the same frequency to 0.01 MHz</td>
+</tr>
+<tr>
+<td>The raw data of the dipole, averaged by circuitRF and by <code>sar_calc</code></td>
+<td>10 g peak, every cell</td>
+<td>identical peak and cell; every cell within 7.8e-7</td>
+</tr>
+</tbody>
+</table>
+<p>openEMS stops a run when its energy has decayed, checked on wall-clock time, so two runs of the same problem can stop at
+different steps; that alone moved the dipole's psSAR10g by 0.24 % between runs of the tutorial itself.</p>
+<h2 id="related">Related</h2>
+<ul>
+<li><a href="cosimulation.html">Co-simulation</a>: capacitors as ports, and B1 and SAR from a schematic with no new EM run.</li>
+<li><a href="phantoms.html">Tissues and phantoms</a>: the materials and the bodies SAR is computed in.</li>
+<li><a href="anatomy-import.html">Voxel and mesh import</a>: your own segmented anatomy.</li>
+<li><a href="phone-sar.html">Phone SAR</a>: placement against a phantom, band sweeps and reference values.</li>
+</ul>
+
+<nav class="page-nav">
+  <a class="prev" href="antennas.html"><span class="dir">Previous</span><span class="name">Antennas</span></a>
+  <a class="next" href="cosimulation.html"><span class="dir">Next</span><span class="name">&quot;Co-simulation: B1 and SAR from a schematic&quot;</span></a>
+</nav>
+</main>
+
+<footer class="doc-footer">
+  <img src="../assets/img/circuitRF-mark.svg" alt="">
+  <span>circuitRF — RF circuit simulator</span>
+  <span class="spacer"></span>
+  <a href="../index.html">Documentation home</a>
+</footer>
+
+<script src="../assets/js/search-index.js" defer></script>
+<script src="../assets/js/docs-search.js" defer></script>
+</body>
+</html>

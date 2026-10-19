@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>circuitRF — &quot;Co-simulation: B1 and SAR from a schematic&quot;</title>
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/circuitrf-docs.css">
+<!--
+  GENERATED FILE - do not edit. Edit the Markdown source named below and re-run:
+      dotnet run [project tools/DocGen] [flag out] docs/user
+  (XML comments cannot contain a double hyphen; the flags are ordinary ones.)
+  Source: docs/user/src/reference/cosimulation.md
+-->
+</head>
+<body>
+
+<header class="doc-header">
+  <a class="brand" href="../index.html"><img class="logo" src="../assets/img/favicon.svg" alt="circuitRF"><span class="wordmark">circuitRF</span></a>
+  <a class="doc-kind" href="index.html">Reference Guide</a>
+  <div class="doc-search" data-crf-search data-root="../" hidden>
+    <input type="search" class="search-input" autocomplete="off" spellcheck="false"
+           aria-label="Search the documentation" placeholder="Search docs"
+           role="combobox" aria-expanded="false" aria-autocomplete="list">
+    <div class="search-panel" role="listbox" hidden></div>
+  </div>
+</header>
+<hr class="doc-headrule">
+
+<main class="page">
+  <div class="page-top">
+    <p class="breadcrumb"><a href="../index.html">Docs</a> › <a href="index.html">Reference</a> › Co-simulation</p>
+    <nav class="page-nav-top" aria-label="Previous and next page">
+      <a class="prev" href="sar.html" title="Previous: SAR and B1"><span class="arrow">‹</span><span class="name">SAR and B1</span></a>
+      <a class="next" href="phantoms.html" title="Next: Tissues and phantoms"><span class="name">Tissues and phantoms</span><span class="arrow">›</span></a>
+    </nav>
+  </div>
+
+  <h1>&quot;Co-simulation: B1 and SAR from a schematic&quot;</h1>
+  <p class="lede">Capacitors as ports. One EM run keeps each port&#39;s fields, and a schematic&#39;s fields analysis turns the waves its circuit delivers into B1 and SAR — so tuning, optimizing and yield on fields start no EM run.</p>
+
+<p>An MRI coil is a resonant conductor with many tuning, matching and decoupling capacitors next to lossy tissue. Solving
+it with the capacitors inside the EM model means a new EM run for every capacitor value, and a high-Q coil rings for a
+long time in FDTD. The method coil designers use instead is <strong>co-simulation</strong>: every capacitor gap and every feed is a
+<strong>port</strong>, the EM run solves the bare conductors once and keeps each port's fields, and a circuit puts the capacitors
+back. circuitRF does the second half in a schematic, so B1 and SAR follow every value in it — tuned, optimized or drawn
+for a yield trial — in about a second and with no EM run.</p>
+<div class="callout note">
+<span class="label">Research and engineering use</span>
+<p>circuitRF's SAR is for research and engineering. It is not a compliance tool.</p>
+</div>
+<p>The worked example is <strong>SAR: MRI Loop Coil</strong> (<em>File ▸ New ▸ Examples</em>): a 7 T loop with four ports, matched and optimized
+against S11, B1 and psSAR goals in 4 s. What B1 and SAR are, and their units, is <a href="sar.html">SAR and B1</a>.</p>
+<h2 id="em">1. The EM side: ports for capacitors, fields kept</h2>
+<p>In the coil's 3D view:</p>
+<ol>
+<li>Put a <strong>lumped port</strong> across every gap a capacitor will bridge, and one at each feed. Give them all the <strong>same Z0</strong>
+(50 Ω): the Touchstone records one reference impedance, so a block whose ports differ would be read in the wrong one.</li>
+<li>In the openEMS setup's <strong>SAR and B1</strong> group, set the frequency, the masses and B1 as usual, and tick <strong>Keep per-port
+fields</strong> (<code>PerPortFields</code>).</li>
+<li><strong>Simulate.</strong> openEMS runs once per port, as any driven run does. Beside the <code>.sNp</code> the run writes a <strong>field set</strong>,
+a folder <code>&lt;stem&gt;.fields/</code>: each port's E and H over the tissue's box, per √W incident at that port and nothing
+incident anywhere else, with the cells' σ, ρ and volume and a manifest. They are float32, 24 bytes a cell per port and
+field; the loop coil's four ports at 298 MHz take 87 MB on the example's grid. The disk estimate before the run says how
+much of it the field set is.</li>
+</ol>
+<p><strong>Without capacitors there is no resonance to ring down.</strong> The example's four runs stop after about 3,700–3,900 steps
+each; the same coil with lumped capacitors in the EM model needed 72,000 steps for one run, and it was still ringing.</p>
+<h2 id="schematic">2. The schematic side: the fields analysis</h2>
+<p>Place the <code>.sNp</code> as an <strong>S-parameter block</strong> in a test bench and draw the circuit around its ports: the capacitors, the
+match, the feed. Then add a <strong>Fields (SAR, B1)</strong> analysis in the Analysis editor:</p>
+<pre><code>analysis F1 type=fields block=EM1 freq=298 freqUnit=MHz drive=1 [norm=accepted|available] [average=yes|no]</code></pre>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>block</code></td>
+<td>the S-parameter block's instance name (<code>X1.EM1</code> inside a cell)</td>
+<td>required</td>
+</tr>
+<tr>
+<td><code>freq</code>, <code>freqUnit</code></td>
+<td>one of the run's SAR frequencies</td>
+<td>required</td>
+</tr>
+<tr>
+<td><code>drive</code></td>
+<td>the circuit port that drives; every other circuit port is terminated in its Z0</td>
+<td>required</td>
+</tr>
+<tr>
+<td><code>weights</code></td>
+<td>with several drives, each one's complex amplitude (<a href="#multichannel">multi-channel</a>)</td>
+<td>1 each</td>
+</tr>
+<tr>
+<td><code>norm</code></td>
+<td>per watt <strong>accepted</strong> at the drive, or per watt <strong>available</strong> from it</td>
+<td>accepted</td>
+</tr>
+<tr>
+<td><code>average</code></td>
+<td><code>no</code> skips the cube-averaged SAR, the step that costs the most</td>
+<td>yes</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Simulate</strong> solves the circuit once at that frequency, takes the incident wave the circuit delivers into each of the
+block's ports, sums the stored fields with those weights, and computes SAR and B1 from the sum exactly as a 3D run does.
+Fields are combined before SAR is formed, never SAR itself. The results land beside the field set, in
+<code>&lt;stem&gt;.fields/cosim/&lt;analysis&gt;/</code>; the Messages pane's <strong>Open in 3D view</strong> opens the coil's 3D view with the recombined
+result drawn and selected. Its solution is labelled <code>&lt;f&gt; GHz, fields 'F1' (circuit port 1 driven)</code>.</p>
+<p><strong>Per watt available or accepted.</strong> With <code>norm=accepted</code> (the default) the numbers are per watt that entered the
+circuit at the drive, so a poor match does not show: B1 per √W accepted barely moves as the match changes. With
+<code>norm=available</code> they are per watt the source could deliver, so a poor match shows as a weak B1, as it would on the
+scanner. The loop coil example uses <code>available</code>.</p>
+<p><strong>What the run checks</strong>, each a note, and a warning when it fails:</p>
+<ul>
+<li>the summed field's absorbed power against the field set's own tissue matrix, to 0.1 %;</li>
+<li>the power the circuit delivers into the block against the block's own S-matrix, to 2 %: this catches a <code>.sNp</code> read
+between its points, or one that is not the run's;</li>
+<li>that no excitation absorbs more than it dissipates.</li>
+</ul>
+<p>All three compare the field set with itself. <strong>They cannot see a field that is wrong in the same way in E and in S</strong> —
+a grid too coarse, a run stopped too early. The checks hold the recombination to its inputs; the inputs are the 3D run's.</p>
+<p><strong>A stale field set is refused</strong>, naming every port, when its stamp is not the <code>.sNp</code>'s: re-run the 3D view. File times
+are not compared, so a copied or checked-out field set reads as current.</p>
+<p>Headless: <code>circuitrf fields bench.csch</code> runs every enabled fields analysis of a schematic (<code>-a</code> names some, <code>--set</code>
+changes a value first) and prints the same lines; MCP's <code>run analysis=fields</code> does the same.</p>
+<h2 id="goals">3. Tuning and optimizing on fields</h2>
+<p>Seven functions read a fields analysis, wherever a <code>measure</code> or <code>goal</code> expression is written. <code>F</code> is the analysis's name.</p>
+<table>
+<thead>
+<tr>
+<th>Function</th>
+<th>Value</th>
+<th>Per</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>B1pMean(F, region)</code></td>
+<td>volume-weighted mean |B1+| over the region</td>
+<td>T per √W</td>
+</tr>
+<tr>
+<td><code>B1pMin(F, region)</code></td>
+<td>the smallest |B1+| there</td>
+<td>T per √W</td>
+</tr>
+<tr>
+<td><code>B1pCoV(F, region)</code></td>
+<td>the spread of |B1+| over its mean (a surface coil's brain reads about 1)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>psSAR(F, mass)</code></td>
+<td>peak spatial-average SAR of <code>mass</code> grams, the full cube average</td>
+<td>W/kg per W</td>
+</tr>
+<tr>
+<td><code>SARwb(F, region)</code></td>
+<td>the region's absorbed power over its mass</td>
+<td>W/kg per W</td>
+</tr>
+<tr>
+<td><code>SarEff(F, region, mass)</code></td>
+<td><code>B1pMean / √psSAR</code></td>
+<td>T per √(W/kg)</td>
+</tr>
+<tr>
+<td><code>Pabs(F)</code></td>
+<td>the power absorbed in all tissue</td>
+<td>W per W</td>
+</tr>
+</tbody>
+</table>
+<p>&quot;Per W&quot; is the analysis's own <code>norm</code>. <strong>A region</strong> is a string: omitted, the setup's own (<em>B1 mean over</em> for B1, <em>Region</em>
+for SAR); <code>&quot;all&quot;</code>, every tissue; a tissue's path (<code>&quot;head/brain&quot;</code>), its last part (<code>&quot;brain&quot;</code>), a phantom's name (<code>&quot;head&quot;</code>)
+or a material; <code>+</code> joins several (<code>&quot;skin+skull&quot;</code>). <code>&quot;box(x0, x1, y0, y1, z0, z1)&quot;</code> takes every cell whose centre lies
+inside, each number with a length unit; B1 is taken over all of them (air too), SAR over the tissue. An unknown word is
+refused, naming the tissues the field set has.</p>
+<pre><code>goal Match  = dB(SP1.S(1,1)) analysis=SP1 over=freq lo=298 MHz hi=298 MHz le -20
+goal B1     = 1e6 * B1pMean(F1, "brain") analysis=F1 ge 0.2
+goal SAR10g = psSAR(F1, 10) analysis=F1 le 2</code></pre>
+<p>The Goal editor lists all seven under <em>Fields (SAR, B1)</em> for each fields analysis. Each evaluation does only what its
+caller needs:</p>
+<ul>
+<li><strong>The optimizer, yield, centering and DOE</strong> solve the circuit and form the waves; <code>Pabs</code> is then exact from the tissue
+matrix, and B1 and <code>SARwb</code> read only their region's cells. Nothing is written.</li>
+<li><strong><code>psSAR</code> is always the full cube average</strong>, never a sample or a coarser grid standing in for it, so an evaluation that
+scores it recombines the whole field set. On the loop coil example a whole evaluation, average included, is about a tenth
+of a second; the run's notes name the goals that pay it.</li>
+<li><strong>A tuning slider moving</strong> rewrites local SAR and B1, so an open 3D view's plot follows the slider; <code>psSAR</code> waits until
+the slider is released, and says so rather than show a stale value.</li>
+<li><strong>Simulate and the optimizer's final point</strong> do everything and write it.</li>
+</ul>
+<p><strong>No openEMS process starts in any of it.</strong> Yield trials, the optimizer and the sliders all recombine the stored fields.
+A re-run trial (<code>run analysis=yield trial=&lt;n&gt;</code>, or the Data Display's re-run) is written under its own label,
+<code>F1 (trial n)</code>, beside the analysis's own results.</p>
+<h2 id="multichannel">4. Several channels</h2>
+<p>A coil with several feeds — a quadrature birdcage, a transmit array — is driven by naming several circuit ports and an
+amplitude for each:</p>
+<pre><code>W2 = polar(1,-90)
+analysis F1 type=fields block=EM1 freq=298 freqUnit=MHz drive=1,2 weights=1,W2
+tune mag(W2) min=0.5 max=2 opt=1
+tune phase(W2) min=-180 deg max=0 deg opt=1</code></pre>
+<p>The circuit is solved once with every drive at its weight. <strong>Per watt</strong> then means per watt of the drives' total,
+accepted or available, so &quot;maximise <code>B1pMin</code> with <code>psSAR</code> at most so much per W total&quot; is an ordinary optimizer problem:
+a channel's amplitude and phase are the parts of a complex variable, and ordinary tunables.</p>
+<h2 id="limits">Costs and limits</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Lumped capacitors in the EM model</th>
+<th>Co-simulation</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>EM</td>
+<td>one run per capacitor value; the loop coil's took 72,000 steps</td>
+<td>one run per port, a few thousand steps each, once</td>
+</tr>
+<tr>
+<td>a capacitor changed</td>
+<td>a new EM run</td>
+<td>one circuit solve and a recombination, about a second, no process</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>Agreement.</strong> On the loop coil, on the tutorial's own grid, the co-simulation reproduces the lumped-capacitor run to
++1.5 % in B1 and +3.0 % in psSAR10g. About four fifths of that is the lumped run's own ring-down cut short: run to −60 dB
+it moves to within 0.3 % in B1 and 0.6 % in psSAR10g of the co-simulation.</li>
+<li><strong>One frequency per field set</strong>, the SAR frequency: a fields analysis at any other is refused.</li>
+<li><strong>No parametric sweep</strong> wraps a fields analysis.</li>
+<li><strong>A cylindrical grid's</strong> field set recombines as a Cartesian one does, but its volumes are not drawn in the 3D view.</li>
+</ul>
+
+<nav class="page-nav">
+  <a class="prev" href="sar.html"><span class="dir">Previous</span><span class="name">SAR and B1</span></a>
+  <a class="next" href="phantoms.html"><span class="dir">Next</span><span class="name">Tissues and phantoms</span></a>
+</nav>
+</main>
+
+<footer class="doc-footer">
+  <img src="../assets/img/circuitRF-mark.svg" alt="">
+  <span>circuitRF — RF circuit simulator</span>
+  <span class="spacer"></span>
+  <a href="../index.html">Documentation home</a>
+</footer>
+
+<script src="../assets/js/search-index.js" defer></script>
+<script src="../assets/js/docs-search.js" defer></script>
+</body>
+</html>

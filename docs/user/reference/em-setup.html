@@ -1405,6 +1405,11 @@ planes along it: a conductor coaxial with that axis then lies exactly on the gri
 <td>the rule below</td>
 <td>Lines round the circle, 0 and 2π both counted</td>
 </tr>
+<tr>
+<td><code>MultiGridRadiiUm</code></td>
+<td>none</td>
+<td>openEMS's sub-grids: radii in µm, increasing, inside each of which openEMS takes every second azimuth line</td>
+</tr>
 </tbody>
 </table>
 <p>In the setup panel the openEMS section offers <strong>Grid</strong>, and with <em>Cylindrical</em> chosen, <strong>Axis</strong> and <strong>Axis
@@ -1446,8 +1451,13 @@ the closed form's 50.021 Ω:</p>
 </tbody>
 </table>
 <p>The default makes the arc at the outermost conductor radius no longer than the radial cell there, rounded up to
-a multiple of four; <code>circuitrf explain</code> names the radius and the cell that set it. A finer inner grid on the
-axis side (openEMS's <em>multi-grid</em>) roughly doubles the time step but measured no faster, so it is not used.</p>
+a multiple of four; <code>circuitrf explain</code> names the radius and the cell that set it. A coarser inner grid on the
+axis side (openEMS's <em>multi-grid</em>) roughly doubles the time step but measured no faster on a coax, so it is not
+used unless <code>MultiGridRadiiUm</code> asks for it. openEMS needs an odd number of azimuth lines at every level it
+splits, and a count that would give it an even one is refused, naming the level.</p>
+<p><strong>Where the circle starts.</strong> At 0°, from the axis's next world axis towards the one after it (for a z axis, from
++x towards +y). When a lumped gap on the cylinder crosses 0°, the circle starts in the middle of the widest
+stretch of azimuth no gap covers instead, since openEMS's lumped port is one box.</p>
 <p><strong>How shapes are written.</strong> A cylinder coaxial with the axis is written in the grid's own coordinates, which
 fills its circle exactly. A Boolean <strong>Subtract</strong> whose Blank and Tools are plain shapes — the 3D Connector's
 housing with its bore — is written as the Blank with each coaxial Tool cut out above it by priority, the bore
@@ -1455,12 +1465,66 @@ in the kept Tool's own material or in the background's, so the bore too lies on 
 where it is exactly the Boolean: when another solid below the housing in precedence overlaps a Tool (PTFE
 drawn as its own solid in a bore that is not kept), the housing is written as its tessellation instead and the
 run's notes say why. Every other shape is written as on a Cartesian grid and fills the same cells it would there.</p>
+<p><strong>Sheets, lumped elements and lumped ports on the cylinder.</strong> A strip of zero thickness on a cylinder — a birdcage
+coil's rung or end ring — is a <code>CylinderSheet</code> object: <code>Axis</code>, <code>Base</code> (a point on the axis where the strip
+starts), <code>Radius</code>, <code>Length</code> along the axis, <code>StartDeg</code> and <code>SweepDeg</code> round it. A lumped port or a lumped element
+whose gap is such a patch gives it as <code>Cylinder</code>, with the same six fields, in place of <code>Plane</code>, <code>Offset</code> and
+<code>Rect</code>. Its two ends are found from what its arcs and its two straight edges touch, as a flat port's are found
+from its four edges, so a gap between two rungs runs along the axis and one between two arcs of a ring runs
+round it. On a cylindrical grid about the same axis each is written in the grid's own coordinates: the sheet
+as one box of zero radial thickness, exact on the grid's circle, and the gap as openEMS's own lumped element or
+port, its radius and the two edges across its width on the grid's lines. Every other solver and grid refuses
+them, naming the object: a Cartesian grid, Palace, the thermal solver and the STEP export. On circuitRF's own
+grid a gap's azimuth edges are snapped to the nearest of its evenly spaced azimuth lines, and the run says so;
+given lines can put a line on each edge.</p>
 <p><strong>Wave ports</strong> must be coaxial terminals on the two faces the axis crosses, centred on the axis: their source is
 openEMS's own radial one, and their current probes are full discs about the axis. Refused, each naming the fix:
-a lumped port, a terminal that is not coaxial or not on the axis, a radiation pattern (openEMS's far-field box
-is written on a Cartesian grid only). No field is saved for the 3D view, whose field plots read a Cartesian
+a lumped port on a plane, a terminal that is not coaxial or not on the axis, a radiation pattern (openEMS's
+far-field box is written on a Cartesian grid only).</p>
+<p><strong>SAR and B1.</strong> A setup's <code>Sar</code> group runs on a cylindrical grid as local SAR and B1 only: no cube-averaged SAR,
+since a cube is a Cartesian grid's, and the run says so. <code>MassesGrams</code> and <code>CrossCheck</code> are refused there. B1 is
+formed from openEMS's Hρ and Hα, turned onto x and y at each cell's own azimuth. The per-port fields
+(<code>PerPortFields</code>) are kept as on a Cartesian grid, so a schematic's fields analysis recombines them, but the
+volumes are cells of the cylindrical grid, which the 3D view does not draw. No field is saved for the 3D view, whose field plots read a Cartesian
 grid; the run says so. Measured end to end through <code>circuitrf em</code>: the coax section above within 0.4 Ω of its
 closed form, and its transmission phase within 0.01° of the line's.</p>
+<h3 id="openems-given-lines">Running on given grid lines</h3>
+<p>To run on a grid you already have — an openEMS script's own mesh, or a reference you are reproducing —
+give its lines instead of letting circuitRF place them. <code>GridLines</code> in the <code>OpenEms</code> section takes either
+a file or three lists:</p>
+<table>
+<thead>
+<tr>
+<th>Field (in <code>OpenEms.GridLines</code>)</th>
+<th>What it is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>File</code></td>
+<td>A CSXCAD XML file (what an openEMS script's <code>Write2XML</code> or <code>WriteOpenEMS</code> writes): its <code>RectilinearGrid</code> lines are taken exactly, scaled by its <code>DeltaUnit</code>. A relative path is read beside the <code>.c3d</code> or <code>.cem</code> holding the setup. A cylindrical grid's file (<code>CoordSystem=&quot;1&quot;</code>) gives ρ, α and z: ρ and z scaled by <code>DeltaUnit</code>, α in radians as written, its circle closed; it needs <code>Grid: Cylindrical</code> with the axis it is round about</td>
+</tr>
+<tr>
+<td><code>X</code>, <code>Y</code>, <code>Z</code> and <code>Unit</code></td>
+<td>The lines as three lists, each increasing, in <code>Unit</code> — <code>m</code>, <code>mm</code>, <code>um</code>, <code>nm</code>, <code>mil</code> or <code>in</code>. The unit is required</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-json">&quot;OpenEms&quot;: { &quot;PmlCells&quot;: 8, &quot;GridLines&quot;: { &quot;File&quot;: &quot;sar_dipole.xml&quot; } }
+</code></pre>
+<p>With given lines, circuitRF places none of its own. The grid's extent is the region simulated, as it is in
+openEMS: each face's boundary is applied at the outermost line, and the PML takes the outermost <code>PmlCells</code>
+cells. The run is refused, naming the lines on either side, when:</p>
+<ul>
+<li>the air box reaches beyond the grid (shrink its padding to fit inside);</li>
+<li>a lumped port's or lumped element's sheet is not on a line, both ends of its gap fall on one line, or its
+width has no line across it;</li>
+<li>a sheet is not on a line, or a sheet or gap on a cylinder is not on a line of ρ;</li>
+<li>the setup has a wave port;</li>
+<li>the file's grid is cylindrical and the setup's is not, or the other way round.</li>
+</ul>
+<p>A coordinate counts as on a line when it is within a thousandth of the cell beside it, so a script's file,
+written to seven significant figures, lines up. <code>circuitrf explain</code> prints the grid as usual.</p>
 <h3 id="openems-run">Running openEMS</h3>
 <p>With openEMS chosen the panel shows the grid settings above and two of its own, each a field of the
 <code>.cem</code>'s <code>OpenEms</code> section; a blank box is the default. <code>SaveFieldsGHz</code> and <code>SaveH</code> are written in the <code>.cem</code> itself.</p>
@@ -1493,6 +1557,11 @@ closed form, and its transmission phase within 0.01° of the line's.</p>
 <td>off</td>
 <td>Also record the magnetic field H at those frequencies, so the 3D view offers |H|. It doubles the field files on disk</td>
 </tr>
+<tr>
+<td><code>CellConstantMaterial</code></td>
+<td>off; on for a setup that requests SAR</td>
+<td>Each grid cell takes the material at its centre instead of an average over its edges. Averaging SAR over cubes needs it, and it is slightly less accurate at a material boundary. The panel's <strong>Cell-constant material</strong> box</td>
+</tr>
 </tbody>
 </table>
 <p><strong>openEMS excites one port per simulation, so an N-port setup is N runs</strong>, one after another, each
@@ -1519,7 +1588,8 @@ effective radius is set by the cell, not the wire: expect too much inductance. A
 the wire's radius around it matched Palace within 0.1 dB in circuitRF's own validation.</li>
 </ul>
 <p>Absorbing faces are PML (<code>PmlCells</code>; 0 gives a first-order Mur boundary instead), and anything reaching
-one is continued through it. The result lands beside a Palace one without replacing it —
+one is continued through it. They are written as openEMS spells them: <code>PML_8</code> with the default 8 cells,
+<code>MUR</code> with 0 — the two spellings openEMS's own SAR examples use. The result lands beside a Palace one without replacing it —
 <code>results/&lt;name&gt;.openems.sNp</code> and <code>&lt;name&gt;.openems_em.npy</code> — and <code>results/&lt;name&gt;.openems/</code> keeps the model
 and, per port, openEMS's log and probe files, so a run can be repeated by hand.</p>
 <p><strong>Fields.</strong> For the 3D view, each run also records the electric field over the air box at the
@@ -1878,7 +1948,7 @@ and installs it for your user account only. It never needs administrator rights.
 <td>yes, from Gmsh's own archive</td>
 </tr>
 <tr>
-<td>openEMS 0.37.0-rc3</td>
+<td>openEMS 0.37.0</td>
 <td>yes. It is built by openEMS's own script.</td>
 <td>yes. It is built by openEMS's own script.</td>
 <td>yes, from openEMS's own archive</td>
@@ -2077,10 +2147,10 @@ the space back instead, use <strong>Remove all 3D solvers …</strong> in
 <h2 id="install-3d-solvers">Installing the 3D solvers by hand</h2>
 <p>A 3D setup (one whose <code>Solver3D</code> names Palace or openEMS) runs a solver circuitRF does not include. You
 install it yourself, and circuitRF finds it — or you name it in
-<a href="settings.html#em3d">Settings ▸ Solvers</a>. <strong>circuitRF runs only the Palace and openEMS versions
-it has validated</strong> and refuses any other, naming the validated ones, because a solver's input can change
-meaning between versions and the result would look plausible either way. <strong>Gmsh is different: any version
-runs.</strong> circuitRF lists the Gmsh versions it has tested, and a run with any other version goes ahead with a
+<a href="settings.html#em3d">Settings ▸ Solvers</a>. <strong>circuitRF runs only the Palace versions it has
+validated</strong> and refuses any other, naming the validated ones, because Palace's input can change meaning
+between versions and the result would look plausible either way. <strong>Gmsh and openEMS are different: any version
+runs.</strong> circuitRF lists the versions it has tested, and a run with any other version goes ahead with a
 warning that names them. What a different Gmsh could change is which mesh entities belong to which named
 object, and every run checks that before solving, whatever the version.</p>
 <table>
@@ -2104,8 +2174,8 @@ object, and every run checks that before solving, whatever the version.</p>
 </tr>
 <tr>
 <td>openEMS</td>
-<td>0.37.0-rc3</td>
-<td><code>openEMS --help</code> prints a banner with <code>version 67d3784</code> and <code>CSXCAD -- Version: dcdb62b</code></td>
+<td>tested: 0.37.0-rc3 and 0.37.0; any other runs with a warning</td>
+<td><code>openEMS --help</code> prints a banner with <code>version v0.37.0</code> and <code>CSXCAD -- Version: v0.7.0</code>; a build from a clone without its tags prints the git hashes <code>305df56</code> and <code>c46e320</code> instead (0.37.0-rc3: <code>67d3784</code> and <code>dcdb62b</code>)</td>
 </tr>
 </tbody>
 </table>
@@ -2118,7 +2188,7 @@ circuitRF's scripts). On Linux arm64, <strong>Install Gmsh…</strong> builds 4.
 <a href="#gmsh-from-source">Building Gmsh from source</a> gives the same steps by hand. Other platforms:
 <em>not yet verified</em> — <a href="https://gmsh.info">gmsh.info</a>.</p>
 <p><strong>openEMS</strong> — macOS: install its dependencies with <code>brew install cmake boost hdf5 cgal vtk</code>, then</p>
-<pre><code class="cmd"><span class="prompt">$ </span>git clone --recursive -b v0.37.0-rc3 https://github.com/thliebig/openEMS-Project.git
+<pre><code class="cmd"><span class="prompt">$ </span>git clone --recursive -b v0.37.0 https://github.com/thliebig/openEMS-Project.git
 <span class="prompt">$ </span>cd openEMS-Project
 <span class="prompt">$ </span>./update_openEMS.sh ~/opt/openEMS --disable-GUI --python --njobs=4</code></pre>
 <p>circuitRF looks in <code>~/opt/openEMS/bin</code> by itself. (The validation build included the Python interface;

@@ -566,9 +566,19 @@ offset there. A faint grid lies on the plane; moving the camera never moves it.<
 <td>the centre, then the radius; it is centred on the drawing plane</td>
 </tr>
 <tr>
+<td><strong>O</strong></td>
+<td>Ellipsoid</td>
+<td>the centre, then one radius; its three semi-axes start equal and are set in Properties (see <a href="#phantoms">Phantoms</a>)</td>
+</tr>
+<tr>
 <td><strong>P</strong></td>
 <td>Port</td>
 <td>two corners on the plane (see <a href="#simulate">Simulating</a>)</td>
+</tr>
+<tr>
+<td><strong>C</strong></td>
+<td>Lumped element</td>
+<td>two corners across a gap, as a port (see <a href="#simulate">Simulating</a>)</td>
 </tr>
 <tr>
 <td><strong>W</strong></td>
@@ -608,6 +618,64 @@ first, they would hide the inside while you work on it.</p>
 <p><strong>Extrude</strong> (a sheet's menu, <em>3D ▸ Modify</em>, or a polyline selected in the tree) pulls a closed polyline, a
 polygon or a rectangle into a prism: move to set the distance and click, or type it. <strong>K</strong> keeps the
 source.</p>
+<h3 id="phantoms">Phantoms</h3>
+<p>A <strong>phantom</strong> is a body for SAR work, made of nested layers, each its own material. <em>3D ▸ Draw ▸ Phantom</em>
+offers six:</p>
+<table>
+<thead>
+<tr>
+<th>Phantom</th>
+<th>Layers, outermost first</th>
+<th>Starts as</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Head (3 ellipsoids)</strong></td>
+<td>skin, skull, brain: concentric ellipsoids, each shell taken off every semi-axis</td>
+<td>openEMS's head phantom: semi-axes 100, 80, 100 mm, shells 9 mm</td>
+</tr>
+<tr>
+<td><strong>Body (3 cylinders)</strong></td>
+<td>skin, bone, tissue: coaxial cylinders of one length</td>
+<td>openEMS's body phantom: radius 100 mm, 260 mm long, shells 8 and 10 mm</td>
+</tr>
+<tr>
+<td><strong>Flat Phantom</strong></td>
+<td>shell, liquid: the liquid in an open-topped box, the shell on its floor and four walls</td>
+<td>300 × 200 × 152 mm outside, a 2 mm shell, 150 mm of body liquid</td>
+</tr>
+<tr>
+<td><strong>Generic Head (circuitRF's own)</strong></td>
+<td>ear-left, ear-right, shell, liquid: an ellipsoid shell of head liquid with a flat ear spacer each side</td>
+<td>semi-axes 100, 78, 115 mm, a 2 mm shell, spacers 4 mm thick and 25 mm in radius</td>
+</tr>
+<tr>
+<td><strong>Sphere</strong>, <strong>Box</strong></td>
+<td>one homogeneous body</td>
+<td>radius 50 mm; a 100 mm cube</td>
+</tr>
+</tbody>
+</table>
+<p>A phantom is one object: it moves, turns, hides and is left out of the solve as one, and the tree shows its
+layers under it. Where layers overlap the <strong>innermost wins</strong>, so the brain is brain, not skin. Properties
+shows only the dimensions its shape uses — semi-axes, radius and length, or size, and the shell thicknesses —
+and one material per layer under <em>Layers, outermost first</em>. The layers start as the tissue library's records
+of those openEMS phantoms (<em>Add Tissue Materials</em>, in the technology editor or at the top of the Materials dialog a layer's <em>New Material…</em>
+opens, puts the library beside the technology; see <a href="materials.html">Materials</a>); the flat phantom and the generic head start in the tissue-simulating
+liquids and circuitRF's own shell material. Every
+layer is solved as a lossy dielectric. <strong>Flatten Phantom</strong> (its menu) replaces it with one ordinary solid per
+layer, <code>&lt;phantom&gt;_&lt;layer&gt;</code>, in a group named after it; the solve is the same.</p>
+<p>What each phantom's dimensions are drawn from, and the tissues that fill them: <a href="phantoms.html">Tissues and phantoms</a>.</p>
+<p>A <strong>sheet on a cylinder</strong> is a strip of zero thickness on the cylinder of one radius about x, y or z — a birdcage
+coil's rung or end ring — written in the <code>.c3d</code> as a <code>CylinderSheet</code> (<code>circuitrf reference 3d</code> has its fields:
+the axis, a point on it where the strip starts, the radius, the length along the axis, and the azimuth it starts
+at and sweeps through, in degrees). There is no tool to draw one; the 3D view draws it as written. Only openEMS's
+cylindrical grid about the same axis solves it (<a href="em-setup.html#openems-cylindrical">A cylindrical grid</a>); every
+other solver refuses it by name.</p>
+<p>An <strong>ellipsoid</strong> on its own (<strong>Shift+A O</strong>) is a centre and three semi-axes along its own x, y and z, so
+turning it turns its axes. Its surface is curved: face edits, fillets and boundaries are refused on it, as on
+a sphere.</p>
 <h2 id="editing">Moving and editing</h2>
 <p><strong>Whole objects</strong> (Object mode; right-click, or <em>3D ▸ Modify</em>). <em>3D ▸ Modify</em> is greyed out until something is
 selected, and each item in it is enabled only when it can act on the selection — the same rule the right-click menu
@@ -671,8 +739,10 @@ outermost group: the groups that were inside it stay groups, to be ungrouped in 
 renamed the same way); a member copied on its own stays in its group.</li>
 <li>Grouping, ungrouping and renaming are each <strong>one undo step</strong>, and the groups are saved in the <code>.c3d</code>: each member
 names its group — <code>&quot;Group&quot;: &quot;stage1/match&quot;</code> — so a group can never be left empty or point at nothing.
-<strong>Flatten</strong> puts a placed cell's contents in that instance's group, and <strong>Group into Cell</strong> gives the new instance
-the group its contents were in. Groups are only organisation: the solver never sees them.</li>
+<strong>Flatten</strong> gathers a placed cell's contents in a new group named after the instance (<code>U1</code>, or <code>U1_2</code> when that
+name is taken), inside the instance's own group, and selects it; a placed 3D cell's own groups come up inside it.
+A cell that flattens to a single object makes no group. <strong>Group into Cell</strong> gives the new instance the group its
+contents were in. Groups are only organisation: the solver never sees them.</li>
 <li>A group's <strong>Transparency</strong> is one row too — see <a href="#transparency">Transparency</a> — and so is its <strong>Model</strong> — see
 <a href="#model">Model</a>.</li>
 </ul>
@@ -1710,7 +1780,9 @@ object of that name.</li>
 <li><strong>Push Into Cell</strong> (<strong>Ctrl/Cmd+]</strong>) opens a 3D child in this editor, in context — the parent drawn dimmed
 around it — or a layout child in the layout editor. <strong>Pop Out</strong> (<strong>Ctrl/Cmd+[</strong>) returns.</li>
 <li><strong>Flatten</strong> replaces an instance with its objects (a layout's become solids; it asks first, stating how
-many). <strong>Group into Cell…</strong> does the reverse for selected objects, without moving them.</li>
+many), gathered in a group named after the instance — <strong>Ungroup</strong> to loosen them. A layout's solids keep the
+colour of the layer they were drawn on. When the technology has no material for a stackup row, Flatten offers to
+add one named after that row, with its values — one per row, even where two rows have the same values. <strong>Group into Cell…</strong> does the reverse for selected objects, without moving them.</li>
 </ul>
 <h3 id="layout-dielectric">A placed layout's dielectric</h3>
 <p>A placed layout's dielectrics are drawn, and they are <strong>part of the problem</strong> Palace and openEMS solve. A
@@ -1780,6 +1852,12 @@ arrow and all. While it is drawn, the arrow (or the reason there cannot be one) 
 two ports are 5 × 5 mil rectangles on the YZ plane at each lead's outer end, from the floor up to the lead:
 each runs <strong>from <code>floor</code> (−) up to its lead (+)</strong>. <em>Flip</em> on its menu turns it round; a wrong arrow turns
 every transmission term by 180°, so look before a run.</p>
+<p><strong>Lumped elements.</strong> <strong>Shift+A C</strong> draws a resistor, inductor or capacitor across a gap, two corners exactly
+as a port is drawn; the gap is found the same way. Properties sets <strong>Topology</strong> (parallel or series) and any
+of <strong>R</strong>, <strong>L</strong> and <strong>C</strong>, each with its unit; an empty value is left out. A value can be a variable
+(<code>Ctune</code>), so a tuning sweep changes it by re-running. It is drawn as its outline with a capacitor mark across
+the gap and listed under <em>Lumped elements</em> in the tree. It is not a port: nothing excites it and the result
+has no row for it. openEMS solves it; Palace refuses it in this version.</p>
 <p><strong>A wave port on a face met by several conductors</strong> — two strips inside one shield, a coupled pair over a
 ground — is one port with a <strong>terminal</strong> per signal conductor. Each terminal is its own numbered port of the
 result, with its own Z0. One conductor is the <strong>reference</strong>, the one every terminal's voltage is measured
@@ -2016,7 +2094,7 @@ edges and <code>Hash</code> are in <a href="file-formats.html#c3d-operations">Fi
 </tr>
 <tr>
 <td><strong>Shift+A</strong> then a letter</td>
-<td>Box, Sheet, polyGon, polyLine, cYlinder, Port, Wire, Heat source, Temperature probe, Mesh region</td>
+<td>Box, Sheet, polyGon, polyLine, cYlinder, sphEre, ellipsOid, Port, Capacitor (lumped element), Wire, Heat source, Temperature probe, Mesh region</td>
 </tr>
 <tr>
 <td><strong>W</strong></td>

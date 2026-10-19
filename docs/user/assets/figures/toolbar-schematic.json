@@ -85,8 +85,17 @@
       "Kind": "button"
     },
     {
-      "Index": 0,
+      "Index": 9,
       "Slot": 9,
+      "Id": "TextToolBtn",
+      "Tooltip": "Text \u2014 click anchor, type, Enter to place",
+      "Icon": "FormatText",
+      "Command": null,
+      "Kind": "button"
+    },
+    {
+      "Index": 0,
+      "Slot": 10,
       "Id": "",
       "Tooltip": "",
       "Icon": "separator",
@@ -94,8 +103,8 @@
       "Kind": "separator"
     },
     {
-      "Index": 9,
-      "Slot": 10,
+      "Index": 10,
+      "Slot": 11,
       "Id": "RotateCcwBtn",
       "Tooltip": "Rotate 90\u00B0 CCW  (R)",
       "Icon": "ArrowRotateLeft",
@@ -103,8 +112,8 @@
       "Kind": "button"
     },
     {
-      "Index": 10,
-      "Slot": 11,
+      "Index": 11,
+      "Slot": 12,
       "Id": "RotateCwBtn",
       "Tooltip": "Rotate 90\u00B0 CW  (Shift\u002BR)",
       "Icon": "RotateRight",
@@ -112,8 +121,8 @@
       "Kind": "button"
     },
     {
-      "Index": 11,
-      "Slot": 12,
+      "Index": 12,
+      "Slot": 13,
       "Id": "MirrorHBtn",
       "Tooltip": "Mirror Horizontal  (M)",
       "Icon": "FlipHorizontal",
@@ -121,8 +130,8 @@
       "Kind": "button"
     },
     {
-      "Index": 12,
-      "Slot": 13,
+      "Index": 13,
+      "Slot": 14,
       "Id": "MirrorVBtn",
       "Tooltip": "Mirror Vertical  (Shift\u002BM)",
       "Icon": "FlipVertical",
@@ -131,25 +140,7 @@
     },
     {
       "Index": 0,
-      "Slot": 14,
-      "Id": "",
-      "Tooltip": "",
-      "Icon": "separator",
-      "Command": null,
-      "Kind": "separator"
-    },
-    {
-      "Index": 13,
       "Slot": 15,
-      "Id": "DeleteBtn",
-      "Tooltip": "Delete  (Del)",
-      "Icon": "Trash",
-      "Command": null,
-      "Kind": "button"
-    },
-    {
-      "Index": 0,
-      "Slot": 16,
       "Id": "",
       "Tooltip": "",
       "Icon": "separator",
@@ -158,16 +149,16 @@
     },
     {
       "Index": 14,
-      "Slot": 17,
-      "Id": "SnapModeBtn",
-      "Tooltip": "Snap: Fine Grid  (Shift\u002BG)",
-      "Icon": "Grid",
+      "Slot": 16,
+      "Id": "DeleteBtn",
+      "Tooltip": "Delete  (Del)",
+      "Icon": "Trash",
       "Command": null,
       "Kind": "button"
     },
     {
       "Index": 0,
-      "Slot": 18,
+      "Slot": 17,
       "Id": "",
       "Tooltip": "",
       "Icon": "separator",
@@ -176,7 +167,25 @@
     },
     {
       "Index": 15,
+      "Slot": 18,
+      "Id": "SnapModeBtn",
+      "Tooltip": "Snap: Fine Grid  (Shift\u002BG)",
+      "Icon": "Grid",
+      "Command": null,
+      "Kind": "button"
+    },
+    {
+      "Index": 0,
       "Slot": 19,
+      "Id": "",
+      "Tooltip": "",
+      "Icon": "separator",
+      "Command": null,
+      "Kind": "separator"
+    },
+    {
+      "Index": 16,
+      "Slot": 20,
       "Id": "DisableOpenBtn",
       "Tooltip": "Disable \u2192 Open circuit  (Q) \u2014 toggles if all selected are already disabled",
       "Icon": "EyeOff",
@@ -184,8 +193,8 @@
       "Kind": "button"
     },
     {
-      "Index": 16,
-      "Slot": 20,
+      "Index": 17,
+      "Slot": 21,
       "Id": "DisableShortBtn",
       "Tooltip": "Disable \u2192 Short circuit (toggles if all selected are already disabled)",
       "Icon": "HideOutline",
@@ -194,25 +203,7 @@
     },
     {
       "Index": 0,
-      "Slot": 21,
-      "Id": "",
-      "Tooltip": "",
-      "Icon": "separator",
-      "Command": null,
-      "Kind": "separator"
-    },
-    {
-      "Index": 17,
       "Slot": 22,
-      "Id": "",
-      "Tooltip": "Save schematic  (Ctrl\u002BS)",
-      "Icon": "FloppyDisc",
-      "Command": null,
-      "Kind": "button"
-    },
-    {
-      "Index": 0,
-      "Slot": 23,
       "Id": "",
       "Tooltip": "",
       "Icon": "separator",
@@ -221,7 +212,25 @@
     },
     {
       "Index": 18,
+      "Slot": 23,
+      "Id": "",
+      "Tooltip": "Save schematic  (Ctrl\u002BS)",
+      "Icon": "FloppyDisc",
+      "Command": null,
+      "Kind": "button"
+    },
+    {
+      "Index": 0,
       "Slot": 24,
+      "Id": "",
+      "Tooltip": "",
+      "Icon": "separator",
+      "Command": null,
+      "Kind": "separator"
+    },
+    {
+      "Index": 19,
+      "Slot": 25,
       "Id": "PushInBtn",
       "Tooltip": "Push Into Cell  (Ctrl\u002B])",
       "Icon": "ArrowDownward",
@@ -229,8 +238,8 @@
       "Kind": "button"
     },
     {
-      "Index": 19,
-      "Slot": 25,
+      "Index": 20,
+      "Slot": 26,
       "Id": "PopOutBtn",
       "Tooltip": "Pop Out  (Ctrl\u002B[)",
       "Icon": "ArrowTop",

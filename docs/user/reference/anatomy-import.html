@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>circuitRF — Voxel and mesh import</title>
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/circuitrf-docs.css">
+<!--
+  GENERATED FILE - do not edit. Edit the Markdown source named below and re-run:
+      dotnet run [project tools/DocGen] [flag out] docs/user
+  (XML comments cannot contain a double hyphen; the flags are ordinary ones.)
+  Source: docs/user/src/reference/anatomy-import.md
+-->
+</head>
+<body>
+
+<header class="doc-header">
+  <a class="brand" href="../index.html"><img class="logo" src="../assets/img/favicon.svg" alt="circuitRF"><span class="wordmark">circuitRF</span></a>
+  <a class="doc-kind" href="index.html">Reference Guide</a>
+  <div class="doc-search" data-crf-search data-root="../" hidden>
+    <input type="search" class="search-input" autocomplete="off" spellcheck="false"
+           aria-label="Search the documentation" placeholder="Search docs"
+           role="combobox" aria-expanded="false" aria-autocomplete="list">
+    <div class="search-panel" role="listbox" hidden></div>
+  </div>
+</header>
+<hr class="doc-headrule">
+
+<main class="page">
+  <div class="page-top">
+    <p class="breadcrumb"><a href="../index.html">Docs</a> › <a href="index.html">Reference</a> › Voxel and mesh import</p>
+    <nav class="page-nav-top" aria-label="Previous and next page">
+      <a class="prev" href="phantoms.html" title="Previous: Tissues and phantoms"><span class="arrow">‹</span><span class="name">Tissues and phantoms</span></a>
+      <a class="next" href="phone-sar.html" title="Next: Phone SAR"><span class="name">Phone SAR</span><span class="arrow">›</span></a>
+    </nav>
+  </div>
+
+  <h1>Voxel and mesh import</h1>
+  <p class="lede">Your own anatomy in a 3D view — a segmented label map (NIfTI, raw or a DiscMaterial file) or one closed surface per tissue (STL, OBJ, PLY) — each tissue given a material, and solved on openEMS.</p>
+
+<p>circuitRF ships no anatomical model; it reads the one you have. Two forms come in:</p>
+<ul>
+<li>a <strong>segmented label map</strong>: one integer per voxel naming a tissue, usually a NIfTI file, kept as a <strong>voxel body</strong>;</li>
+<li><strong>one closed surface per tissue</strong>, each kept as a <strong>mesh</strong>.</li>
+</ul>
+<p>Both land in a 3D view as ordinary objects, take a material per tissue from the technology, and run on openEMS with
+<a href="sar.html">SAR and B1</a>. Neither is meshed by Palace or the thermal solver.</p>
+<div class="callout note">
+<span class="label">Research and engineering use</span>
+<p>circuitRF's SAR is for research and engineering. It is not a compliance tool. A model you import is yours: circuitRF
+copies it into your workspace and sends it nowhere, and whatever its licence allows is up to you.</p>
+</div>
+<h2 id="voxels">Importing a label map</h2>
+<p><em>File ▸ Import ▸ Voxel Model…</em> on the active 3D view. Pick the file; the dialog shows the import's <strong>report</strong> and a
+<strong>label table</strong>, one row per label the file holds:</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Label</td>
+<td>the integer in the file</td>
+</tr>
+<tr>
+<td>Voxels</td>
+<td>how many voxels carry it</td>
+</tr>
+<tr>
+<td>Tissue</td>
+<td>the name the tissue takes, <code>&lt;body&gt;/&lt;tissue&gt;</code> in the solve</td>
+</tr>
+<tr>
+<td>Material</td>
+<td>a technology material, or <strong>Air</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Every label the voxels carry must be mapped</strong>, to a material or to Air: one left unmapped would be solved as air, and
+the SAR in its neighbours would be wrong with nothing said, so the import refuses it, naming each label and its voxel
+count. Label 0 is air unless a row maps it. Names come from a label list you give, then the file's own names, then
+<code>label k</code>; a material is filled in only where a technology material has exactly the tissue's name.</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Read as</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.nii</code>, <code>.nii.gz</code></td>
+<td>NIfTI-1 or NIfTI-2, either byte order, 3D integer data (or a float volume of whole numbers); the orientation from the file's sform, else its qform, else its voxel sizes; millimetres unless the file says otherwise</td>
+</tr>
+<tr>
+<td>raw</td>
+<td>you state the dimensions, the type (<code>uint8</code> … <code>int32</code>), the voxel size, the byte order and any header to skip; x varies fastest. The file's length must match exactly, which catches a wrong dimension or type</td>
+</tr>
+<tr>
+<td><code>.h5</code></td>
+<td>an openEMS DiscMaterial file; its own εr, σ and density tables are <strong>not</strong> used — the label table's materials are, and the import says so</td>
+</tr>
+<tr>
+<td>label list <code>.csv</code></td>
+<td><code>label,name[,material]</code>, a header row allowed, <code>#</code> comments, <code>air</code> as a material</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Refused rather than guessed:</strong> an orientation turned off the axes (the angle is named: resampling a label map onto a
+turned grid is a decision about the anatomy that belongs to whoever segmented it — a flip or an axis permutation is
+fine); a NIfTI pair (<code>.hdr</code>/<code>.img</code>); a 4D series; a scaled volume; more than 255 tissues in one body (openEMS addresses its
+voxel materials with one byte — map labels that share a material to one row).</p>
+<p><strong>The body</strong> in the 3D view is one object, drawn as tissue-coloured surfaces at a reduced resolution; picking a tissue
+selects it. Properties shows its file, the air labels, the crop, its voxel extent, the grid step and one material per
+tissue; the tree lists its tissues under it.</p>
+<ul>
+<li><strong>Crop</strong> keeps a box of voxel indices; the rest of the file is never read into the solve.</li>
+<li><strong>Its placement</strong> moves it, and may turn it by quarter turns only, so voxels move exactly.</li>
+<li><strong>Grid step</strong> 0 (the default) puts an FDTD grid line on every voxel boundary, so each cell is one voxel. A positive
+step caps the cell size inside the body instead; each cell then takes the voxel its centre lies in. A whole body at
+1 mm is about 270 M voxels.</li>
+<li><strong>The file is copied</strong> into the 3D view's folder, and its hash recorded; <code>check</code> warns when it has changed since.</li>
+<li><strong>A SAR region</strong> names a tissue (<code>head/brain</code>) or the whole body (<code>head</code>), as it names a phantom's layer. Name <strong>B1 mean
+over</strong> explicitly: a body has no innermost layer to default to.</li>
+</ul>
+<p><strong>Size, before the run.</strong> The report gives the voxel count, the dimensions and voxel size, what the crop keeps, the label
+histogram with each row's material, and the FDTD cells inside the body with openEMS's memory for them. Past 50 M cells it
+is a <strong>warning, not a refusal</strong> — a whole body at 1 mm is a legitimate run, only a slow one — naming a crop or a coarser
+grid step as the remedy.</p>
+<h2 id="surfaces">Importing surfaces</h2>
+<p><em>File ▸ Import ▸ Surface Meshes…</em>, with one file per tissue (STL ASCII or binary, OBJ, PLY ASCII or binary). A mesh file
+states no unit, so you give one. Each file is checked, and <strong>nothing is imported if one fails</strong>:</p>
+<ul>
+<li><strong>closed</strong>: every edge in exactly two triangles, once each way; open, non-manifold and flipped edges are counted and
+reported;</li>
+<li><strong>not self-intersecting</strong> (checked up to 2 M triangles; a larger surface is checked for closure only, and the report
+says so);</li>
+<li><strong>outward</strong>: a surface wound inside out is turned round, and the report says so.</li>
+</ul>
+<p>The surfaces are <strong>nested by containment</strong>, outermost first, so an inner tissue wins the volume it shares with an outer
+one, as a phantom's layers do; two surfaces that cross rather than nest are named. A material is matched to each by file
+name, and is set in Properties per mesh. A tetrahedral mesh (<code>.node</code>/<code>.ele</code>) is <strong>voxelized</strong> at a size you choose, each
+voxel the region of the tetrahedron holding its centre, and kept as a <code>.nii.gz</code> beside the 3D view: from then on it is a
+voxel body.</p>
+<h2 id="headless">Headless</h2>
+<pre><code class="cmd"><span class="prompt">$ </span>circuitrf import voxels head.nii.gz --into model/3d/model.c3d --labels head.csv --report
+<span class="prompt">$ </span>circuitrf import voxels head.raw --into model/3d/model.c3d --dims 256,256,180 --type uint8 --voxel 1mm --material 0=air
+<span class="prompt">$ </span>circuitrf import surfaces tissues/ --into model/3d/model.c3d --unit mm --material "skull=Bone (cortical)"</code></pre>
+<p>A length always carries its unit (<code>2.5mm</code>); a bare number is refused. <code>--crop</code>, <code>--grid-step</code> and <code>--name</code> set what the
+dialog sets; <code>--report</code> prints the report without importing. The <code>.c3d</code> is created when it is absent. MCP's <code>import</code> tool
+takes <code>what=voxels</code> or <code>what=surfaces</code> with the same choices.</p>
+
+<nav class="page-nav">
+  <a class="prev" href="phantoms.html"><span class="dir">Previous</span><span class="name">Tissues and phantoms</span></a>
+  <a class="next" href="phone-sar.html"><span class="dir">Next</span><span class="name">Phone SAR</span></a>
+</nav>
+</main>
+
+<footer class="doc-footer">
+  <img src="../assets/img/circuitRF-mark.svg" alt="">
+  <span>circuitRF — RF circuit simulator</span>
+  <span class="spacer"></span>
+  <a href="../index.html">Documentation home</a>
+</footer>
+
+<script src="../assets/js/search-index.js" defer></script>
+<script src="../assets/js/docs-search.js" defer></script>
+</body>
+</html>
