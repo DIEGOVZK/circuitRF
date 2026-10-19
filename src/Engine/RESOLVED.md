@@ -3007,3 +3007,23 @@ behaviour matched; its C++ was read to learn it, never copied, and IEC/IEEE 6270
 tissue cells within **3.3e-7** relative (float32), the same cells tissue on both sides, against overview §4's 1e-5. Until then
 it was held only by the analytic block and implied by the identical 10 g averages. Not made a test: it needs both the local
 dump (35 MB) and `sar_calc`, and the 10 g comparison already gates the same arithmetic.
+
+## ANN training: bit-identical weights need a tanh of our own (brief-modelcomposer-6, 2026-10-19)
+
+Design note: `docs/design/model-composer.md` §8. Findings worth keeping:
+
+- **`Math.Tanh` and `Math.Exp` are not cross-platform deterministic.** .NET forwards them to the operating
+  system's C library, and macOS, glibc and Windows round them differently in the last place. Thousands of
+  L-BFGS iterations turn one ulp into different weights, so R-mc6-6's "same seed, same weights on every platform"
+  would have been false while every single-machine test passed. `Modeling/Ann/DeterministicMath` builds `exp`
+  (Cody–Waite reduction, degree-13 Taylor, `Math.ScaleB`) and `tanh` (a Taylor `expm1` below |z| = 0.5) from
+  `+ − × ÷` alone, which IEEE fixes exactly. The runtime `AnnEvaluator` keeps `Math.Tanh`: only TRAINING has to
+  reproduce bits. The same applies to initialisation — Glorot-UNIFORM, because `SplitMix64.NextGaussian` goes
+  through `Math.Log` and `Math.Cos`.
+- **Fixed-block summation makes the parallel mode free of its own reduction.** The loss and gradient are summed
+  per block of 64 points and the blocks added in order whether they ran on one thread or several, so the parallel
+  mode returns the serial weights; it is still documented only to 1e-12, as the brief asks.
+- **A loss-term normaliser must be ONE constant per term.** Dividing each derivative direction by its own scale
+  (`outputScale·inputScale_j`) looks like harmless conditioning but changes the relative weight of the directions,
+  and for non-conservative targets that moves the least-squares compromise. The derivative term divides by the
+  RMS of all its targets instead.

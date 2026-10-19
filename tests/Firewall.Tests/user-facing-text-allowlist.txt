@@ -1346,3 +1346,21 @@ src/RfCore/Export/MatReader.cs|The MAT-file header has no endian indicator; it i
 src/RfCore/Export/MatReader.cs|The MAT-file header is truncated.
 src/RfCore/Export/MatReader.cs|{Path.GetFileName(path)} is not a MAT-file: it begins with neither a MATLAB header nor an HDF5 signature.
 src/RfCore/Export/MatReader.cs|{Path.GetFileName(path)} is not a MAT-file: it is {n} bytes long.
+
+# ── Model Composer MC-6: the ANN trainer (2026-10-19) ──────────────────────────────
+# AnnTrainer's argument checks. Its callers (MC-7 … MC-10) build the problem from a .cmc's data
+# and settings that the document's own validation has already refused by field, so these are the
+# trainer's invariants rather than sentences a user is expected to read.
+src/Engine/Modeling/Ann/AnnTrainer.cs|a network has 1 to {AnnEvaluator.MaxHiddenLayers} hidden layers of 1 to {AnnEvaluator.MaxNeurons} neurons.
+src/Engine/Modeling/Ann/AnnTrainer.cs|a network has 1 to {RuntimeEvaluator.MaxInputs} inputs.
+src/Engine/Modeling/Ann/AnnTrainer.cs|a point of the {what} is not {d} finite numbers.
+src/Engine/Modeling/Ann/AnnTrainer.cs|the anchor is not {d} finite coordinates, a finite value and a weight ≥ 0.
+src/Engine/Modeling/Ann/AnnTrainer.cs|the derivative directions are distinct input indices, 0 to {d - 1}.
+src/Engine/Modeling/Ann/AnnTrainer.cs|the derivatives do not give {m} finite targets per point.
+src/Engine/Modeling/Ann/AnnTrainer.cs|the derivatives' weights are not {m} numbers ≥ 0 per point.
+src/Engine/Modeling/Ann/AnnTrainer.cs|the held-out fraction is at least 0 and below 1.
+src/Engine/Modeling/Ann/AnnTrainer.cs|the values do not give one finite target per point.
+src/Engine/Modeling/Ann/AnnTrainer.cs|the values' weights are not one number ≥ 0 per point.
+src/Engine/Modeling/Ann/AnnTrainer.cs|the weight penalty and the term weights are numbers ≥ 0.
+src/Engine/Modeling/Ann/AnnTrainer.cs|the {what} have no points.
+src/Engine/Modeling/Ann/AnnTrainer.cs|there is nothing to train to: no values and no derivatives.

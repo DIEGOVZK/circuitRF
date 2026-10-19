@@ -518,7 +518,60 @@ the `Digest` of the schematic path and values); `FitFile` reads, fits, applies a
 `model` verb call. The intrinsic cache keys on the values, so it invalidates itself. A later step records the digest
 it was computed through as `"Network"` in its `Steps` entry; `StaleSteps` names every entry whose digest differs.
 
-## 8. Where it lives
+## 8. Training an ANN (MC-6)
+
+`src/Engine/Modeling/Ann/` trains MC-2's network and hands back the runtime `AnnEvaluator` itself, with its
+`.cmodel` arrays (`AnnTrainingResult.Arrays`), so a trained network loads with no conversion. Which data a
+constituent trains on, and its weights and anchors, belong to MC-7 … MC-10.
+
+### 8.1 The problem (R-mc6-1 … R-mc6-3b)
+
+`AnnTrainer.Train(AnnTrainingProblem, AnnTrainingSettings, RunControl?)`. A problem has 1–5 inputs and any of:
+**values** (`AnnValueData`: points, targets, a weight per point), **derivatives** (`AnnDerivativeData`: points, the
+input directions `j`, the targets of `∂f/∂x_j`, a weight per point and direction — 0 marks a component not measured)
+and an **anchor** that fixes a derivative-trained function's constant. Values and derivatives together are [X03]'s
+combined training (eq. 8), each over its own point set.
+
+- **Normalisation.** Each input maps its range over every point onto [−1, 1]. The output maps the values' range onto
+  [−1, 1]; with no values it is scaled so the derivative targets are of order one, and offset to the anchor's value.
+- **The loss.** Each term is a weighted *mean* in normalised units — value residuals ÷ the output scale, derivative
+  residuals ÷ the RMS of their targets — times `ValueWeight` or `DerivativeWeight`, so the term weights are
+  dimensionless. A constant per term moves no minimiser: within a term it is `Σ w (f − y)²` and
+  `Σ w (∂f/∂x_j − t)²` exactly, and non-conservative derivative data gets the least-squares compromise ([P1] §6.3.6
+  ¶2). The anchor adds `Weight·((f(x₀) − y₀)/outputScale)²`; `L2` adds `λ·ΣW²` over the normalised weights.
+- **The adjoint network** (`AnnObjective`). The input derivatives are carried forward with the value (the derivative
+  network of MC-2); the loss is back-propagated through both networks at once — [X03] eq. 17's three paths:
+  `z̄ = ā ⊙ σ′ + Σⱼ ūⱼ ⊙ σ″ ⊙ vⱼ`, `v̄ⱼ = ūⱼ ⊙ σ′`, `∂L/∂W += z̄ aᵀ + Σⱼ v̄ⱼ uⱼᵀ`. Never a finite difference.
+- **Size.** Default 2 × 8 `tanh`. When the parameters exceed a tenth of the targets (one per value, one per
+  derivative component, the anchor) the result carries one warning ([L26]).
+
+### 8.2 The optimiser (R-mc6-4)
+
+In-house **L-BFGS** (`Lbfgs`): two-loop recursion, memory 10, a strong-Wolfe line search with cubic-interpolation
+zoom, a pair with unsafe curvature skipped, one fall-back to steepest descent before giving up. Stops on the
+gradient's largest component, the relative loss change or the iteration cap (defaults 1e-9, 1e-14, 2000).
+Initialisation is Glorot-uniform from `SplitMix64`, biases zero. `Restarts` (default 3) seeded starts; the start with
+the lowest held-out loss is kept (training loss when nothing is held out).
+
+### 8.3 Held-out error (R-mc6-5)
+
+`HeldOutSplit`: each point's normalised coordinates are quantised and interleaved into a Morton key; the points are
+sorted by that key (ties by the exact coordinates, then the targets — so by content, never by array position), cut
+into as many contiguous strata as points are held out (default 10 %), and one point is drawn per stratum by the seed.
+Values and derivatives are split separately. `AnnFitError` reports training and held-out RMS, absolute and relative to
+the targets' range — computed through the runtime network itself. Early stopping (off by default) keeps the iterate
+with the lowest held-out loss and stops after `EarlyStoppingPatience` iterations without a new one.
+
+### 8.4 Determinism and long work (R-mc6-6, R-mc6-7)
+
+Single-threaded training gives the same weights bit for bit on every platform: the points are summed in fixed blocks
+of 64 in a fixed order, and `tanh`, the logistic function and `exp` are computed from IEEE arithmetic alone
+(`DeterministicMath`) because the platform's `Math.Tanh` comes from its C library and differs in the last place
+between operating systems. `Parallel` evaluates the blocks on several threads and is promised only to 1e-12 relative.
+Progress is a stage per start and a tick per iteration on `RunControl`; a cancel throws `OperationCanceledException`
+out of `Train`, so the caller keeps whatever network it had (D13).
+
+## 9. Where it lives
 
 | Path | What |
 |---|---|
@@ -532,8 +585,9 @@ it was computed through as `"Network"` in its `Steps` entry; `StaleSteps` names 
 | `src/Design/Modeling/` | MC-4: `CmcExtrinsic`, `PinNetwork` (with `ModelingException`), `SixPinNetwork` and `PadNetwork`, `StockNetworks` and `StockNetworks/*.csch`, `PadDeembedding`, `IntrinsicExtraction`, `IntrinsicQuantities` |
 | `src/Engine/Modeling/NetworkAlgebra.cs` | MC-4: `C2` and the conversions and de-embeddings |
 | `src/Design/Modeling/` | MC-5: `NetworkFit` (with `NetworkFitProblem`, the residual terms, the drivers and the report), `NetworkFitSettings` and `NetworkFitRecord` |
+| `src/Engine/Modeling/Ann/` | MC-6: `AnnTrainer` (with its problem, settings and result records), `AnnObjective` (the loss and its adjoint gradient), `Lbfgs`, `HeldOutSplit`, `DeterministicMath` |
 
-## 9. Gates (MC-1 … MC-5)
+## 10. Gates (MC-1 … MC-6)
 
 `tests/Core.Tests/Composed/CmodelFormatTests`; `tests/Engine.Tests/Composed/` — `ComposedFetEquivalenceTests`
 (against an SDD with the same expressions in the same network: DC to 1e-12, S at three biases to 1e-9, HB
@@ -571,3 +625,14 @@ de-embedded elements at the true network's own noise floor, bounds, the tie, the
 step, the same seed bit for bit), `IdentifiabilityReportTests`, `NetworkFitCancelTests` (cancelled 20 evaluations
 into the first start, the `.cmc` byte for byte unchanged). The per-bias cores are hand-written in
 `Support/SyntheticFetData.cs`: a linear SDD per active point, plain R and C for the cold states.
+
+MC-6: `tests/Engine.Tests/Modeling/Ann/` — `AnnValueTrainingTests` (1 × 10 `tanh` on `tanh(x)·y²` at 200 scattered
+points: held-out RMS below 0.5 % of the range, measured 0.15 %), `AnnAdjointTrainingTests` (gradient-only training of
+a non-separable `Q` within 0.5 % of its range — measured 0.02 %; a target field with curl 0.6 lands within 1 % of the
+least-squares projection a grid solver computes — measured 0.05 %, where `Q` itself is 4.5 % off; the adjoint
+weight-gradient against central differences, both activations, measured 1e-10; combined training of
+`f(v1, v2, s)` with `s` tied to the bias at the value points recovers values and partials at fixed `s` within 1 % —
+measured 0.01 % and 0.03 % — where value-only training fits the values but misses the partials by 10 %),
+`AnnDeterminismTests` (same seed bit for bit, parallel within 1e-12, another seed differs; the held-out set is the
+same after a shuffle and touches every octant), `AnnTrainingCancelTests` (cancelled ten iterations into the second
+start: no result, the caller's network unchanged).
