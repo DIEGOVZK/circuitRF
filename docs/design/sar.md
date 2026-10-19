@@ -1228,7 +1228,10 @@ The H dump for B1 (VTK, 276 bytes a cell at its peak, §8.3) is the largest file
 
 openEMS's 3 T birdcage tutorial (§3.3) rebuilt from `.c3d` objects alone (`testdata/sar/circuitrf/birdcage/`, its README lists every
 file), run by circuitRF on the reference's own cylindrical lines, with the quadrature feed as two single-port runs recombined by a
-schematic, and compared with SAR-1's single run with both ports driven. @@VERDICT@@ The cylindrical grid first had to carry what the
+schematic, and compared with SAR-1's single run with both ports driven. **Seven of the eight checks pass** — the S11 minimum to 10 kHz and
+0.01 dB, the mean |B1+| to 0.3 %, peak local SAR to 2.8 %, B1+ homogeneity to 3.4 %, the local SAR plane correlated 0.994 — and
+**the |B1+| plane's correlation, 0.988, misses the 0.99 floor** by a fixed-phase azimuthal pattern that grows with radius, a
+different admixture of the coil's higher-order patterns whose cause is not settled (§10a.5). The cylindrical grid first had to carry what the
 birdcage is made of: sheets on a cylinder, lumped elements and ports in their gaps, given cylindrical lines with openEMS's MultiGrid,
 and SAR and B1 (§10a.2 to §10a.4). The first full run missed on four of the eight checks, and the cause was the way a sheet's edges
 were written: on a line to rounding, not on the line (§10a.6).
@@ -1307,7 +1310,8 @@ places the `.s2p` as a two-port block driven from two matched 50 Ω circuit port
 multi-channel drive, §12.4). With matched sources the incident wave at each block port is its source's alone, so the recombined field
 is Ê₁ − jÊ₂ times one scale, **the reference's simultaneous field to within the runs' own windows**: a combination of fields, before
 SAR and B1 are formed, never of SAR. The accepted power is Σ(|a|² − |b|²) over both drives, which is Σ 2·Re(U·I*) of the combined port
-waves: the two runs' probes recombined with e^(−j2πfT) give the same fraction of the available power to @@ACCFRAC@@.
+waves: the two runs' probes recombined with e^(−j2πfT) give the same fraction of the available power to three decimals (63.364 %
+against 63.364 %).
 
 ### 10a.5 The numbers (R-sar8b-6)
 
@@ -1315,7 +1319,30 @@ On the reference's 65 × 305 × 219 lines, the committed output (`reference-grid
 normalised by its own accepted power at 128 MHz exactly (its converter's derived values took the point nearest it, 128.25 MHz, 2.3 %
 off):
 
-@@NUMBERS@@
+| Quantity | Reference | circuitRF | Tolerance |
+|---|---|---|---|
+| accepted fraction of the available power: the `fields` analysis against the two runs' probes recombined | — | 63.364 % against 63.364 % | 0.1 pp |
+| S11 minimum, both ports driven, over the 78 ns both ran (§10.5) | 127.31 MHz, −3.66 dB | 127.32 MHz, −3.67 dB | 0.5 MHz, 1 dB |
+| the same, each to its own end | 127.25 MHz, −3.69 dB | 127.32 MHz, −3.67 dB | reported |
+| mean \|B1+\| at ρ = 1.875 mm, the smallest dumped radius | 0.4921 µT/√W | 0.4935 (+0.27 %) | 3 % |
+| \|B1+\| on the z = 1.25 mm plane, ρ ≤ 100 mm: correlation over 12,160 cells | | **0.98794 — misses** | ≥ 0.99 |
+| local SAR on the plane: correlation over 14,896 cells | | 0.99400 | ≥ 0.99 |
+| peak local SAR on the plane | 0.3324 W/kg/W | 0.3417 (+2.81 %) | 5 % |
+| B1+ homogeneity: the coefficient of variation of \|B1+\| over the central slice | 0.1697 | 0.1755 (+3.41 %) | 5 % |
+| mean \|B1+\| / mean \|B1−\| over the plane | 3.850 | 3.823 | reported |
+| the recombination: absorbed / whole-phantom SAR / mean \|B1+\| over the tissue core | | 96.9 % of accepted / 0.1009 W/kg/W over 9.604 kg / 0.4539 µT/√W | reported |
+| openEMS stopped at | 225,918 steps (−40 dB) | 213,342 steps in both runs (−40.95 dB) | reported |
+
+**The one miss.** The two |B1+| planes agree in their radial profile to 0.1 % inside ρ = 60 mm and 0.6 % at the phantom's edge, and
+the inner 25 mm correlate 0.993; what separates them is azimuthal. The ratio of the two planes carries an order-1 modulation of fixed
+phase (147–170° over the inner 50 mm) whose amplitude grows as 0.00075 per millimetre of radius — 0.9 % at 12 mm, 3.9 % at 52 mm,
+5.3 % at 92 mm — with an order-2 modulation behind it that grows faster still. That is the signature of a different admixture of the
+coil's k = 2 and k = 3 patterns (B1+ ∝ ρ·e^(jα) and ρ²·e^(2jα)) on top of the homogeneous mode, not of a geometry difference: in the
+probes the geometry is the tutorial's to twelve digits (§10a.6). Two things set such an admixture — the drive (the tutorial's port 2 is
+the same pulse delayed a quarter period, circuitRF's the same port driven alone and weighted −j, equal at 128 MHz) and each run's stop
+step: the reference's one run stopped at 225,918 steps, circuitRF's two at 213,342, and a ring-down cut at a different phase leaks a
+different amount of the higher modes into the 128 MHz sum (§10.5, §11.6). Whether that is the whole of it is not settled here; a run of
+both the tutorial and circuitRF to −60 dB would say (§10a.9).
 
 ### 10a.6 The first run: every sheet edge a hair off its line, and 2.6 MHz low
 
@@ -1359,8 +1386,8 @@ direction; §10.10): the same rule applies to it, and this is the first time it 
 
 | | the reference (one run, both ports) | circuitRF (two runs, one port each) |
 |---|---|---|
-| openEMS | @@REFCOST@@ | @@OURCOST@@ |
-| whole run | 52 min 52 s (Octave) | @@WALL@@ |
+| openEMS | 225,918 steps to −40 dB | 213,342 steps each to −40.95 dB: 2,959 s and 3,129 s |
+| whole run | 52 min 52 s (the Octave script) | 1 h 41 min 46 s (Debug; 17 s of it outside openEMS) |
 
 Each run stops on openEMS's energy criterion after a 38.6 ns pulse of 106k steps and a ring-down to 225k: the ring-down is the cost, as
 it was for the loop (§10.5), and SAR-9's capacitors-as-ports is what removes it. The two port runs are sequential, each on about three
@@ -1375,7 +1402,8 @@ of which 188 MB is the per-port field set kept beside the `.s2p`.
 - `BirdcageReplicationTests` (routine, fixed data, no process): the committed output against the reference — the accepted fraction,
   the S11 minimum over both runs' time within 0.5 MHz and 1 dB, mean |B1+| at the smallest dumped radius within 3 %, the two planes
   correlated ≥ 0.99, peak local SAR on the plane within 5 %, B1+ CoV within 5 %; the ring-down and the recombination's own record
-  reported. Skipped without SAR-1's data.
+  reported. Skipped without SAR-1's data. **Red on the committed output, at 0.988 on the |B1+| plane** (§10a.5): the floor is the
+  brief's, and whether to hold it, lower it or deepen both runs is the owner's.
 - `BirdcageLoweringTests` (routine, needs the reference's XML only): the lowering on the reference's lines is the tutorial's structure
   box for box, MultiGrid, boundaries and all, and every metal edge is a grid line's own value.
 - `BirdcagePhantomVoxelTests` (routine, needs openEMS and the reference set's `material_raw.h5`, 20 steps): the voxelized phantom is the
@@ -1393,6 +1421,8 @@ of which 188 MB is the per-port field set kept beside the `.s2p`.
 - **The birdcage with its capacitors as ports** (SAR-9's method, SAR-10's open worked case): the ring-down that makes each run 50 min
   would go with it.
 - **A planar sheet's edge a hair off its line** (§10.10): the same no-tolerance test; still written as drawn on a Cartesian grid.
+- **The |B1+| plane's residual** (§10a.5): a run of both the tutorial and circuitRF to −60 dB would say whether it is the stop step;
+  about 80 min for the tutorial and 2.5 h for circuitRF, the owner's.
 - **The two port runs in parallel** (§10a.7): the owner's, as is `--exact-endcriteria` (§3.2).
 
 ## 11. Capacitors as ports: per-port fields recombined by the circuit (SAR-9)

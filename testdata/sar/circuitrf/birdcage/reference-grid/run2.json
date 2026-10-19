@@ -1,0 +1,14 @@
+{
+  "note": "circuitRF OUTPUT, not a reference: port 2 of Birdcage.c3d\u0027s setup ReferenceGrid driven alone, the other terminated in 50 Ohm, run by circuitRF on openEMS (brief-sar-8b). The reference is testdata/sar/openems-ref/MRI_LP_Birdcage.",
+  "setup": "ReferenceGrid",
+  "grid_lines": [
+    65,
+    304,
+    219
+  ],
+  "timestep_s": 3.65071E-13,
+  "stopped_at_timestep": 213342,
+  "stopped_by": "openEMS: the energy end criterion",
+  "energy_at_stop_db": -40.95,
+  "openems_wall_s": 3129.32
+}

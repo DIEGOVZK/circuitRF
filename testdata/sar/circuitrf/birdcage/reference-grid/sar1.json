@@ -1,0 +1,56 @@
+{
+  "Port": 1,
+  "FrequencyHz": 128000000,
+  "Index": 1,
+  "AcceptedPowerW": 0.3168212745299579,
+  "RadiationEfficiency": null,
+  "Region": "all tissue",
+  "AbsorbedPowerW": 0.30700823402383814,
+  "TissueMassKg": 9.603583283335851,
+  "UncountedPowerW": 0,
+  "Peaks": [
+    {
+      "Quantity": "SAR",
+      "Value": 0.22040072083473206,
+      "Cell": [
+        38,
+        112,
+        105
+      ],
+      "CentreM": [
+        0.0341512029347085,
+        -0.09025773453315808,
+        0.12875
+      ],
+      "CubeLoM": null,
+      "CubeHiM": null,
+      "CubeMassKg": null,
+      "Kind": null,
+      "Object": "body/skin",
+      "Material": "openEMS body phantom skin (128 MHz)"
+    }
+  ],
+  "B1Region": "body/tissue",
+  "B1pMeanT": 2.5548424150301484E-07,
+  "B0Axis": "\u002Bz",
+  "Shape": [
+    54,
+    304,
+    108
+  ],
+  "Grid": "cylindrical",
+  "Volumes": [
+    "SAR",
+    "B1p",
+    "B1m"
+  ],
+  "CrossCheck": null,
+  "ReferencePowerW": null,
+  "PerWattDivisor": 0.3168212745299579,
+  "WholeSarPerWatt": 0.10090260528450885,
+  "AbsorbedFraction": 0.969026573355345,
+  "B1pMeanPerSqrtWatt": 4.538966205502009E-07,
+  "PowerBudget": null,
+  "EfficiencyQuantity": null,
+  "SarEfficiency": null
+}

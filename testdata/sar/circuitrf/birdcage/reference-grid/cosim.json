@@ -1,0 +1,78 @@
+{
+  "Analysis": "F1",
+  "Block": "EM1",
+  "Snp": "Birdcage ReferenceGrid.openems.s2p",
+  "Stamp": "20261019T015828Z-2e90cb5e",
+  "FrequencyHz": 128000000,
+  "DrivePort": 1,
+  "DriveZ0Re": 50,
+  "DriveZ0Im": 0,
+  "ReflectionRe": 0.6052746904836549,
+  "ReflectionIm": 0,
+  "Drives": [
+    [
+      1,
+      1,
+      0,
+      0.5882792133571395,
+      -0.29293487918034306
+    ],
+    [
+      2,
+      6.123233995736766E-17,
+      -1,
+      -0.24913451005421328,
+      -0.48863444564594344
+    ]
+  ],
+  "Ports": [
+    1,
+    2
+  ],
+  "Incident": [
+    [
+      0.5,
+      -1.570092458683775E-17
+    ],
+    [
+      3.925231146709437E-17,
+      -0.5
+    ]
+  ],
+  "Reflected": [
+    [
+      0.29413960667856975,
+      -0.14646743959017153
+    ],
+    [
+      -0.12456725502710664,
+      -0.24431722282297172
+    ]
+  ],
+  "AvailablePowerW": 0.5,
+  "AcceptedPowerW": 0.3168212745299579,
+  "DeliveredPowerW": 0.3168212745299579,
+  "DeliveredFromSW": 0.3168213730956274,
+  "AbsorbedPowerW": 0.30700823402383814,
+  "AbsorbedFromQW": 0.3070082340345082,
+  "OtherLossW": 0.009813040506119752,
+  "Normalisation": "accepted",
+  "Averaged": false,
+  "Checks": [
+    "Check: the summed field absorbs 0.307 W and the tissue matrix says 0.307 W (3.476E-09 % apart).",
+    "Check: the circuit delivers 0.3168 W into the block and the field set\u0027s S-matrix says 0.3168 W (3.111E-05 % apart).",
+    "Check: over every excitation, the block\u0027s dissipation less the tissue\u0027s absorption is at least 0.01946 W per W incident (the dissipation\u0027s largest 0.6371)."
+  ],
+  "Reflection": {
+    "Real": 0.6052746904836549,
+    "Imaginary": 0,
+    "Magnitude": 0.6052746904836549,
+    "Phase": 0
+  },
+  "DriveZ0": {
+    "Real": 50,
+    "Imaginary": 0,
+    "Magnitude": 50,
+    "Phase": 0
+  }
+}

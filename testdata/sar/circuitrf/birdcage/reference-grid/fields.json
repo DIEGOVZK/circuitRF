@@ -1,0 +1,163 @@
+{
+  "FormatVersion": 1,
+  "Stamp": "20261019T015828Z-2e90cb5e",
+  "Snp": "Birdcage ReferenceGrid.openems.s2p",
+  "Setup": "Birdcage ReferenceGrid",
+  "Ports": [
+    {
+      "Number": 1,
+      "Name": "port/1",
+      "Z0Re": 50,
+      "Z0Im": 0,
+      "Z0": {
+        "Real": 50,
+        "Imaginary": 0,
+        "Magnitude": 50,
+        "Phase": 0
+      }
+    },
+    {
+      "Number": 2,
+      "Name": "port/2",
+      "Z0Re": 50,
+      "Z0Im": 0,
+      "Z0": {
+        "Real": 50,
+        "Imaginary": 0,
+        "Magnitude": 50,
+        "Phase": 0
+      }
+    }
+  ],
+  "Frequencies": [
+    {
+      "Index": 1,
+      "Hz": 128000000,
+      "Shape": [
+        54,
+        304,
+        108
+      ],
+      "HasH": true,
+      "S": [
+        [
+          0.5384563652038596,
+          -0.27103628423869824,
+          0.02189851403525323,
+          0.04982269739944049
+        ],
+        [
+          0.021899505232551984,
+          0.04982065337407941,
+          0.5384549567781504,
+          -0.2710339541092391
+        ]
+      ],
+      "TissueMatrix": [
+        [
+          0.6140161994000166,
+          0,
+          0.0035941916492640853,
+          -8.905868291022519E-08
+        ],
+        [
+          0.0035941916492640853,
+          8.905868291022519E-08,
+          0.614016914855382,
+          0
+        ]
+      ],
+      "RadiationEfficiency": null,
+      "Files": [
+        {
+          "Name": "f1.owner.npy",
+          "Bytes": 3545984,
+          "Port": 0
+        },
+        {
+          "Name": "f1.rho.npy",
+          "Bytes": 7091840,
+          "Port": 0
+        },
+        {
+          "Name": "f1.sigma.npy",
+          "Bytes": 7091840,
+          "Port": 0
+        },
+        {
+          "Name": "f1.volume.npy",
+          "Bytes": 7091840,
+          "Port": 0
+        },
+        {
+          "Name": "f1.xfaces.npy",
+          "Bytes": 568,
+          "Port": 0
+        },
+        {
+          "Name": "f1.yfaces.npy",
+          "Bytes": 2568,
+          "Port": 0
+        },
+        {
+          "Name": "f1.zfaces.npy",
+          "Bytes": 1000,
+          "Port": 0
+        },
+        {
+          "Name": "p1.f1.E.npy",
+          "Bytes": 42550400,
+          "Port": 1
+        },
+        {
+          "Name": "p1.f1.H.npy",
+          "Bytes": 42550400,
+          "Port": 1
+        },
+        {
+          "Name": "p2.f1.E.npy",
+          "Bytes": 42550400,
+          "Port": 2
+        },
+        {
+          "Name": "p2.f1.H.npy",
+          "Bytes": 42550400,
+          "Port": 2
+        }
+      ]
+    }
+  ],
+  "Tissues": [
+    "body/tissue",
+    "body/bone",
+    "body/skin"
+  ],
+  "TissueMaterials": [
+    "openEMS body phantom tissue (128 MHz)",
+    "openEMS body phantom bone (128 MHz)",
+    "openEMS body phantom skin (128 MHz)"
+  ],
+  "Region": [
+    "body/skin",
+    "body/bone",
+    "body/tissue"
+  ],
+  "RegionName": "all tissue",
+  "B1Region": [
+    "body/tissue"
+  ],
+  "B1RegionName": "body/tissue",
+  "MassesGrams": [],
+  "Method": "Cube",
+  "B1": true,
+  "B0Axis": "\u002Bz",
+  "RegionStated": false,
+  "Grid": "cylindrical",
+  "CylinderAxis": 2,
+  "CylinderOriginM": [
+    0,
+    0,
+    0
+  ],
+  "TotalBytes": 195027240
+}
