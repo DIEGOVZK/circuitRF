@@ -660,6 +660,40 @@ public sealed class SmithOverlayTests
         }
     }
 
+    // ── the source combo is an input to Add, not to the chart ────────────────
+
+    /// <summary>
+    /// <b>Choosing a data source in the strip leaves the chart's own curves exactly as they were.</b>
+    /// </summary>
+    /// <remarks>
+    /// Every trace the tool derives has no source of its own, which on a Data Display means "follow
+    /// the selected source" — so selecting a two-port re-pointed the trajectories, the load points
+    /// and the band at it, each looked up its own name in that file's DataSet, and the chart redrew
+    /// whatever came back (a field report: the curves turned into something unrecognisable). Only
+    /// the POINTS say whether that happened; the trace count alone is unchanged by it.
+    /// </remarks>
+    [Fact]
+    public async Task SelectingADataSource_DoesNotRedrawTheNetworksOwnCurves()
+    {
+        string dir = TempDir();
+        string abs = Path.Combine(dir, "amp.s2p");
+        File.WriteAllText(abs, "# HZ S RI R 50\n"
+                             + "1.0e9 0.3 0.1 2.0 0.5 0.01 0.0 0.2 -0.1\n"
+                             + "3.0e9 -0.2 0.4 1.5 -0.8 0.02 0.01 0.1 0.3\n");
+
+        var vm = new SmithChartViewModel(Design()) { DocumentDirectory = dir };
+        string Curves() => string.Join("|", vm.ChartPlot.Traces
+            .Where(t => t.ExcludeFromAxisLabels)
+            .Select(t => string.Join(";", t.Points.Select(p => $"{p.X:G6},{p.Y:G6}"))));
+
+        string before = Curves();
+        Assert.Contains(',', before);
+
+        await vm.PlotHost.Library!.SelectDataSourceAsync(abs);
+
+        Assert.Equal(before, Curves());
+    }
+
     private static string SourceRoot(string relative)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);

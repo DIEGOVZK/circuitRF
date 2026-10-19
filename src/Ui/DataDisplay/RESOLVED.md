@@ -2507,3 +2507,18 @@ with a label is re-pointed at that label's index on the current cube, and a labe
 longer has ends as the parser's own `No label 'IP1' in axis 'branch'.` with `<invalid>`. Integer
 pins (`I[0]`) carry no label and still mean a position. Being in `src/Render`, it covers
 `render --data` too. Test `LabelledPinRerunTests`.
+
+## The Smith Chart's source combo redrew the network's own curves (2026-10-18)
+
+Reported: picking an S-parameter file in the Smith Chart tool's top-left source combo turned the
+chart's curves into something unrecognisable. The combo exists only to choose what Plot Properties ▸
+Add seeds from, but every trace `SmithPlotBuilder` derives (trajectories, load and generator points,
+band, constant-Q arcs) has no `SourceRef` — which on a Data Display means "follow the selected
+source". So `DataDisplayViewModel.OnSelectedDataSourceChanged` re-pointed them all at the file, each
+resolved its own name ("L1", "band") against that DataSet, and `PlotInspectorViewModel.OnLibraryChanged`
+then swept most of them out as stale. Measured on a two-port: the network's points collapsed to a
+single `(0,0)`. **Fix:** `Trace.IsOwnerData`, set by `SmithPlotBuilder.CubeTrace` — such a trace is
+skipped by the sentinel re-point, is never stale, and `TraceResolve.ResolveCubeTrace` rebuilds its path
+from the values it holds instead of looking it up (the treatment `IsAnnotation` traces already got,
+without also removing them from markers). Test
+`SmithOverlayTests.SelectingADataSource_DoesNotRedrawTheNetworksOwnCurves`.

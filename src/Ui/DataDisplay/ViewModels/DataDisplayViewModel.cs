@@ -527,6 +527,7 @@ public partial class DataDisplayViewModel : ViewModelBase, IDisposable
         {
             foreach (var t in c.PlotVM.Plot.Traces)
             {
+                if (t.IsOwnerData) continue;   // no source — it does not follow the selection
                 if (string.IsNullOrEmpty(t.SourceRef) || t.SourceRef == DataSourceRef.Selected)
                 {
                     t.SourcePath = _library.ResolveAbs(t.SourceRef);

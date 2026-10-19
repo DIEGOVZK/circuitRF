@@ -60,6 +60,9 @@ public static class TraceResolve
     {
         if (!t.IsCubeBound) return;
 
+        // Values the plot's owner set have no source to be looked up in — rebuild from what is held.
+        if (t.IsOwnerData) { t.BuildPath(plotType, freqUnit); return; }
+
         // NOTE the ordering below: DataFor is not a field read. The first touch of a source's
         // DataSet MATERIALIZES the group's virtual Z and Y cubes, which means N matrix inversions —
         // real work that can fail. It used to be evaluated in the argument list of SetCubeDataFrom,

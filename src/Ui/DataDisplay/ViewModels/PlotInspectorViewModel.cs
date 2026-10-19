@@ -1087,6 +1087,8 @@ public partial class PlotInspectorViewModel : ViewModelBase
                 // RebuildSummary, not bound to a library SNP. Removing them on a re-run would wipe the
                 // contour/summary and skip the refresh (IsSummaryTable → false).
                 if (t.IsContourTrace || t.IsSummaryColumn) return false;
+                // The plot's owner holds these values; no library entry ever backed them.
+                if (t.IsOwnerData) return false;
                 return t.IsCubeBound
                     ? t.SourcePath is null || !libraryPaths.Contains(t.SourcePath)
                     : t.Data is not null && !librarySnps.Contains(t.Data);

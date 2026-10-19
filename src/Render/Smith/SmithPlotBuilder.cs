@@ -627,6 +627,10 @@ public static class SmithPlotBuilder
             // which the user asked for by name. The OVERLAYS do not come through this factory: they
             // are the reference data the user chose, and they are what the axis labels are for.
             ExcludeFromAxisLabels = true,
+
+            // AND NOTHING IT DERIVES FOLLOWS THE SOURCE COMBO. These have no source, which on a Data
+            // Display means "the selected one" — choosing a file in the strip re-pointed them all at it.
+            IsOwnerData = true,
         };
 
     /// <summary>The trajectories' ordinary line width, and the width the SELECTED element's takes.

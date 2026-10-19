@@ -646,6 +646,22 @@ namespace CircuitRF.Render.DataDisplay
         public bool ExcludeFromAxisLabels { get; set; }
 
         /// <summary>
+        /// True where the plot's OWNER computed this trace's values and handed them to
+        /// <c>SetCubeData</c> — there is no data source behind it to resolve against.
+        /// </summary>
+        /// <remarks>
+        /// <b>A trace with no <see cref="SourceRef"/> otherwise means "follow the selected source"</b>,
+        /// which is right for a Data Display card and wrong for a curve the host derived. The Smith
+        /// Chart tool's trajectories, load points and band carry no source, so choosing a file in the
+        /// chart's own source combo re-pointed every one of them at it: each looked its own name up
+        /// in that file, came back empty or meaningless, and the library's stale-trace sweep removed
+        /// most of them (field report, 2026-10-18). Such a trace keeps its source unset, is never
+        /// stale, and re-derives its path from the values it holds — what
+        /// <see cref="IsAnnotation"/> traces already do, without also leaving the marker machinery.
+        /// </remarks>
+        public bool IsOwnerData { get; set; }
+
+        /// <summary>
         /// True where this trace's extent must not set the plot's window.
         /// </summary>
         /// <remarks>
