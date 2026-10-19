@@ -469,6 +469,13 @@ public sealed class CemOpenEms
     public int? AzimuthLines { get; set; }
 
     /// <summary>
+    /// brief-sar-8b R-sar8b-3 — openEMS's cylindrical sub-grids (its <c>MultiGrid</c>): radii, µm, inside which the azimuth lines
+    /// are halved once more each, so the cells near the axis are not the thin wedges that would set the time step. Omitted: none.
+    /// Read only with <c>Grid: Cylindrical</c>; openEMS needs an odd number of azimuth lines at every level.
+    /// </summary>
+    public List<double>? MultiGridRadiiUm { get; set; }
+
+    /// <summary>
     /// brief-sar-3 R-sar3-4 — each FDTD cell takes the material at its centre rather than an average over its edges
     /// (openEMS's <c>CellConstantMaterial</c>): less accurate at a material's face, and what averaging SAR over cubes needs.
     /// Default: on for a setup that requests SAR, off otherwise, so every setup written before it runs as it did.
@@ -488,6 +495,7 @@ public sealed class CemOpenEms
         var c = (CemOpenEms)MemberwiseClone();
         c.SaveFieldsGHz = SaveFieldsGHz is { } f ? [.. f] : null;
         c.AxisOriginUm = AxisOriginUm is { } o ? [.. o] : null;
+        c.MultiGridRadiiUm = MultiGridRadiiUm is { } mg ? [.. mg] : null;
         c.GridLines = GridLines?.Clone();
         return c;
     }
@@ -498,7 +506,8 @@ public sealed class CemOpenEms
     public bool IsEmpty =>
         CellsPerWavelength is null && GradingRatio is null && ThirdsRule is null && MinCellUm is null && PmlCells is null &&
         EndCriterionDb is null && MaxTimeSteps is null && SaveFieldsGHz is null && SaveH is null &&
-        Grid is null && Axis is null && AxisOriginUm is null && AzimuthLines is null && CellConstantMaterial is null && GridLines is null;
+        Grid is null && Axis is null && AxisOriginUm is null && AzimuthLines is null && CellConstantMaterial is null && GridLines is null &&
+        MultiGridRadiiUm is null;
 
     /// <summary>
     /// brief-em3d-8 R-em3d8-6 — the section's grid fields RESOLVED, each omitted one taking
@@ -543,7 +552,8 @@ public sealed class CemOpenEms
                 section.AxisOriginUm is null ? default
                     : section.AxisOriginUm is [var x, var y, var z] ? new CircuitRF.Engine.Em3d.Point3(x * 1e-6, y * 1e-6, z * 1e-6)
                     : new CircuitRF.Engine.Em3d.Point3(double.NaN, double.NaN, double.NaN),
-                section.AzimuthLines),
+                section.AzimuthLines)
+                { MultiGridRadiiM = section.MultiGridRadiiUm is { } mg ? [.. mg.Select(r => r * 1e-6)] : null },
         };
     }
 
@@ -661,8 +671,14 @@ public sealed class CemGridLines
         {
             return Bad($"OpenEms.GridLines.File '{file}' cannot be read as a CSXCAD grid: {e.Message}");
         }
+        // brief-sar-8b R-sar8b-3 — a cylindrical grid (CoordSystem 1) is ρ, α, z: ρ and z in DeltaUnit, α in radians as written (the
+        // closed circle's last line its first plus 2π, as openEMS reads it).
+        bool cylindrical = false;
         if ((string?)grid.Attribute("CoordSystem") is { } cs && cs.Trim() != "0")
-            return Bad($"OpenEms.GridLines.File '{file}' holds a cylindrical grid (CoordSystem {cs}); OpenEms.GridLines gives Cartesian lines.");
+        {
+            if (cs.Trim() != "1") return Bad($"OpenEms.GridLines.File '{file}' holds a grid in coordinate system {cs}; circuitRF reads Cartesian (0) and cylindrical (1).");
+            cylindrical = true;
+        }
         double delta = 1;
         if ((string?)grid.Attribute("DeltaUnit") is { } du &&
             !double.TryParse(du, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out delta))
@@ -678,10 +694,10 @@ public sealed class CemGridLines
             {
                 if (!double.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double v))
                     return Bad($"OpenEms.GridLines.File '{file}''s {tags[k]} holds '{t}', which is not a number.");
-                axes[k].Add(v * delta);
+                axes[k].Add(cylindrical && k == 1 ? v : v * delta);
             }
         }
-        return new(axes[0], axes[1], axes[2], name);
+        return new(axes[0], axes[1], axes[2], name) { Cylindrical = cylindrical };
     }
 }
 

@@ -40,7 +40,7 @@ public static partial class C3dBooleans
     /// <summary>Why <paramref name="o"/> cannot be an operand, or null when it can (R-em3d66-1a/-1b).</summary>
     public static string? OperandRefusal(C3dObject o) => o switch
     {
-        C3dSheet => $"'{o.Name}' is a sheet: a boolean on a sheet is an imprint or a split, which is a different operation.",
+        C3dSheet or C3dCylinderSheet => $"'{o.Name}' is a sheet: a boolean on a sheet is an imprint or a split, which is a different operation.",
         C3dPolyline => $"'{o.Name}' is a polyline — construction geometry, never in the problem: Extrude it first.",
         C3dWire => $"'{o.Name}' is a bond wire: its shape is made again from its points and its pads, so a cut wire would stop being a wire.",
         _ when C3dOperands.IsSolid(o) => null,

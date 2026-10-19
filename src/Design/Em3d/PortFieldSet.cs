@@ -119,6 +119,36 @@ public sealed class PortFieldManifest
     /// <summary>Whether Region was stated; when not, every tissue is the region.</summary>
     public bool RegionStated { get; set; }
 
+    /// <summary>brief-sar-8b — <c>cylindrical</c> when the cells are a cylindrical grid's (ρ, α, z), with the axis
+    /// (<see cref="CylinderAxis"/>, 0 x, 1 y, 2 z) and a point on it (<see cref="CylinderOriginM"/>, metres). The E and H files
+    /// hold the WORLD's x, y and z components even then — the writer turned them at each cell's azimuth — so a recombination
+    /// needs no frame; only a cell's position does. Null: Cartesian, every set before it.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Grid { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public int? CylinderAxis { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? CylinderOriginM { get; set; }
+
+    /// <summary>The cells are a cylindrical grid's.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsCylindrical => Grid == SarRunRecord.CylindricalGrid;
+
+    /// <summary>A cell centre (ρ, α, z) — or (x, y, z) on a Cartesian set — in the world, metres.</summary>
+    public CircuitRF.Engine.Em3d.Point3 World(double x, double y, double z)
+    {
+        if (!IsCylindrical || CylinderAxis is not int a || CylinderOriginM is not [var ox, var oy, var oz]) return new(x, y, z);
+        var c = new double[3];
+        double[] o = [ox, oy, oz];
+        int u = (a + 1) % 3, v = (a + 2) % 3;
+        c[u] = o[u] + x * Math.Cos(y);
+        c[v] = o[v] + x * Math.Sin(y);
+        c[a] = z;
+        return new(c[0], c[1], c[2]);
+    }
+
     public long TotalBytes => Frequencies.Sum(f => f.Files.Sum(x => x.Bytes));
 }
 

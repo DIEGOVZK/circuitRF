@@ -79,13 +79,23 @@ public sealed record OpenEmsGridSettings(
             p.Add($"OpenEms.AzimuthLines is {n}; it must be {OpenEmsCylindrical.MinAzimuthLines} to {OpenEmsCylindrical.MaxAzimuthLines}.");
         if (Cylindrical is { } c && (c.Axis > FdtdAxis.Z || !double.IsFinite(c.Origin.X) || !double.IsFinite(c.Origin.Y) || !double.IsFinite(c.Origin.Z)))
             p.Add("OpenEms.Axis must be X, Y or Z, and OpenEms.AxisOriginUm three finite lengths.");
+        if (Cylindrical?.MultiGridRadiiM is { } mg && (mg.Count == 0 || mg.Any(r => !(r > 0) || !double.IsFinite(r)) ||
+                                                      Enumerable.Range(1, mg.Count - 1).Any(i => !(mg[i] > mg[i - 1]))))
+            p.Add("OpenEms.MultiGridRadiiUm must be positive radii in increasing order.");
         if (ExplicitLines is { } ex)
         {
             if (ex.Problem is { } bad) p.Add(bad);
             else
             {
-                if (Cylindrical is not null)
+                if (Cylindrical is not null && !ex.Cylindrical)
                     p.Add("OpenEms.GridLines gives Cartesian lines, and OpenEms.Grid is Cylindrical: give one or the other.");
+                if (Cylindrical is null && ex.Cylindrical)
+                    p.Add($"OpenEms.GridLines gives a cylindrical grid ({ex.Source}), and OpenEms.Grid is Cartesian: set OpenEms.Grid to " +
+                          "Cylindrical, with the Axis and AxisOriginUm the file's grid is round about.");
+                if (ex.Cylindrical && ex.X.Count > 0 && ex.Y.Count > 1 &&
+                    (ex.X[0] < 0 || Math.Abs(ex.Y[^1] - ex.Y[0] - 2 * Math.PI) > OpenEmsCylindrical.ClosedAlphaTolerance))
+                    p.Add($"OpenEms.GridLines' cylindrical grid ({ex.Source}) needs ρ from 0 or above and α round the full circle (its last line " +
+                          "its first plus 2π): circuitRF's cylindrical grid is a closed one.");
                 foreach (var (name, lines) in new[] { ("X", ex.X), ("Y", ex.Y), ("Z", ex.Z) })
                 {
                     if (lines.Count < 3)
@@ -110,6 +120,13 @@ public sealed record OpenEmsCylindrical(FdtdAxis Axis, Point3 Origin, int? Azimu
 {
     /// <summary>The fewest and most azimuth lines a setup may state (both counts include the closing line at 2π).</summary>
     public const int MinAzimuthLines = 9, MaxAzimuthLines = 4001;
+
+    /// <summary>How close to 2π a given grid's α span must be for openEMS to close it (its OPERATOR_CYLINDER_CLOSED_ALPHA_THRESHOLD).</summary>
+    public const double ClosedAlphaTolerance = 1e-4;
+
+    /// <summary>brief-sar-8b R-sar8b-3 — openEMS's <c>MultiGrid</c> radii, metres, increasing; null for none. Inside each, openEMS
+    /// takes every second azimuth line of the grid outside it.</summary>
+    public IReadOnlyList<double>? MultiGridRadiiM { get; init; }
 }
 
 /// <summary>
@@ -120,6 +137,10 @@ public sealed record OpenEmsCylindrical(FdtdAxis Axis, Point3 Origin, int? Azimu
 public sealed record FdtdExplicitLines(IReadOnlyList<double> X, IReadOnlyList<double> Y, IReadOnlyList<double> Z, string Source)
 {
     public string? Problem { get; init; }
+
+    /// <summary>brief-sar-8b R-sar8b-3 — the lines are a cylindrical grid's: <see cref="X"/> ρ (m), <see cref="Y"/> α (rad, a closed
+    /// circle), <see cref="Z"/> along the axis (m).</summary>
+    public bool Cylindrical { get; init; }
 
     public IReadOnlyList<double> Axis(FdtdAxis a) => a switch { FdtdAxis.X => X, FdtdAxis.Y => Y, _ => Z };
 }
@@ -662,6 +683,13 @@ public static partial class FdtdGrid
             Add(lo, true, new FdtdLineSource(le.Name, FdtdLineKind.PortExtent, lo));
             if (hi != lo) Add(hi, true, new FdtdLineSource(le.Name, FdtdLineKind.PortExtent, hi));
         }
+        // brief-sar-8b — a sheet on a cylinder ends on two lines along its own axis (the cylindrical grid's z, the only axis it is
+        // gridded along by this collection; ρ and α are FdtdGrid.Cylindrical's).
+        foreach (var cs in problem.CylinderSheets.Where(c => c.Patch.Axis == (int)axis))
+        {
+            Add(cs.Patch.Lo, true, new FdtdLineSource(cs.Name, FdtdLineKind.MetalEdge, cs.Patch.Lo));
+            if (cs.Patch.Hi != cs.Patch.Lo) Add(cs.Patch.Hi, true, new FdtdLineSource(cs.Name, FdtdLineKind.MetalEdge, cs.Patch.Hi));
+        }
 
         string n = AxisName(axis);
         Add(ctx.BoxMin(axis), true, new FdtdLineSource(Em3dAirBox.FaceName(n + "min"), FdtdLineKind.AirBoxFace, ctx.BoxMin(axis)));
@@ -1086,6 +1114,16 @@ public static partial class FdtdGrid
     /// be on a line (to rounding) is written as, since openEMS tests a box or polygon against its lines with no tolerance.</summary>
     public static double NearestLine(IReadOnlyList<double> lines, double at)
         => lines.Count == 0 ? at : lines.MinBy(l => Math.Abs(l - at));
+
+    /// <summary>
+    /// brief-sar-8b — <paramref name="at"/> as the grid line it lies on, to the given-line tolerance (<see cref="GivenLineTolerance"/>
+    /// of the cell beside it), else itself: what a sheet's edge is written as. openEMS tests a box against each edge's position with
+    /// no tolerance, so an edge a few ulps short of its line — a base plus a length in metres against the line's millimetres times
+    /// 1e-3, or degrees turned to radians against the line's fifteen digits — holds none of that line's edges, and the sheet is a
+    /// line narrower in silence (sar.md §10a.6). An edge that is not on a line is left where it was drawn.
+    /// </summary>
+    public static double LineOrSelf(IReadOnlyList<double> lines, double at)
+        => lines.Count > 0 && OnLine(lines, at) ? lines[NearestIndex(lines, at)] : at;
 
     // ── the thirds pair's invariant (brief-em3d-122 R-em3d122-1) ─────────────────────────────
 

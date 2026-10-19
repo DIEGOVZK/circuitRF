@@ -228,6 +228,7 @@ public static class C3dValidation
             case C3dVoxelBody vb: VoxelBody(vb, found); break;
             case C3dMesh me:      Mesh(me, found);      break;
             case C3dSheet s:      Sheet(s, found);      break;
+            case C3dCylinderSheet cs: CylinderSheet(cs, found); break;
             case C3dPolyline l:   Polyline(l, found);   break;
             case C3dPolyhedron h: Polyhedron(h, found); break;
             case C3dWire w:       Wire(w, found);       break;
@@ -504,6 +505,15 @@ public static class C3dValidation
 
         Loop(s.Name, "outline", s.Outline, found);
         for (int h = 0; h < s.Holes.Count; h++) Loop(s.Name, $"hole {h}", s.Holes[h], found);
+    }
+
+    /// <summary>brief-sar-8b R-sar8b-2 — a sheet on a cylinder: a radius, a length and a sweep that leave it an area.</summary>
+    private static void CylinderSheet(C3dCylinderSheet s, List<Diagnostic> found)
+    {
+        if (s.Radius <= 0) found.Add(C3dDiagnostics.SheetShape(s.Name, "is on a cylinder whose radius is not positive"));
+        else if (s.Length == 0) found.Add(C3dDiagnostics.SheetShape(s.Name, "is on a cylinder and has no length along its axis"));
+        else if (!(Math.Abs(s.SweepDeg) > 0) || Math.Abs(s.SweepDeg) > 360 || !double.IsFinite(s.StartDeg))
+            found.Add(C3dDiagnostics.SheetShape(s.Name, "is on a cylinder and sweeps no azimuth, or more than a full turn"));
     }
 
     private static void Polyline(C3dPolyline l, List<Diagnostic> found)

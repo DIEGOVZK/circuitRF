@@ -196,7 +196,7 @@ public static partial class CsxcadWriter
                     : $"Port {p.Number}'s reference impedance is {Ohms(p.Z0)}. An openEMS lumped port is " +
                       "terminated in a resistance, which must be positive: set the port's Z0 to a value with a " +
                       "positive real part.");
-            if (p.Kind == Em3dPortKind.Lumped && ExcitationAxis(p) is null)
+            if (p.Kind == Em3dPortKind.Lumped && p.Cylinder is null && ExcitationAxis(p) is null)
                 return No($"Port {p.Number}'s direction is not along an axis in the port's own sheet, so openEMS's " +
                           "lumped port cannot state it.");
         }
@@ -205,14 +205,15 @@ public static partial class CsxcadWriter
         foreach (var le in problem.LumpedElements)
         {
             if (le.Inexpressible() is { } cannot) return No(cannot);
-            if (LumpedAxis(le) is null)
+            if (le.Cylinder is null && LumpedAxis(le) is null)
                 return No($"Lumped element '{le.Name}''s direction is not along an axis in its own sheet, so openEMS's lumped element cannot state it.");
         }
-        if (problem.LumpedElements.Count > 0 && grid.Cylinder is not null)
-            return No($"Lumped element '{problem.LumpedElements[0].Name}' is in a problem on a cylindrical grid, which writes coaxial wave ports " +
-                      "only in this version. Set the openEMS section's Grid to Cartesian.");
         // brief-em3d-120 — a cylindrical grid is its own lowering (CsxcadWriter.Cylindrical.cs); nothing below changes for a Cartesian one.
         if (grid.Cylinder is { } cylinder) return WriteCylindrical(problem, grid, gridSettings, run, farFieldHz, cylinder, faceKinds);
+        // brief-sar-8b — a sheet or a gap on a cylinder is a box of a cylindrical grid only.
+        if (problem.FirstCylindrical() is { } curved)
+            return No($"{curved} is on a cylinder, which circuitRF writes on openEMS's cylindrical grid about the same axis only. Set " +
+                      "OpenEms.Grid to Cylindrical, with the Axis and AxisOriginUm of that cylinder.");
         // brief-em3d-116 — a wave port is a fed, probed line, on the grid built with its feed (FdtdGrid.Build planned it).
         var plan = grid.WavePorts;
         if (plan.Refusal is { } noWave) return No(noWave);

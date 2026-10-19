@@ -425,11 +425,16 @@ public static class Em3dRunService
             if (!openEms)
                 return log.Result(EmRunStatus.Refused, EmDiagnostics.Forwarded(SarSource,
                     "This setup asks for SAR, and only openEMS writes the raw SAR dump it is computed on: set its 3D solver to openEMS, or Both."));
+            var sarSettings = SarSettings.Resolve(setup.Sar!);
+            // brief-sar-8b R-sar8b-4 — on a cylindrical grid, local SAR and B1 only: a cube is Cartesian, and the run says so.
             if (gridSettings!.Cylindrical is not null)
-                return log.Result(EmRunStatus.Refused, EmDiagnostics.Forwarded(SarSource,
-                    "This setup asks for SAR on a cylindrical grid, and SAR is averaged over cubes of a Cartesian grid: set OpenEms.Grid " +
-                    "to Cartesian."));
-            var (sarPlan, sarRefusal) = Em3dSar.Resolve(SarSettings.Resolve(setup.Sar!), problem, generated.Phantoms);
+            {
+                var (onCylinder, cylinderRefusal) = Em3dSar.OnCylindricalGrid(sarSettings, setup.Sar!);
+                if (onCylinder is null) return log.Result(EmRunStatus.Refused, EmDiagnostics.Forwarded(SarSource, cylinderRefusal));
+                sarSettings = onCylinder;
+                log.Notes.Add(Em3dSar.CylindricalNote);
+            }
+            var (sarPlan, sarRefusal) = Em3dSar.Resolve(sarSettings, problem, generated.Phantoms);
             if (sarPlan is null) return log.Result(EmRunStatus.Refused, EmDiagnostics.Forwarded(SarSource, sarRefusal));
             runSettings = runSettings! with { Sar = sarPlan };
             if (both) log.Notes.Add("SAR and B1 come with openEMS's result only; Palace's carries none.");
@@ -1425,7 +1430,7 @@ public static class Em3dRunService
             if (SarDrives(sarPlan, runs, lowering, ports) is not { } drives)
                 return Failed("the ports' accepted power at the SAR frequencies could not be formed from their probes.");
             var sar = OpenEmsSarResults.Process(sarPlan, problem, runDir, drives, efficiencies.Count > 0 ? efficiencies : null, openEms,
-                                                maxCores, control, ct);
+                                                maxCores, control, ct, grid.Cylinder);
             if (sar.Error is { } sarError) return Failed(sarError);
             log.Notes.AddRange(sar.Notes);
             log.Warnings.AddRange(sar.Warnings);
@@ -1441,7 +1446,7 @@ public static class Em3dRunService
             var (manifest, fieldError) = PortFieldSetWriter.Write(
                 folder, stamp, Path.GetFileName(snpBase + $".s{ports.Count}p"), setup.Name ?? "", fieldPlan, problem, runDir,
                 lowering.Ports, [.. ports.Select(p => p.Name)], [.. ports.Select(p => p.Z0)], [.. runs.Select(r => r.Probes!)],
-                efficiencies.Count > 0 ? efficiencies : null, control, ct);
+                efficiencies.Count > 0 ? efficiencies : null, control, ct, grid.Cylinder);
             if (fieldError is not null) return Failed(fieldError);
             fieldsLine = PortFieldSet.ProvenanceLine(folder, stamp);
             log.Notes.Add($"Per-port fields kept in '{Path.GetFileName(folder)}': {manifest!.Ports.Count} port{(manifest.Ports.Count == 1 ? "" : "s")} at " +

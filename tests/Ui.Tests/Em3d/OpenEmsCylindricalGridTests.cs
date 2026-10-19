@@ -193,7 +193,7 @@ public sealed class OpenEmsCylindricalGridTests(ITestOutputHelper output) : IDis
             Number = 2, Name = "P2", Kind = Em3dPortKind.Lumped, Plane = C3dPlane.XZ, Offset = 0, Rect = Rect(200, 400, 470, 200),
             Positive = "pin", Negative = "shield",
         };
-        Assert.StartsWith("Port 2 is a lumped port, and circuitRF writes openEMS's lumped port on a Cartesian grid only.", Refused(lumped, Setup(OpenEmsGridKind.Cylindrical)));
+        Assert.StartsWith("Port 2 is a lumped port on a plane, and circuitRF writes a lumped port on a cylindrical grid only when its gap is a patch of a cylinder", Refused(lumped, Setup(OpenEmsGridKind.Cylindrical)));
 
         // a .cem naming the same .c3d: refused at its door, before any solver is looked for
         var doc = Coax();

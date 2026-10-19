@@ -493,6 +493,13 @@ public sealed record Em3dPort(
     /// <summary>brief-em3d-114 — the label of the port a terminal belongs to (<c>Left</c>), set with <see cref="FaceGroup"/>:
     /// what a refusal and the result's port map name it by.</summary>
     public string? FaceGroupLabel { get; init; }
+
+    /// <summary>
+    /// brief-sar-8b R-sar8b-1 — a lumped port whose sheet is a patch of a cylinder: <see cref="Min"/>/<see cref="Max"/> are then the
+    /// patch's bounding box and <see cref="Direction"/> the gap's direction at its centre. Null on every other port. Only openEMS's
+    /// cylindrical grid about the same axis writes it; every other lowering refuses it (<see cref="Em3dCylinderGap.NotHere"/>).
+    /// </summary>
+    public Em3dCylinderGap? Cylinder { get; init; }
 }
 
 /// <summary>brief-sar-3 R-sar3-3 — how a lumped element's R, L and C are joined.</summary>
@@ -520,6 +527,9 @@ public sealed record Em3dLumpedElement(
     double?         C,
     Em3dRlcTopology Topology)
 {
+    /// <summary>brief-sar-8b R-sar8b-1 — the gap is a patch of a cylinder, as a lumped port's may be (<see cref="Em3dPort.Cylinder"/>).</summary>
+    public Em3dCylinderGap? Cylinder { get; init; }
+
     /// <summary>
     /// Why openEMS 0.37.0 cannot state this element, or null when it can. Its lumped element takes R, L and C each optional,
     /// in parallel or in series — but a value that is negative is clamped to zero, an element with none is skipped, a zero R
@@ -656,6 +666,17 @@ public sealed record Em3dProblem(
     /// them — lowers byte for byte as before.</summary>
     public IReadOnlyList<Em3dLumpedElement> LumpedElements { get; init; } = [];
 
+    /// <summary>brief-sar-8b R-sar8b-2 — conductors that are patches of a cylinder (Em3dCylinderSheet.cs). Empty — every problem
+    /// written before them — lowers byte for byte as before; a lowering that cannot state one refuses it by name.</summary>
+    public IReadOnlyList<Em3dCylinderSheet> CylinderSheets { get; init; } = [];
+
+    /// <summary>brief-sar-8b — the first cylindrical sheet, port gap or lumped-element gap, by what a refusal names it; null when
+    /// the problem has none. Every lowering but openEMS's cylindrical grid refuses a problem for which this is not null.</summary>
+    public string? FirstCylindrical()
+        => CylinderSheets.Count > 0 ? $"Sheet '{CylinderSheets[0].Name}'"
+         : Ports.FirstOrDefault(p => p.Cylinder is not null) is { } port ? $"Port {port.SourceNumber ?? port.Number}"
+         : LumpedElements.FirstOrDefault(l => l.Cylinder is not null) is { } le ? $"Lumped element '{le.Name}'" : null;
+
     /// <summary>brief-sar-6 R-sar6-1 — each solid's material density, kg/m³, by solid name, where its material states one. Only a
     /// SAR run reads it (it writes the tissue cells' density, which openEMS's raw SAR dump carries); every other lowering ignores
     /// it, so a problem without it lowers byte for byte as before.</summary>
@@ -709,7 +730,7 @@ public sealed record Em3dProblem(
     {
         var held = new HashSet<string>(Terminals.SelectMany(t => t.Objects).Concat(GroundObjects), StringComparer.Ordinal);
         return [.. Solids.Where(s => s.Role == Em3dRole.Conductor).Select(s => s.Name)
-                         .Concat(Sheets.Select(s => s.Name)).Where(n => !held.Contains(n))];
+                         .Concat(Sheets.Select(s => s.Name)).Concat(CylinderSheets.Select(s => s.Name)).Where(n => !held.Contains(n))];
     }
 
     /// <summary>
@@ -781,7 +802,16 @@ public sealed record Em3dProblem(
                 problems.Add($"Sheet '{sh.Name}''s plane is not stated by two perpendicular unit vectors.");
         }
 
-        var objects = new HashSet<string>(Solids.Select(s => s.Name).Concat(Sheets.Select(s => s.Name)),
+        foreach (var cs in CylinderSheets)
+        {
+            Name("sheet", cs.Name);
+            Material(cs.Name, cs.Material);
+            if (cs.Patch.Problems($"Sheet '{cs.Name}'") is { Count: > 0 } patchProblems) problems.AddRange(patchProblems);
+            else if (cs.WorldBounds() is var (x0, y0, z0, x1, y1, z1) && !Inside(x0, y0, z0, x1, y1, z1))
+                problems.Add($"Sheet '{cs.Name}' extends outside the air box.");
+        }
+
+        var objects = new HashSet<string>(Solids.Select(s => s.Name).Concat(Sheets.Select(s => s.Name)).Concat(CylinderSheets.Select(s => s.Name)),
                                           StringComparer.Ordinal);
         foreach (var p in Ports)
         {
@@ -802,6 +832,15 @@ public sealed record Em3dProblem(
 
             int zeroAxes = (p.Max.X == p.Min.X ? 1 : 0) + (p.Max.Y == p.Min.Y ? 1 : 0) +
                            (p.Max.Z == p.Min.Z ? 1 : 0);
+            // brief-sar-8b — a gap on a cylinder is its patch, not an axis-aligned rectangle.
+            if (p.Cylinder is { } pc)
+            {
+                if (p.Kind == Em3dPortKind.Wave) problems.Add($"Port {p.Number} is a wave port on a cylinder; a gap on a cylinder is a lumped port.");
+                if (pc.Patch.Problems($"Port {p.Number}") is { Count: > 0 } gapProblems) problems.AddRange(gapProblems);
+                else if (!Inside(p.Min.X, p.Min.Y, p.Min.Z, p.Max.X, p.Max.Y, p.Max.Z))
+                    problems.Add($"Port {p.Number}'s sheet extends outside the air box.");
+                continue;
+            }
             if (zeroAxes != 1)
                 problems.Add($"Port {p.Number}'s sheet is not a rectangle: exactly one of its axes must " +
                              $"have zero extent, and {zeroAxes} do.");
@@ -846,7 +885,13 @@ public sealed record Em3dProblem(
         {
             Name("lumped element", le.Name);
             int zeroAxes = (le.Max.X == le.Min.X ? 1 : 0) + (le.Max.Y == le.Min.Y ? 1 : 0) + (le.Max.Z == le.Min.Z ? 1 : 0);
-            if (zeroAxes != 1)
+            if (le.Cylinder is { } lc)
+            {
+                if (lc.Patch.Problems($"Lumped element '{le.Name}'") is { Count: > 0 } gapProblems) problems.AddRange(gapProblems);
+                else if (!Inside(le.Min.X, le.Min.Y, le.Min.Z, le.Max.X, le.Max.Y, le.Max.Z))
+                    problems.Add($"Lumped element '{le.Name}''s sheet extends outside the air box.");
+            }
+            else if (zeroAxes != 1)
                 problems.Add($"Lumped element '{le.Name}''s sheet is not a rectangle: exactly one of its axes must have zero extent, " +
                              $"and {zeroAxes} do.");
             else if (!Inside(le.Min.X, le.Min.Y, le.Min.Z, le.Max.X, le.Max.Y, le.Max.Z))

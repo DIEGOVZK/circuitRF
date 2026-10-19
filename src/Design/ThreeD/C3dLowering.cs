@@ -35,7 +35,14 @@ namespace CircuitRF.Design.ThreeD;
 
 /// <summary>What an object lowered to: a solid's primitive, or a sheet's geometry — with the face names
 /// indexed by the primitive's face numbering, and the table's row.</summary>
-public sealed record C3dLowered(Em3dPrimitive? Solid, C3dSheetGeometry? Sheet, IReadOnlyList<string> FaceNames, string Kind);
+public sealed record C3dLowered(Em3dPrimitive? Solid, C3dSheetGeometry? Sheet, IReadOnlyList<string> FaceNames, string Kind)
+{
+    /// <summary>brief-sar-8b — a cylindrical sheet's patch, in the world; <see cref="Solid"/> and <see cref="Sheet"/> are then null.</summary>
+    public Em3dCylinderPatch? CylinderSheet { get; init; }
+
+    /// <summary>brief-sar-8b — why the object could not be lowered (a cylindrical sheet whose axis a placement tipped off x, y or z).</summary>
+    public string? Refusal { get; init; }
+}
 
 /// <summary>A sheet's geometry, metres: its outline and holes at <see cref="Z"/>, flat or in <see cref="Frame"/>.</summary>
 public sealed record C3dSheetGeometry(IReadOnlyList<Point2> Outline, IReadOnlyList<IReadOnlyList<Point2>> Holes,
@@ -45,7 +52,8 @@ public static class C3dLowering
 {
     /// <summary>The lowering table's rows, as <see cref="C3dLowered.Kind"/> spells them.</summary>
     public const string KindBox = "box", KindExtrusion = "extruded-polygon", KindCylinder = "cylinder", KindSphere = "sphere", KindEllipsoid = "ellipsoid",
-                        KindPolyhedron = "polyhedron", KindSheet = "sheet", KindFramedSheet = "sheet-in-a-plane";
+                        KindPolyhedron = "polyhedron", KindSheet = "sheet", KindFramedSheet = "sheet-in-a-plane",
+                        KindCylinderSheet = "cylinder-sheet";
 
     /// <summary>DBU to metres, exactly: the DBU as a decimal number of micrometres (LayoutUnits), then to metres.</summary>
     public static double Metres(long dbu, int dbuPerMicron)
@@ -146,10 +154,51 @@ public static class C3dLowering
                 var placed = TransformSheet(sheet, w);
                 return new C3dLowered(null, placed, [], placed.Frame is null ? KindSheet : KindFramedSheet);
             }
+            case C3dCylinderSheet cs:
+            {
+                var (patch, why) = CylinderPatch(cs.Rect, w, dbuPerMicron);
+                return new C3dLowered(null, null, [], KindCylinderSheet)
+                       { CylinderSheet = patch, Refusal = why is null ? null : $"Sheet '{cs.Name}' {why}" };
+            }
             default:
                 return null;
         }
     }
+
+    /// <summary>
+    /// brief-sar-8b R-sar8b-2 — a cylindrical rectangle as its world patch under <paramref name="w"/> (metres), or why it cannot be one:
+    /// a placement may move it and turn it, so long as its axis stays along x, y or z. The azimuth range follows the turn (and a
+    /// mirror reverses it), so the patch is still openEMS's α range about the axis it now has.
+    /// </summary>
+    public static (Em3dCylinderPatch? Patch, string? Refusal) CylinderPatch(C3dCylinderRect r, C3dTransform w, int dbuPerMicron)
+    {
+        double M(long v) => Metres(v, dbuPerMicron);
+        int a = (int)r.Axis, u = (a + 1) % 3, v = (a + 2) % 3;
+        var b0 = new Point3(M(r.Base.X), M(r.Base.Y), M(r.Base.Z));
+        double len = M(r.Length), radius = M(r.Radius);
+        double s0 = r.StartDeg * Math.PI / 180, s1 = (r.StartDeg + r.SweepDeg) * Math.PI / 180;
+        double a0 = Math.Min(s0, s1), a1 = Math.Max(s0, s1);
+        double z0 = Get(b0, a) + Math.Min(0, len), z1 = Get(b0, a) + Math.Max(0, len);
+        if (w == C3dTransform.Identity) return (new Em3dCylinderPatch(a, b0, radius, a0, a1, z0, z1), null);
+
+        static Point3 Unit(int axis) => axis switch { 0 => new(1, 0, 0), 1 => new(0, 1, 0), _ => new(0, 0, 1) };
+        var axisDir = Rotate(w, Unit(a));
+        int k = Enumerable.Range(0, 3).FirstOrDefault(i => Math.Abs(Get(axisDir, i)) > 1 - 1e-12, -1);
+        if (k < 0) return (null, "is placed so that its axis lies along none of x, y and z, and a cylindrical sheet is round about one of them.");
+        int nu = (k + 1) % 3, nv = (k + 2) % 3;
+        var du = Rotate(w, Unit(u));
+        var dv = Rotate(w, Unit(v));
+        double phi = Math.Atan2(Get(du, nv), Get(du, nu));
+        double sense = Get(du, nu) * Get(dv, nv) - Get(du, nv) * Get(dv, nu);
+        var (n0, n1) = sense > 0 ? (phi + a0, phi + a1) : (phi - a1, phi - a0);
+        var origin = Apply(w, b0);
+        double e0 = Get(Apply(w, b0), k), e1 = Get(Apply(w, Add(b0, a, len)), k);
+        return (new Em3dCylinderPatch(k, origin, radius, n0, n1, Math.Min(e0, e1), Math.Max(e0, e1)), null);
+
+        static Point3 Add(Point3 q, int axis, double d) => axis switch { 0 => q with { X = q.X + d }, 1 => q with { Y = q.Y + d }, _ => q with { Z = q.Z + d } };
+    }
+
+    private static double Get(Point3 q, int axis) => axis switch { 0 => q.X, 1 => q.Y, _ => q.Z };
 
     /// <summary>A drawing plane's frame at <paramref name="offset"/> along its normal: u and v are the plane's
     /// two axes in the object's own frame (C3dPlane's note).</summary>

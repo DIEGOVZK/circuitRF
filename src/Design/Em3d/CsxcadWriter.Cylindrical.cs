@@ -12,6 +12,14 @@
 //   * A Subtract of plain primitives is its operands with priorities (R-em3d120-4b) when that is equivalent; every
 //     priority is then written DOUBLED so a hole fits at 2·p + 1, between its blank and anything above it.
 //   * A wave port's coaxial terminal: FdtdWavePorts.Place on this grid, every element in (ρ, α, z).
+//   * brief-sar-8b — a sheet on a cylinder about the axis is one Box of zero radial extent in (ρ, α, z) (two where its azimuths
+//     cross the grid's α seam), each edge that lies on a grid line to rounding written as that line's own value (openEMS's box
+//     test has no tolerance, sar.md §10a.6); a lumped element or lumped port on one is openEMS's own lumped element, probes
+//     and source in (ρ, α, z), as the tutorial's AddLumpedElement and AddLumpedPort state them — its radius and the two edges
+//     across its width ON the grid's own lines (openEMS's excitation box has no tolerance, sar.md §10.2). A voxelized phantom is
+//     one DiscMaterial, as on a Cartesian grid, its file in openEMS's frame; the raw SAR dump and B1's H dump cover the tissue's
+//     radii, the whole circle and its axial extent, both HDF5 (circuitRF reads openEMS's VTK on a Cartesian grid only).
+//     openEMS's MultiGrid radii (OpenEms.MultiGridRadiiUm) are written on <FDTD>.
 // What a cylindrical grid cannot carry is refused, each naming the setting that removes it: a radiation pattern (openEMS's
 // near-to-far-field box is written on a Cartesian grid only). The 3D view's field files are not dumped: its reader takes a
 // Cartesian grid, and the run says so.
@@ -74,6 +82,9 @@ public static partial class CsxcadWriter
         var extended = new List<string>();
         var asOperands = new List<string>();
         var ctx = new CylContext(problem, grid, cyl, faceKinds, gridSettings.PmlCells);
+        // brief-sar-8b — a gap on a cylinder is written in (ρ, α, z); a planar one never reaches here (FdtdGrid refused it).
+        foreach (var le in problem.LumpedElements)
+            if (le.Inexpressible() is { } inexpressible) return No(inexpressible);
         var props = new StringBuilder();
         int id = 0;
 
@@ -109,11 +120,45 @@ public static partial class CsxcadWriter
         }
 
         // ── Solids and sheets, in construction order ──────────────────────────────────────────────────────────
-        var items = problem.Solids.Select(s => (s.Order, Solid: (Em3dSolid?)s, Sheet: (Em3dSheet?)null))
-                           .Concat(problem.Sheets.Select(s => (s.Order, Solid: (Em3dSolid?)null, Sheet: (Em3dSheet?)s)))
+        var items = problem.Solids.Select(s => (s.Order, Solid: (Em3dSolid?)s, Sheet: (Em3dSheet?)null, Cyl: (Em3dCylinderSheet?)null))
+                           .Concat(problem.Sheets.Select(s => (s.Order, Solid: (Em3dSolid?)null, Sheet: (Em3dSheet?)s, Cyl: (Em3dCylinderSheet?)null)))
+                           .Concat(problem.CylinderSheets.Select(s => (s.Order, Solid: (Em3dSolid?)null, Sheet: (Em3dSheet?)null, Cyl: (Em3dCylinderSheet?)s)))
                            .OrderBy(x => x.Order).ToList();
+        var voxelsWritten = new HashSet<string>(StringComparer.Ordinal);
+        var onCylinder = new List<string>();
         foreach (var item in items)
         {
+            // brief-sar-8b — a voxelized phantom's layers are ONE DiscMaterial, as on a Cartesian grid (CsxcadWriter.Voxels).
+            if (item.Solid is { Voxel: { } lattice })
+            {
+                if (!voxelsWritten.Add(lattice.Phantom)) continue;
+                var layers = problem.Solids.Where(x => x.Voxel?.Phantom == lattice.Phantom).OrderBy(x => x.Order).ToList();
+                var (xml, file, refusal) = VoxelPhantom(lattice, layers, materials, fitHz, run.Sar?.Densities, id++, cyl);
+                if (refusal is not null) return No(refusal);
+                props.Append(xml);
+                kernelFiles.Add(file!);
+                notes.Add($"The phantom '{lattice.Phantom}' is written as a DiscMaterial of {FdtdGrid.FormatLength(lattice.PitchM)} voxels " +
+                          $"({file!.FileName}), each the innermost layer holding its centre, under every other object; openEMS looks each " +
+                          "cylindrical cell's centre up in it, in Cartesian coordinates.");
+                continue;
+            }
+            if (item.Cyl is { } cs)
+            {
+                pec.Add(cs.Name);
+                onCylinder.Add(cs.Name);
+                Open(props, "Metal", id++, cs.Name, Colors.Metal, "");
+                // An edge on a line to rounding is written as the line's own value (FdtdGrid.LineOrSelf): openEMS's box test has no
+                // tolerance, and the birdcage's rungs — ends a base plus a length in metres, 2e-18 m short of the line; azimuths
+                // degrees turned to radians, ulps past the line's fifteen digits — lost a line of edges each and resonated 2.6 MHz
+                // low (sar.md §10a.6).
+                double r = FdtdGrid.LineOrSelf(grid.X.Lines, cs.Patch.Radius);
+                double lo = FdtdGrid.LineOrSelf(grid.Z.Lines, cs.Patch.Lo), hi = FdtdGrid.LineOrSelf(grid.Z.Lines, cs.Patch.Hi);
+                foreach (var (a0, a1) in AlphaSpans(cs.Patch, grid))
+                    AppendPrimitives(props, Box(ctx.P(cs), new Point3(r, FdtdGrid.LineOrSelf(grid.Y.Lines, a0), lo),
+                                                          new Point3(r, FdtdGrid.LineOrSelf(grid.Y.Lines, a1), hi)));
+                props.Append("            </Metal>\n");
+                continue;
+            }
             if (item.Solid is { } s)
             {
                 var m = materials[s.Material];
@@ -132,7 +177,8 @@ public static partial class CsxcadWriter
                 {
                     Open(props, "Material", id++, s.Name, Colors.Dielectric, $" Isotropy=\"{(m.EpsrTensor is null ? 1 : 0)}\"");
                     AppendPrimitives(props, prim);
-                    props.Append("                ").Append(MaterialProperty(m, fitHz)).Append('\n');
+                    // brief-sar-8b — a tissue's density, for the raw SAR dump, as on a Cartesian grid.
+                    props.Append("                ").Append(MaterialProperty(m, fitHz, run.Sar?.Densities.GetValueOrDefault(s.Name) ?? 0)).Append('\n');
                     props.Append("                <Weight Epsilon=\"1,1,1\" Mue=\"1,1,1\" Kappa=\"1,1,1\" Sigma=\"1,1,1\" Density=\"1\" />\n");
                     props.Append("            </Material>\n");
                 }
@@ -168,13 +214,78 @@ public static partial class CsxcadWriter
         var probeNames = new List<OpenEmsProbeNames>();
         foreach (var p in ports)
         {
+            if (p.Cylinder is { } gap)
+            {
+                // brief-sar-8b R-sar8b-1 — the tutorial's AddLumpedPort in (ρ, α, z): resistor, voltage probe, current probe, and the
+                // source in the port's own file.
+                var (start, stop, along, sign, gapRefused) = CylGap($"Port {p.SourceNumber ?? p.Number}", gap, grid);
+                if (gapRefused is not null) return No(gapRefused);
+                probeNames.Add(new OpenEmsProbeNames(p.Number, [VoltageProbe(p.Number)], [CurrentProbe(p.Number)]));
+                Open(props, "LumpedElement", id++, $"port{p.Number}_resist", Colors.Port, $" Direction=\"{along}\" Caps=\"1\" R=\"{R(p.Z0.Real)}\" LEtype=\"0\"");
+                AppendPrimitives(props, Box(portPriority, start, stop));
+                props.Append("            </LumpedElement>\n");
+                Point3 mid = Mid(start, stop);
+                OpenProbe(props, id++, VoltageProbe(p.Number), type: 0, weight: -1, normDir: -1);
+                AppendPrimitives(props, Box(0, With(mid, along, Get(start, along)), With(mid, along, Get(stop, along))));
+                props.Append("            </ProbeBox>\n");
+                double m = Get(mid, along);
+                OpenProbe(props, id++, CurrentProbe(p.Number), type: 1, weight: sign, normDir: along);
+                AppendPrimitives(props, Box(0, With(start, along, m), With(stop, along, m)));
+                props.Append("            </ProbeBox>\n");
+                excitations.Add(ExcitationProperty(p, start, stop, along, sign, portPriority));
+                continue;
+            }
             var t = waveTerminals.Single(w => w.Port == p.Number);
             probeNames.Add(CylWaveProbes(props, ref id, t));
             excitations.Add(WaveExcitation(t, portPriority));
         }
 
+        // ── brief-sar-8b R-sar8b-1 — lumped elements on the cylinder: the port's resistor element with R, C and L as stated ──────
+        foreach (var le in problem.LumpedElements)
+        {
+            var (start, stop, along, _, gapRefused) = CylGap($"Lumped element '{le.Name}'", le.Cylinder!, grid);
+            if (gapRefused is not null) return No(gapRefused);
+            Open(props, "LumpedElement", id++, le.Name, Colors.Lumped, LumpedAttributes(le, along));
+            AppendPrimitives(props, Box(portPriority, start, stop));
+            props.Append("            </LumpedElement>\n");
+        }
+
+        // ── brief-sar-8b R-sar8b-4 — per SAR frequency the raw SAR dump (DumpType 29) and, for B1, an H dump (DumpType 11), both HDF5,
+        // cell interpolation, over the tissue's radii, the whole circle and its axial extent, one cell more each way. ──────────
+        if (run.Sar is { } sar)
+        {
+            var (lo, hi) = Em3dSar.DumpBox(sar, grid);
+            var c = Colors.Probe;
+            for (int k = 0; k < sar.Settings.FrequenciesHz.Count; k++)
+                foreach (var (name, type) in sar.Settings.B1 ? new[] { (Em3dSar.RawDump(k), 29), (Em3dSar.HDump(k), 11) } : [(Em3dSar.RawDump(k), 29)])
+                {
+                    props.Append($"            <DumpBox ID=\"{id++}\" Name=\"{name}\" Visible=\"0\" Number=\"0\" Type=\"0\" Weight=\"1\" " +
+                                 $"NormDir=\"-1\" StartTime=\"0\" StopTime=\"0\" DumpType=\"{type}\" DumpMode=\"2\" FileType=\"1\" MultiGridLevel=\"0\" OverSampling=\"{OverSampling}\">\n");
+                    props.Append($"                <FillColor R=\"{c.R}\" G=\"{c.G}\" B=\"{c.B}\" a=\"{c.A}\" />\n");
+                    props.Append($"                <EdgeColor R=\"{c.R}\" G=\"{c.G}\" B=\"{c.B}\" a=\"{c.A}\" />\n");
+                    props.Append($"                <FD_Samples>{R(sar.Settings.FrequenciesHz[k])}</FD_Samples>\n");
+                    AppendPrimitives(props, Box(0, lo, hi));
+                    props.Append("            </DumpBox>\n");
+                }
+            notes.AddRange(sar.Notes);
+            if (sar.Densities.Count > 0)
+                notes.Add($"Tissue written with its density for SAR: {string.Join("; ", sar.Densities.OrderBy(d => d.Key, StringComparer.Ordinal).Select(d => $"'{d.Key}' {G(d.Value)} kg/m³"))}.");
+        }
+
         // ── Notes ───────────────────────────────────────────────────────────────────────────────────────────────
         notes.AddRange(plan.Notes);
+        if (gridSettings.ExplicitLines is { Cylindrical: true } given) notes.Add(FdtdGrid.GivenLinesNote(given, grid));
+        if (onCylinder.Count > 0)
+            notes.Add($"{Names(onCylinder)} {(onCylinder.Count == 1 ? "is a sheet" : "are sheets")} on a cylinder about the grid's axis, written as " +
+                      "boxes of zero radial extent in (ρ, α, z), exact on the grid's circle.");
+        if (problem.LumpedElements.Count > 0)
+            notes.Add($"{Names(problem.LumpedElements.Select(l => l.Name))} {(problem.LumpedElements.Count == 1 ? "is a lumped element" : "are lumped elements")} " +
+                      "on a cylinder: R, L and C across a gap in (ρ, α, z), excited by nothing and with no row in S.");
+        if (cyl.Axis is var _ && gridSettings.Cylindrical?.MultiGridRadiiM is { Count: > 0 } mg)
+            notes.Add($"openEMS splits the grid at ρ = {string.Join(", ", mg.Select(FdtdGrid.FormatLength))} (MultiGrid): inside each radius it takes " +
+                      "every second azimuth line, so the cells near the axis are not the thin wedges that would set the time step.");
+        if (run.CellConstantMaterial)
+            notes.Add("OpenEms.CellConstantMaterial is on: each FDTD cell takes the material at its centre rather than an average over its edges.");
         string axial = FdtdGrid.AxisName(cyl.Axis);
         notes.Add($"openEMS boundaries on the cylindrical grid: ρmin PEC ({(cyl.RhoMinSetBy is { } pin ? $"the surface of '{pin}'" : "the axis itself, which openEMS treats")}), " +
                   $"ρmax {BoundaryName(cyl.RhoMaxKind, ctx.Pml)} (the {string.Join(", ", cyl.SideFaces)} faces), " +
@@ -209,7 +320,8 @@ public static partial class CsxcadWriter
                       "medium rather than a step into free space.");
 
         // ── The file ───────────────────────────────────────────────────────────────────────────────────────────
-        string head = CylHead(grid, cyl, faceKinds, ctx.Pml, maxSteps, run.EndCriterionDb, f0, fc, air, fitHz, run.CellConstantMaterial);
+        string head = CylHead(grid, cyl, faceKinds, ctx.Pml, maxSteps, run.EndCriterionDb, f0, fc, air, fitHz, run.CellConstantMaterial,
+                              gridSettings.Cylindrical?.MultiGridRadiiM);
         const string tail = "        </Properties>\n    </ContinuousStructure>\n</openEMS>\n";
         string body = props.ToString();
         var files = excitations.Select(e =>
@@ -221,7 +333,7 @@ public static partial class CsxcadWriter
     }
 
     private static string CylHead(FdtdGridResult grid, FdtdCylinder cyl, Em3dBoundaryKind[] faces, int pml, long maxSteps, double endDb,
-                                  double f0, double fc, Em3dMaterial air, double fitHz, bool cellConstant)
+                                  double f0, double fc, Em3dMaterial air, double fitHz, bool cellConstant, IReadOnlyList<double>? multiGrid = null)
     {
         var sb = new StringBuilder();
         sb.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\" ?>\n");
@@ -230,7 +342,8 @@ public static partial class CsxcadWriter
         sb.Append("     Run by circuitRF once per port, as  openEMS model.xml  in that port's directory. -->\n");
         sb.Append("<openEMS>\n");
         sb.Append($"    <FDTD NumberOfTimesteps=\"{maxSteps.ToString(CultureInfo.InvariantCulture)}\" CylinderCoords=\"1\" endCriteria=\"{R(Math.Pow(10, endDb / 10))}\" " +
-                  $"OverSampling=\"{OverSampling}\" TimeStepMethod=\"{TimeStepMethod}\"{CellConstantAttribute(cellConstant)}>\n");
+                  $"OverSampling=\"{OverSampling}\" TimeStepMethod=\"{TimeStepMethod}\"{CellConstantAttribute(cellConstant)}" +
+                  (multiGrid is { Count: > 0 } mg ? $" MultiGrid=\"{string.Join(",", mg.Select(R))}\"" : "") + ">\n");
         sb.Append($"        <Excitation Type=\"0\" f0=\"{R(f0)}\" fc=\"{R(fc)}\" />\n");
         // ρmin is PEC on a pin's surface and ignored on the axis (openEMS's own axis handling); α closes on itself, so its
         // two entries are placeholders openEMS does not apply, written PEC as upstream's own examples write them.
@@ -249,6 +362,43 @@ public static partial class CsxcadWriter
         sb.Append("        <ParameterSet />\n");
         sb.Append("        <Properties>\n");
         return sb.ToString();
+    }
+
+    // ── brief-sar-8b — patches of the cylinder ───────────────────────────────────────────────────────────────
+
+    /// <summary>A patch's azimuths in the grid's own turn — one span, or two where it crosses the grid's α seam; a full circle is
+    /// the grid's whole α range.</summary>
+    private static IEnumerable<(double A0, double A1)> AlphaSpans(Em3dCylinderPatch p, FdtdGridResult grid)
+    {
+        var lines = grid.Y.Lines;
+        if (p.FullCircle) { yield return (lines[0], lines[^1]); yield break; }
+        double a0 = FdtdGrid.Wrap(p.Alpha0, lines), a1 = a0 + (p.Alpha1 - p.Alpha0);
+        if (a1 <= lines[^1] + 1e-12) { yield return (a0, Math.Min(a1, lines[^1])); yield break; }
+        yield return (a0, lines[^1]);
+        yield return (lines[0], a1 - 2 * Math.PI);
+    }
+
+    /// <summary>
+    /// A gap on the cylinder as openEMS's lumped element states it: start on the NEGATIVE end, stop on the positive, in (ρ, α, z);
+    /// the axis its current runs along (1 α, 2 z) and the sign of stop − start along it — or why it cannot be written. Its radius
+    /// and the two edges across its width are written as the grid's own lines (NearestLine), so the source, the element and the
+    /// probes span the same edges.
+    /// </summary>
+    private static (Point3 Start, Point3 Stop, int Along, int Sign, string? Refusal) CylGap(string who, Em3dCylinderGap gap, FdtdGridResult grid)
+    {
+        var p = gap.Patch;
+        var spans = AlphaSpans(p, grid).ToList();
+        if (spans.Count != 1)
+            return (default, default, 0, 0, $"{who}'s gap crosses the grid's α seam at {G(grid.Y.Lines[0] * 180 / Math.PI)}°, and openEMS's lumped element " +
+                                            "is one box: give the grid lines (OpenEms.GridLines) whose circle starts elsewhere, or move the gap.");
+        var (a0, a1) = spans[0];
+        double r = FdtdGrid.NearestLine(grid.X.Lines, p.Radius);
+        double z0 = p.Lo, z1 = p.Hi;
+        int along = gap.Along == Em3dCylinderGapAxis.Axial ? 2 : 1;
+        if (along == 2) { a0 = FdtdGrid.NearestLine(grid.Y.Lines, a0); a1 = FdtdGrid.NearestLine(grid.Y.Lines, a1); }
+        else { z0 = FdtdGrid.NearestLine(grid.Z.Lines, z0); z1 = FdtdGrid.NearestLine(grid.Z.Lines, z1); }
+        Point3 lo = new(r, a0, z0), hi = new(r, a1, z1);
+        return gap.Sign > 0 ? (lo, hi, along, 1, null) : (With(lo, along, Get(hi, along)), With(hi, along, Get(lo, along)), along, -1, null);
     }
 
     // ── the operands (R-em3d120-4b) ──────────────────────────────────────────────────────────────────────────
@@ -545,6 +695,7 @@ public static partial class CsxcadWriter
         /// <summary>A solid's priority on this grid: doubled, so a Subtract's hole fits at 2·p + 1.</summary>
         public int P(Em3dSolid s) => 2 * Precedence.Of(s);
         public int P(Em3dSheet sh) => 2 * Precedence.Of(sh);
+        public int P(Em3dCylinderSheet sh) => 2 * Precedence.Of(sh);
 
         public bool Coaxial(Em3dCylinder c) => FdtdGrid.IsCoaxial(c, Cyl.A, Cyl.U, Cyl.V, Get(Cyl.Origin, Cyl.U), Get(Cyl.Origin, Cyl.V), Tol);
 

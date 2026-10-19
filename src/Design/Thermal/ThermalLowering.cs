@@ -155,6 +155,12 @@ public static class ThermalLowerings
     public static ThermalLowering? Build(C3dDocument doc, C3dElaboration e, CemThermal t, double scale, out string? refusal)
     {
         refusal = null;
+        // brief-sar-8b — a sheet on a cylinder has no planar outline to mesh.
+        if (e.CylinderSheets.Count > 0)
+        {
+            refusal = Em3dCylinderGap.NotHere($"Sheet '{e.CylinderSheets[0].Name}'", "the thermal solver");
+            return null;
+        }
         var notes = new List<string>();
         double m = 1e-6 / doc.DbuPerMicron;
         double tol = m;

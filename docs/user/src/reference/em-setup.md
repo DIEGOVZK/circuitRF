@@ -600,6 +600,7 @@ planes along it: a conductor coaxial with that axis then lies exactly on the gri
 | `Axis` | `Z` | The world axis the grid is round about |
 | `AxisOriginUm` | `[0, 0, 0]` | A point the axis passes through, x, y, z in µm: the centre of the coax's pin |
 | `AzimuthLines` | the rule below | Lines round the circle, 0 and 2π both counted |
+| `MultiGridRadiiUm` | none | openEMS's sub-grids: radii in µm, increasing, inside each of which openEMS takes every second azimuth line |
 
 In the setup panel the openEMS section offers **Grid**, and with *Cylindrical* chosen, **Axis** and **Axis
 through**. A `.cem` setup cannot ask for one (a layout problem stays Cartesian) and is refused if it does.
@@ -629,8 +630,14 @@ the closed form's 50.021 Ω:
 | Z error | +0.71 Ω | +0.35 Ω | +0.22 Ω | +0.16 Ω |
 
 The default makes the arc at the outermost conductor radius no longer than the radial cell there, rounded up to
-a multiple of four; `circuitrf explain` names the radius and the cell that set it. A finer inner grid on the
-axis side (openEMS's *multi-grid*) roughly doubles the time step but measured no faster, so it is not used.
+a multiple of four; `circuitrf explain` names the radius and the cell that set it. A coarser inner grid on the
+axis side (openEMS's *multi-grid*) roughly doubles the time step but measured no faster on a coax, so it is not
+used unless `MultiGridRadiiUm` asks for it. openEMS needs an odd number of azimuth lines at every level it
+splits, and a count that would give it an even one is refused, naming the level.
+
+**Where the circle starts.** At 0°, from the axis's next world axis towards the one after it (for a z axis, from
++x towards +y). When a lumped gap on the cylinder crosses 0°, the circle starts in the middle of the widest
+stretch of azimuth no gap covers instead, since openEMS's lumped port is one box.
 
 **How shapes are written.** A cylinder coaxial with the axis is written in the grid's own coordinates, which
 fills its circle exactly. A Boolean **Subtract** whose Blank and Tools are plain shapes — the 3D Connector's
@@ -640,10 +647,29 @@ where it is exactly the Boolean: when another solid below the housing in precede
 drawn as its own solid in a bore that is not kept), the housing is written as its tessellation instead and the
 run's notes say why. Every other shape is written as on a Cartesian grid and fills the same cells it would there.
 
+**Sheets, lumped elements and lumped ports on the cylinder.** A strip of zero thickness on a cylinder — a birdcage
+coil's rung or end ring — is a `CylinderSheet` object: `Axis`, `Base` (a point on the axis where the strip
+starts), `Radius`, `Length` along the axis, `StartDeg` and `SweepDeg` round it. A lumped port or a lumped element
+whose gap is such a patch gives it as `Cylinder`, with the same six fields, in place of `Plane`, `Offset` and
+`Rect`. Its two ends are found from what its arcs and its two straight edges touch, as a flat port's are found
+from its four edges, so a gap between two rungs runs along the axis and one between two arcs of a ring runs
+round it. On a cylindrical grid about the same axis each is written in the grid's own coordinates: the sheet
+as one box of zero radial thickness, exact on the grid's circle, and the gap as openEMS's own lumped element or
+port, its radius and the two edges across its width on the grid's lines. Every other solver and grid refuses
+them, naming the object: a Cartesian grid, Palace, the thermal solver and the STEP export. On circuitRF's own
+grid a gap's azimuth edges are snapped to the nearest of its evenly spaced azimuth lines, and the run says so;
+given lines can put a line on each edge.
+
 **Wave ports** must be coaxial terminals on the two faces the axis crosses, centred on the axis: their source is
 openEMS's own radial one, and their current probes are full discs about the axis. Refused, each naming the fix:
-a lumped port, a terminal that is not coaxial or not on the axis, a radiation pattern (openEMS's far-field box
-is written on a Cartesian grid only). No field is saved for the 3D view, whose field plots read a Cartesian
+a lumped port on a plane, a terminal that is not coaxial or not on the axis, a radiation pattern (openEMS's
+far-field box is written on a Cartesian grid only).
+
+**SAR and B1.** A setup's `Sar` group runs on a cylindrical grid as local SAR and B1 only: no cube-averaged SAR,
+since a cube is a Cartesian grid's, and the run says so. `MassesGrams` and `CrossCheck` are refused there. B1 is
+formed from openEMS's Hρ and Hα, turned onto x and y at each cell's own azimuth. The per-port fields
+(`PerPortFields`) are kept as on a Cartesian grid, so a schematic's fields analysis recombines them, but the
+volumes are cells of the cylindrical grid, which the 3D view does not draw. No field is saved for the 3D view, whose field plots read a Cartesian
 grid; the run says so. Measured end to end through `circuitrf em`: the coax section above within 0.4 Ω of its
 closed form, and its transmission phase within 0.01° of the line's.
 
@@ -655,7 +681,7 @@ a file or three lists:
 
 | Field (in `OpenEms.GridLines`) | What it is |
 |---|---|
-| `File` | A CSXCAD XML file (what an openEMS script's `Write2XML` or `WriteOpenEMS` writes): its `RectilinearGrid` lines are taken exactly, scaled by its `DeltaUnit`. A relative path is read beside the `.c3d` or `.cem` holding the setup |
+| `File` | A CSXCAD XML file (what an openEMS script's `Write2XML` or `WriteOpenEMS` writes): its `RectilinearGrid` lines are taken exactly, scaled by its `DeltaUnit`. A relative path is read beside the `.c3d` or `.cem` holding the setup. A cylindrical grid's file (`CoordSystem="1"`) gives ρ, α and z: ρ and z scaled by `DeltaUnit`, α in radians as written, its circle closed; it needs `Grid: Cylindrical` with the axis it is round about |
 | `X`, `Y`, `Z` and `Unit` | The lines as three lists, each increasing, in `Unit` — `m`, `mm`, `um`, `nm`, `mil` or `in`. The unit is required |
 
 ```json
@@ -669,8 +695,9 @@ cells. The run is refused, naming the lines on either side, when:
 - the air box reaches beyond the grid (shrink its padding to fit inside);
 - a lumped port's or lumped element's sheet is not on a line, both ends of its gap fall on one line, or its
   width has no line across it;
-- a sheet is not on a line;
-- the setup has a wave port, or asks for a cylindrical grid.
+- a sheet is not on a line, or a sheet or gap on a cylinder is not on a line of ρ;
+- the setup has a wave port;
+- the file's grid is cylindrical and the setup's is not, or the other way round.
 
 A coordinate counts as on a line when it is within a thousandth of the cell beside it, so a script's file,
 written to seven significant figures, lines up. `circuitrf explain` prints the grid as usual.

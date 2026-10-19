@@ -1076,6 +1076,14 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
                 if (head == "Centre") return $"Centre {Xyz(k)}";
                 if (head == "Radius") return "Radius";
                 break;
+            // brief-sar-8b — a sheet on a cylinder: its axis's base, radius and length, and the azimuth it starts at and sweeps.
+            case C3dCylinderSheet cs:
+                if (head == "Base") return $"Base {Xyz(k)}";
+                if (head == "Length") return $"Length (along {cs.Axis.ToString().ToLowerInvariant()})";
+                if (head == "Radius") return "Radius";
+                if (head == "StartDeg") return "Start azimuth (°)";
+                if (head == "SweepDeg") return "Sweep (°)";
+                break;
             // brief-sar-3 — an ellipsoid's semi-axes along its own x, y and z; a phantom's dimensions by its shape.
             case C3dEllipsoid:
                 if (head == "Centre") return $"Centre {Xyz(k)}";
@@ -1280,6 +1288,10 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
                 break;
             case C3dCylinder c:
                 yield return new("Axis", c.Axis.ToString());
+                break;
+            case C3dCylinderSheet cs:
+                yield return new("Axis", cs.Axis.ToString());
+                yield return new("Solved by", "openEMS's cylindrical grid about the same axis only; every other solver refuses it");
                 break;
             case C3dSphere sp:
                 // brief-em3d-102 R-em3d102-6d — read-only: the Radius is the field to edit.

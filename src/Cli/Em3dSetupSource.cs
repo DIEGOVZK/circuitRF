@@ -85,7 +85,7 @@ internal sealed record Em3dSetupSource(
             return new Em3dSetupSource(full, setup, ResolutionOf(full, elaboration), null,
                 elaboration.Ok ? C3dProblemAssembly.NothingToSolve(elaboration) : string.Join(" ", elaboration.Refusals)) { Elaboration = elaboration };
         var problem = C3dProblemAssembly.ViewProblem(elaboration.Solids, elaboration.Sheets, elaboration.Materials, [],
-                                                     C3dProblemAssembly.ExtentBox(x));
+                                                     C3dProblemAssembly.ExtentBox(x), elaboration.CylinderSheets);
         var notes = elaboration.Notes.Append(partial
             ? "Drawn from what resolved, in a box at its own extent: the 3D view does not build as a whole, so nothing can run from it."
             : thermal

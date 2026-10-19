@@ -161,13 +161,22 @@ internal static class ExplainEm3d
             Eigenmode = p.Type != Em3dProblemType.Eigenmode ? null
                 : new Em3dEigenmodeJson(p.EigenmodeCount, setup.Eigenmode?.Count is null ? "default" : "field",
                                         p.EigenmodeTargetHz, setup.Eigenmode?.TargetGHz is null ? "default (the sweep's start)" : "field"),
-            Sar = sarSettings is null ? null : Sar(sarSettings, p, g, grid.Grid),
+            Sar = sarSettings is null ? null : Sar(sarSettings, p, g, grid.Grid, setup.Sar!),
         };
     }
 
     /// <summary>brief-sar-6 R-sar6-8 — the Sar group as a run resolves it (Em3dSar.Resolve), with its dump box on the grid.</summary>
-    private static Em3dSarJson Sar(SarSettings s, Em3dProblem p, Em3dGenerationResult g, FdtdGridResult? grid)
+    private static Em3dSarJson Sar(SarSettings s, Em3dProblem p, Em3dGenerationResult g, FdtdGridResult? grid, CemSar stated)
     {
+        // brief-sar-8b — on a cylindrical grid, the run's own rule: local SAR and B1 only
+        if (grid?.Cylinder is not null)
+        {
+            var (onCylinder, cylinderRefusal) = Em3dSar.OnCylindricalGrid(s, stated);
+            if (onCylinder is null)
+                return new Em3dSarJson(s.FrequenciesHz, s.MassesGrams, s.Method.ToString(), "", [], s.B1, s.B0AxisName, null, s.CrossCheck, [],
+                                       null, null, cylinderRefusal) { PerPortFields = s.PerPortFields };
+            s = onCylinder;
+        }
         var (plan, refusal) = Em3dSar.Resolve(s, p, g.Phantoms);
         if (plan is null)
             return new Em3dSarJson(s.FrequenciesHz, s.MassesGrams, s.Method.ToString(), "", [], s.B1, s.B0AxisName, null, s.CrossCheck, [],
@@ -176,10 +185,10 @@ internal static class ExplainEm3d
         var tissue = p.Solids.Where(x => plan.Densities.ContainsKey(x.Name)).OrderBy(x => x.Order)
                       .Select(x => new Em3dTissueJson(x.Name, x.Material, plan.Densities[x.Name], materials[x.Material].Epsr, materials[x.Material].SigmaSm))
                       .ToList();
-        long? cells = grid is { Cylinder: null } ? Em3dSar.DumpCells(plan, grid) : null;
+        long? cells = grid is not null ? Em3dSar.DumpCells(plan, grid) : null;
         return new Em3dSarJson(s.FrequenciesHz, s.MassesGrams, s.Method.ToString(), plan.RegionName, plan.Region, s.B1, s.B0AxisName,
                                s.B1 ? plan.B1RegionName : null, s.CrossCheck, tissue, cells,
-                               cells is { } c ? Em3dSar.EstimateBytes(plan, c, p.Ports.Count) : null, null) { PerPortFields = s.PerPortFields };
+                               cells is { } c ? Em3dSar.EstimateBytes(plan, c, p.Ports.Count, grid?.Cylinder is not null) : null, null) { PerPortFields = s.PerPortFields };
     }
 
     /// <summary>
@@ -277,7 +286,8 @@ internal static class ExplainEm3d
                      var w = s.Outline.Select(s.World).ToList();
                      return (X0: w.Min(q => q.X), Y0: w.Min(q => q.Y), Z0: w.Min(q => q.Z),
                              X1: w.Max(q => q.X), Y1: w.Max(q => q.Y), Z1: w.Max(q => q.Z));
-                 })).ToList();
+                 }))
+                 .Concat(p.CylinderSheets.Select(s => s.WorldBounds())).ToList();      // brief-sar-8b
         if (b.Count == 0) return (p.Boundary.Min, p.Boundary.Max);
         return (new Point3(b.Min(q => q.X0), b.Min(q => q.Y0), b.Min(q => q.Z0)),
                 new Point3(b.Max(q => q.X1), b.Max(q => q.Y1), b.Max(q => q.Z1)));
@@ -501,7 +511,8 @@ internal static class ExplainEm3d
     {
         static string G(double v) => v.ToString("G4", CultureInfo.InvariantCulture);
         Console.WriteLine($"  sar          at {string.Join(", ", s.FrequenciesHz.Select(MaterialDispersion.Hz))}; " +
-                          $"{string.Join(", ", s.MassesGrams.Select(m => G(m) + " g"))} averaged ({s.Method})" +
+                          (s.MassesGrams.Count == 0 ? "local SAR only (a cylindrical grid has no cubes to average over)"
+                                                    : $"{string.Join(", ", s.MassesGrams.Select(m => G(m) + " g"))} averaged ({s.Method})") +
                           (s.B1 ? $"; B1 with B0 along {s.B0Axis}" : "; no B1") + (s.CrossCheck ? "; cross-checked with sar_calc" : "") +
                           (s.PerPortFields ? "; every port's fields kept beside the .sNp" : ""));
         if (s.Refusal is { } no) { Console.WriteLine($"  {"",-12} a run would stop here: {no}"); return; }

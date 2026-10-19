@@ -216,6 +216,10 @@ public sealed record C3dElaboration(
     public IReadOnlyList<Em3dSolid> UnassignedSolids { get; init; } = [];
     public IReadOnlyList<Em3dSheet> UnassignedSheets { get; init; } = [];
 
+    /// <summary>brief-sar-8b R-sar8b-2 — the conductors that are patches of a cylinder (<see cref="C3dCylinderSheet"/>), in construction
+    /// order among the sheets. Kept apart from <see cref="Sheets"/>, which every consumer reads as planar polygons.</summary>
+    public IReadOnlyList<Em3dCylinderSheet> CylinderSheets { get; init; } = [];
+
     /// <summary>brief-em3d-93 R-em3d93-2 — every solid, sheet and wire (by elaborated name) that is NOT MODELLED: its object's,
     /// its wire's or an enclosing instance's <c>Model</c> is false. Each is still in <see cref="Solids"/> and <see cref="Sheets"/>,
     /// because the editor draws, picks and edits it; a solve sees the elaboration <see cref="C3dModelled.Filter"/> returns.</summary>
@@ -269,6 +273,7 @@ public sealed record C3dElaboration(
         }
         foreach (var s in Solids) Grow(Em3dProblem.Bounds(s.Primitive));
         foreach (var s in Sheets) Grow(s.WorldBounds());
+        foreach (var s in CylinderSheets) Grow(s.WorldBounds());
         return double.IsInfinity(x0) ? null : (x0, y0, z0, x1, y1, z1);
     }
 
@@ -276,7 +281,8 @@ public sealed record C3dElaboration(
     /// setup's air box is padded around, in the editor as in the run (<see cref="C3dModelled.Filter"/>).</summary>
     public (double X0, double Y0, double Z0, double X1, double Y1, double Z1)? ModelledExtent()
         => NotModelled.Count == 0 ? Extent()
-         : (this with { Solids = [.. Solids.Where(s => !NotModelled.Contains(s.Name))], Sheets = [.. Sheets.Where(s => !NotModelled.Contains(s.Name))] }).Extent();
+         : (this with { Solids = [.. Solids.Where(s => !NotModelled.Contains(s.Name))], Sheets = [.. Sheets.Where(s => !NotModelled.Contains(s.Name))],
+                        CylinderSheets = [.. CylinderSheets.Where(s => !NotModelled.Contains(s.Name))] }).Extent();
 
     /// <summary>What the editor frames: <see cref="Extent"/> and the <see cref="UnassignedSolids"/> and
     /// <see cref="UnassignedSheets"/> it draws beside what a solver gets.</summary>
@@ -663,6 +669,8 @@ public sealed class C3dElaborator(TechnologyCache? technologies = null, Geometry
         private readonly List<Em3dSheet> _sheets = [];
         private readonly List<Em3dSolid> _unassignedSolids = [];
         private readonly List<Em3dSheet> _unassignedSheets = [];
+        private readonly List<Em3dCylinderSheet> _cylinderSheets = [];
+        private readonly List<(int Index, string Tech, string Name)> _cylinderUses = [];
         private readonly Dictionary<string, C3dPlacedImage> _images = new(StringComparer.Ordinal);
         private readonly List<C3dFaceImageUse> _faceImages = [];
         private readonly Dictionary<string, C3dProvenance> _provenance = new(StringComparer.Ordinal);
@@ -829,6 +837,12 @@ public sealed class C3dElaborator(TechnologyCache? technologies = null, Geometry
                     if (_techObjects.TryGetValue(t, out var techObject)) records[solids[index].Name] = (techObject, n);
                 }
             }
+            var cylinderSheets = new List<Em3dCylinderSheet>(_cylinderSheets);
+            foreach (var (index, t, n) in _cylinderUses)
+            {
+                origins[cylinderSheets[index].Name] = (_techPaths.GetValueOrDefault(t), n);
+                cylinderSheets[index] = cylinderSheets[index] with { Material = Final(t, n) };
+            }
 
             return new C3dElaboration(solids, sheets, materials, _provenance, _notes, _refusals)
             {
@@ -852,6 +866,7 @@ public sealed class C3dElaborator(TechnologyCache? technologies = null, Geometry
                 WalkLowering = _walkLowering,
                 UnassignedSolids = _unassignedSolids,
                 UnassignedSheets = _unassignedSheets,
+                CylinderSheets = cylinderSheets,
                 NotModelled = _notModelled,
                 NotModelledRefusals = _notModelledRefusals,
                 Images = _images,
@@ -1071,7 +1086,24 @@ public sealed class C3dElaborator(TechnologyCache? technologies = null, Geometry
             var values = Resolve(material, out string source);
             string key = Register(techName, material.Name, values, TechSource(tech, techName, material.Name) + source);
 
-            if (lowered.Sheet is { } g)
+            if (lowered.Refusal is { } cannot)
+            {
+                _refusals.Add(cannot);
+                return;
+            }
+            if (lowered.CylinderSheet is { } patch)
+            {
+                // brief-sar-8b R-sar8b-2 — a sheet on a cylinder: a conductor, as every sheet is.
+                if (role != Em3dRole.Conductor)
+                {
+                    _refusals.Add($"Sheet '{name}' is made of '{material.Name}', a {role.ToString().ToLowerInvariant()}: a sheet is a " +
+                                  "conductor thin enough to be a surface. Give it a conducting material.");
+                    return;
+                }
+                _cylinderUses.Add((_cylinderSheets.Count, techName, material.Name));
+                _cylinderSheets.Add(new Em3dCylinderSheet(name, key, patch, ++_order));
+            }
+            else if (lowered.Sheet is { } g)
             {
                 if (role != Em3dRole.Conductor)
                 {
@@ -1287,7 +1319,9 @@ public sealed class C3dElaborator(TechnologyCache? technologies = null, Geometry
         private void Unassigned(C3dObject obj, string name, C3dTransform world, int dbuPerMicron, string prefix, string path, bool exact)
         {
             if (owner.LowerCached(obj, world, dbuPerMicron) is not { } lowered) return;
-            if (lowered.Sheet is { } g)
+            // brief-sar-8b — a cylindrical sheet with no material is not drawn: it has no planar outline to draw as a wireframe.
+            if (lowered.CylinderSheet is not null || lowered.Refusal is not null) { }
+            else if (lowered.Sheet is { } g)
             {
                 double t = (obj as C3dSheet)?.ThicknessUm is { } um ? um * 1e-6 : 0;
                 _unassignedSheets.Add(new Em3dSheet(name, "", g.Outline, g.Holes, g.Z, t, 0) { Frame = g.Frame });

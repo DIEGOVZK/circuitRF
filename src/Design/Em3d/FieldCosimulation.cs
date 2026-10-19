@@ -277,8 +277,13 @@ public static class FieldCosimulation
             Port = drive.DrivenPort, FrequencyHz = hz, Index = 1, AcceptedPowerW = pAcc,
             ReferencePowerW = fa.PerAvailable ? pAvail : null,
             Region = result.Region, AbsorbedPowerW = result.AbsorbedPowerW, TissueMassKg = result.TissueMassKg,
-            UncountedPowerW = result.UncountedPowerW, Shape = shape,
+            UncountedPowerW = result.UncountedPowerW, Shape = shape, Grid = m.Grid,
         };
+        // brief-sar-8b — a cylindrical set averages no cube (its run had no masses); the analysis says so rather than nothing.
+        if (m.IsCylindrical && average)
+            notes.Add($"Fields '{fa.Name}': the field set is on a cylindrical grid, so SAR is local only (a cube is a Cartesian grid's); " +
+                      "its volumes are (ρ, α, z) cells, which the 3D view does not draw.");
+        average &= m.MassesGrams.Count > 0;
         WriteVolume(outDir, SarVolumeFiles.LocalQuantity, result.LocalSar, shape, record);
         if (result.LocalPeak is { } lp) record.Peaks.Add(Peak(SarVolumeFiles.LocalQuantity, lp, grid, owners, m));
         foreach (var avg in result.Averages)
@@ -538,9 +543,10 @@ public static class FieldCosimulation
     {
         int t = owners[grid.Index(p.I, p.J, p.K)];
         bool known = t >= 0 && t < m.Tissues.Count;
+        var at = m.World(p.XM, p.YM, p.ZM);
         return new SarPeakRecord
         {
-            Quantity = quantity, Value = p.Value, Cell = [p.I, p.J, p.K], CentreM = [p.XM, p.YM, p.ZM],
+            Quantity = quantity, Value = p.Value, Cell = [p.I, p.J, p.K], CentreM = [at.X, at.Y, at.Z],
             CubeLoM = p.Cube?.LoM, CubeHiM = p.Cube?.HiM, CubeMassKg = p.Cube?.MassKg,
             Kind = p.Cube is null ? null : p.Kind.ToString(),
             Object = known ? m.Tissues[t] : null, Material = known && t < m.TissueMaterials.Count ? m.TissueMaterials[t] : null,

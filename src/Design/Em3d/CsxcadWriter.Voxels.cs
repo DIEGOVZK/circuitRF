@@ -30,10 +30,16 @@ public static partial class CsxcadWriter
     /// <paramref name="densities"/> are the SAR plan's (null without one): a layer is written with its density only when it is
     /// SAR's tissue, as an ordinary solid is.
     /// </summary>
+    /// <param name="cylinder">brief-sar-8b — the cylindrical grid the phantom is written on, or null for a Cartesian one: the file's
+    /// lattice is then in openEMS's frame on that grid (the axis's origin taken off x and y), and the box claims its cells as a
+    /// Cartesian box (CoordSystem 0), since CSXCAD converts each cell's centre to Cartesian before it looks up the voxel.</param>
     private static (string? Xml, Em3dKernelFile? File, string? Refusal) VoxelPhantom(
         Em3dVoxelLattice lattice, IReadOnlyList<Em3dSolid> layers, IReadOnlyDictionary<string, Em3dMaterial> materials, double fitHz,
-        IReadOnlyDictionary<string, double>? densities, int id)
+        IReadOnlyDictionary<string, double>? densities, int id, FdtdCylinder? cylinder = null)
     {
+        if (cylinder is { Axis: not FdtdAxis.Z })
+            return (null, null, $"The phantom '{lattice.Phantom}' is voxelized, and the cylindrical grid is round about {FdtdGrid.AxisName(cylinder.Axis)}: " +
+                                "circuitRF writes a voxel phantom on a cylindrical grid about z only. Set OpenEms.Axis to Z, or the phantom's Voxel to 0.");
         var tissues = new List<DiscTissue> { new("air", 1, 0, 0) };
         foreach (var s in layers)
         {
@@ -81,10 +87,17 @@ public static partial class CsxcadWriter
         });
 
         string file = VoxelFile(lattice.Phantom);
+        if (cylinder is not null)
+        {
+            double ox = cylinder.Origin.X, oy = cylinder.Origin.Y;
+            x = [.. x.Select(v => v - ox)];
+            y = [.. y.Select(v => v - oy)];
+        }
         byte[] bytes = DiscMaterialWriter.ToBytes(x, y, z, indices, tissues);
         var sb = new StringBuilder();
         Open(sb, "DiscMaterial", id, lattice.Phantom, Colors.Dielectric, " Isotropy=\"1\"");
-        AppendPrimitives(sb, Box(0, new Point3(x[0], y[0], z[0]), new Point3(x[^1], y[^1], z[^1])));
+        AppendPrimitives(sb, cylinder is null ? Box(0, new Point3(x[0], y[0], z[0]), new Point3(x[^1], y[^1], z[^1]))
+                                              : CylBox(0, new Point3(x[0], y[0], z[0]), new Point3(x[^1], y[^1], z[^1])));
         sb.Append("                <Property Epsilon=\"1,1,1\" Mue=\"1,1,1\" Kappa=\"0,0,0\" Sigma=\"0,0,0\" Density=\"0\" />\n");
         sb.Append("                <Weight Epsilon=\"1,1,1\" Mue=\"1,1,1\" Kappa=\"1,1,1\" Sigma=\"1,1,1\" Density=\"1\" />\n");
         sb.Append($"                <DiscFile Type=\"0\" File=\"{Esc(file)}\" UseDBBackground=\"1\" Scale=\"1\" />\n");

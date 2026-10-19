@@ -111,6 +111,9 @@ public sealed class CosimFieldMetrics : IFieldMetrics, IDisposable
     {
         if (massGrams is not { } g || !(g > 0) || !double.IsFinite(g))
             throw new ExpressionException($"Fields '{_fa.Name}': psSAR averages over a positive mass in grams, as 10 in psSAR({_fa.Name}, 10).");
+        if (_set.Manifest.IsCylindrical)
+            throw new ExpressionException($"Fields '{_fa.Name}': the field set is on a cylindrical grid, and psSAR averages over cubes, which are a " +
+                                          "Cartesian grid's: there is local SAR only. Run the setup on a Cartesian grid for psSAR.");
         if (_output == FieldsOutput.Local)
             throw new ExpressionException($"Fields '{_fa.Name}': psSAR{G(g)}g is the full {G(g)} g average, which is computed when the tuning " +
                                           "knob is released, not while it moves.");
@@ -233,6 +236,10 @@ public sealed class CosimFieldMetrics : IFieldMetrics, IDisposable
     private double[]? ParseBox(string? region)
     {
         if (region is null || BoxText.Match(region) is not { Success: true } mt) return null;
+        // brief-sar-8b — a Cartesian box is not a block of a cylindrical grid's cells.
+        if (_set.Manifest.IsCylindrical)
+            throw new ExpressionException($"Fields '{_fa.Name}': the field set is on a cylindrical grid, whose cells are (ρ, α, z), so a box region " +
+                                          "is not a block of them. Name a tissue, or \"all\".");
         string[] parts = mt.Groups[1].Value.Split(',');
         string how = $"Fields '{_fa.Name}': a box region is \"box(x0, x1, y0, y1, z0, z1)\", six lengths with a unit each (mm) or none for metres";
         if (parts.Length != 6) throw new ExpressionException($"{how}; '{region}' has {parts.Length}.");

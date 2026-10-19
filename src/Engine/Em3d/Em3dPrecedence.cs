@@ -32,15 +32,19 @@ public sealed class Em3dPrecedence
     private Em3dPrecedence(int shift, int max, int? firstMetal) { Shift = shift; Max = max; _firstMetal = firstMetal; }
 
     /// <summary>The precedence of <paramref name="problem"/>'s solids and sheets.</summary>
-    public static Em3dPrecedence Of(Em3dProblem problem) => Of(problem.Solids, problem.Sheets);
+    public static Em3dPrecedence Of(Em3dProblem problem) => Of(problem.Solids, problem.Sheets, [.. problem.CylinderSheets.Select(c => c.Order)]);
 
-    /// <summary>The precedence of a set of solids and sheets that is not (yet) a whole problem.</summary>
-    public static Em3dPrecedence Of(IReadOnlyCollection<Em3dSolid> solids, IReadOnlyCollection<Em3dSheet> sheets)
+    /// <summary>The precedence of a set of solids and sheets that is not (yet) a whole problem. <paramref name="cylinderSheetOrders"/>
+    /// are brief-sar-8b's cylindrical sheets, each metal as a planar sheet is.</summary>
+    public static Em3dPrecedence Of(IReadOnlyCollection<Em3dSolid> solids, IReadOnlyCollection<Em3dSheet> sheets,
+                                    IReadOnlyCollection<int>? cylinderSheetOrders = null)
     {
+        cylinderSheetOrders ??= [];
         int? firstMetal = null;
         foreach (var s in solids)
             if (s.Role == Em3dRole.Conductor) firstMetal = Math.Min(firstMetal ?? s.Order, s.Order);
         foreach (var sh in sheets) firstMetal = Math.Min(firstMetal ?? sh.Order, sh.Order);
+        foreach (int o in cylinderSheetOrders) firstMetal = Math.Min(firstMetal ?? o, o);
 
         int? maxLow = null, maxHigh = null;
         foreach (var s in solids)
@@ -49,6 +53,7 @@ public sealed class Em3dPrecedence
             else maxLow = Math.Max(maxLow ?? s.Order, s.Order);
         }
         foreach (var sh in sheets) maxHigh = Math.Max(maxHigh ?? sh.Order, sh.Order);
+        foreach (int o in cylinderSheetOrders) maxHigh = Math.Max(maxHigh ?? o, o);
         int shift = maxLow is { } lo && firstMetal is { } m && m <= lo ? lo + 1 - m : 0;
         int max = Math.Max(maxLow ?? 0, maxHigh is { } hi ? hi + shift : 0);
         return new Em3dPrecedence(shift, max, firstMetal);
@@ -62,6 +67,9 @@ public sealed class Em3dPrecedence
 
     /// <summary>The priority <paramref name="sh"/> takes — a sheet is metal.</summary>
     public int Of(Em3dSheet sh) => sh.Order + Shift;
+
+    /// <summary>brief-sar-8b — the priority a cylindrical sheet takes: metal, as a planar sheet.</summary>
+    public int Of(Em3dCylinderSheet sh) => sh.Order + Shift;
 
     /// <summary>The priority of a region of the given role and construction order — for a renderer's own region records.</summary>
     public int Of(Em3dRole role, int order, bool sheet) => InMetalBand(role, order, sheet, _firstMetal) ? order + Shift : order;

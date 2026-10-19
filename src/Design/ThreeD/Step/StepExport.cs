@@ -328,6 +328,10 @@ public static class StepExport
         }
         var e = new C3dElaborator(cache, kernel).Elaborate(doc, path, options.WorkspaceCws);
         if (!e.Ok) throw new StepExportException(StepExportDiagnostics.DoesNotElaborate(e.Refusals[0], e.Refusals.Count));
+        // brief-sar-8b — a sheet on a cylinder is not a planar sheet the export writes; leaving it out would be a quiet loss.
+        if (e.CylinderSheets.Count > 0)
+            throw new StepExportException(StepExportDiagnostics.DoesNotElaborate(
+                $"Sheet '{e.CylinderSheets[0].Name}' is a sheet on a cylinder, which the STEP export does not write.", e.CylinderSheets.Count));
         // brief-em3d-101 R-em3d101-1h — a reference image is not geometry: a not-modelled image sheet (with a material or without) is
         // left out with ONE note, the layout's R-bmp-3. A modelled one is a sheet like any other and is exported as one.
         bool Reference(string name) => e.Images.ContainsKey(name) && (C3dModelled.IsOff(e, name) || e.UnassignedSheets.Any(u => u.Name == name));

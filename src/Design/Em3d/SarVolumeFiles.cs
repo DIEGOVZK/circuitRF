@@ -68,6 +68,19 @@ public sealed class SarRunRecord
     public double? B1pMeanT { get; set; }
     public string? B0Axis { get; set; }
     public int[] Shape { get; set; } = [];
+
+    /// <summary>brief-sar-8b — <c>cylindrical</c> when the volumes are on a cylindrical grid: their cells are (ρ, α, z) and the lines
+    /// files hold ρ (m), α (rad) and z (m), so nothing that reads a Cartesian volume may read them. Null — every record before it —
+    /// is Cartesian.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Grid { get; set; }
+
+    /// <summary>The volumes are a cylindrical grid's.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsCylindrical => Grid == CylindricalGrid;
+
+    /// <summary>What <see cref="Grid"/> says of a cylindrical grid.</summary>
+    public const string CylindricalGrid = "cylindrical";
     /// <summary>The volumes written, by quantity name.</summary>
     public List<string> Volumes { get; set; } = [];
     public List<SarCrossCheckRecord>? CrossCheck { get; set; }

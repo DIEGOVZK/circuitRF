@@ -1,0 +1,31 @@
+{
+ "FormatVersion": 1,
+ "Name": "MRI_LP_Birdcage",
+ "Materials": [
+  {
+   "Name": "PEC",
+   "Sigma20": 1e+30
+  },
+  {
+   "Name": "openEMS body phantom skin (128 MHz)",
+   "Epsr": 46.8,
+   "Sigma20": 0.58,
+   "DensityKgM3": 1100,
+   "Source": "The value openEMS 0.37.0 states for the 'Skin' of its bundled body cylinder (resources/phantoms/create_phantoms.py, phantom_body_128MHz.h5), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 128 MHz, not circuitRF's Gabriel tissue: the Skin (wet) record above gives εr 61.59, σ 0.5442 S/m there. Density as the same script states it."
+  },
+  {
+   "Name": "openEMS body phantom bone (128 MHz)",
+   "Epsr": 12.5,
+   "Sigma20": 0.13,
+   "DensityKgM3": 1908,
+   "Source": "The value openEMS 0.37.0 states for the 'Bone' of its bundled body cylinder (resources/phantoms/create_phantoms.py, phantom_body_128MHz.h5), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 128 MHz, not circuitRF's Gabriel tissue: the Bone (cortical) record above gives εr 14.72, σ 0.06735 S/m there. Density as the same script states it."
+  },
+  {
+   "Name": "openEMS body phantom tissue (128 MHz)",
+   "Epsr": 62.8,
+   "Sigma20": 0.66,
+   "DensityKgM3": 1046,
+   "Source": "The value openEMS 0.37.0 states for the 'Tissue' of its bundled body cylinder (resources/phantoms/create_phantoms.py, phantom_body_128MHz.h5), kept exactly as written so a replication of its example matches it with no model evaluation in between. It is that example's own number at 128 MHz, not circuitRF's Gabriel tissue: the Muscle record above gives εr 63.49, σ 0.7192 S/m there. Density as the same script states it."
+  }
+ ]
+}

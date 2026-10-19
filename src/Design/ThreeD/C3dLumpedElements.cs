@@ -44,11 +44,11 @@ public static class C3dLumpedElements
         var shim = new C3dPort
         {
             Number = 1, Name = le.Name, Kind = Em3dPortKind.Lumped, Plane = le.Plane, Offset = le.Offset, Rect = le.Rect,
-            Positive = le.Positive, Negative = le.Negative,
+            Cylinder = le.Cylinder, Positive = le.Positive, Negative = le.Negative,
         };
         var port = C3dPorts.Resolve(shim, dbuPerMicron, context);
         if (port.Resolved is not { } gap) return new(le, null, $"{who}: {port.Refusal}");
-        var element = new Em3dLumpedElement(le.Name, gap.Min, gap.Max, gap.Direction, r, l, c, le.Topology);
+        var element = new Em3dLumpedElement(le.Name, gap.Min, gap.Max, gap.Direction, r, l, c, le.Topology) { Cylinder = gap.Cylinder };
         return element.Inexpressible() is { } cannot ? new(le, null, cannot) : new(le, element, null);
     }
 

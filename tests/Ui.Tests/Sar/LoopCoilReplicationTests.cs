@@ -64,15 +64,24 @@ internal static class LoopReplication
         foreach (string f in Probes) File.Copy(Path.Combine(p1, f), Path.Combine(outDir, f), true);
         CollectVolumes(p1, outDir);
 
-        string log = File.ReadAllText(Path.Combine(p1, "openems.log"));
+        var facts = Facts(Path.Combine(p1, "openems.log"),
+                          "circuitRF OUTPUT, not a reference: setup " + setup + " of Loop.c3d, run by circuitRF on openEMS " +
+                          "(brief-sar-8). The reference it is compared with is testdata/sar/openems-ref/MRI_Loop_Coil.", setup);
+        File.WriteAllText(Path.Combine(outDir, RunFacts), facts.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+    }
+
+    /// <summary>One port run's facts from openEMS's own log: the grid, the time step, the step it stopped at and what stopped it, the
+    /// energy there and openEMS's wall time.</summary>
+    public static JsonObject Facts(string logPath, string note, string setup)
+    {
+        string log = File.ReadAllText(logPath);
         var size = Regex.Match(log, @"FDTD simulation size: (\d+)x(\d+)x(\d+)");
         var step = Regex.Match(log, @"FDTD timestep is: ([\d.e+-]+) s");
         var time = Regex.Match(log, @"Time for (\d+) iterations with [\d.e+]+ cells : ([\d.]+) sec");
         var energy = Regex.Matches(log, @"Energy: ~[\d.e+-]+ \(-\s*([\d.]+)dB\)");
-        var facts = new JsonObject
+        return new JsonObject
         {
-            ["note"] = "circuitRF OUTPUT, not a reference: setup " + setup + " of Loop.c3d, run by circuitRF on openEMS " +
-                       "(brief-sar-8). The reference it is compared with is testdata/sar/openems-ref/MRI_Loop_Coil.",
+            ["note"] = note,
             ["setup"] = setup,
             ["grid_lines"] = new JsonArray(size.Groups.Values.Skip(1).Select(g => (JsonNode)int.Parse(g.Value)).ToArray()),
             ["timestep_s"] = step.Success ? double.Parse(step.Groups[1].Value, CultureInfo.InvariantCulture) : null,
@@ -82,7 +91,6 @@ internal static class LoopReplication
             ["energy_at_stop_db"] = energy.Count > 0 ? -double.Parse(energy[^1].Groups[1].Value, CultureInfo.InvariantCulture) : null,
             ["openems_wall_s"] = time.Success ? double.Parse(time.Groups[2].Value, CultureInfo.InvariantCulture) : null,
         };
-        File.WriteAllText(Path.Combine(outDir, RunFacts), facts.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
     }
 
     /// <summary>A SAR run's record, its volumes' cell centres and each volume's two planes, from <paramref name="from"/> (a port's run
@@ -438,7 +446,7 @@ public sealed class LoopCoilRerunTests(ITestOutputHelper output) : IDisposable
         }
     }
 
-    private static (int Exit, string StdOut, string StdErr) Cli(params string[] args)
+    internal static (int Exit, string StdOut, string StdErr) Cli(params string[] args)
     {
         string cliDir = typeof(LoopCoilRerunTests).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>().First(a => a.Key == "CliDir").Value!;
         var psi = new ProcessStartInfo("dotnet")

@@ -15,7 +15,7 @@
 //  caller streams a large dump through in pieces. Mesh lines and attributes are small and read whole.
 //
 //  WHAT IS REFUSED. A file whose groups, datasets or attributes differ from the pinned layout — a missing group, a
-//  dataset of another type or shape, a legacy d_order, a cylindrical mesh, another openEMS_HDF5_version — throws
+//  dataset of another type or shape, a legacy d_order, a spherical mesh, another openEMS_HDF5_version — throws
 //  OpenEmsHdf5Exception naming the object path and what was expected. Never a read on a guess.
 //
 //  ARRAY ORDER: OpenEmsArrayOrder, the one place. 0.37.0 writes C order over (x, y, z), circuitRF's own, so the
@@ -51,9 +51,13 @@ public struct ComplexF(float re, float im)
     public readonly double MagnitudeSquared => (double)Re * Re + (double)Im * Im;
 }
 
-/// <summary>A dump's Cartesian mesh lines, in metres, and the drawing unit openEMS states beside them.</summary>
+/// <summary>A dump's mesh lines, in metres, and the drawing unit openEMS states beside them. brief-sar-8b — on a cylindrical grid
+/// (<see cref="Cylindrical"/>, openEMS's mesh_type 1) <see cref="X"/> is ρ (m), <see cref="Y"/> α (rad) and <see cref="Z"/> z (m),
+/// and a vector's three components are (ρ, α, z).</summary>
 public sealed record OpenEmsMesh(double[] X, double[] Y, double[] Z, double DrawingUnitM)
 {
+    public bool Cylindrical { get; init; }
+
     public int Nx => X.Length;
     public int Ny => Y.Length;
     public int Nz => Z.Length;
@@ -154,7 +158,7 @@ public static partial class OpenEmsHdf5
         if (dumpType != SarRawDumpType)
             throw r.Unexpected("/@dump_type", $"dump type {dumpType}", $"dump type {SarRawDumpType} (a raw SAR dump)");
         var mesh = r.ReadMesh();
-        var widths = new[] { "x", "y", "z" }.Select((a, n) =>
+        var widths = (mesh.Cylindrical ? new[] { "rho", "alpha", "z" } : new[] { "x", "y", "z" }).Select((a, n) =>
         {
             string p = "/CellWidth/" + a;
             var ds = r.Dataset(p, "the cell widths along " + a);
@@ -355,10 +359,11 @@ public static partial class OpenEmsHdf5
         {
             var g = Group("/Mesh", "the mesh lines");
             double type = Number(g, "/Mesh", "mesh_type", "the coordinate system");
-            if (type != 0)
-                throw Unexpected("/Mesh/@mesh_type", $"mesh type {type} (not Cartesian)", "mesh type 0 (Cartesian x, y, z)");
+            // brief-sar-8b — mesh type 1 is openEMS's cylindrical (ρ, α, z); spherical (2) is not read.
+            if (type is not (0 or 1))
+                throw Unexpected("/Mesh/@mesh_type", $"mesh type {type}", "mesh type 0 (Cartesian x, y, z) or 1 (cylindrical ρ, α, z)");
             double unit = Number(g, "/Mesh", "mesh_scaling", "the drawing unit");
-            var lines = new[] { "x", "y", "z" }.Select(a =>
+            var lines = (type == 1 ? new[] { "rho", "alpha", "z" } : new[] { "x", "y", "z" }).Select(a =>
             {
                 string p = "/Mesh/" + a;
                 var ds = Dataset(p, "the mesh lines along " + a);
@@ -367,7 +372,7 @@ public static partial class OpenEmsHdf5
                     throw Unexpected(p, $"of rank {ds.Space.Dimensions.Length}", "rank 1");
                 return ds.Read<double[]>();
             }).ToArray();
-            return new OpenEmsMesh(lines[0], lines[1], lines[2], unit);
+            return new OpenEmsMesh(lines[0], lines[1], lines[2], unit) { Cylindrical = type == 1 };
         }
 
         public double[] ReadFrequencies() =>

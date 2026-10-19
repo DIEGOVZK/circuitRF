@@ -491,6 +491,29 @@ public static class Scene3DBuilder
             else sheetRuns.Break();
         }
 
+        // ── brief-sar-8b — sheets on a cylinder: the patch's own tessellation, drawn as a sheet is ────────────────
+        foreach (var cs in problem.CylinderSheets)
+        {
+            var c = conductorColours.TryGetValue(cs.Name, out var sk) ? sk : new SkiaSharp.SKColor(150, 150, 155);
+            if (MaterialColour(tech, cs.Material) is { } own) c = new SkiaSharp.SKColor(own.R, own.G, own.B);
+            var mesh = cs.Patch.Tessellate(cs.Name);
+            var (m, slot) = materials.TryGetValue(cs.Material, out var mt) ? (mt.m, mt.i) : ((Em3dMaterial?)null, -1);
+            bool dim = Dim(cs.Name);
+            bool wire = Wire(cs.Name);
+            uint rgba = Scene3DVertex.Pack(c.Red, c.Green, c.Blue, 255);
+            bool translucent = false;
+            var see = options.Transparency?.Invoke(cs.Name);
+            if (see is { } t) (rgba, translucent) = t.Apply(rgba);
+            b.Object(new Scene3DObject
+            {
+                Id = 0, Name = cs.Name, Kind = Scene3DKind.Sheet, Role = Em3dRole.Conductor, Material = cs.Material, MaterialValues = m,
+                MaterialSlot = slot, Rgba = wire ? wireFill : dim ? Dimmed(rgba, dark) : rgba, Translucent = dim || wire || translucent,
+                FaceNames = SheetFaceNames, Context = dim, Wireframe = wire, Transparency = see,
+            }, mesh, faces: true, sheet: true, features: Features(cs.Name, mesh, sheet: true, sheetNames: SheetFaceNames),
+               wireEdges: wire ? wireEdge : null, look: Look(cs.Name, Scene3DKind.Sheet, Em3dRole.Conductor, cs.Material, ConductorPalette(conductorColours, cs.Name)));
+            sheetRuns.Break();
+        }
+
         // ── ports: a named sheet and a direction arrow ───────────────────────────────────────
         // 3D editor bugs round 9 — a rectangular lumped port is a checkerboard over exactly its own rectangle, − edge to +
         // edge and its full width, outlined, with a flat arrow on it pointing to the + edge: an arrow the size of its longer
@@ -504,6 +527,12 @@ public static class Scene3DBuilder
             {
                 Id = 0, Name = p.Name, Kind = Scene3DKind.Port, PortNumber = p.Number, Rgba = pinFill, Translucent = true,
             };
+            // brief-sar-8b — a gap on a cylinder: its patch, and the arrow along it from its centre on the surface.
+            if (p.Cylinder is { } gap)
+            {
+                b.Object(obj, gap.Patch.Tessellate(p.Name), PortArrow(p).Select(q => (q, pinLine)));
+                continue;
+            }
             if (p.Kind == Em3dPortKind.Lumped && p.Annulus is null && Checkerboard(p, pinFill, checkFill, checkArrow) is { } board)
             {
                 b.Object(obj, board.Mesh, Outline(p).Select(q => (q, pinLine)), vertexRgba: board.Rgba);
@@ -911,7 +940,7 @@ public static class Scene3DBuilder
         if (p.Kind == Em3dPortKind.Wave && p.VoltagePath is { } vp) (from, to) = (vp.From, vp.To);
         else
         {
-            var c = new Point3((p.Min.X + p.Max.X) / 2, (p.Min.Y + p.Max.Y) / 2, (p.Min.Z + p.Max.Z) / 2);
+            var c = p.Cylinder?.Patch.Centre ?? new Point3((p.Min.X + p.Max.X) / 2, (p.Min.Y + p.Max.Y) / 2, (p.Min.Z + p.Max.Z) / 2);
             double side = Math.Max(p.Max.X - p.Min.X, Math.Max(p.Max.Y - p.Min.Y, p.Max.Z - p.Min.Z));
             if (p.Annulus is { } an) side = 2 * an.OuterRadiusM;
             double h = side * ArrowFraction / 2;

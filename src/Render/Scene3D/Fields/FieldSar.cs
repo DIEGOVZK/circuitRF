@@ -30,7 +30,8 @@ public sealed partial class FieldRun
     {
         foreach (string file in System.IO.Directory.EnumerateFiles(portDir, "sar*.json"))
         {
-            if (!SarRecord.IsMatch(Path.GetFileName(file)) || SarVolumeFiles.ReadRecord(file) is not { } r) continue;
+            // brief-sar-8b — a cylindrical grid's volumes are (ρ, α, z) cells, which the view's Cartesian lattice cannot draw.
+            if (!SarRecord.IsMatch(Path.GetFileName(file)) || SarVolumeFiles.ReadRecord(file) is not { } r || r.IsCylindrical) continue;
             double ghz = r.FrequencyHz / 1e9;
             var sar = r.Volumes.Where(FieldNames.IsSar).ToList();
             if (sar.Count > 0) yield return new FieldSolution(FieldProblemKind.Driven, port, ghz, file, null, "openEMS") { Offers = sar };
@@ -57,7 +58,7 @@ public sealed partial class FieldRun
         foreach (string dir in System.IO.Directory.EnumerateDirectories(root).Order(StringComparer.Ordinal))
         {
             string recordPath = Path.Combine(dir, SarVolumeFiles.RecordFile(0));
-            if (SarVolumeFiles.ReadRecord(recordPath) is not { } r || FieldCosimulation.ReadRecord(dir) is not { } c) continue;
+            if (SarVolumeFiles.ReadRecord(recordPath) is not { } r || r.IsCylindrical || FieldCosimulation.ReadRecord(dir) is not { } c) continue;
             double ghz = r.FrequencyHz / 1e9;
             var drive = new FieldPortDrive(c.DrivePort, c.DriveZ0, c.Reflection, Complex.One, true);
             var sar = r.Volumes.Where(FieldNames.IsSar).ToList();

@@ -414,8 +414,8 @@ depends on the snapped cells, and the run's own log carries openEMS's sentence.
 The writer writes it as a port's resistor element is written, the width snapped to a line as a port's is
 (`FdtdGrid.PortWidthAxis`), and the grid collects its extents as a port's (`PortExtent` lines, the same thirds-pair snap).
 It is not a port: no excitation, no probe, no row in S. **Palace refuses it** in this version (its lumped elements are
-their own series), a static problem leaves it out with a note, and a cylindrical grid refuses it (that lowering writes
-coaxial wave ports only).
+their own series), a static problem leaves it out with a note, and a cylindrical grid writes it only when its gap is a patch
+of a cylinder about the grid's axis (SAR-8b, §10a).
 
 ### 5.4 Cell-constant material (R-sar3-4)
 
@@ -437,7 +437,8 @@ line and a PML takes its outermost `PmlCells` cells, as openEMS's `PML_n` does. 
 - a lumped port's or element's sheet whose plane is not on a line, whose two ends along its direction land on one line
   (openEMS skips an element of zero snapped length), or whose width holds no line;
 - a sheet whose plane is not on a line;
-- a wave port (its feed is a lattice only circuitRF's own grid places), and a cylindrical grid with given lines.
+- a wave port (its feed is a lattice only circuitRF's own grid places). A cylindrical grid takes given lines from a file whose grid
+  is cylindrical (SAR-8b, §10a.2).
 
 "On a line" is within 1e-3 of the cell beside it: the reference XMLs write coordinates to seven figures, so the loop
 coil's capacitors sit 3.3e-6 mm off their lines. An extent between lines is accepted when it still spans the same edges,
@@ -778,7 +779,8 @@ elaboration's note names it "the SAR frequency"; `explain --materials` says the 
 
 **Refusals**, each before any process: a SAR frequency outside the sweep; two SAR frequencies with a frequency-dependent
 material, naming the material and a second setup as the way to the next frequency (L6); a setup whose solver is Palace
-alone (only openEMS writes the raw dump); a cylindrical grid (cubes are averaged on a Cartesian one); a non-driven problem;
+alone (only openEMS writes the raw dump); on a cylindrical grid, an averaging mass or the cross-check (cubes are a Cartesian grid's:
+there it is local SAR and B1 only, §10a.4); a non-driven problem;
 no lossy dielectric at all; a `Region` or `B1Region` naming no object; a region solid with no density (below). A setup with
 `Both` runs, and the openEMS leg carries the SAR.
 
@@ -1064,8 +1066,8 @@ file), run by circuitRF, and compared with SAR-1's reference (§3.1). **The gate
 circuitRF defect was fixed (§10.2), the phantom was made to match the tutorial's voxel for voxel (§10.3), and two comparisons were
 made like with like (§10.4, §10.5; both settled by the owner, 2026-10-18). On circuitRF's own grid the coil resonates 7 % high, and
 the cause is found (§10.7). **The birdcage (R-sar8-5) moved to its own brief** (owner, 2026-10-18): circuitRF's cylindrical grid
-carries no lumped element, port, given line or SAR, and a Cartesian rebuild could not be held to the reference's cylindrical run
-(`brief-sar-8b-replicate-birdcage.md`).
+carried no lumped element, port, given line or SAR, and a Cartesian rebuild could not be held to the reference's cylindrical run
+(`brief-sar-8b-replicate-birdcage.md`, §10a).
 
 ### 10.1 The `.c3d` (R-sar8-1)
 
@@ -1216,10 +1218,182 @@ The H dump for B1 (VTK, 276 bytes a cell at its peak, §8.3) is the largest file
 
 ### 10.10 Not done in SAR-8, and what is open
 
-- **The birdcage** (R-sar8-5) — `brief-sar-8b-replicate-birdcage.md`.
+- **The birdcage** (R-sar8-5) — §10a.
 - **Run (b)'s generator change** (§10.7) — the owner's.
-- **A sheet a hair short of its line** loses that line's edges in openEMS as the feed did (§10.2); not seen here, not fixed.
+- **A sheet a hair short of its line** loses that line's edges in openEMS as the feed did (§10.2); not seen here. Seen on the
+  birdcage's cylinder sheets and fixed there (§10a.6); a planar sheet's polygon on a Cartesian grid is still written as drawn.
 - **`--exact-endcriteria`** would make a run repeatable (§3.2), still not equal to the reference's stop step; the owner's, as in §9.2.
+
+## 10a. `MRI_LP_Birdcage` on circuitRF's cylindrical grid (SAR-8b)
+
+openEMS's 3 T birdcage tutorial (§3.3) rebuilt from `.c3d` objects alone (`testdata/sar/circuitrf/birdcage/`, its README lists every
+file), run by circuitRF on the reference's own cylindrical lines, with the quadrature feed as two single-port runs recombined by a
+schematic, and compared with SAR-1's single run with both ports driven. @@VERDICT@@ The cylindrical grid first had to carry what the
+birdcage is made of: sheets on a cylinder, lumped elements and ports in their gaps, given cylindrical lines with openEMS's MultiGrid,
+and SAR and B1 (§10a.2 to §10a.4). The first full run missed on four of the eight checks, and the cause was the way a sheet's edges
+were written: on a line to rounding, not on the line (§10a.6).
+
+### 10a.1 The `.c3d` (R-sar8b-1, R-sar8b-2)
+
+| Tutorial | `.c3d` |
+|---|---|
+| eight 10 mm rungs at 45° steps from −180° on r = 120 mm, each two `AddBox` metals of zero ρ extent (z −125 to −2.5 mm and 2.5 to 125 mm; to 115 mm on the fed rungs 1 and 3) | sixteen PEC `CylinderSheet`s, the same patches |
+| two 10 mm end rings round the full circle at z ±120 to ±130 mm, from −202.5° | two PEC `CylinderSheet`s, `StartDeg` −202.5, `SweepDeg` 360 |
+| `caps`: one `AddLumpedElement` of 2.6 pF, z, with eight 5 mm boxes at the rungs' middles | eight `LumpedElements`, `C = Ccap` (a VAR, 2.6, `CUnit` pF), each a `Cylinder` patch; direction inferred (z) |
+| `AddLumpedPort` × 2, 50 Ω, z, in the 5 mm gaps between rungs 1 and 3 and the upper ring (z 115 to 120 mm), port 2 delayed a quarter period | two lumped ports, Z0 50, `Cylinder` patches; polarity inferred (the ring is the negative end, the larger surface); the delay is the schematic's weight (§10a.4) |
+| `phantom_body_128MHz.h5` (`DiscMaterial`) over the whole mesh | a `Phantom`, `Cylinder3` at the origin, radius 100 mm, 260 mm long, shells 8 and 10 mm, the bundled phantom's tissues (§4.3) with their densities, **`Voxel` 2.5 mm** |
+| bore r = 320 mm, length ±800 mm, `[0 0 0 0 3 3]`: PEC at ρmax, PML on the two ends in 10 added lines | `AirBox` paddings to r = 320 mm and z ±800 mm, side faces PEC, ends absorbing, `PmlCells` 8 (openEMS's `PML_8`, what the script's `3` means) |
+| `CylinderCoords`, `MultiGrid` 10, 20 mm, `CellConstantMaterial`, `EndCriteria` 1e-4 | `Grid` Cylindrical about z, `MultiGridRadiiUm` [10000, 20000], `CellConstantMaterial` true, `EndCriterionDb` −40, `MaxTimeSteps` 1,000,000 |
+| the grid: `DetectEdges`, `SmoothMeshLines`, `AddPML` | `GridLines.File` = the tutorial's own `BirdCage.xml`: 65 ρ × 305 α (304 cells, closed) × 219 z |
+| Gaussian f0 = fc = 75 MHz; `freq` 0–150 MHz in 201 points | the sweep 0.75–149.25 MHz in 198 points, the reference's own points without 0, so the writer's pulse is f0 75 MHz, fc 74.25 MHz |
+| E, H, local SAR dumps at 128 MHz | `Sar`: `FrequenciesGHz` [0.128], `B1` on, `B0Axis` +z, `PerPortFields` on; no `MassesGrams` (§10a.3) |
+
+`check` passes it with three notes (the voxelized phantom; each feed's inferred polarity) and no warning.
+
+### 10a.2 What the cylindrical grid gained
+
+**Sheets on a cylinder: a new sheet kind** (R-sar8b-2, decided here). A rung is a strip of zero radial thickness on r = R. A sector of
+a solid `Cylinder` would need a thickness the tutorial's strip does not have and a grid line on its second radius that the reference's
+grid does not have; a planar `Sheet` cannot be bent. So `C3dCylinderSheet` (`$type` `CylinderSheet`: `Axis`, `Base`, `Radius`, `Length`,
+`StartDeg`, `SweepDeg`, the azimuth in degrees because 45° multiples are not integer DBU) lowers to `Em3dCylinderSheet`, kept in its own
+list in the problem rather than in `Sheets`, which every consumer reads as planar. On a cylindrical grid about the same axis it is one
+`Box` of zero ρ extent in (ρ, α, z) — two where it crosses the grid's α seam — each edge that lies on a grid line to rounding written as
+that line's own value (§10a.6). Every other lowering refuses it by name (Cartesian openEMS, Palace, the thermal solver, the STEP export).
+A placement may move it and turn it about its axis; one that tips the axis off x, y or z is refused.
+
+**Gaps on a cylinder** (R-sar8b-1). A lumped port or lumped element states its gap as `Cylinder` (the same six fields) in place of
+`Plane`, `Offset` and `Rect`. Its ends are inferred by the port's own rule: the four edges — the two axial lines and the two arcs, ends
+pulled in by two DBU — each tested for contact; one opposite pair touching one conductor each; the negative end the ground set's, else
+the larger surface. A sheet on the same cylinder is measured exactly: the chord of the birdcage gap's arc stands 26 µm inside the
+circle, far past the one-DBU contact tolerance. The writer gives the gap the tutorial's own elements — the resistor, the voltage probe
+along the gap at its middle, the current probe across it, the source in the port's own file — in (ρ, α, z), with its radius and the two
+edges across its width written as the grid's own lines (`FdtdGrid.NearestLine`), as §10.2 found openEMS's excitation box needs. A
+planar lumped port on a cylindrical grid is still refused, now naming the cylinder as the alternative.
+
+**Given cylindrical lines and MultiGrid** (R-sar8b-3). `OpenEms.GridLines.File` takes a cylindrical `RectilinearGrid` (`CoordSystem` 1):
+ρ and z times `DeltaUnit`, α in radians as written, the circle closed. The grid is exactly those lines; the refusals of §5.5 hold in
+the cylinder's terms (a sheet or gap whose radius is not on a ρ line; a gap whose two ends land on one line or whose width holds none).
+`OpenEms.MultiGridRadiiUm` writes openEMS's `MultiGrid` (in metres, the files' drawing unit). openEMS takes every second azimuth line
+inside each radius and throws, after the run has started, on a level whose count is even; the grid refuses that first, naming the
+level. On circuitRF's own cylindrical grid a sheet's or gap's radius gets a required ρ line and its axial ends z lines; azimuth stays
+uniform, and the run says that each azimuth edge is snapped to the nearest line. Its circle starts at 0 unless a gap crosses 0, when it
+starts in the middle of the widest stretch no gap covers (a lumped port is one box).
+
+**The phantom.** A voxelized phantom is one DiscMaterial on a cylindrical grid too: CSXCAD turns each cell centre to Cartesian before it
+indexes the voxel file, so the Cartesian writer's file is used in openEMS's frame, claimed by a Cartesian box. Loaded by openEMS on the
+reference's lines for 20 steps (`tools/dump_birdcage_material.py` made the tutorial's own `material_raw.h5` the same way), **all
+1,261,312 tissue cells of the tutorial's dump have the density and conductivity circuitRF's phantom gives them, and no other cell
+differs** (`BirdcagePhantomVoxelTests`). The lowering itself writes the tutorial's 18 metal boxes, 8 capacitor boxes and 2 port boxes,
+each within 1e-9 m or a thousandth of its α cell of the tutorial's, and every metal edge a grid line's own value (`BirdcageLoweringTests`).
+
+### 10a.3 Local SAR and B1 on a cylindrical grid (R-sar8b-4)
+
+openEMS writes the raw SAR dump on a cylindrical grid with its mesh named `rho`, `alpha`, `z` (`mesh_type` 1) and E in (ρ, α, z)
+components; the reader takes both. Local SAR needs |E|², σ, ρ and the cell volume, all of which the dump carries as on a Cartesian
+grid, so SAR-5's engine computes it unchanged. **No cube is averaged**: a cube is a Cartesian grid's, so a stated `MassesGrams` and
+`CrossCheck` are refused there and an unstated mass list becomes none, which the run says (`Em3dSar.OnCylindricalGrid`; `explain`
+prints "local SAR only"). The dump box is the tissue's radii, the whole circle and its axial extent, one cell more each way. B1's H dump
+is HDF5 there; its (Hρ, Hα, Hz) are turned onto the world's axes at each cell's own azimuth (`FdtdCylinder.WorldComponents`), and B1±
+are then §1.5's. A cell's tissue, a region's cells and a peak's position are asked of the cell centre turned into the world. The
+volumes stay (ρ, α, z) cells, and their record says `Grid: cylindrical`, so the 3D view, which draws a Cartesian lattice, does not offer
+them. With `PerPortFields` the field set stores world components, turned when it is written, so the recombination, B1± and the tissue
+matrix needed nothing new; `psSAR` and box regions are refused on such a set.
+
+### 10a.4 The quadrature feed as a superposition (R-sar8b-5)
+
+The tutorial drives rung 1 at 1 and rung 3 a quarter period later: −j at 128 MHz. circuitRF runs each port alone, the other terminated
+in its 50 Ω, as every driven run does, and keeps each port's E and H per unit incident wave (§11.2). `cosim/BirdcageQuadrature.cnl`
+places the `.s2p` as a two-port block driven from two matched 50 Ω circuit ports with `weights=1,Wq`, `Wq = polar(1,-90)` (SAR-10's
+multi-channel drive, §12.4). With matched sources the incident wave at each block port is its source's alone, so the recombined field
+is Ê₁ − jÊ₂ times one scale, **the reference's simultaneous field to within the runs' own windows**: a combination of fields, before
+SAR and B1 are formed, never of SAR. The accepted power is Σ(|a|² − |b|²) over both drives, which is Σ 2·Re(U·I*) of the combined port
+waves: the two runs' probes recombined with e^(−j2πfT) give the same fraction of the available power to @@ACCFRAC@@.
+
+### 10a.5 The numbers (R-sar8b-6)
+
+On the reference's 65 × 305 × 219 lines, the committed output (`reference-grid/`), per watt accepted at both ports, the reference
+normalised by its own accepted power at 128 MHz exactly (its converter's derived values took the point nearest it, 128.25 MHz, 2.3 %
+off):
+
+@@NUMBERS@@
+
+### 10a.6 The first run: every sheet edge a hair off its line, and 2.6 MHz low
+
+The first full run (1 h 41 min) missed on four of the eight checks — the S11 minimum at **124.61 MHz against 127.24**, the |B1+| and
+local SAR planes correlated 0.986 against the 0.99 floor, peak local SAR +9.4 %, B1+ CoV +9.5 % — while the accepted fraction, the S11
+depth (−3.58 against −3.68 dB) and the mean |B1+| at the smallest radius (+0.59 %) were within tolerance, and the shift was the same
+2.6 MHz over every time window, so it was the model and not the stop step. The superposition was never in question: the two runs'
+probes recombined gave the `fields` analysis's own accepted fraction to five figures.
+
+**Where it was found.** Hybrids of the tutorial's own XML and circuitRF's port-1 file, 7,000 steps each (about 2.5 min), compared at
+the first probe samples of port 1's voltage. The grid lines (all three axes), the metal boxes to seven digits, the phantom's tables and
+cells, the boundaries and the time step were identical. The tutorial's phantom, its port, its capacitors and its FDTD header swapped
+into circuitRF's file each changed nothing; **the tutorial's one `Metal` property (18 boxes, priority 1) swapped in made circuitRF's
+voltage the tutorial's to every digit.** The two metal sets differ only in digits past the seventh.
+
+**The cause.** openEMS marks a PEC edge by testing the edge's own position — the midpoint along it, the grid lines across it — with
+`CSPrimBox::IsInside`, which has no tolerance (`Operator::CalcPEC`; the same rule §10.2 met on the excitation box). The tutorial's boxes
+and its lines are the same text in millimetres, so they are the same doubles. circuitRF's lines are those millimetres times 1e-3, while
+its sheet edges came from the `.c3d` by other arithmetic:
+
+- a rung's upper end is its base plus its length in metres: −0.125 + 0.1225 = −0.0025000000000000022, five ulps **below** the line
+  −2.5 × 1e-3 = −0.0025, so the α-edges on that line were not in the box: every lower rung ended a line short, and the lower ring
+  likewise (−0.13 + 0.01 = −0.12000000000000001);
+- a rung's azimuths are degrees turned to radians at full precision, against the file's fifteen digits: 0.8270648300641148 against the
+  line 0.827064830064115, so rung 6 held four α lines of z-edges instead of five, and rung 5 (±0.041666666666666664 against
+  ±0.0416666666666667) three instead of five.
+
+So four rungs and the lower ring were a cell narrower or shorter than drawn, in silence, and the coil resonated 2.6 MHz low. The
+lowering gate had compared boxes to 1e-9 m, which is why it saw nothing.
+
+**The fix** (`FdtdGrid.LineOrSelf`): a cylinder sheet's radius, azimuths and ends are written as the grid line each lies on, to the
+given-line tolerance of §5.5 (a thousandth of the cell beside it), and left where drawn otherwise. The lowering gate now holds every
+metal edge to a line's own value, exactly, and `CylindricalGridSarTests` holds the same on a small given grid whose α lines carry
+fifteen digits and whose strip ends are a base plus a length, with no reference data. The fixed model, run for the same 7,000 steps, gives the tutorial's port-1 voltage to every printed digit (twelve
+figures) at its first samples, where the first run's was 0.23 %, 0.82 % and 5.5 % off at the same samples.
+
+A planar sheet's polygon on a Cartesian grid is still written as drawn (§10.2's loop strips overlap their lines by 0.3 nm in the safe
+direction; §10.10): the same rule applies to it, and this is the first time it has been seen to bite.
+
+### 10a.7 Costs
+
+| | the reference (one run, both ports) | circuitRF (two runs, one port each) |
+|---|---|---|
+| openEMS | @@REFCOST@@ | @@OURCOST@@ |
+| whole run | 52 min 52 s (Octave) | @@WALL@@ |
+
+Each run stops on openEMS's energy criterion after a 38.6 ns pulse of 106k steps and a ring-down to 225k: the ring-down is the cost, as
+it was for the loop (§10.5), and SAR-9's capacitors-as-ports is what removes it. The two port runs are sequential, each on about three
+of the machine's ten cores (openEMS's own thread scaling); running the two port files concurrently would bring the wall time back to
+the reference's, and nothing does that today. The raw SAR and H dumps cover 53 × 304 × 106 cells, about 1.3 GB for two driven ports,
+of which 188 MB is the per-port field set kept beside the `.s2p`.
+
+### 10a.8 Gates
+
+`tests/Ui.Tests/Sar/BirdcageReplicationTests.cs` and `CylindricalGridSarTests.cs`:
+
+- `BirdcageReplicationTests` (routine, fixed data, no process): the committed output against the reference — the accepted fraction,
+  the S11 minimum over both runs' time within 0.5 MHz and 1 dB, mean |B1+| at the smallest dumped radius within 3 %, the two planes
+  correlated ≥ 0.99, peak local SAR on the plane within 5 %, B1+ CoV within 5 %; the ring-down and the recombination's own record
+  reported. Skipped without SAR-1's data.
+- `BirdcageLoweringTests` (routine, needs the reference's XML only): the lowering on the reference's lines is the tutorial's structure
+  box for box, MultiGrid, boundaries and all, and every metal edge is a grid line's own value.
+- `BirdcagePhantomVoxelTests` (routine, needs openEMS and the reference set's `material_raw.h5`, 20 steps): the voxelized phantom is the
+  tutorial's material grid cell for cell.
+- `CylindricalGridSarTests` (routine, no data, no process): a sheet and a gap on a cylinder through the `.c3d`, the grid and the writer;
+  the edges written as the given lines' own values; the lowerings that refuse; a placement's turn; MultiGrid's line counts; B1's turn
+  onto the world's axes; the Sar group on that grid.
+- `BirdcageRerunTests` (`Benchmark`, about 1.7 h): the run and the recombination again through the CLI, held to the same;
+  `CRF_WRITE_SAR8B_OUTPUTS=1` rewrites the committed output. `BirdcageCollectTests` (`Benchmark`) collects and compares a run made by
+  hand (`CRF_SAR8B_RESULTS`).
+
+### 10a.9 Not done in SAR-8b, and what is open
+
+- **Cube-averaged SAR on a cylindrical grid** (not in this phase): a cube is a Cartesian grid's; the run says local SAR only.
+- **The birdcage with its capacitors as ports** (SAR-9's method, SAR-10's open worked case): the ring-down that makes each run 50 min
+  would go with it.
+- **A planar sheet's edge a hair off its line** (§10.10): the same no-tolerance test; still written as drawn on a Cartesian grid.
+- **The two port runs in parallel** (§10a.7): the owner's, as is `--exact-endcriteria` (§3.2).
 
 ## 11. Capacitors as ports: per-port fields recombined by the circuit (SAR-9)
 
@@ -1321,7 +1495,7 @@ recombined results included, before writing.
 with port 2's excitation added at −0.5 times its own, is the **simultaneous** run. All three take the same fixed number of steps
 (`EndCriterionDb` −200, so no criterion fires), so their DFTs cover the same window. The field set recombined with the incident waves
 the simultaneous run's own probes measured gives that run's local SAR and |B1+| **in every cell, to 1.7e-6 of the peak**, and the
-fast path's plane gives the same. The birdcage's two-run combination waits on SAR-8b, which is not done.
+fast path's plane gives the same. The birdcage's quadrature feed is the same superposition on a cylindrical grid (§10a.5).
 
 ### 11.6 The loop coil with ports for capacitors (R-sar9-6)
 
@@ -1391,7 +1565,7 @@ the 3 % tolerance.
 
 ### 11.9 Not done in SAR-9
 
-- **The birdcage's superposition** — with SAR-8b.
+- **The birdcage's superposition** — §10a.5.
 - **Per-port Z0 in the Touchstone** (§11.3): the field set records each port's Z0 and the writer does not.
 - **Goals, tuning, the optimizer and yield on recombined SAR and B1** — SAR-10, which the fast path is for (§12).
 
@@ -1502,8 +1676,8 @@ S_jj, and `cosim.json` lists every drive's waves (`Drives`).
 
 `FieldGoalTests.TwoCircuitPortsDriveTogether_WithTheirWeights` drives both block ports of the synthetic set through matched
 circuit ports with `weights=1,W2` and finds a2/a1 = −j to 1e-9, and every measurement at those waves equal to its hand value.
-**The quadrature birdcage is not the worked case yet**: it waits on SAR-8b, whose birdcage on circuitRF's cylindrical grid is
-not built (§11.5), so there is no birdcage field set to drive.
+The quadrature birdcage is the worked case on a real coil: its two feeds driven together with `weights=1,Wq`, `Wq = polar(1,-90)`
+(§10a.5).
 
 ### 12.5 Yield (R-sar10-5)
 
@@ -1529,7 +1703,7 @@ value, read on demand with `B1pMean(F1, "brain")`, is **0.2049 µT/√W, +0.00 %
 
 ### 12.7 Not done in SAR-10, and what is open
 
-- **The quadrature birdcage as the worked multi-channel case** — with SAR-8b.
+- **The quadrature birdcage as the worked multi-channel case** — §10a.5.
 - **The plane-only live path in the 3D view** (§12.3): the view would recombine its own clip plane from the field set with the
   tuned waves (`FieldRecombination.Local`, already built) instead of re-reading a whole volume.
 - **A cost hint the algorithms read** (§12.2): TO-6 has none; the note names the expensive goals instead.

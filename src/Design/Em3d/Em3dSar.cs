@@ -53,6 +53,9 @@ public static class Em3dSar
     /// the run, as the radiation pattern's are.</summary>
     public const int HBytesPerCell = (2 + 21) * 12;
 
+    /// <summary>brief-sar-8b — the H dump on a cylindrical grid is openEMS's HDF5 instead: three complex64 components a cell.</summary>
+    public const int HHdf5BytesPerCell = 24;
+
     /// <summary>Bytes circuitRF's own volumes take per cell: one float32 per quantity.</summary>
     public const int VolumeBytesPerQuantity = 4;
 
@@ -162,6 +165,27 @@ public static class Em3dSar
     }
 
     /// <summary>
+    /// brief-sar-8b R-sar8b-4 — the Sar group on a cylindrical grid: local SAR and B1 only, since a cube is a Cartesian grid's. A stated
+    /// <c>MassesGrams</c> or <c>CrossCheck</c> (sar_calc averages over cubes) is refused; otherwise the masses are removed and
+    /// <see cref="CylindricalNote"/> says so. A run and <c>explain</c> both ask here.
+    /// </summary>
+    public static (SarSettings? Settings, string? Refusal) OnCylindricalGrid(SarSettings settings, CemSar stated)
+    {
+        if (stated.MassesGrams is { Count: > 0 })
+            return (null, "This setup asks for SAR averaged over cubes (Sar.MassesGrams) on a cylindrical grid, and a cube is a Cartesian grid's: " +
+                          "on a cylindrical grid circuitRF computes local SAR and B1 only. Remove MassesGrams, or set OpenEms.Grid to Cartesian.");
+        if (settings.CrossCheck)
+            return (null, "This setup asks for sar_calc's cross-check (Sar.CrossCheck) on a cylindrical grid, and sar_calc averages over Cartesian " +
+                          "cubes: turn CrossCheck off, or set OpenEms.Grid to Cartesian.");
+        return (settings with { MassesGrams = [] }, null);
+    }
+
+    /// <summary>What a run on a cylindrical grid says of its SAR (<see cref="OnCylindricalGrid"/>).</summary>
+    public const string CylindricalNote =
+        "SAR on a cylindrical grid is local SAR only: no average over 1 g or 10 g cubes is computed, since a cube is a Cartesian grid's. " +
+        "B1 is formed from Hρ and Hα turned onto x and y at each cell's centre.";
+
+    /// <summary>
     /// The dump box on <paramref name="grid"/>: the plan's box widened to the grid lines outside it, and one more cell on every
     /// side, inside the grid. Line indices, inclusive.
     /// </summary>
@@ -174,6 +198,18 @@ public static class Em3dSar
             int b = lines.Count - 1;
             while (b - 1 >= 0 && lines[b - 1] >= hi) b--;
             return (Math.Max(0, a - 1), Math.Min(lines.Count - 1, Math.Max(b, a) + 1));
+        }
+        // brief-sar-8b R-sar8b-4 — on a cylindrical grid: the tissue box's radii about the axis, the whole circle, and its extent
+        // along the axis (grid.X is ρ, grid.Y α, grid.Z the axis).
+        if (grid.Cylinder is { } cyl)
+        {
+            double[] lo = [plan.Min.X, plan.Min.Y, plan.Min.Z], hi = [plan.Max.X, plan.Max.Y, plan.Max.Z];
+            double ou = Get(cyl.Origin, cyl.U), ov = Get(cyl.Origin, cyl.V);
+            double nu = Math.Max(0, Math.Max(lo[cyl.U] - ou, ou - hi[cyl.U])), nv = Math.Max(0, Math.Max(lo[cyl.V] - ov, ov - hi[cyl.V]));
+            double fu = Math.Max(Math.Abs(lo[cyl.U] - ou), Math.Abs(hi[cyl.U] - ou)), fv = Math.Max(Math.Abs(lo[cyl.V] - ov), Math.Abs(hi[cyl.V] - ov));
+            var (r0, r1) = Span(grid.X.Lines, Math.Sqrt(nu * nu + nv * nv), Math.Sqrt(fu * fu + fv * fv));
+            var (a0, a1) = Span(grid.Z.Lines, lo[cyl.A], hi[cyl.A]);
+            return (r0, r1, 0, grid.Y.Lines.Count - 1, a0, a1);
         }
         var (i0, i1) = Span(grid.X.Lines, plan.Min.X, plan.Max.X);
         var (j0, j1) = Span(grid.Y.Lines, plan.Min.Y, plan.Max.Y);
@@ -201,9 +237,9 @@ public static class Em3dSar
     /// per port and SAR frequency, the raw dump, the H dump when B1 is on, and circuitRF's own volumes (local SAR, one per
     /// mass, and B1+ and B1− when B1 is on).
     /// </summary>
-    public static long EstimateBytes(Em3dSarPlan plan, long cells, int ports)
+    public static long EstimateBytes(Em3dSarPlan plan, long cells, int ports, bool cylindrical = false)
     {
-        long perFrequency = cells * RawBytesPerCell + (plan.Settings.B1 ? cells * HBytesPerCell : 0) +
+        long perFrequency = cells * RawBytesPerCell + (plan.Settings.B1 ? cells * (cylindrical ? HHdf5BytesPerCell : HBytesPerCell) : 0) +
                             cells * VolumeBytesPerQuantity * (1 + plan.Settings.MassesGrams.Count + (plan.Settings.B1 ? 2 : 0));
         // brief-sar-9 R-sar9-1 — the per-port fields beside the .sNp, when the group keeps them
         return perFrequency * plan.Settings.FrequenciesHz.Count * Math.Max(1, ports) + PortFieldSetWriter.EstimateBytes(plan, cells, Math.Max(1, ports));
@@ -215,7 +251,7 @@ public static class Em3dSar
     {
         var (i0, i1, j0, j1, k0, k1) = DumpLines(plan, grid);
         long cells = (long)(i1 - i0) * (j1 - j0) * (k1 - k0);
-        long bytes = EstimateBytes(plan, cells, ports);
+        long bytes = EstimateBytes(plan, cells, ports, grid.Cylinder is not null);
         string note = $"SAR is dumped over the tissue's bounding box plus one cell: {i1 - i0} × {j1 - j0} × {k1 - k0} = {cells:N0} cells, " +
                       $"about {MachineMemory.Format(bytes)} on disk for {plan.Settings.FrequenciesHz.Count} frequenc" +
                       $"{(plan.Settings.FrequenciesHz.Count == 1 ? "y" : "ies")} and {ports} driven port{(ports == 1 ? "" : "s")}" +
@@ -250,6 +286,8 @@ public static class Em3dSar
         return $"{key} names {Quote(unknown)}, which {(unknown.Count == 1 ? "is" : "are")} not an object of the problem. Name an object or a " +
                "phantom that is modelled.";
     }
+
+    private static double Get(Point3 q, int axis) => axis switch { 0 => q.X, 1 => q.Y, _ => q.Z };
 
     private static string Quote(IEnumerable<string> names) => string.Join(", ", names.Select(n => $"'{n}'"));
 

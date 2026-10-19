@@ -272,6 +272,13 @@ technology; see [Materials](materials.html)); the flat phantom's shell starts wi
 layer is solved as a lossy dielectric. **Flatten Phantom** (its menu) replaces it with one ordinary solid per
 layer, `<phantom>_<layer>`, in a group named after it; the solve is the same.
 
+A **sheet on a cylinder** is a strip of zero thickness on the cylinder of one radius about x, y or z — a birdcage
+coil's rung or end ring — written in the `.c3d` as a `CylinderSheet` (`circuitrf reference 3d` has its fields:
+the axis, a point on it where the strip starts, the radius, the length along the axis, and the azimuth it starts
+at and sweeps through, in degrees). There is no tool to draw one; the 3D view draws it as written. Only openEMS's
+cylindrical grid about the same axis solves it ([A cylindrical grid](em-setup.html#openems-cylindrical)); every
+other solver refuses it by name.
+
 An **ellipsoid** on its own (**Shift+A O**) is a centre and three semi-axes along its own x, y and z, so
 turning it turns its axes. Its surface is curved: face edits, fillets and boundaries are refused on it, as on
 a sphere.

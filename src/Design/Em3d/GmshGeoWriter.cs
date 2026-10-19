@@ -140,6 +140,8 @@ public static partial class GmshGeoWriter
         ArgumentNullException.ThrowIfNull(settings);
 
         if (problem.Type == Em3dProblemType.Thermal) return No(Em3dProblem.ThermalIsNotEm);
+        // brief-sar-8b — a sheet or gap on a cylinder is a box of openEMS's cylindrical grid, and nothing Gmsh meshes.
+        if (problem.FirstCylindrical() is { } curved) return No(Em3dCylinderGap.NotHere(curved, "Palace"));
         // brief-sar-3 §3 — a lumped element on Palace is its own later series.
         if (problem.LumpedElements.Count > 0)
             return No(LumpedElementsOpenEmsOnly(problem.LumpedElements[0].Name));

@@ -52,6 +52,29 @@ public sealed record FdtdCylinder(
     /// <summary>A world point in openEMS's Cartesian frame on this grid (what a <c>CoordSystem="0"</c> primitive states).</summary>
     public Point3 ToCsx(Point3 w) => new(Get(w, U) - Get(Origin, U), Get(w, V) - Get(Origin, V), Get(w, A));
 
+    /// <summary>brief-sar-8b — the world point at openEMS's (ρ, α, z) on this grid: the inverse of <see cref="ToCsx"/> after the turn
+    /// to Cartesian.</summary>
+    public Point3 World(double rho, double alpha, double z)
+    {
+        var c = new double[3];
+        c[U] = Get(Origin, U) + rho * Math.Cos(alpha);
+        c[V] = Get(Origin, V) + rho * Math.Sin(alpha);
+        c[A] = z;
+        return new Point3(c[0], c[1], c[2]);
+    }
+
+    /// <summary>brief-sar-8b — a vector's (ρ, α, z) components at azimuth <paramref name="alpha"/> as world (x, y, z) components.</summary>
+    public (System.Numerics.Complex X, System.Numerics.Complex Y, System.Numerics.Complex Z) WorldComponents(
+        System.Numerics.Complex rho, System.Numerics.Complex azimuth, System.Numerics.Complex axial, double alpha)
+    {
+        double c = Math.Cos(alpha), sn = Math.Sin(alpha);
+        var w = new System.Numerics.Complex[3];
+        w[U] = rho * c - azimuth * sn;
+        w[V] = rho * sn + azimuth * c;
+        w[A] = axial;
+        return (w[0], w[1], w[2]);
+    }
+
     /// <summary>The openEMS axis (0, 1, 2) a world axis becomes: the axis is openEMS's z, and the cyclic order is kept.</summary>
     public int CsxAxis(int worldAxis) => (worldAxis - A + 5) % 3;
 
@@ -93,6 +116,8 @@ public static partial class FdtdGrid
                                                    long? availableMemoryBytes)
     {
         int a = (int)cyl.Axis, u = (a + 1) % 3, v = (a + 2) % 3;
+        // brief-sar-8b R-sar8b-3 — lines given as a cylindrical grid: taken verbatim, as a Cartesian file's are.
+        if (settings.ExplicitLines is { Cylindrical: true } given) return BuildCylindricalGiven(problem, settings, cyl, given, availableMemoryBytes);
         var ctx = new Context(problem, settings);
         var wavePorts = FdtdWavePorts.Plan(problem, settings, ctx.MinCell);
         if (wavePorts.Feeds.Count > 0)
@@ -184,6 +209,13 @@ public static partial class FdtdGrid
                 if (r > rhoMin + tol && r < rhoMax - tol)
                     required.Add(new FdtdRequiredLine(r, false, [new FdtdLineSource(sh.Name, FdtdLineKind.MetalExtreme, r)]));
         }
+        // brief-sar-8b — a sheet or a lumped gap on a cylinder needs a line on its own radius: it is a box of zero radial extent there.
+        foreach (var (name, patch) in CylindricalPatches(problem))
+        {
+            if (patch.Radius > rhoMin + tol && patch.Radius < rhoMax - tol)
+                required.Add(new FdtdRequiredLine(patch.Radius, true, [new FdtdLineSource(name, FdtdLineKind.MetalEdge, patch.Radius)]));
+            conductorRadii.Add((patch.Radius, name));
+        }
         double MaxRadialCell(double lo, double hi)
         {
             double n = 1;
@@ -214,14 +246,17 @@ public static partial class FdtdGrid
             azimuthBy = $"the arc at the outermost conductor radius ('{rOutBy}', {FormatLength(rOut)}) no longer than the radial cell " +
                         $"there ({FormatLength(cell)}), rounded up to a multiple of {AzimuthMultiple}: {cells} cells";
         }
+        // brief-sar-8b — the circle closes at 0 unless a gap on the cylinder crosses it there (openEMS's lumped port is one box): then at
+        // the azimuth farthest inside the widest stretch no gap and as few sheets as possible cover.
+        double seam = Seam(problem);
         var alphaLines = new List<double>(cells + 1);
-        for (int k = 0; k < cells; k++) alphaLines.Add(2 * Math.PI * k / cells);
-        alphaLines.Add(2 * Math.PI);
+        for (int k = 0; k < cells; k++) alphaLines.Add(seam + 2 * Math.PI * k / cells);
+        alphaLines.Add(seam + 2 * Math.PI);
         double first = rhoMin > 0 ? rhoMin : (rhoLines[0] + rhoLines[1]) / 2;
         double arc = first * 2 * Math.PI / cells;
         var arcBy = new FdtdLineSource(rhoMinBy ?? "axis", rhoMinBy is null ? FdtdLineKind.AirBoxFace : FdtdLineKind.MetalEdge, rhoMin);
         var alpha = new FdtdAxisGrid(FdtdAxis.Alpha, alphaLines,
-                                     [new FdtdRequiredLine(0, true, [arcBy]), new FdtdRequiredLine(2 * Math.PI, true, [arcBy])],
+                                     [new FdtdRequiredLine(seam, true, [arcBy]), new FdtdRequiredLine(seam + 2 * Math.PI, true, [arcBy])],
                                      arc, first, [arcBy], 0, 0);
 
         // ── z: the Cartesian build along the world axis, feeds and all ───────────────────────────
@@ -245,6 +280,12 @@ public static partial class FdtdGrid
         var frame = new FdtdCylinder(cyl.Axis, cyl.Origin, rhoMin, rhoMinBy, rhoMax, sideKinds[0], sides, cells, azimuthBy, arc, first);
         var result = new FdtdGridResult(rho, alpha, z, ctx.MinCell, cellsTotal, dt, pulse, steps, memory, merges, warnings, refusal)
                      { WavePorts = wavePorts, Cylinder = frame };
+        if (refusal is null && MultiGridRefusal(cyl, rho.Lines, alphaLines.Count) is { } mg) result = result with { Refusal = mg };
+        if (refusal is null && cyl.AzimuthLines is null &&
+            CylindricalPatches(problem).Where(x => !x.Patch.FullCircle).Select(x => x.Name).Distinct().ToList() is { Count: > 0 } offAlpha)
+            warnings.Add($"{string.Join(", ", offAlpha.Take(6).Select(n => $"'{n}'"))}{(offAlpha.Count > 6 ? $" and {offAlpha.Count - 6} more" : "")} " +
+                         $"{(offAlpha.Count == 1 ? "has" : "have")} edges in azimuth, and this grid's {cells} azimuth cells are uniform: openEMS " +
+                         "snaps each to the nearest azimuth line. Give the lines (OpenEms.GridLines) to put a line on each edge.");
         if (rhoMinBy is null && refusal is null)
             warnings.Add($"No metal solid contains the cylindrical grid's axis ({axisText}) along the whole box, so the grid starts ON " +
                          "the axis and openEMS treats it there. That is correct, and slow: the innermost ring's arc sets the time step " +
@@ -252,15 +293,59 @@ public static partial class FdtdGrid
         return refusal is null && memory > limit ? result with { Refusal = MemoryRefusal(result, limit) } : result;
     }
 
+    /// <summary>
+    /// brief-sar-8b — where circuitRF's own cylindrical grid starts its circle: 0, unless a lumped gap on the cylinder crosses 0 (openEMS's
+    /// lumped port and element are one box each, which cannot straddle the seam); then the middle of the widest stretch of azimuth
+    /// that no gap covers, among those as few sheets as possible cover (a sheet across the seam is written as two boxes).
+    /// </summary>
+    private static double Seam(Em3dProblem problem)
+    {
+        const double Turn = 2 * Math.PI;
+        static (double A0, double A1) Wrapped(Em3dCylinderPatch p) { double a0 = p.Alpha0 - Turn * Math.Floor(p.Alpha0 / Turn); return (a0, a0 + p.Alpha1 - p.Alpha0); }
+        static bool Covers((double A0, double A1) i, double a) => (a > i.A0 && a < i.A1) || (a + Turn > i.A0 && a + Turn < i.A1);
+        var gaps = problem.Ports.Select(p => p.Cylinder?.Patch).Concat(problem.LumpedElements.Select(l => l.Cylinder?.Patch))
+                          .OfType<Em3dCylinderPatch>().Where(p => !p.FullCircle).Select(Wrapped).ToList();
+        if (!gaps.Any(g => Covers(g, 0))) return 0;
+        var sheets = problem.CylinderSheets.Where(c => !c.Patch.FullCircle).Select(c => Wrapped(c.Patch)).ToList();
+        var ends = gaps.Concat(sheets).SelectMany(i => new[] { i.A0 % Turn, i.A1 % Turn }).Distinct().Order().ToList();
+        double best = 0, bestSpan = -1;
+        int bestSheets = int.MaxValue;
+        for (int k = 0; k < ends.Count; k++)
+        {
+            double a = ends[k], b = k + 1 < ends.Count ? ends[k + 1] : ends[0] + Turn, mid = (a + b) / 2 % Turn;
+            if (gaps.Any(g => Covers(g, mid))) continue;
+            int n = sheets.Count(sh => Covers(sh, mid));
+            if (n < bestSheets || (n == bestSheets && b - a > bestSpan)) (best, bestSpan, bestSheets) = (mid, b - a, n);
+        }
+        return best;
+    }
+
+    /// <summary>brief-sar-8b — every sheet and lumped gap on a cylinder, by the name a sentence gives it.</summary>
+    public static IEnumerable<(string Name, Em3dCylinderPatch Patch)> CylindricalPatches(Em3dProblem problem)
+        => problem.CylinderSheets.Select(c => (c.Name, c.Patch))
+                  .Concat(problem.Ports.Where(p => p.Cylinder is not null).Select(p => ($"port {p.SourceNumber ?? p.Number}", p.Cylinder!.Patch)))
+                  .Concat(problem.LumpedElements.Where(l => l.Cylinder is not null).Select(l => (l.Name, l.Cylinder!.Patch)));
+
     /// <summary>The wave and lumped ports a cylindrical grid cannot state (R-em3d120-5), or null.</summary>
     private static string? CylindricalPorts(Em3dProblem problem, FdtdWavePortPlan plan, OpenEmsCylindrical cyl, string axisText,
                                             double ou, double ov, double tol)
     {
         int a = (int)cyl.Axis;
-        if (problem.Ports.FirstOrDefault(p => p.Kind == Em3dPortKind.Lumped) is { } lumped)
-            return $"Port {lumped.SourceNumber ?? lumped.Number} is a lumped port, and circuitRF writes openEMS's lumped port on a Cartesian grid only. " +
-                   $"On a cylindrical grid make it a wave port on a face the axis crosses ({AxisName(cyl.Axis)}min or {AxisName(cyl.Axis)}max), " +
-                   "or set OpenEms.Grid to Cartesian.";
+        // brief-sar-8b R-sar8b-1 — a lumped port or element on a cylinder round about the grid's axis is written in (ρ, α, z); one on
+        // a plane, or on another cylinder, is not.
+        if (problem.Ports.FirstOrDefault(p => p.Kind == Em3dPortKind.Lumped && p.Cylinder is null) is { } lumped)
+            return $"Port {lumped.SourceNumber ?? lumped.Number} is a lumped port on a plane, and circuitRF writes a lumped port on a cylindrical grid " +
+                   $"only when its gap is a patch of a cylinder about the grid's axis ({axisText}). Draw it on that cylinder, make it a wave port " +
+                   $"on a face the axis crosses ({AxisName(cyl.Axis)}min or {AxisName(cyl.Axis)}max), or set OpenEms.Grid to Cartesian.";
+        if (problem.LumpedElements.FirstOrDefault(l => l.Cylinder is null) is { } flat)
+            return $"Lumped element '{flat.Name}' is on a plane, and circuitRF writes a lumped element on a cylindrical grid only when its gap is " +
+                   $"a patch of a cylinder about the grid's axis ({axisText}). Draw it on that cylinder, or set OpenEms.Grid to Cartesian.";
+        foreach (var (name, patch) in CylindricalPatches(problem))
+            if (!patch.RoundAbout(a, ou, ov, tol))
+                return $"{char.ToUpperInvariant(name[0])}{name[1..]} is on a cylinder about {AxisName((FdtdAxis)patch.Axis)} through " +
+                       $"({FormatLength(FdtdCylinder.Get(patch.Origin, patch.U))}, {FormatLength(FdtdCylinder.Get(patch.Origin, patch.V))}), and the " +
+                       $"grid is round about {axisText}: a patch of a cylinder is a box of the grid only when the two axes are one. Set " +
+                       "OpenEms.Axis and OpenEms.AxisOriginUm to its cylinder's axis.";
         if (plan.Refusal is not null) return null;              // the writer says it, in the plan's words
         foreach (var feed in plan.Feeds)
         {
@@ -414,6 +499,142 @@ public static partial class FdtdGrid
         double nu = Math.Max(0, Math.Max(lo[u] - ou, ou - hi[u])), nv = Math.Max(0, Math.Max(lo[v] - ov, ov - hi[v]));
         double fu = Math.Max(Math.Abs(lo[u] - ou), Math.Abs(hi[u] - ou)), fv = Math.Max(Math.Abs(lo[v] - ov), Math.Abs(hi[v] - ov));
         return (Math.Sqrt(nu * nu + nv * nv), Math.Sqrt(fu * fu + fv * fv));
+    }
+
+    /// <summary>
+    /// brief-sar-8b R-sar8b-3 — why openEMS's MultiGrid cannot split this grid, or null: every radius inside the grid's ρ range,
+    /// and an odd number of azimuth lines at every level that splits (openEMS takes every second line inside each radius, and
+    /// refuses a level whose count is even).
+    /// </summary>
+    private static string? MultiGridRefusal(OpenEmsCylindrical cyl, IReadOnlyList<double> rho, int alphaLines)
+    {
+        if (cyl.MultiGridRadiiM is not { Count: > 0 } radii) return null;
+        foreach (double r in radii)
+            if (!(r > rho[0]) || !(r < rho[^1]))
+                return $"OpenEms.MultiGridRadiiUm holds {FormatLength(r)}, outside the grid's radii ({FormatLength(rho[0])} to {FormatLength(rho[^1])}): " +
+                       "a sub-grid is split off inside the grid.";
+        int n = alphaLines;
+        for (int level = 0; level < radii.Count; level++)
+        {
+            if (n % 2 == 0)
+                return $"openEMS's MultiGrid needs an odd number of azimuth lines at every level it splits, and level {level + 1} of {radii.Count} " +
+                       $"has {n} (the grid's {alphaLines}, halved {level} time{(level == 1 ? "" : "s")}). Give a line count of the form " +
+                       $"2^{radii.Count}·k + 1, or fewer radii.";
+            n = (n - 1) / 2 + 1;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// brief-sar-8b R-sar8b-3 — a cylindrical grid on the lines the setup gives (a CSXCAD file whose grid is cylindrical): ρ, α and z
+    /// exactly as given, the simulated domain the grid's extent, ρmax the side faces' common boundary and z's two ends the end faces'.
+    /// What is refused is the Cartesian given-lines path's (FdtdGrid.Explicit) in the cylinder's terms: a wave port; a sheet or gap on
+    /// a cylinder whose radius is not on a line; a gap whose two ends along its direction land on one line, or whose width holds none.
+    /// </summary>
+    private static FdtdGridResult BuildCylindricalGiven(Em3dProblem problem, OpenEmsGridSettings settings, OpenEmsCylindrical cyl,
+                                                        FdtdExplicitLines given, long? availableMemoryBytes)
+    {
+        int a = (int)cyl.Axis, u = (a + 1) % 3, v = (a + 2) % 3;
+        var ctx = new Context(problem, settings);
+        var box = problem.Boundary;
+        double span = Math.Max(box.Max.X - box.Min.X, Math.Max(box.Max.Y - box.Min.Y, box.Max.Z - box.Min.Z));
+        double tol = CoincidenceTolerance(span);
+        double ou = FdtdCylinder.Get(cyl.Origin, u), ov = FdtdCylinder.Get(cyl.Origin, v);
+        var kinds = new[] { box.Faces.XMin, box.Faces.XMax, box.Faces.YMin, box.Faces.YMax, box.Faces.ZMin, box.Faces.ZMax };
+        string axisText = $"{AxisName(cyl.Axis)} through ({AxisName((FdtdAxis)u)} {FormatLength(ou)}, {AxisName((FdtdAxis)v)} {FormatLength(ov)})";
+        string from = $"the lines OpenEms.GridLines gives ({given.Source})";
+        string[] sides = [CylFaceKeys[2 * u], CylFaceKeys[2 * u + 1], CylFaceKeys[2 * v], CylFaceKeys[2 * v + 1]];
+        var sideKinds = sides.Select(f => kinds[Array.IndexOf(CylFaceKeys, f)]).ToList();
+
+        FdtdAxisGrid Given(FdtdAxis ax, IReadOnlyList<double> lines, double padLo, double padHi)
+        {
+            double best = double.PositiveInfinity, at = lines[0];
+            for (int i = 1; i < lines.Count; i++)
+                if (lines[i] - lines[i - 1] < best) { best = lines[i] - lines[i - 1]; at = lines[i - 1]; }
+            return new FdtdAxisGrid(ax, lines, [], best, at, [new FdtdLineSource("OpenEms.GridLines", FdtdLineKind.Given, at)], padLo, padHi);
+        }
+        double rhoMin = given.X[0], rhoMax = given.X[^1];
+        var rho = Given(FdtdAxis.Rho, given.X, 0, 0);
+        var alpha = Given(FdtdAxis.Alpha, given.Y, 0, 0);
+        var z = Given((FdtdAxis)a, given.Z, ctx.BoxMin((FdtdAxis)a) - given.Z[0], given.Z[^1] - ctx.BoxMax((FdtdAxis)a));
+        int cells = given.Y.Count - 1;
+        double first = rhoMin > 0 ? rhoMin : (given.X[0] + given.X[1]) / 2;
+        int levels = cyl.MultiGridRadiiM?.Count ?? 0;
+        double arc = first * alpha.SmallestCellM * Math.Pow(2, levels);
+        var frame = new FdtdCylinder(cyl.Axis, cyl.Origin, rhoMin, rhoMin > 0 ? "OpenEms.GridLines" : null, rhoMax, sideKinds[0], sides,
+                                     cells, $"OpenEms.GridLines ({given.Y.Count} lines, {cells} cells)", arc, first);
+
+        string? refusal = null;
+        if (sideKinds.Distinct().Count() > 1)
+            refusal = $"A cylindrical grid about {axisText} replaces the air box's {string.Join(", ", sides)} faces by one outer radius, " +
+                      $"and they are {string.Join(", ", sides.Select((f, i) => $"{f} {sideKinds[i]}"))}. Give the four one boundary kind in the setup's AirBox.";
+        else if (problem.HasWavePorts)
+            refusal = $"This problem has wave ports, and it runs on {from}: a wave port's feed is a lattice of lines circuitRF's own grid places. " +
+                      "Remove OpenEms.GridLines, or make the ports lumped.";
+        else if (ctx.BoxMin((FdtdAxis)a) < given.Z[0] - tol || ctx.BoxMax((FdtdAxis)a) > given.Z[^1] + tol)
+            refusal = $"The air box runs from {AxisName(cyl.Axis)} = {FormatLength(ctx.BoxMin((FdtdAxis)a))} to {FormatLength(ctx.BoxMax((FdtdAxis)a))}, " +
+                      $"beyond {from}, which end at {FormatLength(given.Z[0])} and {FormatLength(given.Z[^1])}: openEMS simulates the grid's extent " +
+                      "only. Shrink the air box to lie inside the grid, or give lines that cover it.";
+        refusal ??= CylindricalPorts(problem, FdtdWavePortPlan.None, cyl, axisText, ou, ov, tol);
+        if (refusal is null)
+            foreach (var s in problem.Solids.Where(s => s.Role is not (Em3dRole.Air or Em3dRole.Conductor)))
+                if (RadialRange(s.Primitive, a, u, v, ou, ov, tol).Hi > rhoMax + tol)
+                {
+                    refusal = $"'{s.Name}' reaches past ρ = {FormatLength(rhoMax)}, the last radius of {from}: openEMS simulates the grid's extent only.";
+                    break;
+                }
+        if (refusal is null)
+            foreach (var (name, patch) in CylindricalPatches(problem))
+                if (GivenPatchRefusal(name, patch, problem, given, from) is { } why) { refusal = why; break; }
+        refusal ??= MultiGridRefusal(cyl, given.X, given.Y.Count);
+
+        long cellsTotal = checked((long)given.X.Count * cells * given.Z.Count);
+        double index = InnermostIndex(problem, a, u, v, ou, ov, first, tol);
+        double dt = index * CourantTimeStep(rho.SmallestCellM, arc, z.SmallestCellM);
+        double pulse = ExcitationLength(problem.Frequency);
+        long steps = (long)Math.Ceiling(pulse * (1 + RingDownPulses) / dt);
+        long memory = Em3dSizeEstimate.OpenEmsMemoryBytes(cellsTotal);
+        long limit = availableMemoryBytes ?? GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+        var result = new FdtdGridResult(rho, alpha, z, ctx.MinCell, cellsTotal, dt, pulse, steps, memory, [], [], refusal)
+                     { WavePorts = FdtdWavePortPlan.None, Cylinder = frame };
+        return refusal is null && memory > limit ? result with { Refusal = MemoryRefusal(result, limit) } : result;
+    }
+
+    /// <summary>Why a sheet or gap on a cylinder cannot be written on the given lines, or null: its radius on a ρ line; a gap's two ends
+    /// along its direction on two different lines, and a line across its width.</summary>
+    private static string? GivenPatchRefusal(string name, Em3dCylinderPatch patch, Em3dProblem problem, FdtdExplicitLines given, string from)
+    {
+        string who = char.ToUpperInvariant(name[0]) + name[1..];
+        if (!OnLine(given.X, patch.Radius))
+            return $"{who} lies on the cylinder ρ = {FormatLength(patch.Radius)}, {Between(given.X, patch.Radius)} of {from}: a sheet or gap on a " +
+                   "cylinder needs a line on its radius. Add one, or move it onto one.";
+        var gap = problem.Ports.Select(p => p.Cylinder).Concat(problem.LumpedElements.Select(l => l.Cylinder))
+                         .FirstOrDefault(g => g is not null && ReferenceEquals(g.Patch, patch));
+        if (gap is null) return null;
+        string axial = AxisName((FdtdAxis)patch.Axis);
+        double a0 = Wrap(patch.Alpha0, given.Y), a1 = a0 + (patch.Alpha1 - patch.Alpha0);
+        bool alongAxis = gap.Along == Em3dCylinderGapAxis.Axial;
+        var (alongLines, lo, hi, alongName) = alongAxis ? (given.Z, patch.Lo, patch.Hi, axial) : (given.Y, a0, a1, "α");
+        var (acrossLines, clo, chi, acrossName) = alongAxis ? (given.Y, a0, a1, "α") : (given.Z, patch.Lo, patch.Hi, axial);
+        if (NearestIndex(alongLines, lo) == NearestIndex(alongLines, hi))
+            return $"{who} runs along {alongName} from {Fmt(lo, alongName)} to {Fmt(hi, alongName)}, and both ends land on the one line of {from}: " +
+                   "it spans no cell, and openEMS would skip it. Add a line at each end of its gap.";
+        double ctol = CoincidenceTolerance(acrossLines[^1] - acrossLines[0]);
+        if (!acrossLines.Any(l => l >= clo - ctol && l <= chi + ctol))
+            return $"{who}'s width from {acrossName} = {Fmt(clo, acrossName)} to {Fmt(chi, acrossName)} holds no line of {from}: openEMS would move " +
+                   "it onto the nearer line. Add a line inside its width.";
+        return null;
+
+        static string Fmt(double v, string axis) => axis == "α" ? $"{(v * 180 / Math.PI).ToString("0.####", CultureInfo.InvariantCulture)}°" : FormatLength(v);
+    }
+
+    /// <summary>An azimuth moved into the given α lines' turn [first, first + 2π).</summary>
+    public static double Wrap(double alpha, IReadOnlyList<double> lines)
+    {
+        double a0 = lines[0], turn = 2 * Math.PI;
+        double w = alpha - turn * Math.Floor((alpha - a0) / turn);
+        // a value a hair below the turn's end is its start (or the closing line, which openEMS reads as the start)
+        return w >= a0 + turn - 1e-12 ? w - turn : w;
     }
 
     /// <summary>The refractive index every cell of the innermost ring lies in: the least, along the box, of the densest

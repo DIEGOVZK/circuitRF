@@ -7,6 +7,11 @@
 // replaces each slab by its normalised value, Ê = F·A⁻¹ (PortFieldSet's header), reading every port's slab at once — O(N) slabs
 // in memory, never O(N) volumes. Then the tissue matrix is computed from the files just written, through the reader a
 // recombination uses.
+//
+// ON A CYLINDRICAL GRID (brief-sar-8b) the cells are (ρ, α, z) and openEMS's dumps carry (ρ, α, z) components. Pass 1 turns each
+// cell's E and H onto the world's x, y and z at the cell's own azimuth, so every file holds world components, a recombination
+// and B1± need no frame, and |E|² — all SAR reads of E — is what it was. The manifest records the grid and its axis for the
+// cells' positions. B1's H dump is openEMS's HDF5 there (OpenEmsSarResults.CylindricalHFile).
 
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -30,7 +35,7 @@ public static class PortFieldSetWriter
         string folder, string stamp, string snpFileName, string setupName, Em3dSarPlan plan, Em3dProblem problem, string runDir,
         IReadOnlyList<int> portNumbers, IReadOnlyList<string> portNames, IReadOnlyList<Complex> z0,
         IReadOnlyList<IReadOnlyList<FdtdPortProbes>> runs, IReadOnlyList<(double Hz, int Port, double Efficiency)>? efficiencies = null,
-        RunControl? control = null, CancellationToken ct = default)
+        RunControl? control = null, CancellationToken ct = default, FdtdCylinder? cylinder = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(problem);
@@ -48,6 +53,8 @@ public static class PortFieldSetWriter
             Region = [.. plan.Region], RegionName = plan.RegionName, RegionStated = s.Region is not null,
             B1Region = [.. plan.B1Region], B1RegionName = plan.B1RegionName,
             MassesGrams = [.. s.MassesGrams], Method = s.Method.ToString(), B1 = s.B1, B0Axis = s.B0AxisName,
+            Grid = cylinder is null ? null : SarRunRecord.CylindricalGrid, CylinderAxis = cylinder is null ? null : cylinder.A,
+            CylinderOriginM = cylinder is null ? null : [cylinder.Origin.X, cylinder.Origin.Y, cylinder.Origin.Z],
         };
 
         try
@@ -73,7 +80,7 @@ public static class PortFieldSetWriter
 
             string? error;
             PortFieldFrequency freq;
-            try { (freq, error) = WriteFrequency(folder, j, hz, plan, tissue, runDir, portNumbers, inverse, control, ct); }
+            try { (freq, error) = WriteFrequency(folder, j, hz, plan, tissue, runDir, portNumbers, inverse, control, ct, cylinder); }
             catch (Exception e) when (e is IOException or InvalidDataException or OpenEmsHdf5Exception or ArgumentException or UnauthorizedAccessException)
             {
                 return (null, $"the per-port fields at {MaterialDispersion.Hz(hz)} could not be written ({e.Message}).");
@@ -104,7 +111,7 @@ public static class PortFieldSetWriter
 
     private static (PortFieldFrequency, string?) WriteFrequency(string folder, int j, double hz, Em3dSarPlan plan, List<Em3dSolid> tissue,
                                                                 string runDir, IReadOnlyList<int> portNumbers, Complex[,] inverse,
-                                                                RunControl? control, CancellationToken ct)
+                                                                RunControl? control, CancellationToken ct, FdtdCylinder? cylinder)
     {
         int n = portNumbers.Count;
         var freq = new PortFieldFrequency { Index = j, Hz = hz };
@@ -126,7 +133,7 @@ public static class PortFieldSetWriter
 
         // ── each cell's tissue: the run's own rule (OpenEmsSarResults.Owners) ───────────────────────────
         var grid = OpenEmsSarGrid.Read(Raw(0));
-        int[] owner = OpenEmsSarResults.Owners(grid, tissue, plan.Densities);
+        int[] owner = OpenEmsSarResults.Owners(grid, tissue, plan.Densities, cylinder);
         var owners = new short[owner.Length];
         for (int c = 0; c < owner.Length; c++) owners[c] = (short)owner[c];
         WriteWhole(Path.Combine(folder, PortFieldSet.CellFile(j, "owner")), "<i2", MemoryMarshal.AsBytes(owners.AsSpan()), freq.Shape);
@@ -152,6 +159,16 @@ public static class PortFieldSetWriter
                 var buf = new float[6 * slab.Ex.Length];
                 for (int c = 0; c < slab.Ex.Length; c++)
                 {
+                    if (cylinder is not null)
+                    {
+                        // (Eρ, Eα, Ez) turned onto the world's axes at the cell's azimuth (the file header)
+                        double alpha = ay.Centre(c / az.Count % ay.Count);
+                        var (wx, wy, wz) = cylinder.WorldComponents(slab.Ex[c].ToComplex(), slab.Ey[c].ToComplex(), slab.Ez[c].ToComplex(), alpha);
+                        buf[6 * c] = (float)wx.Real; buf[6 * c + 1] = (float)wx.Imaginary;
+                        buf[6 * c + 2] = (float)wy.Real; buf[6 * c + 3] = (float)wy.Imaginary;
+                        buf[6 * c + 4] = (float)wz.Real; buf[6 * c + 5] = (float)wz.Imaginary;
+                        continue;
+                    }
                     buf[6 * c] = slab.Ex[c].Re; buf[6 * c + 1] = slab.Ex[c].Im;
                     buf[6 * c + 2] = slab.Ey[c].Re; buf[6 * c + 3] = slab.Ey[c].Im;
                     buf[6 * c + 4] = slab.Ez[c].Re; buf[6 * c + 5] = slab.Ez[c].Im;
@@ -161,7 +178,8 @@ public static class PortFieldSetWriter
                 rho?.Write(MemoryMarshal.AsBytes(slab.Density.AsSpan()));
                 vol?.Write(MemoryMarshal.AsBytes(slab.Volume.AsSpan()));
             }
-            if (hasH && !WriteH(folder, j, portNumbers[k], runDir, ax, ay, az, fieldShape))
+            if (hasH && !(cylinder is null ? WriteH(folder, j, portNumbers[k], runDir, ax, ay, az, fieldShape)
+                                           : WriteCylindricalH(folder, j, portNumbers[k], runDir, ax, ay, az, fieldShape, cylinder)))
                 hasH = false;
             control?.TickStage();
         }
@@ -218,6 +236,36 @@ public static class PortFieldSetWriter
                     }
                 }
                 h.Write(MemoryMarshal.AsBytes(row.AsSpan()));
+            }
+        return true;
+    }
+
+    /// <summary>brief-sar-8b — port <paramref name="port"/>'s HDF5 H dump on a cylindrical grid, its (Hρ, Hα, Hz) turned onto the world's
+    /// axes at each cell's azimuth; false when its run wrote none or it is not on the field set's cells.</summary>
+    private static bool WriteCylindricalH(string folder, int j, int port, string runDir, SarAxis ax, SarAxis ay, SarAxis az, long[] shape,
+                                          FdtdCylinder cylinder)
+    {
+        string file = Path.Combine(runDir, OpenEmsRun.PortDirectory(port), OpenEmsSarResults.CylindricalHFile(j - 1));
+        if (!File.Exists(file)) return false;
+        var h = OpenEmsHdf5.ReadField(file);
+        if (!h.Mesh.Cylindrical || OpenEmsSarResults.Map(ax, h.Mesh.X) is not { } mx || OpenEmsSarResults.Map(ay, h.Mesh.Y) is not { } my ||
+            OpenEmsSarResults.Map(az, h.Mesh.Z) is not { } mz) return false;
+        int hny = h.Mesh.Ny, hnz = h.Mesh.Nz;
+        using var fs = Begin(Path.Combine(folder, PortFieldSet.FieldFile(port, j, 'H')), "<c8", shape);
+        var row = new float[6 * az.Count];
+        for (int i = 0; i < ax.Count; i++)
+            for (int jj = 0; jj < ay.Count; jj++)
+            {
+                double alpha = ay.Centre(jj);
+                for (int k = 0; k < az.Count; k++)
+                {
+                    int node = (mx[i] * hny + my[jj]) * hnz + mz[k];
+                    var (wx, wy, wz) = cylinder.WorldComponents(h.X[node].ToComplex(), h.Y[node].ToComplex(), h.Z[node].ToComplex(), alpha);
+                    row[6 * k] = (float)wx.Real; row[6 * k + 1] = (float)wx.Imaginary;
+                    row[6 * k + 2] = (float)wy.Real; row[6 * k + 3] = (float)wy.Imaginary;
+                    row[6 * k + 4] = (float)wz.Real; row[6 * k + 5] = (float)wz.Imaginary;
+                }
+                fs.Write(MemoryMarshal.AsBytes(row.AsSpan()));
             }
         return true;
     }

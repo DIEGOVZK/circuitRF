@@ -686,6 +686,7 @@ public static class C3dHierarchy
                 s.Outline = [.. s.Outline.Select(q => Mul(q, k))];
                 s.Holes = [.. s.Holes.Select(h => h.Select(q => Mul(q, k)).ToList())];
                 break;
+            case C3dCylinderSheet cs: cs.Base = Mul(cs.Base, k); cs.Length *= k; cs.Radius *= k; break;
             case C3dPolyline l:
                 l.Offset *= k;
                 l.Points = [.. l.Points.Select(q => Mul(q, k))];

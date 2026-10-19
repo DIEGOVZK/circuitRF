@@ -50,7 +50,7 @@ public static class C3dFillets
     /// §1a's kinds — Box, Prism, Cylinder, Polyhedron, Boolean, Step, or a solid already filleted or chamfered.</summary>
     public static string? TargetRefusal(C3dObject o) => o switch
     {
-        C3dSheet => SheetRefused,
+        C3dSheet or C3dCylinderSheet => SheetRefused,
         C3dSphere => $"'{o.Name}' is a sphere: its surface is one closed face, with no edge to round or bevel.",
         C3dEllipsoid => $"'{o.Name}' is an ellipsoid: its surface is one closed face, with no edge to round or bevel.",
         C3dPolyline => $"'{o.Name}' is a polyline — construction geometry, never in the problem: Extrude it first.",

@@ -116,6 +116,7 @@ public sealed partial class C3dPlacement : IC3dBindable
 [JsonDerivedType(typeof(C3dSphere),     "Sphere")]
 [JsonDerivedType(typeof(C3dEllipsoid),  "Ellipsoid")]
 [JsonDerivedType(typeof(C3dSheet),      "Sheet")]
+[JsonDerivedType(typeof(C3dCylinderSheet), "CylinderSheet")]
 [JsonDerivedType(typeof(C3dPolyline),   "Polyline")]
 [JsonDerivedType(typeof(C3dPolyhedron), "Polyhedron")]
 [JsonDerivedType(typeof(C3dWire),       "Wire")]
@@ -469,6 +470,48 @@ public sealed class C3dSheet : C3dObject
     /// <see cref="Image"/> (<c>check</c> warns otherwise). Written only when true.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Locked { get; set; }
+
+    public override IReadOnlyList<string> FaceNames() => [];
+}
+
+/// <summary>
+/// brief-sar-8b R-sar8b-1/-2 — a patch of the cylinder of radius <see cref="Radius"/> about a world axis: from <see cref="Base"/> (a
+/// point on the axis) <see cref="Length"/> along <see cref="Axis"/>, and from azimuth <see cref="StartDeg"/> through
+/// <see cref="SweepDeg"/>. The azimuth runs about the axis from the next world axis towards the one after it — for a z axis, from +x
+/// towards +y — which is openEMS's α on a cylindrical grid about that axis. Degrees, because a birdcage's rungs sit at multiples of
+/// 45° that no integer DBU states. What a <see cref="C3dCylinderSheet"/> is, and what a lumped port or element on a cylinder spans.
+/// </summary>
+public sealed class C3dCylinderRect : IC3dBindable
+{
+    [JsonIgnore] public Dictionary<string, C3dExpr?[]>? Exprs { get; set; }
+
+    public C3dAxis   Axis     { get; set; } = C3dAxis.Z;
+    public C3dPoint3 Base     { get; set; }
+    public long      Radius   { get; set; }
+    public long      Length   { get; set; }
+    public double    StartDeg { get; set; }
+    public double    SweepDeg { get; set; }
+}
+
+/// <summary>
+/// brief-sar-8b R-sar8b-2 — a conductor thin enough to be a surface, on a cylinder: a birdcage's rung or ring, a strip of zero
+/// radial thickness on r = <see cref="Radius"/> (<see cref="C3dCylinderRect"/>'s fields). A NEW SHEET KIND rather than a sector of a
+/// solid cylinder, which would need a thickness and a second radius the strip does not have (Em3dCylinderSheet.cs). openEMS's
+/// cylindrical grid about the same axis writes it as one (ρ, α, z) box, exact on the grid; every other lowering refuses it by name.
+/// A placement may move it and turn it about its own axis; one that tips the axis off x, y or z is refused.
+/// </summary>
+public sealed class C3dCylinderSheet : C3dObject
+{
+    public C3dAxis   Axis     { get; set; } = C3dAxis.Z;
+    public C3dPoint3 Base     { get; set; }
+    public long      Radius   { get; set; }
+    public long      Length   { get; set; }
+    public double    StartDeg { get; set; }
+    public double    SweepDeg { get; set; }
+
+    /// <summary>The same patch as a <see cref="C3dCylinderRect"/> — what the lowering and a port's contact test read.</summary>
+    [JsonIgnore]
+    public C3dCylinderRect Rect => new() { Axis = Axis, Base = Base, Radius = Radius, Length = Length, StartDeg = StartDeg, SweepDeg = SweepDeg };
 
     public override IReadOnlyList<string> FaceNames() => [];
 }
@@ -914,6 +957,14 @@ public sealed class C3dPort
     public long     Offset { get; set; }
     public C3dRect  Rect   { get; set; } = new();
 
+    /// <summary>
+    /// brief-sar-8b R-sar8b-1 — a lumped port whose gap is a patch of a cylinder instead of <see cref="Rect"/> on <see cref="Plane"/>
+    /// (which are then not read): its two ends are inferred from what its arcs and its axial edges touch, as a planar port's are from
+    /// its four edges. Written only when set; only openEMS's cylindrical grid about the same axis writes it.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public C3dCylinderRect? Cylinder { get; set; }
+
     /// <summary>The reference impedance, Ω — a real number or a complex one (<c>50</c>, <c>25+j10</c>), as a .cem's.</summary>
     public string Z0 { get; set; } = "50";
 
@@ -973,6 +1024,11 @@ public sealed class C3dLumpedElement
     public C3dPlane Plane  { get; set; }
     public long     Offset { get; set; }
     public C3dRect  Rect   { get; set; } = new();
+
+    /// <summary>brief-sar-8b R-sar8b-1 — the gap is a patch of a cylinder instead of <see cref="Rect"/>, as a port's may be
+    /// (<see cref="C3dPort.Cylinder"/>). Written only when set.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public C3dCylinderRect? Cylinder { get; set; }
 
     /// <summary>One end, by elaborated name; null is inferred. Which end is which does not matter to an R, L or C — only the
     /// axis they lie on, which is what stating both settles when the inference cannot.</summary>

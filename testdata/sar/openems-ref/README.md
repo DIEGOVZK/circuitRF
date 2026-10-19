@@ -100,6 +100,7 @@ the dump cell nearest z = 0, which is z = 1.25 mm.
 | `MRI_LP_Birdcage/summary.json` | values at the frequency point nearest f0 (128.25 MHz), the S11 minimum, and two values **the converter derives** rather than the script (`_derived`: per watt accepted at both ports together) |
 | `MRI_LP_Birdcage/port_ut1`, `MRI_LP_Birdcage/port_ut2`, `MRI_LP_Birdcage/port_it1`, `MRI_LP_Birdcage/port_it2` | the ports' time-domain probes (the script's own sampling) |
 | `MRI_LP_Birdcage/run.log` | the run's console output; `figures/` the script's three plots |
+| `MRI_LP_Birdcage/material_raw.h5` | SAR-8b: the material openEMS gives each cell of the script's own structure — its cylindrical grid and MultiGrid, its birdcage, its bundled body phantom — as a raw SAR dump (DumpType 29) over ρ 0–120 mm, the whole circle and z −130 to 130 mm: (49, 304, 106) cells, 1,261,312 of them tissue. Made by `tools/dump_birdcage_material.py` (below), not by the script: the XML already holds the FDTD settings, so the tool only adds the dump and stops after 20 steps. It is what circuitRF's own phantom is compared with voxel by voxel (`BirdcagePhantomVoxelTests`) |
 
 ### `analytic/`
 
@@ -125,6 +126,7 @@ octave --no-gui --norc testdata/sar/openems-ref/tools/run_birdcage.m ${OPENEMS_P
        ${SIM_ROOT} <out dir> ~/opt/openEMS/share/openEMS/matlab ~/opt/openEMS/share/CSXCAD/matlab ~/opt/openEMS/bin/openEMS [setup-only]
 python testdata/sar/openems-ref/tools/birdcage_to_npy.py <out dir>
 python testdata/sar/openems-ref/tools/dump_loop_material.py ~/opt/openEMS/bin/openEMS ~/opt/openEMS <scratch> testdata/sar/openems-ref
+python testdata/sar/openems-ref/tools/dump_birdcage_material.py ~/opt/openEMS/bin/openEMS ~/opt/openEMS <scratch> testdata/sar/openems-ref
 ```
 
 What each wrapper replaces, and nothing else: the plot backend (Agg, figures saved rather than shown), the geometry

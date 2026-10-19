@@ -196,8 +196,9 @@ public static class C3dProblemAssembly
     /// or a view with no setup at all — so neither borrows another setup's problem.
     /// </summary>
     public static Em3dProblem ViewProblem(IReadOnlyList<Em3dSolid> solids, IReadOnlyList<Em3dSheet> sheets, IReadOnlyList<Em3dMaterial> materials,
-                                          IReadOnlyList<Em3dPort> ports, Em3dAirBox box)
-        => new(solids, sheets, materials, ports, box, new Em3dFrequency(1e9, 1e9, 1, Em3dSweepKind.Linear), EmSetup.DefaultOperatingTempC);
+                                          IReadOnlyList<Em3dPort> ports, Em3dAirBox box, IReadOnlyList<Em3dCylinderSheet>? cylinderSheets = null)
+        => new(solids, sheets, materials, ports, box, new Em3dFrequency(1e9, 1e9, 1, Em3dSweepKind.Linear), EmSetup.DefaultOperatingTempC)
+           { CylinderSheets = cylinderSheets ?? [] };
 
     /// <summary>A box at <paramref name="extent"/> with every face absorbing: what a view is drawn in when no setup pads one.</summary>
     public static Em3dAirBox ExtentBox((double X0, double Y0, double Z0, double X1, double Y1, double Z1) extent)
@@ -274,8 +275,8 @@ public static class C3dProblemAssembly
                        "of the setup's air box. A solid's face may be Pec or Conductive.";
             var obj = document.Objects.FirstOrDefault(o => o.Name == b.Object);
             if (obj is null) return $"{where} names no object of this 3D view.";
-            if (obj is C3dSheet or C3dPolyline)
-                return $"{where} is on a {(obj is C3dSheet ? "sheet, which is already a conductor's surface" : "polyline, which is construction geometry")}: " +
+            if (obj is C3dSheet or C3dCylinderSheet or C3dPolyline)
+                return $"{where} is on a {(obj is C3dSheet or C3dCylinderSheet ? "sheet, which is already a conductor's surface" : "polyline, which is construction geometry")}: " +
                        "a boundary goes on a face of a dielectric or air solid.";
             // brief-em3d-64 R-em3d64-2f — through a disabled operation (lid, bore:side) is the standalone bore's side;
             // nothing in the file is rewritten.
@@ -478,6 +479,7 @@ public static class C3dProblemAssembly
             EigenmodeCount = setup.Eigenmode?.Count ?? EmEigenmode3D.DefaultCount,
             EigenmodeTargetHz = setup.Eigenmode?.TargetGHz is { } target ? target * 1e9 : fMin,
             LumpedElements = lumped,
+            CylinderSheets = e.CylinderSheets,
             SolidDensities = sar is null ? new Dictionary<string, double>() : SolidDensities(e, solids),
         };
         return new Em3dGenerationResult(problem, null, notes)

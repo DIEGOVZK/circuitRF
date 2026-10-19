@@ -1,0 +1,563 @@
+{
+ "FormatVersion": 1,
+ "DbuPerMicron": 1000,
+ "DisplayUnit": "Mm",
+ "SnapDbu": 1000,
+ "Variables": [
+  {
+   "Name": "Ccap",
+   "Expression": "2.6"
+  }
+ ],
+ "Objects": [
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung1Lower",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    -125000000
+   ],
+   "Radius": 120000000,
+   "Length": 122500000,
+   "StartDeg": -182.38732414637843,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung1Upper",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    2500000
+   ],
+   "Radius": 120000000,
+   "Length": 112500000,
+   "StartDeg": -182.38732414637843,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung2Lower",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    -125000000
+   ],
+   "Radius": 120000000,
+   "Length": 122500000,
+   "StartDeg": -137.38732414637843,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung2Upper",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    2500000
+   ],
+   "Radius": 120000000,
+   "Length": 122500000,
+   "StartDeg": -137.38732414637843,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung3Lower",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    -125000000
+   ],
+   "Radius": 120000000,
+   "Length": 122500000,
+   "StartDeg": -92.38732414637843,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung3Upper",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    2500000
+   ],
+   "Radius": 120000000,
+   "Length": 112500000,
+   "StartDeg": -92.38732414637843,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung4Lower",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    -125000000
+   ],
+   "Radius": 120000000,
+   "Length": 122500000,
+   "StartDeg": -47.38732414637843,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung4Upper",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    2500000
+   ],
+   "Radius": 120000000,
+   "Length": 122500000,
+   "StartDeg": -47.38732414637843,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung5Lower",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    -125000000
+   ],
+   "Radius": 120000000,
+   "Length": 122500000,
+   "StartDeg": -2.38732414637843,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung5Upper",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    2500000
+   ],
+   "Radius": 120000000,
+   "Length": 122500000,
+   "StartDeg": -2.38732414637843,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung6Lower",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    -125000000
+   ],
+   "Radius": 120000000,
+   "Length": 122500000,
+   "StartDeg": 42.61267585362157,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung6Upper",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    2500000
+   ],
+   "Radius": 120000000,
+   "Length": 122500000,
+   "StartDeg": 42.61267585362157,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung7Lower",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    -125000000
+   ],
+   "Radius": 120000000,
+   "Length": 122500000,
+   "StartDeg": 87.61267585362157,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung7Upper",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    2500000
+   ],
+   "Radius": 120000000,
+   "Length": 122500000,
+   "StartDeg": 87.61267585362157,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung8Lower",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    -125000000
+   ],
+   "Radius": 120000000,
+   "Length": 122500000,
+   "StartDeg": 132.61267585362157,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "rung8Upper",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    2500000
+   ],
+   "Radius": 120000000,
+   "Length": 122500000,
+   "StartDeg": 132.61267585362157,
+   "SweepDeg": 4.77464829275686
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "ringLower",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    -130000000
+   ],
+   "Radius": 120000000,
+   "Length": 10000000,
+   "StartDeg": -202.5,
+   "SweepDeg": 360
+  },
+  {
+   "$type": "CylinderSheet",
+   "Name": "ringUpper",
+   "Material": "PEC",
+   "Axis": "Z",
+   "Base": [
+    0,
+    0,
+    120000000
+   ],
+   "Radius": 120000000,
+   "Length": 10000000,
+   "StartDeg": -202.5,
+   "SweepDeg": 360
+  },
+  {
+   "$type": "Phantom",
+   "Name": "body",
+   "Shape": "Cylinder3",
+   "Centre": [
+    0,
+    0,
+    0
+   ],
+   "Radius": 100000000,
+   "Length": 260000000,
+   "Axis": "Z",
+   "Shell1": 8000000,
+   "Shell2": 10000000,
+   "Voxel": 2500000,
+   "Layers": [
+    {
+     "Name": "skin",
+     "Material": "openEMS body phantom skin (128 MHz)"
+    },
+    {
+     "Name": "bone",
+     "Material": "openEMS body phantom bone (128 MHz)"
+    },
+    {
+     "Name": "tissue",
+     "Material": "openEMS body phantom tissue (128 MHz)"
+    }
+   ]
+  }
+ ],
+ "Ports": [
+  {
+   "Number": 1,
+   "Name": "feed1",
+   "Kind": "Lumped",
+   "Cylinder": {
+    "Axis": "Z",
+    "Base": [
+     0,
+     0,
+     115000000
+    ],
+    "Radius": 120000000,
+    "Length": 5000000,
+    "StartDeg": -181.19366207318922,
+    "SweepDeg": 2.38732414637843
+   },
+   "Z0": "50"
+  },
+  {
+   "Number": 2,
+   "Name": "feed2",
+   "Kind": "Lumped",
+   "Cylinder": {
+    "Axis": "Z",
+    "Base": [
+     0,
+     0,
+     115000000
+    ],
+    "Radius": 120000000,
+    "Length": 5000000,
+    "StartDeg": -91.19366207318922,
+    "SweepDeg": 2.38732414637843
+   },
+   "Z0": "50"
+  }
+ ],
+ "LumpedElements": [
+  {
+   "Name": "cap1",
+   "Cylinder": {
+    "Axis": "Z",
+    "Base": [
+     0,
+     0,
+     -2500000
+    ],
+    "Radius": 120000000,
+    "Length": 5000000,
+    "StartDeg": -181.19366207318922,
+    "SweepDeg": 2.38732414637843
+   },
+   "C": "Ccap",
+   "CUnit": "pF"
+  },
+  {
+   "Name": "cap2",
+   "Cylinder": {
+    "Axis": "Z",
+    "Base": [
+     0,
+     0,
+     -2500000
+    ],
+    "Radius": 120000000,
+    "Length": 5000000,
+    "StartDeg": -136.19366207318922,
+    "SweepDeg": 2.38732414637843
+   },
+   "C": "Ccap",
+   "CUnit": "pF"
+  },
+  {
+   "Name": "cap3",
+   "Cylinder": {
+    "Axis": "Z",
+    "Base": [
+     0,
+     0,
+     -2500000
+    ],
+    "Radius": 120000000,
+    "Length": 5000000,
+    "StartDeg": -91.19366207318922,
+    "SweepDeg": 2.38732414637843
+   },
+   "C": "Ccap",
+   "CUnit": "pF"
+  },
+  {
+   "Name": "cap4",
+   "Cylinder": {
+    "Axis": "Z",
+    "Base": [
+     0,
+     0,
+     -2500000
+    ],
+    "Radius": 120000000,
+    "Length": 5000000,
+    "StartDeg": -46.193662073189216,
+    "SweepDeg": 2.38732414637843
+   },
+   "C": "Ccap",
+   "CUnit": "pF"
+  },
+  {
+   "Name": "cap5",
+   "Cylinder": {
+    "Axis": "Z",
+    "Base": [
+     0,
+     0,
+     -2500000
+    ],
+    "Radius": 120000000,
+    "Length": 5000000,
+    "StartDeg": -1.193662073189215,
+    "SweepDeg": 2.38732414637843
+   },
+   "C": "Ccap",
+   "CUnit": "pF"
+  },
+  {
+   "Name": "cap6",
+   "Cylinder": {
+    "Axis": "Z",
+    "Base": [
+     0,
+     0,
+     -2500000
+    ],
+    "Radius": 120000000,
+    "Length": 5000000,
+    "StartDeg": 43.806337926810784,
+    "SweepDeg": 2.38732414637843
+   },
+   "C": "Ccap",
+   "CUnit": "pF"
+  },
+  {
+   "Name": "cap7",
+   "Cylinder": {
+    "Axis": "Z",
+    "Base": [
+     0,
+     0,
+     -2500000
+    ],
+    "Radius": 120000000,
+    "Length": 5000000,
+    "StartDeg": 88.80633792681078,
+    "SweepDeg": 2.38732414637843
+   },
+   "C": "Ccap",
+   "CUnit": "pF"
+  },
+  {
+   "Name": "cap8",
+   "Cylinder": {
+    "Axis": "Z",
+    "Base": [
+     0,
+     0,
+     -2500000
+    ],
+    "Radius": 120000000,
+    "Length": 5000000,
+    "StartDeg": 133.80633792681078,
+    "SweepDeg": 2.38732414637843
+   },
+   "C": "Ccap",
+   "CUnit": "pF"
+  }
+ ],
+ "Setups": [
+  {
+   "FormatVersion": 1,
+   "Name": "ReferenceGrid",
+   "Frequency": {
+    "StartExpr": "0.75",
+    "StopExpr": "149.25",
+    "StepExpr": "",
+    "NumPoints": 198,
+    "Mode": "PointCount",
+    "Kind": "Linear",
+    "StartUnit": "MHz",
+    "StopUnit": "MHz",
+    "StepUnit": "MHz"
+   },
+   "Solver3D": "OpenEms",
+   "AirBox": {
+    "XMin": {
+     "PaddingUm": 200000,
+     "Boundary": "Pec"
+    },
+    "XMax": {
+     "PaddingUm": 200000,
+     "Boundary": "Pec"
+    },
+    "YMin": {
+     "PaddingUm": 200000,
+     "Boundary": "Pec"
+    },
+    "YMax": {
+     "PaddingUm": 200000,
+     "Boundary": "Pec"
+    },
+    "ZMin": {
+     "PaddingUm": 670000,
+     "Boundary": "Absorbing"
+    },
+    "ZMax": {
+     "PaddingUm": 670000,
+     "Boundary": "Absorbing"
+    }
+   },
+   "OpenEms": {
+    "Grid": "Cylindrical",
+    "Axis": "Z",
+    "AxisOriginUm": [
+     0,
+     0,
+     0
+    ],
+    "PmlCells": 8,
+    "EndCriterionDb": -40,
+    "MaxTimeSteps": 1000000,
+    "SaveFieldsGHz": [],
+    "CellConstantMaterial": true,
+    "MultiGridRadiiUm": [
+     10000,
+     20000
+    ],
+    "GridLines": {
+     "File": "../../../../openems-ref/MRI_LP_Birdcage/BirdCage.xml"
+    }
+   },
+   "Sar": {
+    "FrequenciesGHz": [
+     0.128
+    ],
+    "B1": true,
+    "B0Axis": "+z",
+    "PerPortFields": true
+   }
+  }
+ ]
+}

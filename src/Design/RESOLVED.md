@@ -20254,3 +20254,47 @@ Design note: `docs/design/sar.md` §11. Gates: `tests/Ui.Tests/Sar/FieldCosimTes
   them into one DiscMaterial.
 - **CSXCAD's uint8 index caps a body at 255 tissues** (sar.md §6.4, §13.3). Refused, naming the limit.
 Design note: `docs/design/sar.md` §13. Gates: `tests/Ui.Tests/Sar/VoxelImportTests.cs`.
+
+## `MRI_LP_Birdcage` on the cylindrical grid: sheets and gaps on a cylinder, given cylindrical lines, local SAR there (brief-sar-8b, 2026-10-18)
+
+- **A sheet on a cylinder is its own list, not an `Em3dSheet` with a flag.** Forty-odd consumers read `Em3dSheet` as a planar
+  polygon in a frame; one that missed a flag would solve a flat strip in silence. `Em3dProblem.CylinderSheets` is read by the
+  cylindrical writer, the grid, the precedence, the ports' contact rule and the 3D scene, and every other lowering refuses a problem
+  for which `Em3dProblem.FirstCylindrical()` is not null, naming the object (Cartesian openEMS, Gmsh/Palace, the thermal solver,
+  the STEP export). A gap on a cylinder rides `Em3dPort.Cylinder` / `Em3dLumpedElement.Cylinder` the same way: `Min`/`Max` are its
+  bounding box, which no lowering but the cylindrical one may take for a rectangle.
+- **A gap on a cylinder is measured analytically against a sheet on the same cylinder.** The chord of a 5 mm gap's arc at
+  r = 120 mm stands R(1 − cos(Δα/2)) = 26 µm — 26,000 DBU — inside the circle, so the planar rule (each edge as a segment against
+  the conductor's tessellation, to 1 DBU) would find no contact at all. Against anything else the arc is cut into chords a quarter
+  DBU off it.
+- **openEMS on a cylindrical grid writes (ρ, α, z) everywhere.** The raw SAR dump's `/Mesh` and `/CellWidth` are named `rho`,
+  `alpha`, `z` with `mesh_type` 1, α in radians unscaled; α's cell width is Δα times the drawing unit; E and H are (ρ, α, z)
+  components. B1's H dump is HDF5 there (circuitRF reads openEMS's VTK on a Cartesian grid only). The per-port field set stores the
+  WORLD's components, turned at each cell's own azimuth when it is written, so the recombination and B1± needed no change and |E|²
+  is what it was.
+- **A DiscMaterial on a cylindrical grid is looked up in Cartesian coordinates.** CSXCAD turns each cell centre to Cartesian before
+  it indexes the voxel file (`CSPropDiscMaterial::GetWeightingPos`, read, not copied), so the voxel phantom is the Cartesian writer's
+  file in openEMS's frame, claimed by a `CoordSystem="0"` box at priority 0.
+- **openEMS's MultiGrid needs an odd azimuth line count at every level it splits** (`Operator_CylinderMultiGrid::SetupCSXGrid`
+  throws otherwise, after the run has started). The grid refuses it first, naming the level. Its radii are in the drawing unit,
+  which is metres in circuitRF's files.
+- **circuitRF's own cylindrical grid starts its circle at 0, unless a gap crosses 0.** openEMS's lumped element and port are one box,
+  which cannot straddle the seam; the circle then starts in the middle of the widest stretch no gap covers. Every problem without a
+  gap on a cylinder keeps its lines.
+- **The tutorial's derived per-watt values use the frequency point nearest 128 MHz.** `summary.json`'s `_derived` values divide by
+  the accepted power at 128.25 MHz, 2.3 % below the accepted power at 128 MHz exactly (from the reference's own probes through
+  circuitRF's transform), so the comparison normalises at 128 MHz.
+- **A sheet edge on a line to rounding is not on the line, and openEMS does not round.** The first full run resonated 2.6 MHz low
+  (S11 minimum 124.61 MHz against 127.24) with the planes' correlations at 0.986 and peak SAR 9 % high, and the lowering gate — boxes
+  within 1e-9 m of the tutorial's — saw nothing. Hybrids of the tutorial's XML and circuitRF's, 7,000 steps each, found it: with
+  the tutorial's one `Metal` property swapped into circuitRF's file, port 1's voltage was the tutorial's to every digit; nothing
+  else swapped in changed anything. openEMS marks a PEC edge by `CSPrimBox::IsInside` at the edge's own position
+  (`Operator::CalcPEC`), with no tolerance — the rule §10.2 met on the excitation box. The tutorial's boxes and lines are the
+  same millimetre text, so the same doubles; circuitRF's lines are mm × 1e-3 and its edges came by other arithmetic: a rung's end
+  as base + length in metres (−0.125 + 0.1225 = −0.0025000000000000022, five ulps below the line, so the α-edges on z = −2.5 mm
+  were outside the box), its azimuths as degrees → radians at full precision against the file's fifteen digits (0.8270648300641148
+  against the line 0.827064830064115). Four rungs were a line narrower and every lower rung and the lower ring a line shorter, in
+  silence. **Fix: `FdtdGrid.LineOrSelf`** — a cylinder sheet's radius, azimuths and ends are written as the line each lies on, to
+  the given-line tolerance (1e-3 of the cell beside it), else as drawn; the gate compares exactly now, and a test with no reference
+  data reproduces both arithmetics on a small given grid. The fixed model's first probe samples are the tutorial's to every
+  printed digit (12 figures). The planar sheet's polygon on a Cartesian grid is still written as drawn (sar.md §10.10). sar.md §10a.6.

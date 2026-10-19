@@ -10,6 +10,12 @@
 // tissue each need one, so a cell's centre is tested against the tissue solids, the last-constructed first (it is the one
 // CSXCAD gives the cell: the innermost layer of a phantom); a cell no solid claims — a centre on a staircased face of a shape
 // whose test is its bounding box — takes the tissue of the nearest density. The engine never sees any of this: it takes a mask.
+//
+// ON A CYLINDRICAL GRID (brief-sar-8b R-sar8b-4) the dump's cells are (ρ, α, z): a cell's centre is turned into the world before it
+// is tested against a solid, the peak's centre is reported in the world, no cube is averaged (a cube is a Cartesian grid's: the
+// run service removed the masses and said so), and B1 is read from an HDF5 H dump whose Hρ and Hα are turned onto the world's
+// axes at the cell's own azimuth (sar.md §1.5) before B1± are formed. The volumes and their lines files stay in (ρ, α, z), and
+// the record says so (SarRunRecord.Grid), so nothing that reads a Cartesian volume reads them.
 
 using System.Globalization;
 using System.Numerics;
@@ -57,7 +63,7 @@ public static class OpenEmsSarResults
     public static SarProcessOutcome Process(Em3dSarPlan plan, Em3dProblem problem, string runDir, IReadOnlyList<SarPortDrive> drives,
                                             IReadOnlyList<(double Hz, int Port, double Efficiency)>? efficiencies = null,
                                             SolverInstallation? openEms = null, int? maxCores = null, RunControl? control = null,
-                                            CancellationToken ct = default)
+                                            CancellationToken ct = default, FdtdCylinder? cylinder = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(problem);
@@ -92,7 +98,7 @@ public static class OpenEmsSarResults
 
             // ── which tissue each cell is, when anything needs it ───────────────────────────────────────
             bool named = s.Region is not null;
-            int[]? owner = named || s.B1 ? Owners(grid, tissue, plan.Densities) : null;
+            int[]? owner = named || s.B1 ? Owners(grid, tissue, plan.Densities, cylinder) : null;
             var region = named
                 ? SarRegion.Mask(Mask(owner!, i => regionSet.Contains(tissue[i].Name)), plan.RegionName)
                 : SarRegion.All;
@@ -114,6 +120,7 @@ public static class OpenEmsSarResults
                 RadiationEfficiency = Efficiency(efficiencies, drive.Port, drive.FrequencyHz),
                 Region = plan.RegionName, AbsorbedPowerW = result.AbsorbedPowerW, TissueMassKg = result.TissueMassKg,
                 UncountedPowerW = result.UncountedPowerW, Shape = [grid.Nx, grid.Ny, grid.Nz],
+                Grid = cylinder is null ? null : SarRunRecord.CylindricalGrid,
             };
             if (!(record.AcceptedPowerW > 0))
                 warnings.Add($"Port {drive.Port} accepted no power at {MaterialDispersion.Hz(drive.FrequencyHz)} ({G(record.AcceptedPowerW)} W), " +
@@ -126,12 +133,12 @@ public static class OpenEmsSarResults
             // ── the volumes, as solved ──────────────────────────────────────────────────────────────────
             int[] shape = [grid.Nx, grid.Ny, grid.Nz];
             Write(dir, j, SarVolumeFiles.LocalQuantity, result.LocalSar, shape, record);
-            if (result.LocalPeak is { } lp) record.Peaks.Add(Peak(SarVolumeFiles.LocalQuantity, lp, grid, owner, tissue, materials));
+            if (result.LocalPeak is { } lp) record.Peaks.Add(Peak(SarVolumeFiles.LocalQuantity, lp, grid, owner, tissue, materials, cylinder));
             foreach (var avg in result.Averages)
             {
                 string q = SarSettings.AveragedName(avg.MassGrams);
                 Write(dir, j, q, avg.Sar, shape, record);
-                if (avg.Peak is { } p) record.Peaks.Add(Peak(q, p, grid, owner, tissue, materials));
+                if (avg.Peak is { } p) record.Peaks.Add(Peak(q, p, grid, owner, tissue, materials, cylinder));
             }
             SarVolumeFiles.WriteFloat64(Path.Combine(dir, SarVolumeFiles.LinesFile(j, 'x')), Centres(grid.X));
             SarVolumeFiles.WriteFloat64(Path.Combine(dir, SarVolumeFiles.LinesFile(j, 'y')), Centres(grid.Y));
@@ -142,7 +149,7 @@ public static class OpenEmsSarResults
             {
                 record.B0Axis = s.B0AxisName;
                 record.B1Region = plan.B1RegionName;
-                if (B1(dir, j, grid, s, owner!, tissue, b1Solids, b1Set, out float[]? plus, out float[]? minus, out double? mean) is { } b1Why)
+                if (B1(dir, j, grid, s, owner!, tissue, b1Solids, b1Set, cylinder, out float[]? plus, out float[]? minus, out double? mean) is { } b1Why)
                     warnings.Add($"B1 at {at} was not computed: {b1Why}");
                 else
                 {
@@ -251,8 +258,10 @@ public static class OpenEmsSarResults
         return c;
     }
 
-    /// <summary>Each cell's tissue: an index into <paramref name="tissue"/>, or −1 for background (ρ = 0).</summary>
-    internal static int[] Owners(SarGrid grid, IReadOnlyList<Em3dSolid> tissue, IReadOnlyDictionary<string, double> densities)
+    /// <summary>Each cell's tissue: an index into <paramref name="tissue"/>, or −1 for background (ρ = 0). brief-sar-8b — on a
+    /// cylindrical grid each centre is turned into the world first.</summary>
+    internal static int[] Owners(SarGrid grid, IReadOnlyList<Em3dSolid> tissue, IReadOnlyDictionary<string, double> densities,
+                                 FdtdCylinder? cylinder = null)
     {
         var owner = new int[grid.Count];
         double[] rho = [.. tissue.Select(t => densities[t.Name])];
@@ -266,7 +275,7 @@ public static class OpenEmsSarResults
                 {
                     int c = grid.Index(i, jj, k);
                     if (!(grid.Density[c] > 0)) { owner[c] = -1; continue; }
-                    var q = new Point3(x, y, grid.Z.Centre(k));
+                    var q = WorldCentre(cylinder, x, y, grid.Z.Centre(k));
                     int found = -1;
                     for (int t = 0; t < tissue.Count && found < 0; t++)
                         if (Holds(tissue[t], q)) found = t;
@@ -290,15 +299,19 @@ public static class OpenEmsSarResults
         return m;
     }
 
+    /// <summary>brief-sar-8b — a dump cell's centre in the world: as it is on a Cartesian grid, turned from (ρ, α, z) on a cylindrical one.</summary>
+    internal static Point3 WorldCentre(FdtdCylinder? cylinder, double x, double y, double z)
+        => cylinder is null ? new Point3(x, y, z) : cylinder.World(x, y, z);
+
     private static SarPeakRecord Peak(string quantity, SarPeak p, SarGrid grid, int[]? owner, IReadOnlyList<Em3dSolid> tissue,
-                                      IReadOnlyDictionary<string, Em3dMaterial> materials)
+                                      IReadOnlyDictionary<string, Em3dMaterial> materials, FdtdCylinder? cylinder = null)
     {
-        int t = owner is not null ? owner[grid.Index(p.I, p.J, p.K)]
-              : OwnerAt(new Point3(p.XM, p.YM, p.ZM), tissue);
+        var at = WorldCentre(cylinder, p.XM, p.YM, p.ZM);
+        int t = owner is not null ? owner[grid.Index(p.I, p.J, p.K)] : OwnerAt(at, tissue);
         var solid = t >= 0 && t < tissue.Count ? tissue[t] : null;
         return new SarPeakRecord
         {
-            Quantity = quantity, Value = p.Value, Cell = [p.I, p.J, p.K], CentreM = [p.XM, p.YM, p.ZM],
+            Quantity = quantity, Value = p.Value, Cell = [p.I, p.J, p.K], CentreM = [at.X, at.Y, at.Z],
             CubeLoM = p.Cube?.LoM, CubeHiM = p.Cube?.HiM, CubeMassKg = p.Cube?.MassKg,
             Kind = p.Cube is null ? null : p.Kind.ToString(), Object = solid?.Name,
             Material = solid is not null && materials.ContainsKey(solid.Material) ? solid.Material : null,
@@ -320,11 +333,12 @@ public static class OpenEmsSarResults
     /// and the volume-weighted mean |B1+| over B1's region. Null on success; otherwise why not.
     /// </summary>
     private static string? B1(string dir, int j, SarGrid grid, SarSettings s, int[] owner, IReadOnlyList<Em3dSolid> tissue,
-                              IReadOnlyList<Em3dSolid> b1Solids, HashSet<string> b1Set,
+                              IReadOnlyList<Em3dSolid> b1Solids, HashSet<string> b1Set, FdtdCylinder? cylinder,
                               out float[]? plus, out float[]? minus, out double? mean)
     {
         plus = minus = null;
         mean = null;
+        if (cylinder is not null) return CylindricalB1(dir, j, grid, s, owner, tissue, b1Solids, b1Set, cylinder, out plus, out minus, out mean);
         string? abs = Directory.Exists(dir) ? Directory.EnumerateFiles(dir, $"{Em3dSar.HDump(j)}_f=*_abs.vtr").FirstOrDefault() : null;
         if (abs is null) return $"openEMS wrote no H dump ({Em3dSar.HDump(j)}) in '{dir}'.";
         string argFile = abs[..^"_abs.vtr".Length] + "_arg.vtr";
@@ -359,6 +373,62 @@ public static class OpenEmsSarResults
                     ls += bp.Magnitude * v;
                     lv += v;
                 }
+            lock (gate) { sum += ls; vol += lv; }
+        });
+        plus = p;
+        minus = n;
+        mean = vol > 0 ? sum / vol : null;
+        return null;
+    }
+
+    /// <summary>brief-sar-8b — the H dump beside a cylindrical grid's raw dump, as openEMS's HDF5 dump writes it there.</summary>
+    public static string CylindricalHFile(int j) => Em3dSar.HDump(j) + ".h5";
+
+    /// <summary>
+    /// brief-sar-8b R-sar8b-4 — |B1+| and |B1−| on a cylindrical grid: the HDF5 H dump's (Hρ, Hα, Hz) on the raw dump's cells, each
+    /// turned onto the world's axes at the cell's own azimuth (FdtdCylinder.WorldComponents), then B1± as on a Cartesian grid.
+    /// </summary>
+    private static string? CylindricalB1(string dir, int j, SarGrid grid, SarSettings s, int[] owner, IReadOnlyList<Em3dSolid> tissue,
+                                         IReadOnlyList<Em3dSolid> b1Solids, HashSet<string> b1Set, FdtdCylinder cylinder,
+                                         out float[]? plus, out float[]? minus, out double? mean)
+    {
+        plus = minus = null;
+        mean = null;
+        string file = Path.Combine(dir, CylindricalHFile(j));
+        if (!File.Exists(file)) return $"openEMS wrote no H dump ('{file}').";
+        RfCore.Hdf5.OpenEmsField h;
+        try { h = RfCore.Hdf5.OpenEmsHdf5.ReadField(file); }
+        catch (Exception e) when (e is IOException or InvalidDataException or RfCore.Hdf5.OpenEmsHdf5Exception or ArgumentException) { return e.Message; }
+        if (!h.Mesh.Cylindrical) return $"'{file}' is not on a cylindrical grid.";
+        if (Map(grid.X, h.Mesh.X) is not { } mx || Map(grid.Y, h.Mesh.Y) is not { } my || Map(grid.Z, h.Mesh.Z) is not { } mz)
+            return "the H dump's cells are not the SAR dump's.";
+        int hny = h.Mesh.Ny, hnz = h.Mesh.Nz;
+        var p = new float[grid.Count];
+        var n = new float[grid.Count];
+        double sum = 0, vol = 0;
+        var gate = new object();
+        Parallel.For(0, grid.Nx, i =>
+        {
+            double ls = 0, lv = 0;
+            for (int jj = 0; jj < grid.Ny; jj++)
+            {
+                double alpha = grid.Y.Centre(jj);
+                for (int k = 0; k < grid.Nz; k++)
+                {
+                    int node = (mx[i] * hny + my[jj]) * hnz + mz[k];
+                    var (hx, hy, hz) = cylinder.WorldComponents(h.X[node].ToComplex(), h.Y[node].ToComplex(), h.Z[node].ToComplex(), alpha);
+                    var (bp, bm) = SarB1.FromH(hx, hy, hz, s.B0Axis, s.B0Sign);
+                    int c = grid.Index(i, jj, k);
+                    p[c] = (float)bp.Magnitude;
+                    n[c] = (float)bm.Magnitude;
+                    bool inRegion = owner[c] >= 0 ? b1Set.Contains(tissue[owner[c]].Name)
+                                  : b1Solids.Any(b => Holds(b, cylinder.World(grid.X.Centre(i), alpha, grid.Z.Centre(k))));
+                    if (!inRegion) continue;
+                    double v = grid.Volume[c];
+                    ls += bp.Magnitude * v;
+                    lv += v;
+                }
+            }
             lock (gate) { sum += ls; vol += lv; }
         });
         plus = p;

@@ -91,6 +91,7 @@ public static class C3dModelled
         {
             Solids = [.. e.Solids.Where(s => Keep(s.Name))],
             Sheets = [.. e.Sheets.Where(s => Keep(s.Name))],
+            CylinderSheets = [.. e.CylinderSheets.Where(s => Keep(s.Name))],
             Refusals = refusals,
             Notes = notes,
             Wires = [.. e.Wires.Where(w => Keep(w.Name))],

@@ -64,7 +64,12 @@ public sealed record C3dPortResult(C3dPort Port, Em3dPort? Resolved, string? Ref
 public sealed class C3dPortContext
 {
     internal sealed record Conductor(string Name, (double X0, double Y0, double Z0, double X1, double Y1, double Z1) Box,
-                                     Em3dTriangleMesh? Mesh, Em3dCylinder? Cylinder, double Area, int Axis = -1, double At = 0);
+                                     Em3dTriangleMesh? Mesh, Em3dCylinder? Cylinder, double Area, int Axis = -1, double At = 0)
+    {
+        /// <summary>brief-sar-8b — a sheet on a cylinder: its patch, measured exactly by a gap on the same cylinder (its
+        /// <see cref="Mesh"/> is the patch's tessellation, for anything else).</summary>
+        public Em3dCylinderPatch? Patch { get; init; }
+    }
 
     internal readonly List<Conductor> Conductors = [];
     internal readonly HashSet<string> Ground;
@@ -114,6 +119,12 @@ public sealed class C3dPortContext
             var mesh = Em3dTessellation.OfSheet(sh);
             // Both of a sheet's faces are surface: a sheet is a conductor thin enough to be one.
             Conductors.Add(new Conductor(sh.Name, sh.WorldBounds(), mesh, null, 2 * Area(mesh)));
+        }
+        foreach (var cs in elaboration.CylinderSheets)
+        {
+            var p = cs.Patch;
+            Conductors.Add(new Conductor(cs.Name, cs.WorldBounds(), p.Tessellate(cs.Name), null, 2 * p.Radius * (p.Alpha1 - p.Alpha0) * (p.Hi - p.Lo))
+                           { Patch = p });
         }
         if (box is not null)
         {
@@ -306,6 +317,15 @@ public static class C3dPorts
             if (!(z0.Real > 0))
                 return Refuse(port, $"{label}'s Z0 is {port.Z0} Ω; a port's reference impedance has a positive real part.");
         }
+        if (port.Cylinder is { } onCylinder)
+        {
+            if (port.Terminals is null && (port.Positive is null) != (port.Negative is null))
+                return Refuse(port, $"{label} states its {(port.Positive is null ? "Negative" : "Positive")} end only. State both " +
+                                    "ends, or neither and let what the port touches decide.");
+            return port.Kind == Em3dPortKind.Wave
+                ? Refuse(port, $"{label} is a wave port on a cylinder. A gap on a cylinder is a lumped port; a wave port lies on a face of the air box.")
+                : LumpedOnCylinder(port, label, z0, context, onCylinder, dbuPerMicron);
+        }
         if (port.Rect.Size.U <= 0 || port.Rect.Size.V <= 0)
             return Refuse(port, $"{label}'s rectangle has no area ({port.Rect.Size.U} × {port.Rect.Size.V} DBU).");
         if (port.Terminals is null && (port.Positive is null) != (port.Negative is null))
@@ -441,6 +461,134 @@ public static class C3dPorts
         var resolved = new Em3dPort(port.Number, ProblemName(port.Number), positive, negative, min, max, direction, z0,
                                     new Em3dReferencePlane(centre, normal, 0));
         return new C3dPortResult(port, resolved, null, contacts, reason);
+    }
+
+    // ── brief-sar-8b R-sar8b-1 — a lumped gap on a cylinder ────────────────────────────────────
+
+    /// <summary>One edge of a gap on a cylinder: an axial line at azimuth <paramref name="At"/> (an α edge), or an arc at axial
+    /// coordinate <paramref name="At"/> (an axial edge), from <paramref name="From"/> to <paramref name="To"/> along it.</summary>
+    private readonly record struct CylEdge(bool Arc, double At, double From, double To);
+
+    /// <summary>The cylinder edges' names, in the planar edges' order: the two α edges (the pair across the azimuth), then the two arcs.</summary>
+    private static readonly string[] CylEdgeNames = ["start azimuth", "end azimuth", "lower arc", "upper arc"];
+
+    /// <summary>
+    /// A lumped port's rule on a patch of a cylinder: the patch's four edges — its two axial lines and its two arcs, their ends
+    /// pulled in by two DBU — tested for contact against every conductor; exactly one pair of opposite edges each touching one
+    /// conductor, the two different. The arcs' pair runs the current along the axis, the axial lines' pair round it. A sheet on
+    /// the same cylinder is measured exactly; anything else against the edge as chords no more than a quarter DBU off it.
+    /// </summary>
+    private static C3dPortResult LumpedOnCylinder(C3dPort port, string label, Complex z0, C3dPortContext ctx, C3dCylinderRect rect, int dbuPerMicron)
+    {
+        var (patch, why) = C3dLowering.CylinderPatch(rect, C3dTransform.Identity, dbuPerMicron);
+        if (patch is null) return Refuse(port, $"{label} {why}");
+        if (patch.Problems(label) is { Count: > 0 } bad) return Refuse(port, string.Join(" ", bad));
+        if (!(patch.Hi > patch.Lo)) return Refuse(port, $"{label}'s gap on a cylinder has no length along its axis.");
+        double inset = 2 * ctx.Dbu, angInset = Math.Min(inset / patch.Radius, (patch.Alpha1 - patch.Alpha0) / 4);
+        double sInset = Math.Min(inset, (patch.Hi - patch.Lo) / 4);
+        var edges = new[]
+        {
+            new CylEdge(false, patch.Alpha0, patch.Lo + sInset, patch.Hi - sInset), new CylEdge(false, patch.Alpha1, patch.Lo + sInset, patch.Hi - sInset),
+            new CylEdge(true, patch.Lo, patch.Alpha0 + angInset, patch.Alpha1 - angInset), new CylEdge(true, patch.Hi, patch.Alpha0 + angInset, patch.Alpha1 - angInset),
+        };
+
+        string negative, positive, reason;
+        int pair;
+        bool negativeOnLow;
+        IReadOnlyList<(string, IReadOnlyList<string>)> contacts = [];
+        if (port.Positive is { } sp && port.Negative is { } sn)
+        {
+            var pc = ctx.Conductors.FirstOrDefault(c => c.Name == sp);
+            var nc = ctx.Conductors.FirstOrDefault(c => c.Name == sn);
+            if (pc is null || nc is null)
+                return Refuse(port, $"{label} names '{(pc is null ? sp : sn)}' as its {(pc is null ? "Positive" : "Negative")} end, " +
+                                    "which is no conductor of the elaborated model" + (ctx.Box is null ? "" : " and no PEC face of the setup's air box") + ".");
+            double best = double.PositiveInfinity;
+            (pair, negativeOnLow) = (0, true);
+            for (int k = 0; k < 2; k++)
+                foreach (bool low in new[] { true, false })
+                {
+                    double d = CylDistance(ctx, nc, patch, edges[2 * k + (low ? 0 : 1)]) + CylDistance(ctx, pc, patch, edges[2 * k + (low ? 1 : 0)]);
+                    if (d < best) (best, pair, negativeOnLow) = (d, k, low);
+                }
+            (negative, positive) = (sn, sp);
+            reason = "both ends are stated";
+        }
+        else
+        {
+            ctx.InferenceRuns++;
+            var touching = edges.Select(e => ctx.Conductors.Where(c => CylDistance(ctx, c, patch, e) <= ctx.Dbu).Select(c => c.Name).ToList()).ToArray();
+            contacts = [.. CylEdgeNames.Select((n, i) => (n, (IReadOnlyList<string>)touching[i]))];
+            var valid = new List<int>();
+            for (int k = 0; k < 2; k++)
+                if (touching[2 * k].Count == 1 && touching[2 * k + 1].Count == 1 && touching[2 * k][0] != touching[2 * k + 1][0])
+                    valid.Add(k);
+            if (valid.Count != 1)
+            {
+                string Names(List<string> n) => n.Count == 0 ? "nothing" : string.Join(" and ", n.Select(x => $"'{x}'"));
+                return Refuse(port, $"{label} is a gap on a cylinder, and lies between two conductors only when one pair of its opposite edges each " +
+                                    $"touches one: it touches {Names(touching[0])} at its start azimuth, {Names(touching[1])} at its end azimuth, " +
+                                    $"{Names(touching[2])} on its lower arc and {Names(touching[3])} on its upper arc. Draw it so two opposite " +
+                                    "edges lie on the metal, or state Positive and Negative.", contacts);
+            }
+            pair = valid[0];
+            string low = touching[2 * pair][0], high = touching[2 * pair + 1][0];
+            (negative, reason) = Negative(ctx.Conductors.First(c => c.Name == low), ctx.Conductors.First(c => c.Name == high), ctx);
+            negativeOnLow = negative == low;
+            positive = negativeOnLow ? high : low;
+        }
+        if (port.Flip)
+        {
+            (negative, positive) = (positive, negative);
+            negativeOnLow = !negativeOnLow;
+            reason += "; Flip swaps them";
+        }
+
+        var gap = new Em3dCylinderGap(patch, pair == 0 ? Em3dCylinderGapAxis.Azimuthal : Em3dCylinderGapAxis.Axial, negativeOnLow ? 1 : -1);
+        var (x0, y0, z0b, x1, y1, z1) = patch.Bounds();
+        var centre = patch.Centre;
+        var outward = Geometry3.Sub(centre, patch.World((patch.Alpha0 + patch.Alpha1) / 2, (patch.Lo + patch.Hi) / 2, 0));
+        double len = Math.Sqrt(Geometry3.Dot(outward, outward));
+        var inward = new Point3(-outward.X / len, -outward.Y / len, -outward.Z / len);
+        var resolved = new Em3dPort(port.Number, ProblemName(port.Number), positive, negative, new Point3(x0, y0, z0b), new Point3(x1, y1, z1),
+                                    gap.Direction, z0, new Em3dReferencePlane(centre, inward, 0)) { Cylinder = gap };
+        return new C3dPortResult(port, resolved, null, contacts, reason);
+    }
+
+    /// <summary>The distance from a gap's edge on <paramref name="patch"/>'s cylinder to conductor <paramref name="c"/>, metres.</summary>
+    private static double CylDistance(C3dPortContext ctx, C3dPortContext.Conductor c, Em3dCylinderPatch patch, CylEdge e)
+    {
+        if (c.Patch is { } q)
+        {
+            if (q.Axis != patch.Axis || Math.Abs(C3dPortContext.Get(q.Origin, q.U) - C3dPortContext.Get(patch.Origin, patch.U)) > ctx.Dbu ||
+                Math.Abs(C3dPortContext.Get(q.Origin, q.V) - C3dPortContext.Get(patch.Origin, patch.V)) > ctx.Dbu)
+                return Chords(ctx, c, patch, e);
+            double radial = Math.Abs(q.Radius - patch.Radius);
+            double OutsideAxial(double lo, double hi) => Math.Max(0, Math.Max(q.Lo - lo, hi - q.Hi));
+            double OutsideAngle(double lo, double hi)
+            {
+                if (q.FullCircle) return 0;
+                // The edge's angular range moved into the patch's turn, then how far either end falls outside it, as an arc.
+                double shift = 2 * Math.PI * Math.Floor((lo - q.Alpha0) / (2 * Math.PI));
+                double a0 = lo - shift, a1 = hi - shift;
+                return Math.Max(0, Math.Max(q.Alpha0 - a0, a1 - q.Alpha1)) * q.Radius;
+            }
+            return e.Arc ? radial + OutsideAxial(e.At, e.At) + OutsideAngle(e.From, e.To)
+                         : radial + OutsideAxial(e.From, e.To) + OutsideAngle(e.At, e.At);
+        }
+        return Chords(ctx, c, patch, e);
+    }
+
+    /// <summary>The edge as straight chords (one for an axial line; for an arc, enough that none strays a quarter DBU off it).</summary>
+    private static double Chords(C3dPortContext ctx, C3dPortContext.Conductor c, Em3dCylinderPatch patch, CylEdge e)
+    {
+        if (!e.Arc) return ctx.Distance(c, patch.World(e.At, e.From), patch.World(e.At, e.To));
+        double step = Math.Sqrt(8 * 0.25 * ctx.Dbu / patch.Radius);
+        int n = Math.Clamp((int)Math.Ceiling((e.To - e.From) / step), 1, 4096);
+        double best = double.PositiveInfinity;
+        for (int i = 0; i < n && best > 0; i++)
+            best = Math.Min(best, ctx.Distance(c, patch.World(e.From + (e.To - e.From) * i / n, e.At), patch.World(e.From + (e.To - e.From) * (i + 1) / n, e.At)));
+        return best;
     }
 
     /// <summary>R-em3d49-2b — the refusal, naming what each edge touches.</summary>
