@@ -326,6 +326,10 @@
                                             <NativeMenuItem Header="Flat Phantom" ToolTip="A liquid in an open-topped shell. Requires an active 3D editor." Command="{Binding ThreeDAddPhantomCommand}" CommandParameter="FlatBox"/>
                                             <NativeMenuItem Header="Sphere" ToolTip="One homogeneous sphere. Requires an active 3D editor." Command="{Binding ThreeDAddPhantomCommand}" CommandParameter="Sphere1"/>
                                             <NativeMenuItem Header="Box" ToolTip="One homogeneous box. Requires an active 3D editor." Command="{Binding ThreeDAddPhantomCommand}" CommandParameter="Box1"/>
+                                            <NativeMenuItem Header="Generic Head (circuitRF's own)" ToolTip="An ellipsoid shell of head liquid with a flat ear spacer each side: circuitRF's own shape, not a standard's mannequin. Requires an active 3D editor." Command="{Binding ThreeDAddPhantomCommand}" CommandParameter="Head"/>
+                                            <NativeMenuItemSeparator/>
+                                            <NativeMenuItem Header="Place Against Phantom…" ToolTip="Puts the selected antenna or device against a phantom face at a separation and a tilt. Requires an active 3D editor." Command="{Binding ThreeDPlaceAgainstPhantomCommand}"/>
+                                            <NativeMenuItem Header="Band Sweep…" ToolTip="One SAR setup per band from a template, run in turn, and psSAR at the rated power beside the reference values. Requires an active 3D editor." Command="{Binding ThreeDBandSweepCommand}"/>
                                         </NativeMenu>
                                     </NativeMenuItem>
                                     <NativeMenuItem Header="Port" ToolTip="A port between two conductors, two clicks; its polarity is inferred from what it touches. Requires an active 3D editor." Command="{Binding ThreeDDrawCommand}" CommandParameter="Port"/>
@@ -1361,6 +1365,14 @@
                                   ToolTip.Tip="One homogeneous sphere. Requires an active 3D editor."/>
                         <MenuItem Header="B_ox" Command="{Binding ThreeDAddPhantomCommand}" CommandParameter="Box1"
                                   ToolTip.Tip="One homogeneous box. Requires an active 3D editor."/>
+                        <!-- brief-sar-12 — circuitRF's own head, the placement helper and the band sweep. -->
+                        <MenuItem Header="_Generic Head (circuitRF's own)" Command="{Binding ThreeDAddPhantomCommand}" CommandParameter="Head"
+                                  ToolTip.Tip="An ellipsoid shell of head liquid with a flat ear spacer each side: circuitRF's own shape, not a standard's mannequin. Requires an active 3D editor."/>
+                        <Separator/>
+                        <MenuItem Header="_Place Against Phantom…" Command="{Binding ThreeDPlaceAgainstPhantomCommand}"
+                                  ToolTip.Tip="Puts the selected antenna or device against a phantom face at a separation and a tilt. Requires an active 3D editor."/>
+                        <MenuItem Header="Band S_weep…" Command="{Binding ThreeDBandSweepCommand}"
+                                  ToolTip.Tip="One SAR setup per band from a template, run in turn, and psSAR at the rated power beside the reference values. Requires an active 3D editor."/>
                     </MenuItem>
                     <MenuItem Header="_Port" Command="{Binding ThreeDDrawCommand}" CommandParameter="Port"
                               ToolTip.Tip="A port between two conductors, two clicks; its polarity is inferred from what it touches. Requires an active 3D editor.">

@@ -661,11 +661,11 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
         bool three = C3dPhantom.LayerCount(p.Shape) == 3;
         return head switch
         {
-            "SemiAxes" => p.Shape == C3dPhantomShape.Ellipsoid3,
-            "Radius" => p.Shape is C3dPhantomShape.Cylinder3 or C3dPhantomShape.Sphere1,
-            "Length" => p.Shape == C3dPhantomShape.Cylinder3,
+            "SemiAxes" => p.Shape is C3dPhantomShape.Ellipsoid3 or C3dPhantomShape.Head,
+            "Radius" => p.Shape is C3dPhantomShape.Cylinder3 or C3dPhantomShape.Sphere1 or C3dPhantomShape.Head,
+            "Length" => p.Shape is C3dPhantomShape.Cylinder3 or C3dPhantomShape.Head,
             "Size" => p.Shape is C3dPhantomShape.FlatBox or C3dPhantomShape.Box1,
-            "Shell1" => three || p.Shape == C3dPhantomShape.FlatBox,
+            "Shell1" => three || p.Shape is C3dPhantomShape.FlatBox or C3dPhantomShape.Head,
             "Shell2" => three,
             _ => true,
         };
@@ -1092,10 +1092,12 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
             case C3dPhantom ph:
                 if (head == "Centre") return $"Centre {Xyz(k)}";
                 if (head == "SemiAxes") return $"Semi-axis {Xyz(k)}";
-                if (head == "Radius") return "Radius";
-                if (head == "Length") return $"Length (along {(ph.Axis ?? C3dAxis.Z).ToString().ToLowerInvariant()})";
+                // brief-sar-12 — the generic head's ear spacers: a radius, and how far each stands off the head.
+                if (head == "Radius") return ph.Shape == C3dPhantomShape.Head ? "Ear spacer radius" : "Radius";
+                if (head == "Length") return ph.Shape == C3dPhantomShape.Head ? "Ear spacer thickness"
+                                           : $"Length (along {(ph.Axis ?? C3dAxis.Z).ToString().ToLowerInvariant()})";
                 if (head == "Size") return $"{Up(Xyz(k))} size";
-                if (head == "Shell1") return ph.Shape == C3dPhantomShape.FlatBox ? "Shell" : "Outer shell";
+                if (head == "Shell1") return ph.Shape is C3dPhantomShape.FlatBox or C3dPhantomShape.Head ? "Shell" : "Outer shell";
                 if (head == "Shell2") return "Second shell";
                 if (head == "Voxel") return "Voxel size";
                 break;

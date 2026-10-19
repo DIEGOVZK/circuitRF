@@ -359,6 +359,7 @@ public sealed partial class C3dEditorViewModel : ObservableObject, IViewer3DEdit
         RefreshKernelFlags();
         RememberInstanceBounds();
         ApplyVisiblePlots();                       // brief-em3d-83 — its plane and faces, on this scene
+        RefreshPlacementDimension();               // brief-sar-12 — the placed device's separation, measured again
         if (_fitOnAdopt && Viewer.Scene.Objects.Length > 0)
         {
             _fitOnAdopt = false;

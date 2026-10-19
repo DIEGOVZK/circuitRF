@@ -716,7 +716,9 @@ internal static class DocumentSchema
             Ellipsoid3 (Centre, SemiAxes, Shell1, Shell2: the shells come off every semi-axis),
             Cylinder3 (Centre, Radius, Length, Axis, Shell1, Shell2: radial shells, every layer the
             full length), FlatBox (Centre, Size, Shell1: liquid in a shell on its floor and four
-            walls, open on top), Sphere1 (Centre, Radius) or Box1 (Centre, Size). Its own Material is
+            walls, open on top), Sphere1 (Centre, Radius), Box1 (Centre, Size) or Head (Centre,
+            SemiAxes, Shell1, and its ear spacers' Radius and thickness Length: circuitRF's own
+            generic head, layers ear-left, ear-right, shell, liquid, ears on +y and -y). Its own Material is
             not used. In the solved problem each layer is the solid "<phantom>/<layer>". Voxel (DBU,
             omitted = 0, the smooth layers) gives openEMS the phantom in cubes of that side, each the
             innermost layer holding its centre, on a lattice with a corner at Centre: how openEMS's own
@@ -743,6 +745,15 @@ internal static class DocumentSchema
             {"Name": "C1", "Plane": "YZ", "Offset": -130000000, "Rect": {...}, "C": "Ctune", "CUnit":
             "pF"}. A lumped element is not a port: nothing excites it and S has no row for it.
             openEMS solves it; Palace refuses it in this version.
+          * "BandSweeps" (phone SAR) each name a Template setup (a driven openEMS one) and BandsGHz;
+            each band becomes the setup "<Name> <f> GHz": the template with its Sar at that one
+            frequency (so the phantom's liquid is evaluated there), 1 g and 10 g, and its sweep
+            scaled by f over the template's SAR frequency. DrivePowerW (default 1 W) with
+            DriveReferredTo Accepted (default) or Incident, DutyCycle, Exposure HeadTrunk (default)
+            or Limbs, Limits [{"Name", "ValueWkg", "MassGrams", "Exposure", "Source", "Date"}] and
+            Targets [{"FrequencyGHz", "MassGrams", "PerWattWkg"}] are read by its table only, never
+            by a run. `em --bands <name>` runs every band and prints the table beside the published
+            reference values.
           * A Polyline is construction geometry. It has no Material and is never solved. Its Points
             are [u, v] on its Plane at its Offset — unless a vertex leaves that plane (the editor
             snaps a polyline's vertices to features anywhere), when the polyline is written with

@@ -15,7 +15,8 @@
 // THE SHAPES are the openEMS examples' own geometry: concentric ellipsoids with the shell thickness taken off every
 // semi-axis (the head phantoms), coaxial cylinders of one length with radial shells (the body cylinder: every layer runs its
 // full length), an open-topped box of liquid in a shell on its floor and four walls (a flat phantom), and the homogeneous
-// sphere and box of the analytic checks.
+// sphere and box of the analytic checks — and brief-sar-12's generic head, circuitRF's own shape (an ellipsoid shell of liquid
+// with a flat ear spacer each side), named so nobody takes it for a standard's mannequin.
 //
 // FLATTEN turns a phantom into those same solids as ordinary objects in a group named after it, so a flattened phantom and
 // the phantom elaborate to the same problem.
@@ -40,7 +41,7 @@ public static class C3dPhantoms
         if (p.Layers.Any(l => l.Name.Contains('/'))) return "has a layer whose name holds '/'";
         if (p.Layers.GroupBy(l => l.Name, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1) is { } twice)
             return $"has two layers named '{twice.Key}'";
-        long[] shells = want switch { 3 => [p.Shell1, p.Shell2], 2 => [p.Shell1], _ => [] };
+        long[] shells = want switch { 3 => [p.Shell1, p.Shell2], 2 or 4 => [p.Shell1], _ => [] };
         if (shells.Any(t => t <= 0)) return $"has a shell that is not positive (a {p.Shape} phantom has {shells.Length} shell(s), Shell1 outermost)";
         if (want < 3 && p.Shell2 != 0) return $"states Shell2, which a {p.Shape} phantom does not have";
         if (want < 2 && p.Shell1 != 0) return $"states Shell1, which a {p.Shape} phantom does not have";
@@ -61,6 +62,14 @@ public static class C3dPhantoms
                 if (p.Size.X <= 0 || p.Size.Y <= 0 || p.Size.Z <= 0) return "has a size that is not positive";
                 if (2 * wall >= Math.Min(p.Size.X, p.Size.Y) || wall >= p.Size.Z)
                     return "has a shell as thick as half its width or its whole depth, which leaves no liquid";
+                break;
+            case C3dPhantomShape.Head:
+                if (p.SemiAxes.X <= 0 || p.SemiAxes.Y <= 0 || p.SemiAxes.Z <= 0) return "has a semi-axis that is not positive";
+                if (wall >= Math.Min(p.SemiAxes.X, Math.Min(p.SemiAxes.Y, p.SemiAxes.Z)))
+                    return "has a shell as thick as its smallest semi-axis, which leaves no liquid";
+                if (p.Radius <= 0 || p.Length <= 0) return "has an ear spacer whose radius or thickness is not positive";
+                if (p.Radius >= Math.Min(p.SemiAxes.X, p.SemiAxes.Z))
+                    return "has an ear spacer as wide as the head (its radius must be below the x and z semi-axes)";
                 break;
             case C3dPhantomShape.Sphere1:
                 if (p.Radius <= 0) return "has a radius that is not positive";
@@ -87,7 +96,7 @@ public static class C3dPhantoms
             if (i == 1) inset = p.Shell1;
             else if (i == 2) inset = p.Shell1 + p.Shell2;
             C3dPoint3 c = p.Centre;
-            C3dObject solid = p.Shape switch
+            C3dObject solid = p.Shape == C3dPhantomShape.Head ? HeadLayer(p, i) : p.Shape switch
             {
                 C3dPhantomShape.Ellipsoid3 => new C3dEllipsoid
                 {
@@ -124,6 +133,28 @@ public static class C3dPhantoms
             list.Add((layer, solid));
         }
         return list;
+    }
+
+    /// <summary>
+    /// brief-sar-12 R-sar12-1 — layer <paramref name="i"/> of circuitRF's generic head: the two ear spacers, then the shell, then
+    /// the liquid. Each spacer is a cylinder about y from the head's centre plane out to <see cref="C3dPhantom.Length"/> past the
+    /// head's surface, so the shell and the liquid (later in construction order) take everything inside the head and what is
+    /// left is a flat disc standing off each side: the face a handset is placed against.
+    /// </summary>
+    private static C3dObject HeadLayer(C3dPhantom p, int i)
+    {
+        C3dPoint3 c = p.Centre;
+        long reach = p.SemiAxes.Y + p.Length;
+        return i switch
+        {
+            0 => new C3dCylinder { Axis = C3dAxis.Y, Base = c, Length = reach, Radius = p.Radius },
+            1 => new C3dCylinder { Axis = C3dAxis.Y, Base = c with { Y = c.Y - reach }, Length = reach, Radius = p.Radius },
+            2 => new C3dEllipsoid { Centre = c, SemiAxes = p.SemiAxes },
+            _ => new C3dEllipsoid
+            {
+                Centre = c, SemiAxes = new C3dPoint3(p.SemiAxes.X - p.Shell1, p.SemiAxes.Y - p.Shell1, p.SemiAxes.Z - p.Shell1),
+            },
+        };
     }
 
     /// <summary>

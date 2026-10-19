@@ -4031,3 +4031,19 @@ disagrees.
 `tests/Ui.Tests/Sar/CosimLoopCoilTests.cs` (`CosimLoopCoilRerunTests`, `Benchmark`): `circuitrf em` on the four-port
 loop coil and `circuitrf fields` on its schematic, both as processes, held to SAR-8's lumped run.
 `ServeProtocolAdapterTests` holds the protocol's `run/fields` mode to the flags the verb reads.
+
+## 29. `em --bands` — a phone SAR band sweep, headless
+
+`circuitrf em x.c3d --bands <sweep>` runs a `.c3d`'s band sweep (`BandSweeps`, brief-sar-12): one setup per band, made
+from the sweep's template by `C3dBandSweeps.Make` — the function the GUI's Band Sweep… calls before it writes the
+setups — each run in turn exactly as `--setup` runs one, then the band table on stdout: per band and driven port,
+psSAR1g and psSAR10g at the rated power and duty cycle, per watt, where, and each published reference value a number is
+above, by name. Nothing in it says pass or fail (sar.md §14).
+
+- **Nothing is written to the `.c3d`.** The setups are made in memory; the runs land where the same setups would land
+  if Band Sweep… had written them (`<stem> <sweep> <f> GHz.openems`), so the table the GUI reads afterwards is the same.
+- `--bands` takes neither `--setup` nor `-o`: every band writes its own result, where its Simulate writes it. A `.cem`
+  is one setup and is refused. An unknown sweep is a refusal listing the document's sweeps.
+- Exit 0 when every band ran; the first band that does not exits with its own code (1 refused or failed, 130
+  cancelled), and the bands before it keep what they wrote.
+- Over the protocol it is `run analysis=em bands=<sweep>`.

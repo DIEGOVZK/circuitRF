@@ -20298,3 +20298,11 @@ Design note: `docs/design/sar.md` §13. Gates: `tests/Ui.Tests/Sar/VoxelImportTe
   the given-line tolerance (1e-3 of the cell beside it), else as drawn; the gate compares exactly now, and a test with no reference
   data reproduces both arithmetics on a small given grid. The fixed model's first probe samples are the tutorial's to every
   printed digit (12 figures). The planar sheet's polygon on a Cartesian grid is still written as drawn (sar.md §10.10). sar.md §10a.6.
+
+## The GPL-boundary scan reads English as an import (brief-sar-12, 2026-10-18)
+
+- **Trap:** `SolverBoundaryTests.NoScriptingInterfaceIsInvokedOrShippedFromSrc` flags any C# string literal matching
+  `(import|from) (csxcad|openems)`, so a refusal sentence such as "computed from openEMS's raw dump" fails the firewall as if
+  it imported the GPL Python module.
+- **Fix:** reword the sentence ("computed only on the raw dump an openEMS run writes"). The scan is right to be strict; a
+  user-facing sentence never needs that word order.

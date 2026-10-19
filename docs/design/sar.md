@@ -1,6 +1,6 @@
 # circuitRF — SAR and B1 for MRI coil designers and phone SAR
 
-**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7), SAR-6 done (§8), SAR-7 done (§9), SAR-8 done (§10; the birdcage moved to SAR-8b), SAR-9 done (§11), SAR-10 done (§12), SAR-11 done (§13) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
+**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7), SAR-6 done (§8), SAR-7 done (§9), SAR-8 done (§10; the birdcage moved to SAR-8b), SAR-9 done (§11), SAR-10 done (§12), SAR-11 done (§13), SAR-12 done (§14) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
 **Reference data:** [`testdata/sar/openems-ref/`](../../testdata/sar/openems-ref/README.md) · **Builds on:**
 [`em-3d.md`](em-3d.md) (the openEMS backend) and [`em-3d-f0-findings.md`](em-3d-f0-findings.md) (its validated versions).
 
@@ -1878,3 +1878,163 @@ Posing or morphing; skewed (non-axis-aligned) affines; anatomical models of circ
 body on Palace or the thermal solver (it would need a surface mesh per tissue, or a voxel-to-tetrahedron path); a DiscMaterial
 of more than 255 tissues; a self-intersection test for surfaces past 2 M triangles (checked for closure only, and said).
 
+
+---
+
+## 14. The phone SAR workflow (SAR-12)
+
+A wireless-device engineer places an antenna or a whole device against a phantom of tissue-simulating liquid, runs it at
+the device's bands, and reads psSAR1g and psSAR10g at the device's rated power beside published limits, **shown as
+reference values, never as pass or fail** (overview L1).
+
+### 14.1 Phantoms (R-sar12-1)
+
+**The flat phantom** is SAR-3's `FlatBox`: a liquid in a shell on its floor and four walls, open on top. Its defaults now
+come from a free public regulator document where it states them — FCC OET Bulletin 65 Supplement C (Edition 01-01),
+"Recommended characteristics of head and body phantoms": a **2.0 mm shell** ("within 2.0 ± 0.2 mm") and **150 mm of
+liquid** ("a depth of 15.0 ± 0.5 cm"), so `Size.Z` is 152 mm. The bulletin states no floor size for a body phantom (at
+least twice the device's), so the **300 × 200 mm floor is circuitRF's own**, chosen to meet the same bulletin's
+system-check minimum of ¾ wavelength by ½ wavelength from 900 MHz up. The liquid stays the body liquid; the shell is now
+a material (below), where SAR-3 left it unnamed.
+
+**The generic head** (`Shape` `Head`, the menu's "Generic Head (circuitRF's own)") is circuitRF's own shape and is
+named so, so nobody takes it for a standard's mannequin: an ellipsoid shell (`SemiAxes`, `Shell1`) of head liquid, with
+a flat circular **ear spacer** on each side, a cylinder about y of `Radius` standing `Length` off the head's surface. Its
+layers are `ear-left`, `ear-right`, `shell`, `liquid`, **in that construction order**, so the shell and the liquid take
+everything inside the head and what is left of each spacer is a flat disc: the face a handset is placed against. Its
+frame is x to the front, y ear to ear (left is +y), z up. Defaults: semi-axes 100, 78 and 115 mm (circuitRF's own round
+numbers for an adult head), a 2.0 mm shell, and spacers 4.0 mm thick — both from the bulletin, which recommends "a 4.0 ±
+0.2 mm thick low-loss dielectric spacer" — and 25 mm in radius (circuitRF's own: the bulletin says "circular shaped" and
+gives no size).
+
+**The shell material**, `Phantom shell (circuitRF's own)` in the shipped tissue library: εr 3.7 and lossless. It is
+circuitRF's own value, labelled so, inside the bounds the bulletin states for a shell ("dielectric constant and loss
+tangent less than 5.0 and 0.05"). It has σ 0 and no density, so it is never tissue (§8.2). The liquids are SAR-2's
+target tables (§4.3), evaluated at each run's SAR frequency.
+
+### 14.2 Placement (R-sar12-2)
+
+`C3dDevicePlacement` (`src/Design/ThreeD`); Place Against Phantom… in the 3D editor (the Phantom menu, and the canvas's menu
+on a selected device). **It writes ordinary transforms**: each moved object's and instance's `Placement` gains one rotation
+and a new `Origin`, what a drag would write. Nothing in the format is phone-specific, and nothing remembers the placement.
+
+- **A face** is a plane: an anchor and an outward normal. Every phantom offers its own box's six faces (`xmin` … `zmax`,
+  in its own frame, carried by its placement), and two named ones by shape: a flat phantom's `floor` (the shell's outer
+  face) and `liquid` (the liquid's surface through the shell — the plane a system check's spacing is stated from), and the
+  generic head's `ear-left` and `ear-right` (each spacer's flat face).
+- **The separation** is measured along the normal from the face's plane to the device's nearest point: the smallest n·(v −
+  a) over every vertex of the device's elaborated geometry, so a STEP device is measured on its tessellation. Curved
+  surfaces are measured at their tessellation's vertices, which lie on the surface; an extreme point between them is off by
+  at most the facets' sagitta.
+- **The tilt** turns the device about a world axis first; the translation is then solved, so the axis needs no pivot. The
+  device's box, projected on the face, is centred on the face's anchor plus an in-plane offset.
+- **A device is one rigid motion.** Selected objects, instances and groups (a group's name stands for everything in it)
+  each get the same rotation appended and their origins carried by the same motion. A tilt that is not a quarter turn
+  leaves an origin that is not an integer DBU; it is rounded, so two parts that touched may be a DBU apart afterwards.
+- **Refused:** placing a phantom; a negative separation; a separation from `liquid` thinner than the shell (the device
+  would be in the shell); an object whose origin is an expression (placing it would overwrite the expression).
+- **The dimension** in the 3D view (`Viewer3DViewModel.SetDimension`) is measured again from the geometry every time the
+  scene is adopted, so a device moved by hand afterwards shows its new separation. It is session state, like a measurement.
+
+### 14.3 Bands and power (R-sar12-3)
+
+One SAR frequency per run (overview L6). A **band sweep** (`C3dDocument.BandSweeps`, `C3dBandSweeps`) names a template setup
+and its bands; `Create` writes one ordinary setup per band, `<sweep> <f> GHz`: the template with its `Sar` at that one
+frequency (so the liquid is evaluated there — the gate's three bands give three εr and σ), 1 g and 10 g added to its masses,
+and **its sweep scaled by f / f_template** (the template's SAR frequency, else its sweep's centre), so each band keeps the
+template's relative bandwidth and a grid drawn from its own highest frequency. Creating again replaces the band setups, so
+an edited template brings every band up to date. Nothing in a run knows a setup came from a sweep.
+
+Band Sweep… (the Phantom menu) edits the sweep, creates the setups (one undo entry, with the sweep), runs them in turn as
+Simulate does, and shows the table; it is not modal, since its runs take as long as they take. `circuitrf em x.c3d --bands
+<sweep>` makes the same setups in memory, runs them and prints the table (cli.md §29); MCP's `run analysis=em` takes `bands`.
+
+**The table** has one row per band and driven port: psSAR1g and psSAR10g **at the rated power**, per watt, the peak cube's
+centre and tissue, and the difference from a target where the user gave one. Every SAR number a run writes is per 1 W
+accepted (§8.4); the table multiplies it by:
+
+- `DrivePowerW` (default 1 W, so the table reads per watt), the conducted power the device delivers, referred to the
+  **accepted** power (default) or to the **incident** power, when |S_kk|² — read from the band's own Touchstone at the
+  band, linear between its points — takes its share before the power reaches the antenna;
+- `DutyCycle`, when given: a burst transmitter's scaling factor.
+
+The sweep's power, duty cycle, reference values and targets are read by the table alone; `C3dPersistence.SerializeForRun`
+leaves them out, so editing them never makes a result out of date.
+
+### 14.4 Limits as reference values (R-sar12-4)
+
+`C3dBandSweeps.Published`, each cited and dated, chosen by the sweep's `Exposure` (head and trunk by default, or limbs):
+
+| Reference value | Source |
+|---|---|
+| 1.6 W/kg over 1 g, head and trunk | FCC OET Bulletin 65 Supplement C (Edition 01-01, June 2001), "FCC limits for specific absorption rate (SAR)", general population/uncontrolled exposure, partial body ("averaged over any 1 gram of tissue defined as a tissue volume in the shape of a cube") |
+| 4.0 W/kg over 10 g, extremities | the same table: hands, wrists, feet and ankles |
+| 2.0 W/kg over 10 g, head and trunk | ICNIRP, Guidelines for limiting exposure to electromagnetic fields (100 kHz to 300 GHz), Health Phys. 118(5):483-524 (March 2020): basic restrictions for the general public, local, head and torso, 100 kHz to 6 GHz |
+| 4.0 W/kg over 10 g, limbs | the same, local, limbs |
+
+A user adds their own (`Limits`). **A number above a reference value is coloured and says which reference it is above**
+("above the reference value 1.6 W/kg over 1 g (national regulator)"); no word in the table, the dialog or the CLI's output
+says pass or fail, which the gate checks.
+
+### 14.5 The system check (R-sar12-5)
+
+`testdata/sar/circuitrf/system-check/` (its README lists every file): a half-wave dipole below a flat phantom, in the
+configuration OET Bulletin 65 Supplement C's system-check table gives at **1900 MHz** — 68.0 mm long, 3.8 mm in diameter
+(here a PEC strip of that width, the 50 Ω feed across a 2 mm gap), **10.0 mm from its axis to the liquid's surface**,
+a shell of at most 5.0 mm on the side the dipole couples to (2.0 mm here), 15 cm of head liquid. The 160 × 100 mm of
+liquid is circuitRF's own, above the bulletin's ¾ λ by ½ λ (118 × 79 mm). The routine gate measures the dipole's separation
+from the phantom's `liquid` face with the placement helper's own measure: 10 mm.
+
+**These are circuitRF's own results, not target values.** The standard's target values are not available (overview L2);
+a user with their own enters them as the sweep's targets and the table shows the difference.
+
+**The numbers**, per 1 W accepted at the feed, 1.9 GHz, head liquid εr 40 and σ 1.4 S/m (its target table's 1800–2000 MHz
+row), on circuitRF's own grid at three densities:
+
+| | Coarse (`CellsPerWavelength` 10) | **Medium (15): the band sweep's setup** | Fine (20) |
+|---|---|---|---|
+| grid | 106 × 81 × 101 = 0.87 M cells | 151 × 109 × 140 = 2.30 M cells | 185 × 131 × 174 = 4.22 M cells |
+| openEMS stopped at step (energy) | 4,029 (−47.8 dB) | 7,006 (−42.3 dB) | 7,099 (−44.0 dB) |
+| openEMS wall time | 45 s | 146 s | 214 s |
+| **psSAR1g** | 39.08 W/kg (−2.8 %) | **40.87 W/kg (+1.6 %)** | 40.21 W/kg |
+| **psSAR10g** | 20.00 W/kg (−3.7 %) | **20.97 W/kg (+0.9 %)** | 20.78 W/kg |
+| peak local SAR | 64.4 W/kg | 71.9 W/kg | 69.7 W/kg |
+| absorbed / accepted | 71.9 % | 75.1 % | 75.9 % |
+| \|S11\| at 1.9 GHz, Zin | −18.1 dB, 41.4 − j7.5 Ω | −16.8 dB, 40.5 − j9.1 Ω | −21.4 dB, 42.2 + j0.5 Ω |
+| \|S11\| minimum | 1.94 GHz, −23.0 dB | 1.94 GHz, −22.0 dB | 1.91 GHz, −21.5 dB |
+| 1 g peak cube's centre | (0, −0.7, 11.1) mm | (−0.5, −0.7, 10.6) mm | (−0.5, −0.4, 10.6) mm |
+
+The percentages are each run's difference from the fine grid. Both peaks sit above the feed, in the liquid's first cell, as a
+system check's should; the liquid's mass is its 160 × 100 × 150 mm at 1000 kg/m³, 2.400 kg. **psSAR is converged to about
+2 % from the medium grid on** (1g +1.6 %, 10g +0.9 % against fine), and the coarse grid reads 3–4 % low. The approach is not
+monotonic — the medium grid overshoots — because the grid generator places the strip's edges and the feed's lines differently
+at each density (the port is written 0.48–0.50 mm inside the strip's drawn width on the two coarser grids, `explain`'s
+"snapped" lines), which moves the dipole's own resonance: its |S11| minimum is at 1.94 GHz on the two coarser grids and
+1.91 GHz on the fine one. The wall times were measured with another openEMS run sharing the machine and are only an
+order of magnitude. The committed output is all three (`output/coarse`, `output/medium`, `output/fine`); the band sweep
+`SystemCheck` makes and runs the medium one.
+
+### 14.6 Gates
+
+`tests/Ui.Tests/Sar/PhoneSarTests.cs`, `tests/Ui.Tests/Sar/SystemCheckTests.cs`:
+
+- `PlacementTests`: a separation from a flat phantom's `liquid` (10 mm, no tilt) and `floor` (7 mm, tilted 25° about x)
+  is the nearest distance in the re-elaborated document to 1 DBU, and the liquid's is the floor's plus the shell; a two-part
+  group against the generic head's `ear-left`, tilted 15° about y, touches it to 1 DBU and moves as one; placing the phantom
+  itself and a separation into the shell are refused.
+- `BandSweepTests`: three bands make three setups, each at its band with 1 g and 10 g, its sweep scaled, and its own liquid
+  values in the assembled problem (three σ); creating again replaces them. The table has three rows at 0.5 W and a 0.5
+  duty cycle, a target's difference, and a value above 1.6 W/kg named as above it with no "fail" anywhere; a band not run
+  yet says so.
+- `SystemCheckResultTests` (routine, no process): the committed output loads, the dipole is 10 mm from the liquid, and the
+  table renders as text and as the dialog's rows.
+- `SystemCheckRerunTests` (`Benchmark`): the band sweep and the two convergence setups through the CLI as a process, each
+  within 1 % of its committed psSAR; `CRF_WRITE_SAR12_OUTPUTS=1` rewrites the output.
+
+### 14.7 Not done in SAR-12
+
+Hand and body-worn positions, absorbed power density above 6 GHz and compliance reports (the brief's §3). Also not done: a
+placement that remembers itself (by design: it writes ordinary transforms). openEMS refuses a sheet tilted out of every
+axis plane and a port whose direction leaves the axes (`CsxcadWriter`, before any process), so a tilt that is not a quarter
+turn is for a device of solids — a STEP model, a box — not for a drawn strip antenna fed by a lumped port; a tilt about the
+face's normal keeps a sheet in its plane and is written as a polygon.

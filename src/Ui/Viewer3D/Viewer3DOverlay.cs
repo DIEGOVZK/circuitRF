@@ -186,6 +186,7 @@ public sealed class Viewer3DOverlay : Control
         }
 
         Measurement(ctx, vm, w, h, dark);
+        Dimension(ctx, vm, w, h, ink, dark);
         if (picture) MeasureTable(ctx, vm, h, ink, dark);
         if (picture) return;
         if (vm.GizmoNow() is { } gizmo) Gizmo(ctx, gizmo, vm.GizmoHover, vm.GizmoActive, dark);
@@ -510,6 +511,28 @@ public sealed class Viewer3DOverlay : Control
             ctx.DrawEllipse(MeasureBrush, new Pen(dark ? Brushes.Black : Brushes.White, 1), pb, 3.5, 3.5);
         }
         if (oa) ctx.DrawEllipse(MeasureBrush, new Pen(dark ? Brushes.Black : Brushes.White, 1), pa, 3.5, 3.5);
+    }
+
+    /// <summary>brief-sar-12 R-sar12-2 — the placed device's separation: a line from its nearest point to the face, ticks at both
+    /// ends, and the distance beside its middle.</summary>
+    private static void Dimension(DrawingContext ctx, Viewer3DViewModel vm, double w, double h, IBrush ink, bool dark)
+    {
+        if (vm.Dimension is not { } d) return;
+        var cam = vm.View.Camera;
+        var (ax, ay, af) = cam.Project(vm.Scene.ToLocal(d.A.X, d.A.Y, d.A.Z), (float)w, (float)h);
+        var (bx, by, bf) = cam.Project(vm.Scene.ToLocal(d.B.X, d.B.Y, d.B.Z), (float)w, (float)h);
+        if (!af || !bf) return;
+        var a = new Point(ax, ay);
+        var b = new Point(bx, by);
+        var halo = new Pen(dark ? Brushes.Black : Brushes.White, 3);
+        var pen = new Pen(MeasureBrush, 1.2);
+        ctx.DrawLine(halo, a, b);
+        ctx.DrawLine(pen, a, b);
+        // Ticks across the line at both ends, so a separation shorter than a few pixels still reads as a dimension.
+        double dx = b.X - a.X, dy = b.Y - a.Y, len = Math.Sqrt(dx * dx + dy * dy);
+        var (nx, ny) = len > 1e-6 ? (-dy / len, dx / len) : (1.0, 0.0);
+        foreach (var p in new[] { a, b }) ctx.DrawLine(pen, new Point(p.X - 6 * nx, p.Y - 6 * ny), new Point(p.X + 6 * nx, p.Y + 6 * ny));
+        Text(ctx, d.Label, new Point(0.5 * (a.X + b.X) + 10 * nx + 6, 0.5 * (a.Y + b.Y) + 10 * ny), ink, 12, dark);
     }
 
     private static readonly IBrush GizmoHot = new SolidColorBrush(Color.FromRgb(255, 196, 40));

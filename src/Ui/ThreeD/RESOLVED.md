@@ -364,3 +364,12 @@ vanish, including the wire the mistake was on. The owner's rule is now a best at
   refused it as missing.
 - **Fix:** the save keeps whatever a `VoxelBody` or a `Mesh` names as well. Any future object that references a copied file
   must be added to that walk, or its file goes at the next save.
+
+## Session state set after Push is read too late by a synchronous rebuild (brief-sar-12, 2026-10-18)
+
+- **Trap:** `Push` applies the edit, and with a synchronous post (the headless harness, and any rebuild that finishes before
+  the call returns) the scene is rebuilt and ADOPTED inside it — `OnSceneAdopted` runs before the next line. Place Against
+  Phantom… recorded which objects it had placed (what the separation dimension measures) after `Push`, so the adopt that the
+  edit itself caused measured nothing and the dimension never appeared.
+- **Fix:** anything `OnSceneAdopted` reads for the edit being pushed is set BEFORE `Push`. Gate:
+  `PhoneSarEditorTests.PlaceAgainstPhantom_IsOneEntry_AndDrawsTheSeparation`.

@@ -536,6 +536,10 @@ internal static class ToolCatalog
                      new("setup", "--setup", OptKind.Str,
                          "Which of a .c3d's embedded setups to run, by name. Needed when it embeds several; "
                        + "explain lists them."),
+                     // brief-sar-12 R-sar12-3 — a .c3d's band sweep: one setup per band from its template, run in turn.
+                     new("bands", "--bands", OptKind.Str,
+                         "Run a .c3d's band sweep, by name: one setup per band made from its template (each at that SAR "
+                       + "frequency), then the table of psSAR1g and psSAR10g at the rated power beside the reference values."),
                      new("force", "--force", OptKind.Flag,
                          "Start a Palace run whose memory estimate is past 150 % of this machine's, which is "
                        + "otherwise refused."),

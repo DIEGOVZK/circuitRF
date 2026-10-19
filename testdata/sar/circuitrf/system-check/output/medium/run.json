@@ -1,0 +1,12 @@
+{
+  "note": "circuitRF OUTPUT, circuitRF\u0027s own system-check values (brief-sar-12): setup SystemCheck 1.9 GHz of SystemCheck.c3d, run on openEMS.",
+  "setup": "SystemCheck 1.9 GHz",
+  "grid_lines": [
+    151,
+    109,
+    140
+  ],
+  "stopped_at_timestep": 7006,
+  "energy_at_stop_db": -42.33,
+  "openems_wall_s": 145.8
+}

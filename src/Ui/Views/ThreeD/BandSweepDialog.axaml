@@ -1,0 +1,102 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:t3="using:CircuitRF.Ui.ThreeD"
+        x:Class="CircuitRF.Ui.Views.ThreeD.BandSweepDialog"
+        x:DataType="t3:BandSweepDialogViewModel"
+        Title="{Binding Title}"
+        Width="780" Height="640" MinWidth="560" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <!-- brief-sar-12 R-sar12-3/-4/-5: the sweep, its setups, its runs, and the table beside the reference values. -->
+    <DockPanel Margin="16,12,16,12">
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,10,0,0">
+            <Button Content="Create Setups" Command="{Binding CreateSetupsCommand}" IsEnabled="{Binding !Running}"
+                    ToolTip.Tip="Writes the sweep and one setup per band, made from the template at that band's SAR frequency: one undo entry."/>
+            <Button Content="Run" Command="{Binding RunCommand}" IsEnabled="{Binding !Running}"
+                    ToolTip.Tip="Creates the setups, then runs each band in turn as Simulate does."/>
+            <Button Content="Refresh" Command="{Binding RefreshTableCommand}"/>
+            <Button Content="Close" Width="90" HorizontalContentAlignment="Center" Command="{Binding CloseCommand}"/>
+        </StackPanel>
+
+        <Grid DockPanel.Dock="Top" ColumnDefinitions="130,*,130,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="6" ColumnSpacing="8">
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Name" VerticalAlignment="Center" FontSize="12"/>
+            <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding Name}" ToolTip.Tip="Each band's setup is named after it: 'Bands 1.9 GHz'."/>
+            <TextBlock Grid.Row="0" Grid.Column="2" Text="Template setup" VerticalAlignment="Center" FontSize="12"/>
+            <ComboBox Grid.Row="0" Grid.Column="3" ItemsSource="{Binding Templates}" SelectedItem="{Binding Template}" HorizontalAlignment="Stretch"
+                      ToolTip.Tip="A driven openEMS setup. Each band takes a copy, its sweep scaled to the band and its SAR at the band alone."/>
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Bands (GHz)" VerticalAlignment="Center" FontSize="12"/>
+            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding BandsText}" ToolTip.Tip="One SAR frequency per run: each band is its own setup, its liquid evaluated there."/>
+            <TextBlock Grid.Row="1" Grid.Column="2" Text="Rated power (W)" VerticalAlignment="Center" FontSize="12"/>
+            <StackPanel Grid.Row="1" Grid.Column="3" Orientation="Horizontal" Spacing="6">
+                <TextBox Text="{Binding PowerText}" Width="80" Watermark="1" ToolTip.Tip="The conducted power the device delivers. Blank: 1 W, so the table reads per watt."/>
+                <ComboBox ItemsSource="{Binding ReferredChoices}" SelectedItem="{Binding ReferredTo}"
+                          ToolTip.Tip="Accepted: the power entering the antenna. Incident: before the antenna's own mismatch, read from each band's Touchstone."/>
+            </StackPanel>
+            <TextBlock Grid.Row="2" Grid.Column="0" Text="Duty cycle" VerticalAlignment="Center" FontSize="12"/>
+            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DutyText}" Watermark="none" ToolTip.Tip="A scaling factor above 0 and at most 1; blank: none."/>
+            <TextBlock Grid.Row="2" Grid.Column="2" Text="Reference values for" VerticalAlignment="Center" FontSize="12"/>
+            <ComboBox Grid.Row="2" Grid.Column="3" ItemsSource="{Binding ExposureChoices}" SelectedItem="{Binding Exposure}" HorizontalAlignment="Stretch"/>
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="Your own values" VerticalAlignment="Top" FontSize="12" Margin="0,4,0,0"/>
+            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding LimitsText}" AcceptsReturn="True" Height="56" TextWrapping="NoWrap"
+                     ToolTip.Tip="{x:Static t3:BandSweepDialogViewModel.LimitsTip}"/>
+            <TextBlock Grid.Row="3" Grid.Column="2" Text="Targets" VerticalAlignment="Top" FontSize="12" Margin="0,4,0,0"/>
+            <TextBox Grid.Row="3" Grid.Column="3" Text="{Binding TargetsText}" AcceptsReturn="True" Height="56" TextWrapping="NoWrap"
+                     ToolTip.Tip="{x:Static t3:BandSweepDialogViewModel.TargetsTip}"/>
+        </Grid>
+
+        <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,8,0,0">
+            <SelectableTextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                 Foreground="{DynamicResource SystemErrorTextColor}" TextWrapping="Wrap" FontSize="12"/>
+            <TextBlock Text="{Binding Status}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource SystemBaseMediumColor}"/>
+            <Grid ColumnDefinitions="80,40,2*,2*,2*" Margin="0,6,0,0">
+                <TextBlock Grid.Column="0" Text="Band" FontWeight="SemiBold" FontSize="12"/>
+                <TextBlock Grid.Column="1" Text="Port" FontWeight="SemiBold" FontSize="12"/>
+                <TextBlock Grid.Column="2" Text="psSAR1g" FontWeight="SemiBold" FontSize="12"/>
+                <TextBlock Grid.Column="3" Text="psSAR10g" FontWeight="SemiBold" FontSize="12"/>
+                <TextBlock Grid.Column="4" Text="1 g peak at" FontWeight="SemiBold" FontSize="12"/>
+            </Grid>
+        </StackPanel>
+
+        <StackPanel DockPanel.Dock="Bottom" Spacing="2" Margin="0,8,0,0">
+            <TextBlock Text="Reference values, shown beside the result:" FontSize="11" FontWeight="SemiBold"/>
+            <ItemsControl ItemsSource="{Binding References}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <SelectableTextBlock Text="{Binding}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource SystemBaseMediumColor}"/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+
+        <ScrollViewer>
+            <ItemsControl ItemsSource="{Binding Rows}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="t3:BandSweepRow">
+                        <StackPanel Margin="0,2,0,2">
+                            <Grid ColumnDefinitions="80,40,2*,2*,2*">
+                                <TextBlock Grid.Column="0" Text="{Binding Band}" FontSize="12"/>
+                                <TextBlock Grid.Column="1" Text="{Binding Port}" FontSize="12"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Sar1g.Text}" FontSize="12" TextWrapping="Wrap"
+                                           Classes.above="{Binding Sar1g.Above}" ToolTip.Tip="{Binding Sar1g.Tip}"/>
+                                <TextBlock Grid.Column="3" Text="{Binding Sar10g.Text}" FontSize="12" TextWrapping="Wrap"
+                                           Classes.above="{Binding Sar10g.Above}" ToolTip.Tip="{Binding Sar10g.Tip}"/>
+                                <TextBlock Grid.Column="4" Text="{Binding Location}" FontSize="12" TextWrapping="Wrap"/>
+                            </Grid>
+                            <TextBlock Text="{Binding Note}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource SystemBaseMediumColor}"
+                                       IsVisible="{Binding Note, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </DockPanel>
+
+    <Window.Styles>
+        <!-- Above a reference value: the number is coloured, and its tooltip says which. Never "fail". -->
+        <Style Selector="TextBlock.above">
+            <Setter Property="Foreground" Value="#D9822B"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+    </Window.Styles>
+</Window>

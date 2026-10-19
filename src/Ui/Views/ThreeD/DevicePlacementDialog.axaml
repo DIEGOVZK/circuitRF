@@ -1,0 +1,46 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:t3="using:CircuitRF.Ui.ThreeD"
+        x:Class="CircuitRF.Ui.Views.ThreeD.DevicePlacementDialog"
+        x:DataType="t3:DevicePlacementDialogViewModel"
+        Title="{Binding Title}"
+        Width="460" SizeToContent="Height" MinWidth="380"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        ShowInTaskbar="False">
+
+    <!-- brief-sar-12 R-sar12-2: the face, the separation along its normal from the device's nearest point, a tilt, an offset. -->
+    <StackPanel Margin="16,12,16,12" Spacing="6">
+        <TextBlock Text="{Binding MoversText}" FontSize="12" TextWrapping="Wrap"/>
+        <TextBlock Text="{Binding UnitText}" FontSize="11" Foreground="{DynamicResource SystemBaseMediumColor}"/>
+
+        <Grid ColumnDefinitions="140,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="6" Margin="0,6,0,0">
+            <TextBlock Grid.Row="0" Text="Phantom" VerticalAlignment="Center" FontSize="12"/>
+            <ComboBox Grid.Row="0" Grid.Column="1" ItemsSource="{Binding Phantoms}" SelectedItem="{Binding SelectedPhantom}" HorizontalAlignment="Stretch"/>
+            <TextBlock Grid.Row="1" Text="Face" VerticalAlignment="Center" FontSize="12"/>
+            <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding Faces}" SelectedItem="{Binding SelectedFace}" HorizontalAlignment="Stretch"
+                      ToolTip.Tip="The plane the separation is measured from. A flat phantom's 'liquid' is the liquid's surface through the shell; a generic head's 'ear-left' and 'ear-right' are its ear spacers."/>
+            <TextBlock Grid.Row="2" Text="Separation" VerticalAlignment="Center" FontSize="12"/>
+            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding SeparationText}"
+                     ToolTip.Tip="From the face, along its outward normal, to the device's nearest point."/>
+            <TextBlock Grid.Row="3" Text="Tilt (°) about" VerticalAlignment="Center" FontSize="12"/>
+            <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                <TextBox Text="{Binding TiltText}" Width="90"/>
+                <ComboBox ItemsSource="{Binding Axes}" SelectedItem="{Binding TiltAxis}" Width="70"
+                          ToolTip.Tip="The world axis the device is turned about before it is placed."/>
+            </StackPanel>
+            <TextBlock Grid.Row="4" Text="Offset x, y, z" VerticalAlignment="Center" FontSize="12"/>
+            <TextBox Grid.Row="4" Grid.Column="1" Text="{Binding OffsetText}"
+                     ToolTip.Tip="Moves the device's centre across the face from the face's centre; its part along the normal is ignored."/>
+        </Grid>
+
+        <SelectableTextBlock Text="{Binding Error}" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}"
+                             Foreground="{DynamicResource SystemErrorTextColor}" TextWrapping="Wrap" FontSize="12"/>
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,10,0,0">
+            <Button Content="Cancel" Width="90" HorizontalContentAlignment="Center" Command="{Binding CancelCommand}"/>
+            <Button Content="Place" Width="90" HorizontalContentAlignment="Center" IsDefault="True" Command="{Binding PlaceCommand}"
+                    ToolTip.Tip="Writes each object's placement: one undo entry."/>
+        </StackPanel>
+    </StackPanel>
+</Window>

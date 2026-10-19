@@ -157,6 +157,17 @@ public partial class WorkspaceViewModel
             vm.ActiveSetupChanged += () => OnC3dSolveStatusesChecked(vm);
             vm.RunRequested = (c3d, setupName) => RunC3dSetupAsync(c3d, setupName);
             vm.SetupAnalysesRequested = c3d => _ = ShowC3dSetupAnalysesAsync(c3d, null);
+            // brief-sar-12 — Place Against Phantom… is modal; Band Sweep… is not, since its runs go on for as long as they take.
+            vm.ShowPlacementDialog = async dvm =>
+            {
+                if ((HostWindowOf(doc) ?? ResolveOwner(null)) is { } owner) await new Views.ThreeD.DevicePlacementDialog(dvm).ShowDialog<bool>(owner);
+            };
+            vm.ShowBandSweepDialog = dvm =>
+            {
+                var window = new Views.ThreeD.BandSweepDialog(dvm);
+                if ((HostWindowOf(doc) ?? ResolveOwner(null)) is { } owner) window.Show(owner); else window.Show();
+                return Task.CompletedTask;
+            };
             vm.EditMaterialRequested = EditMaterial;    // brief-em3d-94
             // brief-em3d-101 — an image's notes and warnings go to Messages; Replace Image… and Resolve Path… open the picker.
             vm.PostMessage = (text, warning) => { if (warning) Messages.Warning(text, vm.FilePath); else Messages.Info(text, vm.FilePath); };
@@ -856,6 +867,8 @@ public partial class WorkspaceViewModel
         ThreeDSnapCommand.NotifyCanExecuteChanged();
         ThreeDDrawCommand.NotifyCanExecuteChanged();
         ThreeDAddPhantomCommand.NotifyCanExecuteChanged();
+        ThreeDPlaceAgainstPhantomCommand.NotifyCanExecuteChanged();
+        ThreeDBandSweepCommand.NotifyCanExecuteChanged();
         ThreeDInsertImageCommand.NotifyCanExecuteChanged();
         ThreeDTemperatureCommand.NotifyCanExecuteChanged();
         ThreeDDrawingPlaneCommand.NotifyCanExecuteChanged();
@@ -965,6 +978,14 @@ public partial class WorkspaceViewModel
     {
         if (ActiveC3dEditor() is { } e && Enum.TryParse<CircuitRF.Design.ThreeD.C3dPhantomShape>(shape, out var s)) e.AddPhantom(s);
     }
+
+    /// <summary>brief-sar-12 R-sar12-2 — 3D ▸ Draw ▸ Phantom ▸ Place Against Phantom…, on the selection.</summary>
+    [RelayCommand(CanExecute = nameof(HasActiveC3dEditor))]
+    private Task ThreeDPlaceAgainstPhantom() => ActiveC3dEditor()?.OpenPlacementAsync() ?? Task.CompletedTask;
+
+    /// <summary>brief-sar-12 R-sar12-3 — 3D ▸ Draw ▸ Phantom ▸ Band Sweep….</summary>
+    [RelayCommand(CanExecute = nameof(HasActiveC3dEditor))]
+    private Task ThreeDBandSweep() => ActiveC3dEditor()?.OpenBandSweepAsync() ?? Task.CompletedTask;
 
     /// <summary>brief-em3d-101 R-em3d101-2b — 3D ▸ Draw ▸ Image…: the same picker and the same placement as the toolbar button.</summary>
     [RelayCommand(CanExecute = nameof(HasActiveC3dEditor))]

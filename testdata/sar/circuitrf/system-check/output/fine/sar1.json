@@ -1,0 +1,111 @@
+{
+  "Port": 1,
+  "FrequencyHz": 1900000000,
+  "Index": 1,
+  "AcceptedPowerW": 8.066831259912928E-25,
+  "RadiationEfficiency": null,
+  "Region": "all tissue",
+  "AbsorbedPowerW": 6.121740160853023E-25,
+  "TissueMassKg": 2.400000000052138,
+  "UncountedPowerW": 0,
+  "Peaks": [
+    {
+      "Quantity": "SAR",
+      "Value": 5.621893602793166E-23,
+      "Cell": [
+        73,
+        47,
+        2
+      ],
+      "CentreM": [
+        -0.0005,
+        0.0004332727150799077,
+        0.010564295884113877
+      ],
+      "CubeLoM": null,
+      "CubeHiM": null,
+      "CubeMassKg": null,
+      "Kind": null,
+      "Object": "flat/liquid",
+      "Material": "Head tissue-simulating liquid"
+    },
+    {
+      "Quantity": "SAR1g",
+      "Value": 3.243434428429847E-23,
+      "Cell": [
+        73,
+        46,
+        2
+      ],
+      "CentreM": [
+        -0.0005,
+        -0.00043327271507990757,
+        0.010564295884113877
+      ],
+      "CubeLoM": [
+        -0.0055,
+        -0.005433272715079908,
+        0.01
+      ],
+      "CubeHiM": [
+        0.0045000000000000005,
+        0.004566727284920092,
+        0.02
+      ],
+      "CubeMassKg": 0.0010000000000375876,
+      "Kind": "Unused",
+      "Object": "flat/liquid",
+      "Material": "Head tissue-simulating liquid"
+    },
+    {
+      "Quantity": "SAR10g",
+      "Value": 1.6760170346761826E-23,
+      "Cell": [
+        73,
+        46,
+        2
+      ],
+      "CentreM": [
+        -0.0005,
+        -0.00043327271507990757,
+        0.010564295884113877
+      ],
+      "CubeLoM": [
+        -0.011272173446325901,
+        -0.011205446161405808,
+        0.01
+      ],
+      "CubeHiM": [
+        0.0102721734463259,
+        0.010338900731245994,
+        0.0315443468926518
+      ],
+      "CubeMassKg": 0.010000000000000026,
+      "Kind": "Unused",
+      "Object": "flat/liquid",
+      "Material": "Head tissue-simulating liquid"
+    }
+  ],
+  "B1Region": null,
+  "B1pMeanT": null,
+  "B0Axis": null,
+  "Shape": [
+    148,
+    94,
+    137
+  ],
+  "Volumes": [
+    "SAR",
+    "SAR1g",
+    "SAR10g"
+  ],
+  "CrossCheck": null,
+  "ReferencePowerW": null,
+  "PerWattDivisor": 8.066831259912928E-25,
+  "WholeSarPerWatt": 0.3161991350485014,
+  "AbsorbedFraction": 0.7588779241328893,
+  "B1pMeanPerSqrtWatt": null,
+  "PowerBudget": null,
+  "EfficiencyQuantity": "SAR10g",
+  "SarEfficiency": null
+}

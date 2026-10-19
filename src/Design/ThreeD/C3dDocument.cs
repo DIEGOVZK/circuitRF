@@ -319,6 +319,9 @@ public enum C3dPhantomShape
     Sphere1,
     /// <summary>One homogeneous box.</summary>
     Box1,
+    /// <summary>brief-sar-12 R-sar12-1 — circuitRF's own generic head, not any standard's mannequin: an ellipsoid shell of liquid
+    /// with a flat circular ear spacer on each side (ears on ±y of its own frame, x to the front, z up).</summary>
+    Head,
 }
 
 /// <summary>brief-sar-3 R-sar3-2 — one layer of a phantom: what it is called and what it is made of.</summary>
@@ -338,7 +341,8 @@ public sealed class C3dPhantomLayer
 /// they overlap (openEMS's examples give the inner shells the higher priority). <see cref="Layers"/> runs outermost first, one
 /// more than its shells. Its dimensions are its shape's: <see cref="SemiAxes"/> for an ellipsoid, <see cref="Radius"/> and
 /// <see cref="Length"/> along <see cref="Axis"/> for a cylinder (or a sphere's radius), <see cref="Size"/> for a box, each
-/// centred on <see cref="Centre"/>. <see cref="Shell1"/> is the outer shell's thickness and <see cref="Shell2"/> the next
+/// centred on <see cref="Centre"/>; brief-sar-12's head is <see cref="SemiAxes"/>, a <see cref="Shell1"/>, and its ear spacers'
+/// <see cref="Radius"/> and thickness (<see cref="Length"/>, how far each stands off the head along y). <see cref="Shell1"/> is the outer shell's thickness and <see cref="Shell2"/> the next
 /// one's. The base <see cref="C3dObject.Material"/> is not used: each layer names its own.
 /// </summary>
 public sealed class C3dPhantom : C3dObject
@@ -382,7 +386,13 @@ public sealed class C3dPhantom : C3dObject
     /// A new phantom of <paramref name="shape"/> centred on <paramref name="centre"/>, at the size of the openEMS example it comes
     /// from where there is one: the head phantom's ellipsoids (semi-axes 100, 80, 100 mm, shells 9 and 9 mm) and the body
     /// phantom's cylinders (radius 100 mm, 260 mm long, shells 8 and 10 mm), as resources/phantoms/create_phantoms.py states them.
-    /// The flat box (200 × 150 × 100 mm, a 2 mm shell), the sphere (radius 50 mm) and the box (100 mm) are starting sizes only.
+    /// The sphere (radius 50 mm) and the box (100 mm) are starting sizes only.
+    /// <para>brief-sar-12 R-sar12-1 — the flat box takes its 2.0 mm shell and its 150 mm of liquid from FCC OET Bulletin 65
+    /// Supplement C (Edition 01-01), "Recommended characteristics of head and body phantoms"; its 300 × 200 mm floor is
+    /// circuitRF's own, chosen to meet the same bulletin's system-check minimum (¾ wavelength by ½ wavelength) from 900 MHz up.
+    /// The head (<see cref="C3dPhantomShape.Head"/>) is circuitRF's own shape: semi-axes 100, 78 and 115 mm (circuitRF's own round
+    /// numbers for an adult head), a 2.0 mm shell, and ear spacers 4.0 mm thick (both from the same bulletin) and 25 mm in radius
+    /// (circuitRF's own).</para>
     /// </summary>
     public static C3dPhantom New(C3dPhantomShape shape, string name, C3dPoint3 centre, int dbuPerMicron)
     {
@@ -392,7 +402,9 @@ public sealed class C3dPhantom : C3dObject
         {
             case C3dPhantomShape.Ellipsoid3: p.SemiAxes = new(Mm(100), Mm(80), Mm(100)); p.Shell1 = Mm(9); p.Shell2 = Mm(9); break;
             case C3dPhantomShape.Cylinder3: p.Radius = Mm(100); p.Length = Mm(260); p.Shell1 = Mm(8); p.Shell2 = Mm(10); break;
-            case C3dPhantomShape.FlatBox: p.Size = new(Mm(200), Mm(150), Mm(100)); p.Shell1 = Mm(2); break;
+            case C3dPhantomShape.FlatBox: p.Size = new(Mm(300), Mm(200), Mm(152)); p.Shell1 = Mm(2); break;
+            case C3dPhantomShape.Head:
+                p.SemiAxes = new(Mm(100), Mm(78), Mm(115)); p.Shell1 = Mm(2); p.Radius = Mm(25); p.Length = Mm(4); break;
             case C3dPhantomShape.Sphere1: p.Radius = Mm(50); break;
             default: p.Size = new(Mm(100), Mm(100), Mm(100)); break;
         }
@@ -402,18 +414,23 @@ public sealed class C3dPhantom : C3dObject
     /// <summary>A phantom's faces are its layers' — each layer is its own solid.</summary>
     public override IReadOnlyList<string> FaceNames() => [];
 
+    /// <summary>brief-sar-12 — the shipped shell material: circuitRF's own lossless εr 3.7, inside the bounds OET Bulletin 65
+    /// Supplement C states for a phantom shell (εr below 5, loss tangent below 0.05).</summary>
+    public const string ShellMaterial = "Phantom shell (circuitRF's own)";
+
     /// <summary>How many layers <paramref name="shape"/> has.</summary>
     public static int LayerCount(C3dPhantomShape shape) => shape switch
     {
         C3dPhantomShape.Ellipsoid3 or C3dPhantomShape.Cylinder3 => 3,
         C3dPhantomShape.FlatBox => 2,
+        C3dPhantomShape.Head => 4,
         _ => 1,
     };
 
     /// <summary>The layers a new phantom of <paramref name="shape"/> starts with: SAR-2's records of the openEMS examples' own
     /// phantoms (sar.md §4.3), so a phantom drawn into a technology holding the tissue library resolves as drawn. The flat box's
-    /// liquid is the body tissue-simulating liquid; its shell names no material until one is chosen, since no shell material
-    /// with a stated source is shipped.</summary>
+    /// liquid is the body tissue-simulating liquid and the head's the head liquid; their shells (and the head's ear spacers) are
+    /// <see cref="ShellMaterial"/>.</summary>
     public static List<C3dPhantomLayer> DefaultLayers(C3dPhantomShape shape) => shape switch
     {
         C3dPhantomShape.Ellipsoid3 =>
@@ -430,8 +447,16 @@ public sealed class C3dPhantom : C3dObject
         ],
         C3dPhantomShape.FlatBox =>
         [
-            new() { Name = "shell" },
+            new() { Name = "shell", Material = ShellMaterial },
             new() { Name = "liquid", Material = "Body tissue-simulating liquid" },
+        ],
+        // The ear spacers first, so the shell and the liquid win the volume each spacer shares with the head.
+        C3dPhantomShape.Head =>
+        [
+            new() { Name = "ear-left", Material = ShellMaterial },
+            new() { Name = "ear-right", Material = ShellMaterial },
+            new() { Name = "shell", Material = ShellMaterial },
+            new() { Name = "liquid", Material = "Head tissue-simulating liquid" },
         ],
         C3dPhantomShape.Sphere1 => [new() { Name = "body", Material = "openEMS head phantom brain (298 MHz)" }],
         _ => [new() { Name = "body", Material = "openEMS body phantom tissue (128 MHz)" }],
@@ -1227,6 +1252,12 @@ public sealed class C3dDocument
     /// "Set Camera" (never by an orbit), cleared by Clear, and cleared with the rest by SerializeForRun.</para>
     /// </summary>
     public C3dLook? Look { get; set; }
+
+    /// <summary>brief-sar-12 R-sar12-3 — the band sweeps: each makes one ordinary setup per band from a template setup
+    /// (<see cref="C3dBandSweeps.Create"/>) and holds the rated power, duty cycle and reference values its result table reads.
+    /// Null (not written) when there are none. No run reads one: <see cref="C3dPersistence.SerializeForRun(C3dDocument)"/> leaves
+    /// them out.</summary>
+    public List<C3dBandSweep>? BandSweeps { get; set; }
 
     /// <summary>Brief 42's embedded EM setups (the <c>.cem</c> schema minus <c>LayoutRef</c>), each read by the
     /// <c>.cem</c> reader (<see cref="C3dSetups.Read"/>).</summary>

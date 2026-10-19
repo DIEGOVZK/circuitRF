@@ -1375,6 +1375,8 @@ static string FormatOhms(double re, double im)
 static int RunEm(string[] args)
 {
     string? input = null, output = null, workspace = null, solverName = null, setupName = null;
+    // brief-sar-12 R-sar12-3 — `em x.c3d --bands <sweep>`: every band's setup, made from the sweep's template, run in turn.
+    string? bandsName = null;
     Em3dSolver? solver = null;
     bool force = false;
     // brief-em3d-136 R-em3d136-4c — where Palace solves. Headless there is no preference to read, so a build machine
@@ -1431,6 +1433,9 @@ static int RunEm(string[] args)
             case "--setup" when i + 1 < args.Length:
                 setupName = args[++i];
                 break;
+            case "--bands" when i + 1 < args.Length:
+                bandsName = args[++i];
+                break;
             // brief-em3d-79 R-em3d79-4 — a thermal setup driven from a circuit: a global of the CIRCUIT, set before it is
             // elaborated, as `hb` sets it.
             case "--set" when i + 1 < args.Length:
@@ -1463,7 +1468,7 @@ static int RunEm(string[] args)
     if (input is null)
     {
         int code = JsonRun.Fail(CliDiagnostics.InputRequired("em", ".cem"));
-        Console.Error.WriteLine("Usage: circuitrf em <setup.cem | view.c3d> [--setup <name>] [-o out.sNp] [--workspace <file.cws>] [--solver palace|openems|both] [--device cpu|gpu] [--force] [--set var=expr]");
+        Console.Error.WriteLine("Usage: circuitrf em <setup.cem | view.c3d> [--setup <name> | --bands <sweep>] [-o out.sNp] [--workspace <file.cws>] [--solver palace|openems|both] [--device cpu|gpu] [--force] [--set var=expr]");
         Console.Error.WriteLine("       circuitrf em [<workspace dir | .cws | .ctech>] --component \"SPIRAL N=3 W=10 um ...\" -o out.sNp [--freq start:stop:step]");
         return code;
     }
@@ -1479,14 +1484,35 @@ static int RunEm(string[] args)
     bool isC3d = DocumentKinds.Classify(cemPath) == DocumentKind.ThreeD;
     string? embeddedName = null;      // brief-em3d-98 — the .c3d's own name for the setup run
     EmSetup setup;
+    CircuitRF.Design.ThreeD.C3dBandSweep? bandSweep = null;
+    var bandSetups = new List<EmSetup>();
+    if (bandsName is not null && (!isC3d || setupName is not null || output is not null))
+        return JsonRun.Fail(CliDiagnostics.EmThreeDSetup(cemPath, !isC3d
+            ? "--bands names a band sweep of a .c3d; a .cem is one setup."
+            : "--bands runs every band's own setup, each writing where its Simulate writes; it takes neither --setup nor -o."));
     if (isC3d)
     {
         try { threeD = CircuitRF.Design.ThreeD.C3dPersistence.LoadFromFile(cemPath); }
         catch (Exception ex) { return JsonRun.Fail(CliDiagnostics.SetupUnreadable(cemPath, ex.Message)); }
-        var (embedded, why) = CircuitRF.Design.ThreeD.C3dSetups.Select(threeD, setupName);
-        if (embedded is null) return JsonRun.Fail(CliDiagnostics.EmThreeDSetup(cemPath, why!));
-        setup = CircuitRF.Design.ThreeD.C3dSetups.ForRun(embedded, cemPath);
-        embeddedName = embedded.Name;
+        if (bandsName is not null)
+        {
+            bandSweep = threeD.BandSweeps?.FirstOrDefault(b => b.Name == bandsName);
+            if (bandSweep is null)
+                return JsonRun.Fail(CliDiagnostics.EmThreeDSetup(cemPath, $"This 3D view has no band sweep named '{bandsName}'" +
+                    (threeD.BandSweeps is { Count: > 0 } all ? $"; it has {string.Join(", ", all.Select(b => $"'{b.Name}'"))}." : ".")));
+            var (made, bandWhy) = CircuitRF.Design.ThreeD.C3dBandSweeps.Make(threeD, bandSweep);
+            if (bandWhy is not null) return JsonRun.Fail(CliDiagnostics.EmThreeDSetup(cemPath, bandWhy));
+            bandSetups.AddRange(made);
+            setup = CircuitRF.Design.ThreeD.C3dSetups.ForRun(made[0], cemPath);
+            embeddedName = null;
+        }
+        else
+        {
+            var (embedded, why) = CircuitRF.Design.ThreeD.C3dSetups.Select(threeD, setupName);
+            if (embedded is null) return JsonRun.Fail(CliDiagnostics.EmThreeDSetup(cemPath, why!));
+            setup = CircuitRF.Design.ThreeD.C3dSetups.ForRun(embedded, cemPath);
+            embeddedName = embedded.Name;
+        }
         threeDPath = cemPath;
     }
     else
@@ -1592,6 +1618,29 @@ static int RunEm(string[] args)
         CircuitRF.Design.ThreeD.C3dSolveStatus.AllCurrent(
             CircuitRF.Design.ThreeD.C3dSolveStatus.OfRun(setup, embeddedName, threeD, threeDPath!, resultsRoot)))
         Console.Error.WriteLine($"note: the result for '{embeddedName}' was already current; running again");
+
+    // brief-sar-12 — a band sweep runs each band's setup exactly as one setup runs, in turn, and then prints the band table.
+    if (bandSweep is not null)
+    {
+        foreach (var band in bandSetups)
+        {
+            var bandRun = CircuitRF.Design.ThreeD.C3dSetups.ForRun(band, cemPath);
+            Console.Error.WriteLine($"[circuitRF] band {band.Name}");
+            EmRunResult bandResult;
+            try
+            {
+                bandResult = EmRunService.RunThreeDView(bandRun, threeD!, threeDPath!, DocumentKinds.AncestorCws(threeDPath!), resultsRoot,
+                                                        RunHost.Cancellation, EmProgressToStderr(), confirmMemory: force ? _ => true : null,
+                                                        device: device);
+            }
+            catch (Exception ex) { return JsonRun.Fail(CliDiagnostics.RunFailed(ex.Message)); }
+            if (ReportEmRun(bandResult, bandRun, cemPath) is var code and not 0) return code;
+        }
+        foreach (string line in CircuitRF.Design.ThreeD.C3dBandSweeps.TableText(
+                     bandSweep, CircuitRF.Design.ThreeD.C3dBandSweeps.Table(threeD!, bandSweep, cemPath, resultsRoot)))
+            Console.WriteLine(line);
+        return 0;
+    }
 
     EmRunResult result;
     try

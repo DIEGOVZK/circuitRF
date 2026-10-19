@@ -734,12 +734,19 @@ public sealed partial class C3dEditorViewModel
             // brief-sar-3 — a phantom selected whole: its Flatten
             if (SelectedPhantom() is >= 0 and var phantom) { yield return Viewer3DMenuItem.Separator; yield return FlattenPhantomItem(phantom); }
             if (Targets().Count > 0) yield return new Viewer3DMenuItem("Group into Cell…", () => _ = GroupIntoCellAsync());
+            // brief-sar-12 — a device selected beside a phantom: put it against one of the phantom's faces.
+            if (SelectedPhantom() < 0 && PlacementRefusal() is null) yield return PlaceAgainstPhantomItem();
             yield break;
         }
         yield return Viewer3DMenuItem.Separator;
         foreach (var item in InstanceMenuItems(index, PushIntoSelected)) yield return item;
         yield return new Viewer3DMenuItem("Group into Cell…", () => _ = GroupIntoCellAsync());
+        if (PlacementRefusal() is null) yield return PlaceAgainstPhantomItem();
     }
+
+    private Viewer3DMenuItem PlaceAgainstPhantomItem()
+        => new("Place Against Phantom…", () => _ = OpenPlacementAsync(),
+               Tip: "At a separation from a phantom face, measured along its normal from the nearest point, with a tilt.");
 
     /// <summary>Instance <paramref name="index"/>'s own entries — Push Into, Swap View, Flatten, Flatten All Levels, Rename —
     /// which the canvas's menu and the object tree's (on the instance's row and on each of its parts) both offer.

@@ -1,0 +1,12 @@
+{
+  "note": "circuitRF OUTPUT, circuitRF\u0027s own system-check values (brief-sar-12): setup Fine of SystemCheck.c3d, run on openEMS.",
+  "setup": "Fine",
+  "grid_lines": [
+    185,
+    131,
+    174
+  ],
+  "stopped_at_timestep": 7099,
+  "energy_at_stop_db": -44,
+  "openems_wall_s": 213.81
+}

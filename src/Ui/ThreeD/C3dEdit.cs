@@ -180,13 +180,14 @@ public sealed class C3dRecordsEdit(string description, string before, string aft
     /// <summary>The records as one text: ports, face boundaries, setups — and (3D editor round 3) the air box's material,
     /// (round 5) whether it is hidden, and (brief-em3d-75) the thermal places: heat sources, probes, mesh regions and contact
     /// overrides, which are records beside the ports, never objects — and (brief-em3d-83) the field plots, and (brief-em3d-106) the
-    /// realistic view's Look — and (brief-sar-3) the lumped elements, as a document holding nothing else spells them.</summary>
+    /// realistic view's Look — and (brief-sar-3) the lumped elements and (brief-sar-12) the band sweeps, as a document holding nothing else spells them.</summary>
     public static string Of(C3dDocument doc)
         => C3dPersistence.SerializePorts(doc.Ports) + "\u0001" + C3dPersistence.SerializeFaceBoundaries(doc.FaceBoundaries) +
            "\u0001" + C3dPersistence.SerializeSetups(doc.Setups) + "\u0001" + (doc.AirBoxMaterial ?? "") +
            "\u0001" + (doc.AirBoxHidden ? "hidden" : "") + "\u0001" + C3dPersistence.SerializeThermalPlaces(doc) +
            "\u0001" + C3dPersistence.SerializeFieldPlots(doc.FieldPlots) + "\u0001" + C3dPersistence.SerializeLook(doc.Look) +
-           "\u0001" + C3dPersistence.Serialize(new C3dDocument { DbuPerMicron = doc.DbuPerMicron, LumpedElements = doc.LumpedElements });
+           "\u0001" + C3dPersistence.Serialize(new C3dDocument { DbuPerMicron = doc.DbuPerMicron, LumpedElements = doc.LumpedElements,
+                                                                BandSweeps = doc.BandSweeps });
 
     /// <summary>Whether <paramref name="text"/> (an <see cref="Of"/>) holds the air box hidden.</summary>
     public static bool AirBoxHiddenOf(string text) => text.Split('\u0001') is { Length: > 4 } parts && parts[4].Length > 0;
@@ -206,7 +207,13 @@ public sealed class C3dRecordsEdit(string description, string before, string aft
         // brief-em3d-106 — the Look is a record too: an edit of it (brief 108's panel) is one entry.
         if (parts.Length > 7) doc.Look = C3dPersistence.DeserializeLook(parts[7]);
         // brief-sar-3 — the lumped elements are records too: adding, renaming or editing one is one entry.
-        if (parts.Length > 8) doc.LumpedElements = C3dPersistence.Deserialize(parts[8]).LumpedElements;
+        // brief-sar-12 — and the band sweeps: saving one (with the setups it makes) is one entry.
+        if (parts.Length > 8)
+        {
+            var records = C3dPersistence.Deserialize(parts[8]);
+            doc.LumpedElements = records.LumpedElements;
+            doc.BandSweeps = records.BandSweeps;
+        }
     }
 }
 
