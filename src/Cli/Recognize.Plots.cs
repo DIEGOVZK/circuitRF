@@ -11,8 +11,9 @@
 //
 // THE CSV NEVER WAITS. A digitisation needs no assignment, no frequency and no frequency axis, so --csv is written
 // whatever the Touchstone's fate; a call that asked only for the CSV is not refused for the Touchstone it did not ask
-// for. Every other call whose Touchstone cannot be made exits 1 with the sentence and the flag that answers it — the
-// dialog's highlighted control, spelled as a flag.
+// for. Nor is one that asked only to --probe (brief-pdg-3): a value read off a curve needs no assignment either. Every
+// other call whose Touchstone cannot be made exits 1 with the sentence and the flag that answers it — the dialog's
+// highlighted control, spelled as a flag.
 //
 // NOTHING IS WRITTEN BUT WHAT WAS ASKED, and the Touchstone last: --overlay and --csv (written even when the file is
 // refused, because that is when they are most useful), then -o and the kept source pictures beside it.
@@ -89,7 +90,7 @@ internal static partial class Recognize
             touchstone = Path.GetFullPath(target);
             if (!string.Equals(Path.GetExtension(touchstone), built.Extension, StringComparison.OrdinalIgnoreCase))
             {
-                JsonRun.Recognize = PlotsDocument(pictures, session, built, null, csv, kept);
+                JsonRun.Recognize = PlotsDocument(pictures, session, built, null, csv, kept, []);
                 return JsonRun.Fail(CliDiagnostics.RecognizeOutputPorts(touchstone, built.Ports, built.Extension));
             }
             try
@@ -117,20 +118,33 @@ internal static partial class Recognize
             foreach (var c in built.Matrix)
                 text.Append($"S{c.I}{c.J}: {c.Source}{(c.Rule.Length > 0 ? $" ({c.Rule})" : "")}{(c.Phase.Length > 0 ? $"; phase {c.Phase}" : "")}\n");
         }
+        // --probe (R-pdg3-3): every rectangular trace whose range covers each x, read there — the dialog's typed x.
+        var probes = new List<PlotProbeJson>();
+        foreach (var (asked, x) in flags.Probes)
+        {
+            var read = TraceProbe.Across(session, x, fits);
+            if (read.Count == 0) text.Append("probe ").Append(asked).Append(": no rectangular trace covers it\n");
+            foreach (var p in read)
+            {
+                text.Append("probe ").Append(p.Readout).Append('\n');
+                probes.Add(new PlotProbeJson(asked, x, p.Hit.Name, p.Hit.Plot, p.Hit.Y, p.Text.YUnit, p.Text.XUnit.Length > 0 ? p.Text.XUnit : null,
+                                             p.Fit, p.Readout));
+            }
+        }
         if (csv is not null) text.Append("csv: ").Append(csv).Append('\n');
         if (touchstone is not null) text.Append("touchstone: ").Append(touchstone).Append('\n');
         Console.Write(text.ToString());
-        JsonRun.Recognize = PlotsDocument(pictures, session, built, touchstone, csv, kept);
+        JsonRun.Recognize = PlotsDocument(pictures, session, built, touchstone, csv, kept, probes);
 
-        // A call that asked only for the CSV is not refused for a Touchstone it did not ask for.
-        if (built.Refusal is { } no && !(csv is not null && o.Output is null))
+        // A call that asked only for the CSV, or only to probe, is not refused for a Touchstone it did not ask for.
+        if (built.Refusal is { } no && !((csv is not null || flags.Probes.Count > 0) && o.Output is null))
             return JsonRun.Fail(CliDiagnostics.RecognizePlotRefused(no.Sentence, no.Flag));
         return 0;
     }
 
     private static RecognizeReportJson PlotsDocument(IReadOnlyList<(string Path, ImageSource Source, ImageKindResult Kind)> pictures,
                                                      PlotSession session, TouchstoneAssemblyResult built, string? touchstone, string? csv,
-                                                     IReadOnlyList<string> kept)
+                                                     IReadOnlyList<string> kept, IReadOnlyList<PlotProbeJson> probes)
     {
         var findings = session.Findings.Select(f => new RecognizeFindingJson(f.Class, 1, f.Sentence, []))
                               .Concat(built.Report.Select(l => new RecognizeFindingJson("touchstone", 1, l, [])))
@@ -165,7 +179,8 @@ internal static partial class Recognize
             [.. session.Pictures.Select(p => new PlotPictureJson(p.Index, p.Name, p.Sha256, p.Width, p.Height, p.Plots))],
             plots, traces, markers, built.Ports, matrix, built.Grid?.ToString(), touchstone, csv, kept,
             built.Refusal is { } no ? new PlotRefusalJson(no.Kind, no.Sentence, no.Flag) : null,
-            built.Health is { } h ? TouchstoneAssembly.HealthLine(h) : null);
+            built.Health is { } h ? TouchstoneAssembly.HealthLine(h) : null,
+            probes.Count > 0 ? probes : null);
         return new RecognizeReportJson(Path.GetFullPath(pictures[0].Path), null, "whole", 0, findings, [], null, null, null, null, false)
         {
             Image = PictureFlags.ImageJson(pictures[0].Source, pictures[0].Kind),

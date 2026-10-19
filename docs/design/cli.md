@@ -3916,6 +3916,7 @@ Flags (`@<n>` names a plot; none means plot 1):
 | `--format db`, `ma`, `ri` | the Touchstone's format (DB) |
 | `--ports 2` | the file's ports, 1-4 (default: the highest port any trace names); a trace naming a port beyond it waits, as an unassigned one does |
 | `--fit "<T3 / #rrggbb / solid / dashed / dotted / all>[@n]=<model>"` | a curve fitted to a rectangular trace (brief-pdg-2): `linear`, `exp`, `poly[:<degree 1-8>]` (3), `spline[:<RMS in the trace's units>]` (one pixel), `none`; repeatable, the last naming a trace wins. The fit is written to the Touchstone in place of the raw reading and as the CSV's `y_fit`; pieces of one entry joined into one curve share one fit |
+| `--probe 2.4GHz` | every rectangular trace whose range covers this x, read there by `TraceProbe.Across` — interpolated between its samples (log x on a log axis), never extrapolated, the pieces of one curve joined first; a frequency with its unit or a plain number in the axis's own units; repeatable (brief-pdg-3) |
 | `--csv out.csv` | the raw digitised traces in each plot's own units — never resampled, and **never waits** |
 | `--keep-sources on`, `off` | the source pictures beside the Touchstone as `<name>.source.png`, `.source-2.png` … (on) |
 | `--overlay out.png` | each picture with what was read drawn over it; picture n's beside it as `out-n.png` |
@@ -3925,8 +3926,8 @@ Flags (`@<n>` names a plot; none means plot 1):
 frequency, an axis is uncalibrated, an entry is drawn only as a phase, or a fill copies an entry that is not plotted:
 `recognize.plot.refused`, exit 1, with the sentence and **the flag that answers it** — an unassigned trace's names its
 colour and plot (`--trace "T1=S21:db"`), a chart trace's `--freq T1=<start>..<stop>`. The overlay and the CSV are
-written whatever the Touchstone's fate, and a call that asked only for `--csv` is not refused for a Touchstone it did
-not ask for. Several paths that are not all pictures are `recognize.args.several-pictures`; a layout, schematic or
+written whatever the Touchstone's fate, and a call that asked only for `--csv`, or only to `--probe`, is not refused for
+a Touchstone it did not ask for. Several paths that are not all pictures are `recognize.args.several-pictures`; a layout, schematic or
 artwork flag on a plot is `picture.args.wrong-kind`. With no `-o` nothing is written but what was asked; stdout is the
 reading (a line per plot and trace), the report and the matrix — where every entry came from. `--json` carries
 `result.recognize.plots`: the pictures (name, SHA-256), the plots (type, calibrations with residuals and every tick
@@ -3936,18 +3937,21 @@ direction, a rectangular trace's `axis`, `left` or `right`, with its `axisEviden
 fitted trace's `fit` — `model`, `degree`, `expression` in circuitRF's expression language, its `variable` (`f`, `x`, or
 `log10(f)` on a log x axis) and `xUnit`, `coefficients` lowest power first, `rms` in the trace's units and `rmsPx`, a
 spline's `knots` and `smoothing`, the `pieces` fitted together, or only a `refusal`), the markers, the matrix map, the
-grid, the paths written, the refusal and the health line. The CSV ends `y_axis`, `y_fit`; `y` stays what was read.
+grid, the paths written, the refusal and the health line, and with `--probe` the `probes` — each one's `at` as typed, `x`
+in the axis's own units, `trace`, `plot`, `y` unrounded with its `yUnit`, `xUnit`, the trace's `fit` there when one is
+set, and the `text` printed on stdout (`probe T1 · 2.40 GHz · −8.1 dB`), to the picture's resolution. The CSV ends `y_axis`, `y_fit`; `y` stays what was read.
 A refused fit (an exponential that does not converge or explains too little, a degree above the distinct x values, a
 chart trace) leaves its trace as read, is a line of the report and the header, and never refuses the file. With a fit
 set the overlay draws it thin and dashed over its trace.
 
 Over the protocol every flag is a field (`pictures`, `plot`, `xAxis`, `yAxis`, `y2Axis`, `xLog`, `yLog`, `y2Log`, `trace`, `fit`,
-`smithZ0`, `freq`, `phase`, `fill`, `prefer`, `grid`, `format`, `csv`, `keepSources`) and the overlay comes back as image content,
+`smithZ0`, `freq`, `phase`, `fill`, `prefer`, `grid`, `format`, `csv`, `keepSources`, `probe`) and the overlay comes back as image content,
 so an agent can check every reading by eye and answer an unassigned trace with `trace`. Gate:
 `tests/Ui.Tests/PlotRecognition/PlotCliVerbTests.cs` — two pictures to `-o x.s2p` as a process, byte for byte the
 in-process assembly's but the time line TouchstoneIO writes; a Smith trace with no frequency exits 1 naming `--freq`;
 `--y2-axis` calibrates the right axis and `axis=right` moves a trace (brief-pdg-1); `--fit T1=poly:2` puts a `fit` in
-the JSON and a filled `y_fit` in the CSV (brief-pdg-2); the source scan.
+the JSON and a filled `y_fit` in the CSV (brief-pdg-2); the source scan. `TraceProbeTests` runs `--probe 2.4GHz` as a
+process and holds the value to the round-trip bound (brief-pdg-3).
 
 ## 27. A picture as `convert`'s source — the image reader, the scale, the overlay
 

@@ -47,7 +47,7 @@ using CircuitRF.Engine;
 namespace CircuitRF.Ui.Recognition;
 
 /// <summary>The canvas's box tools on a plot picture (PTU-6): Read only here crops, Ignore here excludes.</summary>
-public enum PlotBoxTool { None, ReadOnlyHere, IgnoreHere }
+public enum PlotBoxTool { None, ReadOnlyHere, IgnoreHere, Point }
 
 /// <summary>A technology the picture dialog offers.</summary>
 public sealed record ImageTechnologyChoice(string Name, string Path)
@@ -930,17 +930,41 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         set => BoxTool = value ? PlotBoxTool.IgnoreHere : BoxTool == PlotBoxTool.IgnoreHere ? PlotBoxTool.None : BoxTool;
     }
 
+    /// <summary>The Point tool (brief-pdg-3-snap-to-curve.md R-pdg3-2): one more mode of the box tools' arming — a click
+    /// pins a point on the nearest traced curve, and the tool stays armed until Escape or a toggle disarms it.</summary>
+    public bool PointArmed
+    {
+        get => BoxTool == PlotBoxTool.Point;
+        set => BoxTool = value ? PlotBoxTool.Point : BoxTool == PlotBoxTool.Point ? PlotBoxTool.None : BoxTool;
+    }
+
     partial void OnBoxToolChanged(PlotBoxTool value)
     {
         OnPropertyChanged(nameof(ReadOnlyHereArmed));
         OnPropertyChanged(nameof(IgnoreHereArmed));
+        OnPropertyChanged(nameof(PointArmed));
         OnPropertyChanged(nameof(CanvasPrompt));
+    }
+
+    /// <summary>A click with the Point tool armed, in picture pixels, <paramref name="reachPx"/> being the canvas's snap
+    /// distance in the same pixels: a point pinned on the nearest curve, or the click refused in the status line. Either
+    /// way the tool stays armed.</summary>
+    public bool PinAt(PixelPoint p, double reachPx) =>
+        BoxTool == PlotBoxTool.Point && IsPlotPicture && Plots.Pin(p.X, p.Y, reachPx);
+
+    /// <summary>Escape on the canvas: every armed tool disarmed, a pick cancelled.</summary>
+    public void CancelTools()
+    {
+        Scale.CancelToolCommand.Execute(null);
+        CancelPick();
+        BoxTool = PlotBoxTool.None;
     }
 
     /// <summary>A box dragged with a box tool armed, in picture pixels: the tool acts on it and is disarmed (R-ptu6-1).</summary>
     public bool CommitBox(PixelRect rect)
     {
         var tool = BoxTool;
+        if (tool == PlotBoxTool.Point) return false;   // the Point tool takes clicks, not boxes
         BoxTool = PlotBoxTool.None;
         if (tool == PlotBoxTool.None || !IsPlotPicture || Raster is not { } raster) return false;
         int left = (int)Math.Floor(Math.Clamp(Math.Min(rect.Left, rect.Right), 0, raster.Width));
@@ -1008,6 +1032,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     public string CanvasPrompt =>
         BoxTool == PlotBoxTool.ReadOnlyHere ? "Drag a box around the plot to read: the picture is cropped to it. Escape cancels."
         : BoxTool == PlotBoxTool.IgnoreHere ? "Drag a box over what is not a trace — a legend, a note — inside a plot. Escape cancels."
+        : BoxTool == PlotBoxTool.Point ? "Click on a traced curve to pin a point there. Escape cancels."
         : Scale.Tool != ImageMeasureTool.None ? Scale.ToolPrompt
         : IsLayoutPicture && Scale.NeedsScale && FailureText.Length == 0 ? ImageScaleViewModel.SetScalePrompt
         : "";

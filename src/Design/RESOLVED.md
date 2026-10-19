@@ -20394,3 +20394,19 @@ the run settings behind each: `docs/design/sar.md` §9.4, §10.5, §10.7, §11.6
 - **`TouchstoneAssemblyTests.S11AndAPassiveS21…` and `AnS21AboveZeroDb…` fail on this tree** with "T1 is unassigned",
   read from the plotter's `s21db` and `amp21`: the y-title misread recorded under PDG-1, raised before any fit code runs
   (neither test sets a fit). Not caused here.
+
+## A point on a traced curve, and `--probe` (brief-pdg-3-snap-to-curve, 2026-10-18)
+
+- **A probe reads samples, not `Curve.Points`.** The brief names the curve's points as the polyline; `TraceProbe`
+  projects onto the samples' own pixels (`PlotSample.Px/Py`) instead. For a trace as read they are the same pixels, one
+  for one; for a trace TraceJoin has joined only the samples hold every piece (`Curve` stays the longest piece's), and a
+  chart trace's frequency lives only on its samples. Ignored traces are passed over as well as excluded plots: a curve the
+  user said is not a trace is not one to snap to.
+- **"About one pixel's worth" is the finest decimal step no smaller than a pixel** — `floor(−log10(PerPixel))`
+  decimals. Rounding the exponent instead printed 0.001 steps on a 0.003-per-pixel axis, finer than the picture
+  resolves, which the brief rules out. The cost is that 0.04 dB a pixel prints tenths.
+- **A `--probe`-only call is not refused for a Touchstone it did not ask for**, on `--csv`'s terms: a value read off a
+  curve needs no assignment. Its `yUnit` does, though — an unassigned trace has no `ResolutionUnit`, so the plotter's
+  `s21db` (still read unassigned, PDG-1's y-title misread) probes with an empty unit unless `--trace T1=S21:db` says
+  what it is. The gate passes `--trace`; its value is 0.025 dB from the drawn −0.265 dB at 2.4 GHz against a 0.142 dB
+  bound.

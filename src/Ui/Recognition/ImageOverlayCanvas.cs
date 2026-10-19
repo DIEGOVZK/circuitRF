@@ -10,7 +10,9 @@
 // left-click is the tool's; with Board corners… armed (IM-13) a left-drag on a handle moves it, and the overlay — read
 // on the rectified picture — is not drawn over the photo as taken. On a plot picture with Read only here or Ignore here
 // armed (PTU-6) a left-drag is the tool's box, handed to the view model on release; an Ignore here box is drawn hatched,
-// selected by a click and removed by Delete.
+// selected by a click and removed by Delete. On a plot picture the pointer near a traced curve shows a crosshair and a
+// readout at the snapped point (brief-pdg-3 R-pdg3-2) without changing what a click does; with the Point tool armed a
+// click pins a point there, drawn as a numbered dot, selected by a click and removed by Delete.
 
 using System;
 using System.Collections.Generic;
@@ -61,6 +63,7 @@ public sealed class ImageOverlayCanvas : Control
     private ImageOverlayItem? _dragEnd;
     private bool _panning, _scoping, _spaceHeld;
     private PixelPoint? _hover;
+    private CircuitRF.Design.Imaging.Plots.TraceProbeHit? _probe;
     private int _dragCorner = -1;
 
     public ImageOverlayCanvas()
@@ -89,6 +92,8 @@ public sealed class ImageOverlayCanvas : Control
         {
             _vm.PropertyChanged -= OnVmChanged;
             _vm.Scale.PropertyChanged -= OnVmChanged;
+            _vm.Plots.PropertyChanged -= OnPointsChanged;
+            _vm.Plots.ProbePoints.CollectionChanged -= OnPointsChanged;
             _vm.FitRequested -= Fit;
         }
         _vm = DataContext as ImageSourceViewModel;
@@ -96,6 +101,8 @@ public sealed class ImageOverlayCanvas : Control
         {
             _vm.PropertyChanged += OnVmChanged;
             _vm.Scale.PropertyChanged += OnVmChanged;
+            _vm.Plots.PropertyChanged += OnPointsChanged;
+            _vm.Plots.ProbePoints.CollectionChanged += OnPointsChanged;
             _vm.FitRequested += Fit;
         }
         _autoFit = true;
@@ -114,6 +121,14 @@ public sealed class ImageOverlayCanvas : Control
             InvalidateArrange();
         }
         if (e.PropertyName == nameof(ImageSourceViewModel.SelectedItem) && _vm?.SelectedItem is { } item) BringIntoView(item);
+        if (e.PropertyName is nameof(ImageSourceViewModel.Overlay) or nameof(ImageSourceViewModel.Raster)) _probe = null;
+        InvalidateVisual();
+    }
+
+    /// <summary>A point pinned, removed from the list or selected there: the dots are redrawn.</summary>
+    private void OnPointsChanged(object? sender, EventArgs e)
+    {
+        if (e is PropertyChangedEventArgs p && p.PropertyName != nameof(PlotSessionViewModel.SelectedProbePoint)) return;
         InvalidateVisual();
     }
 
@@ -420,6 +435,41 @@ public sealed class ImageOverlayCanvas : Control
                                   new Rect(from, _lastPointer).Normalize());
         if (_dragEnd is { Circle: { } c } && _pressAt is not null)
             context.DrawLine(new Pen(pen.Brush, 1.5, new ImmutableDashStyle([5, 3], 0)), ToView(c.X, c.Y), _lastPointer);
+
+        if (_vm.IsPlotPicture && !_vm.HasFailure) DrawProbes(context);
+    }
+
+    /// <summary>The pinned points as numbered dots, and the hover's crosshair and readout (R-pdg3-2), in screen pixels so
+    /// they keep their size at any zoom.</summary>
+    private void DrawProbes(DrawingContext context)
+    {
+        var plots = _vm!.Plots;
+        foreach (var p in plots.ProbePoints)
+        {
+            if (p.Picture != plots.ShownPicture || p.Hit is null) continue;
+            bool selected = ReferenceEquals(p, plots.SelectedProbePoint);
+            var at = ToView(p.Px, p.Py);
+            var colour = selected ? Accent : PortColour;
+            context.DrawEllipse(new ImmutableSolidColorBrush(colour), new Pen(Brushes.White, 1.5), at, 4.5, 4.5);
+            Readout(context, p.Name, new Point(at.X + 6, at.Y - 18), colour);
+        }
+        if (_probe is not { } h || _panning || _scoping) return;
+        var v = ToView(h.Px, h.Py);
+        var cross = new Pen(new ImmutableSolidColorBrush(Accent), 1.25);
+        context.DrawLine(cross, new Point(v.X - 7, v.Y), new Point(v.X - 2, v.Y));
+        context.DrawLine(cross, new Point(v.X + 2, v.Y), new Point(v.X + 7, v.Y));
+        context.DrawLine(cross, new Point(v.X, v.Y - 7), new Point(v.X, v.Y - 2));
+        context.DrawLine(cross, new Point(v.X, v.Y + 2), new Point(v.X, v.Y + 7));
+        Readout(context, plots.ProbeText(h), new Point(v.X + 10, v.Y + 8), Accent);
+    }
+
+    /// <summary>A line of text on a white backing at <paramref name="at"/>, kept inside the canvas.</summary>
+    private void Readout(DrawingContext context, string text, Point at, Color colour)
+    {
+        var t = Text(text, colour, 1);
+        double x = Math.Min(at.X, Bounds.Width - t.Width - 6), y = Math.Min(at.Y, Bounds.Height - t.Height - 4);
+        context.FillRectangle(new ImmutableSolidColorBrush(Colors.White, 0.88), new Rect(x - 3, y - 1, t.Width + 6, t.Height + 2), 2);
+        context.DrawText(t, new Point(x, y));
     }
 
     // ── bitmaps ─────────────────────────────────────────────────────────────────────────────────────
@@ -524,10 +574,14 @@ public sealed class ImageOverlayCanvas : Control
         if (e.Key == Key.Space) { _spaceHeld = true; Cursor = new Cursor(StandardCursorType.Hand); e.Handled = true; }
         else if (e.Key == Key.Escape && _vm is not null)
         {
-            _vm.Scale.CancelToolCommand.Execute(null);
-            _vm.CancelPick();
-            _vm.BoxTool = PlotBoxTool.None;
+            _vm.CancelTools();
             _scoping = false;
+            InvalidateVisual();
+            e.Handled = true;
+        }
+        else if (e.Key is Key.Delete or Key.Back && _vm is { IsPlotPicture: true } && _vm.Plots.SelectedProbePoint is { } point)
+        {
+            _vm.Plots.RemoveProbePoint(point);
             InvalidateVisual();
             e.Handled = true;
         }
@@ -544,6 +598,15 @@ public sealed class ImageOverlayCanvas : Control
             InvalidateVisual();
             e.Handled = true;
         }
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        _hover = null;
+        if (_probe is null) return;
+        _probe = null;
+        InvalidateVisual();
     }
 
     protected override void OnKeyUp(KeyEventArgs e)
@@ -583,6 +646,9 @@ public sealed class ImageOverlayCanvas : Control
         base.OnPointerMoved(e);
         var p = e.GetPosition(this);
         _hover = ToPicture(p);
+        _probe = _vm is { IsPlotPicture: true, HasFailure: false } && !_panning && _dragCorner < 0
+            ? _vm.Plots.ProbeAt(_hover.Value.X, _hover.Value.Y, PlotSessionViewModel.SnapScreenPx / _zoom)
+            : null;
         if (_panning)
         {
             _autoFit = false;
@@ -595,7 +661,8 @@ public sealed class ImageOverlayCanvas : Control
             ViewChanged?.Invoke();
         }
         else if (_pressAt is { } from && _dragEnd is null
-                 && _vm is { BoxTool: not PlotBoxTool.None } or { Scale.Tool: ImageMeasureTool.None, CanvasPick: false, IsLayoutPicture: true }
+                 && _vm is { BoxTool: PlotBoxTool.ReadOnlyHere or PlotBoxTool.IgnoreHere }
+                          or { Scale.Tool: ImageMeasureTool.None, CanvasPick: false, IsLayoutPicture: true }
                  && (Math.Abs(p.X - from.X) > 4 || Math.Abs(p.Y - from.Y) > 4))
             _scoping = true;
         _lastPointer = p;
@@ -637,7 +704,22 @@ public sealed class ImageOverlayCanvas : Control
         }
 
         var at = ToPicture(p);
+        // A pinned point clicked is selected; with the Point tool armed any other click pins one (R-pdg3-2).
+        if (vm.IsPlotPicture && vm.Plots.ProbePointAt(at.X, at.Y, 6 / _zoom) is { } pin)
+        {
+            vm.Plots.SelectedProbePoint = pin;
+            vm.Plots.SelectedIgnoreBox = null;
+            InvalidateVisual();
+            return;
+        }
+        if (vm.BoxTool == PlotBoxTool.Point)
+        {
+            vm.PinAt(at, PlotSessionViewModel.SnapScreenPx / _zoom);
+            InvalidateVisual();
+            return;
+        }
         if (vm.BoxTool != PlotBoxTool.None) return;   // a click is not a box: the tool stays armed
+        if (vm.IsPlotPicture) vm.Plots.SelectedProbePoint = null;
         if (vm.CanvasPick) { vm.PickAt(at); return; }
         if (vm.IsPlotPicture)
         {

@@ -127,7 +127,7 @@ internal static partial class Recognize
             "                 [--trace <T3|#rrggbb|dashed>[@plot]=S21:db[,axis=left|right]] [--smith-z0 50Ohm] [--freq <trace>=<start>..<stop>]\n" +
             "                 [--phase S21=min|zero|delay:<t>] [--fill S12=S21,S22=zero] [--grid <start>..<stop>/<n>[log]]\n" +
             "                 [--prefer S11=chart|rect|T3] [--format db|ma|ri] [--ports n]\n" +
-            "                 [--fit <T3|#rrggbb|dashed|all>[@plot]=linear|exp|poly[:n]|spline[:rms]|none]\n" +
+            "                 [--fit <T3|#rrggbb|dashed|all>[@plot]=linear|exp|poly[:n]|spline[:rms]|none] [--probe 2.4GHz]\n" +
             "  Writes nothing unless -o, --into, --parts-out or --overlay is given. Layout coordinates carry a unit\n" +
             "  (um, mm, mil); picture coordinates are pixels and say so (px).");
         return 1;

@@ -106,6 +106,8 @@ public sealed class PlotCliVerbTests(PlotPictureSet pictures, ITestOutputHelper 
             "PolarCalibration", "LegendEntry", "TraceCurve", "TraceStyle", "TraceHints", "PlotFrame", "PlotAxis", "PlotSide",
             // brief-pdg-2's fits: the option a flag spells, the entry point the overlay and the CSV take them from, the result.
             "PlotFitOverride", "TraceFitSpec", "TraceFitModel", "TraceFit", "TraceFitResult",
+            // brief-pdg-3's probe: the entry point --probe reads through, and what it returns.
+            "TraceProbe", "TraceProbeHit", "TraceProbeText", "TraceProbeReading",
         ];
         var declared = Directory.GetFiles(Path.Combine(repo, "src", "Design", "Imaging", "Plots"), "*.cs")
             .SelectMany(f => Regex.Matches(File.ReadAllText(f),

@@ -300,6 +300,10 @@ internal static class ToolCatalog
             "Plots: fit a curve to a rectangular trace, written in place of the raw reading in the Touchstone and as y_fit in the "
           + "CSV: <T3|#rrggbb|solid|dashed|dotted|all>[@plot]=linear|exp|poly[:<degree 1-8>]|spline[:<RMS in the trace's units>]|none "
           + "(T3=poly:3, all=linear, T2=spline:0.05). Each fit's expression, coefficients and residual are in the result."),
+        new("probe",       "--probe",        OptKind.StrRepeat,
+            "Plots: read every rectangular trace whose range covers this x, interpolated between its samples (log x on a log "
+          + "axis), never extrapolated: a frequency with its unit (2.4GHz) or a plain number in the axis's own units. Each "
+          + "value is in result.recognize.plots.probes, with a readout to the picture's resolution."),
         new("smithZ0",     "--smith-z0",     OptKind.Str,    "Plots: a Smith chart's reference impedance (50Ohm, the stated default)."),
         new("freq",        "--freq",         OptKind.StrRepeat,
             "Plots: a chart trace's start and stop frequency, <trace>=<start>..<stop> (T4=1GHz..5GHz); combines with markers."),

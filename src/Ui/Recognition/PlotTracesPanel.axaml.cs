@@ -65,6 +65,22 @@ public partial class PlotTracesPanel : UserControl
         catch (Exception) { /* a clipboard another process holds: nothing copied, nothing else to do */ }
     }
 
+    /// <summary>Copy in the Points section (R-pdg3-2): every pinned point as tab-separated text.</summary>
+    private async void OnCopyPoints(object? sender, RoutedEventArgs e)
+    {
+        if (_vm is null || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
+        try { await clipboard.SetTextAsync(_vm.PointsTsv()); }
+        catch (Exception) { /* a clipboard another process holds: nothing copied, nothing else to do */ }
+    }
+
+    /// <summary>Enter in the Points section's x box pins the selected trace's value there.</summary>
+    private void OnProbeXKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter || _vm is null) return;
+        _vm.PinAtXCommand.Execute(null);
+        e.Handled = true;
+    }
+
     /// <summary>Scrolls the column just enough to show the selected row (R-ptu3-1).</summary>
     public void BringSelectedIntoView()
     {

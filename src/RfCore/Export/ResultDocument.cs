@@ -1543,6 +1543,7 @@ namespace RfCore.Export
     /// <param name="Kept">The source pictures kept beside the Touchstone.</param>
     /// <param name="Refusal">Why no Touchstone could be made, and the flag that answers it; null when it could.</param>
     /// <param name="Health">The health check's verdict on the file, one line.</param>
+    /// <param name="Probes">What each <c>--probe</c> read (brief-pdg-3-snap-to-curve.md R-pdg3-3); null when none was asked.</param>
     public sealed record RecognizePlotsJson(
         IReadOnlyList<PlotPictureJson>    Pictures,
         IReadOnlyList<PlotFrameJson>      Plots,
@@ -1557,7 +1558,29 @@ namespace RfCore.Export
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         PlotRefusalJson?                  Refusal,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        string?                           Health);
+        string?                           Health,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        IReadOnlyList<PlotProbeJson>?     Probes = null);
+
+    /// <summary>One rectangular trace read at one <c>--probe</c> x.</summary>
+    /// <param name="At">The x as typed (<c>2.4GHz</c>).</param>
+    /// <param name="X">The same in the axis's own units: hertz on a frequency axis.</param>
+    /// <param name="Y">The trace's value there, in <paramref name="YUnit"/>, unrounded.</param>
+    /// <param name="XUnit">The axis's display unit (<c>GHz</c>); null on an axis that is not frequency.</param>
+    /// <param name="Fit">The trace's fit there, when one is set.</param>
+    /// <param name="Text">The readout, to the picture's resolution: <c>T1 · 2.400 GHz · −8.12 dB</c>.</param>
+    public sealed record PlotProbeJson(
+        string  At,
+        double  X,
+        string  Trace,
+        int     Plot,
+        double  Y,
+        string  YUnit,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string? XUnit,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        double? Fit,
+        string  Text);
 
     /// <param name="Index">0-based, in the order the pictures were given.</param>
     /// <param name="Plots">The session numbers of its plots.</param>

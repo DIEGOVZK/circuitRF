@@ -22,6 +22,10 @@ internal sealed class PlotFlags
     public readonly List<PlotTraceOverride> Traces = [];
     public readonly List<PlotFrequencyOverride> Frequencies = [];
     public readonly List<PlotFitOverride> Fits = [];
+
+    /// <summary>The x values <c>--probe</c> reads every rectangular trace at (brief-pdg-3-snap-to-curve.md R-pdg3-3): as
+    /// typed, and in the axis's own units — hertz on a frequency axis.</summary>
+    public readonly List<(string Text, double X)> Probes = [];
     public readonly Dictionary<(int I, int J), PhaseRule> Phase = [];
     public readonly Dictionary<(int I, int J), FillRule> Fill = [];
     public readonly Dictionary<(int I, int J), string> Prefer = [];
@@ -116,6 +120,11 @@ internal sealed class PlotFlags
                 Fits.Add(new PlotFitOverride(v[..eq].Trim(), spec));
                 break;
             }
+            case "--probe":
+                if (TraceProbe.ParseX(v) is not { } x)
+                    return Bad("an x to read every rectangular trace at: a frequency with its unit (2.4GHz), or a plain number in the axis's own units");
+                Probes.Add((v.Trim(), x));
+                break;
             case "--smith-z0":
             {
                 string t = v.Trim();

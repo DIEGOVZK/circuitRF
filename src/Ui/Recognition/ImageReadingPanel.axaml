@@ -87,7 +87,7 @@
                     <rec:ImageOverlayCanvas x:Name="Canvas"/>
 
                     <!-- Zoom to Fit, the editors' own button (as the Match Designer floats it), on a plot picture the two
-                         box tools (PTU-6), then the legend: each class toggled. -->
+                         box tools (PTU-6) and the Point tool (PDG-3), then the legend: each class toggled. -->
                     <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4">
                     <Button Click="OnZoomToFit" Padding="6,3" VerticalAlignment="Center"
                             ToolTip.Tip="Zoom to Fit  (F)">
@@ -102,6 +102,11 @@
                                   IsChecked="{Binding IgnoreHereArmed}"
                                   ToolTip.Tip="Ignore here: drag a box over a legend or a note inside a plot, and nothing in it is read as a trace. Click a box and press Delete to remove it.">
                         <mi:MaterialIcon Kind="SelectionRemove" Width="16" Height="16"/>
+                    </ToggleButton>
+                    <ToggleButton Click="OnBoxTool" Padding="6,3" VerticalAlignment="Center" IsVisible="{Binding IsPlotPicture}"
+                                  IsChecked="{Binding PointArmed}"
+                                  ToolTip.Tip="Point: click on a traced curve to pin a point there; it snaps to the curve and is listed under Points with its values. Escape stops.">
+                        <mi:MaterialIcon Kind="Crosshairs" Width="16" Height="16"/>
                     </ToggleButton>
                     <Border Classes="pill" Margin="0,4" IsVisible="{Binding !HasFailure}">
                         <StackPanel Orientation="Horizontal">

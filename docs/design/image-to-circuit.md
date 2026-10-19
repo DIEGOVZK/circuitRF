@@ -1265,6 +1265,32 @@ Measured on a crisp circuitRF plot (a 2 Ω + 5 nH low-pass, 1–5 GHz, `TraceFit
 reading and writes |Δ|S21|| 0.00593 against the reading's 0.00592 — both are the y calibration's bias, which a fit
 carries unchanged. A fit removes noise; on a picture with little, it can only match the reading, to its model's error.
 
+### 15.7.2 A point on a curve (brief-pdg-3-snap-to-curve.md) — `TraceProbe`
+
+What a curve reads at a place, without a file written and read back. Pure, after reading, on samples; the reader, the
+Touchstone and the CSV are untouched.
+
+- **Snapped to the curve, not to a sample.** `Nearest` projects the picture point perpendicularly onto every segment of
+  every trace's polyline — its samples' pixels, so a joined trace's pieces too — and takes the nearest within the reach
+  asked (8 screen px in the dialog); a tie goes to the selected trace's plot. Excluded plots, ignored traces and traces
+  with no values are passed over. The value is read at the projected point: x through the x calibration, y through the
+  trace's **own** axis (PDG-1's `AxisOn(t.Axis)`), so the readout is continuous rather than stepped to pixel columns. A
+  chart trace reads its complex value through the chart's calibration, and a frequency interpolated between the
+  segment's two samples when it has one.
+- **`AtX` never extrapolates.** A rectangular trace's samples are interpolated linearly between the two that bracket x
+  — in log x on a log axis, and in log y on a log y axis — and the answer is null outside the trace's range or for a
+  chart trace. `Across` reads every rectangular trace of the session at one x with TraceJoin's pieces joined first, so
+  one curve answers once: the CLI's `--probe`.
+- **No more digits than the picture resolves.** Every value is printed to the finest decimal step no smaller than one
+  pixel's worth of its axis there (`PerPixel` at the point; along a chart trace, the frequency one pixel of its segment
+  spans): 0.04 dB a pixel prints tenths. The readout uses the axis's display unit; a copied table uses ASCII signs.
+
+**In the dialog** the hover is always on in plot mode and changes nothing a click does. The **Point** tool is one more
+mode of PTU-6's box-tool arming (`PlotBoxTool.Point`): a click pins, a click far from every curve is refused in the status
+line, and the tool stays armed until Escape. Pins are session state on `PlotSessionViewModel` — never written to a file
+— and survive a re-read by re-snapping their picture position (within 6 px); a pin typed as an x is read again at that
+x on the curve it lands on. A picture removed or cropped drops its pins. Gate: `TraceProbeTests`.
+
 ### 15.8 Minimum phase (R-im14-10) — `MinimumPhase`
 
 The cepstral Hilbert transform of ln|S|, on **the bilinear map of the whole axis**: f = f_top·tan(θ/2) for θ in

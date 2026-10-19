@@ -589,6 +589,30 @@ public sealed partial class PlotMatrixCellViewModel : ObservableObject
 /// is on picture <paramref name="Picture"/> (0-based). Picture pixels.</summary>
 public sealed record PlotIgnoreBox(int Plot, int Picture, PixelBox Box);
 
+/// <summary>A point pinned on a traced curve (brief-pdg-3-snap-to-curve.md R-pdg3-2): session state only, never written.</summary>
+/// <param name="picture">The 0-based picture it was pinned on.</param>
+public sealed partial class PlotProbePointViewModel(int number, int picture, Action<PlotProbePointViewModel> remove) : ObservableObject
+{
+    public int Number { get; } = number;
+    public int Picture { get; set; } = picture;
+    public string Name => $"P{Number.ToString(CultureInfo.InvariantCulture)}";
+
+    /// <summary>The x typed for it, in the axis's own units; null for a point clicked.</summary>
+    public double? TypedX { get; init; }
+
+    /// <summary>Where it sits on the picture, pixels — what a re-read snaps it by.</summary>
+    public double Px { get; set; }
+    public double Py { get; set; }
+
+    /// <summary>What the curve reads there; null when a re-read left no curve under it.</summary>
+    [ObservableProperty] private TraceProbeHit? _hit;
+
+    /// <summary><c>P1 · T3 · 2.437 GHz · −12.31 dB</c>.</summary>
+    [ObservableProperty] private string _text = "";
+
+    [RelayCommand] private void Remove() => remove(this);
+}
+
 public sealed partial class PlotSessionViewModel : ObservableObject
 {
     private readonly Dictionary<string, PlotAssignment> _assign = new(StringComparer.Ordinal);
@@ -859,6 +883,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         _fill.Clear();
         _phase.Clear();
         ForgetIgnoreBoxes();
+        ForgetAllPoints();
         Session = null;
         Assembly = null;
         SelectedTrace = null;
@@ -906,6 +931,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         _excluded.Clear();
         _axis.Clear();
         ForgetIgnoreBoxes();
+        ForgetPoints(i, shift: true);
         if (ShownPicture >= Pictures.Count) ShownPicture = Pictures.Count - 1;
         Changed?.Invoke();
     }
@@ -928,6 +954,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         _excluded.Clear();
         _axis.Clear();
         ForgetIgnoreBoxes();
+        ForgetPoints(index, shift: false);
         Session = null;
         Assembly = null;
         SelectedTrace = null;
@@ -1041,6 +1068,152 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         _ignore.Clear();
         SelectedIgnoreBox = null;
         OnPropertyChanged(nameof(IgnoreBoxes));
+    }
+
+    // ── points on a curve (brief-pdg-3-snap-to-curve.md R-pdg3-2) ────────────────────────────────────
+
+    /// <summary>How near a curve the pointer must be for the hover readout and the Point tool, screen pixels.</summary>
+    public const double SnapScreenPx = 8;
+
+    /// <summary>How far a re-read may move a pinned point's curve and still find it, picture pixels.</summary>
+    private const double ResnapPx = 6;
+
+    /// <summary>The points pinned, every picture's, in the order pinned.</summary>
+    public ObservableCollection<PlotProbePointViewModel> ProbePoints { get; } = [];
+
+    /// <summary>The point clicked on the canvas or in the list: Delete removes it.</summary>
+    [ObservableProperty] private PlotProbePointViewModel? _selectedProbePoint;
+
+    /// <summary>The x typed in the Points section, as the axis rows spell one (<c>2.4 GHz</c>).</summary>
+    [ObservableProperty] private string _probeXText = "";
+
+    public bool HasProbePoints => ProbePoints.Count > 0;
+
+    private int _nextPoint = 1;
+
+    /// <summary>The nearest traced curve to a point of the shown picture within <paramref name="reachPx"/> picture pixels;
+    /// a tie goes to the selected trace's plot.</summary>
+    public TraceProbeHit? ProbeAt(double x, double y, double reachPx) =>
+        Session is { } s ? TraceProbe.Nearest(s, ShownPicture, x, y, reachPx, SelectedTrace?.Plot) : null;
+
+    /// <summary>What the hover readout says of <paramref name="hit"/>, the trace's fit after it when one is set.</summary>
+    public string ProbeText(TraceProbeHit hit) => Session is { } s ? TraceProbe.Readout(s, hit, Assembly?.Fits.GetValueOrDefault(hit.Name)) : "";
+
+    /// <summary>A point pinned on the nearest curve to a click; a click far from every curve is refused in the status line.</summary>
+    public bool Pin(double x, double y, double reachPx)
+    {
+        if (ProbeAt(x, y, reachPx) is not { } hit)
+        {
+            StatusRaised?.Invoke(Session is null ? "The picture is still being read: pin a point once its traces are found."
+                                                 : "That is not on a traced curve: click on a curve the reading traced.");
+            return false;
+        }
+        AddPoint(hit, ShownPicture, null);
+        return true;
+    }
+
+    /// <summary>The selected trace's value at the x typed in the Points section, pinned (<see cref="TraceProbe.AtX"/>).</summary>
+    [RelayCommand]
+    private void PinAtX()
+    {
+        if (TraceProbe.ParseX(ProbeXText) is not { } x)
+        {
+            StatusRaised?.Invoke("Type an x as the axis rows take one: a frequency with its unit (2.4 GHz), or a number in the axis's own units.");
+            return;
+        }
+        if (SelectedTrace is not { IsChart: false } row || Session is not { } s)
+        {
+            StatusRaised?.Invoke("Select a trace on rectangular axes first: the x is read on it.");
+            return;
+        }
+        // In Simple mode the row is the colour group: whichever of its pieces reaches x answers.
+        IReadOnlyList<PlotTraceRowViewModel> rows = Detailed ? [row] : GroupOf(row)?.Members ?? [row];
+        var hit = rows.Select(r => s.Traces.FirstOrDefault(t => t.Name == r.Name)).OfType<PlotTraceRead>()
+                      .Select(t => TraceProbe.AtX(s, t.Number, x)).FirstOrDefault(h => h is not null);
+        if (hit is null)
+        {
+            StatusRaised?.Invoke($"{row.Name} does not reach {ProbeXText.Trim()}: a point is read only inside a trace's own range.");
+            return;
+        }
+        AddPoint(hit, s.Plots[hit.Plot - 1].Picture, x);
+        ProbeXText = "";
+    }
+
+    private void AddPoint(TraceProbeHit hit, int picture, double? typedX)
+    {
+        var point = new PlotProbePointViewModel(_nextPoint++, picture, RemoveProbePoint) { TypedX = typedX, Px = hit.Px, Py = hit.Py };
+        Describe(point, hit);
+        ProbePoints.Add(point);
+        SelectedProbePoint = point;
+        OnPropertyChanged(nameof(HasProbePoints));
+    }
+
+    private void Describe(PlotProbePointViewModel point, TraceProbeHit? hit)
+    {
+        point.Hit = hit;
+        point.Text = hit is null ? $"{point.Name} · no traced curve here now" : $"{point.Name} · {ProbeText(hit)}";
+        if (hit is null) return;
+        point.Px = hit.Px;
+        point.Py = hit.Py;
+    }
+
+    public void RemoveProbePoint(PlotProbePointViewModel point)
+    {
+        if (!ProbePoints.Remove(point)) return;
+        if (ReferenceEquals(SelectedProbePoint, point)) SelectedProbePoint = null;
+        if (ProbePoints.Count == 0) _nextPoint = 1;
+        OnPropertyChanged(nameof(HasProbePoints));
+    }
+
+    /// <summary>The topmost pinned point on the shown picture within <paramref name="reachPx"/> of a picture pixel, or null.</summary>
+    public PlotProbePointViewModel? ProbePointAt(double x, double y, double reachPx) =>
+        ProbePoints.LastOrDefault(p => p.Picture == ShownPicture && (p.Px - x) * (p.Px - x) + (p.Py - y) * (p.Py - y) <= reachPx * reachPx);
+
+    /// <summary>Copy: every point as tab-separated text with a header row, values to the picture's resolution.</summary>
+    public string PointsTsv()
+    {
+        var sb = new System.Text.StringBuilder("point\ttrace\tx\tx_unit\ty\ty_unit\n");
+        foreach (var p in ProbePoints)
+        {
+            sb.Append(p.Name).Append('\t');
+            if (p.Hit is { } h && Session is { } s)
+            {
+                var c = TraceProbe.Columns(s, h);
+                sb.Append(h.Name).Append('\t').Append(c.X).Append('\t').Append(c.XUnit).Append('\t').Append(c.Y).Append('\t').Append(c.YUnit);
+            }
+            else sb.Append("\t\t\t\t");
+            sb.Append('\n');
+        }
+        return sb.ToString();
+    }
+
+    /// <summary>After a re-read every point snaps again by where it sat on its picture; a typed point is read again at its x
+    /// on the curve it lands on.</summary>
+    private void Resnap()
+    {
+        if (Session is not { } s) return;
+        foreach (var p in ProbePoints)
+        {
+            var hit = TraceProbe.Nearest(s, p.Picture, p.Px, p.Py, ResnapPx, SelectedTrace?.Plot);
+            if (hit is { Value: null } && p.TypedX is { } x) hit = TraceProbe.AtX(s, hit.Trace, x) ?? hit;
+            Describe(p, hit);
+        }
+    }
+
+    /// <summary>Points on a picture that has gone or changed its pixels are dropped; later pictures' move down.</summary>
+    private void ForgetPoints(int picture, bool shift)
+    {
+        foreach (var p in ProbePoints.Where(p => p.Picture == picture).ToList()) RemoveProbePoint(p);
+        if (shift)
+            foreach (var p in ProbePoints.Where(p => p.Picture > picture)) p.Picture--;
+    }
+
+    private void ForgetAllPoints()
+    {
+        ProbePoints.Clear();
+        SelectedProbePoint = null;
+        _nextPoint = 1;
+        OnPropertyChanged(nameof(HasProbePoints));
     }
 
     public TouchstoneAssemblyOptions AssemblyOptions() => new()
@@ -1254,6 +1427,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         foreach (string line in session.Lines()) ReportLines.Add(line);
         foreach (string line in assembly.Report) ReportLines.Add(line);
         if (ShownPicture >= Pictures.Count) ShownPicture = Math.Max(0, Pictures.Count - 1);
+        Resnap();
         RefreshDerived();
     }
 

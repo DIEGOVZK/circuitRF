@@ -379,6 +379,20 @@ the form a variable or a parameter takes. On the picture the fit is drawn thin a
 misses shows at once. An exponential that cannot describe the curve says so and leaves the curve as read. Choosing a
 fit is undone with **Undo**.
 
+**Reading a value off a curve.** Hold the pointer near a traced curve and a crosshair snaps to it, with what the curve
+reads there beside it: `T3 · 2.437 GHz · −12.31 dB`, or on a Smith chart `T3 · Γ 0.41 ∠ −63° · 2.40 GHz` (*no
+frequency* until the trace has one). The readout follows the curve itself, between the points read, and gives no more
+digits than one pixel of the picture resolves. With a fit set it adds the fit's value, `fit −12.29 dB`.
+
+**Points.** The **Point** tool, beside the box tools, pins a point where you click on a curve; it stays on until
+**Escape** or the button is clicked again, and a click away from every curve is refused. Each point is a numbered dot on
+the picture and a row under **Points**, `P1 · T3 · 2.437 GHz · −12.31 dB`. **✕** removes one, as does clicking its dot
+and pressing **Delete**. To read a curve at an exact frequency, select its row, type the frequency in the box under
+**Points** (`2.4 GHz`, as an axis row takes it) and press **Pin** or Enter: the value there is pinned, worked out between
+the curve's two nearest points read. A frequency outside the curve's range is refused. **Copy** puts every point on the
+clipboard as tab-separated columns &mdash; point, trace, x, x unit, y, y unit &mdash; ready to paste into a spreadsheet.
+Points belong to the dialog: reading the picture again keeps them on their curves, and nothing writes them to a file.
+
 **Frequency along a Smith or polar trace.** A chart has no frequency axis. It comes from markers on the trace whose
 readouts show their frequency, or from a rectangular plot of the same entry in the session, matched point by point; with
 neither, the trace's **Start** and **Stop** are highlighted and wait for you. Between known frequencies they are spread
