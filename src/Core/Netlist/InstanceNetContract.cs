@@ -53,7 +53,8 @@ public static class InstanceNetContract
 
         // ── Distributed and transmission-line parts ──
         TLineModel or MicrostripLineModel or CoplanarLineModel or StriplineModel or MicrostripBendModel
-            or MicrostripCurveModel or MicrostripTaperModel or MicrostripKlopfModel           => 2,
+            or MicrostripCurveModel or MicrostripMiterBendModel or MicrostripTaperModel
+            or MicrostripKlopfModel                                                           => 2,
         MicrostripTeeModel                                                                    => 3,
         // A signal via is two terminals over the implicit reference, as MLIN is. A via to ground draws
         // one pin and binds two nets, like Term: the extractor appends "0".
@@ -309,6 +310,9 @@ public static class InstanceNetContract
                 p["W"]      = new Expressions.Value(1e-4);
                 p["Radius"] = new Expressions.Value(1e-3);
                 break;
+
+            // A chamfered bend refuses a zero width; any drawable width stands in (M is then its optimum).
+            case "MMITER": p["W"] = new Expressions.Value(1e-4); break;
 
             // The mutual element names two INDUCTORS rather than two nets, so these are the nets'
             // stand-ins: without them there is no element, and with them there are still no nets.

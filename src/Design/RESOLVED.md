@@ -20688,30 +20688,3 @@ straight arm dominated both meshes.
 Not changed: the Fifty/Optimal chamfer leg is still M·W per edge, half the Douville-James cut (whose
 50 % runs corner to corner, 2·M·W). That is a separate question about which geometry the model's
 mitred coefficients describe.
-
-## A Palace sweep's default field save could abort the run (2026-10-16)
-
-**Symptom.** A driven Palace run with an odd point count and non-round ends could stop before solving with
-`Save frequency … not found in sample frequencies!` (Palace 0.18.1, `configfile.cpp`). Reproduced with a
-single headless `em` run of the Via 3D example at 1 GHz to 1173913043.478261 Hz, 3 points. It showed up
-first on frequency sub-bands, whose ends are arbitrary points of a larger sweep.
-
-**Cause.** The default field save is the sweep's centre, written as its own `Point` sample with
-`SaveStep: 1`. For an odd count the centre is also a sweep point. The two are computed differently:
-circuitRF takes `0.5·(start+stop)` in hertz, divided by 1e9, while Palace takes `min + (i/(n-1))·(max-min)`
-in GHz. The results can differ in the last bit: 1.0869565217391306 against Palace's 1.0869565217391304.
-Palace merges samples closer than 1e-9 GHz and keeps the lower one. It then looks up each SaveStep
-frequency with `!=`, so when circuitRF's value is the higher one it is gone and the run aborts. When it is
-the lower one, the run works by luck. The old comment said a duplicate of a sweep point is merged harmlessly.
-That holds only when the two values are bit-identical, as in the 2/4/6 GHz case it was measured on. A
-log sweep's geometric centre is never bit-identical to Palace's `pow(10, …)`, so every odd log sweep was
-exposed too, and so was a listed `SaveFieldsGHz` entry typed at a sweep point.
-
-**Fix.** `PalaceConfigWriter.SplitSaves` computes the samples the way Palace does (`PalaceSamplesGHz`).
-Any save within 1 kHz of a sample goes in Driven's `Save` list, written as that sample's value. Palace
-matches that list to the nearest sample within its own 1e-9 tolerance, so a last-bit libm difference
-cannot break it either. A save that is not a sweep point keeps its `SaveStep` Point sample, as before. A
-save on the sweep adds no row to `port-S.csv`, so `WithoutSaveOnlyRows` has nothing to drop. Every
-committed golden is an even sweep and none of them moved. Gate:
-`FieldTests.SaveFrequencies_AnOddSweepsCentre_IsSavedAsTheSweepsOwnSample_NotAsAPointThatPalaceMerges`.
-The same headless run now completes, writes its fields, and its `.s2p` holds exactly the three sweep points.

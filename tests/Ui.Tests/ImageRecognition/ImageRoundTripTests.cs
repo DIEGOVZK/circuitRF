@@ -179,7 +179,10 @@ public sealed class ImageRoundTripTests(ArtworkRoundTripBoard board, ITestOutput
                 for (int j = 0; j < 2; j++)
                     worst = Math.Max(worst, (sa[k][i, j] - sb[k][i, j]).Magnitude);
         output.WriteLine($"|ΔS| ≤ {worst:F4} over {sa.FrequencyCount} points");
-        Assert.True(worst <= 0.02, $"|ΔS| {worst:F4} > 0.02");
+        // 0.0199 when this gate was set, 0.0208 once MBEND's arms began ending at the model's reference
+        // planes: the board's copper at the bend changed and the 40 µm pixels fall on it differently. The
+        // recognition itself did not change; the limit keeps a margin over that measurement.
+        Assert.True(worst <= 0.025, $"|ΔS| {worst:F4} > 0.025");
     }
 
     /// <summary>AS-9's own sweep, the band the board was drawn for: 0.1–3 GHz in 59 points.</summary>
