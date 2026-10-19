@@ -23,6 +23,7 @@ keywords: CLI, command line, command-line, terminal, shell, console, headless, b
 <li><a href="#convert"><code>convert</code> — layout interchange</a></li>
 <li><a href="#new"><code>new</code> — a workspace or a cell</a></li>
 <li><a href="#import"><code>import part</code> — a footprint and its symbol</a></li>
+<li><a href="#import-schematic"><code>import schematic</code> — another editor's schematic, as a cell</a></li>
 <li><a href="#render"><code>render</code> — a picture of a document</a>
   <ol>
   <li><a href="#render-viewport">The viewport, and the unit rule</a></li>
@@ -135,6 +136,7 @@ convention behind both.</p>
 | `new workspace` | a directory | The same code **File ▸ New Workspace** runs | A `.cws` and, unless you say otherwise, a copied technology |
 | `new cell` | a workspace + a name | The same code **New Cell** runs | A cell folder and one empty-but-valid file per view |
 | `import part` | a component file or folder | The same code **Import Component** runs | A cell folder holding the land patterns and the symbol |
+| `import schematic` | a `.kicad_sch`, EDIF 2.0.0 or binary `.DSN` design | The same code **File ▸ Import ▸ Schematic…** runs | A cell folder with its schematic, and a folder of symbol cells beside it |
 | `render` | a `.csch`, `.csym`, `.clay` or `.cdd`, a cell folder, or a workspace | The same Skia renderers the editors draw every frame with | A `.svg`, `.pdf` or `.png`, where `-o` says |
 | `check` | a workspace, a cell folder, or one document | Every validator the application already uses | **Nothing** — findings to stdout |
 | `explain` | the same | Resolution only — no analysis | **Nothing** — the walk and the answer, to stdout |
@@ -1546,6 +1548,32 @@ A source holding several parts is **refused with them listed**, never resolved b
 **Layers the technology does not have are reported, and nothing is written**, unless you pass
 `--add-layers`. The GUI's own install is session-only and writes nothing to disk either, so this is
 the same behaviour and not a headless restriction.
+
+---
+
+## `import schematic` — another editor's schematic, as a cell {#import-schematic}
+
+<pre><code class="cmd"><span class="prompt">$ </span>circuitrf import schematic &lt;file&gt; --into &lt;workspace-or-dir&gt; [--cell N] [--port &lt;ref-or-net&gt;]...
+                                  [--symbol-cell &lt;ref&gt;]... [--codepage N] [--list]</code></pre>
+
+The same code **File ▸ Import ▸ Schematic…** runs, with the dialog's defaults: the cell is named after the file, every
+part goes where the import's map sends it, and no Port is made. The format is recognised from the file's content.
+
+| Option | |
+|---|---|
+| `--port <ref-or-net>` | make a connector (by reference) or a net (by name) a circuitRF Port; repeat it, in port order. With any Port, `SP1` is added |
+| `--symbol-cell <ref>` | keep a part that would become a native R, L or C as the source's own symbol |
+| `--codepage N` | how EDIF and binary `.DSN` text that is not UTF-8 is decoded; 1252 by default |
+| `--list` | print the pages, one `part` line per part with what it becomes, and one `port` line per Port candidate; write nothing |
+
+<pre><code class="cmd"><span class="prompt">$ </span>circuitrf import schematic matching.kicad_sch --into ~/designs/Amp --port J1 --port J2
+<span class="output">/home/you/designs/Amp/matching
+/home/you/designs/Amp/matching/schematic/matching.csch</span></code></pre>
+
+stdout is the paths written: the cell, its schematic and every symbol or sheet cell. The import's report goes to
+stderr. **Exit 1 when the connectivity check is not matched**, with the cell written so the differences can be looked
+at; any refusal writes nothing and exits 1. What becomes what, and what the check compares, is in
+[Importing a schematic](schematic-import.html).
 
 ---
 
@@ -2970,7 +2998,7 @@ the same documents.
 | `check` | `check` |
 | `explain` | `explain`, including `--cells`, `--layers`, `--extents` and `--footprints` |
 | `create` | `new workspace` or `new cell` |
-| `import` | `import part` — a component, as a cell |
+| `import` | `import part` — a component, as a cell; `import schematic` (`what=schematic`) — a schematic design, as a cell |
 | `convert` | `convert` — artwork between formats, in either direction, so exporting a layout is a `convert` |
 | `render` | `render` — one tool over every document kind, as the verb is |
 | `read` | `read` |

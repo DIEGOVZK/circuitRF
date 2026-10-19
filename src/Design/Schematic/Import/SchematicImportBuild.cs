@@ -109,6 +109,10 @@ public sealed record ImportBuildResult(
 {
     public bool Ok => Refusals.Count == 0;
     public ImportBuiltSchematic? Top => Schematics.Count > 0 ? Schematics[0] : null;
+
+    /// <summary>The source references drawn as circuitRF Ports (overview D9) — parts the map made symbol cells that no
+    /// cell was written for.</summary>
+    public IReadOnlyList<string> PortParts { get; init; } = [];
 }
 
 public static class SchematicImportBuild
@@ -177,6 +181,7 @@ public static class SchematicImportBuild
         // ── the schematics ───────────────────────────────────────────────────────────────────────
         var renamed = new Dictionary<string, string>(StringComparer.Ordinal);
         var built = new List<ImportBuiltSchematic>();
+        var portParts = new List<string>();
         var scopes = new List<(IReadOnlyList<ForeignSheet> Sheets, ImportSheetCell? Cell)>();
         if (!source.Hierarchical) scopes.Add(([.. source.Pages], null));
         else
@@ -194,6 +199,7 @@ public static class SchematicImportBuild
             var scope = new Scope(source, sheets, sheetCell, byRef, symbolCells, sheetCells, grid, dir, partsDirectory, options, notes, renamed);
             if (scope.Build() is { } schematic) built.Add(schematic);
             else { refusals.AddRange(scope.Refusals); return Refuse(); }
+            portParts.AddRange(scope.PortParts);
         }
 
         if (source.Hierarchical)
@@ -201,7 +207,8 @@ public static class SchematicImportBuild
                 notes.Add($"The global net '{name}' is used on more than one sheet; circuitRF keeps a cell's nets to that cell, so "
                         + "the sheets' copies of it are not joined.");
 
-        return new ImportBuildResult(built, [.. symbolCells.Values], [.. sheetCells.Values], mapping, renamed, notes, refusals);
+        return new ImportBuildResult(built, [.. symbolCells.Values], [.. sheetCells.Values], mapping, renamed, notes, refusals)
+        { PortParts = portParts };
 
         ImportBuildResult Refuse(string? why = null)
         {
@@ -222,6 +229,7 @@ public static class SchematicImportBuild
         SchematicImportOptions options, List<string> notes, Dictionary<string, string> renamed)
     {
         public List<string> Refusals { get; } = [];
+        public List<string> PortParts { get; } = [];
 
         private readonly UnionFind _physical = new();
         private readonly UnionFind _logical = new();
@@ -367,11 +375,19 @@ public static class SchematicImportBuild
             AddPorts(tb, units.Select(u => (u.Key.Inst, u.ToList())).ToList(), netOf, exactInstances, joinByLabel, instancePins,
                      usedNames, excluded);
 
+            // A connector drawn as a Port is not drawn itself, so the wire and ground symbol that grounded its shield
+            // would be left standing alone: a ground group that only such pins reached is not drawn.
+            var usedNets = tb.Instances.SelectMany(i => i.NetBindings).ToHashSet(StringComparer.Ordinal);
+            var orphanGrounds = units.Where(u => PortParts.Contains(u.Key.Inst.Reference)).SelectMany(u => u).Select(n => netOf[n])
+                                     .Where(n => n.StartsWith("GND_", StringComparison.Ordinal) && !usedNets.Contains(n))
+                                     .ToHashSet(StringComparer.Ordinal);
+            groundGroups.RemoveAll(g => orphanGrounds.Contains(g.Net));
+
             // ── routes ──────────────────────────────────────────────────────────────────────────
             var routes = new Dictionary<string, List<IReadOnlyList<(double X, double Y)>>>(StringComparer.Ordinal);
             for (int n = 0; n < _nodes.Count; n++)
             {
-                if (_nodes[n].Kind != NodeKind.Wire || !netOf.TryGetValue(n, out var net) || net == "0") continue;
+                if (_nodes[n].Kind != NodeKind.Wire || !netOf.TryGetValue(n, out var net) || net == "0" || orphanGrounds.Contains(net)) continue;
                 if (!routes.TryGetValue(net, out var list)) routes[net] = list = [];
                 list.Add(_nodes[n].Wire!.Points);
             }
@@ -701,6 +717,7 @@ public static class SchematicImportBuild
                     }
                     string minus = otherNets.Count == 1 ? otherNets[0] : "0";
                     tb.Instances.Add(PortInstance(name, ++num, netOf[nodes[sig]], minus));
+                    PortParts.Add(want);
                     var at = _nodes[nodes[sig]].At;
                     exact[name] = new ExactInstance(at.X, at.Y + 200, SymbolRotation.R0, false);
                     if (!GroupHasWire(_physical.Find(nodes[sig]))) joinByLabel.Add((name, 0));

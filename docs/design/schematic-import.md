@@ -2,8 +2,9 @@
 
 **Status:** SI-1 implemented (the neutral model, the map, the build, the check, the two write paths); SI-2 implemented
 (the `.kicad_sch` reader, §8); SI-3 implemented (the EDIF 2.0.0 reader, §9); SI-4 implemented (the binary `.DSN`
-design, versions 2.0 and 3.2, §10); SI-5 implemented (the entry points). Source of
-decisions: `docs/sonnet-briefs/brief-schimp-0-overview.md` (D1–D11). Each phase keeps this note current.
+design, versions 2.0 and 3.2, §10); SI-5 implemented (the entry points, §11); SI-6 done (the acceptance, §12, and the
+user page `docs/user/src/reference/schematic-import.md`). Source of decisions:
+`docs/sonnet-briefs/brief-schimp-0-overview.md` (D1–D11).
 
 ## 1. The pipeline
 
@@ -92,7 +93,9 @@ several sheets is not joined across cells (circuitRF keeps a cell's nets local) 
 
 **Ports (D9).** `SchematicImportOptions.Ports` names references (a connector drawn as a Port where it was: first pin off
 ground the signal, the next its reference) or nets (a Port to ground beside the drawing). With any, the default
-S-parameter analysis `SP1`.
+S-parameter analysis `SP1`. A connector made a Port gets no symbol cell, and a wired ground group that only its pins
+reached (its shield's wire and ground symbol) is not drawn, since nothing would be left on it;
+`ImportBuildResult.PortParts` names those references, so the report counts them as Ports, not as symbol cells.
 
 Free text and graphic lines become schematic text and lines; junctions become dots. Title blocks and borders are not
 imported.
@@ -244,3 +247,26 @@ Gate: `tests/Ui.Tests/SchematicImport/CompoundFileTests.cs` (built containers) a
 and symbol graphics on built containers).
 `SchematicImportBuildTests.AHierarchicalDesign_…` holds the flattened check on a committed source, ground across cells
 included, and that a wrong declaration is caught.
+
+## 11. The entry points (SI-5)
+
+File ▸ Import ▸ Schematic… (the main window's File menu and its torn-off copy), the drop onto an open, SAVED schematic,
+the drop onto a project-tree folder, `circuitrf import schematic` and the MCP `import what=schematic` all call
+`SchematicImport.Read` and then `Import`, `Preview` or `BuildInto` (`SchematicImport.Entry.cs`), and nothing past them —
+a comment-stripped source scan holds it. The dialog's preview is the very build `Import` writes, into a scratch folder
+laid out like the target. A drop builds with no dialog (every part per the map, no Port) as one undo step that includes
+any lowered connection grid; an unsaved schematic is refused because its parts have no "beside". A dropped picture
+stays a picture. The CLI exits 1 when the check is not matched, with the cell written. Detail: `src/Ui/RESOLVED.md`,
+`docs/design/cli.md` §30; gate `tests/Ui.Tests/SchematicImport/SchematicImportEntryPointTests.cs`.
+
+## 12. Acceptance (SI-6)
+
+`tests/Ui.Tests/SchematicImport/SchematicImportAcceptanceTests.cs`:
+
+- **The round trip**: the authored `testdata/schematic-import/sexpr/matching.kicad_sch` (series L, shunt C, series R,
+  two connectors), imported by the CLI with both connectors as Ports, `check`s clean and simulates to the S-parameters
+  of the same circuit written as a `.cnl`, to 1e-9. An imported schematic of native parts is a circuit.
+
+Open for the owner: a value written as a bare number (`10` on a resistor) is not read as base units, so it becomes a
+default-valued variable; and the source's label positions are not carried, so a native part's labels take circuitRF's
+default place.

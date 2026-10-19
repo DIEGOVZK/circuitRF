@@ -224,11 +224,13 @@ public static partial class SchematicImport
     private static List<string> Report(ImportBuildResult built, CellPlan plan, ImportConnectivityResult connectivity)
     {
         int native = built.Mapping.Count(d => d.Becomes == ImportPartKind.Native);
-        int cells = built.Mapping.Count(d => d.Becomes == ImportPartKind.SymbolCell);
+        int ports = built.PortParts.Count;
+        int cells = built.Mapping.Count(d => d.Becomes == ImportPartKind.SymbolCell && !built.PortParts.Contains(d.Reference));
         var lines = new List<string>
         {
-            $"{built.Mapping.Count(d => d.Becomes != ImportPartKind.Ground)} part(s): {native} native, {cells} as symbol cells "
-          + $"({plan.Created.Count} cell(s) written, {plan.Reused.Count} reused).",
+            $"{built.Mapping.Count(d => d.Becomes != ImportPartKind.Ground)} part(s): {native} native, "
+          + (ports > 0 ? $"{ports} as Ports, " : "")
+          + $"{cells} as symbol cells ({plan.Created.Count} cell(s) written, {plan.Reused.Count} reused).",
         };
         if (cells > 0)
             lines.Add("A symbol cell has no model: a run refuses it until it is given one (a schematic, an S-parameter file or a model).");

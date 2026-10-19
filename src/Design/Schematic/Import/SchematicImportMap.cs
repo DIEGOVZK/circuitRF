@@ -156,7 +156,7 @@ public static class SchematicImportMap
         string variable = Identifier($"{inst.Reference}_{param}");
         var (number, unit) = DefaultFor(kind, notFitted);
         string note = inst.Value is { Length: > 0 } v
-            ? $"{inst.Reference}'s value \"{v}\" is not a {Noun(kind)}" + (notFitted ? " (the part is not fitted)" : "")
+            ? $"{inst.Reference}'s value \"{v}\" is not {Noun(kind)}" + (notFitted ? " (the part is not fitted)" : "")
               + $"; it is the variable {variable} = {number} {unit}."
             : $"{inst.Reference} has no value; it is the variable {variable} = {number} {unit}.";
         return new ImportPartDecision(inst.Reference, inst.SymbolKey, name, inst.Value, ImportPartKind.Native, rule.Name,
@@ -233,9 +233,9 @@ public static class SchematicImportMap
 
     private static string Noun(SymbolKind kind) => kind switch
     {
-        SymbolKind.Resistor => "resistance",
-        SymbolKind.Capacitor => "capacitance",
-        _ => "inductance",
+        SymbolKind.Resistor => "a resistance",
+        SymbolKind.Capacitor => "a capacitance",
+        _ => "an inductance",
     };
 
     internal static string Invariant(double v) => v.ToString("0.############", CultureInfo.InvariantCulture);

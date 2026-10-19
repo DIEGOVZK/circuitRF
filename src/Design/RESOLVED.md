@@ -20592,3 +20592,25 @@ Version 3.2 designs can be hierarchical. **This supersedes the "hierarchical des
 - **Defect: a page's ports were skipped**, so a one-schematic design with hierarchical ports lost their names and its
   port candidates. They are hierarchical labels now (global when a flat design has several pages, since a port reaches
   every page of its schematic).
+
+## Import Schematic acceptance: the round trip, and three defects (brief-schimp-6, 2026-10-19)
+
+- **Bare-number values are not read as base units, and the map is unchanged.** A value written with no unit or
+  multiplier (`10` on a resistor, `170` on an inductor) becomes a 1 kOhm / 1 nH variable. Whether a
+  bare number means base units is the owner's call, flagged since SI-3; the report names each one.
+- **R-si6-2, the round trip** (`AnImportedMatchingNetwork_ChecksClean_AndSimulatesAsTheSameCircuitWritten`): the
+  committed `testdata/schematic-import/sexpr/matching.kicad_sch` — series L, shunt C, series R between two coaxial
+  connectors, shields grounded — imported by the CLI with `--port J1 --port J2`, `check`s with 0 errors and 0 warnings,
+  and `sparam` gives the S-parameters of the same circuit written as a `.cnl` to 1e-9 at 60 points.
+- **Defect: a connector made a Port left its shield's ground standing alone.** The connector itself is not drawn, but
+  the wire and ground symbol that grounded its shield pin were — a ground with a dangling wire beside each Term.
+  `SchematicImportBuild` now drops a wired ground group that only a Port-made part's pins reached (its net is bound by
+  no instance). Connectivity was never affected: those pins are excluded on both sides.
+- **Defect: the report called Port-made connectors model-less symbol cells.** "2 as symbol cells … A symbol cell has no
+  model" was printed for an import with no symbol cell at all. `ImportBuildResult.PortParts` carries the references
+  drawn as Ports, and the first line counts them ("3 native, 2 as Ports, 0 as symbol cells").
+- **Defect: "is not a inductance".** The noun now carries its article.
+- **Not changed:** a source whose two-pin parts pitch their pins 300 mils apart, where circuitRF's R, L and C pitch
+  400, has one pin of each land on the source wire's run rather than its end, and that wire end shows as an
+  unconnected mark on the part's lead. D6 keeps the source wire where it is; connectivity is right. The source's label positions are not
+  read either — each native part's labels take circuitRF's default place, which can overlap in a tight drawing.
