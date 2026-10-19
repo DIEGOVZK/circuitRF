@@ -69,7 +69,7 @@ visually until you draw one.
       <tr><td><code>.wBond</code></td><td>wBond design — bondwire geometry: the wires, their arrays and profiles, the substrate and the solver settings. Self-contained and shareable. See <a href="wbond.html">wBond</a>.</td></tr>
       <tr><td><code>.crail</code></td><td>railRF document — the rails, their sources, loads and reference, the parts and the part library they resolve against, the target and the band. See <a href="railrf.html">railRF</a>.</td></tr>
       <tr><td><code>.cmodel</code></td><td>Composed FET model — a nonlinear transistor model placed as a <code>ComposedFet</code>: its extrinsic network, its current and charge constituents, the finger count and gate width it was measured at, the temperatures it is valid at, its symbol and where it came from. A ZIP holding a readable <code>model.json</code> and any arrays as <code>.npy</code>. See <a href="#cmodel">The composed FET model</a>.</td></tr>
-      <tr><td><code>.cmc</code></td><td>Model Composer document — reserved for the Model Composer's own document, from which a <code>.cmodel</code> is exported.</td></tr>
+      <tr><td><code>.cmc</code></td><td>Model Composer document — the data a model is built from and the conditions it was measured under, from which a <code>.cmodel</code> is exported. JSON text; its data stays in the files it names, with a cache beside it in <code>&lt;name&gt;.cmc-cache/</code>. See <a href="#cmc">The Model Composer document</a>.</td></tr>
       <tr><td><code>.csmith</code></td><td>Smith Chart document — a generator impedance over frequency and an ordered cascade of two-pin elements, plus what the chart is normalized to, the overlays, the markers and the constant-Q setting. Numbers are in base SI. See <a href="smith-chart.html">Smith Chart</a>.</td></tr>
     </tbody>
   </table>
@@ -147,6 +147,56 @@ model always writes the same bytes.
 | `Provenance` | `Created`, `CircuitRfVersion`, `Sources` (`Path`, `Sha256`) and `SettingsDigest`. |
 
 `circuitrf check` reads a `.cmodel` and names the field of anything it refuses.
+
+## The Model Composer document {#cmc}
+
+A `.cmc` is JSON text. It names the data a model is built from and the conditions each set was measured
+under; it never holds the data itself. Numbers are in base SI — volts, amps, seconds, ohms, hertz —
+except temperatures, in °C.
+
+| Field | What it holds |
+|---|---|
+| `FormatVersion` | `1`. A file from a newer circuitRF is refused, saying so. |
+| `Kind` | `Active` (a FET) or `Passive` (an N-port). |
+| `BasePeriphery` | `Fingers` and `UnitWidth` (`"125 um"`) of the measured device. `Active` only. |
+| `DataSets` | Each with a `Name`, a `Kind`, its `Sources`, its `Conditions`, its `Import` settings and any `Exclusions`. |
+| `Pads`, `Network`, `Steps` | The later steps' settings. |
+| `Panels` | `Hidden`: the window panels switched off. Absent when every panel shows. |
+
+A data set's `Kind` is `DcIv`, `PulsedIv`, `SParams` (CW multi-bias), `PulsedSParams`, `SimulatedTables`
+(currents and Y, S or C on a bias grid, from another simulator), `LargeSignal` (validation only) or
+`PassiveSParams`. Its `Sources` are paths relative to the `.cmc`.
+
+| `Conditions` field | What it holds |
+|---|---|
+| `AmbientC` | The chuck temperature, °C. |
+| `ReferencePlane` | Where the bias voltages were measured: `instrument`, `probe`, `device` or `intrinsic`. `BiasPathOhms` (`Gate`, `Drain`, `Source`) goes with `instrument`. |
+| `PulseWidth`, `Period`, `SampleDelay` | Pulsed sets: the pulse, its repetition and when in the pulse the sample is taken, in seconds. |
+| `Quiescent` | Pulsed sets: `Vgs`, `Vds` and optionally `Ig`, `Id` of the bias the pulses start from. |
+| `PrePulse` | Double-pulse sets: `Vgs`, `Vds`, `Width`, `Gap` (from its end to the measuring pulse) and optionally `Id`. A pre-pulse whose current dissipates is a warning: its heating is not modelled. |
+| `TrapState` | Pulsed sets: `auto`, `setting` or `extreme`. |
+| `SoakTime`, `Compliance`, `Note` | The soak before measuring, the instrument's current limits (`Gate`, `Drain`, in A) and a note. |
+
+`Import` says how the sources were read, so a re-import is exact:
+
+- `touchstone` — one file per bias. `Pattern` reads the bias from the file name (`PatternSource`
+  `name`) or its comment lines (`comment`): literal text with the fields `{vgs}`, `{vds}`, `{T}`, `{id}`
+  and `{ig}`, each optionally with its unit, `{id:mA}`. A space matches any run of spaces and `*`
+  matches anything. `Vgs{vgs}_Vds{vds}` reads `Vgs-1.5_Vds10.s2p`.
+- `csv` — CSV or TSV. `Columns` maps a column (its header, or its number from 1 with `"Header": false`)
+  to `vgs`, `vds`, `ig`, `id`, `T`, `vgsi` or `vdsi`, with the `Unit` its numbers are in. A cell that
+  carries its own unit (`12 mA`) uses it.
+- `npy`, `mat` — named arrays in circuitRF's `.npy` or a MATLAB `.mat` (version 5 or 7.3). `Arrays` maps
+  the quantities above, `freq`, and a 2-port table `S`, `Y` or `C` to array names; a struct's field is
+  `s.field`. The bias arrays are one value per point, or the two axes of a grid. A Y table is converted
+  to S at `Z0` (default 50 Ω); `FrequencyHz` gives a table with no frequency array its frequency.
+
+`Exclusions` lists the points left out of every fit — `Point`, a point's id, and the `Reason`. A
+Touchstone point's id is its file; a CSV row's is `<file>:<line>`; an array point's is `<file>#<index>`.
+
+The data read from the sources is cached in `<name>.cmc-cache/`. When a source changes it is read
+again; when one goes missing the cached copy is used, with a warning. The cache can be deleted at any
+time. `circuitrf check` reads a `.cmc` and names the field of anything it refuses.
 
 ## Workspace › Library › Cell {#hierarchy}
 

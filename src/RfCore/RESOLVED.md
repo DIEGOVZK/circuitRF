@@ -943,3 +943,17 @@ with PureHDF row by row:
 - **`sar_calc`'s exit status is inverted** (it returns its success bool: 1 is success). Judge it by its output file.
 
 Gates: `tests/Ui.Tests/Sar/OpenEmsHdf5Tests.cs`, `DiscMaterialWriterTests.cs`. Detail: `docs/design/sar.md` §6.
+
+## `MatReader`: MAT v5 padding is relative, and the repo had no v5 writer to test against (brief-modelcomposer-3, 2026-10-19)
+
+- **Padding after a data element is relative to the element, not to the file.** A compressed (`miCOMPRESSED`) element
+  is not padded at all, so every element after one starts at whatever offset the zlib stream ended on. Aligning the
+  next tag to an absolute 8-byte boundary — the obvious reading of "elements are 8-byte aligned" — reads garbage as
+  the second variable's tag and refuses the file as truncated. The reader pads by `(size + 7) & ~7` from the
+  element's body; inside a matrix the sub-elements are relative to the matrix, which is the same rule.
+- **`MatWriter` writes v7.3 (HDF5) only.** The brief's gate asked for "a v5 file written by `MatWriter`"; there is no
+  such writer, so `MatReaderTests` builds its v5 file byte by byte from the published layout (column-major, one
+  compressed element, a 1 × 1 struct) and compares it with a v7.3 file from `MatWriter`.
+- **Order convention:** everything comes back C order over MATLAB's logical shape. A v7.3 dataset carrying
+  `MATLAB_class` has its HDF5 dimensions reversed and is transposed like v5; a dataset without one (`MatWriter`'s,
+  h5py's) is taken as stored. Without that split one of the two writers' 3 × 4 matrices reads back as 4 × 3.

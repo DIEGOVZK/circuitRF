@@ -1,7 +1,8 @@
 # circuitRF — Model Composer and the composed FET
 
 **Status:** MC-1 built (the `.cmodel` format and the `ComposedFet` device, equation constituents);
-MC-2 built (table and ANN constituents, guided extrapolation, drain–source symmetry, grid evaluation) ·
+MC-2 built (table and ANN constituents, guided extrapolation, drain–source symmetry, grid evaluation);
+MC-3 built (the `.cmc` document, data sets, importers, the cache, data hygiene) ·
 **Source:** `docs/sonnet-briefs/brief-modelcomposer-0-overview.md` (decisions D1–D16) and the phase briefs
 `brief-modelcomposer-1` … `-16` · **Primary reference:** [P1] J. C. Pedro, D. E. Root, J. Xu, L. C. Nunes,
 *Nonlinear Circuit Simulation and Modeling*, Cambridge University Press, 2018.
@@ -295,7 +296,74 @@ per-sample arrays and no per-grid scratch (the base class's `EvaluateInto` loop 
 call, and HB calls once per Newton iteration). `ComposedCoreGridTests` holds it at zero bytes with an
 allocation counter, never a timing.
 
-## 5. Where it lives
+## 5. The `.cmc` document and its data (MC-3)
+
+### 5.1 The document (R-mc3-1, R-mc3-2)
+
+`CmcFile` reads, validates and writes it in `CmodelFile`'s shape: a `JsonDocument` walk in which every
+miss names its field (`DataSets[1].Conditions.Quiescent.Vgs: it is not a number.`), and a `Utf8JsonWriter`
+in a fixed order with `\n` line ends — the same document writes the same bytes, and the writer validates
+before it writes. **An unknown key anywhere is a refusal**: a misspelt condition silently dropped would
+leave a set measured under conditions nobody stated. `Pads`, `Network` and `Steps` are the exception —
+opaque `JsonNode`s, written back verbatim, so this build loses nothing a later phase wrote. `Panels` is
+written only when a panel is hidden (railRF's rule).
+
+Rules the validator holds: a Passive document takes only `PassiveSParams` sets and no periphery, an Active
+one never takes them; names are unique; sources are relative; pulse conditions (`PulseWidth`, `Period`,
+`Quiescent`, `SampleDelay`, `TrapState`, `PrePulse`) appear only on a pulsed kind, with `Period` longer
+than the pulse and the sample inside it; `BiasPathOhms` only with the `instrument` plane. A condition a
+later step needs is reported by that step, never here. `CmcFile.Warnings` is the one thing a well-formed
+document still says: a pre-pulse dissipating ≥ 1 mW, whose heating is not modelled.
+
+**Exclusions live in the document**, by stable point id, because the cache must hold nothing a re-import
+cannot rebuild. `NormalisedData.WithExclusions` applies them; nothing excludes a point automatically.
+
+### 5.2 The normalised form and the importers (R-mc3-3)
+
+`NormalisedData`: per point a `BiasPoint` (`PointId`, `Vgs`, `Vds`, `Ig`, `Id`, ambient, intrinsic
+voltages), and for S kinds `S[point, freq, i, j]` with one `Z0`, or a capacitance table `C[point, i, j]`.
+**A quantity a source does not carry is NaN, never zero** — a zero gate current is a measurement.
+
+`DataImport` — each importer refuses with its source and why, never a guessed bias or a skipped row:
+- **Touchstone sets**: one S-parameter file per point, every file sharing one frequency axis and one real
+  Z0. `BiasPattern` turns `Vgs{vgs}_Vds{vds}` into a regex: fields may state a unit (`{id:mA}`), whitespace
+  matches any run, `*` matches anything; against a name it must match the whole stem, against comments it
+  is searched in the header comment lines joined by spaces.
+- **CSV/TSV**: delimiter inferred from the first row (tab, then `;` without `,`, then `,`); a cell's own
+  unit wins over the column's, through `TunableValue.TryParse`.
+- **`.npy` / `.mat`**: bias arrays are per point, or the axes of a grid whose current or table array is
+  shaped `[vgs, vds]` (or `[vds, vgs]`, detected from the shape). A Y table converts to S at the import's
+  Z0 — exact and invertible, so one normalised form serves both.
+
+`MatReader` (`src/RfCore/Export`) reads MAT v5 — numeric matrices, 1 × 1 structs of them (`s.field`),
+compressed elements, either byte order — and v7.3 through PureHDF. **Every array comes back in C order
+over MATLAB's logical shape**: v5 is column-major and is transposed; a v7.3 dataset with a `MATLAB_class`
+attribute is the same bytes with reversed HDF5 dimensions and is transposed too; an HDF5 dataset without
+one (`MatWriter`'s own, h5py's) is already C order. Given a name set, an unrequested variable is skipped —
+a compressed one without inflating past its name. Cell arrays, objects, sparse matrices and struct arrays
+are refused by name when asked for (or when everything is).
+
+### 5.3 The cache (R-mc3-4, R-mc3-6)
+
+`CmcCache` keeps `<name>.cmc-cache/index.json` (per set: its `.npy`, a settings key — kind, sources and
+import settings as the `.cmc` writes them — and per source path, size, modification ticks, SHA-256) and
+one circuitRF `.npy` per set. **Open reads no source when size and time match** (`SourceReads` is the
+counter); a moved size or time is hashed, and the same hash refreshes the index without re-importing. A
+changed hash re-imports the set with one status line; a missing source with a cache warns and loads; a
+missing source with no cache throws `DataImportException` naming it. A rebuild writes a whole sibling
+folder and swaps it in by rename; failure or cancellation before the swap deletes it, so the old cache
+survives untouched.
+
+### 5.4 Hygiene (R-mc3-5)
+
+`DataHygiene.Check` flags, never excludes: oscillation (|S11| or |S22| > 1, or K < 1 with |Δ| > 1, at or
+below 2 GHz), compliance (a stated limit, or with none a plateau of ≥ 3 points within 10⁻⁴ of the set's
+largest current), drift (a repeated bias within 1 mV, in one set or across sets of the same kind and
+conditions, whose current differs by more than 2 % + 1 µA or whose S differs by more than 0.02). Every
+tolerance is a `HygieneSettings` property. `DataHygiene.Coverage` is the convex hull of the non-excluded
+(Vgs, Vds).
+
+## 6. Where it lives
 
 | Path | What |
 |---|---|
@@ -303,9 +371,11 @@ allocation counter, never a timing.
 | `src/Engine/Modeling/TensorSplineFit.cs` | fitting a table's coefficients, with smoothing |
 | `src/Core/Elaboration/Elaborator.cs` | `ComposedFetCell`, `ResolveComposedParameters`, the core's node expansion and temperature warnings |
 | `src/Design/Schematic/ComposedFetSymbolProvider.cs` | the symbol rule above |
-| `src/Cli/Check.cs`, `DocumentKinds.cs` | `check` on a `.cmodel` |
+| `src/Cli/Check.cs`, `DocumentKinds.cs` | `check` on a `.cmodel` and a `.cmc` |
+| `src/Design/Modeling/` | MC-3: `CmcDocument`, `CmcFile` (with `BiasPattern`), `NormalisedData`, `DataImport`, `CmcCache`, `DataHygiene` |
+| `src/RfCore/Export/MatReader.cs` | MAT v5 and v7.3 |
 
-## 6. Gates (MC-1, MC-2)
+## 7. Gates (MC-1, MC-2, MC-3)
 
 `tests/Core.Tests/Composed/CmodelFormatTests`; `tests/Engine.Tests/Composed/` — `ComposedFetEquivalenceTests`
 (against an SDD with the same expressions in the same network: DC to 1e-12, S at three biases to 1e-9, HB
@@ -322,3 +392,7 @@ the domain, a DC solve from 2.5 extents outside landing on the in-domain answer)
 (zero bytes per grid; an ANN model against its equation twin in DC, S and HB to 1e-9). Their models are
 `tests/Engine.Tests/Composed/Support/RuntimeTestModels.cs`: hand-set networks that also write themselves
 out as the expression they compute, and a table-and-ANN model over a pentagon with an oblique edge.
+
+MC-3: `tests/Ui.Tests/ModelComposer/` — `CmcFormatTests`, `TouchstoneSetImportTests`, `CmcCacheTests`,
+`DataHygieneTests`; `tests/RfCore.Tests/Export/MatReaderTests` (a v5 file the test writes byte by byte and
+a v7.3 file from `MatWriter` read the same arrays; a cell array refused by name).

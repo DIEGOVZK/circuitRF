@@ -1,0 +1,166 @@
+// The Model Composer document, a .cmc (brief-modelcomposer-3 R-mc3-1, R-mc3-2; overview D1, D2, D6, D11).
+//
+// A .cmc records WHAT DATA a model is built from and UNDER WHAT CONDITIONS. It never holds the data:
+// sources are paths relative to the .cmc, and their parsed form lives in <name>.cmc-cache/, which is
+// derived and may be deleted (CmcCache). The user's own decisions about the data — which points are
+// excluded and why — are document state, because the cache must hold nothing a re-import cannot rebuild.
+//
+// NUMBERS ARE BASE SI: volts, amps, seconds, ohms, hertz. The one exception is temperature, in °C,
+// because that is what a chuck is set to and what the elaborator's `temp` is.
+//
+// Pads, Network and Steps belong to later phases (MC-4 onward). This phase carries them as opaque JSON
+// and writes them back exactly, so a document saved by this build loses nothing a later one wrote.
+
+using System.Text.Json.Nodes;
+using CircuitRF.Core.Devices.Composed;
+
+namespace CircuitRF.Design.Modeling;
+
+/// <summary>A three-terminal FET model, or an N-port passive one (D2).</summary>
+public enum CmcKind { Active, Passive }
+
+/// <summary>What a data set holds (R-mc3-2).</summary>
+public enum DataSetKind
+{
+    DcIv,
+    PulsedIv,
+    /// <summary>CW multi-bias S-parameters.</summary>
+    SParams,
+    PulsedSParams,
+    /// <summary>I and Y (or S, or C) sampled on a bias grid, as another simulator writes them.</summary>
+    SimulatedTables,
+    /// <summary>Power sweeps, loadpull, two-tone — validation only.</summary>
+    LargeSignal,
+    /// <summary>One passive block, or a family over a geometry value.</summary>
+    PassiveSParams,
+}
+
+/// <summary>Where a data set's bias voltages were measured (D6). Spelled lower-case in the file.</summary>
+public enum ReferencePlane { Instrument, Probe, Device, Intrinsic }
+
+/// <summary>How pulsed points map onto trap state (MC-10). Spelled lower-case in the file.</summary>
+public enum TrapStateMode { Auto, Setting, Extreme }
+
+/// <summary>The bias-path resistance per terminal of an <c>instrument</c>-plane data set, in ohms.</summary>
+public sealed record BiasPathOhms(double Gate, double Drain, double Source = 0);
+
+/// <summary>The quiescent bias a pulse starts from and returns to. Currents are optional.</summary>
+public sealed record QuiescentBias(double Vgs, double Vds, double? Ig = null, double? Id = null);
+
+/// <summary>
+/// The pulse of a double-pulse measurement that sets the trap state before each measuring pulse
+/// ([N22], [G19]). <see cref="Gap"/> is from its end to the measuring pulse; times in seconds.
+/// </summary>
+public sealed record PrePulse(double Vgs, double Vds, double Width, double Gap, double? Id = null);
+
+/// <summary>An instrument's current limits, in amps — what the compliance flag reads (R-mc3-5).</summary>
+public sealed record ComplianceLimits(double? Gate = null, double? Drain = null);
+
+/// <summary>
+/// The conditions a data set was measured under (R-mc3-2). Every one is optional here: a condition
+/// a later step needs is reported by that step, not by the reader.
+/// </summary>
+public sealed record DataConditions
+{
+    public double? AmbientC { get; init; }
+    public ReferencePlane? ReferencePlane { get; init; }
+    public BiasPathOhms? BiasPathOhms { get; init; }
+    public double? PulseWidth { get; init; }
+    public double? Period { get; init; }
+    public QuiescentBias? Quiescent { get; init; }
+    /// <summary>From the pulse's start to the current or S sample, seconds.</summary>
+    public double? SampleDelay { get; init; }
+    public TrapStateMode? TrapState { get; init; }
+    public PrePulse? PrePulse { get; init; }
+    public double? SoakTime { get; init; }
+    public ComplianceLimits? Compliance { get; init; }
+    public string? Note { get; init; }
+
+    public static DataConditions None { get; } = new();
+}
+
+/// <summary>One CSV/TSV column: the column (its header, or its 1-based number without a header), the
+/// quantity it holds, and the unit its numbers are in.</summary>
+public sealed record ColumnMap(string Column, string Quantity, string? Unit = null);
+
+/// <summary>
+/// How a data set's sources were read — stored so a re-import is exact (R-mc3-3). Which fields apply
+/// depends on <see cref="Format"/>.
+/// </summary>
+public sealed record ImportSettings
+{
+    public const string Touchstone = "touchstone", Csv = "csv", Npy = "npy", Mat = "mat";
+
+    public required string Format { get; init; }
+
+    /// <summary>Touchstone: the bias pattern, with fields <c>{vgs}</c>, <c>{vds}</c>, <c>{T}</c>,
+    /// <c>{id}</c>, <c>{ig}</c> (each optionally <c>{id:mA}</c> for its unit).</summary>
+    public string? Pattern { get; init; }
+
+    /// <summary>Touchstone: <c>name</c> (the file name) or <c>comment</c> (its comment lines).</summary>
+    public string? PatternSource { get; init; }
+
+    /// <summary>CSV/TSV: the column map.</summary>
+    public IReadOnlyList<ColumnMap>? Columns { get; init; }
+
+    /// <summary>CSV/TSV: false when the first row is data. Default true.</summary>
+    public bool? Header { get; init; }
+
+    /// <summary>CSV/TSV: the delimiter; inferred from the first row when absent.</summary>
+    public string? Delimiter { get; init; }
+
+    /// <summary>.npy/.mat: quantity → array name.</summary>
+    public IReadOnlyDictionary<string, string>? Arrays { get; init; }
+
+    /// <summary>.npy/.mat: the frequency of a Y or S table that carries no frequency array, Hz.</summary>
+    public double? FrequencyHz { get; init; }
+
+    /// <summary>The reference impedance a table's Y is converted to S at, ohms (default 50).</summary>
+    public double? Z0 { get; init; }
+}
+
+/// <summary>A point the user excluded, by its stable id, and why. The user decides; nothing excludes automatically.</summary>
+public sealed record PointExclusion(string Point, string Reason);
+
+/// <summary>One data set of a <c>.cmc</c> (R-mc3-2).</summary>
+public sealed record CmcDataSet
+{
+    public required string Name { get; init; }
+    public required DataSetKind Kind { get; init; }
+    /// <summary>Paths relative to the <c>.cmc</c>, with '/' separators.</summary>
+    public required IReadOnlyList<string> Sources { get; init; }
+    public DataConditions Conditions { get; init; } = DataConditions.None;
+    public required ImportSettings Import { get; init; }
+    public IReadOnlyList<PointExclusion> Exclusions { get; init; } = [];
+}
+
+/// <summary>
+/// Window view state. Absent from the file when every panel shows — railRF's rule: a document saved
+/// with the default view carries no view block.
+/// </summary>
+public sealed record CmcPanels
+{
+    /// <summary>The panels a user switched off, by name, sorted when written.</summary>
+    public IReadOnlyList<string> Hidden { get; init; } = [];
+
+    public bool IsDefault => Hidden.Count == 0;
+}
+
+/// <summary>The <c>.cmc</c> document (R-mc3-1).</summary>
+public sealed record CmcDocument
+{
+    public const int CurrentFormatVersion = 1;
+
+    public int FormatVersion { get; init; } = CurrentFormatVersion;
+    public required CmcKind Kind { get; init; }
+    /// <summary>The measured device's fingers and unit gate width (Active; D9).</summary>
+    public BasePeriphery? BasePeriphery { get; init; }
+    public IReadOnlyList<CmcDataSet> DataSets { get; init; } = [];
+
+    /// <summary>Later phases' blocks, carried verbatim.</summary>
+    public JsonNode? Pads { get; init; }
+    public JsonNode? Network { get; init; }
+    public JsonNode? Steps { get; init; }
+
+    public CmcPanels Panels { get; init; } = new();
+}

@@ -1051,6 +1051,24 @@ internal static class CliDiagnostics
             "{path}: a composed FET model of {fingers} finger(s) × {unitWidth}, valid at {temperature}.",
             ("path", path), ("fingers", fingers), ("unitWidth", unitWidth), ("temperature", temperature));
 
+    // ── Model Composer document (`.cmc`) ─────────────────────────────────────
+
+    /// <summary>The <c>.cmc</c> validator's own sentence, which names the field.</summary>
+    public static Diagnostic CheckComposerDocumentRefused(string path, string message) => Diagnostic.Create(
+        "check.cmc.refused", DiagnosticSeverity.Error,
+        "{path}: {message}", ("path", path), ("message", message));
+
+    /// <summary>A well-formed <c>.cmc</c> that still deserves a word — the sentence names the field.</summary>
+    public static Diagnostic CheckComposerDocumentWarning(string path, string message) => Diagnostic.Create(
+        "check.cmc.warning", DiagnosticSeverity.Warning,
+        "{path}: {message}", ("path", path), ("message", message));
+
+    /// <summary>What a valid <c>.cmc</c> is: its kind and how many data sets it names.</summary>
+    public static Diagnostic CheckComposerDocumentSummary(string path, string kind, int dataSets) => Diagnostic.Create(
+        "check.cmc.summary", DiagnosticSeverity.Info,
+        "{path}: a Model Composer document ({kind}) with {dataSets} data set(s).",
+        ("path", path), ("kind", kind), ("dataSets", dataSets));
+
     // ── railRF (`.crail`) ────────────────────────────────────────────────────
 
     /// <summary>What the document holds, and the ORDER its rails solve in — the one thing about a

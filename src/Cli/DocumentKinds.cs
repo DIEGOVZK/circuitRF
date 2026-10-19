@@ -25,6 +25,8 @@ internal enum DocumentKind
     Smith,
     /// <summary>A composed FET model, a <c>.cmodel</c> (brief-modelcomposer-1 R-mc1-2).</summary>
     ComposedModel,
+    /// <summary>A Model Composer document, a <c>.cmc</c> (brief-modelcomposer-3 R-mc3-1).</summary>
+    ComposerDocument,
     Netlist,
     AssemblyRules,
     DataDisplay,
@@ -69,6 +71,7 @@ internal static class DocumentKinds
         DocumentKind.Rail          => "rail",
         DocumentKind.Smith         => "smith",
         DocumentKind.ComposedModel => "composed-model",
+        DocumentKind.ComposerDocument => "composer-document",
         DocumentKind.Netlist       => "netlist",
         DocumentKind.AssemblyRules => "assembly-rules",
         DocumentKind.DataDisplay   => "data-display",
@@ -132,6 +135,9 @@ internal static class DocumentKinds
             // A composed FET model (brief-modelcomposer-1 R-mc1-2). A ZIP container, so classified by
             // name; `check` reads it through the model's own validator.
             ".cmodel" => DocumentKind.ComposedModel,
+            // A Model Composer document (brief-modelcomposer-3 R-mc3-1); `check` reads it through
+            // CmcFile, the validator the window opens it with.
+            ".cmc"   => DocumentKind.ComposerDocument,
             ".cnl"   => DocumentKind.Netlist,
             ".wasm"  => DocumentKind.AssemblyRules,
             // A data display. `render` draws one (RND-4); `check`/`explain` do not read it yet, and

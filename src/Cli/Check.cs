@@ -12,6 +12,7 @@ using CircuitRF.Design.Layout.Em;
 using CircuitRF.Design.Layout.Footprints;
 using CircuitRF.Design.Layout.Interchange;
 using CircuitRF.Design.Layout.Interchange.Gdstk;
+using CircuitRF.Design.Modeling;
 using CircuitRF.Design.Optimization;
 using CircuitRF.Design.RailRf;
 using CircuitRF.Design.Schematic;
@@ -227,6 +228,8 @@ internal static class Check
                                           Scoped(path, kind, f, () => CheckDataDisplay(path, f)); break;
             case DocumentKind.Rail:       Scoped(path, kind, f, () => CheckRail(path, f)); break;
             case DocumentKind.Smith:      Scoped(path, kind, f, () => CheckSmith(path, f)); break;
+            case DocumentKind.ComposerDocument:
+                                          Scoped(path, kind, f, () => CheckComposerDocument(path, f)); break;
             case DocumentKind.ComposedModel:
                                           Scoped(path, kind, f, () => CheckComposedModel(path, f)); break;
 
@@ -1165,6 +1168,24 @@ internal static class Check
             t.Mode == TemperatureMode.Single
                 ? $"{t.T0.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} °C only"
                 : $"{t.Tmin.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} to {t.Tmax.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} °C"));
+    }
+
+    /// <summary>
+    /// A <c>.cmc</c>, through <see cref="CmcFile.Read(string)"/> — the reader that validates before it
+    /// returns, naming the field it refuses. Its warnings are <see cref="CmcFile.Warnings"/>'. The data is
+    /// not imported: check reads nothing but the document, and a missing source is reported by the step
+    /// that needs it.
+    /// </summary>
+    private static void CheckComposerDocument(string path, Findings f)
+    {
+        CmcDocument doc;
+        try { doc = CmcFile.Read(path); }
+        catch (CmcFormatException ex) { f.Add(CliDiagnostics.CheckComposerDocumentRefused(path, ex.Message)); return; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        { f.Add(CliDiagnostics.CheckUnreadable(path, ex.Message)); return; }
+
+        foreach (string w in CmcFile.Warnings(doc)) f.Add(CliDiagnostics.CheckComposerDocumentWarning(path, w));
+        f.Add(CliDiagnostics.CheckComposerDocumentSummary(path, doc.Kind.ToString(), doc.DataSets.Count));
     }
 
     private static void CheckDataDisplay(string path, Findings f)
