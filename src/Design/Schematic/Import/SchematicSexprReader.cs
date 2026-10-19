@@ -453,7 +453,53 @@ public static class SchematicSexprReader
             if (instanceUnit is int iu && node.Child("unit") is null) unit = iu;
             if (lib.Symbol.Unit(unit) is not { Pins.Count: > 0 }) { _pinless++; return; }   // a mounting hole, a logo
             _implicitPins += lib.Symbol.Unit(unit)!.Pins.Count(p => p.ImplicitNet is not null);
-            instances.Add(new ForeignInstance(reference, unit, lib.Symbol.Key, x, y, rotation, mirror, value, properties));
+            instances.Add(new ForeignInstance(reference, unit, lib.Symbol.Key, x, y, rotation, mirror, value, properties)
+            {
+                Fields = FieldsOf(node, rotation, mirror, reference, value),
+            });
+        }
+
+        /// <summary>A stroke-font character's average advance, as a fraction of the font's width — only how far a justified
+        /// field's text reaches from its anchor depends on it.</summary>
+        private const double CharAdvance = 0.8;
+
+        /// <summary>
+        /// A placed symbol's <c>Reference</c> and <c>Value</c> where the sheet shows them (schematic-import.md §4, labels). A property's
+        /// <c>at</c> is its anchor on the sheet; its justification and its angle are in the symbol's own frame, so both turn
+        /// and mirror with the symbol, and a symbol turned a quarter shows a horizontal field upright
+        /// (src/Design/RESOLVED.md). The anchor is turned into the line's middle across the text and
+        /// its justified end — or middle — along it.
+        /// </summary>
+        private static List<ForeignField> FieldsOf(PcbNode node, int rotation, bool mirror, string reference, string? value)
+        {
+            var fields = new List<ForeignField>();
+            foreach (var p in node.Children("property"))
+            {
+                if (p.Atom(0) is not ("Reference" or "Value") || p.Child("at") is not { } at) continue;
+                string name = p.Atom(0)!;
+                double ax = Mils(at.Num(0) ?? 0), ay = Mils(at.Num(1) ?? 0);
+                int turns = (((int)Math.Round((at.Num(2) ?? 0) / 90.0)) % 4 + 4) % 4;
+                var effects = p.Child("effects");
+                bool hidden = ComponentSymbolSexprReader.IsHidden(p) || effects is not null && ComponentSymbolSexprReader.IsHidden(effects);
+                var size = effects?.Child("font")?.Child("size");
+                double height = Mils(size?.Num(0) ?? 1.27), width = Mils(size?.Num(1) ?? 1.27);
+                string text = name == "Reference" ? reference : value ?? p.Atom(1) ?? "";
+                double length = text.Length * width * CharAdvance;
+
+                // From the anchor to the text's centre, in the text's own frame (Y down), then turned by the text's angle
+                // (counter-clockwise on screen) and by the symbol's own transform.
+                var justify = effects?.Child("justify");
+                double dx = justify?.HasAtom("left") == true ? length / 2 : justify?.HasAtom("right") == true ? -length / 2 : 0;
+                double dy = justify?.HasAtom("top") == true ? height / 2 : justify?.HasAtom("bottom") == true ? -height / 2 : 0;
+                for (int k = 0; k < turns; k++) (dx, dy) = (dy, -dx);
+                var (tx, ty) = SchematicGeometry.LocalToWorld((float)dx, (float)dy, 0, 0, RotationOf(rotation), mirror);
+
+                bool vertical = (turns % 2 == 1) != (rotation % 180 != 0);
+                var along = vertical || Math.Abs(tx) < 1e-6 ? ForeignJustify.Center : tx > 0 ? ForeignJustify.Left : ForeignJustify.Right;
+                double fx = along == ForeignJustify.Center ? ax + tx : ax;
+                fields.Add(new ForeignField(name, text, Math.Round(fx, 4), Math.Round(ay + ty, 4), along, vertical, hidden));
+            }
+            return fields;
         }
 
         /// <summary>

@@ -272,6 +272,72 @@ public sealed class SchematicImportBuildTests : IDisposable
         Assert.True(ImportConnectivity.Compare(source, built).Matched);
     }
 
+    // ── labels where the source shows them (schematic-import.md §4, labels) ────────────────────────────────────────
+
+    private EditableComponent BuiltR1(params ForeignField[] fields)
+    {
+        var source = new ForeignSchematic("kicad_sch", Path.Combine(_dir, "lab.kicad_sch"),
+            [new ForeignSheet("S") { Instances = [new("R1", 1, "R", 1000, 1000, Value: "10k") { Fields = fields }] }], [TwoPin("R")], "S");
+        var built = SchematicImportBuild.Build(source, "Lab", Path.Combine(_dir, "Lab", "schematic"), Path.Combine(_dir, "lab_parts"));
+        return built.Top!.Model.Components.Single(c => c.InstanceName == "R1");
+    }
+
+    /// <summary>Label row <paramref name="row"/>'s left end and baseline, by the renderer's own row geometry.</summary>
+    private static (double Left, double Baseline) Row(EditableComponent c, int row)
+    {
+        var rc = c.ToRenderComponent();
+        var (dx, dy) = SchematicComponent.LabelOffsetAt(rc.LabelOffsets, row);
+        var g = SchematicComponent.LabelRowGeometry(c.X, c.Y, row, dx, dy, c.Symbol, c.PortCount, rc.GlyphBbMaxY - c.Y);
+        return (Math.Round(g.BaselineX, 3), Math.Round(g.BaselineY, 3));
+    }
+
+    /// <summary>The name goes where the source shows the reference and the value where it shows the value, each by the end
+    /// the source justifies it to and centred across the line; the type, which the source does not show, is hidden.</summary>
+    [Fact]
+    public void ANativePartsLabels_LandWhereTheSourceShowsItsFields()
+    {
+        var c = BuiltR1(new ForeignField("Reference", "R1", 1100, 950, ForeignJustify.Left),
+                        new ForeignField("Value", "10k", 1100, 1050, ForeignJustify.Left));
+        Assert.False(c.ShowTypeLabel);
+        Assert.Equal((1100, 950 + SchematicComponent.LabelWorldHeight / 2), Row(c, 1));
+        Assert.Equal((1100, 1050 + SchematicComponent.LabelWorldHeight / 2), Row(c, 2));
+    }
+
+    /// <summary>A field the source hides is hidden here.</summary>
+    [Fact]
+    public void AHiddenField_HidesItsLabel()
+    {
+        var c = BuiltR1(new ForeignField("Reference", "R1", 1100, 950, Hidden: true),
+                        new ForeignField("Value", "10k", 1100, 1050, Hidden: true));
+        Assert.False(c.ShowInstanceName);
+        Assert.Empty(c.LabelParameters());
+    }
+
+    /// <summary>circuitRF's rows read longer than the source's text; two fields side by side above the part that would
+    /// collide are stacked as one block ending at the source's line, at the left of the two.</summary>
+    [Fact]
+    public void FieldsThatWouldCollide_AreStackedAwayFromThePart()
+    {
+        var c = BuiltR1(new ForeignField("Reference", "R1", 1150, 700), new ForeignField("Value", "10k", 1000, 700));
+        var (refLeft, refBase) = Row(c, 1);
+        var (valueLeft, valueBase) = Row(c, 2);
+        Assert.Equal(refLeft, valueLeft);
+        Assert.Equal(700 + SchematicComponent.LabelWorldHeight / 2, valueBase);
+        Assert.Equal(valueBase - SchematicComponent.LabelWorldStep, refBase);
+    }
+
+    /// <summary>A label here is always level, so a part whose source runs a shown field up the page keeps circuitRF's own
+    /// layout rather than a level row centred where the vertical one stood.</summary>
+    [Fact]
+    public void APartWithAVerticalField_KeepsTheDefaultLayout()
+    {
+        var plain = BuiltR1();
+        var vertical = BuiltR1(new ForeignField("Reference", "R1", 1100, 950, ForeignJustify.Left),
+                               new ForeignField("Value", "10k", 1000, 1000, Vertical: true));
+        Assert.Equal(plain.LabelOffsets, vertical.LabelOffsets);
+        Assert.Equal(plain.ShowTypeLabel, vertical.ShowTypeLabel);
+    }
+
     private static IEnumerable<(double, double)> PinsOf(SchematicEditModel m) =>
         m.Components.Where(c => c.Symbol == SymbolKind.Resistor)
          .SelectMany(c => SymbolPortDefs.For(c.Symbol).Select(p => SchematicGeometry.LocalToWorld(p.LocalX, p.LocalY, c.X, c.Y, c.Rotation, c.MirrorX)));

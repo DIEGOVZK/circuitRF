@@ -1058,7 +1058,7 @@ public static class NetlistSchematic
     }
 
     /// <summary>Average world width of one label character at the renderer's label size.</summary>
-    private const double LabelCharWidth = 40;
+    internal const double LabelCharWidth = 40;
 
     /// <summary>
     /// Moves an upright part's label block beside it, vertically centred on the glyph. The default

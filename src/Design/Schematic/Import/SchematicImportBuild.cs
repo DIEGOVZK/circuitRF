@@ -297,6 +297,7 @@ public static class SchematicImportBuild
             var excluded = new HashSet<ForeignPinRef>();
             var usedNames = new HashSet<string>(StringComparer.Ordinal);
             var portRefs = PortReferences();
+            var drawnFrom = new Dictionary<string, (ForeignInstance Inst, (double X, double Y) Off, ImportPartDecision Decision)>(StringComparer.Ordinal);
 
             string NetOfPin(int node) => netOf[node];
             bool Wired(int node) => GroupHasWire(_physical.Find(node));
@@ -320,6 +321,7 @@ public static class SchematicImportBuild
                 string name = InstanceName(wanted, usedNames);
                 if (name != wanted) renamed[wanted] = name;
                 var nets = nodes.Select(NetOfPin).ToList();
+                drawnFrom[name] = (inst, offsets[unit.Key.Sheet], decision);
 
                 if (decision.Becomes == ImportPartKind.Native)
                 {
@@ -414,6 +416,7 @@ public static class SchematicImportBuild
                 notes.Add($"{string.Join(", ", result.PlacementFallbacks)} could not be drawn where the source draws them "
                         + "(a pin would land on another net's pin) and were placed beside the drawing.");
             model.GridSize = grid;
+            PlaceSourceLabels(model, drawnFrom, result.PlacementFallbacks);
 
             // ── what NetlistSchematic does not draw ────────────────────────────────────────────────
             AddGroundSymbols(model, groundGroups);
@@ -746,6 +749,95 @@ public static class SchematicImportBuild
         private static Instance PortInstance(string name, int num, string plus, string minus) =>
             new(name, ComponentTypeRegistry.EngineReference(SymbolKind.Term), [plus, minus],
                 [new ParameterAssignment("Num", num.ToString(CultureInfo.InvariantCulture), null), new ParameterAssignment("Z", "50", "Ohm")]);
+
+        // ── labels where the source shows them ──────────────────────────────────────────────────
+
+        /// <summary>
+        /// schematic-import.md §4, labels: each part's labels where the source shows its fields. The instance name goes where the source
+        /// shows its <c>Reference</c>, and a native part's value — or a symbol cell's name, the nearest thing it has — where
+        /// it shows its <c>Value</c>. A field the source hides is hidden, as is a native part's type, which the source does
+        /// not show. Each row keeps circuitRF's own text and is placed by the end the source justifies it to, so it grows
+        /// away from the part the way the source's does. A part with no fields, one drawn beside the drawing, or one whose
+        /// shown fields include text run up the page keeps circuitRF's own layout: a schematic label here is always level,
+        /// and a level row centred where a vertical one stood — a resistor's value written inside its body — covers the part
+        /// and the field beside it.
+        /// </summary>
+        private void PlaceSourceLabels(SchematicEditModel model,
+                                       Dictionary<string, (ForeignInstance Inst, (double X, double Y) Off, ImportPartDecision Decision)> drawnFrom,
+                                       IReadOnlyList<string> placedBeside)
+        {
+            foreach (var c in model.Components)
+            {
+                if (!drawnFrom.TryGetValue(c.InstanceName, out var from) || from.Inst.Fields.Count == 0
+                    || placedBeside.Contains(c.InstanceName)) continue;
+                var fields = from.Inst.Fields;
+                var reference = fields.FirstOrDefault(f => f.Name == "Reference");
+                var value = fields.FirstOrDefault(f => f.Name == "Value");
+                if (reference is { Hidden: false, Vertical: true } || value is { Hidden: false, Vertical: true }) continue;
+                bool native = from.Decision.Becomes == ImportPartKind.Native;
+
+                // A field the source lists but does not show, or does not list among the ones it shows, is hidden.
+                c.ShowInstanceName = reference is { Hidden: false };
+                var valueParam = native ? c.Parameters.FirstOrDefault(p => p.Name == from.Decision.Parameter) : null;
+                if (valueParam is not null) valueParam.ShowOnSchematic = value is { Hidden: false };
+                c.ShowTypeLabel = !native && value is { Hidden: false };
+
+                var placed = new List<(int Row, ForeignField Field)>();
+                if (reference is { Hidden: false }) placed.Add((1, reference));
+                if (value is { Hidden: false })
+                {
+                    if (!native) placed.Add((0, value));
+                    else if (valueParam is not null)
+                        placed.Add((2 + c.LabelParameters().TakeWhile(p => !ReferenceEquals(p, valueParam)).Count(), value));
+                }
+                if (placed.Count == 0) continue;
+
+                var resolution = native || !symbolCells.TryGetValue((from.Inst.SymbolKey, from.Inst.Unit), out var cell) ? null
+                    : new CellSymbolResolution { State = CellSymbolState.Resolved, Symbol = cell.Symbol };
+                c.LabelOffsets.Clear();
+                var rendered = c.ToRenderComponent(null, resolution);
+                double baseX = c.X + SchematicComponent.LabelBaseXFor(c.Symbol);
+                double baseY = c.Y + SchematicComponent.LabelBaseYFor(c.Symbol, c.PortCount, rendered.GlyphBbMaxY - c.Y);
+
+                var rowsAt = placed.OrderBy(p => p.Row).Select(p =>
+                {
+                    string text = p.Row < rendered.Labels.Count ? rendered.Labels[p.Row] : "";
+                    double width = text.Length * NetlistSchematic.LabelCharWidth;
+                    var (fx, fy) = Shift((p.Field.X, p.Field.Y), from.Off);
+                    double left = p.Field.Justify switch
+                    {
+                        ForeignJustify.Left => fx,
+                        ForeignJustify.Right => fx - width,
+                        _ => fx - width / 2,
+                    };
+                    return (p.Row, Left: left, Width: width, Baseline: fy + SchematicComponent.LabelWorldHeight / 2);
+                }).ToList();
+
+                // circuitRF's rows read longer than the source's text ("R = 15 kOhm" for "15k"), so two fields the source
+                // sets side by side can collide. Then the rows are stacked as one block at the source's place, growing
+                // away from the part: upward when the source puts the fields above it.
+                bool collide = rowsAt.Any(a => rowsAt.Any(b => a.Row < b.Row && a.Left < b.Left + b.Width && b.Left < a.Left + a.Width
+                                                               && Math.Abs(a.Baseline - b.Baseline) < SchematicComponent.LabelWorldStep));
+                if (collide)
+                {
+                    double left = rowsAt.Min(r => r.Left);
+                    bool above = rowsAt.Average(r => r.Baseline) < (rendered.GlyphBbMinY + rendered.GlyphBbMaxY) / 2;
+                    double first = above ? rowsAt.Max(r => r.Baseline) - (rowsAt.Count - 1) * SchematicComponent.LabelWorldStep
+                                         : rowsAt.Min(r => r.Baseline);
+                    rowsAt = [.. rowsAt.Select((r, k) => (r.Row, left, r.Width, first + k * SchematicComponent.LabelWorldStep))];
+                }
+
+                // Rows the source places nothing on stack under the last one placed, as LabelOffsetAt reads them.
+                int rows = placed.Max(p => p.Row) + 1;
+                var offsets = new (double DX, double DY)[rows];
+                foreach (var (row, left, _, baseline) in rowsAt)
+                    offsets[row] = (Math.Round(left - baseX, 3), Math.Round(baseline - (baseY + row * SchematicComponent.LabelWorldStep), 3));
+                // A row with no field of its own sits where the row before it would put it.
+                for (int r = 1; r < rows; r++)
+                    if (!placed.Any(p => p.Row == r)) offsets[r] = offsets[r - 1];
+                c.LabelOffsets.AddRange(offsets);
+            }
+        }
 
         // ── what NetlistSchematic does not draw ─────────────────────────────────────────────────
 

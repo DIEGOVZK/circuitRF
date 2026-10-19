@@ -114,6 +114,9 @@ from 100 MHz to 6 GHz, which you can change like any other. See [Pin, Port and T
   design drawn on a finer grid than 100 mils keeps its points exactly, and the schematic's connection grid is set to
   match. A part whose pins sit at a different spacing from circuitRF's own symbol is joined to the source's wire with
   one short bend.
+- **Labels** go where the source shows them: a part's name where it shows the reference, and its value where it shows
+  the value, each reading from the same end. A field the source hides is hidden. circuitRF's labels are always level, so
+  a part whose source writes a label up the page — usually an upright resistor's value — keeps circuitRF's own layout.
 - **Free text and lines** come across. Title blocks, page borders, pictures and simulation attachments do not; a
   footprint property is kept on the part.
 - **Buses**: each member connects through its own label, as it does in the source. A bus that crosses into a sheet is

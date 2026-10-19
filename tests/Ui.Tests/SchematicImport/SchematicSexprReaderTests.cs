@@ -53,6 +53,22 @@ public sealed class SchematicSexprReaderTests : IDisposable
         [.. SchematicImportBuild.Build(s, "x", Path.Combine(dir, "x", "schematic"), Path.Combine(dir, "x_parts"))
               .Top!.GeometricNets.Select(n => n.Select(p => p.ToString()).ToHashSet())];
 
+    /// <summary>schematic-import.md §4, labels: a field's anchor is where the sheet shows it, its justification and angle turn with the symbol.
+    /// A horizontal part's field at angle 90 reads level, centred; a left-justified one is anchored by its left end; and a
+    /// mirrored part's left-justified field reads right-justified.</summary>
+    [Fact]
+    public void Fields_AreReadWhereTheSheetShowsThem_TurnedAndMirroredWithTheirSymbol()
+    {
+        var read = SchematicSexprReader.Read(Fixture("matching.kicad_sch"));
+        Assert.True(read.Ok, read.Refusal);
+        ForeignField Field(string reference, string name) =>
+            read.Schematic!.Pages.First().Instances.Single(i => i.Reference == reference).Fields.Single(f => f.Name == name);
+
+        Assert.Equal(new ForeignField("Reference", "L1", 2050, 1850, ForeignJustify.Center), Field("L1", "Reference"));
+        Assert.Equal(new ForeignField("Reference", "C1", 2500, 2400, ForeignJustify.Left), Field("C1", "Reference"));
+        Assert.Equal(ForeignJustify.Right, Field("J1", "Reference").Justify);
+    }
+
     [Fact]
     public void Divider_ImportsMatched_WithItsPowerLabelAndGround()
     {

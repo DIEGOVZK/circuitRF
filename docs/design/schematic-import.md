@@ -31,7 +31,8 @@ its two functions and hold no import logic (D1).
 | `ForeignSymbol` | key (unique in the source), display and library names, units; per unit pins and graphics |
 | `ForeignPin` | `Number` (the identity), `Name`, electrical type, connection point, body side, length, `Hidden`, `ImplicitNet` |
 | `ForeignSheet` | name, page size, `Instances`, `Wires`, `Junctions`, `Labels`, `NoConnects`, `SheetInstances`, `Texts`, `Graphics` |
-| `ForeignInstance` | reference, unit (from 1), symbol key, origin, rotation 0/90/180/270, mirror, value, properties |
+| `ForeignInstance` | reference, unit (from 1), symbol key, origin, rotation 0/90/180/270, mirror, value, properties, `Fields` |
+| `ForeignField` | `Reference` or `Value` (or another shown property), its text, where it is shown, justification, `Vertical`, `Hidden` |
 | `ForeignLabel` | kind `Local / Global / Hierarchical / OffPage / Power`, text, anchor |
 | `ForeignSchematic` | format (by extension), source path, sheets, symbols, root sheet, `Hierarchical`, `DeclaredNets`, `Notes` |
 
@@ -100,6 +101,20 @@ reached (its shield's wire and ground symbol) is not drawn, since nothing would 
 Free text and graphic lines become schematic text and lines; junctions become dots. Title blocks and borders are not
 imported.
 
+**Labels where the source shows them.** A `ForeignField`'s point is, along the line of text, the end its `Justify`
+names (or the middle) and, across it, the line's middle, in sheet coordinates — each reader converts its format's own
+anchor to that. After `NetlistSchematic.Build`, each part from the source gets per-row `LabelOffsets` (offsets from the
+renderer's default row anchor, which is measured from the part's real glyph — a symbol cell's own drawing): the name
+row on the `Reference`, a native part's value row — or a symbol cell's type row, its cell name being the nearest thing
+it has — on the `Value`. A native part's type row is hidden (the source shows none); a field the source hides, or a
+format lists among its shown fields and this one is not, hides its row. Each row keeps circuitRF's text and is aligned
+by the justified end, so it grows away from the part as the source's does; when that makes a part's own rows collide
+(circuitRF's "R = 15 kOhm" for the source's "15k" side by side with the reference) they are stacked as one block at the
+source's place, growing away from the part. **A part whose shown fields include vertical text keeps circuitRF's own
+layout**: a label here is always level, and a level row centred where a vertical one stood — a resistor's value written
+inside its body, which is the `.kicad_sch` default for an upright resistor — covers the part. Parts placed beside the
+drawing, sheet instances and Ports keep the default too.
+
 ## 5. The check — `ImportConnectivity.cs`
 
 Each produced schematic is extracted by `NetExtractor` (a black-box resolver answers every cell with one `Pin` per symbol
@@ -161,6 +176,10 @@ no nets, so the geometric check is the check.
   wire, exactly as the source's editor requires. A bus-named sheet pin or hierarchical label (`D[0..7]`, `{A B}`) is not
   expanded; the report lists those buses, because their members are not joined across the sheet boundary (D11).
   `~{X}`, `_{x}`, `^{x}` are text markup, not bus groups.
+- **Fields.** A `Reference`/`Value` property's `at` is its anchor on the sheet, already turned with the symbol; its
+  justification and angle are in the symbol's own frame, so the anchor-to-centre offset is turned by the text angle and
+  then by the symbol's transform (a mirrored part's left-justified field reads right-justified), and a quarter-turned
+  symbol swaps the field between level and vertical. `hide` hides it.
 - **Not carried, one counted sentence per kind (R-si2-3):** images, tables, rule areas, net-class directives, circles,
   arcs and curves drawn on the sheet, pinless parts (mounting holes, logos), alternate body styles (imported with the
   standard body). The file's version is reported and branched on nowhere.
@@ -192,6 +211,9 @@ Fixtures: `testdata/schematic-import/sexpr/` (authored, tiny). The gate is
 - **Pin numbers**, in order: the placed part's `portInstance` designator → the port's designator → `PackagePortNumbers`
   [unit−1] → the pin name → the port id. Every source past the first is counted in the notes. A placed part that renumbers
   a pin gets a variant symbol (`key#n`).
+- **Fields.** A `designator` or a `Value` property written as a `stringDisplay` is read (a part whose designator is one
+  is no longer skipped as a title block), and its `display`'s `origin` is taken as a page point with `justify` LOWERLEFT
+  unless stated and an R90/R270 `orientation` as vertical text.
 - **Placed parts.** `designator` is the reference; a `Designator` property is the unit suffix (stripped from it) and
   `PositionInPackage` the 0-based unit (else the suffix letter). No designator → a title block or border, skipped and
   counted. A cell whose view has pages is a hierarchical sheet instead.
@@ -229,6 +251,9 @@ layout fact is in `src/Design/RESOLVED.md`.
   by string index, the wire); in version 3 also hierarchical BLOCKS (in the parts list: their own rectangle symbol inline,
   their name, the schematic they place, their pins) and hierarchical PORTS (the list after the parts). Version 3 is version 2's sections with every record size-prefixed, so a section not read
   is skipped by size and reported; in version 2 it is a refusal.
+- **Displayed properties** — each part lists the properties it shows (`Part Reference`/`Reference`, `Value`, any other):
+  a name index and an offset, page units from the part's FILE position (not the re-anchored origin) and not turned with
+  the part, to the text's TOP-LEFT; then a byte read as rotation (odd = vertical). A property not listed is not shown.
 - **`BinaryDsnReader`** — version dispatch (2.0, 3.2; anything else refused with the EDIF route), the transform
   (rotation code r turns a quarter counter-clockwise on screen, re-anchored at the turned body's top-left; bit 2
   mirrors first), the labels, and the DECLARED nets: pins joined through their wire's net id, pins that touch, and the
@@ -268,5 +293,4 @@ stays a picture. The CLI exits 1 when the check is not matched, with the cell wr
   of the same circuit written as a `.cnl`, to 1e-9. An imported schematic of native parts is a circuit.
 
 Open for the owner: a value written as a bare number (`10` on a resistor) is not read as base units, so it becomes a
-default-valued variable; and the source's label positions are not carried, so a native part's labels take circuitRF's
-default place.
+default-valued variable.

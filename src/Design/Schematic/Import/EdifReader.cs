@@ -462,7 +462,8 @@ public static class EdifReader
             var orientation = Orientation(transform?.ChildAtom("orientation"));
             if (orientation is null) _badOrientations++;
             var (rotation, mirror) = orientation ?? (0, false);
-            string designator = node.ChildAtom("designator") is { } d ? text.Decode(d).Trim() : "";
+            var designatorNode = node.Child("designator");
+            string designator = (designatorNode?.Atom(0) ?? designatorNode?.Child("stringdisplay")?.Atom(0)) is { } d ? text.Decode(d).Trim() : "";
 
             if (Pages(cell, viewId).Count > 0)
             {
@@ -507,8 +508,35 @@ public static class EdifReader
             placed[instId] = new Placed(reference, numberOf, pins);
             foreach (var pin in pins.Where(p => p.Hidden && p.ImplicitNet is not null))
                 _implicitPins.Add((new ForeignPinRef(reference, pin.Number), pin.ImplicitNet!));
+            var fields = new List<ForeignField>();
+            if (FieldOf(lib, "Reference", designator, designatorNode?.Child("stringdisplay")) is { } refField) fields.Add(refField);
+            var valueNode = node.Children("property").FirstOrDefault(p => NameOf(p).Display.Equals("Value", StringComparison.OrdinalIgnoreCase));
+            if (FieldOf(lib, "Value", props.GetValueOrDefault("Value") ?? "", valueNode?.Child("string")?.Child("stringdisplay")) is { } valueField)
+                fields.Add(valueField);
             instances.Add(new ForeignInstance(reference, unit, key, origin.X, origin.Y, rotation, mirror,
-                                              props.GetValueOrDefault("Value"), props));
+                                              props.GetValueOrDefault("Value"), props) { Fields = fields });
+        }
+
+        /// <summary>Half the height of a field's line, mils, for a <c>justify</c> naming its top or bottom edge.</summary>
+        private const double FieldHalfHeight = 35;
+
+        /// <summary>
+        /// A designator's or a property's <c>stringDisplay</c> as a <see cref="ForeignField"/> (schematic-import.md §4, labels), from the
+        /// standard: <c>(display … (justify …) (orientation …) (origin (pt x y)))</c>, the origin on the page and the
+        /// justification LOWERLEFT unless stated. A string with no display is not shown.
+        /// </summary>
+        private ForeignField? FieldOf(Library lib, string name, string shown, PcbNode? stringDisplay)
+        {
+            var display = stringDisplay?.Child("display");
+            if (Pt(display?.Child("origin")?.Child("pt")) is not { } pt) return null;
+            var (x, y) = SheetPoint(lib, pt);
+            string justify = (display!.ChildAtom("justify") ?? "LOWERLEFT").ToUpperInvariant();
+            bool vertical = (display.ChildAtom("orientation") ?? "R0").ToUpperInvariant() is "R90" or "R270" or "MXR90" or "MYR90";
+            double middle = justify.StartsWith("UPPER", StringComparison.Ordinal) ? y + FieldHalfHeight
+                          : justify.StartsWith("LOWER", StringComparison.Ordinal) ? y - FieldHalfHeight : y;
+            var along = vertical || justify.EndsWith("CENTER", StringComparison.Ordinal) ? ForeignJustify.Center
+                      : justify.EndsWith("RIGHT", StringComparison.Ordinal) ? ForeignJustify.Right : ForeignJustify.Left;
+            return new ForeignField(name, shown, x, middle, along, vertical);
         }
 
         /// <summary>The brief's fallback chain past the placed part's own designator: the port's designator, the unit's entry in

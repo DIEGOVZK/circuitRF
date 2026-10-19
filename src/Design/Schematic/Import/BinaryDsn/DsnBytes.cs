@@ -11,8 +11,9 @@ namespace CircuitRF.Design.Schematic.Import.BinaryDsn;
 /// <summary>A stream that does not have the layout its version promises; the message names where.</summary>
 internal sealed class DsnFormatException(string message) : Exception(message);
 
-/// <summary>A display property: which property (a string-table index) is shown, and where relative to its owner.</summary>
-internal readonly record struct DsnDisplayProp(int NameIndex, int X, int Y);
+/// <summary>A display property: which property (a string-table index) is shown, where its text's top-left is relative to
+/// its owner's position (page units, not turned with the owner), and <paramref name="Rotation"/>, the byte after it.</summary>
+internal readonly record struct DsnDisplayProp(int NameIndex, int X, int Y, int Rotation = 0);
 
 internal sealed class DsnBytes(byte[] bytes, string stream, EdifText text)
 {
@@ -147,6 +148,26 @@ internal sealed class DsnBytes(byte[] bytes, string stream, EdifText text)
         return n;
     }
 
+    /// <summary>A version-3 display-property list: a u16 count of records, each the counted block, then version 2's
+    /// layout after its 27 FF FF — a u32 name index, x y (i16), 6 bytes.</summary>
+    public List<DsnDisplayProp> DisplayRecords()
+    {
+        int n = U16();
+        if (n > 4096) throw Fail($"a record claims {n} displayed properties");
+        var props = new List<DsnDisplayProp>(n);
+        for (int i = 0; i < n; i++)
+        {
+            var (end, _, _) = Record();
+            SkipBlob();
+            int name = (int)U32();
+            int x = I16(), y = I16();
+            int rotation = U8();
+            props.Add(new DsnDisplayProp(name, x, y, rotation));
+            Pos = end;
+        }
+        return props;
+    }
+
     /// <summary>A display-property list: a u16 count, then 15-byte records starting 0x27 FF FF.</summary>
     public List<DsnDisplayProp> DisplayProps()
     {
@@ -159,8 +180,9 @@ internal sealed class DsnBytes(byte[] bytes, string stream, EdifText text)
             if (U8() != 0x27 || U16() != 0xFFFF) throw Fail("a displayed property does not start 27 FF FF", at);
             int name = U16();
             int x = I16(), y = I16();
-            Skip(6);
-            props.Add(new DsnDisplayProp(name, x, y));
+            int rotation = U8();
+            Skip(5);
+            props.Add(new DsnDisplayProp(name, x, y, rotation));
         }
         return props;
     }

@@ -84,6 +84,18 @@ public sealed class EdifReaderTests(ITestOutputHelper output) : IDisposable
 
     /// <summary>Unit A is placed MX, unit B R90; the units' pin numbers come from PackagePortNumbers, and the hidden power
     /// pin the file's nets do not list joins its net by name.</summary>
+    /// <summary>schematic-import.md §4, labels: a designator and a property value written as a <c>stringDisplay</c> are read — the part is
+    /// not mistaken for a title block — and placed at their display's origin, LOWERLEFT unless stated.</summary>
+    [Fact]
+    public void ADisplayedDesignatorAndValue_AreReadWithWhereTheyAreShown()
+    {
+        var read = EdifReader.Read(Fixture("divider.edf"));
+        Assert.True(read.Ok, read.Refusal);
+        var r1 = read.Schematic!.Pages.First().Instances.Single(i => i.Reference == "R1");
+        Assert.Equal(new ForeignField("Reference", "R1", 1100, 1035, ForeignJustify.Left), r1.Fields.Single(f => f.Name == "Reference"));
+        Assert.Equal(new ForeignField("Value", "1k", 1100, 1015, ForeignJustify.Left), r1.Fields.Single(f => f.Name == "Value"));
+    }
+
     [Fact]
     public void TwoUnitPart_MxAndR90_ImportsMatched_WithEachPinOnItsWire()
     {

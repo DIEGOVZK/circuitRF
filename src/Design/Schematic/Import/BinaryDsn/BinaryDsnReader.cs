@@ -235,7 +235,10 @@ public static class BinaryDsnReader
                 instances.Add(new ForeignInstance(
                     part.Reference, prefix is null ? 1 : part.Unit, symbolKey, origin.X, origin.Y,
                     part.Rotation switch { 1 => 270, 2 => 180, 3 => 90, _ => 0 }, part.Mirror,
-                    library.String(part.ValueIndex), props));
+                    library.String(part.ValueIndex), props)
+                {
+                    Fields = [.. part.Display.Select(d => FieldOf(d, part, props, library, At(part.Position)))],
+                });
 
                 foreach (var pin in part.Pins)
                 {
@@ -512,6 +515,30 @@ public static class BinaryDsnReader
     private static bool OnSegment((int X, int Y) p, (int X, int Y) a, (int X, int Y) b) =>
         (long)(b.X - a.X) * (p.Y - a.Y) == (long)(b.Y - a.Y) * (p.X - a.X)
         && p.X >= Math.Min(a.X, b.X) && p.X <= Math.Max(a.X, b.X) && p.Y >= Math.Min(a.Y, b.Y) && p.Y <= Math.Max(a.Y, b.Y);
+
+    /// <summary>The half-height of a displayed property's text box at the default font, mils: its anchor is the box's
+    /// top-left, and <see cref="ForeignField"/> takes the middle of the line (src/Design/RESOLVED.md).</summary>
+    private const double FieldHalfHeight = 50;
+
+    /// <summary>
+    /// A part's displayed property as a <see cref="ForeignField"/> (schematic-import.md §4, labels): its offset is page units from the
+    /// part's own position, not turned with the part, to the text's top-left. A property displayed is shown; one the part
+    /// does not list is not. An odd rotation byte is text run up the page.
+    /// </summary>
+    private static ForeignField FieldOf(DsnDisplayProp d, DsnPart part, Dictionary<string, string> props, DsnLibrary library,
+                                        (double X, double Y) partAt)
+    {
+        string raw = library.String(d.NameIndex) ?? "";
+        string name = raw is "Part Reference" or "Reference" ? "Reference" : raw;
+        string text = name switch
+        {
+            "Reference" => part.Reference,
+            "Value" => library.String(part.ValueIndex) ?? "",
+            _ => props.GetValueOrDefault(raw) ?? "",
+        };
+        return new ForeignField(name, text, partAt.X + d.X * Mils, partAt.Y + d.Y * Mils + FieldHalfHeight, ForeignJustify.Left,
+                                Vertical: (d.Rotation & 1) == 1);
+    }
 
     // ── symbols ─────────────────────────────────────────────────────────────────────────────────
 

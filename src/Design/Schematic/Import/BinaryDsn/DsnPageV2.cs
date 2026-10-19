@@ -30,7 +30,11 @@ internal sealed record DsnPlacedPin(int Index, (int X, int Y) At, uint Wire);
 /// with the same reference and its own symbol view (one per unit, its name ending A, B, …).</summary>
 internal sealed record DsnPart(
     string Reference, string SymbolName, int ValueIndex, IReadOnlyList<(int Name, int Value)> Properties,
-    (int X, int Y) Position, int Rotation, bool Mirror, IReadOnlyList<DsnPlacedPin> Pins, int Unit = 1);
+    (int X, int Y) Position, int Rotation, bool Mirror, IReadOnlyList<DsnPlacedPin> Pins, int Unit = 1)
+{
+    /// <summary>The fields the page shows for this part, each where it is drawn relative to <see cref="Position"/>.</summary>
+    public IReadOnlyList<DsnDisplayProp> Display { get; init; } = [];
+}
 
 /// <summary>A ground, power or off-page symbol: its symbol's name, the net it names (a string index), where it is, and the
 /// wire it touches.</summary>
@@ -158,7 +162,7 @@ internal static class DsnPageV2
         r.U8();
         int rot = r.U8();
         r.Skip(2);
-        r.DisplayProps();
+        var display = r.DisplayProps();
         r.U8();
         string reference = r.Str();
         int value = (int)r.U32();
@@ -179,7 +183,7 @@ internal static class DsnPageV2
         }
         r.Str();
         int unit = r.U16();
-        return new DsnPart(reference, symbol, value, pairs, pos, rot & 3, (rot & 4) != 0, pins, unit + 1);
+        return new DsnPart(reference, symbol, value, pairs, pos, rot & 3, (rot & 4) != 0, pins, unit + 1) { Display = display };
     }
 
     /// <summary>0x25, a pair list, u16 NET NAME (string index), u16 library, u32 timestamp, the SYMBOL's name, u32 id, u32,

@@ -139,7 +139,7 @@ internal static class DsnPageV3
         r.U8();
         int rot = r.U8();
         r.Skip(2);
-        r.SkipRecords();                         // displayed properties
+        var display = r.DisplayRecords();
         r.U8();
         string reference = r.Str();
         int value = (int)r.U32();
@@ -161,7 +161,7 @@ internal static class DsnPageV3
         r.Str();                                 // the source part's name
         int unit = r.U16();
         r.Pos = end;
-        return new DsnPart(reference, symbol, value, pairs, pos, rot & 3, (rot & 4) != 0, pins, unit + 1);
+        return new DsnPart(reference, symbol, value, pairs, pos, rot & 3, (rot & 4) != 0, pins, unit + 1) { Display = display };
     }
 
     /// <summary>

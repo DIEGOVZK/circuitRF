@@ -55,7 +55,24 @@ public sealed record ForeignSymbol(string Key, string DisplayName, string Librar
 /// 270, clockwise on screen; <paramref name="Mirror"/> flips across the symbol's vertical axis before the turn.</summary>
 public sealed record ForeignInstance(
     string Reference, int Unit, string SymbolKey, double X, double Y, int Rotation = 0, bool Mirror = false,
-    string? Value = null, IReadOnlyDictionary<string, string>? Properties = null);
+    string? Value = null, IReadOnlyDictionary<string, string>? Properties = null)
+{
+    /// <summary>The part's text fields where the source shows them — its <c>Reference</c> and its <c>Value</c>; empty when
+    /// the format places none.</summary>
+    public IReadOnlyList<ForeignField> Fields { get; init; } = [];
+}
+
+/// <summary>Which point of a displayed field its anchor is, along the line of text.</summary>
+public enum ForeignJustify { Left, Center, Right }
+
+/// <summary>
+/// A part's field as the source displays it (schematic-import.md §4, labels): <paramref name="Name"/> is <c>Reference</c> or <c>Value</c>.
+/// <paramref name="X"/>,<paramref name="Y"/> is in sheet coordinates (mils, Y down): along the text, the point
+/// <paramref name="Justify"/> names — the left end, the middle or the right end — and across it, the text's middle.
+/// <paramref name="Vertical"/> is text the source runs up the page; <paramref name="Hidden"/> is a field it does not show.
+/// </summary>
+public sealed record ForeignField(string Name, string Text, double X, double Y, ForeignJustify Justify = ForeignJustify.Center,
+                                  bool Vertical = false, bool Hidden = false);
 
 /// <summary>A wire, as a polyline in sheet coordinates.</summary>
 public sealed record ForeignWire(IReadOnlyList<(double X, double Y)> Points);

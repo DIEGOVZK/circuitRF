@@ -20612,5 +20612,30 @@ Version 3.2 designs can be hierarchical. **This supersedes the "hierarchical des
 - **Defect: "is not a inductance".** The noun now carries its article.
 - **Not changed:** a source whose two-pin parts pitch their pins 300 mils apart, where circuitRF's R, L and C pitch
   400, has one pin of each land on the source wire's run rather than its end, and that wire end shows as an
-  unconnected mark on the part's lead. D6 keeps the source wire where it is; connectivity is right. The source's label positions are not
-  read either — each native part's labels take circuitRF's default place, which can overlap in a tight drawing.
+  unconnected mark on the part's lead. D6 keeps the source wire where it is; connectivity is right.
+
+## Import Schematic: labels where the source shows them (2026-10-19)
+
+Owner asked for the source file's label positions to be respected as far as possible. Design:
+`docs/design/schematic-import.md` §4 (labels) and each reader's "Fields" bullet; gates in the four reader/build test
+classes under `tests/Ui.Tests/SchematicImport/`.
+
+- **Binary `.DSN`: a displayed property is anchored by its text's top-left**, offset in page units from the part's file
+  position and NOT turned with the part. The version-2 display record (27 FF FF, u16 name, i16 x y, 6 bytes)
+  and version 3's (the same fields after its record header and counted block) carry it. Reference and value keep the
+  file's relative offset under LEFT alignment, which centre or right alignment would not. The text box is ~102 mil
+  tall, so the line's middle is the anchor + 50.
+- **`.kicad_sch`: a field's `at` is its displayed anchor, already turned with the symbol** (a
+  horizontal resistor's value at `(0, −3.81)` from its centre is above it; read as an unturned library offset it
+  would sit on its own pin). Its justification and angle are the symbol's frame: a quarter-turned symbol shows an
+  angle-90 field level, which is why horizontal resistors' fields carry 90 — the editor's draw rotation swaps the
+  orientation when the symbol's transform does. The justification turns and mirrors with the symbol by the
+  same model.
+- **Vertical text is not reproduced.** An upright resistor's value is written vertically inside its body by default;
+  a level row centred there covers the resistor and its reference. A part with any shown vertical field keeps the
+  default layout; a part with level text takes the source's positions.
+- **circuitRF's rows read longer than the source's text** ("R = 15 kOhm" for "15k"): two fields set side by side above a
+  part collided. Such rows are stacked as one block at the source's line, growing away from the part.
+- **A symbol cell's value row shows its cell name**, which is the only text it has; a native part's type row is hidden.
+- **Defect fixed on the way: an EDIF `designator` written as a `stringDisplay`** — which the standard allows — read as
+  empty, so the part was skipped as a title block.
