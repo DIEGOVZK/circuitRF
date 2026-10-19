@@ -315,6 +315,7 @@ public static class SchematicImportBuild
                     {
                         new(decision.Parameter!, decision.Expression!, decision.Unit),
                     };
+                    if (decision.Footprint is { } footprint) overrides.Add(new(ArtworkParameters.FootprintName, footprint, null));
                     var instance = new Instance(name, ComponentTypeRegistry.EngineReference(decision.Native!.Value), nets, overrides);
                     tb.Instances.Add(instance);
                     if (decision.Variable is { } v && !tb.GlobalVariables.Any(g => g.Name == v.Name))

@@ -10,6 +10,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using CircuitRF.Design.Cells;
+using CircuitRF.Design.Layout.Footprints;
 using CircuitRF.Design.Layout.Recognition;
 
 namespace CircuitRF.Design.Schematic.Import;
@@ -32,12 +33,15 @@ public enum ImportPartKind
 /// </summary>
 /// <param name="Native">The component a match becomes; null for a ground rule.</param>
 /// <param name="Parameter">The parameter its value is read into (<c>R</c>, <c>C</c>, <c>L</c>).</param>
+/// <param name="CaseFromName">The symbol is named after its land pattern, <c>R-0603</c>: it matches only when the part
+/// after the first <c>-</c> is a case size circuitRF knows, and the part takes that footprint.</param>
 public sealed record SchematicImportRule(
     string Name, string? SymbolPattern, string? ReferencePrefix, int? PinCount, string? ValuePattern,
-    ImportPartKind Becomes, SymbolKind? Native = null, string? Parameter = null)
+    ImportPartKind Becomes, SymbolKind? Native = null, string? Parameter = null, bool CaseFromName = false)
 {
     public bool Matches(string symbolName, string reference, int pinCount, string? value)
     {
+        if (CaseFromName && SchematicImportMap.CaseOf(symbolName) is null) return false;
         if (SymbolPattern is not null && !Regex.IsMatch(symbolName, $"^(?:{SymbolPattern})$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
             return false;
         if (ReferencePrefix is not null
@@ -55,15 +59,19 @@ public sealed record SchematicImportRule(
 /// <param name="Unit">The number's unit (<c>kOhm</c>, <c>nF</c>), null with a variable.</param>
 /// <param name="Variable">The global variable a value that does not parse became (<c>R3_R</c>), with its default.</param>
 /// <param name="CellName">A symbol cell's name, before any collision suffix.</param>
+/// <param name="Footprint">A native part's land pattern, as its <c>Footprint</c> parameter spells it (<c>smt:1210@N</c>),
+/// when the source states one circuitRF has built in.</param>
 public sealed record ImportPartDecision(
     string Reference, string SymbolKey, string SymbolName, string? Value, ImportPartKind Becomes, string? Rule,
     SymbolKind? Native = null, string? Parameter = null, string? Expression = null, string? Unit = null,
-    (string Name, string Expression, string Unit)? Variable = null, string? CellName = null, string? Note = null)
+    (string Name, string Expression, string Unit)? Variable = null, string? CellName = null, string? Note = null,
+    string? Footprint = null)
 {
     /// <summary>The parts table's "becomes" column: <c>R → R=10 kOhm</c>, <c>U3 → symbol cell LM358</c>.</summary>
     public string Describe() => Becomes switch
     {
-        ImportPartKind.Native => $"{Reference} → {Parameter}={Expression}{(Unit is { Length: > 0 } u ? " " + u : "")}",
+        ImportPartKind.Native => $"{Reference} → {Parameter}={Expression}{(Unit is { Length: > 0 } u ? " " + u : "")}"
+                                 + (Footprint is { } f ? $", {f}" : ""),
         ImportPartKind.Ground => $"{Reference} → ground",
         _ => $"{Reference} → symbol cell {CellName}",
     };
@@ -74,11 +82,23 @@ public static class SchematicImportMap
     /// <summary>The rules, in the order they are tried (R-si1-3). Data, not code: one row per certain mapping.</summary>
     public static readonly IReadOnlyList<SchematicImportRule> Rules =
     [
+        // A symbol named after its land pattern — "R-0603", "C-1210" — is that part in that case size (owner, 2026-10-19).
+        new("resistor in a case",  @"R-.+", "R", 2, null, ImportPartKind.Native, SymbolKind.Resistor,  "R", CaseFromName: true),
+        new("capacitor in a case", @"C-.+", "C", 2, null, ImportPartKind.Native, SymbolKind.Capacitor, "C", CaseFromName: true),
+        new("inductor in a case",  @"L-.+", "L", 2, null, ImportPartKind.Native, SymbolKind.Inductor,  "L", CaseFromName: true),
         new("resistor",  @"R|RES|RESISTOR|R[_ ].*|RES[_ ].*|RESISTOR[_ ].*",          "R", 2, null, ImportPartKind.Native, SymbolKind.Resistor,  "R"),
         new("capacitor", @"C|CAP|CAPACITOR|CP|C[_ ].*|CAP[_ ].*|CAPACITOR[_ ].*|CP[_ ].*", "C", 2, null, ImportPartKind.Native, SymbolKind.Capacitor, "C"),
         new("inductor",  @"L|IND|INDUCTOR|L[_ ].*|IND[_ ].*|INDUCTOR[_ ].*",          "L", 2, null, ImportPartKind.Native, SymbolKind.Inductor,  "L"),
         new("ground",    @"GND|GROUND|EARTH|0|GND[_ ].*|GROUND[_ ].*",                null, 1, null, ImportPartKind.Ground),
     ];
+
+    /// <summary>The built-in case size a symbol named after its land pattern states — the part after the first <c>-</c>
+    /// of <c>R-0603</c> — or null when that is not a case circuitRF knows.</summary>
+    public static SmtCase? CaseOf(string symbolName)
+    {
+        int dash = symbolName.IndexOf('-');
+        return dash > 0 && dash < symbolName.Length - 1 ? SmtCaseTable.Find(symbolName[(dash + 1)..]) : null;
+    }
 
     /// <summary>A net name the source uses for ground — a power label of one of these is node 0 (overview D3).</summary>
     public static bool IsGroundName(string name) =>
@@ -114,7 +134,13 @@ public static class SchematicImportMap
         return decisions;
     }
 
-    private static ImportPartDecision Native(ForeignInstance inst, string name, SchematicImportRule rule)
+    private static ImportPartDecision Native(ForeignInstance inst, string name, SchematicImportRule rule) =>
+        NativeValue(inst, name, rule) with
+        {
+            Footprint = rule.CaseFromName && CaseOf(name) is { } c ? FootprintRef.For(c).ToString() : null,
+        };
+
+    private static ImportPartDecision NativeValue(ForeignInstance inst, string name, SchematicImportRule rule)
     {
         if (rule.Becomes == ImportPartKind.Ground)
             return new ImportPartDecision(inst.Reference, inst.SymbolKey, name, inst.Value, ImportPartKind.Ground, rule.Name);
@@ -141,17 +167,28 @@ public static class SchematicImportMap
     /// A two-pin passive's value as the source spells it — <c>10k</c>, <c>4k7</c>, <c>100nF</c>, <c>4u7</c>, <c>2R2</c>,
     /// <c>1.5 nH</c> — read by the bill-of-materials reader, as a number and the unit it is written with; null when it
     /// does not read as this kind's dimension.
+    /// <para>A value stated with its rating — <c>100nF/10V</c>, <c>10k/1%</c> — is the first <c>/</c>-separated part that
+    /// reads as this kind's dimension: the rating is never taken for the value, since it has another dimension.</para>
     /// </summary>
     public static (string Number, string Unit)? ReadValue(string? text, SymbolKind kind)
     {
         if (string.IsNullOrWhiteSpace(text)) return null;
         string t = text.Trim();
-        if (!BomTablePaste.TryReadValue(t, kind, false, out double si, out var dim)
-            && !BomTablePaste.TryReadValue(t.Replace(" ", ""), kind, false, out si, out dim)) return null;
-        if (dim != DimensionOf(kind) || !double.IsFinite(si) || si < 0) return null;
-        string spelled = PartsTable.ValueText(si, PartKindOf(kind));
-        int sp = spelled.LastIndexOf(' ');
-        return (spelled[..sp], spelled[(sp + 1)..]);
+        if (Read(t) is { } whole) return whole;
+        if (!t.Contains('/')) return null;
+        foreach (string part in t.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            if (Read(part) is { } value) return value;
+        return null;
+
+        (string, string)? Read(string part)
+        {
+            if (!BomTablePaste.TryReadValue(part, kind, false, out double si, out var dim)
+                && !BomTablePaste.TryReadValue(part.Replace(" ", ""), kind, false, out si, out dim)) return null;
+            if (dim != DimensionOf(kind) || !double.IsFinite(si) || si < 0) return null;
+            string spelled = PartsTable.ValueText(si, PartKindOf(kind));
+            int sp = spelled.LastIndexOf(' ');
+            return (spelled[..sp], spelled[(sp + 1)..]);
+        }
     }
 
     /// <summary>A symbol cell's name from the source symbol's name: what <see cref="NameValidator"/> refuses, replaced.</summary>

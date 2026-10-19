@@ -110,8 +110,7 @@ public static partial class SchematicImport
         {
             SchematicFileKind.KicadSch => SchematicSexprReader.Read(path),
             SchematicFileKind.Edif200  => EdifReader.Read(path, new EdifReadOptions(codePage ?? DefaultCodePage)),
-            SchematicFileKind.BinaryDsn => new ForeignSchematicRead(null,
-                $"{name} is a binary .DSN design (a compound file); that format is not read yet. Export it as EDIF 2.0.0 and import that."),
+            SchematicFileKind.BinaryDsn => BinaryDsn.BinaryDsnReader.Read(path, new BinaryDsn.BinaryDsnReadOptions(codePage ?? DefaultCodePage)),
             _ => new ForeignSchematicRead(null, $"{name} cannot be imported as a schematic: {cls.Reason ?? "it is not a schematic design."}"),
         };
         return new SchematicImportRead(read.Schematic, cls.Kind, read.Refusal);

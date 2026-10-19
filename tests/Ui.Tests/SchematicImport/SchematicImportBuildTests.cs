@@ -186,6 +186,10 @@ public sealed class SchematicImportBuildTests : IDisposable
     [InlineData("C1", "C", "4u7", "C=4.7 uF")]
     [InlineData("R1", "R", "2R2", "R=2.2 Ohm")]
     [InlineData("L1", "L", "1.5 nH", "L=1.5 nH")]
+    [InlineData("C1", "C", "100nF/10V", "C=100 nF")]   // the value with its rating: the rating is not the value
+    [InlineData("R1", "R", "10k/1%", "R=10 kOhm")]
+    [InlineData("C3", "C-1210", "100nF/10V", "C=100 nF, smt:1210@N")]   // named after its land pattern
+    [InlineData("R7", "R-0603", "10k", "R=10 kOhm, smt:0603@N")]
     [InlineData("R1", "R", "DNP", "R=R1_R")]
     public void TheMap_ReadsATwoPinPartsValue_OrMakesItAVariable(string reference, string symbol, string value, string becomes)
     {
@@ -193,6 +197,22 @@ public sealed class SchematicImportBuildTests : IDisposable
         Assert.Equal(ImportPartKind.Native, decision.Becomes);
         Assert.Equal($"{reference} → {becomes}", decision.Describe());
         Assert.Equal(value == "DNP", decision.Variable is not null);
+    }
+
+    /// <summary>A symbol named after its land pattern becomes the native part WITH that footprint; a name whose suffix is
+    /// no case circuitRF knows is not taken for one.</summary>
+    [Fact]
+    public void ACaseNamedPart_IsNative_WithItsFootprint_AndAnUnknownCaseIsNot()
+    {
+        Directory.CreateDirectory(_dir);
+        var result = SchematicImport.Import(OnePart("C3", "C-1210", "100nF/10V"), _dir, "Cased");
+        Assert.True(result.Ok, result.Refusal);
+        var (model, _, _) = SchematicPersistence.LoadFromFile(result.SchematicPath!);
+        var c = Assert.Single(model.Components, x => x.Symbol == SymbolKind.Capacitor);
+        Assert.Equal("smt:1210@N", c.Parameters.Single(p => p.Name == "Footprint").Expression);
+
+        var odd = Assert.Single(SchematicImportMap.Decide(OnePart("R9", "R-WIDE", "10k")));
+        Assert.Equal(ImportPartKind.SymbolCell, odd.Becomes);
     }
 
     [Fact]

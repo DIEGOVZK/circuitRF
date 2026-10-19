@@ -28,7 +28,8 @@ public sealed partial class ImportSchematicPartRow(ImportPartDecision decision, 
     /// <summary>The "becomes" column.</summary>
     public string Becomes => Decision.Becomes switch
     {
-        ImportPartKind.Native => $"{Decision.Native} {Decision.Parameter}={Decision.Expression}{(Decision.Unit is { Length: > 0 } u ? " " + u : "")}",
+        ImportPartKind.Native => $"{Decision.Native} {Decision.Parameter}={Decision.Expression}{(Decision.Unit is { Length: > 0 } u ? " " + u : "")}"
+                                 + (Decision.Footprint is { } f ? $", {f}" : ""),
         ImportPartKind.Ground => "ground",
         _ => $"symbol cell {Decision.CellName}",
     };

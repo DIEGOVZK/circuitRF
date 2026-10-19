@@ -20479,3 +20479,79 @@ the run settings behind each: `docs/design/sar.md` §9.4, §10.5, §10.7, §11.6
   lists and wire figures differ shows up only as two failed comparisons against the import.
 - **Seen, not changed (SI-1's map):** a resistor whose value is a bare number ("100") is read as "not a resistance" and
   becomes a variable defaulting to 1 kOhm, because `BomTablePaste.TryReadValue` gives a bare number no dimension.
+
+## The compound-file (CFBF) reader and the binary `.DSN` layout (brief-schimp-4 R-si4-1/2, 2026-10-19)
+
+- **`Schematic/Import/Cfb/CompoundFile.cs`** reads MS-CFB versions 3 (512-byte sectors) and 4 (4096), written from the
+  published specification: header, DIFAT (header slots then chain), FAT, directory (each storage's red-black sibling
+  tree walked in order, iteratively), mini FAT and mini stream; a stream by its `/`-joined path, names compared without
+  case as the format does. Read-only. **Every failure is a refusal sentence**: chains are bounded by the table and a
+  sector visited twice is a loop, an entry reached twice is a loop in the tree, every offset is checked against the file
+  length, and the only exceptions caught at the two public boundaries are the reader's own plus the
+  argument/index/overflow family — nothing else can be thrown by array-and-span arithmetic. Gate:
+  `tests/Ui.Tests/SchematicImport/CompoundFileTests.cs` — containers built by a writer in the test
+  itself, in both versions, with a nested storage and two mini-stream streams; the same file cut at six points; a
+  looping FAT chain and a looping sibling tree.
+- **What a symbol LIBRARY of the design editor's family holds:**
+  root streams `Cache`, `Library`, `NetBundleMapData` and seven `… Directory` streams (Cells, Parts, Views, Symbols,
+  Graphics, Packages, ExportBlocks), plus storages `Symbols/`, `Graphics/`, `Packages/` holding a `$Types$` stream and
+  one stream per named object. **`Library` begins with an ASCII header naming the writing program and its release.**
+  Each `… Directory` stream begins with the same four bytes and a 16-bit count, then length-prefixed names.
+- **A version-2.0 design** is a version 3 container: root streams `Cache`, `Library`, seven `… Directory` streams; per
+  schematic `Views/<SCHEMATIC>/Schematic` and `Views/<SCHEMATIC>/Hierarchy/Hierarchy`, and per page
+  `Views/<SCHEMATIC>/Pages/<PAGE>`; storages `Symbols/` (`$Types$`, often an `ERC` stream), `Graphics/` and `Packages/`
+  (empty — packages live in the library, not the design). The page and schematic NAMES are the path components.
+  - **The version.** `Library` opens with a 32-byte space-padded ASCII title, then the version as u16 major and u16
+    minor, then two Unix timestamps (created, modified).
+  - **A page** opens with its name, timestamps, the page size (in 1/1000 inch; 9700 × 7200 is a landscape page) and a
+    grid of 100, then the title block, then a **table of net ids**, then **wire records** (each a net id, a colour and
+    two endpoints in 1/100 inch — 10 mil), then **placed parts** (a reference such as `C1`, the cache symbol's name
+    with its view suffix `.Normal`, position and the instance's pins). A page holding nothing but its title block
+    draws nothing: a refusal to import, not a reader failure.
+  - **The connectivity is DECLARED.** `Hierarchy` lists the nets (id → name: generated `N02504`-style names, and `0`
+    for the simulation ground) and then, per part, each pin against a net id — so R-si4-5's `DeclaredNets` can be filled
+    and SI-1's check runs both ways, as it does for EDIF.
+  - **The cache** holds one entry per symbol used — its name, the library file it came from (an absolute path on the
+    author's machine; reported as provenance only, never resolved) and its drawing and pins.
+- **Version 3.2** adds root streams (`DsnStream`, `HSObjects`, `AdminData`, `NetBundleMapData`), and its `Library`
+  version reads 3.2. **Its pages are version 2's sections in version 2's order**, but every record is size-prefixed:
+  one or more (type, u32 size, u32 0) prefixes — the first size covers the record — then optionally (type, u16 n,
+  n × (u32 name, u32 value)) and the marker `FF E4 5C 39`. Every body opens with a COUNTED BLOCK (u32 n, n bytes):
+  37 bytes on a part that shows its reference ("1 9 Reference 0 0  0  " and its framing), and it can be empty, so it
+  is not a fixed header.
+
+## SI-4's readers and their connectivity rules (brief-schimp-4 R-si4-3/5/6, 2026-10-19)
+
+- **The transform is checked on every import**: every pin of every part must land where its page record says, and the
+  reader says so if a pin is drawn elsewhere.
+- **A ground/power/off-page record's STRING is its symbol's name and its INDEX is the net's name** (`VCC_BAR` →
+  `VDD`, `OFFPAGELEFT-L` → `PA0`). In 2.0 the ground symbol is named `0`, the net it names, which hides the difference.
+- **Net ids are per PAGE** (the same name has a different id on each page of 3.2), so the declared nets are joined
+  across pages by the names off-page connectors and power symbols carry, case-insensitively — the net-name table is
+  upper-cased (`VOCP` for an off-page `Vocp`).
+- **Pins join by touching.** A pin with no wire (id 0 in 2.0, FFFFFFFF in 3.2) on another pin is in its net; so is a
+  power symbol placed on a pin.
+- **An alias's position is its TEXT**, not a point on its wire — the label goes on the alias's own wire. Putting it on
+  "a wire of the same net" instead splits nets the alias exists to join.
+- **A net drawn in pieces is joined by NAME**: the case is an alias spelling another piece's automatic name
+  (`N15847582`, from a wire id). Each unlabelled piece gets the net's name.
+- **Off-page and power names are design-wide**, so an alias spelling one is that net everywhere; SI-1 keys a Local
+  label per sheet, so such an alias becomes a Global label.
+- **A package of several units** places each unit as its own part, same reference, own symbol view (`…A`, `…B`), the
+  unit in the u16 after the source part name. Units count pins from 1, so a multi-unit part's pins are numbered per
+  unit (`A1`, `B1`) — package pin numbers are in the cache's package records, not read.
+
+**What this reader does not read**: hierarchical designs (more than one schematic under `Views/`) — refused;
+any version but 2.0 and 3.2; page text and graphics (counted, not imported); symbol graphic kinds other than
+line, arc, ellipse and polyline (3.2 skips and counts them, 2.0 refuses); package pin numbers (pins are numbered by
+their place in the symbol); bus, port and junction records (2.0 refuses a
+non-empty section, 3.2 skips it by size and says so); page order (pages are tiled in the order the container
+lists them).
+- **A value stated with its rating is that value** (owner, 2026-10-19): `SchematicImportMap.ReadValue` reads the whole
+  text first, then the first `/`-separated part with the part's own dimension — `100nF/10V` is 100 nF, `10k/1%` is
+  10 kOhm. The rating cannot be taken for the value: it has another dimension.
+- **A symbol named after its land pattern is that part in that case** (owner, 2026-10-19): `R-0603`, `C-1210`,
+  `L-0805` with two pins become the native R, C or L with `Footprint = smt:<case>@N` (nominal density, the spelling
+  the artwork-to-schematic emit writes). Rows of `SchematicImportMap.Rules` with `CaseFromName`; they match only when
+  the part after the first `-` is a case `SmtCaseTable` knows, so `R-WIDE` stays a symbol cell.
+  The reference rule is unchanged on purpose: `RB1`, `RC`, `RE` stay symbol cells.

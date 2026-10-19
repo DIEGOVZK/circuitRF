@@ -1,7 +1,8 @@
 # Import Schematic
 
 **Status:** SI-1 implemented (the neutral model, the map, the build, the check, the two write paths); SI-2 implemented
-(the `.kicad_sch` reader, §8); SI-3 implemented (the EDIF 2.0.0 reader, §9). Reader still to come: SI-4 (the binary `.DSN` design in a CFBF container). Entry points: SI-5. Source of
+(the `.kicad_sch` reader, §8); SI-3 implemented (the EDIF 2.0.0 reader, §9); SI-4 implemented (the binary `.DSN`
+design, versions 2.0 and 3.2, §10); SI-5 implemented (the entry points). Source of
 decisions: `docs/sonnet-briefs/brief-schimp-0-overview.md` (D1–D11). Each phase keeps this note current.
 
 ## 1. The pipeline
@@ -201,3 +202,30 @@ Fixtures: `testdata/schematic-import/sexpr/` (authored, tiny). The gate is
 
 Fixtures: `testdata/schematic-import/edif/` (written by hand). Gate:
 `tests/Ui.Tests/SchematicImport/EdifReaderTests.cs`.
+
+## 10. The binary `.DSN` reader — `Cfb/CompoundFile.cs`, `BinaryDsn/` (SI-4)
+
+The container follows the MS-CFB specification; no other implementation was read or ported (overview D7). Every
+layout fact is in `src/Design/RESOLVED.md`.
+
+- **`CompoundFile`** — read-only CFBF, versions 3 and 4; every chain bounded, loops and truncation refusals.
+- **`DsnLibrary`** — the `Library` stream: the version (u16 major, u16 minor after a 32-byte title) and the STRING
+  TABLE every record indexes (found by its count, not walked to). Version 2 indexes it 1-based; version 3 opens it with
+  an empty string that index 0 names.
+- **`DsnCache`** — each symbol view's graphics (lines, arcs, ellipses, polylines), body size and pins (name, start,
+  hotspot), found by name. Version 3 skips a graphic kind it does not draw by its size and counts it.
+- **`DsnPageV2` / `DsnPageV3`** — one page each, read in order: title blocks, nets, net names, wires (with their net
+  id, and in version 3 their aliases), parts (reference, symbol view, value, properties, position, rotation code, unit,
+  and every pin's page position and wire), ground/power symbols and off-page connectors (the symbol's name, the NET name
+  by string index, the wire). Version 3 is version 2's sections with every record size-prefixed, so a section not read
+  is skipped by size and reported; in version 2 it is a refusal.
+- **`BinaryDsnReader`** — version dispatch (2.0, 3.2; anything else refused with the EDIF route), the transform
+  (rotation code r turns a quarter counter-clockwise on screen, re-anchored at the turned body's top-left; bit 2
+  mirrors first), the labels, and the DECLARED nets: pins joined through their wire's net id, pins that touch, and the
+  names ground, power and off-page symbols carry — by name across pages, since net ids are per page. A multi-unit
+  part's pins are numbered per unit (`A1`, `B1`). A net the file names as one but draws in pieces (an alias spelling
+  another piece's automatic name) gets a label on each piece; an alias or such a label spelling an off-page or power
+  name is that design-wide net, a global label.
+
+Gate: `tests/Ui.Tests/SchematicImport/CompoundFileTests.cs` (built containers) and `BinaryDsnReaderTests.cs` (refusals
+on built containers).

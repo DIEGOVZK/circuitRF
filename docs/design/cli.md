@@ -63,7 +63,7 @@ Fourteen verbs run no analysis, so none of §3-§6 applies to them and §7's exi
 | `new workspace` | a directory | `WorkspaceCreate.Create` | a `.cws` and, unless `--tech none`, a copied `.ctech` |
 | `new cell` | a workspace + a name | `CellCreate.Create` | a cell folder and one empty-but-valid file per `--views` |
 | `import part` | a component file or folder | `ComponentRead` + `ComponentImport.Import` | a cell folder holding the land patterns and the symbol |
-| `import schematic` | a schematic design file (`.kicad_sch`, EDIF 2.0.0) + `--into` | `SchematicImport.Read` + `SchematicImport.Import` | a cell folder with its schematic, and a `<stem>_parts/` folder of symbol cells beside it — §30 |
+| `import schematic` | a schematic design file (`.kicad_sch`, EDIF 2.0.0, a binary `.DSN`) + `--into` | `SchematicImport.Read` + `SchematicImport.Import` | a cell folder with its schematic, and a `<stem>_parts/` folder of symbol cells beside it — §30 |
 | `import voxels` | a label volume (`.nii[.gz]`, DiscMaterial `.h5`, raw, or a `.node`/`.ele` mesh voxelised) + `--into x.c3d` | `AnatomyImport.PlanVoxels` + `ApplyVoxels` | the volume copied beside the `.c3d` and one `VoxelBody` (sar.md §13) |
 | `import surfaces` | closed surfaces (STL, OBJ, PLY) or a folder of them + `--into x.c3d` | `AnatomyImport.PlanSurfaces` + `ApplySurfaces` | each file copied beside the `.c3d` and one `Mesh` per surface, outermost first |
 | `check` | a workspace, a cell folder, or one document | the validators that already exist | **nothing** — §10 |
@@ -4091,8 +4091,8 @@ parsing, refusals and reporting; a comment-stripped source scan (`SchematicImpor
   differences can be looked at (overview D8), and `import.schematic.not-matched` says so; a build machine must not
   read a mismatch as success. Any refusal (unreadable file, a name already taken, a symbol cell that exists and
   differs) writes nothing and exits 1.
-- **A binary `.DSN` design is classified and refused** until its reader lands (SI-4), with the EDIF export named as
-  the way in.
+- **A binary `.DSN` design** (a compound file) is read in versions 2.0 and 3.2 (SI-4, `src/Design/RESOLVED.md`); any
+  other version is a refusal naming it, with the EDIF export as the way in. `--codepage` decodes its text too.
 
 Gate: `tests/Ui.Tests/SchematicImport/SchematicImportEntryPointTests.cs` — the CLI as a process against the in-process
 `SchematicImport.Import` on one committed fixture, byte for byte except the provenance timestamp.
