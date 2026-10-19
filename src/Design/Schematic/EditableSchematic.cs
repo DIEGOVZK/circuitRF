@@ -1439,6 +1439,10 @@ public sealed class SchematicEditModel
     /// other schematic. Its presence is what lets a re-run replace this schematic (AS D4's rule).</summary>
     public Imaging.ImageProvenance? ImageSource { get; set; }
 
+    /// <summary>Where a schematic Import Schematic wrote came from (brief-schimp-1 R-si1-8); null for every other
+    /// schematic. Its presence is what lets a re-import offer Replace, with a history checkpoint first.</summary>
+    public Import.SchematicImportProvenance? SchematicImportSource { get; set; }
+
     /// <summary>
     /// User-specified results file name (schematic-level — a run writes ONE grouped file for the
     /// whole testbench, so this is not per-analysis). Null/blank means the default,

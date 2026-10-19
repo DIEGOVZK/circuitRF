@@ -64,6 +64,9 @@ public sealed class CschFile
 
     /// <summary>The provenance block of a schematic created from a picture (brief-img-2 R-im2-5); absent otherwise.</summary>
     public Imaging.ImageProvenance? ImageSource { get; set; }
+
+    /// <summary>The provenance block of a schematic created by Import Schematic (brief-schimp-1 R-si1-8); absent otherwise.</summary>
+    public Import.SchematicImportProvenance? SchematicImportSource { get; set; }
 }
 
 /// <summary>
@@ -645,6 +648,7 @@ public static class SchematicPersistence
         file.TechRef = string.IsNullOrEmpty(m.TechRef) ? null : m.TechRef;
         file.ArtworkSource = m.ArtworkSource;
         file.ImageSource = m.ImageSource;
+        file.SchematicImportSource = m.SchematicImportSource;
 
         return file;
     }
@@ -753,6 +757,7 @@ public static class SchematicPersistence
         m.TechRef = string.IsNullOrWhiteSpace(file.TechRef) ? null : file.TechRef;
         m.ArtworkSource = file.ArtworkSource;
         m.ImageSource = file.ImageSource;
+        m.SchematicImportSource = file.SchematicImportSource;
 
         return m;
     }

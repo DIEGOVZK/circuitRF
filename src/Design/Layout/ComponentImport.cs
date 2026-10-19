@@ -355,6 +355,30 @@ public static class ComponentImport
     {
         if (part.Symbol is not { Pins.Count: > 0 } drawing) return null;
 
+        // The numbering comes from the terminal table, never from the declaration order the pins
+        // arrived in (R-PL1-10).
+        //
+        // Keyed on the DECLARATION, not the name: a real part declares VSS seven times, and a
+        // name-keyed lookup gives all seven the first one's PortIndex — which breaks R-PL1-8's
+        // invariant on the majority of real parts rather than on an exotic one.
+        var portByDeclaration = new Dictionary<int, int>();
+        foreach (var t in terminals)
+            if (t.SymbolPinIndex >= 0) portByDeclaration.TryAdd(t.SymbolPinIndex, t.PortIndex);
+
+        return BuildSymbol(drawing, portByDeclaration, terminals.Count, messages);
+    }
+
+    /// <summary>
+    /// The symbol half of an import, shared by Import Component and Import Schematic
+    /// (brief-schimp-1 R-si1-4): <paramref name="drawing"/> (mils, Y up) at scale 1 with Y negated, each pin
+    /// named as drawn and numbered by <paramref name="portByDeclaration"/> (declaration index → port index), and a
+    /// message when any pin had to be snapped onto the connection grid. Null when the drawing declares no pin.
+    /// </summary>
+    public static CircuitRF.Design.Symbol.Symbol? BuildSymbol(
+        ComponentSymbolDrawing drawing, IReadOnlyDictionary<int, int> portByDeclaration, int portCount, List<string> messages)
+    {
+        if (drawing.Pins.Count == 0) return null;
+
         // NameAlign names the EDGE of the body a pin sits on, not a screen direction, so it crosses the
         // Y flip below unchanged: the pin is on the same edge of the same picture in Y-up mils and in
         // Y-down local units alike. That is the whole reason it is stated as a side.
@@ -364,17 +388,8 @@ public static class ComponentImport
         var symbol = KitTemplateSymbol.BuildFromDrawing(pins, shapes, SymbolScale);
         if (symbol is null) return null;
 
-        // The numbering comes from the terminal table, never from the declaration order the pins
-        // arrived in (R-PL1-10). Both strings are kept: SymbolPin.Name is the symbol's pin name, and
-        // the layout pin carries the pad identifier.
-        //
-        // Keyed on the DECLARATION, not the name: a real part declares VSS seven times, and a
-        // name-keyed lookup gives all seven the first one's PortIndex — which breaks R-PL1-8's
-        // invariant on the majority of real parts rather than on an exotic one.
-        var portByDeclaration = new Dictionary<int, int>();
-        foreach (var t in terminals)
-            if (t.SymbolPinIndex >= 0) portByDeclaration.TryAdd(t.SymbolPinIndex, t.PortIndex);
-
+        // Both strings are kept: SymbolPin.Name is the symbol's pin name, and the layout pin carries
+        // the pad identifier.
         for (int i = 0; i < symbol.Pins.Count && i < drawing.Pins.Count; i++)
         {
             symbol.Pins[i].Name = drawing.Pins[i].Name;
@@ -394,7 +409,7 @@ public static class ComponentImport
                 $"{moved} of {pins.Count} symbol pin(s) were not on circuitRF's 100-mil connection grid " +
                 "and were snapped onto it. A lead was drawn from each back to where the file put it.");
 
-        return new CircuitRF.Design.Symbol.Symbol(symbol.Primitives, symbol.Pins, terminals.Count);
+        return new CircuitRF.Design.Symbol.Symbol(symbol.Primitives, symbol.Pins, portCount);
     }
 
     /// <summary><c>Width</c> rides along on every arm: it is the file's own stated stroke, it is what

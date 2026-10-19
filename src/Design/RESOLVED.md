@@ -20410,3 +20410,30 @@ the run settings behind each: `docs/design/sar.md` §9.4, §10.5, §10.7, §11.6
   `s21db` (still read unassigned, PDG-1's y-title misread) probes with an empty unit unless `--trace T1=S21:db` says
   what it is. The gate passes `--trace`; its value is 0.025 dB from the drawn −0.265 dB at 2.4 GHz against a 0.142 dB
   bound.
+
+## Import Schematic: the neutral model and the build (brief-schimp-1, 2026-10-19)
+
+- **R-si1-6, measured: the default exact path breaks a 50-mil source, twice.** `NetlistSchematic.PlaceExact` snaps each
+  hinted origin to 100 and `WireExact` snaps every route vertex, so a pin at an odd multiple of 50 moves 50 off the source's
+  point (`Math.Round` is banker's: 1050 → 1000, 1150 → 1200). And even unsnapped, extraction quantizes connection points to
+  the model's `GridSize`: under 100, points at 150 and 250 both round to 2 and two nets become one. The fix is the brief's
+  flag plus the grid: `ExactPlacement.SnapToGrid` (default true, so the image path is byte-identical) and the imported
+  schematic's `GridSize` set to the largest divisor of 100 every source point sits on. `P` is unchanged. The gate builds
+  the same drawing both ways and asserts the snapped one misses the source's pins.
+- **A symbol cell's symbol is translated so its first pin is the local origin.** A `.csym` pin must sit on the 100 grid
+  relative to the symbol origin, and a source symbol's origin is usually its body's centre, often 50 off its pins. With the
+  first pin at the origin and the instance placed by that pin, every pin a whole number of squares from it lands exactly
+  on the source's point; only a symbol whose own pins are 50 apart is snapped (and `BuildSymbol` says so).
+- **NetExtractor skips a cell instance it cannot descend into**, and a symbol cell has no schematic by design (D3). The
+  check passes a resolver that answers every cell with a black box — one unconnected `Pin` per symbol pin — which binds
+  the instance's nets and nothing more. A `Pin` never appears in the extracted instances; it owns its net's NAME, so a
+  child sheet's port is matched through the net of that name.
+- **Ground wires are kept, not dropped.** `NetlistSchematic.PlaceGrounds` turns every net-`0` pin into a ground symbol on
+  that pin and draws no wire for net 0. So each physical ground group that has wires is its own quiet netlist net, drawn
+  along its source wires, with a ground symbol where the source grounded it; a ground pin with no wire stays on `0`.
+- **Additive `ExactPlacement` options, all off by default:** `Cells` (an instance drawn as a cell's symbol instead of
+  refused), `KeepOverlappingGlyphs` (only a pin on another net's pin falls back), `QuietNets` (no label on a net drawn as
+  one group), `JoinByLabel` (a hidden power pin, or a pin the source joins by touching a label, gets a label not a dog-leg).
+- **`ComponentImport.BuildSymbol(drawing, portByDeclaration, portCount, messages)`** is the factored symbol half; Import
+  Component's own `BuildSymbol(part, terminals, messages)` now computes its numbering and calls it. **`SchematicMerge`**
+  holds the image paste's renaming, unchanged, plus an instance rename only Import Schematic asks for.

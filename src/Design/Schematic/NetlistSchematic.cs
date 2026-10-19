@@ -43,7 +43,35 @@ public sealed record ExactPlacement
     /// <summary>Place the instances and nothing else — no ground symbol, wire or net label: the caller draws the wiring
     /// itself, as a picture draws it (<see cref="Routes"/> is then unused).</summary>
     public bool PlaceOnly { get; init; }
+
+    /// <summary>Snap each hinted origin and route vertex to <see cref="NetlistSchematic.Grid"/>. False keeps them
+    /// exactly as given — a schematic imported from a source drawn on a finer grid (brief-schimp-1 R-si1-6), whose
+    /// pins at odd multiples of 50 a snap would move off its own wires. The caller then puts every point on the grid
+    /// the drawing is extracted with (<see cref="SchematicEditModel.GridSize"/>).</summary>
+    public bool SnapToGrid { get; init; } = true;
+
+    /// <summary>Keep a hinted instance where it is even when its glyph overlaps another's: only a pin landing on
+    /// another net's pin sends it to the automatic arrangement. An imported drawing's geometry is the source's
+    /// (R-si1-5), and two glyphs drawn touching in it are not a wrong reading.</summary>
+    public bool KeepOverlappingGlyphs { get; init; }
+
+    /// <summary>Instances drawn as a cell's own symbol rather than refused for having none (brief-schimp-1 R-si1-4):
+    /// by instance name, the cell reference to store and the symbol's pins, local, in port order — one per net the
+    /// netlist line binds.</summary>
+    public IReadOnlyDictionary<string, ExactCell> Cells { get; init; } = new Dictionary<string, ExactCell>();
+
+    /// <summary>Nets drawn without a net label when one connected group of their wires reaches every pin — a net the
+    /// source never named, whose name here is only the netlist's handle for it.</summary>
+    public IReadOnlySet<string> QuietNets { get; init; } = new HashSet<string>();
+
+    /// <summary>Pins (instance name, pin index) joined to their net by a net label on the pin rather than a dog-leg — a
+    /// hidden power pin, or a port added beside the drawing.</summary>
+    public IReadOnlySet<(string Instance, int Pin)> JoinByLabel { get; init; } = new HashSet<(string, int)>();
 }
+
+/// <summary>A cell instance an <see cref="ExactPlacement"/> draws: the <c>CellRef</c> it stores and its symbol's pins,
+/// local, in port order.</summary>
+public sealed record ExactCell(string CellRef, IReadOnlyList<(float X, float Y)> Pins);
 
 /// <summary>
 /// A drawn schematic from a netlist (brief-agent-authoring-overview.md AA-6): every instance placed
@@ -211,6 +239,13 @@ public static class NetlistSchematic
         foreach (var inst in tb.Instances)
         {
             if (lib.Find(inst.Reference) is not null) continue;   // already refused above
+            if (exact is not null && exact.Cells.TryGetValue(inst.InstanceName, out var cell))
+            {
+                if (cell.Pins.Count == inst.NetBindings.Count) items.Add(CellItem(inst, cell));
+                else refusals.Add($"{inst.InstanceName}: its cell's symbol has {cell.Pins.Count} pin(s) and the line binds "
+                                + $"{inst.NetBindings.Count} net(s).");
+                continue;
+            }
             if (MapInstance(inst, schematicDirectory, out string? why) is { } item) items.Add(item);
             else refusals.Add(why!);
         }
@@ -322,6 +357,18 @@ public static class NetlistSchematic
 
         why = $"{inst.InstanceName}: {lastWhy}";
         return null;
+    }
+
+    /// <summary>A cell instance drawn as its cell's symbol (brief-schimp-1 R-si1-4): the placeholder kind interactive
+    /// placement uses, with the <c>CellRef</c> deciding the artwork, and the pins the caller read off that symbol.</summary>
+    private static Item CellItem(Instance inst, ExactCell cell)
+    {
+        var comp = new EditableComponent
+        {
+            InstanceName = inst.InstanceName, Symbol = SymbolKind.Generic, CellRef = cell.CellRef,
+            ShowTypeLabel = true, ShowInstanceName = true,
+        };
+        return new Item { Comp = comp, Nets = [.. inst.NetBindings], Local = [.. cell.Pins] };
     }
 
     /// <summary>A value longer than this is left off the drawing — it is still the component's
@@ -811,20 +858,24 @@ public static class NetlistSchematic
     {
         var pins = new Dictionary<(long, long), string>();
         var glyphs = new List<(double L, double T, double R, double B)>();
+        // Unsnapped (R-si1-6), a pin is where it is: keyed to the unit, so two pins 50 apart are two pins.
+        (long, long) PinKey((double X, double Y) p) => exact.SnapToGrid ? Key(p) : ((long)Math.Round(p.X), (long)Math.Round(p.Y));
+        (double X, double Y) PinAt((long, long) k) => exact.SnapToGrid ? (k.Item1 * P, k.Item2 * P) : (k.Item1, k.Item2);
         foreach (var it in withPins)
         {
             if (!exact.Instances.TryGetValue(it.Comp.InstanceName, out var e)) continue;
             it.Comp.Rotation = e.Rotation;
             it.Comp.MirrorX = e.MirrorX;
-            it.Comp.X = Snap(e.X);
-            it.Comp.Y = Snap(e.Y);
+            it.Comp.X = exact.SnapToGrid ? Snap(e.X) : e.X;
+            it.Comp.Y = exact.SnapToGrid ? Snap(e.Y) : e.Y;
             BoxOf(it);
-            var own = Enumerable.Range(0, it.Local.Length).Select(k => (Key: Key(it.Pin(k)), Net: it.Nets[k], At: it.Pin(k))).ToList();
+            var own = Enumerable.Range(0, it.Local.Length).Select(k => (Key: PinKey(it.Pin(k)), Net: it.Nets[k], At: it.Pin(k))).ToList();
             var glyph = Inner(it);
             bool clash = own.Any(p => pins.TryGetValue(p.Key, out var n) && n != p.Net)
-                      || glyphs.Any(g => g.L < glyph.R && glyph.L < g.R && g.T < glyph.B && glyph.T < g.B)
-                      || own.Any(p => glyphs.Any(g => Inside(g, p.At)))
-                      || pins.Keys.Any(k => Inside(glyph, (k.Item1 * P, k.Item2 * P)));
+                      || !exact.KeepOverlappingGlyphs
+                         && (glyphs.Any(g => g.L < glyph.R && glyph.L < g.R && g.T < glyph.B && glyph.T < g.B)
+                             || own.Any(p => glyphs.Any(g => Inside(g, p.At)))
+                             || pins.Keys.Any(k => Inside(glyph, PinAt(k))));
             if (clash)
             {
                 it.Comp.Rotation = SymbolRotation.R0;
@@ -1183,15 +1234,18 @@ public static class NetlistSchematic
         bool IsGround(string n) => n == Ground || n.StartsWith(Ground + "#", StringComparison.Ordinal);
         var pinsOf = new Dictionary<string, List<((double X, double Y) At, (int X, int Y) Out)>>(StringComparer.Ordinal);
         var allPins = new List<((double X, double Y) At, string Net)>();
+        var labelled = new List<((double X, double Y) At, string Net)>();   // R-si1-5: joined by a label on the pin
         foreach (var it in placed.Concat(grounds))
             for (int k = 0; k < it.Local.Length; k++)
             {
                 allPins.Add((it.Pin(k), it.Nets[k]));
                 if (IsGround(it.Nets[k]) || it.Comp.Symbol == SymbolKind.Ground) continue;
+                if (exact.JoinByLabel.Contains((it.Comp.InstanceName, k))) { labelled.Add((it.Pin(k), it.Nets[k])); continue; }
                 if (!pinsOf.TryGetValue(it.Nets[k], out var l)) pinsOf[it.Nets[k]] = l = [];
                 l.Add((it.Pin(k), Outward(it, k)));
             }
 
+        (double X, double Y) Grid((double X, double Y) p) => exact.SnapToGrid ? (Snap(p.X), Snap(p.Y)) : p;
         var drawn = new Dictionary<string, List<List<(double X, double Y)>>>(StringComparer.Ordinal);
         var byLabel = new List<string>();
         foreach (var (net, pins) in pinsOf.OrderBy(kv => kv.Key, StringComparer.Ordinal))
@@ -1199,7 +1253,7 @@ public static class NetlistSchematic
             var runs = new List<List<(double X, double Y)>>();
             if (exact.Routes.TryGetValue(net, out var given))
                 foreach (var run in given)
-                    if (Orthogonal(run.Select(p => (Snap(p.X), Snap(p.Y)))) is { Count: >= 2 } pts) runs.Add(pts);
+                    if (Orthogonal(run.Select(Grid)) is { Count: >= 2 } pts) runs.Add(pts);
             if (runs.Count == 0) { byLabel.Add(net); continue; }
 
             var vertices = runs.SelectMany(r => r).Distinct().ToList();
@@ -1241,7 +1295,9 @@ public static class NetlistSchematic
             var segs = drawn.Where(kv => kv.Key != net)
                             .SelectMany(kv => kv.Value.SelectMany(r => r.Zip(r.Skip(1), (a, b) => (kv.Key, a.X, a.Y, b.X, b.Y))))
                             .ToList();
-            foreach (var group in Enumerable.Range(0, wires.Count).GroupBy(Find).OrderBy(g => g.Key))
+            var groups = Enumerable.Range(0, wires.Count).GroupBy(Find).OrderBy(g => g.Key).ToList();
+            if (groups.Count == 1 && exact.QuietNets.Contains(net) && labelled.All(l => l.Net != net)) continue;
+            foreach (var group in groups)
             {
                 var mine = new Dictionary<string, List<EditableWire>>(StringComparer.Ordinal) { [net] = [.. group.Select(i => wires[i])] };
                 var label = new EditableNetLabel { Name = net };
@@ -1254,6 +1310,8 @@ public static class NetlistSchematic
         foreach (var net in byLabel.Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal))
             foreach (var (at, _) in pinsOf[net])
                 model.NetLabels.Add(new EditableNetLabel { X = at.X, Y = at.Y, Name = net });
+        foreach (var (at, net) in labelled)
+            model.NetLabels.Add(new EditableNetLabel { X = at.X, Y = at.Y, Name = net });
         var unrouted = byLabel.Where(n => pinsOf[n].Count > 1).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
         if (unrouted.Count > 0)
             notes.Add(
