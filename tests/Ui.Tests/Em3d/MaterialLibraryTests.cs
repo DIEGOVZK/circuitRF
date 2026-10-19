@@ -121,12 +121,17 @@ public sealed class MaterialLibraryTests(ITestOutputHelper output) : IDisposable
             "CircuitRF.Design.Layout.Technology",             // ResolvedMaterials, FindMaterial, LibrarySourceOf
             "CircuitRF.Design.Layout.TechValidation",         // the own list's self rules
             "CircuitRF.Design.Layout.MaterialLibraries",      // the own list as one source of a conflict
+            "CircuitRF.Design.Layout.Interchange.PcbStackupMapping", // a WRITE: an import whose technology resolves no Copper
+                                                              // (FindMaterial, libraries included) adds the generic record
+                                                              // to the own list, which the saved file must carry
             "CircuitRF.Cli.Check",                            // MaterialValidation over a refused file's own list
             "CircuitRF.Cli.Explain",                          // "N own and M from libraries"
             "CircuitRF.Design.ThreeD.C3dRunDocument",         // a run input's physics hash: the FILE's records (brief-em3d-105)
             "CircuitRF.Design.ThreeD.Appearance.AppearanceResolver", // a previewed look's technology keeps own and library apart, so
                                                               // the provenance still names the library (brief-em3d-108)
             "CircuitRF.Ui.Layout.TechEditorViewModel",        // the Materials tab's own rows
+            "CircuitRF.Ui.ThreeD.C3dEditorViewModel",         // a WRITE: Flatten's plan, re-run on a CLONE whose own list is given
+                                                              // the materials the instance lacks (WithMissingMaterials)
             "CircuitRF.Ui.ViewModels.WorkspaceViewModel",     // own-vs-library in a rename that spans files
         ];
         var readers = new List<string>();

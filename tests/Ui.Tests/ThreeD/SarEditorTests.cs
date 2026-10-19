@@ -1,7 +1,8 @@
 // ================================================================
 //  SarEditorTests.cs — brief-sar-3's three editor gestures, headless: the Ellipsoid tool makes an ellipsoid; Add Phantom
 //  inserts one phantom in one undo entry and Flatten replaces it with its layers; the Lumped Element tool adds a record
-//  that undo takes away. What they write is the Design layer's, gated in tests/Ui.Tests/Em3d/SarPhantomsLumpedGridTests.cs.
+//  that undo takes away, selects from the tree and lets go as any selection does, edits its topology from a choice and
+//  goes into Copy as Vector. What they write is the Design layer's, gated in tests/Ui.Tests/Em3d/SarPhantomsLumpedGridTests.cs.
 // ================================================================
 
 using System.Numerics;
@@ -73,6 +74,59 @@ public sealed class SarEditorTests : IDisposable
         Assert.Single(vm.Document.Objects.OfType<C3dPhantom>());
     }
 
+    /// <summary>A layer's New Material… is the command it is everywhere else: it opens the picker on that layer, the layer keeps
+    /// what it states until the picker answers, and the answer is the layer's, one undo entry.</summary>
+    [Fact]
+    public void APhantomLayersNewMaterial_OpensThePicker_ForThatLayer()
+    {
+        var vm = Open();
+        vm.AddPhantom(C3dPhantomShape.Ellipsoid3);
+        Settle(vm);
+        vm.TreeSelectionChanged([vm.Tree.SelectMany(g => g.Items).First(r => r.Name == "phantom1")]);
+        var layer = vm.Properties.PhantomLayers[0];
+        string? was = layer.Material;
+        (IReadOnlyList<int> Indices, bool StartNew, C3dMaterialPart? Part)? asked = null;
+        vm.MaterialPickerRequested += (i, n, part) => asked = (i, n, part);
+
+        layer.Material = C3dEditorViewModel.NewMaterialItem;
+        Assert.NotNull(asked);
+        Assert.True(asked.Value.StartNew);
+        var target = Assert.IsType<C3dMaterialPart>(asked.Value.Part);
+        Assert.Equal(was, target.Current);
+        Assert.Equal(was, layer.Material);
+        var phantom = (C3dPhantom)vm.Document.Objects[^1];
+        Assert.Equal(was, phantom.Layers[0].Material);
+
+        Settle(vm);
+        int before = vm.UndoEntries;
+        vm.ApplyPickedMaterial(target, "Gold");
+        Assert.Equal("Gold", ((C3dPhantom)vm.Document.Objects[^1]).Layers[0].Material);
+        Assert.Equal(before + 1, vm.UndoEntries);
+    }
+
+    /// <summary>A layer's pick commits after the pick, never inside it: the commit rebuilds the Inspector's rows, and doing that
+    /// inside the ComboBox's own selection change crashed Avalonia's selection model (an index out of range). New Material… the
+    /// same, and the row is put back then too.</summary>
+    [Fact]
+    public void APhantomLayerPick_CommitsAfterThePick()
+    {
+        var queued = new Queue<Action>();
+        var committed = new List<string?>();
+        int pickers = 0;
+        var row = new C3dPhantomLayerRow("skin", "Skin (dry)", committed.Add, queued.Enqueue, () => pickers++);
+
+        row.Material = "Muscle";
+        Assert.Empty(committed);
+        queued.Dequeue()();
+        Assert.Equal(["Muscle"], committed);
+
+        row.Material = C3dEditorViewModel.NewMaterialItem;
+        Assert.Equal((0, C3dEditorViewModel.NewMaterialItem), (pickers, row.Material));
+        queued.Dequeue()();
+        Assert.Equal((1, "Muscle"), (pickers, row.Material));
+        Assert.Equal(["Muscle"], committed);
+    }
+
     /// <summary>Two corners make one lumped element record, C1 at 1 pF; undo removes it.</summary>
     [Fact]
     public void TheLumpedElementTool_AddsARecord_ThatUndoRemoves()
@@ -89,6 +143,82 @@ public sealed class SarEditorTests : IDisposable
         vm.UndoRedo.Undo();
         Assert.Empty(vm.Document.LumpedElements);
     }
+
+    /// <summary>A lumped element's row stands for nothing in the scene. Selected from the tree with nothing selected, it is drawn
+    /// as the selection; Esc lets it go, and so does a click on nothing.</summary>
+    [Fact]
+    public void ALumpedElementRow_HighlightsFromNothing_AndEscOrAnEmptyClickLetsItGo()
+    {
+        var vm = WithLumpedElement();
+        foreach (var letGo in new Action[]
+                 {
+                     () => vm.Viewer.HandleKey(Avalonia.Input.Key.Escape, Avalonia.Input.KeyModifiers.None, gestureInProgress: false),
+                     () => { vm.Viewer.Hover(1, 1); vm.Viewer.OnPicked(0u, Vector3.Zero, false); vm.Viewer.Click(false); },
+                 })
+        {
+            Assert.Empty(vm.Viewer.Selection);
+            int frames = 0;
+            vm.Viewer.FrameRequested += Count;
+            vm.TreeSelectionChanged([LumpedRow(vm)]);
+            vm.Viewer.FrameRequested -= Count;
+            Assert.True(frames > 0, "selecting the row asked for no frame, so its highlight is never drawn");
+            var overlay = new Viewer3DDrawOverlay();
+            vm.FillDrawOverlay(overlay);
+            Assert.NotEmpty(overlay.Selected);
+            Assert.Empty(overlay.LumpedElements);
+
+            letGo();
+            Assert.Null(vm.SelectedTreeItem);
+            Assert.Empty(vm.SelectedTreeItems);
+            overlay = new Viewer3DDrawOverlay();
+            vm.FillDrawOverlay(overlay);
+            Assert.Empty(overlay.Selected);
+            Assert.NotEmpty(overlay.LumpedElements);
+            void Count() => frames++;
+        }
+    }
+
+    /// <summary>The Inspector offers the topology, the units and Model as choices, and a pick commits as typing did.</summary>
+    [Fact]
+    public void TheInspector_OffersTheTopologyAsAChoice()
+    {
+        var vm = WithLumpedElement();
+        vm.TreeSelectionChanged([LumpedRow(vm)]);
+        var fields = vm.Properties.ThermalFields;
+        Assert.Equal(["Parallel", "Series"], fields.Single(f => f.Key == "Topology").Choices);
+        Assert.Equal(C3dEditorViewModel.LumpedUnits["C"], fields.Single(f => f.Key == "CUnit").Choices);
+        Assert.Null(fields.Single(f => f.Key == "C").Choices);
+
+        var topology = fields.Single(f => f.Key == "Topology");
+        topology.Text = "Series";
+        vm.Properties.CommitThermalField(topology);
+        Assert.Equal(CircuitRF.Engine.Em3d.Em3dRlcTopology.Series, Assert.Single(vm.Document.LumpedElements).Topology);
+    }
+
+    /// <summary>Copy as Vector carries the lumped element as the view draws it: its outline and glyph, and its label.</summary>
+    [Fact]
+    public void CopyAsVector_CarriesTheLumpedElement()
+    {
+        var vm = WithLumpedElement();
+        var picture = CircuitRF.Ui.Views.Viewer3D.Viewer3DVectorExport.Picture(vm.Viewer, W, H, out string? why);
+        Assert.True(picture is not null, why);
+        Assert.Equal(8, picture.Scene.Marks.Count);      // the sheet's four sides, two plates and two leads
+        Assert.Equal("C1: C 1 pF", Assert.Single(picture.Scene.MarkLabels).Text);
+    }
+
+    private C3dEditorViewModel WithLumpedElement()
+    {
+        var vm = Open();
+        vm.Arm(C3dToolKind.LumpedElement);
+        ClickAt(vm, 20, 10, 0);
+        ClickAt(vm, 40, 30, 0);
+        vm.Disarm();
+        Assert.Single(vm.Document.LumpedElements);
+        return vm;
+    }
+
+    private static C3dTreeItem LumpedRow(C3dEditorViewModel vm)
+        => vm.Tree.Single(g => g.Role == C3dTreeGroupRole.LumpedElements).Items.Single();
 
     private C3dEditorViewModel Open()
     {
@@ -112,13 +242,16 @@ public sealed class SarEditorTests : IDisposable
         _open.Add(vm);
         vm.Viewer.Resized(W, H);
         vm.Start();
-        Assert.True(SpinWait.SpinUntil(() => vm.AdoptedGeneration == vm.Viewer.Source.Requested, TimeSpan.FromSeconds(60)), "the scene never settled");
+        Settle(vm);
         var s = vm.Viewer.Scene;
         var cam = Camera3D.Fit(s.ToLocal(-20 * UmM, -20 * UmM, -20 * UmM), s.ToLocal(150 * UmM, 80 * UmM, 80 * UmM), W / H);
         cam.Yaw = -0.9f; cam.Pitch = 0.5f;
         vm.Viewer.View.Camera = cam;
         return vm;
     }
+
+    private static void Settle(C3dEditorViewModel vm)
+        => Assert.True(SpinWait.SpinUntil(() => vm.AdoptedGeneration == vm.Viewer.Source.Requested, TimeSpan.FromSeconds(60)), "the scene never settled");
 
     private static void ClickAt(C3dEditorViewModel vm, double x, double y, double z)
     {

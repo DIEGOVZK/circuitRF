@@ -91,6 +91,12 @@ public sealed record Em3dPictureChrome
     public (double Metres, string Label)? ScaleBar { get; init; }
 }
 
+/// <summary>
+/// What the 3D view draws over the scene that a vector picture of it carries too — the lumped elements, which are records
+/// beside the ports and never objects: segments and labels in world metres, drawn on top as the view draws them.
+/// </summary>
+public sealed record Em3dPictureMarks(IReadOnlyList<(Point3 A, Point3 B)> Segments, IReadOnlyList<(Point3 At, string Text)> Labels);
+
 /// <summary>One view as a picture, ready to encode: Copy as Vector and Export as Vector.</summary>
 public sealed record Em3dVectorPicture(Em3dScene Scene, float Width, float Height, double Scale, Em3dDrawingStyle Style, string? Note)
 {
@@ -199,7 +205,7 @@ public static class Em3dDrawingExport
                                             float maxSide = 720f, Em3dPictureWindow? window = null, Em3dPictureChrome? chrome = null,
                                             IReadOnlyDictionary<string, Scene3DTransparency>? transparency = null,
                                             IReadOnlyDictionary<string, CircuitRF.Design.ThreeD.C3dPlacedImage>? images = null,
-                                            IReadOnlyList<Scene3DPlacedFaceImage>? faceImages = null)
+                                            IReadOnlyList<Scene3DPlacedFaceImage>? faceImages = null, Em3dPictureMarks? marks = null)
     {
         var request = new Em3dDrawingRequest { Hidden = hidden, ObjectTransparency = transparency };
         var shown = Without(problem, omit);
@@ -207,6 +213,14 @@ public static class Em3dDrawingExport
                                              OutlineOptions(request.Hidden, request.ObjectTransparency, request.TransparentObjectsOcclude), out string? note);
         scene = scene with { Images = [.. Em3dSceneImages.Of(shown, images, projection.Project),
                                        .. Em3dSceneImages.OfFaces(faceImages ?? [], projection.Project, omit)] };
+        if (marks is not null)
+            scene = scene with
+            {
+                Marks = [.. marks.Segments.Select(m => projection.ClipNear(m.A, m.B)).OfType<(Point3 A, Point3 B)>()
+                                          .Select(m => (projection.Project(m.A), projection.Project(m.B)))],
+                MarkLabels = [.. marks.Labels.Where(l => projection.Ahead(l.At) >= Em3dProjection.NearFraction * projection.Focal)
+                                             .Select(l => (projection.Project(l.At), l.Text))],
+            };
         var style = new Em3dDrawingStyle(colours, theme, ColorVariant.Light) { Legend = false, Transparent = true, ObjectTransparency = transparency };
         if (window is not { HalfWidth: > 0, HalfHeight: > 0 } win)
         {

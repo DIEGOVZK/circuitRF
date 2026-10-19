@@ -149,8 +149,9 @@ materials as the solver receives them. Because the values hold at that one frequ
 there and nowhere else. To work at another frequency, make a setup for it. A tissue is a lossy dielectric, so an
 object made of one needs no Role.
 
-**Add Tissue Materials**, on the technology editor's Materials tab, copies circuitRF's tissue library beside the
-technology and names it. The library holds:
+**Add Tissue Materials**, on the technology editor's Materials tab and at the top of the 3D view's Materials dialog,
+copies circuitRF's tissue library beside the technology and names it. In the dialog its tissues are listed at once, to
+assign, and the library is named when you press OK; Cancel leaves nothing behind. The library holds:
 
 - sixteen body tissues from the 1996 parametric model of Gabriel, Lau and Gabriel;
 - head and body tissue-simulating liquids for phone SAR, from the FCC's published target table;

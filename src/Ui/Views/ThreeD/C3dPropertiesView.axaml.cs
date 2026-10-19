@@ -177,6 +177,15 @@ public partial class C3dPropertiesView : UserControl
         if ((sender as Control)?.DataContext is C3dThermalTextField f) _vm?.CommitThermalField(f);
     }
 
+    // A field of a few values commits on the pick; the binding is one way, so a selection cleared by a reload writes nothing.
+    // After the pick, not inside it: the commit rebuilds the field list, which would tear this ComboBox down mid-selection.
+    private void OnThermalFieldChoice(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox { SelectedItem: string chosen, DataContext: C3dThermalTextField f } || chosen == f.Loaded) return;
+        f.Text = chosen;
+        Dispatcher.UIThread.Post(() => _vm?.CommitThermalField(f));
+    }
+
     // brief-em3d-90 R-em3d90-4 — a thermal boundary's field: Enter or lost focus commits it, one undo entry.
     private void OnBoundaryKey(object? sender, KeyEventArgs e)
     {

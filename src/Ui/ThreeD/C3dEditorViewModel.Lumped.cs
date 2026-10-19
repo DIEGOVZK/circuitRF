@@ -6,6 +6,7 @@
 using System.Text.RegularExpressions;
 using CircuitRF.Design.ThreeD;
 using CircuitRF.Engine.Em3d;
+using CircuitRF.Render;
 using CircuitRF.Render.Scene3D.Edit;
 using CircuitRF.Ui.Viewer3D;
 
@@ -171,16 +172,31 @@ public sealed partial class C3dEditorViewModel
     // ── drawing ──────────────────────────────────────────────────────────────────────────────
 
     /// <summary>Each lumped element: its sheet's outline and, at its middle, two plates square to the axis its current runs
-    /// along (resolved by the port's rule; the sheet's first axis while it is refused) with a lead to each end.</summary>
+    /// along (resolved by the port's rule; the sheet's first axis while it is refused) with a lead to each end. Every selected
+    /// row's is drawn as the selection.</summary>
     private void FillLumpedOverlay(Viewer3DDrawOverlay overlay)
+    {
+        var selected = _selectedTreeItems.Where(r => r.Kind == LumpedElementKind).Select(r => r.Name).ToHashSet(StringComparer.Ordinal);
+        DrawLumped((name, segment) => (selected.Contains(name) ? overlay.Selected : overlay.LumpedElements).Add(segment), overlay.Labels);
+    }
+
+    /// <summary>Copy as Vector carries the lumped elements as the view draws them, none of them as the selection.</summary>
+    public Em3dPictureMarks? PictureMarks()
+    {
+        var segments = new List<(Point3, Point3)>();
+        var labels = new List<(Point3, string)>();
+        DrawLumped((_, s) => segments.Add((s.A, s.B)), labels);
+        return segments.Count == 0 ? null : new Em3dPictureMarks(segments, labels);
+    }
+
+    private void DrawLumped(Action<string, DrawSegment> segment, List<(Point3 At, string Text)> labels)
     {
         int dbu = Document.DbuPerMicron;
         double per = C3dLowering.Metres(1, dbu);
-        string? selected = SelectedTreeItem is { Kind: LumpedElementKind } row ? row.Name : null;
         foreach (var le in Document.LumpedElements)
         {
             if (!IsPlaceShown(le.Name)) continue;
-            var into = le.Name == selected ? overlay.Selected : overlay.LumpedElements;
+            var into = new List<DrawSegment>();
             var plane = new DrawingPlane(le.Plane, le.Offset);
             var r = le.Rect;
             var corners = new List<C3dPoint2> { r.Min, new(r.Min.U + r.Size.U, r.Min.V), new(r.Min.U + r.Size.U, r.Min.V + r.Size.V), new(r.Min.U, r.Min.V + r.Size.V) };
@@ -202,7 +218,8 @@ public sealed partial class C3dEditorViewModel
                 into.Add(new DrawSegment(P(s * gap, -plate), P(s * gap, plate)));
                 into.Add(new DrawSegment(P(s * gap, 0), P(s * len / 2, 0)));
             }
-            overlay.Labels.Add((P(0, plate), $"{le.Name}: {Describe(le)}"));
+            foreach (var piece in into) segment(le.Name, piece);
+            labels.Add((P(0, plate), $"{le.Name}: {Describe(le)}"));
         }
     }
 }

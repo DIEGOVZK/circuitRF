@@ -332,7 +332,12 @@
                             <StackPanel Margin="0,2" Spacing="1">
                                 <TextBlock Text="{Binding Label}" FontSize="11" Opacity="0.7"/>
                                 <TextBox Text="{Binding Text}" PlaceholderText="{Binding Hint}" ToolTip.Tip="{Binding Hint}"
+                                         IsVisible="{Binding !HasChoices}"
                                          KeyDown="OnThermalFieldKey" LostFocus="OnThermalFieldLostFocus"/>
+                                <!-- a field of a few values (a lumped element's topology, a unit): picking one commits it -->
+                                <ComboBox ItemsSource="{Binding Choices}" SelectedItem="{Binding Text, Mode=OneWay}"
+                                          IsVisible="{Binding HasChoices}" HorizontalAlignment="Stretch" ToolTip.Tip="{Binding Hint}"
+                                          SelectionChanged="OnThermalFieldChoice"/>
                             </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>

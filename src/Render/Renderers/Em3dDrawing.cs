@@ -398,7 +398,23 @@ public static class Em3dDrawingSheet
                                .IntersectsWithInclusive(rect)) continue;
             canvas.DrawLine(a, b, stroke);
         }
+
+        // The view's lumped elements, over everything as the view draws them: its overlay's yellow-green, darkened for paper.
+        if (scene.Marks.Count + scene.MarkLabels.Count == 0) return;
+        stroke.Color = MarkInk;
+        stroke.PathEffect = null;
+        stroke.StrokeWidth = 1.25f;
+        foreach (var (a, b) in scene.Marks) canvas.DrawLine(Map(a), Map(b), stroke);
+        using var font = new SKFont(SkiaFonts.PlexRegular, 9f);
+        using var text = new SKPaint { IsAntialias = true, Color = MarkInk, Style = SKPaintStyle.Fill };
+        foreach (var (at, label) in scene.MarkLabels)
+        {
+            var m = Map(at);
+            Em3dText.Draw(canvas, style.TextAsPaths, label, m.X + 4, m.Y - 4, SKTextAlign.Left, font, text);
+        }
     }
+
+    private static readonly SKColor MarkInk = new(110, 130, 20);
 
     private static List<(string Material, SKColor Colour, Em3dRole Role)> LegendRows(IReadOnlyList<Em3dDrawingPanel> panels, Em3dDrawingStyle style)
     {

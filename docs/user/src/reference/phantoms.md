@@ -19,8 +19,11 @@ data for research use, not a claim that any phantom or liquid meets a standard.<
 
 ## The tissue library {#library}
 
-**Add Tissue Materials**, on the technology editor's Materials tab, copies `tissue-materials.cmat` beside the
-technology and names it as one of its libraries (see [Materials](materials.html#cmat-and-ctech)). It holds:
+**Add Tissue Materials** copies `tissue-materials.cmat` beside the technology and names it as one of its libraries
+(see [Materials](materials.html#cmat-and-ctech)). It is on the technology editor's Materials tab, and at the top of the
+3D view's Materials dialog (a phantom layer's *New Material…*, or *Assign Material…*), where it lists the tissues at once
+to assign and names the library when you press the dialog's OK. Either way the technology is left unsaved until you
+save it. It holds:
 
 | Records | Values | Density |
 |---|---|---|

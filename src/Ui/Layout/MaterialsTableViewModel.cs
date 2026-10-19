@@ -76,7 +76,19 @@ public sealed partial class MaterialsTableViewModel : ObservableObject
     }
 
     /// <summary>The lists this table edits, in the order their rows are listed.</summary>
-    public IReadOnlyList<MaterialListSource> Sources { get; }
+    public IReadOnlyList<MaterialListSource> Sources { get; private set; }
+
+    /// <summary>One more list, after the others (the 3D view's Materials dialog's Add Tissue Materials): its rows are listed at
+    /// once, and it can be the list new materials go to.</summary>
+    public void AddSource(MaterialListSource source)
+    {
+        Sources = [.. Sources, source];
+        OnPropertyChanged(nameof(Sources));
+        // The target combo's items were replaced: its selection is pushed again after them (src/Ui/CLAUDE.md's ComboBox rule).
+        OnPropertyChanged(nameof(TargetSource));
+        OnPropertyChanged(nameof(HasSeveralSources));
+        Rebuild();
+    }
 
     /// <summary>Where Add and Duplicate write — chosen in the dialog when there is more than one list. A built-in material is
     /// copied here too, the first time it is edited or assigned.</summary>

@@ -108,6 +108,11 @@ public sealed record Em3dScene(
     /// <summary>brief-em3d-101 — the image sheets an outline draws with their pictures (Em3dSceneImages.Of): none for a section.</summary>
     public IReadOnlyList<Em3dSceneImage> Images { get; init; } = [];
 
+    /// <summary>The 3D view's lumped elements (Em3dPictureMarks), projected: drawn over everything, as the view draws them.
+    /// Only a picture of the view carries them.</summary>
+    public IReadOnlyList<(Uv A, Uv B)> Marks { get; init; } = [];
+    public IReadOnlyList<(Uv At, string Text)> MarkLabels { get; init; } = [];
+
     /// <summary>The names of the objects this picture draws, regions then lines, in draw order.</summary>
     public IEnumerable<string> Objects =>
         Regions.Select(r => r.Object).Concat(Lines.Select(l => l.Object)).Distinct(StringComparer.Ordinal);

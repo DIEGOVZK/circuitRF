@@ -406,12 +406,12 @@ public partial class WorkspaceViewModel
 
     /// <summary>Connects a 3D editor's material picker requests to the picker dialog.</summary>
     private void HookC3dMaterials(C3dEditorDocument doc)
-        => doc.ViewModel.MaterialPickerRequested += (indices, startNew) => _ = ShowMaterialPickerAsync(doc, indices, startNew);
+        => doc.ViewModel.MaterialPickerRequested += (indices, startNew, part) => _ = ShowMaterialPickerAsync(doc, indices, startNew, part);
 
     /// <summary>The Materials dialog's Built-in toggle, as it was last left in this window.</summary>
     private bool _materialPickerShowsBuiltIns;
 
-    private async Task ShowMaterialPickerAsync(C3dEditorDocument doc, IReadOnlyList<int> indices, bool startNew)
+    private async Task ShowMaterialPickerAsync(C3dEditorDocument doc, IReadOnlyList<int> indices, bool startNew, C3dMaterialPart? part = null)
     {
         var vm = doc.ViewModel;
         if (HostWindowOf(doc) is not { } window) return;
@@ -433,9 +433,12 @@ public partial class WorkspaceViewModel
             (tech, techPath) = chosen;
         }
 
-        string? current = indices.Count == 1 ? vm.Document.Objects[indices[0]].Material : vm.CurrentMaterial;
+        string? current = part is not null ? part.Current : indices.Count == 1 ? vm.Document.Objects[indices[0]].Material : vm.CurrentMaterial;
         var picker = new MaterialPickerViewModel(MaterialSeeds(tech, techPath), Path.GetFileName(techPath), startNew, current,
-                                                 indices.Count, null);
+                                                 part is not null ? 1 : indices.Count, null)
+        {
+            TissueLibrary = NamesLibrary(tech, MaterialLibraries.TissueFileName) ? null : () => TissueLibrarySeed(techPath),
+        };
         // The warning is owned by the DIALOG, the top window: owned by the workspace window under it, closing the warning closed
         // the dialog as well on macOS (owner-reported: Cancel on the warning dismissed the Materials dialog).
         var dialog = new Views.Dialogs.MaterialPickerDialog(picker);
@@ -463,6 +466,15 @@ public partial class WorkspaceViewModel
             else v.EndAppearancePreviewAtNextScene();
         if (!ok) return;
 
+        // Add Tissue Materials, pressed in the dialog: the technology editor's own command names the library before any list
+        // is committed to it.
+        bool tissue = picker.AddedTissueLibrary is not null;
+        if (tissue && AddTissueLibrary(techPath) is { } notAdded)
+        {
+            foreach (var v in previewing) v.EndAppearancePreview();
+            Messages.Error(notAdded);
+            return;
+        }
         foreach (var (seed, materials) in changed)
             if (CommitMaterialList(techPath, seed, materials) is { } refused)
             {
@@ -470,8 +482,9 @@ public partial class WorkspaceViewModel
                 Messages.Error(refused);
                 return;
             }
-        if (changed.Count > 0) ActivateIfOpen(C3dEditorDocument.KeyFor(doc.FilePath));
-        vm.ApplyPickedMaterial(indices, picker.ChosenName);
+        if (changed.Count > 0 || tissue) ActivateIfOpen(C3dEditorDocument.KeyFor(doc.FilePath));
+        if (part is not null) vm.ApplyPickedMaterial(part, picker.ChosenName);
+        else vm.ApplyPickedMaterial(indices, picker.ChosenName);
     }
 
     /// <summary>
@@ -590,6 +603,37 @@ public partial class WorkspaceViewModel
             return $"'{Path.GetFileName(techPath)}' cannot take a new material: {ReadOnlyPathReason(techPath) ?? "it and its libraries are read-only"}.";
         if (CommitMaterialList(techPath, seed, [.. seed.Materials, .. materials]) is { } refused) return refused;
         ActivateIfOpen(C3dEditorDocument.KeyFor(doc.FilePath));
+        return null;
+    }
+
+    /// <summary>Whether <paramref name="tech"/> already names a library of that file name (the technology editor's test for
+    /// offering Add Generic / Add Tissue Materials).</summary>
+    private static bool NamesLibrary(Technology tech, string fileName)
+        => tech.ResolvedLibraryPaths.Any(p => string.Equals(Path.GetFileName(p), fileName, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>The Materials dialog's Add Tissue Materials: the library as it will be beside the technology, or why it cannot be
+    /// put there — asked when the button is pressed, so a refusal is said in the dialog rather than after OK.</summary>
+    private (MaterialSourceSeed? Seed, string? Refusal) TissueLibrarySeed(string techPath)
+    {
+        if (ReadOnlyPathReason(techPath) is { } readOnly)
+            return (null, $"'{Path.GetFileName(techPath)}' cannot name the tissue library: {readOnly}");
+        if (MaterialLibraries.ShippedBesideConflict(techPath, MaterialLibraries.TissueFileName, "tissue") is { } conflict) return (null, conflict);
+        string json = MaterialLibraries.ShippedRawJson(MaterialLibraries.TissueFileName);
+        return (new MaterialSourceSeed(MaterialLibraries.TissueFileName, MaterialLibraries.ShippedBesidePath(techPath, MaterialLibraries.TissueFileName),
+                                       MaterialLibraryPersistence.Deserialize(json), null), null);
+    }
+
+    /// <summary>The technology editor's Add Tissue Materials on <paramref name="techPath"/>, opened if it is not: the file copied
+    /// beside it and named, an unsaved change there. Null on success, else why not.</summary>
+    private string? AddTissueLibrary(string techPath)
+    {
+        OpenOrActivateTech(techPath);
+        if (OpenTechEditor(techPath) is not { } editor)
+            return $"'{Path.GetFileName(techPath)}' did not open, so the tissue library was not added to it.";
+        if (!editor.CanAddTissueMaterials) return null;
+        editor.AddTissueMaterials();
+        if (editor.MaterialsRefusal is { } why) return why;
+        Messages.Info($"{MaterialLibraries.TissueFileName} was copied beside {Path.GetFileName(techPath)}, which now names it and is unsaved — save it to keep it.");
         return null;
     }
 

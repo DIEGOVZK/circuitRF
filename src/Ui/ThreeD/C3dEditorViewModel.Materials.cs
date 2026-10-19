@@ -19,20 +19,29 @@ public sealed partial class C3dEditorViewModel
     /// Raised to show the material picker: the document objects it would assign (empty: none — the result becomes
     /// the toolbar's current material), and whether it opens on a new material rather than the list.
     /// </summary>
-    public event Action<IReadOnlyList<int>, bool>? MaterialPickerRequested;
+    /// <para>With a <see cref="C3dMaterialPart"/>, the picker's answer goes to that part of one object (a phantom's layer, a
+    /// voxel body's tissue) instead of to the objects.</para>
+    public event Action<IReadOnlyList<int>, bool, C3dMaterialPart?>? MaterialPickerRequested;
 
     /// <summary>A material chosen or made in the picker, not yet in an elaboration — kept current until it is.</summary>
     private string? _pendingMaterial;
 
     /// <summary>Asks for the picker over <paramref name="indices"/>.</summary>
-    public void RequestMaterialPicker(IReadOnlyList<int> indices, bool startNew)
+    public void RequestMaterialPicker(IReadOnlyList<int> indices, bool startNew, C3dMaterialPart? part = null)
     {
         if (MaterialPickerRequested is null)
         {
             StatusMessage = "Materials are chosen through the workspace, which this editor is not attached to.";
             return;
         }
-        MaterialPickerRequested(indices, startNew);
+        MaterialPickerRequested(indices, startNew, part);
+    }
+
+    /// <summary>The picker's answer for a part of an object: written through the part, one undo entry; a refusal is said.</summary>
+    public void ApplyPickedMaterial(C3dMaterialPart part, string material)
+    {
+        _pendingMaterial = material;
+        if (part.Apply(material) is { } why) StatusMessage = why;
     }
 
     /// <summary>IViewer3DEditHost — the canvas menu's Assign Material….</summary>
@@ -52,6 +61,11 @@ public sealed partial class C3dEditorViewModel
         ChangeObjects(indices.Count == 1 ? $"Material of {ObjectLabel(indices[0])}" : $"Material of {indices.Count} objects",
                       indices, o => SetMaterialOf(o, material));
     }
+
+    /// <summary>Runs <paramref name="action"/> after the input being handled has finished — the application's dispatcher. An
+    /// Inspector ComboBox inside a row list commits through it: committing at once rebuilds the list, which tears the ComboBox
+    /// down while it is still reading its own selection (an index out of range inside Avalonia's selection model).</summary>
+    internal void Post(Action action) => _post(action);
 
     /// <summary>The toolbar combo's last item is a command, not a material: open the picker and keep what was current.</summary>
     partial void OnCurrentMaterialChanged(string? oldValue, string? newValue)
@@ -103,3 +117,7 @@ public sealed partial class C3dEditorViewModel
         return list;
     }
 }
+
+/// <summary>A part of one object that names its own material — a phantom's layer, a voxel body's tissue — as the material
+/// picker's target: what it states now, and how a chosen material is written to it (null on success, else why not).</summary>
+public sealed record C3dMaterialPart(string? Current, Func<string, string?> Apply);

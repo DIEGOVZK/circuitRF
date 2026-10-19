@@ -60,6 +60,42 @@ public sealed class MaterialsEditorRedesignTests : IDisposable
         Assert.Equal(150, materials.Single(m => m.Name == "GaN epi").ThermalK);
     }
 
+    /// <summary>Add Tissue Materials lists the tissue library at once, to assign like any other list's; the button goes away, and
+    /// OK hands the library back for the workspace to name (it changed nothing in it, so no list is committed). An earlier edit
+    /// still undoes. A refusal is said in the dialog and adds nothing.</summary>
+    [Fact]
+    public void AddTissueMaterials_ListsTheTissueLibrary_ForOkToName()
+    {
+        var own = new List<TechMaterial> { new() { Name = "Gold", Sigma20 = 3e7 } };
+        var tissues = MaterialLibraryPersistence.Deserialize(MaterialLibraries.ShippedRawJson(MaterialLibraries.TissueFileName));
+        var seed = new MaterialSourceSeed(MaterialLibraries.TissueFileName, "/x/" + MaterialLibraries.TissueFileName, tissues, null);
+        string? refusal = "'/x/tissue-materials.cmat' already exists";
+        var picker = new MaterialPickerViewModel([new MaterialSourceSeed("t.ctech (the technology's own)", null, own, null)],
+                                                 "t.ctech", startNew: false, current: "Gold", objectCount: 1, refusal: null)
+        {
+            TissueLibrary = () => refusal is null ? (seed, null) : (null, refusal),
+        };
+        picker.Table.SelectedRow!.EpsrText = "1";
+        Assert.True(picker.OffersTissueMaterials);
+
+        picker.AddTissueMaterialsCommand.Execute(null);
+        Assert.Equal(refusal, picker.Refusal);
+        Assert.DoesNotContain(picker.Table.Rows, r => r.Name == "Muscle");
+
+        refusal = null;
+        picker.AddTissueMaterialsCommand.Execute(null);
+        Assert.False(picker.OffersTissueMaterials);
+        Assert.Same(seed, picker.AddedTissueLibrary);
+        Assert.Equal(1 + tissues.Count, picker.Table.Rows.Count);
+        picker.UndoCommand.Execute(null);                                            // the Epsr edit, from before the list came
+        Assert.Equal(1 + tissues.Count, picker.Table.Rows.Count);
+
+        picker.Table.Select("Muscle");
+        Assert.Null(picker.Accept());
+        Assert.Equal("Muscle", picker.ChosenName);
+        Assert.Empty(picker.ChangedLists);
+    }
+
     /// <summary>The Built-in toggle lists the shipped materials the technology does not already name, each marked; editing one
     /// copies it — with the edit — into the target list as that list's own, and assigning one copies it as it ships.</summary>
     [Fact]

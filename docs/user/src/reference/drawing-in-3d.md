@@ -268,8 +268,8 @@ A phantom is one object: it moves, turns, hides and is left out of the solve as 
 layers under it. Where layers overlap the **innermost wins**, so the brain is brain, not skin. Properties
 shows only the dimensions its shape uses — semi-axes, radius and length, or size, and the shell thicknesses —
 and one material per layer under *Layers, outermost first*. The layers start as the tissue library's records
-of those openEMS phantoms (*Add Tissue Materials* in the technology editor puts the library beside the
-technology; see [Materials](materials.html)); the flat phantom and the generic head start in the tissue-simulating
+of those openEMS phantoms (*Add Tissue Materials*, in the technology editor or at the top of the Materials dialog a layer's *New Material…*
+opens, puts the library beside the technology; see [Materials](materials.html)); the flat phantom and the generic head start in the tissue-simulating
 liquids and circuitRF's own shell material. Every
 layer is solved as a lossy dielectric. **Flatten Phantom** (its menu) replaces it with one ordinary solid per
 layer, `<phantom>_<layer>`, in a group named after it; the solve is the same.

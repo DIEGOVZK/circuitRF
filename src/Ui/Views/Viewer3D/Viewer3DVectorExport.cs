@@ -123,7 +123,7 @@ public static class Viewer3DVectorExport
         };
         return Em3dDrawingExport.Picture(problem, CameraProjection(vm), Colours(vm.Scene), theme, HiddenNames(vm), maxSide: MaxSide,
                                          window: window, chrome: chrome, transparency: Transparencies(vm.Scene), images: vm.Scene.PlacedImages,
-                                         faceImages: vm.Scene.PlacedFaceImages);
+                                         faceImages: vm.Scene.PlacedFaceImages, marks: vm.EditHost?.PictureMarks());
     }
 
     public static MenuItem CopyItem(Control pane, Func<Viewer3DViewModel?> vm, Action<string> report)

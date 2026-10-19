@@ -144,17 +144,25 @@ public static class MaterialLibraries
     /// </summary>
     public static string CopyShippedBeside(string ctechPath, string fileName, string what)
     {
-        string target = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ctechPath))!, fileName);
-        string json = ShippedRawJson(fileName);
-        if (File.Exists(target))
-        {
-            if (File.ReadAllText(target) != json)
-                throw new IOException(
-                    $"'{target}' already exists and is not circuitRF's {what} library. Rename or move it, or add it " +
-                    "with Add Library… if it is the library you want.");
-        }
-        else File.WriteAllText(target, json);
+        if (ShippedBesideConflict(ctechPath, fileName, what) is { } why) throw new IOException(why);
+        string target = ShippedBesidePath(ctechPath, fileName);
+        if (!File.Exists(target)) File.WriteAllText(target, ShippedRawJson(fileName));
         return fileName;
+    }
+
+    /// <summary>Where <see cref="CopyShippedBeside"/> puts <paramref name="fileName"/>: beside <paramref name="ctechPath"/>.</summary>
+    public static string ShippedBesidePath(string ctechPath, string fileName)
+        => Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ctechPath))!, fileName);
+
+    /// <summary>Why <see cref="CopyShippedBeside"/> would refuse — a different file of that name is already there — or null.
+    /// The 3D view's Materials dialog asks before it offers the library, so it is refused where the button is pressed.</summary>
+    public static string? ShippedBesideConflict(string ctechPath, string fileName, string what)
+    {
+        string target = ShippedBesidePath(ctechPath, fileName);
+        return File.Exists(target) && File.ReadAllText(target) != ShippedRawJson(fileName)
+            ? $"'{target}' already exists and is not circuitRF's {what} library. Rename or move it, or add it " +
+              "with Add Library… if it is the library you want."
+            : null;
     }
 
     // ── References ────────────────────────────────────────────────────────────

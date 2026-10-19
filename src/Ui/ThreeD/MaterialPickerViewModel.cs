@@ -48,17 +48,7 @@ public sealed partial class MaterialPickerViewModel : ObservableObject
                                    int objectCount, string? refusal)
     {
         var sources = new List<MaterialListSource>();
-        foreach (var seed in seeds)
-        {
-            var working = MaterialLibraryPersistence.Deserialize(MaterialLibraryPersistence.Serialize(seed.Materials));
-            foreach (var m in working) _existing.Add(m.Name);
-            _lists.Add((seed, working, MaterialLibraryPersistence.Serialize(working)));
-            sources.Add(new MaterialListSource(seed.Label, () => working, Commit, seed.LibraryPath)
-            {
-                ReadOnlyReason = seed.ReadOnlyReason,
-                IsBuiltIn = seed.BuiltIn,
-            });
-        }
+        foreach (var seed in seeds) sources.Add(ListOf(seed));
         Table = new MaterialsTableViewModel(sources)
         {
             OffersBuiltIns = true,
@@ -87,6 +77,46 @@ public sealed partial class MaterialPickerViewModel : ObservableObject
         StartNew = startNew;
         ObjectCount = objectCount;
         Refusal = refusal;
+    }
+
+    /// <summary>A working copy of <paramref name="seed"/>'s list, recorded so OK can tell whether it changed, as a table source.</summary>
+    private MaterialListSource ListOf(MaterialSourceSeed seed)
+    {
+        var working = MaterialLibraryPersistence.Deserialize(MaterialLibraryPersistence.Serialize(seed.Materials));
+        foreach (var m in working) _existing.Add(m.Name);
+        _lists.Add((seed, working, MaterialLibraryPersistence.Serialize(working)));
+        return new MaterialListSource(seed.Label, () => working, Commit, seed.LibraryPath)
+        {
+            ReadOnlyReason = seed.ReadOnlyReason,
+            IsBuiltIn = seed.BuiltIn,
+        };
+    }
+
+    // ── Add Tissue Materials ─────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Set by the host while the technology does not name circuitRF's tissue library: the library as it would be once copied
+    /// beside the technology (its path there, its shipped records), or why it cannot be. Null hides the button.
+    /// </summary>
+    public Func<(MaterialSourceSeed? Seed, string? Refusal)>? TissueLibrary { get; init; }
+
+    /// <summary>The tissue library this dialog has listed, which OK copies beside the technology and names — the technology
+    /// editor's own Add Tissue Materials, an unsaved change there. Cancel leaves nothing behind. Null: not added.</summary>
+    public MaterialSourceSeed? AddedTissueLibrary { get; private set; }
+
+    public bool OffersTissueMaterials => TissueLibrary is not null && AddedTissueLibrary is null;
+
+    /// <summary>Lists the tissue library's materials at once, to assign, edit or duplicate like any other. Not a step of the
+    /// dialog's history: an undo to before it leaves the new list as it is.</summary>
+    [RelayCommand]
+    private void AddTissueMaterials()
+    {
+        if (TissueLibrary?.Invoke() is not var (seed, why)) return;
+        if (seed is null) { Refusal = why; return; }
+        Refusal = null;
+        Table.AddSource(ListOf(seed));
+        AddedTissueLibrary = seed;
+        OnPropertyChanged(nameof(OffersTissueMaterials));
     }
 
     /// <summary>
@@ -119,7 +149,8 @@ public sealed partial class MaterialPickerViewModel : ObservableObject
     /// a closure — and rebuilds the table, which keeps the selection by name.</summary>
     private void Apply(string[] lists)
     {
-        for (int i = 0; i < _lists.Count; i++)
+        // A list added after the snapshot (Add Tissue Materials) is not in it, and is left as it is.
+        for (int i = 0; i < Math.Min(_lists.Count, lists.Length); i++)
         {
             var working = _lists[i].Working;
             working.Clear();

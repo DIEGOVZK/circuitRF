@@ -39765,3 +39765,50 @@ compared "same", kept the cached steps and drew the old field. SAR-9 hid it beca
 view. SAR-10's tuning window rewrites the volumes on every knob move, which made it plain. `StampOf` now takes the latest of
 the first solution's file and every co-simulation solution's file. The live update itself is `ITuneResultSink.FieldsWritten`
 → `C3dEditorViewModel.RunFinished` on any open view of the `.c3d` (docs/design/sar.md §12.3).
+
+## 3D view: lumped elements select, let go and copy like everything else (2026-10-18)
+
+Owner report: a lumped element stayed selected after a click on empty space or Esc, did not highlight when picked in the
+tree with nothing selected before, showed Topology as a text box, and was missing from Copy as Vector.
+
+- **A row that stands for nothing in the scene never heard the selection clear.** `Viewer3DViewModel.SetSelection` returns
+  early when the list is unchanged, so a click on nothing or Esc with an empty scene selection raised no `SelectionChanged`,
+  and `OnViewerSelectionChanged` (which drops the tree rows) never ran. Same shape for probes and symmetry planes. The user's
+  clear now goes through `ClearSelection`, which calls `IViewer3DEditHost.SelectionClearedWhenEmpty` when the scene already
+  held nothing; the editor drops its rows there. A selection change of the scene's own (a hidden boundary's tint leaving the
+  build) still keeps a record row, as `TreeRowStillSelected` intends.
+- **The highlight is overlay, and nothing asked for a frame.** Selecting such a row leaves the scene's selection as it was,
+  so `SetSelection` requested no frame; it only showed when something else had been selected before. Both tree paths
+  (`OnSelectedTreeItemChanged`, `TreeSelectionChanged`) now request one. Every selected lumped row is drawn as selected.
+- **Inspector**: `C3dThermalTextField.Choices` makes a field a ComboBox (topology, the three units, Model). Its
+  `SelectedItem` binding is ONE WAY and the pick commits in `OnThermalFieldChoice`: two-way, a reload that cleared the
+  selection wrote null back into `Text`.
+- **Copy / Export as Vector**: the vector picture is outlined from `Scene.Problem`, which has no lumped element unless it is
+  modelled and resolved, and the drawing deliberately leaves records out ("a drawing is the artwork"; ports are still left
+  out). A picture OF THE VIEW now carries what the view draws for them: `IViewer3DEditHost.PictureMarks` gives the overlay's
+  segments and labels in world metres (`Em3dPictureMarks`), projected into `Em3dScene.Marks`/`MarkLabels` and painted on
+  top, as the view draws them through the solids. Export Drawing… is unchanged.
+- Gate: `tests/Ui.Tests/ThreeD/SarEditorTests.cs` (fails with either selection fix removed).
+- **A phantom's (or voxel body's) layer combobox stored "New Material…" as the layer's material.** It shares the object
+  combo's list, whose last item is a command, but `C3dPhantomLayerRow` committed whatever was picked. The row now treats
+  that item as the command: it keeps what the layer states and asks for the picker with a `C3dMaterialPart` target
+  (`MaterialPickerRequested` carries it; null for the ordinary object target), and the workspace writes the picker's answer
+  through the part (`ApplyPickedMaterial(C3dMaterialPart, …)`), one undo entry. Gate:
+  `SarEditorTests.APhantomLayersNewMaterial_OpensThePicker_ForThatLayer`.
+- **The Materials dialog's Add Tissue Materials.** The dialog listed only the libraries the technology already named, and its
+  built-in toggle offers the generic library alone, so a technology without the tissue library gave a phantom layer no route
+  to a tissue short of the technology editor. The button (shown while the technology does not name `tissue-materials.cmat`)
+  lists the library at once — `MaterialsTableViewModel.AddSource`, a source added after construction, which the dialog's
+  snapshot undo leaves alone — and OK runs the technology editor's own `AddTissueMaterials` before any list is committed,
+  so the reference and the copy are one path. A different file of that name beside the technology is refused when the
+  button is pressed (`MaterialLibraries.ShippedBesideConflict`, the copy's own sentence). The live technology the tech
+  editor installs resolves its libraries first (`ApplySnapshot` → `ResolveLibrariesInPlace`), which is why a tissue
+  assigned on the same OK resolves in the open 3D view before anything is saved. Gate:
+  `MaterialsEditorRedesignTests.AddTissueMaterials_ListsTheTissueLibrary_ForOkToName`.
+- **Crash: an Inspector ComboBox inside a row list committed inside its own selection change.** The phantom layer rows, the
+  air box's face rows, and the lumped element choices (above) each commit an edit that rebuilds their row list; done inside
+  the ComboBox's selection change, it tore the ComboBox down while Avalonia's selection model was still enumerating its
+  selected items, an `ArgumentOutOfRangeException` from `SelectedItems.GetEnumerator` (owner-reported). Each now commits
+  through the editor's dispatcher post (`C3dEditorViewModel.Post`, the toolbar combo's New Material… precedent). The object's
+  own Material combo is not in a rebuilt list and was never affected. Gate (the deferral, not the crash, which needs a real
+  ComboBox): `SarEditorTests.APhantomLayerPick_CommitsAfterThePick`.

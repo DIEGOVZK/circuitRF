@@ -1265,6 +1265,21 @@ public sealed partial class C3dEditorViewModel : ObservableObject, IViewer3DEdit
             Viewer.SetSelection(ids);
         }
         finally { _syncingTree = false; }
+        // A row the scene holds nothing of (a lumped element) leaves the scene's selection as it was, so nothing else redraws
+        // the overlay that shows it selected.
+        Viewer.RequestFrame();
+        Properties.Reload();
+    }
+
+    /// <summary>A click on nothing, or Esc, with nothing selected in the scene: the selected rows — a lumped element's, a
+    /// probe's, which stand for nothing there — are let go as any selection is.</summary>
+    public void SelectionClearedWhenEmpty()
+    {
+        if (_syncingTree || _selectedTreeItems.Count == 0 && SelectedTreeItem is null) return;
+        _syncingTree = true;
+        try { SetTreeRows([]); }
+        finally { _syncingTree = false; }
+        Viewer.RequestFrame();
         Properties.Reload();
     }
 
@@ -1388,6 +1403,7 @@ public sealed partial class C3dEditorViewModel : ObservableObject, IViewer3DEdit
             Viewer.SetSelection(rows.SelectMany(SceneObjectsOfSelectedRow).Select(s => Scene3DItem.OfObject(s.Id)));
         }
         finally { _syncingTree = false; }
+        Viewer.RequestFrame();
         Properties.Reload();
     }
 

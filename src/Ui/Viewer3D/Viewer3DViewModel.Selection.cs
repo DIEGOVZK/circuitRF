@@ -157,6 +157,14 @@ public interface IViewer3DEditHost
     /// <summary>brief-em3d-95 — Copy Objects: the selection's rows as a 3D copy, to paste into this or another 3D view. The
     /// canvas's own Copy stays the picture copy.</summary>
     Viewer3DMenuItem? CopyObjectsItem() => null;
+
+    /// <summary>A click on nothing, or Esc, cleared a selection the scene already held nothing of: the editor drops a selected
+    /// row that stands for nothing in the scene (a lumped element, a probe), which no selection change would otherwise reach.</summary>
+    void SelectionClearedWhenEmpty() { }
+
+    /// <summary>What the view draws over the scene that Copy as Vector carries too (the lumped elements), in world metres; null
+    /// for none.</summary>
+    CircuitRF.Render.Em3dPictureMarks? PictureMarks() => null;
 }
 
 /// <summary>brief-em3d-45 — the drawing's 2D chrome for one frame, in world metres: the overlay projects it.</summary>
@@ -353,6 +361,15 @@ public sealed partial class Viewer3DViewModel
         FrameRequested?.Invoke();
     }
 
+    /// <summary>The user cleared the selection (a click on nothing, Esc). When the scene held nothing selected already no change
+    /// is raised, so the editor is told directly: a selected row that stands for nothing in the scene is let go too.</summary>
+    private void ClearSelection()
+    {
+        bool wasEmpty = View.Selection.Length == 0;
+        SetSelection([]);
+        if (wasEmpty) EditHost?.SelectionClearedWhenEmpty();
+    }
+
     /// <summary>The selection's objects, each once, in selection order.</summary>
     public IReadOnlyList<Scene3DObject> SelectedObjects()
         => [.. View.Selection.Select(i => Scene.Object(i.Object)).OfType<Scene3DObject>().Distinct()];
@@ -371,7 +388,7 @@ public sealed partial class Viewer3DViewModel
         var item = HoveredItem;
         if (item is not { } it)
         {
-            if (!shift) SetSelection([]);
+            if (!shift) ClearSelection();
             return;
         }
         // brief-em3d-67 R-em3d67-4 — a double-click on an edge takes its tangent chain (Shift adds it).
@@ -636,7 +653,7 @@ public sealed partial class Viewer3DViewModel
                 if (SelectMode != Scene3DSelectMode.Object) { SelectMode = Scene3DSelectMode.Object; return true; }
                 HitCycle.Reset();
                 CycleText = "";
-                SetSelection([]);
+                ClearSelection();
                 return true;
             case Key.Delete or Key.Back:
                 return EditHost?.DeleteSelection() ?? false;

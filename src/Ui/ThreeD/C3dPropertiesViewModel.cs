@@ -34,6 +34,10 @@ public sealed partial class C3dThermalTextField : ObservableObject
     public required string Label { get; init; }
     public required string Key { get; init; }
     public string Hint { get; init; } = "";
+    /// <summary>The values the field takes, when it takes one of a few (a lumped element's topology, a unit): a choice, not a
+    /// text box. Null for a free field.</summary>
+    public IReadOnlyList<string>? Choices { get; init; }
+    public bool HasChoices => Choices is not null;
     [ObservableProperty] private string _text = "";
     internal string Loaded { get; set; } = "";
 }
@@ -281,6 +285,8 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
     /// value with its unit, and Model), each commit one records entry through <see cref="C3dEditorViewModel.SetLumpedText"/>.</summary>
     private bool _placeIsLumped;
 
+    private static readonly string[] LumpedTopologies = Enum.GetNames<Em3dRlcTopology>();
+
     private void LoadLumpedElement(string name)
     {
         if (editor.LumpedElement(name) is not { } le) { Heading = "Nothing selected"; return; }
@@ -293,16 +299,16 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
         Rows.Add(new C3dPropertyRow("Gap", r?.Resolved is { } g
             ? $"current along {(Math.Abs(g.Direction.X) > 0.5 ? "x" : Math.Abs(g.Direction.Y) > 0.5 ? "y" : "z")}, found as a port's ends are"
             : r?.Refusal ?? "not resolved yet"));
-        void Text(string label, string key, string? value, string hint)
-            => ThermalFields.Add(new C3dThermalTextField { Label = label, Key = key, Text = value ?? "", Loaded = value ?? "", Hint = hint });
-        Text("Topology", "Topology", le.Topology.ToString(), "Parallel or Series");
+        void Text(string label, string key, string? value, string hint, IReadOnlyList<string>? choices = null)
+            => ThermalFields.Add(new C3dThermalTextField { Label = label, Key = key, Text = value ?? "", Loaded = value ?? "", Hint = hint, Choices = choices });
+        Text("Topology", "Topology", le.Topology.ToString(), "R, L and C in parallel, or in series", LumpedTopologies);
         foreach (var (key, value, unit, what) in new[] { ("R", le.R, le.RUnit, "resistance"), ("L", le.L, le.LUnit, "inductance"), ("C", le.C, le.CUnit, "capacitance") })
         {
             var units = C3dEditorViewModel.LumpedUnits[key];
             Text(key, key, value, $"The {what}: a number or an expression (Ctune); empty removes it");
-            Text($"{key} unit", key + "Unit", value is null ? null : unit ?? units[0], string.Join(", ", units));
+            Text($"{key} unit", key + "Unit", unit ?? (value is null ? null : units[0]), $"The {what}'s unit", units);
         }
-        Text("Model", "Model", le.Model ? "true" : "false", "false leaves the gap as the geometry makes it in every run");
+        Text("Model", "Model", le.Model ? "true" : "false", "false leaves the gap as the geometry makes it in every run", ["true", "false"]);
     }
 
     /// <summary>R-em3d75-1c — a thermal place's text field committed: one undo entry, or the refusal and the field put back.</summary>
@@ -627,7 +633,10 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
             if (b.Labels[i].Air) continue;
             int row = i;
             PhantomLayers.Add(new C3dPhantomLayerRow($"{b.Labels[i].Name} ({b.Labels[i].Label})", b.Labels[i].Material,
-                m => Error = editor.SetVoxelLabelMaterial(index, row, m) ?? ""));
+                m => Error = editor.SetVoxelLabelMaterial(index, row, m) ?? "",
+                editor.Post,
+                () => editor.RequestMaterialPicker([index], startNew: true,
+                    new C3dMaterialPart(b.Labels[row].Material, m => editor.SetVoxelLabelMaterial(index, row, m)))));
         }
     }
 
@@ -650,7 +659,10 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
         {
             int layer = i;
             PhantomLayers.Add(new C3dPhantomLayerRow(p.Layers[i].Name, p.Layers[i].Material,
-                m => Error = editor.SetPhantomLayerMaterial(index, layer, m) ?? ""));
+                m => Error = editor.SetPhantomLayerMaterial(index, layer, m) ?? "",
+                editor.Post,
+                () => editor.RequestMaterialPicker([index], startNew: true,
+                    new C3dMaterialPart(p.Layers[layer].Material, m => editor.SetPhantomLayerMaterial(index, layer, m)))));
         }
     }
 
@@ -1176,7 +1188,7 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
             string pad = editor.AirBoxPaddingText(face) + " " + LayoutUnits.Suffix(editor.Document.DisplayUnit)
                        + (s?.PaddingPercent is { } p ? $" ({p.ToString("G6", CultureInfo.InvariantCulture)} %)"
                           : s?.PaddingUm is not null ? " (stated)" : defaultBasis);
-            AirBoxFaces.Add(new C3dAirBoxFaceRow(face, kind, pad, (fc, k) => Error = editor.SetAirBoxBoundary(fc, k) ?? ""));
+            AirBoxFaces.Add(new C3dAirBoxFaceRow(face, kind, pad, (fc, k) => editor.Post(() => Error = editor.SetAirBoxBoundary(fc, k) ?? "")));
         }
         Rows.Add(new C3dPropertyRow("Size", $"{editor.Viewer.FormatLength(box.Max.X - box.Min.X)} × " +
                                             $"{editor.Viewer.FormatLength(box.Max.Y - box.Min.Y)} × {editor.Viewer.FormatLength(box.Max.Z - box.Min.Z)}"));
@@ -1447,13 +1459,29 @@ public sealed partial class C3dPropertiesViewModel(C3dEditorViewModel editor) : 
 }
 
 /// <summary>brief-sar-3 R-sar3-2 — one phantom layer in the Inspector: its name and its material, written through
-/// <paramref name="commit"/> when the user picks another.</summary>
-public sealed partial class C3dPhantomLayerRow(string name, string? material, Action<string?> commit) : ObservableObject
+/// <paramref name="commit"/> when the user picks another. The list's last item, New Material…, is a command: it opens the
+/// picker through <paramref name="newMaterial"/>, which writes what is made there to the layer, and the row keeps what the
+/// layer states. Both run through <paramref name="post"/>, after the pick: a commit rebuilds the rows, and doing it inside the
+/// ComboBox's own selection change crashed Avalonia's selection model.</summary>
+public sealed partial class C3dPhantomLayerRow(string name, string? material, Action<string?> commit, Action<Action> post, Action newMaterial)
+    : ObservableObject
 {
     public string Name { get; } = name;
 
     [ObservableProperty] private string? _material = material;
+    private bool _restoring;
 
     // A combobox whose items are re-read pushes null through its selection; a layer is never cleared that way.
-    partial void OnMaterialChanged(string? value) { if (value is not null) commit(value); }
+    partial void OnMaterialChanged(string? oldValue, string? newValue)
+    {
+        if (_restoring || newValue is null) return;
+        if (newValue != C3dEditorViewModel.NewMaterialItem) { post(() => commit(newValue)); return; }
+        post(() =>
+        {
+            _restoring = true;
+            Material = oldValue;
+            _restoring = false;
+            newMaterial();
+        });
+    }
 }

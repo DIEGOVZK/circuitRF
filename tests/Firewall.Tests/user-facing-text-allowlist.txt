@@ -1012,7 +1012,6 @@ src/Engine/Mom/FarFieldStage.cs|A pattern on this grid has {grid.DirectionCount}
 # reaches the user INSIDE a MaterialLibraryException whose problems already carry `check` ids
 # (material.library-unreadable, material.conflict) and name the library and the technology. The two "already
 # exists" refusals are New Library… and Add Generic Materials declining to overwrite a user's file.
-src/Design/Layout/MaterialLibraries.cs|'{target}' already exists and is not circuitRF's {what} library. Rename or move it, or add it 
 src/Design/Layout/MaterialLibraries.cs|circuitRF ships no material library named '{fileName}'.
 src/Design/Layout/MaterialLibraries.cs|it is a directory, not a .cmat file.
 src/Design/Layout/MaterialLibraries.cs|the file does not exist.

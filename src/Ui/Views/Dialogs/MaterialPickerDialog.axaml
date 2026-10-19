@@ -19,11 +19,16 @@
                     <TextBlock Text="{Binding Explanation}" FontSize="11" TextWrapping="Wrap"
                                Foreground="{DynamicResource SystemBaseMediumColor}"/>
                 </StackPanel>
-                <!-- Help, top right, on the ? glyph every Help button in the application uses: the Materials chapter. -->
-                <Button Grid.Column="1" Padding="6,3" Margin="8,0,0,0" VerticalAlignment="Top" Click="OnHelp"
-                        ToolTip.Tip="Open the documentation for materials and material libraries">
-                    <mi:MaterialIcon Kind="HelpCircleOutline" Width="14" Height="14"/>
-                </Button>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="8,0,0,0" VerticalAlignment="Top">
+                    <!-- Shown while the technology does not name circuitRF's tissue library: lists it now, and OK names it. -->
+                    <Button Content="Add Tissue Materials" FontSize="11" Padding="8,3" Command="{Binding AddTissueMaterialsCommand}"
+                            IsVisible="{Binding OffersTissueMaterials}"
+                            ToolTip.Tip="List circuitRF's tissue library (body tissues whose εr and σ follow frequency, and phantom liquids and gels — every value with its source). OK copies it beside this technology and names it there, as an unsaved change; Cancel leaves nothing behind."/>
+                    <!-- Help, top right, on the ? glyph every Help button in the application uses: the Materials chapter. -->
+                    <Button Padding="6,3" Click="OnHelp" ToolTip.Tip="Open the documentation for materials and material libraries">
+                        <mi:MaterialIcon Kind="HelpCircleOutline" Width="14" Height="14"/>
+                    </Button>
+                </StackPanel>
             </Grid>
         </Border>
 
