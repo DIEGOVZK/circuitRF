@@ -329,6 +329,11 @@ values you give replace what was read. Each value is written into the plot's **x
 position and its value, `120px=1GHz,900px=5GHz`, and the row can be typed directly in that form. A logarithmic axis is
 read as one from its labels.
 
+**A y axis on the right.** Many datasheets draw two quantities against one frequency axis &mdash; dB(S21) against the
+left axis and its phase against the right, or gain and noise figure. The right axis is read from its own labels, and the
+plot's row gains **y2 axis (right)**, which waits and is typed or clicked exactly as the y row is: a label clicked right
+of the plot gives a y2 value. A plot with an axis on the right only reads it as its **y axis**, and says *(right)*.
+
 The right column has three panes, each scrolling on its own; drag the grip between two panes to give one more room.
 **Plots** is at the top: choosing a plot lists its traces in **Traces** below and shows its picture, and choosing a
 trace on the canvas chooses its plot. **Output** at the bottom holds the matrix, the output grid and the report.
@@ -337,6 +342,13 @@ trace on the canvas chooses its plot. **Output** at the bottom holds the matrix,
 **quantity** say what it is &mdash; S21 in dB, S11 as phase, a chart's complex value, VSWR, return loss and so on
 &mdash; taken from a legend entry in its colour, a label along it, the y axis's title or the plot's title, and the dot
 says how sure that is. A curve nothing names is **Unassigned**, and the Touchstone waits for you to say which entry it is.
+
+On a plot with a y axis on both sides, **Axis** says which one a curve is read against, **Left** or **Right**; its
+tooltip says why. It is taken from a mark in the curve's legend entry, from an axis title or labels printed in the
+curve's colour, or from the curve's quantity matching one axis title &mdash; a phase curve against `Phase (deg)`. When
+nothing says, the left is assumed and an amber dot beside Axis asks you to check it. On the picture a curve read
+against the right axis is labelled `→ R`. Choosing an axis is undone with **Undo** like any assignment, and in Simple
+view it moves every piece of the curve.
 
 **Ports**, in the Traces heading, is how many ports the file has, 1 to 4. Left empty it is the highest port any trace
 names, at least 2, shown faintly in the box. The entry lists offer S11 up to that many ports. Lowering it clears no
@@ -383,7 +395,8 @@ pictures beside the file**, each picture is copied beside it as `<name>.source.p
 Display, and its passivity, reciprocity and causality check goes to Messages.
 
 **CSV** writes the curves exactly as read, in each plot's own units, and never waits: any plot digitises, S-parameters
-or not &mdash; a temperature against time comes out just as well.
+or not &mdash; a temperature against time comes out just as well. Its last column, `y_axis`, says which y axis each
+rectangular curve was read against.
 
 | Reads well | Reads less well |
 |---|---|

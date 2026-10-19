@@ -72,7 +72,7 @@ public static class PlotTraces
     public const double MergeShare = 0.8;
 
     /// <summary>Colours this close (per channel) can be one line read twice: a JPEG line's core and its body.</summary>
-    private const int MergeColour = 64;
+    internal const int MergeColour = 64;
 
     /// <summary>Coverage above this is the trace.</summary>
     public const float MinCoverage = 0.3f;

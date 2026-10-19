@@ -148,9 +148,10 @@ public static class TouchstoneAssembly
         // ── refusals: an uncalibrated axis, an unassigned trace, a chart trace with no frequency ──
         foreach (var p in session.Plots.Where(p => !p.Excluded && traces.Any(t => t.Plot == p.Number)))
         {
-            if (p.Rect is { } r && (r.X is null || r.Y is null))
+            // The x axis, and every y axis one of its traces is read against (R-pdg1-2).
+            if (p.Rect is { } r && (r.X is null || traces.Any(t => t.Plot == p.Number && r.AxisOn(t.Axis) is null)))
             {
-                string axis = r.X is null ? "x" : "y";
+                string axis = r.X is null ? "x" : RectAxes.Name(r.AxisNamed(traces.First(t => t.Plot == p.Number && r.AxisOn(t.Axis) is null).Axis));
                 return Refuse("axis", $"plot {p.Number}'s {axis} axis is not calibrated: fewer than two of its tick labels were read",
                               $"--{axis}-axis", $"the {axis} axis of plot {p.Number}: two clicks and two values");
             }
@@ -296,8 +297,10 @@ public static class TouchstoneAssembly
         {
             if (t.Assignment.Ignored) { header.Add($"{t.Name} (plot {t.Plot}, {t.Curve.Hex}): ignored"); continue; }
             string freq = t.Frequency is { } fr ? $"; frequency from {fr.Source}, direction by {fr.Direction}" : "";
+            string axis = t.AxisEvidence.Length == 0 ? ""
+                : $"; {PlotReading.Side(t.Axis)} y axis ({PlotReading.AxisEvidenceText(t.AxisEvidence)})";
             header.Add($"{t.Name} (plot {t.Plot}, {t.Curve.Hex} {t.Curve.StyleName}): {t.Assignment} from the {t.Assignment.Evidence}; "
-                       + $"{t.Samples.Count} points; resolution {Fmt(t.Resolution)} {Ascii(t.ResolutionUnit)} per pixel{freq}");
+                       + $"{t.Samples.Count} points; resolution {Fmt(t.Resolution)} {Ascii(t.ResolutionUnit)} per pixel{freq}{axis}");
         }
         foreach (var c in Cells(ports, cells))
         {
@@ -559,8 +562,9 @@ public static class TouchstoneAssembly
 
     internal static string Calibration(PlotRead p) => p.Type switch
     {
-        PlotType.Rectangular when p.Rect is { X: { } x, Y: { } y } =>
-            $"rectangular; x {Axis(x)}; y {Axis(y)}",
+        PlotType.Rectangular when p.Rect is { X: { } x } r =>
+            $"rectangular; x {Axis(x)}; y{(r.YSide == PlotSide.Right ? " (right)" : "")} {(r.Y is { } y ? Axis(y) : "uncalibrated")}"
+            + (r.Y2 is { } y2 ? $"; y2 (right) {Axis(y2)}" : ""),
         PlotType.Smith when p.Smith is { } s =>
             $"Smith{(s.Admittance ? " (admittance)" : "")}; circle residual {Fmt(s.ResidualPx)} px; Z0 {Fmt(s.Z0)} ohm{(s.Z0Stated ? "" : " (assumed)")}",
         PlotType.Polar when p.Polar is { } pl => $"polar; {(pl.Db ? "dB" : "linear")} radius {Fmt(pl.InnerValue)} to {Fmt(pl.OuterValue)}",

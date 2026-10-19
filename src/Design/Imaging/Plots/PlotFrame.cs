@@ -52,6 +52,11 @@ public sealed record PlotFrame
     public IReadOnlyList<double> XTicks { get; init; } = [];
     public IReadOnlyList<double> YTicks { get; init; } = [];
 
+    /// <summary>Where grid lines and ticks cross the RIGHT frame line (y pixels), ascending — a right-hand y axis's ticks
+    /// (brief-pdg-1-two-y-axes.md R-pdg1-1), which need not line up with the left grid. When the right axis shares the left
+    /// grid the two lists coincide.</summary>
+    public IReadOnlyList<double> Y2Ticks { get; init; } = [];
+
     /// <summary>The frame's own lines — axes and grid lines — so trace pixels lying on them can be told apart.</summary>
     public IReadOnlyList<PlotLine> Lines { get; init; } = [];
 
@@ -318,7 +323,8 @@ public static class PlotFrames
         foreach (var b in boxes.OrderByDescending(b => (b.Right - b.Left) * (b.Bottom - b.Top)).ThenBy(b => b.Left).ThenBy(b => b.Top))
         {
             if (kept.Any(k => Overlap(k, b) > 0.3)) continue;
-            if (b.XTicks.Count < PlotKind.MinTicksPerAxis || b.YTicks.Count < PlotKind.MinTicksPerAxis) continue;
+            // A y axis on the right only, with no grid, has its ticks on the right frame line (R-pdg1-1).
+            if (b.XTicks.Count < PlotKind.MinTicksPerAxis || Math.Max(b.YTicks.Count, b.Y2Ticks.Count) < PlotKind.MinTicksPerAxis) continue;
             kept.Add(b);
         }
         return kept;
@@ -353,6 +359,7 @@ public static class PlotFrames
             own.Add(h);
             ys.Add(h.Position);
         }
+        var y2s = new List<double>(ys);
         // Ticks just outside each axis: short runs perpendicular to it, within a few pixels of it.
         int reach = (int)Math.Max(6, pen * 4) + 8;
         int ax = (int)Math.Round(bottom), ay = (int)Math.Round(left);
@@ -360,11 +367,14 @@ public static class PlotFrames
         xs.AddRange(TickPositions(ink, (int)left, (int)right, ax - (int)Math.Ceiling(pen) - reach, reach, horizontalAxis: true));
         ys.AddRange(TickPositions(ink, (int)top, (int)bottom, ay - (int)Math.Ceiling(pen) - reach, reach, horizontalAxis: false));
         ys.AddRange(TickPositions(ink, (int)top, (int)bottom, ay + (int)Math.Ceiling(pen), reach, horizontalAxis: false));
+        int ar = (int)Math.Round(right);
+        y2s.AddRange(TickPositions(ink, (int)top, (int)bottom, ar + (int)Math.Ceiling(pen), reach, horizontalAxis: false));
+        y2s.AddRange(TickPositions(ink, (int)top, (int)bottom, ar - (int)Math.Ceiling(pen) - reach, reach, horizontalAxis: false));
         return new PlotFrame
         {
             Type = PlotType.Rectangular, Left = left, Top = top, Right = right, Bottom = bottom,
             Box = new PixelBox((int)Math.Floor(left), (int)Math.Floor(top), (int)Math.Ceiling(right), (int)Math.Ceiling(bottom)),
-            XTicks = Dedupe(xs), YTicks = Dedupe(ys), Lines = own, Pen = pen,
+            XTicks = Dedupe(xs), YTicks = Dedupe(ys), Y2Ticks = Dedupe(y2s), Lines = own, Pen = pen,
         };
     }
 

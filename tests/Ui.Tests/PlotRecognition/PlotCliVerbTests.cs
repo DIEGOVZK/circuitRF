@@ -52,6 +52,26 @@ public sealed class PlotCliVerbTests(PlotPictureSet pictures, ITestOutputHelper 
     }
 
     [Fact]
+    public void Y2Axis_CalibratesTheRightAxis_AndAxisRight_MovesATrace()
+    {
+        // brief-pdg-1-two-y-axes.md §3 (6): the right axis typed from two of its own labels' pixels, and the left trace
+        // moved onto it.
+        string png = pictures.Picture("two-y");
+        var read = PlotPictureSet.Read(null, png);
+        var y2 = read.Plots[0].Rect!.Y2Labels;
+        string left = read.Traces.First(t => t.Axis == PlotSide.Left).Name;
+        string typed = FormattableString.Invariant($"{y2[0].Pixel}px={y2[0].Value},{y2[^1].Pixel}px={y2[^1].Value}");
+        var (exit, stdout, stderr) = Cli("recognize", png, "--y2-axis", typed, "--trace", $"{left}=S21:db,axis=right",
+                                         "--csv", Path.Combine(pictures.Dir, "cli", "two-y.csv"), "--json");
+        Assert.True(exit == 0, stderr);
+
+        var plots = System.Text.Json.Nodes.JsonNode.Parse(stdout)!["result"]!["recognize"]!["plots"]!;
+        Assert.True((bool)plots["plots"]![0]!["y2"]!["manual"]!);
+        var moved = plots["traces"]!.AsArray().Single(t => (string?)t!["name"] == left)!;
+        Assert.Equal(("right", "user"), ((string?)moved["axis"], (string?)moved["axisEvidence"]));
+    }
+
+    [Fact]
     public void SrcCli_NamesNoPlotReadingStep()
     {
         string repo = PalaceBackendTests.RepoRoot();
@@ -63,7 +83,7 @@ public sealed class PlotCliVerbTests(PlotPictureSet pictures, ITestOutputHelper 
             "TouchstoneAssembly", "TouchstoneAssemblyOptions", "TouchstoneAssemblyResult", "AssemblyRefusal", "AssemblyGrid",
             "MatrixCell", "PhaseRule", "MissingPhase", "FillRule", "PlotCsv", "PlotKind", "PlotType", "PlotQuantity", "PlotQuantityKind",
             "PlotAssignment", "AxisClicks", "AxisScale", "AxisCalibration", "AxisLabel", "RectCalibration", "SmithCalibration",
-            "PolarCalibration", "LegendEntry", "TraceCurve", "TraceStyle", "TraceHints", "PlotFrame",
+            "PolarCalibration", "LegendEntry", "TraceCurve", "TraceStyle", "TraceHints", "PlotFrame", "PlotAxis", "PlotSide",
         ];
         var declared = Directory.GetFiles(Path.Combine(repo, "src", "Design", "Imaging", "Plots"), "*.cs")
             .SelectMany(f => Regex.Matches(File.ReadAllText(f),

@@ -1566,6 +1566,8 @@ namespace RfCore.Export
     /// <summary>One plot: its frame in the picture's pixels, and its calibration.</summary>
     /// <param name="Type"><c>rectangular</c>, <c>smith</c> or <c>polar</c>.</param>
     /// <param name="Circle">A chart's centre and radius, pixels: <c>[cx, cy, r]</c>.</param>
+    /// <param name="Y2">A second y axis, on the right of a plot whose first is on the left; null when none was read.</param>
+    /// <param name="YSide"><c>right</c> on a plot whose only y axis is on the right; null otherwise.</param>
     public sealed record PlotFrameJson(
         int           Number,
         int           Picture,
@@ -1592,7 +1594,13 @@ namespace RfCore.Export
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         bool?         Z0Stated,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        bool?         Admittance);
+        bool?         Admittance,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        PlotAxisJson? Y2 = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?       Y2Title = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?       YSide = null);
 
     /// <summary>One rectangular axis: its fit (null when uncalibrated) and every tick label read for it.</summary>
     /// <param name="Scale"><c>linear</c> or <c>log</c>; null while the axis waits for two clicks.</param>
@@ -1614,6 +1622,9 @@ namespace RfCore.Export
     /// <param name="Start">The first sample's x (hertz on a frequency axis, or a chart trace's frequency), or null.</param>
     /// <param name="FrequencySource">A chart trace's frequency evidence (<c>markers</c>, <c>matched to T3</c>,
     /// <c>typed range</c>); null for a rectangular trace or one still waiting.</param>
+    /// <param name="Axis">The y axis a rectangular trace is read against, <c>left</c> or <c>right</c>; null for a chart trace.</param>
+    /// <param name="AxisEvidence">What said so on a plot with two y axes (<c>user</c>, <c>legend</c>, <c>colour</c>,
+    /// <c>quantity</c>, <c>range</c>, or <c>none</c> — assumed); null on a plot with one.</param>
     public sealed record PlotTraceJson(
         string  Name,
         int     Plot,
@@ -1635,7 +1646,11 @@ namespace RfCore.Export
         string? Direction,
         int     Gaps,
         int     Bridged,
-        int     Ambiguous);
+        int     Ambiguous,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string? Axis = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string? AxisEvidence = null);
 
     /// <param name="Trace">The trace it sits on (<c>T3</c>), or null.</param>
     public sealed record PlotMarkerJson(

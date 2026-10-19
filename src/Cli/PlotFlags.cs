@@ -17,8 +17,8 @@ namespace CircuitRF.Cli;
 internal sealed class PlotFlags
 {
     public readonly List<int> Plots = [];
-    public readonly List<(int Plot, char Axis, double P0, double V0, double P1, double V1)> Clicks = [];
-    public readonly List<(int Plot, char Axis, bool Log)> Scales = [];
+    public readonly List<(int Plot, PlotAxis Axis, double P0, double V0, double P1, double V1)> Clicks = [];
+    public readonly List<(int Plot, PlotAxis Axis, bool Log)> Scales = [];
     public readonly List<PlotTraceOverride> Traces = [];
     public readonly List<PlotFrequencyOverride> Frequencies = [];
     public readonly Dictionary<(int I, int J), PhaseRule> Phase = [];
@@ -39,10 +39,10 @@ internal sealed class PlotFlags
     public int? Take(string verb, string[] args, ref int i)
     {
         string a = args[i];
-        // The two bare flags first: they take no value.
-        if (a is "--x-log" or "--y-log")
+        // The three bare flags first: they take no value.
+        if (a is "--x-log" or "--y-log" or "--y2-log")
         {
-            Scales.Add((0, a[2], true));
+            Scales.Add((0, AxisOf(a), true));
             Given.Add(a);
             return 0;
         }
@@ -59,9 +59,9 @@ internal sealed class PlotFlags
                     Plots.Add(n);
                 }
                 break;
-            case "--x-axis" or "--y-axis":
+            case "--x-axis" or "--y-axis" or "--y2-axis":
             {
-                char axis = a[2];
+                var axis = AxisOf(a);
                 var (text, plot) = At(v);
                 var pairs = text.Split(',', StringSplitOptions.TrimEntries);
                 var parsed = new List<(double P, double V)>();
@@ -72,18 +72,36 @@ internal sealed class PlotFlags
                     parsed.Add((px, value));
                 }
                 if (parsed.Count != 2 || plot is null)
-                    return Bad(axis == 'x'
+                    return Bad(axis == PlotAxis.X
                         ? "<px>=<value>,<px>=<value>[@plot]: two pixel positions on the axis and their values (120px=1GHz,900px=5GHz)"
+                        : axis == PlotAxis.Y2
+                        ? "<px>=<value>,<px>=<value>[@plot]: two pixel positions on the right-hand y axis and their values (80px=180,560px=-180)"
                         : "<px>=<value>,<px>=<value>[@plot]: two pixel positions on the axis and their values (80px=0,560px=-40)");
                 Clicks.Add((plot.Value, axis, parsed[0].P, parsed[0].V, parsed[1].P, parsed[1].V));
                 break;
             }
             case "--trace":
             {
-                int eq = v.LastIndexOf('=');
-                if (eq <= 0 || PlotQuantity.ParseAssignment(v[(eq + 1)..].Trim()) is not { } assignment)
-                    return Bad("<T3|#rrggbb|solid|dashed|dotted>[@plot]=S21:db (or ignore); quantities db, mag, phase, rad, re, im, complex, vswr, rl, il");
-                Traces.Add(new PlotTraceOverride(v[..eq].Trim(), assignment));
+                // <selector>=<assignment>[,axis=left|right] — or the axis alone, <selector>=axis=right (R-pdg1-4).
+                int eq = v.IndexOf('=');
+                var parts = eq > 0 ? v[(eq + 1)..].Split(',', StringSplitOptions.TrimEntries) : [];
+                PlotAssignment? assignment = null;
+                PlotSide? side = null;
+                bool ok = parts.Length > 0;
+                for (int k = 0; k < parts.Length && ok; k++)
+                {
+                    if (parts[k].StartsWith("axis=", StringComparison.OrdinalIgnoreCase))
+                    {
+                        side = parts[k][5..].Trim().ToLowerInvariant() switch { "left" => PlotSide.Left, "right" => PlotSide.Right, _ => null };
+                        ok = side is not null;
+                    }
+                    else if (k == 0) ok = (assignment = PlotQuantity.ParseAssignment(parts[k])) is not null;
+                    else ok = false;
+                }
+                if (!ok || (assignment is null && side is null))
+                    return Bad("<T3|#rrggbb|solid|dashed|dotted>[@plot]=S21:db (or ignore), optionally ,axis=left|right (or axis=right alone); "
+                             + "quantities db, mag, phase, rad, re, im, complex, vswr, rl, il");
+                Traces.Add(new PlotTraceOverride(v[..eq].Trim(), assignment, side));
                 break;
             }
             case "--smith-z0":
@@ -204,6 +222,10 @@ internal sealed class PlotFlags
 
     // ── spellings ────────────────────────────────────────────────────────────
 
+    /// <summary>The axis a flag names: <c>--x-…</c>, <c>--y-…</c>, <c>--y2-…</c>.</summary>
+    private static PlotAxis AxisOf(string flag) =>
+        flag.StartsWith("--y2-", StringComparison.Ordinal) ? PlotAxis.Y2 : flag.StartsWith("--y-", StringComparison.Ordinal) ? PlotAxis.Y : PlotAxis.X;
+
     /// <summary><c>text@n</c> → (text, n); no <c>@</c> is plot 1.</summary>
     private static (string Text, int? Plot) At(string v)
     {
@@ -221,11 +243,11 @@ internal sealed class PlotFlags
 
     /// <summary>An x value is a frequency with its unit (or a plain number, read as hertz); a y value is a plain number
     /// in the axis's own units.</summary>
-    private static double? AxisValue(string s, char axis)
+    private static double? AxisValue(string s, PlotAxis axis)
     {
         s = s.Trim();
         if (double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out double d) && double.IsFinite(d)) return d;
-        return axis == 'x' && RecognitionSweep.Parse(s) is { } f ? f.Hz : null;
+        return axis == PlotAxis.X && RecognitionSweep.Parse(s) is { } f ? f.Hz : null;
     }
 
     private static (double Start, double Stop)? Range(string s)

@@ -287,11 +287,15 @@ internal static class ToolCatalog
             "Plots: calibrate an axis whose labels were not read: <px>=<value>,<px>=<value>[@plot], pixels along the axis "
           + "and their values (120px=1GHz,900px=5GHz@2). Plot 1 without @."),
         new("yAxis",       "--y-axis",       OptKind.StrRepeat, "Plots: as xAxis, for the y axis (80px=0,560px=-40)."),
+        new("y2Axis",      "--y2-axis",      OptKind.StrRepeat,
+            "Plots: as xAxis, for a second y axis on the right of a plot whose first is on the left (80px=180,560px=-180)."),
         new("xLog",        "--x-log",        OptKind.Flag,   "Plots: every x axis is logarithmic (otherwise the better fit is taken)."),
         new("yLog",        "--y-log",        OptKind.Flag,   "Plots: every y axis is logarithmic."),
+        new("y2Log",       "--y2-log",       OptKind.Flag,   "Plots: every right-hand second y axis is logarithmic."),
         new("trace",       "--trace",        OptKind.StrRepeat,
             "Plots: assign a trace: <T3|#rrggbb|solid|dashed|dotted>[@plot]=S21:db, quantities db, mag, phase, rad, re, im, "
-          + "complex, vswr, rl, il; or =ignore."),
+          + "complex, vswr, rl, il; or =ignore. On a plot with a y axis on both sides, append ,axis=left|right to say which "
+          + "one it is read against (T3=S21:phase,axis=right), or give the axis alone (T3=axis=right)."),
         new("smithZ0",     "--smith-z0",     OptKind.Str,    "Plots: a Smith chart's reference impedance (50Ohm, the stated default)."),
         new("freq",        "--freq",         OptKind.StrRepeat,
             "Plots: a chart trace's start and stop frequency, <trace>=<start>..<stop> (T4=1GHz..5GHz); combines with markers."),

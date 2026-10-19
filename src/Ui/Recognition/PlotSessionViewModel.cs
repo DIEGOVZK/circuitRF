@@ -68,7 +68,8 @@ public sealed partial class PlotFrameRowViewModel : ObservableObject
     private readonly Action _changed;
     private bool _loading = true;
 
-    public PlotFrameRowViewModel(PlotRead plot, bool include, string xText, string yText, Action changed)
+    public PlotFrameRowViewModel(PlotRead plot, bool include, string xText, string yText, Action changed, string y2Text = "",
+                                 bool y2Wanted = false)
     {
         _changed = changed;
         Number = plot.Number;
@@ -76,12 +77,18 @@ public sealed partial class PlotFrameRowViewModel : ObservableObject
         Kind = PlotKind.Name(plot.Type);
         Calibration = plot.Excluded ? "not read" : TouchstoneAssemblyText.Calibration(plot);
         NeedsX = plot.Rect is { X: null };
-        NeedsY = plot.Rect is { Y: null };
+        // A plot whose only y axis is calibrated on the right does not wait on a left one (R-pdg1-1).
+        NeedsY = plot.Rect is { Y: null, Y2: null };
+        // The right axis waits: labels were read there but do not fit, or a trace is read against it (R-pdg1-3).
+        NeedsY2 = plot.Rect is { YSide: PlotSide.Left, Y2: null } r && (r.Y2Labels.Count > 0 || y2Wanted);
         ShowsX = NeedsX || xText.Length > 0;
         ShowsY = NeedsY || yText.Length > 0;
+        ShowsY2 = NeedsY2 || y2Text.Length > 0;
+        YLabel = plot.Rect?.YSide == PlotSide.Right ? "y axis (right)" : "y axis";
         _include = include;
         _xAxisText = xText;
         _yAxisText = yText;
+        _y2AxisText = y2Text;
         _loading = false;
     }
 
@@ -91,13 +98,18 @@ public sealed partial class PlotFrameRowViewModel : ObservableObject
     public string Calibration { get; }
     public string Title => $"Plot {Number.ToString(CultureInfo.InvariantCulture)} · {Kind} · picture {Picture.ToString(CultureInfo.InvariantCulture)}";
 
-    /// <summary>The x (y) axis waits for two values: the reading left it uncalibrated.</summary>
+    /// <summary>The x (y, y2) axis waits for two values: the reading left it uncalibrated.</summary>
     public bool NeedsX { get; }
     public bool NeedsY { get; }
+    public bool NeedsY2 { get; }
 
-    /// <summary>The x (y) row is shown: the axis waits, or has values typed or clicked (R-ptu4-2).</summary>
+    /// <summary>The x (y, y2) row is shown: the axis waits, or has values typed or clicked (R-ptu4-2, R-pdg1-3).</summary>
     public bool ShowsX { get; }
     public bool ShowsY { get; }
+    public bool ShowsY2 { get; }
+
+    /// <summary>The y row's caption: <c>y axis (right)</c> on a plot whose only y axis is on the right.</summary>
+    public string YLabel { get; }
 
     [ObservableProperty] private bool _include;
 
@@ -105,9 +117,27 @@ public sealed partial class PlotFrameRowViewModel : ObservableObject
     [ObservableProperty] private string _xAxisText;
     [ObservableProperty] private string _yAxisText;
 
+    /// <summary>The right-hand second y axis (<c>--y2-axis</c>), in the y row's spelling.</summary>
+    [ObservableProperty] private string _y2AxisText;
+
+    /// <summary>The row's text for <paramref name="axis"/>.</summary>
+    public string TextOf(PlotAxis axis) => axis switch { PlotAxis.X => XAxisText, PlotAxis.Y => YAxisText, _ => Y2AxisText };
+
+    /// <summary>Sets the row's text for <paramref name="axis"/>; the row tells its plot, which reads again.</summary>
+    public void SetText(PlotAxis axis, string text)
+    {
+        switch (axis)
+        {
+            case PlotAxis.X: XAxisText = text; break;
+            case PlotAxis.Y: YAxisText = text; break;
+            default: Y2AxisText = text; break;
+        }
+    }
+
     partial void OnIncludeChanged(bool value) { if (!_loading) _changed(); }
     partial void OnXAxisTextChanged(string value) { if (!_loading) _changed(); }
     partial void OnYAxisTextChanged(string value) { if (!_loading) _changed(); }
+    partial void OnY2AxisTextChanged(string value) { if (!_loading) _changed(); }
 }
 
 /// <summary>One trace of the traces table (R-im14-12): swatch, plot, entry, quantity, range, points, resolution, evidence.</summary>
@@ -122,6 +152,9 @@ public sealed partial class PlotTraceRowViewModel : ObservableObject
 
     /// <summary>The quantity combo, in <c>--trace</c>'s spelling.</summary>
     public static readonly IReadOnlyList<string> Quantities = ["db", "mag", "phase", "phase-rad", "re", "im", "complex", "vswr", "rl", "il"];
+
+    /// <summary>The Axis combo (R-pdg1-3): the y axis a trace is read against.</summary>
+    public static readonly IReadOnlyList<string> Sides = ["Left", "Right"];
 
     private readonly Action<PlotTraceRowViewModel> _changed;
     private bool _loading = true;
@@ -153,6 +186,12 @@ public sealed partial class PlotTraceRowViewModel : ObservableObject
         _entryIndex = t.Assignment.Ignored ? 1 : t.Assignment.Assigned ? 2 + (t.Assignment.I - 1) * 4 + (t.Assignment.J - 1) : 0;
         _quantityIndex = Math.Max(0, Quantities.ToList().IndexOf(PlotQuantity.Name(t.Assignment.Quantity)));
         if (!t.Assignment.Assigned) _quantityIndex = IsChart ? Quantities.ToList().IndexOf("complex") : 0;
+        TwoY = !IsChart && plot.Rect is { TwoY: true };
+        _axisIndex = t.Axis == PlotSide.Right ? 1 : 0;
+        AxisAmbiguous = TwoY && t.AxisAmbiguous;
+        AxisEvidence = !TwoY ? "" : t.AxisAmbiguous
+            ? "Nothing says which y axis this trace is read against: the left is assumed. Choose the axis."
+            : $"Read against the {PlotReading.Side(t.Axis)} y axis, from {PlotReading.AxisEvidenceText(t.AxisEvidence)}.";
         _startText = startText;
         _stopText = stopText;
         _loading = false;
@@ -172,8 +211,27 @@ public sealed partial class PlotTraceRowViewModel : ObservableObject
     public bool Unassigned { get; }
     public bool NeedsFrequency { get; }
 
+    /// <summary>The trace's plot has a y axis on both sides: the Axis column is shown (R-pdg1-3).</summary>
+    public bool TwoY { get; }
+
+    /// <summary>Nothing said which y axis it is read against: its Axis swatch is amber (R-pdg1-2 (6)).</summary>
+    public bool AxisAmbiguous { get; }
+
+    /// <summary>The Axis column's tooltip: what said which axis.</summary>
+    public string AxisEvidence { get; }
+
     [ObservableProperty] private int _entryIndex;
     [ObservableProperty] private int _quantityIndex;
+
+    /// <summary>0 Left, 1 Right — the Axis combo.</summary>
+    [ObservableProperty] private int _axisIndex;
+
+    public PlotSide Side => AxisIndex == 1 ? PlotSide.Right : PlotSide.Left;
+
+    /// <summary>The user has chosen the Axis combo.</summary>
+    public bool AxisEdited { get; private set; }
+
+    partial void OnAxisIndexChanged(int value) { if (!_loading) { AxisEdited = true; _changed(this); } }
 
     /// <summary>What the entry combo lists: the session's, up to its port count — one list every row shares (PTU-7).</summary>
     public IReadOnlyList<string> EntryChoices { get; }
@@ -238,9 +296,11 @@ public sealed partial class PlotTraceGroupViewModel : ObservableObject
         foreach (var m in members)
             m.PropertyChanged += (_, e) =>
             {
-                if (e.PropertyName is not (nameof(PlotTraceRowViewModel.EntryIndex) or nameof(PlotTraceRowViewModel.QuantityIndex))) return;
+                if (e.PropertyName is not (nameof(PlotTraceRowViewModel.EntryIndex) or nameof(PlotTraceRowViewModel.QuantityIndex)
+                                           or nameof(PlotTraceRowViewModel.AxisIndex))) return;
                 OnPropertyChanged(nameof(EntryIndex));
                 OnPropertyChanged(nameof(QuantityIndex));
+                OnPropertyChanged(nameof(AxisIndex));
                 RefreshChoice();
             };
     }
@@ -297,6 +357,21 @@ public sealed partial class PlotTraceGroupViewModel : ObservableObject
     {
         get => Same(m => m.QuantityIndex);
         set { if (value >= 0 && value != QuantityIndex) _batch(() => { foreach (var m in Members) m.QuantityIndex = value; }); }
+    }
+
+    /// <summary>Its pieces lie on a plot with a y axis on both sides.</summary>
+    public bool TwoY => First.TwoY;
+
+    /// <summary>Any piece's axis is assumed.</summary>
+    public bool AxisAmbiguous => Members.Any(m => m.AxisAmbiguous);
+
+    public string AxisEvidence => First.AxisEvidence;
+
+    /// <summary>The pieces' axis, or −1 (<i>mixed</i>). Choosing one moves every piece (R-pdg1-3).</summary>
+    public int AxisIndex
+    {
+        get => Same(m => m.AxisIndex);
+        set { if (value >= 0 && value != AxisIndex) _batch(() => { foreach (var m in Members) m.AxisIndex = value; }); }
     }
 
     private int Same(Func<PlotTraceRowViewModel, int> f) => Members.Select(f).Distinct().Count() == 1 ? f(First) : -1;
@@ -383,7 +458,10 @@ public sealed partial class PlotSessionViewModel : ObservableObject
     private readonly Dictionary<string, PlotAssignment> _assign = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (string Start, string Stop)> _freq = new(StringComparer.Ordinal);
     private readonly HashSet<int> _excluded = [];
-    private readonly Dictionary<(int Plot, char Axis), string> _axis = [];
+    private readonly Dictionary<(int Plot, PlotAxis Axis), string> _axis = [];
+
+    /// <summary>The y axis the user chose for a trace, by name (R-pdg1-3).</summary>
+    private readonly Dictionary<string, PlotSide> _side = new(StringComparer.Ordinal);
     private readonly Dictionary<(int I, int J), FillRule> _fill = [];
     private readonly Dictionary<(int I, int J), (int Index, string Delay)> _phase = [];
     private readonly List<PlotIgnoreBox> _ignore = [];
@@ -425,7 +503,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
 
     partial void OnPortsTextChanged(string? oldValue, string newValue)
     {
-        if (!_undoing) Remember(new AssignmentState(new(_assign, StringComparer.Ordinal), oldValue ?? ""));
+        if (!_undoing) Remember(new AssignmentState(new(_assign, StringComparer.Ordinal), oldValue ?? "", new(_side, StringComparer.Ordinal)));
         OnPropertyChanged(nameof(PortsInvalid));
         SyncChoices();
         if (!_undoing) Changed?.Invoke();
@@ -445,13 +523,13 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         OnPropertyChanged(nameof(AutoPortsText));
     }
 
-    /// <summary>The assignments the user made and the port count, as one undo step restores them.</summary>
-    private sealed record AssignmentState(Dictionary<string, PlotAssignment> Assign, string Ports);
+    /// <summary>The assignments the user made, the port count and the axes chosen, as one undo step restores them.</summary>
+    private sealed record AssignmentState(Dictionary<string, PlotAssignment> Assign, string Ports, Dictionary<string, PlotSide> Sides);
 
     private readonly Stack<AssignmentState> _undo = new();
     private bool _undoing;
 
-    private AssignmentState State() => new(new(_assign, StringComparer.Ordinal), PortsText);
+    private AssignmentState State() => new(new(_assign, StringComparer.Ordinal), PortsText, new(_side, StringComparer.Ordinal));
 
     private void Remember(AssignmentState before)
     {
@@ -479,6 +557,8 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         {
             _assign.Clear();
             foreach (var (name, a) in back.Assign) _assign[name] = a;
+            _side.Clear();
+            foreach (var (name, side) in back.Sides) _side[name] = side;
             PortsText = back.Ports;
         }
         finally { _undoing = false; }
@@ -486,8 +566,10 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         Changed?.Invoke();
     }
 
-    private static bool Same(Dictionary<string, PlotAssignment> a, Dictionary<string, PlotAssignment> b) =>
+    private static bool Same<T>(Dictionary<string, T> a, Dictionary<string, T> b) =>
         a.Count == b.Count && a.All(kv => b.TryGetValue(kv.Key, out var v) && Equals(v, kv.Value));
+
+    private bool Unchanged(AssignmentState before) => Same(before.Assign, _assign) && Same(before.Sides, _side);
 
     /// <summary>Raised when anything the reading or the file depends on changed: the dialog reads again.</summary>
     public event Action? Changed;
@@ -625,6 +707,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
     {
         Pictures.Clear();
         _assign.Clear();
+        _side.Clear();
         ForgetUndo();
         _freq.Clear();
         _excluded.Clear();
@@ -672,6 +755,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         Renumber();
         // Plot and trace numbers move when a picture goes; choices held by number would land on the wrong one.
         _assign.Clear();
+        _side.Clear();
         ForgetUndo();
         _freq.Clear();
         _excluded.Clear();
@@ -692,6 +776,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         Pictures[index] = new PlotPictureRowViewModel(source, RemovePicture, p => ShownPicture = Pictures.IndexOf(p)) { Original = original };
         Renumber();
         _assign.Clear();
+        _side.Clear();
         ForgetUndo();
         _freq.Clear();
         _excluded.Clear();
@@ -729,8 +814,8 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         foreach (var ((plot, axis), text) in _axis)
             if (text.Trim().Length > 0 && Clicks(text, axis) is null)
                 return PlotAxisLabels.Pairs(text, axis).Count == 1 && !text.Contains(',')
-                    ? $"Plot {plot}'s {axis} axis needs one more value: click another {axis} label on the picture."
-                    : $"Plot {plot}'s {axis} axis needs two pixel positions and their values: 120px=1GHz,900px=5GHz.";
+                    ? $"Plot {plot}'s {RectAxes.Name(axis)} axis needs one more value: click another {RectAxes.Name(axis)} label on the picture."
+                    : $"Plot {plot}'s {RectAxes.Name(axis)} axis needs two pixel positions and their values: 120px=1GHz,900px=5GHz.";
         foreach (var (trace, (start, stop)) in _freq)
             if ((start.Trim().Length > 0 || stop.Trim().Length > 0) && Range(start, stop) is null)
                 return $"{trace}'s frequency needs a start and a stop with units, the stop above the start (1 GHz, 5 GHz).";
@@ -748,7 +833,9 @@ public sealed partial class PlotSessionViewModel : ObservableObject
                         .Select(a => (a.Key, Clicks: Clicks(a.Value, a.Key.Axis)))
                         .Where(a => a.Clicks is not null)
                         .Select(a => new PlotAxisOverride(a.Key.Plot, a.Key.Axis, a.Clicks!))],
-        Traces = [.. _assign.Select(a => new PlotTraceOverride(a.Key, a.Value))],
+        Traces = [.. _assign.Keys.Union(_side.Keys)
+                            .Select(name => new PlotTraceOverride(name, _assign.TryGetValue(name, out var a) ? a : null,
+                                                                  _side.TryGetValue(name, out var side) ? side : null))],
         SmithZ0 = Z0(),
         Frequencies = [.. _freq.Select(f => (f.Key, R: Range(f.Value.Start, f.Value.Stop))).Where(f => f.R is not null)
                                .Select(f => new PlotFrequencyOverride(f.Key, f.R!.Value.Start, f.R.Value.Stop))],
@@ -843,7 +930,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
             ? (a.Hz, b.Hz) : null;
 
     /// <summary><c>120px=1GHz,900px=5GHz</c> as two clicks; a y value is a plain number in the axis's own units.</summary>
-    internal static AxisClicks? Clicks(string text, char axis)
+    internal static AxisClicks? Clicks(string text, PlotAxis axis)
     {
         var parts = text.Split(',', StringSplitOptions.TrimEntries);
         if (parts.Length != 2) return null;
@@ -857,7 +944,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
             string value = part[(eq + 1)..].Replace(" ", "");
             if (!double.TryParse(px, NumberStyles.Float, CultureInfo.InvariantCulture, out double p)) return null;
             double? val = double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double d) ? d
-                        : axis == 'x' && RecognitionSweep.Parse(value) is { } f ? f.Hz : null;
+                        : axis == PlotAxis.X && RecognitionSweep.Parse(value) is { } f ? f.Hz : null;
             if (val is not { } got || !double.IsFinite(got)) return null;
             v.Add((p, got));
         }
@@ -890,7 +977,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
     public PlotAxisLabel? Label { get; private set; }
 
     /// <summary><c>y label at 312 px</c>.</summary>
-    public string LabelCaption => Label is { } l ? $"{l.Axis} label at {PlotAxisLabels.Px(l.Pixel)} px" : "";
+    public string LabelCaption => Label is { } l ? $"{RectAxes.Name(l.Axis)} label at {PlotAxisLabels.Px(l.Pixel)} px" : "";
 
     /// <summary>A refusal for the dialog's status line.</summary>
     public event Action<string>? StatusRaised;
@@ -926,9 +1013,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         AskingLabel = false;
         LabelError = "";
         if (Frames.FirstOrDefault(f => f.Number == l.Plot) is { } row)
-        {
-            if (l.Axis == 'x') row.XAxisText = text; else row.YAxisText = text;   // OnFrameEdited holds it and reads again
-        }
+            row.SetText(l.Axis, text);   // OnFrameEdited holds it and reads again
         else
         {
             _axis[(l.Plot, l.Axis)] = text;
@@ -974,8 +1059,10 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         int? plotChosen = SelectedFrame?.Number;
         Frames.Clear();
         foreach (var p in session.Plots)
-            Frames.Add(new PlotFrameRowViewModel(p, !_excluded.Contains(p.Number), _axis.GetValueOrDefault((p.Number, 'x'), ""),
-                                                 _axis.GetValueOrDefault((p.Number, 'y'), ""), () => OnFrameEdited(p.Number)));
+            Frames.Add(new PlotFrameRowViewModel(p, !_excluded.Contains(p.Number), _axis.GetValueOrDefault((p.Number, PlotAxis.X), ""),
+                                                 _axis.GetValueOrDefault((p.Number, PlotAxis.Y), ""), () => OnFrameEdited(p.Number),
+                                                 _axis.GetValueOrDefault((p.Number, PlotAxis.Y2), ""),
+                                                 session.Traces.Any(t => t.Plot == p.Number && t.Axis == PlotSide.Right)));
 
         // The selection is held by name across a re-read, as the choices are: the rows are new objects.
         string? chosen = SelectedTrace?.Name;
@@ -1036,20 +1123,25 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         var row = Frames.FirstOrDefault(f => f.Number == plot);
         if (row is null) return;
         if (row.Include) _excluded.Remove(plot); else _excluded.Add(plot);
-        _axis[(plot, 'x')] = row.XAxisText;
-        _axis[(plot, 'y')] = row.YAxisText;
+        _axis[(plot, PlotAxis.X)] = row.XAxisText;
+        _axis[(plot, PlotAxis.Y)] = row.YAxisText;
+        _axis[(plot, PlotAxis.Y2)] = row.Y2AxisText;
         AxisTextChanged?.Invoke();
         Changed?.Invoke();
     }
 
     private void OnTraceEdited(PlotTraceRowViewModel row)
     {
-        if (row.Edited)
+        if (row.Edited || row.AxisEdited)
         {
             var before = _quiet > 0 || _undoing ? null : State();
-            if (row.Assignment is { } a) _assign[row.Name] = a;
-            else _assign.Remove(row.Name);
-            if (before is not null && !Same(before.Assign, _assign)) Remember(before);
+            if (row.Edited)
+            {
+                if (row.Assignment is { } a) _assign[row.Name] = a;
+                else _assign.Remove(row.Name);
+            }
+            if (row.AxisEdited) _side[row.Name] = row.Side;
+            if (before is not null && !Unchanged(before)) Remember(before);
         }
         _freq[row.Name] = (row.StartText, row.StopText);
         if (_quiet > 0) _pending = true;
@@ -1066,7 +1158,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         _quiet++;
         try { edit(); }
         finally { _quiet--; }
-        if (before is not null && !Same(before.Assign, _assign)) Remember(before);
+        if (before is not null && !Unchanged(before)) Remember(before);
         if (_quiet > 0 || !_pending) return;
         _pending = false;
         Changed?.Invoke();
@@ -1252,7 +1344,8 @@ internal static class TouchstoneAssemblyText
     public static string Calibration(PlotRead p) => p.Type switch
     {
         PlotType.Rectangular when p.Rect is { } r =>
-            $"x {Axis(r.X)} · y {Axis(r.Y)}" + (r.XIsFrequency && !r.XUnitStated ? " · GHz assumed" : ""),
+            $"x {Axis(r.X)} · y{(r.YSide == PlotSide.Right ? " (right)" : "")} {Axis(r.Y)}"
+            + (r.TwoY ? $" · y2 (right) {Axis(r.Y2)}" : "") + (r.XIsFrequency && !r.XUnitStated ? " · GHz assumed" : ""),
         PlotType.Smith when p.Smith is { } s => $"Z0 {s.Z0.ToString("0.###", CultureInfo.InvariantCulture)} Ω{(s.Z0Stated ? "" : " (assumed)")}"
                                                 + (s.Admittance ? " · admittance chart" : ""),
         PlotType.Polar when p.Polar is { } pl => pl.Db ? "dB radius" : "linear radius",
@@ -1265,7 +1358,7 @@ internal static class TouchstoneAssemblyText
 
 /// <summary>A tick label clicked on the canvas (R-ptu4-1): its plot, the axis it labels, its pixel along that axis — at
 /// its tick, as the reader pairs a label with its tick — what was read of it, and where the editor stands.</summary>
-public sealed record PlotAxisLabel(int Plot, char Axis, double Pixel, string Read, double X, double Y);
+public sealed record PlotAxisLabel(int Plot, PlotAxis Axis, double Pixel, string Read, double X, double Y);
 
 /// <summary>The dialog's own lookup of a clicked tick label and the axis-row text it becomes (R-ptu4-1, R-ptu4-2). The
 /// reader is not asked: the label's place against its frame says which axis it labels, and the pairs are the typed row's
@@ -1280,7 +1373,8 @@ internal static class PlotAxisLabels
 
     /// <summary>The tick label <paramref name="item"/> is — a label the reader read (<c>tick:</c>) or a word it boxed and
     /// could not read (<c>text:</c>) — on a rectangular plot of picture <paramref name="picture"/>; null for anything
-    /// else. Left or right of its frame it labels y; below or above, x; at a corner, the side it stands further out.</summary>
+    /// else. Below or above its frame it labels x; left of it, y; right of it, y2 — or y on a plot whose only y axis is on
+    /// the right (R-pdg1-3); at a corner, the side it stands further out.</summary>
     public static PlotAxisLabel? Find(PlotSession session, int picture, ImageOverlayItem item)
     {
         if (item.Class != ImageOverlayClass.Text) return null;
@@ -1292,7 +1386,7 @@ internal static class PlotAxisLabels
             && int.TryParse(k, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)
             && rects.FirstOrDefault(p => p.Number == number) is { Rect: { } r } plot)
         {
-            var labels = index >= 1000 ? r.YLabels : r.XLabels;
+            var labels = index >= 2000 ? r.Y2Labels : index >= 1000 ? r.YLabels : r.XLabels;
             index %= 1000;
             if (index >= labels.Count) return null;
             (box, read) = (labels[index].Box, labels[index].Text);
@@ -1315,8 +1409,9 @@ internal static class PlotAxisLabels
             // Inside the frame, or too far from it to be one of its labels.
             if (d == 0 || d > 0.3 * Math.Max(f.Right - f.Left, f.Bottom - f.Top) || d >= nearest) continue;
             nearest = d;
-            bool x = dy >= dx;
-            best = new PlotAxisLabel(p.Number, x ? 'x' : 'y', AtTick(box, x ? f.XTicks : f.YTicks, x), read, box.Right + 1, box.Bottom + 1);
+            bool x = dy >= dx, right = !x && cx > f.Right;
+            var axis = x ? PlotAxis.X : right && p.Rect?.YSide != PlotSide.Right ? PlotAxis.Y2 : PlotAxis.Y;
+            best = new PlotAxisLabel(p.Number, axis, AtTick(box, x ? f.XTicks : right ? f.Y2Ticks : f.YTicks, x), read, box.Right + 1, box.Bottom + 1);
         }
         return best;
     }
@@ -1334,7 +1429,7 @@ internal static class PlotAxisLabels
     }
 
     /// <summary>The well-formed <c>px=value</c> pairs of an axis row, in order.</summary>
-    public static List<(double Px, string Value)> Pairs(string text, char axis)
+    public static List<(double Px, string Value)> Pairs(string text, PlotAxis axis)
     {
         var pairs = new List<(double, string)>();
         foreach (string part in text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
@@ -1345,7 +1440,7 @@ internal static class PlotAxisLabels
             if (px.EndsWith("px", StringComparison.OrdinalIgnoreCase)) px = px[..^2];
             string value = part[(eq + 1)..].Replace(" ", "");
             if (double.TryParse(px, NumberStyles.Float, CultureInfo.InvariantCulture, out double p)
-                && (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _) || axis == 'x' && RecognitionSweep.Parse(value) is not null))
+                && (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out _) || axis == PlotAxis.X && RecognitionSweep.Parse(value) is not null))
                 pairs.Add((p, value));
         }
         return pairs;
@@ -1361,7 +1456,7 @@ internal static class PlotAxisLabels
     }
 
     /// <summary>The row with the clicked pair in it: a pair at the same pixel is replaced; with two already, the older goes.</summary>
-    public static string Merge(string existing, char axis, double pixel, string value)
+    public static string Merge(string existing, PlotAxis axis, double pixel, string value)
     {
         var pairs = Pairs(existing, axis);
         pairs.RemoveAll(p => Math.Abs(p.Px - pixel) < 1);
@@ -1373,11 +1468,11 @@ internal static class PlotAxisLabels
     /// <summary>A typed label value as the row spells it, or null with <paramref name="why"/>. A y value is a number in the
     /// axis's own units (a unit word after it is dropped); an x value on a frequency axis takes a unit — a bare number
     /// takes the unit the other x labels were read in, else is refused.</summary>
-    public static string? Value(string typed, char axis, PlotRead plot, string existing, out string? why)
+    public static string? Value(string typed, PlotAxis axis, PlotRead plot, string existing, out string? why)
     {
         string t = typed.Replace(" ", "");
         why = null;
-        if (axis == 'y')
+        if (axis != PlotAxis.X)
         {
             var m = Leading.Match(t);
             if (m.Success && double.TryParse(m.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double y) && double.IsFinite(y)
@@ -1402,7 +1497,7 @@ internal static class PlotAxisLabels
     /// none was read (the GHz the reader assumes is not one).</summary>
     private static string? XUnit(PlotRead plot, string existing)
     {
-        foreach (var (_, v) in Pairs(existing, 'x'))
+        foreach (var (_, v) in Pairs(existing, PlotAxis.X))
             if (RecognitionSweep.Parse(v) is { } f) return f.Unit;
         if (plot.Rect is not { XUnitStated: true } r) return null;
         if (r.XUnit != 1) return Name(r.XUnit);

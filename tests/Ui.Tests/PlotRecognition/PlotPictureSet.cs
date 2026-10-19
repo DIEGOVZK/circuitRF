@@ -9,6 +9,10 @@
 //
 // MARKERS on a Smith chart are put in the plot document `plot --write-cdd` writes and drawn by `render`: the Data
 // Display places each at its stated Γ with its readout box to the right of the chart.
+//
+// TWO Y AXES (brief-pdg-1-two-y-axes.md §3) are the plotter's own: a trace with axis=right goes on a right-hand axis whose
+// title the plotter colours like its trace. A RIGHT-ONLY plot is that picture with everything left of the frame painted
+// out, because the plotter always labels its left axis.
 
 using System;
 using System.Collections.Generic;
@@ -82,6 +86,19 @@ public sealed class PlotPictureSet : IDisposable
                 case "line-cw": Smith(LineS1p(clockwise: true), png, [], f => Line(f)); break;
                 case "line-cw-markers": Smith(LineS1p(clockwise: true), png, [0.6e9, 1.4e9], f => Line(f)); break;
                 case "line-ccw-markers": Smith(LineS1p(clockwise: false), png, [0.6e9, 1.4e9], f => Line(f, clockwise: false)); break;
+                case "two-y":
+                    Plot(Lc(), png, "cube=S,i=2,j=1,y=db20", "--trace", "cube=S,i=2,j=1,y=phase,axis=right", "--y2", "-180:180");
+                    break;
+                case "two-y-db":
+                    Plot(Lc(), png, "cube=S,i=2,j=1,y=db20", "--trace", "cube=S,i=1,j=1,y=db20,axis=right");
+                    break;
+                case "right-only":
+                {
+                    string drawn = Path.Combine(Dir, "right-only-drawn.png");
+                    Plot(Lc(), drawn, "cube=S,i=2,j=1,y=phase,axis=right", "--y2", "-180:180");
+                    PaintLeftOfFrame(drawn, png);
+                    break;
+                }
                 default: throw new ArgumentException(name);
             }
             Assert.True(File.Exists(png), png);
@@ -131,6 +148,24 @@ public sealed class PlotPictureSet : IDisposable
         }
         File.WriteAllText(s1p, text.ToString());
         return s1p;
+    }
+
+    /// <summary><paramref name="from"/> with everything left of its plot's frame, down to the x axis, painted in the
+    /// background: no left y labels and no left title.</summary>
+    private static void PaintLeftOfFrame(string from, string to)
+    {
+        var source = ImageSource.FromFile(from).Source!;
+        var frame = PlotReading.FindPlots(source).Single();
+        var r = source.Raster;
+        byte[] rgba = (byte[])r.Rgba.Clone();
+        int bg = r.Rgb(1, 1);
+        for (int y = 0; y <= (int)frame.Bottom + 4; y++)
+            for (int x = 0; x <= (int)frame.Left - 3; x++)
+            {
+                int i = 4 * (y * r.Width + x);
+                (rgba[i], rgba[i + 1], rgba[i + 2], rgba[i + 3]) = ((byte)(bg >> 16), (byte)(bg >> 8), (byte)bg, 255);
+            }
+        File.WriteAllBytes(to, new RasterImage(r.Width, r.Height, rgba).EncodePng());
     }
 
     private static void Plot(string source, string png, string trace, params string[] more) =>

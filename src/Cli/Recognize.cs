@@ -123,8 +123,8 @@ internal static partial class Recognize
             "                 [--threshold k] [--profile auto|measured|enlarged|crossings|bold]\n" +
             "                 [--pen px] [--text-height px] [--symbol-scale px]\n" +
             "    plot:        [-o part.s2p] [--csv traces.csv] [--picture more.png] [--plot n,n] [--keep-sources on|off]\n" +
-            "                 [--x-axis <px>=<value>,<px>=<value>[@plot]] [--y-axis ...] [--x-log] [--y-log]\n" +
-            "                 [--trace <T3|#rrggbb|dashed>[@plot]=S21:db] [--smith-z0 50Ohm] [--freq <trace>=<start>..<stop>]\n" +
+            "                 [--x-axis <px>=<value>,<px>=<value>[@plot]] [--y-axis ...] [--y2-axis ...] [--x-log] [--y-log] [--y2-log]\n" +
+            "                 [--trace <T3|#rrggbb|dashed>[@plot]=S21:db[,axis=left|right]] [--smith-z0 50Ohm] [--freq <trace>=<start>..<stop>]\n" +
             "                 [--phase S21=min|zero|delay:<t>] [--fill S12=S21,S22=zero] [--grid <start>..<stop>/<n>[log]]\n" +
             "                 [--prefer S11=chart|rect|T3] [--format db|ma|ri] [--ports n]\n" +
             "  Writes nothing unless -o, --into, --parts-out or --overlay is given. Layout coordinates carry a unit\n" +

@@ -20349,3 +20349,24 @@ the run settings behind each: `docs/design/sar.md` §9.4, §10.5, §10.7, §11.6
 - **The Courant estimate warns on both SAR examples**: openEMS's time step is 1.01 (loop) and 1.03 (system check) times
   circuitRF's estimate, outside the 0.5–1 band the check allows. The answer is openEMS's and unaffected; the band's upper end
   is what disagrees with these grids.
+
+## A y axis on the right, alone or beside the left one (brief-pdg-1-two-y-axes, 2026-10-18)
+
+- **A right-only plot is decided by the LEFT side having no number word at all**, not by the left axis failing to fit. A
+  left axis whose labels misread still leaves number words (a misread digit parses), and that plot must stay two-axis so
+  its left axis can be clicked. Only with nothing numeric left of the frame and right labels that fit is the right axis
+  stored as `Y` with `YSide = Right`, and its clicks are then `--y-axis`'s (or `--y2-axis`'s when only those were typed).
+- **A trace's `Axis` is the physical side, not "Y or Y2".** On a right-only plot every trace reads `Right`. The brief's
+  "every trace is Left" holds for a plot with no right labels; `RectCalibration.AxisOn(side)` maps the side to the
+  calibration, so nothing downstream has to know which slot the axis landed in.
+- **An axis title's colour is read even when its words are not.** The stroke reader does not read circuitRF's own
+  right-hand title (turned the other way), but its ink is the trace's colour, which is the evidence R-pdg1-2 (3) wants.
+  `RectAxes` takes the title INK from the nearest turned word, read or not, and the title TEXT only from a read one.
+- **The axis is decided before the assignment.** The "axis title" evidence of what a trace is reads its own axis's title,
+  so the quantity used as axis evidence (4) comes from every word but the axis titles (`PlotReading.Sources(..., null)`),
+  never from the assignment it is about to decide.
+- **Four plot-reading tests were already failing on HEAD (a9609f88) before this brief:** `PlotRoundTripTests`
+  (`RectangularDbS21…`, `SmithS11…`, `TheFourPictures…`) and `PlotCliVerbTests.TwoPictures_WriteTheInProcessAssembly…`.
+  A clean worktree of HEAD fails all four with the same messages: the plotter's own `s21db` picture reads unassigned (its
+  y title `S(2,1) dB20` now reads `S(2 t1 dB20`, which the entry grammar does not take), and the Smith picture's markers
+  give no frequency. The cause was not investigated here.

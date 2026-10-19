@@ -1133,6 +1133,17 @@ labelled to 100,000 GHz), else GHz, stated. Fewer than two labels and the axis w
 axis** rows take two pixel positions and their values as typed text (`120px=1GHz,900px=5GHz`), the spelling
 `--x-axis` / `--y-axis` take — they stand for the two clicks the brief describes.
 
+**A y axis on the right** (brief-pdg-1-two-y-axes.md R-pdg1-1) is read as the left one's mirror image: number words
+right of the frame within the same distance and span limits, only the innermost column, paired with
+`PlotFrame.Y2Ticks` — stubs on the right frame line plus the grid lines crossing it, since a right axis's ticks often do
+not line up with the left grid — and fitted by the same consensus, so a misread right label is rejected the same way.
+Its title is a turned word right of those labels. A plot with both is `RectCalibration.TwoY`, the right axis `Y2`
+(`--y2-axis`, `--y2-log`, the dialog's **y2 axis (right)** row). A plot with **not one number left of its frame** and
+right labels that fit has its only y axis on the right: it is stored as `Y` with `YSide = Right`, so everything that
+reads `Y` keeps reading it, and its clicks are `--y-axis`'s. `PlotFrames` accepts a box whose right frame line carries
+the ticks its left one lacks. Words right of a frame are read numeric-first, as those left of it are. `Calibrated` is x
+and at least one y axis.
+
 ### 15.4 Traces (R-im14-5) — `PlotTraces`
 
 The plotting area's colours are clustered (IM-1); the background, the grid (a cluster lying mostly on the frame's lines
@@ -1163,6 +1174,21 @@ the word just above it, the one naming an entry when several stand there. The en
 spellings: a bracket is any stroke it is read as (`Sf2 1)`), a Z inside an entry is a 2, and a 1 is t, l, I or | — a
 title's `S11` at 18 px reads `Stt` (and, as a number, `511`). A chart's trace is complex by its chart whatever quantity an assignment names. A marker readout (`m1 freq=2.400GHz
 dB(S(2,1))=-0.512`) is an exact point: it replaces the pixel reading within one pixel of it.
+
+**Which y axis** (R-pdg1-2). On a plot with one y axis every trace is read against it (`PlotTraceRead.Axis` is that
+axis's side, `AxisEvidence` empty). On a plot with two, the evidence, strongest first: the user's choice (`--trace
+T3=S21:phase,axis=right`, the traces table's **Axis** column); the legend entry's own axis mark (`(R)`, `right`, `Y2`,
+an arrow — only what the legend reader already gives); **colour** — an axis title or labels in the trace's colour,
+within `PlotTraces.MergeColour`, read even when the title's words are not, since datasheets (and circuitRF's own
+plotter) colour an axis like its trace; the trace's quantity (from every word but the axis titles) agreeing with one
+axis title and not the other; and only to break a tie, the trace lying inside one axis's labelled span and not the
+other's — weak, both mappings being linear across the same pixels. With none, the left axis is assumed and **said**:
+an amber swatch in the table, an amber label on the canvas, and an `axis` finding naming the trace and the control that
+answers it. The axis is decided before the assignment, because the "axis title" evidence of what a trace is reads **its
+own** axis's title; each trace is valued through its own axis, its resolution and unit with it. A trace's axis is not
+the Touchstone's concern — its samples are already in the right units — so `TouchstoneAssembly` changes only in its
+header (each plot's y2 calibration and residual, each trace's axis and its evidence) and in refusing a trace whose axis
+is uncalibrated, naming `--y2-axis`. The CSV gains `y_axis` (`left`/`right`, empty for a chart trace) as its LAST column.
 
 ### 15.6 Frequency along a chart trace (R-im14-8)
 

@@ -144,13 +144,16 @@ internal static partial class Recognize
             p.Rect is { } r ? Axis(r.X, r.XLabels) : null, p.Rect is { } ry ? Axis(ry.Y, ry.YLabels) : null,
             p.Rect?.XTitle, p.Rect?.YTitle, p.Rect?.Title,
             p.Rect is { XIsFrequency: true } rx ? (rx.XUnitStated ? "" : "assumed ") + Unit(rx.XUnit) : null,
-            p.Smith?.Z0, p.Smith?.Z0Stated, p.Smith?.Admittance)).ToList();
+            p.Smith?.Z0, p.Smith?.Z0Stated, p.Smith?.Admittance,
+            p.Rect is { TwoY: true } r2 ? Axis(r2.Y2, r2.Y2Labels) : null, p.Rect?.Y2Title,
+            p.Rect?.YSide == PlotSide.Right ? "right" : null)).ToList();
         var traces = session.Traces.Select(t =>
         {
             var xs = t.Samples.Select(s => s.X).Where(x => !double.IsNaN(x)).ToList();
             return new PlotTraceJson(t.Name, t.Plot, t.Curve.Hex, t.Curve.StyleName, t.Assignment.ToString(), t.Assignment.Assigned, t.Evidence,
                                      t.Samples.Count, t.Resolution, t.ResolutionUnit, xs.Count > 0 ? xs.Min() : null, xs.Count > 0 ? xs.Max() : null,
-                                     t.Frequency?.Source, t.Frequency?.Direction, t.Curve.Gaps.Count, t.Curve.Bridged, t.Curve.Ambiguous.Count);
+                                     t.Frequency?.Source, t.Frequency?.Direction, t.Curve.Gaps.Count, t.Curve.Bridged, t.Curve.Ambiguous.Count,
+                                     t.Parametric ? null : PlotReading.Side(t.Axis), t.AxisEvidence.Length > 0 ? t.AxisEvidence : null);
         }).ToList();
         var markers = session.Markers.Select(m => new PlotMarkerJson(m.Name, m.Plot, m.Trace > 0 ? $"T{m.Trace}" : null, m.FrequencyHz,
                                                                       m.Placed ? Math.Round(m.X, 2) : null, m.Placed ? Math.Round(m.Y, 2) : null,

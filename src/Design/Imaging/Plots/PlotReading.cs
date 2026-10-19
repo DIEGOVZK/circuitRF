@@ -10,6 +10,13 @@
 // WHAT EACH TRACE IS comes from its evidence, strongest first (R-im14-6): the legend entry in its colour and style, a
 // word in its colour near the curve, the y-axis title, the plot's title. The user's assignment wins over all of them.
 //
+// WHICH Y AXIS A TRACE IS READ AGAINST (brief-pdg-1-two-y-axes.md R-pdg1-2) matters only on a plot with a y axis on both
+// sides, and comes from, strongest first: the user's choice; the legend entry's own axis mark; the colour of an axis's
+// title or labels; the trace's quantity agreeing with one axis title and not the other; and, only to break a tie, the
+// trace lying inside one axis's labelled span and not the other's. With none of them it is read against the left axis
+// and SAID to be ambiguous — never guessed silently. Each trace is valued through its own axis, and the "axis title"
+// evidence of what it is reads its own axis's title.
+//
 // FREQUENCY ALONG A SMITH OR POLAR TRACE (R-im14-8) comes from, strongest first: markers on the trace with frequency
 // readouts; a rectangular trace of the same entry in the session (its |S| matched to the chart's |Γ| along both curves,
 // in order); a start and stop the user typed, spread in proportion to the angle swept about the chart's centre. Markers
@@ -27,15 +34,17 @@ namespace CircuitRF.Design.Imaging.Plots;
 /// <param name="Name">Its file name (never its path — D4), or what a pasted picture is called.</param>
 public sealed record PlotPictureInput(ImageSource Source, string Name);
 
-/// <summary>An axis calibrated by the user (R-im14-3's fallback): <c>--x-axis</c> / <c>--y-axis</c>, the dialog's clicks.</summary>
+/// <summary>An axis calibrated by the user (R-im14-3's fallback): <c>--x-axis</c> / <c>--y-axis</c> / <c>--y2-axis</c>,
+/// the dialog's clicks.</summary>
 /// <param name="Plot">The session's plot number, 1-based.</param>
-/// <param name="Axis"><c>x</c> or <c>y</c>.</param>
-public sealed record PlotAxisOverride(int Plot, char Axis, AxisClicks Clicks);
+public sealed record PlotAxisOverride(int Plot, PlotAxis Axis, AxisClicks Clicks);
 
 /// <summary>A user's assignment of a trace (<c>--trace</c>, the traces table's combos).</summary>
 /// <param name="Selector">Which trace: <c>T3</c>, a colour <c>#rrggbb</c>, or a line style (<c>dashed</c>), optionally
 /// <c>@n</c> for plot n.</param>
-public sealed record PlotTraceOverride(string Selector, PlotAssignment Assignment);
+/// <param name="Assignment">What it is; null when only its axis is said.</param>
+/// <param name="Axis">The y axis it is read against (<c>axis=right</c>, the traces table's Axis column); null when not said.</param>
+public sealed record PlotTraceOverride(string Selector, PlotAssignment? Assignment, PlotSide? Axis = null);
 
 /// <summary>A start and stop typed for a chart's trace (<c>--freq</c>, the frequency row).</summary>
 public sealed record PlotFrequencyOverride(string Selector, double StartHz, double StopHz);
@@ -49,7 +58,7 @@ public sealed record PlotReadingOptions
     public IReadOnlyList<PlotAxisOverride> Axes { get; init; } = [];
 
     /// <summary>Axes forced logarithmic (or linear): (plot, axis, log); plot 0 is every plot.</summary>
-    public IReadOnlyList<(int Plot, char Axis, bool Log)> Scales { get; init; } = [];
+    public IReadOnlyList<(int Plot, PlotAxis Axis, bool Log)> Scales { get; init; } = [];
 
     public IReadOnlyList<PlotTraceOverride> Traces { get; init; } = [];
 
@@ -97,10 +106,21 @@ public sealed record TraceFrequency(string Source, string Direction, double Star
 /// <param name="Plot">Its plot's session number.</param>
 /// <param name="Resolution">How much one pixel is in its quantity (dB, degrees, |S| or |Γ|).</param>
 /// <param name="Frequency">A chart trace's frequency evidence; null while it has none (it then waits).</param>
+/// <param name="Axis">The side of the y axis it is read against (R-pdg1-2): its plot's only y axis's side, or on a plot
+/// with two, what its evidence says.</param>
+/// <param name="AxisEvidence">What said so on a plot with two y axes: <c>user</c>, <c>legend</c>, <c>colour</c>,
+/// <c>quantity</c>, <c>range</c>, or <see cref="NoAxisEvidence"/>; empty on a plot with one.</param>
 public sealed record PlotTraceRead(int Number, int Plot, TraceCurve Curve, PlotAssignment Assignment, IReadOnlyList<PlotSample> Samples,
-                                   double Resolution, string ResolutionUnit, TraceFrequency? Frequency)
+                                   double Resolution, string ResolutionUnit, TraceFrequency? Frequency,
+                                   PlotSide Axis = PlotSide.Left, string AxisEvidence = "")
 {
+    /// <summary>The axis evidence of a trace nothing placed: it is read against the left axis, and says so.</summary>
+    public const string NoAxisEvidence = "none";
+
     public string Name => $"T{Number}";
+
+    /// <summary>On a plot with two y axes, nothing said which one it is read against (R-pdg1-2 (6)).</summary>
+    public bool AxisAmbiguous => AxisEvidence == NoAxisEvidence;
 
     public bool Parametric => Curve.Parametric;
 
@@ -168,7 +188,7 @@ public static class PlotReading
                 // A box with ticks but not one tick label read on either axis is not a plot — a marker's readout box,
                 // a table — and is not numbered.
                 if (frame.Type == PlotType.Rectangular
-                    && RectAxes.Calibrate(frame, words) is { XLabels.Count: 0, YLabels.Count: 0 }
+                    && RectAxes.Calibrate(frame, words) is { XLabels.Count: 0, YLabels.Count: 0, Y2Labels.Count: 0 }
                     && !o.Axes.Any(a => a.Plot == plots.Count + 1)) continue;
                 int number = plots.Count + 1;
                 numbers.Add(number);
@@ -180,10 +200,9 @@ public static class PlotReading
                 {
                     case PlotType.Rectangular:
                     {
-                        AxisClicks? cx = o.Axes.LastOrDefault(a => a.Plot == number && a.Axis == 'x')?.Clicks;
-                        AxisClicks? cy = o.Axes.LastOrDefault(a => a.Plot == number && a.Axis == 'y')?.Clicks;
-                        bool? xl = Scale(o, number, 'x'), yl = Scale(o, number, 'y');
-                        rect = RectAxes.Calibrate(frame, words, cx, cy, xl, yl);
+                        AxisClicks? Clicks(PlotAxis axis) => o.Axes.LastOrDefault(a => a.Plot == number && a.Axis == axis)?.Clicks;
+                        rect = RectAxes.Calibrate(frame, words, Clicks(PlotAxis.X), Clicks(PlotAxis.Y), Scale(o, number, PlotAxis.X),
+                                                  Scale(o, number, PlotAxis.Y), y2: Clicks(PlotAxis.Y2), y2Log: Scale(o, number, PlotAxis.Y2));
                         break;
                     }
                     case PlotType.Smith:
@@ -213,8 +232,11 @@ public static class PlotReading
             var plot = plots[plotNumber - 1];
             int number = traces.Count + 1;
             var words = wordsOf[plot.Picture];
-            var assignment = Assign(plot, curve, words, curves.Count(c => c.Plot == plotNumber));
-            traces.Add(new PlotTraceRead(number, plotNumber, curve, assignment, [], 0, "", null));
+            var t = new PlotTraceRead(number, plotNumber, curve, PlotAssignment.None, [], 0, "", null);
+            // Which y axis first: the "axis title" evidence of what it is reads that axis's title (R-pdg1-2).
+            var (side, axisEvidence) = plot.Rect is { } rc ? SideOf(t, plot, rc, words, o) : (PlotSide.Left, "");
+            var assignment = Assign(plot, curve, words, plot.Rect?.TitleOn(side));
+            traces.Add(t with { Assignment = assignment, Axis = side, AxisEvidence = axisEvidence });
         }
         // Markers onto their traces, by the nearest point.
         foreach (var m0 in markers)
@@ -241,10 +263,10 @@ public static class PlotReading
         {
             var t = traces[i];
             foreach (var ov in o.Traces)
-                if (Selects(ov.Selector, t))
+                if (ov.Assignment is { } a && Selects(ov.Selector, t))
                     // A chart's trace is complex by its chart, whatever quantity the assignment named.
-                    t = t with { Assignment = t.Parametric && ov.Assignment.Quantity != PlotQuantityKind.Ignored
-                                     ? ov.Assignment with { Quantity = PlotQuantityKind.Complex } : ov.Assignment };
+                    t = t with { Assignment = t.Parametric && a.Quantity != PlotQuantityKind.Ignored
+                                     ? a with { Quantity = PlotQuantityKind.Complex } : a };
             traces[i] = t;
         }
 
@@ -261,9 +283,14 @@ public static class PlotReading
             string gaps = t.Curve.Gaps.Count > 0 ? $"; {t.Curve.Gaps.Count} gap(s) left open" : "";
             string bridged = t.Curve.Bridged > 0 ? $"; {t.Curve.Bridged} short gap(s) bridged" : "";
             string amb = t.Curve.Ambiguous.Count > 0 ? $"; {t.Curve.Ambiguous.Count} ambiguous crossing(s)" : "";
+            string axis = t.AxisEvidence.Length == 0 ? ""
+                : $"; read against the {Side(t.Axis)} y axis" + (t.AxisAmbiguous ? " (assumed)" : $" ({AxisEvidenceText(t.AxisEvidence)})");
             findings.Add(new("trace", $"{t.Name} (plot {t.Plot}, {t.Curve.Hex}{style}): {t.Assignment}"
                                       + (t.Assignment.Assigned ? $" from the {t.Assignment.Evidence}" : " — " + t.Evidence)
-                                      + $"; {t.Samples.Count} points, ±{Fmt(t.Resolution / 2)}{(t.ResolutionUnit.Length > 0 ? " " + t.ResolutionUnit : "")} per pixel{gaps}{bridged}{amb}"));
+                                      + $"; {t.Samples.Count} points, ±{Fmt(t.Resolution / 2)}{(t.ResolutionUnit.Length > 0 ? " " + t.ResolutionUnit : "")} per pixel{gaps}{bridged}{amb}{axis}"));
+            if (t.AxisAmbiguous)
+                findings.Add(new("axis", $"{t.Name} (plot {t.Plot}): nothing says which y axis it is read against — the {Side(t.Axis)} assumed; "
+                                         + $"its Axis in the traces table, or --trace {t.Name}={(t.Assignment.Assigned ? t.Assignment.ToString() : "S21:db")},axis=right"));
         }
         foreach (var m in plotMarkers)
             findings.Add(new("marker", $"marker {m.Name} (plot {m.Plot})" + (m.Trace > 0 ? $" on T{m.Trace}" : " on no trace")
@@ -271,14 +298,15 @@ public static class PlotReading
         return new PlotSession(pics, plots, traces, plotMarkers, findings, wordsOf);
     }
 
-    private static bool? Scale(PlotReadingOptions o, int plot, char axis)
+    private static bool? Scale(PlotReadingOptions o, int plot, PlotAxis axis)
     {
         foreach (var (p, a, log) in o.Scales.Reverse())
             if ((p == 0 || p == plot) && a == axis) return log;
         return null;
     }
 
-    /// <summary>Where a tick label stands: under a rectangular plot's x axis, left of its y axis, or on a chart.</summary>
+    /// <summary>Where a tick label stands: under a rectangular plot's x axis, either side of it (a y axis may stand on the
+    /// right, R-pdg1-1), or on a chart.</summary>
     private static bool NumberPlace(IReadOnlyList<PlotFrame> frames, PixelBox b)
     {
         foreach (var f in frames)
@@ -291,7 +319,8 @@ public static class PlotReading
             double w = f.Right - f.Left, h = f.Bottom - f.Top;
             bool below = b.Top > f.Bottom && b.Top - f.Bottom < 0.12 * h && b.CentreX > f.Left - 0.05 * w && b.CentreX < f.Right + 0.05 * w;
             bool left = b.Right < f.Left && f.Left - b.Right < 0.15 * w && b.CentreY > f.Top - 0.05 * h && b.CentreY < f.Bottom + 0.05 * h;
-            if (below || left) return true;
+            bool right = b.Left > f.Right && b.Left - f.Right < 0.15 * w && b.CentreY > f.Top - 0.05 * h && b.CentreY < f.Bottom + 0.05 * h;
+            if (below || left || right) return true;
         }
         return false;
     }
@@ -307,7 +336,9 @@ public static class PlotReading
                     ? $"{name} axis uncalibrated ({labels.Count} label(s) read) — two clicks and two values, or {flag}"
                     : $"{name} axis {a.Scale.ToString().ToLowerInvariant()}{(a.Manual ? " (typed)" : $" from {a.Used} label(s), residual {Fmt(a.ResidualPx)} px")}"
                       + (a.Rejected > 0 ? $", {a.Rejected} misread label(s) rejected" : "");
-                findings.Add(new("plot", $"{head}; {Axis("x", r.X, r.XLabels, "--x-axis")}; {Axis("y", r.Y, r.YLabels, "--y-axis")}"));
+                string y = Axis(r.YSide == PlotSide.Right ? "y (right)" : "y", r.Y, r.YLabels, "--y-axis");
+                string y2 = r.TwoY ? $"; {Axis("y2 (right)", r.Y2, r.Y2Labels, "--y2-axis")}" : "";
+                findings.Add(new("plot", $"{head}; {Axis("x", r.X, r.XLabels, "--x-axis")}; {y}{y2}"));
                 if (r.XIsFrequency && !r.XUnitStated)
                     findings.Add(new("assumption", $"plot {p.Number}: no frequency unit was read on the x axis; "
                                                    + (r.XUnit == 1 ? "the labels taken as hertz" : "GHz assumed") + " — --x-axis with units changes it"));
@@ -330,19 +361,21 @@ public static class PlotReading
 
     // ── assignment (R-im14-6) ──────────────────────────────────────────────────────────────────────────────
 
-    private static PlotAssignment Assign(PlotRead plot, TraceCurve curve, IReadOnlyList<PlotWord> words, int tracesOnPlot)
+    /// <param name="axisTitle">The title of the y axis the trace is read against; null leaves that evidence out.</param>
+    private static PlotAssignment Assign(PlotRead plot, TraceCurve curve, IReadOnlyList<PlotWord> words, string? axisTitle) =>
+        PlotQuantity.Assign(Sources(plot, curve, words, axisTitle), plot.Type);
+
+    /// <summary>The words that say what a trace is, strongest first: (evidence, text).</summary>
+    private static List<(string Evidence, string Text)> Sources(PlotRead plot, TraceCurve curve, IReadOnlyList<PlotWord> words, string? axisTitle)
     {
         var sources = new List<(string, string)>();
         // 1. the legend entry in its colour and style (style decides between two of one colour)
-        var legend = plot.Legend.Where(e => PlotInk.Distance(e.Rgb, curve.Rgb) < 72).ToList();
-        if (legend.Count > 1) legend = [.. legend.Where(e => e.Style == curve.Style).DefaultIfEmpty(legend[0])];
-        foreach (var e in legend.Take(1)) sources.Add(("legend", e.Text));
+        if (LegendEntryOf(plot, curve) is { } e) sources.Add(("legend", e.Text));
 
         // 2. a word in its colour near the plot — written along the trace, or beside the chart as circuitRF draws it
         var f = plot.Frame;
         double size = f.IsChart ? 2 * f.Radius : Math.Max(f.Right - f.Left, f.Bottom - f.Top);
-        bool coloured = PlotInk.Distance(curve.Rgb, 0) > 60 && PlotInk.Distance(curve.Rgb, 0xFFFFFF) > 60
-                        && Math.Abs(((curve.Rgb >> 16) & 0xFF) - ((curve.Rgb >> 8) & 0xFF)) + Math.Abs(((curve.Rgb >> 8) & 0xFF) - (curve.Rgb & 0xFF)) > 40;
+        bool coloured = RectAxes.Chromatic(curve.Rgb);
         var legendWords = plot.Legend.Select(e => e.Word).ToHashSet();
         foreach (var w in words.Where(w => w.Read && w.Number is null && !legendWords.Contains(w.Box) && PlotMarkers.Name(w.Text) is null
                                            && w.Box.CentreX > f.Left - 0.35 * size && w.Box.CentreX < f.Right + 0.35 * size
@@ -354,13 +387,109 @@ public static class PlotReading
                          && PlotQuantity.Entry(w.Text) is not null;
             if (sameColour || along) { sources.Add(("label", w.Text)); break; }
         }
-        // 3. the y-axis title, when it is the only trace or the title is in its colour
-        if (plot.Rect?.YTitle is { } yt) sources.Add(("axis title", yt));
+        // 3. the title of its own y axis
+        if (axisTitle is { } yt) sources.Add(("axis title", yt));
         // 4. the plot's title — a chart's is the word just above it, the one naming an entry when several stand there
         if (plot.Rect?.Title is { } title) sources.Add(("plot title", title));
         else if (f.IsChart && ChartTitle(f, words) is { } ct) sources.Add(("plot title", ct));
-        return PlotQuantity.Assign(sources, plot.Type);
+        return sources;
     }
+
+    // ── which y axis (R-pdg1-2) ────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The side of the y axis <paramref name="t"/> is read against, and what said so — empty evidence on a plot
+    /// with one y axis.</summary>
+    private static (PlotSide Side, string Evidence) SideOf(PlotTraceRead t, PlotRead plot, RectCalibration r, IReadOnlyList<PlotWord> words,
+                                                           PlotReadingOptions o)
+    {
+        // 1. the user's
+        if (o.Traces.LastOrDefault(ov => ov.Axis is not null && Selects(ov.Selector, t))?.Axis is { } said) return (said, "user");
+        if (!r.TwoY) return (r.DefaultSide, "");
+
+        // 2. the legend entry's own axis mark
+        if (LegendEntryOf(plot, t.Curve) is { } entry && LegendSide(entry.Text) is { } marked) return (marked, "legend");
+
+        // 3. the colour of an axis's title or labels
+        static bool Near(int? ink, int rgb) => ink is { } i && PlotInk.Distance(i, rgb) <= PlotTraces.MergeColour;
+        bool left = Near(r.YTitleRgb, t.Curve.Rgb) || Near(r.YLabelRgb, t.Curve.Rgb);
+        bool right = Near(r.Y2TitleRgb, t.Curve.Rgb) || Near(r.Y2LabelRgb, t.Curve.Rgb);
+        if (left != right) return (right ? PlotSide.Right : PlotSide.Left, "colour");
+
+        // 4. its quantity agreeing with one axis title and not the other — the user's, else what the words other than the
+        //    axis titles say
+        var quantity = o.Traces.LastOrDefault(ov => ov.Assignment is not null && Selects(ov.Selector, t))?.Assignment?.Quantity
+                       ?? Sources(plot, t.Curve, words, axisTitle: null).Select(w => PlotQuantity.Kind(w.Text)).FirstOrDefault(k => k is not null);
+        if (Family(quantity) is { } family)
+        {
+            bool l = r.YTitle is { } lt && Family(PlotQuantity.Kind(lt)) == family;
+            bool rr = r.Y2Title is { } rt && Family(PlotQuantity.Kind(rt)) == family;
+            if (l != rr) return (rr ? PlotSide.Right : PlotSide.Left, "quantity");
+        }
+
+        // 5. inside one axis's labelled span and not the other's — weak, both mappings being linear over the same pixels
+        if (t.Curve.Points.Count > 0)
+        {
+            double top = t.Curve.Points.Min(p => p.Y), bottom = t.Curve.Points.Max(p => p.Y);
+            static bool Within(IReadOnlyList<AxisLabel> labels, double lo, double hi)
+            {
+                var used = labels.Where(a => a.Used).ToList();
+                return used.Count >= 2 && lo >= used.Min(a => a.Pixel) - RectAxes.InlierPx && hi <= used.Max(a => a.Pixel) + RectAxes.InlierPx;
+            }
+            bool inLeft = Within(r.YLabels, top, bottom), inRight = Within(r.Y2Labels, top, bottom);
+            if (inLeft != inRight) return (inRight ? PlotSide.Right : PlotSide.Left, "range");
+        }
+
+        // 6. nothing: the left, said to be assumed
+        return (PlotSide.Left, PlotTraceRead.NoAxisEvidence);
+    }
+
+    /// <summary>The legend entry in the curve's colour and style, as the assignment's legend evidence takes it.</summary>
+    private static LegendEntry? LegendEntryOf(PlotRead plot, TraceCurve curve)
+    {
+        var legend = plot.Legend.Where(e => PlotInk.Distance(e.Rgb, curve.Rgb) < 72).ToList();
+        if (legend.Count > 1) legend = [.. legend.Where(e => e.Style == curve.Style).DefaultIfEmpty(legend[0])];
+        return legend.FirstOrDefault();
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex RightMark =
+        new(@"\((?:R|right)\)|\bright\b|\bY2\b|→|->|\bRHS\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private static readonly System.Text.RegularExpressions.Regex LeftMark =
+        new(@"\((?:L|left)\)|\bleft\b|\bY1\b|←|<-|\bLHS\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    /// <summary>The side a legend entry's own words point at — <c>(R)</c>, <c>right</c>, <c>Y2</c>, an arrow — or null.</summary>
+    internal static PlotSide? LegendSide(string text)
+    {
+        bool r = RightMark.IsMatch(text), l = LeftMark.IsMatch(text);
+        return r == l ? null : r ? PlotSide.Right : PlotSide.Left;
+    }
+
+    /// <summary>Quantities one axis title can carry together: dB and the losses, the two phase units.</summary>
+    private static int? Family(PlotQuantityKind? k) => k switch
+    {
+        PlotQuantityKind.Db or PlotQuantityKind.ReturnLoss or PlotQuantityKind.InsertionLoss => 1,
+        PlotQuantityKind.PhaseDeg or PlotQuantityKind.PhaseRad => 2,
+        PlotQuantityKind.Magnitude => 3,
+        PlotQuantityKind.Vswr => 4,
+        PlotQuantityKind.Real => 5,
+        PlotQuantityKind.Imag => 6,
+        _ => null,
+    };
+
+    /// <summary><c>left</c> / <c>right</c>.</summary>
+    public static string Side(PlotSide side) => side == PlotSide.Right ? "right" : "left";
+
+    /// <summary>An axis's evidence as a sentence says it.</summary>
+    public static string AxisEvidenceText(string evidence) => evidence switch
+    {
+        "user" => "chosen",
+        "legend" => "its legend entry",
+        "colour" => "the axis's colour",
+        "quantity" => "the axis title's quantity",
+        "range" => "the axis's labelled span",
+        PlotTraceRead.NoAxisEvidence => "assumed",
+        _ => evidence,
+    };
 
     private static string? ChartTitle(PlotFrame f, IReadOnlyList<PlotWord> words)
     {
@@ -404,7 +533,7 @@ public static class PlotReading
         string unit = "";
         switch (plot.Type)
         {
-            case PlotType.Rectangular when plot.Rect is { X: { } xa, Y: { } ya }:
+            case PlotType.Rectangular when plot.Rect is { X: { } xa } rc && rc.AxisOn(t.Axis) is { } ya:
             {
                 foreach (var (px, py) in t.Curve.Points) samples.Add(new PlotSample(xa.ValueAt(px), ya.ValueAt(py), default, px, py));
                 double midY = t.Curve.Points.Count > 0 ? t.Curve.Points.Average(p => p.Y) : 0;

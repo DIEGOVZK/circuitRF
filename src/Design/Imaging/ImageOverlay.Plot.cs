@@ -2,7 +2,8 @@
 //
 // Built only from the session's reading of one picture: each plot's frame (its axes box, or its chart's circle) labelled
 // with its number; every tick label the reader read, green where the axis fit kept it and amber where it was rejected or
-// unread; each trace drawn over its curve in its own colour and labelled with its assignment (amber while unassigned);
+// unread — a right-hand y axis's as well as the left's; each trace drawn over its curve in its own colour and labelled with
+// its assignment (amber while unassigned), a trace read against the right-hand y axis tagged → R (brief-pdg-1 R-pdg1-3);
 // bridged gaps dashed; ambiguous crossings amber; markers at the points they mark. The dialog's canvas and the CLI's
 // --overlay picture draw these same items.
 
@@ -40,7 +41,8 @@ public sealed partial class ImageOverlay
                                                PixelBounds.Of(box)));
             }
             if (p.Rect is { } r)
-                foreach (var (l, k) in r.XLabels.Select((l, k) => (l, k)).Concat(r.YLabels.Select((l, k) => (l, k + 1000))))
+                foreach (var (l, k) in r.XLabels.Select((l, k) => (l, k)).Concat(r.YLabels.Select((l, k) => (l, k + 1000)))
+                                        .Concat(r.Y2Labels.Select((l, k) => (l, k + 2000))))
                 {
                     var b = Box(l.Box.Left - 1, l.Box.Top - 1, l.Box.Right + 2, l.Box.Bottom + 2);
                     items.Add(new ImageOverlayItem($"tick:{p.Number}:{k}", ImageOverlayClass.Text, [b], true, l.Text,
@@ -77,8 +79,9 @@ public sealed partial class ImageOverlay
             }
             string what = t.Assignment.Ignored ? "ignored" : t.Assignment.Assigned
                 ? $"{t.Assignment.Entry} {Spoken(t.Assignment.Quantity)}" : "unassigned";
+            string side = !t.Parametric && session.Plots[t.Plot - 1].Rect is { TwoY: true } && t.Axis == PlotSide.Right ? " → R" : "";
             items.Add(new ImageOverlayItem($"{TracePrefix}{t.Name}", ImageOverlayClass.Trace, [.. runs.Where(r => r.Count > 0)], false,
-                                           $"{t.Name} {what}", t.Curve.Rgb, !t.Assignment.Assigned && !t.Assignment.Ignored, t.Name,
+                                           $"{t.Name} {what}{side}", t.Curve.Rgb, (!t.Assignment.Assigned && !t.Assignment.Ignored) || t.AxisAmbiguous, t.Name,
                                            PixelBounds.Of(pts).Inflate(2)));
             foreach (var (x, y) in t.Curve.Ambiguous)
                 items.Add(new ImageOverlayItem($"ambiguous:{t.Name}:{x.ToString("0", CultureInfo.InvariantCulture)}", ImageOverlayClass.Crossing, [],

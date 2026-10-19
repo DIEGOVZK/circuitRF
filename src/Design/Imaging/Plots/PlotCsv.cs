@@ -8,6 +8,8 @@
 // ONE LONG TABLE, not one column pair per trace: traces do not share x values (each is sampled at its own pixel
 // columns), so a wide table would be mostly empty cells. A rectangular trace fills x and y; a chart trace fills re and
 // im, and x when its frequency is known. `exact` marks a sample that came from a marker's readout rather than pixels.
+// `y_axis` says which y axis a rectangular trace was read against, `left` or `right` (brief-pdg-1-two-y-axes.md
+// R-pdg1-5), empty for a chart trace; it is the LAST column because column order is a format.
 
 using System.Globalization;
 using System.Text;
@@ -17,7 +19,7 @@ namespace CircuitRF.Design.Imaging.Plots;
 public static class PlotCsv
 {
     /// <summary>The columns, in order.</summary>
-    public static readonly IReadOnlyList<string> Columns = ["trace", "plot", "assignment", "x", "x_unit", "y", "y_unit", "re", "im", "exact"];
+    public static readonly IReadOnlyList<string> Columns = ["trace", "plot", "assignment", "x", "x_unit", "y", "y_unit", "re", "im", "exact", "y_axis"];
 
     /// <summary>The session's traces as CSV text, <c>\n</c> line ends. Pure.</summary>
     public static string Write(PlotSession session)
@@ -38,6 +40,7 @@ public static class PlotCsv
             }
             else if (t.Frequency is not null) (xScale, xUnit) = (1e9, "GHz");
             string assignment = t.Assignment.ToString();
+            string side = t.Parametric ? "" : PlotReading.Side(t.Axis);
             foreach (var s in t.Samples)
             {
                 sb.Append(t.Name).Append(',').Append(t.Plot.ToString(CultureInfo.InvariantCulture)).Append(',').Append(assignment).Append(',');
@@ -46,7 +49,7 @@ public static class PlotCsv
                     sb.Append(",,").Append(Num(s.Value.Real)).Append(',').Append(Num(s.Value.Imaginary));
                 else
                     sb.Append(Num(s.Y)).Append(',').Append(t.ResolutionUnit).Append(",,");
-                sb.Append(',').Append(s.Exact ? '1' : '0').Append('\n');
+                sb.Append(',').Append(s.Exact ? '1' : '0').Append(',').Append(side).Append('\n');
             }
         }
         return sb.ToString();

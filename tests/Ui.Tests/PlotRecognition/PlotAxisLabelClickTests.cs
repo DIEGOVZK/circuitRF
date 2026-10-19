@@ -76,9 +76,9 @@ public sealed class PlotAxisLabelClickTests : IDisposable
         var (vm, _, _) = await Read();
         vm.SelectedItem = YLabels(vm)[0];
         Assert.True(vm.Plots.AskingLabel);
-        Assert.Equal('y', vm.Plots.Label!.Axis);
+        Assert.Equal(PlotAxis.Y, vm.Plots.Label!.Axis);
         vm.SelectedItem = AnXLabel(vm);
-        Assert.Equal('x', vm.Plots.Label!.Axis);
+        Assert.Equal(PlotAxis.X, vm.Plots.Label!.Axis);
         vm.SelectedItem = null;
         Assert.False(vm.Plots.AskingLabel);
     }
@@ -99,7 +99,7 @@ public sealed class PlotAxisLabelClickTests : IDisposable
         await vm.Recognition;
 
         string text = vm.Plots.Frames[0].YAxisText;
-        Assert.NotNull(PlotSessionViewModel.Clicks(text, 'y'));
+        Assert.NotNull(PlotSessionViewModel.Clicks(text, PlotAxis.Y));
         Assert.False(vm.Plots.Frames[0].NeedsY, vm.Plots.Frames[0].Calibration);
         Assert.True(vm.Plots.Frames[0].ShowsY);   // the row shows the pairs the clicks wrote
     }
@@ -119,7 +119,7 @@ public sealed class PlotAxisLabelClickTests : IDisposable
 
     [Fact]
     public void AThirdValue_ReplacesTheOlder() =>
-        Assert.Equal("200px=-10,300px=-20", PlotAxisLabels.Merge("100px=0,200px=-10", 'y', 300, "-20"));
+        Assert.Equal("200px=-10,300px=-20", PlotAxisLabels.Merge("100px=0,200px=-10", PlotAxis.Y, 300, "-20"));
 
     [Fact]
     public async Task AnXNumber_WithNoUnitRead_IsRefused()
@@ -129,9 +129,9 @@ public sealed class PlotAxisLabelClickTests : IDisposable
         var plot = vm.Plots.Session!.Plots[0];
         // Whatever the picture's x labels say, a plot with no unit read refuses a bare number.
         var unstated = plot with { Rect = plot.Rect! with { XUnit = 1e9, XUnitStated = false, XIsFrequency = true } };
-        Assert.Null(PlotAxisLabels.Value("2.4", 'x', unstated, "", out string? why));
+        Assert.Null(PlotAxisLabels.Value("2.4", PlotAxis.X, unstated, "", out string? why));
         Assert.Contains("Say the unit", why);
-        Assert.Equal("2.4GHz", PlotAxisLabels.Value("2.4 GHz", 'x', unstated, "", out _));
+        Assert.Equal("2.4GHz", PlotAxisLabels.Value("2.4 GHz", PlotAxis.X, unstated, "", out _));
 
         // A refusal stays in the editor and reaches the status line.
         vm.Plots.LabelText = "two";

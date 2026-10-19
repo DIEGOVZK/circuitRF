@@ -70,9 +70,15 @@
                                              ToolTip.Tip="Two pixel positions along the x axis and the values there, with units: 120px=1GHz,900px=5GHz. A label clicked on the picture and given its value writes one pair here."/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Spacing="6" Margin="28,0,0,0" IsVisible="{Binding ShowsY}">
-                                    <TextBlock Text="y axis" FontSize="12" VerticalAlignment="Center" Width="44"/>
+                                    <TextBlock Text="{Binding YLabel}" FontSize="12" VerticalAlignment="Center" MinWidth="44"/>
                                     <TextBox Text="{Binding YAxisText}" Width="220" PlaceholderText="Click two y labels on the picture"
                                              ToolTip.Tip="Two pixel positions along the y axis and the values there, in the axis's own units: 80px=0,560px=-40. A label clicked on the picture and given its value writes one pair here."/>
+                                </StackPanel>
+                                <!-- A second y axis on the right (R-pdg1-3): the same spelling as y's, shown when it waits or has values. -->
+                                <StackPanel Orientation="Horizontal" Spacing="6" Margin="28,0,0,0" IsVisible="{Binding ShowsY2}">
+                                    <TextBlock Text="y2 axis (right)" FontSize="12" VerticalAlignment="Center" MinWidth="44"/>
+                                    <TextBox Text="{Binding Y2AxisText}" Width="220" PlaceholderText="Click two right-hand labels on the picture"
+                                             ToolTip.Tip="Two pixel positions along the right-hand y axis and the values there, in that axis's own units: 80px=180,560px=-180. A label right of the plot clicked and given its value writes one pair here."/>
                                 </StackPanel>
                             </StackPanel>
                         </DataTemplate>
@@ -145,6 +151,13 @@
                                                 <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Quantities}" SelectedIndex="{Binding QuantityIndex}"
                                                           MinWidth="96" PlaceholderText="mixed"
                                                           ToolTip.Tip="What the curve plots: dB, linear magnitude, phase, real or imaginary part, the complex value of a chart, VSWR, return or insertion loss."/>
+                                                <!-- The y axis it is read against, on a plot with one on both sides (R-pdg1-3). -->
+                                                <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding TwoY}">
+                                                    <Ellipse Width="8" Height="8" Fill="#D9A21B" VerticalAlignment="Center" IsVisible="{Binding AxisAmbiguous}"
+                                                             ToolTip.Tip="{Binding AxisEvidence}"/>
+                                                    <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Sides}" SelectedIndex="{Binding AxisIndex}"
+                                                              MinWidth="72" PlaceholderText="mixed" ToolTip.Tip="{Binding AxisEvidence}"/>
+                                                </StackPanel>
                                             </StackPanel>
                                             <!-- A chart trace is a group of its own: its frequency row (R-im14-8 (3)). -->
                                             <Border Classes="slot" Classes.wants="{Binding First.NeedsFrequency}" Margin="26,0,0,0" IsVisible="{Binding IsChart}">
@@ -188,6 +201,12 @@
                                                           ToolTip.Tip="Which entry of the matrix this trace is. Unassigned: the Touchstone waits for it."/>
                                                 <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Quantities}" SelectedIndex="{Binding QuantityIndex}"
                                                           MinWidth="96" ToolTip.Tip="What the trace plots: dB, linear magnitude, phase, real or imaginary part, the complex value of a chart, VSWR, return or insertion loss."/>
+                                                <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding TwoY}">
+                                                    <Ellipse Width="8" Height="8" Fill="#D9A21B" VerticalAlignment="Center" IsVisible="{Binding AxisAmbiguous}"
+                                                             ToolTip.Tip="{Binding AxisEvidence}"/>
+                                                    <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.Sides}" SelectedIndex="{Binding AxisIndex}"
+                                                              MinWidth="72" ToolTip.Tip="{Binding AxisEvidence}"/>
+                                                </StackPanel>
                                             </StackPanel>
                                             <SelectableTextBlock FontSize="11" Opacity="0.75" Margin="30,0,0,0" TextWrapping="Wrap">
                                                 <Run Text="{Binding RangeText}"/><Run Text=" · "/><Run Text="{Binding Points}"/><Run Text=" points · "/><Run Text="{Binding ResolutionText}"/><Run Text=" per pixel · plot "/><Run Text="{Binding Plot}"/>

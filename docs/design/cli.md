@@ -3904,8 +3904,9 @@ Flags (`@<n>` names a plot; none means plot 1):
 |---|---|
 | `--plot 1,3` | read only these plots; the rest are drawn on the overlay, not read |
 | `--x-axis` / `--y-axis "<px>=<value>,<px>=<value>[@n]"` | an axis whose labels did not read: two pixel positions along it and their values, with units on frequency (`120px=1GHz,900px=5GHz`) |
-| `--x-log`, `--y-log` | the axis is logarithmic (otherwise the better fit is taken) |
-| `--trace "<T3 / #rrggbb / solid / dashed / dotted>[@n]=S21:db"` | an assignment: quantities `db`, `mag`, `phase`, `rad`, `re`, `im`, `complex`, `vswr`, `rl`, `il`, or `=ignore`; a chart's trace is complex whatever is named |
+| `--y2-axis "<px>=<value>,<px>=<value>[@n]"` | the same for a second y axis on the right of a plot whose first is on the left (`80px=180,560px=-180`); a plot whose only y axis is on the right takes `--y-axis` |
+| `--x-log`, `--y-log`, `--y2-log` | the axis is logarithmic (otherwise the better fit is taken) |
+| `--trace "<T3 / #rrggbb / solid / dashed / dotted>[@n]=S21:db[,axis=left\|right]"` | an assignment: quantities `db`, `mag`, `phase`, `rad`, `re`, `im`, `complex`, `vswr`, `rl`, `il`, or `=ignore`; a chart's trace is complex whatever is named. `,axis=right` says which y axis a trace on a plot with two is read against, and `T3=axis=right` says that alone |
 | `--smith-z0 50Ohm` | a Smith chart's reference (the chart's `Z0 =` word, else 50 Ω, stated) |
 | `--freq T4=1GHz..5GHz` | a chart trace's start and stop; combines with its markers |
 | `--phase S21=min`, `=zero`, `=delay:250ps` | a magnitude with no phase (minimum phase, an estimate, by default) |
@@ -3928,15 +3929,18 @@ not ask for. Several paths that are not all pictures are `recognize.args.several
 artwork flag on a plot is `picture.args.wrong-kind`. With no `-o` nothing is written but what was asked; stdout is the
 reading (a line per plot and trace), the report and the matrix — where every entry came from. `--json` carries
 `result.recognize.plots`: the pictures (name, SHA-256), the plots (type, calibrations with residuals and every tick
-label), the traces (assignment, evidence, points, resolution, range, frequency source and direction), the markers, the
-matrix map, the grid, the paths written, the refusal and the health line.
+label — a right-hand second y axis as `y2` beside `x` and `y`, with its `y2Title`, and `ySide: "right"` on a plot whose
+only y axis is on the right), the traces (assignment, evidence, points, resolution, range, frequency source and
+direction, and a rectangular trace's `axis`, `left` or `right`, with its `axisEvidence` on a plot with two y axes), the
+markers, the matrix map, the grid, the paths written, the refusal and the health line. The CSV's last column is
+`y_axis`.
 
-Over the protocol every flag is a field (`pictures`, `plot`, `xAxis`, `yAxis`, `xLog`, `yLog`, `trace`, `smithZ0`,
+Over the protocol every flag is a field (`pictures`, `plot`, `xAxis`, `yAxis`, `y2Axis`, `xLog`, `yLog`, `y2Log`, `trace`, `smithZ0`,
 `freq`, `phase`, `fill`, `prefer`, `grid`, `format`, `csv`, `keepSources`) and the overlay comes back as image content,
 so an agent can check every reading by eye and answer an unassigned trace with `trace`. Gate:
 `tests/Ui.Tests/PlotRecognition/PlotCliVerbTests.cs` — two pictures to `-o x.s2p` as a process, byte for byte the
 in-process assembly's but the time line TouchstoneIO writes; a Smith trace with no frequency exits 1 naming `--freq`;
-the source scan.
+`--y2-axis` calibrates the right axis and `axis=right` moves a trace (brief-pdg-1); the source scan.
 
 ## 27. A picture as `convert`'s source — the image reader, the scale, the overlay
 

@@ -11,12 +11,25 @@
 //
 // FEWER THAN TWO LABELS means the axis waits for the user: two clicks on it and two typed values (Manual). Nothing is
 // assumed about an axis that could not be read.
+//
+// A RIGHT-HAND Y AXIS (brief-pdg-1-two-y-axes.md R-pdg1-1) is the left one's mirror image: number words right of the
+// frame, the innermost column, paired with the right frame line's own ticks and fitted by the same consensus. A plot whose
+// left labels do not read and whose right ones do has its ONLY y axis on the right: that axis is stored as Y with YSide
+// Right, so everything downstream that reads Y keeps reading it. Y2 is the second y axis of a plot whose first is left.
 
 using CircuitRF.Design.Schematic.Recognition;
 
 namespace CircuitRF.Design.Imaging.Plots;
 
 public enum AxisScale { Linear, Log }
+
+/// <summary>Which side of a rectangular plot a y axis stands on, and which y axis a trace is read against (R-pdg1-1,
+/// R-pdg1-2).</summary>
+public enum PlotSide { Left, Right }
+
+/// <summary>A rectangular plot's axes as the user names them: x, its (first) y axis, and the second y axis on the right of
+/// a plot whose first is on the left (R-pdg1-3). On a plot whose only y axis is on the right, that axis is Y.</summary>
+public enum PlotAxis { X, Y, Y2 }
 
 /// <summary>One tick label as read: where its tick is, what it says, and whether the fit kept it.</summary>
 public sealed record AxisLabel(double Pixel, double Value, string Text, bool Used, PixelBox Box);
@@ -62,11 +75,53 @@ public sealed record RectCalibration(
     AxisCalibration? X, AxisCalibration? Y, IReadOnlyList<AxisLabel> XLabels, IReadOnlyList<AxisLabel> YLabels,
     string? XTitle, string? YTitle, string? Title, double XUnit, bool XUnitStated, bool XIsFrequency)
 {
-    public bool Calibrated => X is not null && Y is not null;
+    /// <summary>The second y axis, on the right of a plot whose first is on the left (R-pdg1-1); null when none was read
+    /// or typed.</summary>
+    public AxisCalibration? Y2 { get; init; }
+
+    public IReadOnlyList<AxisLabel> Y2Labels { get; init; } = [];
+
+    public string? Y2Title { get; init; }
+
+    /// <summary>The side <see cref="Y"/> stands on: Right on a plot whose only y axis is on the right.</summary>
+    public PlotSide YSide { get; init; } = PlotSide.Left;
+
+    /// <summary>The ink of each y axis's title, and of its labels where they are coloured — the colour a datasheet gives
+    /// the axis of a trace drawn in it (R-pdg1-2 (3)); null where nothing was read.</summary>
+    public int? YTitleRgb { get; init; }
+    public int? Y2TitleRgb { get; init; }
+    public int? YLabelRgb { get; init; }
+    public int? Y2LabelRgb { get; init; }
+
+    /// <summary>x and at least one y axis are calibrated.</summary>
+    public bool Calibrated => X is not null && (Y is not null || Y2 is not null);
+
+    /// <summary>The plot has a y axis on both sides: one read or typed on the right as well as the left — its traces each
+    /// say which they are read against.</summary>
+    public bool TwoY => YSide == PlotSide.Left && (Y2 is not null || Y2Labels.Count > 0);
+
+    /// <summary>The y axis on <paramref name="side"/>, or null.</summary>
+    public AxisCalibration? AxisOn(PlotSide side) => side == YSide ? Y : side == PlotSide.Right ? Y2 : null;
+
+    /// <summary>The title of the y axis on <paramref name="side"/>, or null.</summary>
+    public string? TitleOn(PlotSide side) => side == YSide ? YTitle : side == PlotSide.Right ? Y2Title : null;
+
+    /// <summary>The labels of the y axis on <paramref name="side"/>.</summary>
+    public IReadOnlyList<AxisLabel> LabelsOn(PlotSide side) => side == YSide ? YLabels : side == PlotSide.Right ? Y2Labels : [];
+
+    /// <summary>The side a trace is read against when nothing says otherwise: the first y axis's, or the right's when only
+    /// the right is calibrated.</summary>
+    public PlotSide DefaultSide => Y is null && Y2 is not null ? PlotSide.Right : YSide;
+
+    /// <summary>What the user calls the y axis on <paramref name="side"/>: Y for the first, Y2 for a second on the right.</summary>
+    public PlotAxis AxisNamed(PlotSide side) => side == YSide ? PlotAxis.Y : PlotAxis.Y2;
 }
 
 public static class RectAxes
 {
+    /// <summary>An axis as flags and sentences spell it: <c>x</c>, <c>y</c>, <c>y2</c>.</summary>
+    public static string Name(PlotAxis axis) => axis switch { PlotAxis.X => "x", PlotAxis.Y => "y", _ => "y2" };
+
     /// <summary>A label agrees with a mapping when it lies within this many pixels of where the mapping puts it.</summary>
     public const double InlierPx = 2.5;
 
@@ -78,11 +133,11 @@ public static class RectAxes
     /// way.</summary>
     public const double HertzLabels = 1e5;
 
-    /// <summary>Calibrates <paramref name="frame"/> from <paramref name="words"/>, with <paramref name="x"/> or
-    /// <paramref name="y"/> in place of an axis's reading where given; <paramref name="xLog"/>/<paramref name="yLog"/>
-    /// force a scale. Pure.</summary>
+    /// <summary>Calibrates <paramref name="frame"/> from <paramref name="words"/>, with <paramref name="x"/>,
+    /// <paramref name="y"/> or <paramref name="y2"/> in place of an axis's reading where given;
+    /// <paramref name="xLog"/>/<paramref name="yLog"/>/<paramref name="y2Log"/> force a scale. Pure.</summary>
     public static RectCalibration Calibrate(PlotFrame frame, IReadOnlyList<PlotWord> words, AxisClicks? x = null, AxisClicks? y = null,
-                                            bool? xLog = null, bool? yLog = null, double? xUnit = null)
+                                            bool? xLog = null, bool? yLog = null, double? xUnit = null, AxisClicks? y2 = null, bool? y2Log = null)
     {
         ArgumentNullException.ThrowIfNull(frame);
         double width = frame.Right - frame.Left, height = frame.Bottom - frame.Top;
@@ -104,6 +159,14 @@ public static class RectAxes
             int col = yWords.Max(w => w.Box.Right);
             yWords = [.. yWords.Where(w => w.Box.Right >= col - 2 * w.Height)];
         }
+        // y2 labels: the mirror image — right of the right frame line, the innermost column (R-pdg1-1).
+        var y2Words = numbers.Where(w => w.Box.Left > frame.Right && w.Box.Left - frame.Right < Math.Max(3 * w.Box.Width, 0.15 * width)
+                                         && w.Box.CentreY > frame.Top - 0.05 * height && w.Box.CentreY < frame.Bottom + 0.05 * height).ToList();
+        if (y2Words.Count > 0)
+        {
+            int col = y2Words.Min(w => w.Box.Left);
+            y2Words = [.. y2Words.Where(w => w.Box.Left <= col + 2 * w.Height)];
+        }
 
         // Titles: under the x labels; left of the y labels (turned); above the plot.
         double xLabelBottom = xWords.Count > 0 ? xWords.Max(w => w.Box.Bottom) : frame.Bottom;
@@ -115,6 +178,17 @@ public static class RectAxes
         string? yTitle = words.Where(w => w.Read && w.Vertical && w.Box.Right < yLabelLeft + 2 && yLabelLeft - w.Box.Right < 0.3 * width
                                           && w.Box.CentreY > frame.Top && w.Box.CentreY < frame.Bottom)
                               .OrderByDescending(w => w.Box.Right).Select(w => w.Text).FirstOrDefault();
+        double y2LabelRight = y2Words.Count > 0 ? y2Words.Max(w => w.Box.Right) : frame.Right;
+        string? y2Title = words.Where(w => w.Read && w.Vertical && w.Box.Left > y2LabelRight - 2 && w.Box.Left - y2LabelRight < 0.3 * width
+                                           && w.Box.CentreY > frame.Top && w.Box.CentreY < frame.Bottom)
+                               .OrderBy(w => w.Box.Left).Select(w => w.Text).FirstOrDefault();
+        // A title's colour says which trace its axis is, read or not (R-pdg1-2 (3)).
+        var yTitleInk = words.Where(w => w.Vertical && w.Box.Right < yLabelLeft + 2 && yLabelLeft - w.Box.Right < 0.3 * width
+                                         && w.Box.CentreY > frame.Top && w.Box.CentreY < frame.Bottom)
+                             .OrderByDescending(w => w.Box.Right).FirstOrDefault();
+        var y2TitleInk = words.Where(w => w.Vertical && w.Box.Left > y2LabelRight - 2 && w.Box.Left - y2LabelRight < 0.3 * width
+                                          && w.Box.CentreY > frame.Top && w.Box.CentreY < frame.Bottom)
+                              .OrderBy(w => w.Box.Left).FirstOrDefault();
         string? title = words.Where(w => w.Read && w.Number is null && !w.Vertical && w.Box.Bottom < frame.Top
                                          && frame.Top - w.Box.Bottom < 0.25 * height && w.Box.CentreX > frame.Left && w.Box.CentreX < frame.Right)
                              .OrderByDescending(w => w.Box.Bottom).Select(w => w.Text).FirstOrDefault();
@@ -123,8 +197,20 @@ public static class RectAxes
         var yLabels = Pair(yWords, frame.YTicks, horizontal: false);
         var (xCal, xUsed) = x is { } cx ? (AxisCalibration.FromTwoPoints(cx.Pixel0, cx.Value0, cx.Pixel1, cx.Value1, cx.Scale), xLabels)
                                         : Fit(xLabels, xLog);
+        var y2Labels = Pair(y2Words, frame.Y2Ticks, horizontal: false);
+        // The only y axis on the right: not one number read left of the frame, the right labels fitting. Its clicks are
+        // then the y axis's (y2's when only those were typed), since it IS the y axis.
+        bool rightOnly = yLabels.Count == 0 && !(y is not null && y2 is not null) && Fit(y2Labels, y2Log ?? yLog).Fit is not null;
+        if (rightOnly)
+        {
+            (y, y2, yLog, yWords, yLabels) = (y ?? y2, null, y2Log ?? yLog, y2Words, y2Labels);
+            y2Words = [];
+            y2Labels = [];
+        }
         var (yCal, yUsed) = y is { } cy ? (AxisCalibration.FromTwoPoints(cy.Pixel0, cy.Value0, cy.Pixel1, cy.Value1, cy.Scale), yLabels)
                                         : Fit(yLabels, yLog);
+        var (y2Cal, y2Used) = y2 is { } c2 ? (AxisCalibration.FromTwoPoints(c2.Pixel0, c2.Value0, c2.Pixel1, c2.Value1, c2.Scale), y2Labels)
+                                           : Fit(y2Labels, y2Log ?? yLog);
 
         // The frequency unit: typed, else a label's own suffix, else the title's, else assumed GHz.
         bool isFrequency = xTitle is null || PlotQuantity.IsFrequencyTitle(xTitle) || xWords.Any(w => w.UnitScale is not null);
@@ -141,8 +227,35 @@ public static class RectAxes
             xCal = xCal.Scale == AxisScale.Log
                 ? xCal with { A = xCal.A + Math.Log10(unit), B = xCal.B }
                 : xCal with { A = xCal.A * unit, B = xCal.B * unit };
-        return new RectCalibration(xCal, yCal, xUsed, yUsed, xTitle, yTitle, title, unit, stated, isFrequency);
+        if (rightOnly)
+            return new RectCalibration(xCal, yCal, xUsed, yUsed, xTitle, y2Title, title, unit, stated, isFrequency)
+            {
+                YSide = PlotSide.Right, YTitleRgb = Ink(y2TitleInk), YLabelRgb = LabelInk(yWords),
+            };
+        return new RectCalibration(xCal, yCal, xUsed, yUsed, xTitle, yTitle, title, unit, stated, isFrequency)
+        {
+            YTitleRgb = Ink(yTitleInk), YLabelRgb = LabelInk(yWords),
+            Y2 = y2Cal, Y2Labels = y2Used, Y2Title = y2Title, Y2TitleRgb = Ink(y2TitleInk), Y2LabelRgb = LabelInk(y2Words),
+        };
     }
+
+    /// <summary>A word's ink when it is coloured — not black, white or grey — else null: only a colour says which trace an
+    /// axis belongs to.</summary>
+    private static int? Ink(PlotWord? w) => w is not null && Chromatic(w.Rgb) ? w.Rgb : null;
+
+    /// <summary>The labels' ink when most of them are one colour, else null.</summary>
+    private static int? LabelInk(List<PlotWord> labels)
+    {
+        var coloured = labels.Where(w => Chromatic(w.Rgb)).ToList();
+        if (coloured.Count == 0 || 2 * coloured.Count <= labels.Count) return null;
+        return coloured.GroupBy(w => w.Rgb & 0xF0F0F0).OrderByDescending(g => g.Count()).ThenBy(g => g.Key).First().First().Rgb;
+    }
+
+    /// <summary>A colour, as opposed to black, white or a grey: its channels differ (the test PlotReading's label evidence
+    /// applies to a word in a trace's colour).</summary>
+    public static bool Chromatic(int rgb) =>
+        PlotInk.Distance(rgb, 0) > 60 && PlotInk.Distance(rgb, 0xFFFFFF) > 60
+        && Math.Abs(((rgb >> 16) & 0xFF) - ((rgb >> 8) & 0xFF)) + Math.Abs(((rgb >> 8) & 0xFF) - (rgb & 0xFF)) > 40;
 
     /// <summary>Each label at its tick: the nearest tick within half the label's extent along the axis, else the
     /// label's own centre.</summary>
