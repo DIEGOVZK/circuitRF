@@ -2984,3 +2984,26 @@ log-scaled 50:1 range at that depth. Not Auto's defect; the Auto gate uses 1e-5.
   file (its exit status is inverted), absent = a note, > 0.5 % peak difference = a warning (`OpenEmsSarCalc`). The
   `Sar.CrossCheck` setup key arrives with SAR-6's `Sar` group.
 Gate: `tests/Ui.Tests/Sar/SarEngineTests.cs`. Design note: `docs/design/sar.md` §7.
+
+## SAR averaging: every choice the procedure's description leaves open, and local SAR measured against sar_calc (brief-sar-13, 2026-10-18)
+
+Recorded at the series' end so the choices sit beside the engine (`src/Engine/Em3d/Sar/`). `sar_calc` 0.37.0 is the
+behaviour matched; its C++ was read to learn it, never copied, and IEC/IEEE 62704-1 was not consulted (it is purchased).
+
+| Point | `sar_calc` | circuitRF | Effect |
+|---|---|---|---|
+| the cube's size | iterates to 1e-6 in mass | secant on the mass's cube root, bracketed, to 1e-9 | values agree to ≤ 1e-6 |
+| a smaller iterate with an all-air face | invalid before the mass is reached | only the final cube is judged | identical on convex tissue (identical cube counts on the dipole); a non-convex body could differ at a few surface cells |
+| a cube narrower than a cell | that cell's fraction applied twice | once (2h/w) | never reached at 1 g or 10 g |
+| air and face tests | by volume with partial cells; < 10 %; face layer includes partial cells | the same | — |
+| face-grown cubes at the grid's edge | clipped, accepted if they reach the mass | the same | the random phantom depends on it |
+| the 5 % volume rule | volume with background, against the smallest | the same | — |
+| `SIMPLE`'s mass | the first iterate within 5 % | the exact mass | `Simple` can differ by that window; the cross-check runs `SIMPLE` for it |
+| a region | none | restricts every reported number; averaging always uses all tissue | head-only SAR is a region, not a code path |
+| `IEEE_C95_3` | offered | not offered | — |
+
+**Local SAR, measured directly at the series' end:** `sar_calc --method SIMPLE --mass 0` on circuitRF's own loop-coil raw dump
+(SAR-8 run (a), 105 × 87 × 107 cells) against the local-SAR volume circuitRF wrote from the same dump: every one of 463,363
+tissue cells within **3.3e-7** relative (float32), the same cells tissue on both sides, against overview §4's 1e-5. Until then
+it was held only by the analytic block and implied by the identical 10 g averages. Not made a test: it needs both the local
+dump (35 MB) and `sar_calc`, and the 10 g comparison already gates the same arithmetic.

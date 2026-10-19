@@ -18,6 +18,8 @@ as dipped into.
 
 {{toc: section:Layout & EM}}
 
+{{toc: section:SAR and MRI}}
+
 {{toc: section:Tools}}
 
 ## Where to start

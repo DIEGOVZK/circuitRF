@@ -20306,3 +20306,46 @@ Design note: `docs/design/sar.md` §13. Gates: `tests/Ui.Tests/Sar/VoxelImportTe
   it imported the GPL Python module.
 - **Fix:** reword the sentence ("computed only on the raw dump an openEMS run writes"). The scan is right to be strict; a
   user-facing sentence never needs that word order.
+
+## SAR series, the grid comparisons and the ring-down numbers in one place; two findings from the examples (brief-sar-13, 2026-10-18)
+
+The figures the series' later work depends on, gathered beside the openEMS writer and grid generator they concern. Detail and
+the run settings behind each: `docs/design/sar.md` §9.4, §10.5, §10.7, §11.6, §14.5, and the acceptance table, §15.
+
+**circuitRF's own grid against a script's, per watt accepted:**
+
+| Case | Script's grid | circuitRF's | Difference | Cause |
+|---|---|---|---|---|
+| `Dipole_SAR`, psSAR10g | 1.52 M cells | 1.98 M (`CellsPerWavelength` 10.32) | −2.45 % | the 0.2 mm strip resolved (lines at ±0.1 mm) where the script's dipole is one unresolved line, a wire whose radius the 2.5 mm cell sets: Zin 54.6 + j8.6 against 53.1 + j3.7 Ω. Then the coarser cells before the skin |
+| `MRI_Loop_Coil`, lumped capacitors, resonance | 3.04 M | 2.35 M (34.67) | 319.75 against 298.18 MHz (+7 %) | **the cells normal to a sheet.** The script grades x to 2 mm either side of the coil's YZ plane; circuitRF sizes a cell by the material it is in, and nothing about a sheet in YZ asks for fine cells along x, so the plane sat between 11.2 and 8.7 mm cells. The script's x lines from −142 to −120 mm spliced into circuitRF's grid alone give 300.70 MHz. A generator change (grade the normal cells to the sheet's smallest in-plane feature) is the owner's |
+| the loop as ports (the example's grid, 1.04 M at 30) | 3.04 M | 1.04 M | mean \|B1+\| −0.4 %, psSAR10g −2.9 %, peak local SAR −26 %; the tutorial's 5.4 pF resonates at about 6.4 pF | the same normal cells; the single-cell peak is set by the few skin cells nearest the strips, which a coarse grid samples differently. The averaged values survive it |
+| system check, 1.9 GHz, psSAR1g / 10g (no script; circuitRF at 10, 15, 20) | — | 0.87 / 2.30 / 4.22 M | −2.8 / +1.6 % and −3.7 / +0.9 % against 20 | not monotonic: each density places the strip's edges and the feed's lines differently (the port is written ~0.49 mm inside the drawn width on the two coarser grids), which moves the dipole's own resonance (1.94 against 1.91 GHz) |
+
+**The ring-down, a high-Q coil in FDTD:**
+
+- The loop coil with lumped capacitors rings for **245 ns after a 9.6 ns pulse**, 72,468 steps against 2,843 for the pulse.
+  openEMS's energy criterion (checked on wall-clock time) stopped circuitRF's run at −41.0 dB and the reference at −40.5 dB,
+  with the port signals still **−36.1 and −38.9 dB** below their peaks; circuitRF's port-decay rule never fired.
+- **Where a run stops sets the S11 null's depth**: −63.4 dB run to the reference probes' end, −41.8 dB cut at 225 ns,
+  −24.35 dB at the script's 1.2 MHz steps. The gate compares over the time both ran (owner, 2026-10-18).
+- A DFT of a single-exponential ring-down cut at amplitude g₀ keeps 1 − g₀ of the resonant phasor: at −36 dB, **0.984 in field
+  and 0.968 in SAR**. That is most of the co-simulation's +1.5 % B1 and +3.0 % psSAR10g against the lumped run. Run to −60 dB
+  (port-decay stopped it at 117,181 steps, 397 ns, 24 min; the energy floored at −41.8 dB from 270 ns, so openEMS alone would
+  have run to the step limit), the lumped run comes to within **0.29 % in field and 0.59 % in SAR** of the co-simulation. That
+  residual is uniform and **not explained**.
+- With every gap a port there is nothing to ring: the co-simulation's runs stop after ~5,800 steps each on the tutorial's grid
+  and 3,657–3,933 on the example's.
+
+**Two findings from authoring the examples:**
+
+- **`netlist --to-schematic` wrote an SnP `File` relative to the drawing's own folder. Fixed.** `NetlistSchematic.Build`
+  used its one `schematicDirectory` for two references with different bases: the `TechRef`, which a schematic resolves
+  against its own folder (right), and an SnP `File`, which it resolves against `SchematicCircuit.ReferenceBaseOf` — the
+  workspace root when the `.csch` is in one. A test bench drawn into `<cell>/schematic/` stored `../../results/…`, which
+  resolved above the workspace. The round-trip gate draws into folders outside any workspace, where the two bases coincide,
+  so it could not see it. `File` is now made relative to `NetlistSchematic.FileBase` (ReferenceBaseOf's rule, from the
+  folder), which also covers the three recognition paths that call `Build`; the technology is unchanged. Gate:
+  `NetlistToSchematicTests.ATouchstoneDrawnIntoACell_IsStoredAgainstTheWorkspaceRoot`.
+- **The Courant estimate warns on both SAR examples**: openEMS's time step is 1.01 (loop) and 1.03 (system check) times
+  circuitRF's estimate, outside the 0.5–1 band the check allows. The answer is openEMS's and unaffected; the band's upper end
+  is what disagrees with these grids.

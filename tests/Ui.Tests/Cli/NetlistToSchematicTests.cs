@@ -133,6 +133,40 @@ public sealed class NetlistToSchematicTests(ITestOutputHelper output) : IDisposa
     }
 
     /// <summary>
+    /// A Touchstone drawn into a cell of a workspace is stored against the WORKSPACE ROOT, the base a
+    /// schematic's <c>File</c> is read against, and still resolves to the same file; the technology stays
+    /// relative to the drawing's own folder. Drawn into a cell, the drawing used to store
+    /// <c>../../results/…</c>, relative to its own folder, which resolved above the workspace.
+    /// </summary>
+    [Fact]
+    public void ATouchstoneDrawnIntoACell_IsStoredAgainstTheWorkspaceRoot()
+    {
+        string ws = Path.Combine(_root, "ws");
+        string schDir = Path.Combine(ws, "Bench", "schematic");
+        Directory.CreateDirectory(schDir);
+        Directory.CreateDirectory(Path.Combine(ws, "results"));
+        File.WriteAllText(Path.Combine(ws, ".cws"), "{\n  \"FormatVersion\": 2,\n  \"LibraryRefs\": [],\n  \"KnownFiles\": []\n}");
+        string snp = Path.Combine(ws, "results", "block.s2p");
+        File.WriteAllText(snp, "# GHz S RI R 50\n1 0 0 1 0 1 0 0 0\n2 0 0 1 0 1 0 0 0\n");
+        string cnl = Path.Combine(ws, "bench.cnl");
+        File.WriteAllText(cnl,
+            "Port:P1 a 0 Num=1 Z=50 Ohm\nPort:P2 b 0 Num=2 Z=50 Ohm\n" +
+            "SnP:EM1 a b 0 NumPorts=2 File=\"results/block.s2p\"\n" +
+            "analysis SP1 type=sparam start=1 stop=2 npts=2 Unit=GHz\n");
+        var (lib, tb) = CnlReader.ReadFile(cnl);
+
+        var model = NetlistSchematic.Build(lib, tb, schDir).Schematic!;
+        string stored = model.Components.Single(c => c.InstanceName == "EM1").Parameters.Single(p => p.Name == "File").Expression;
+        Assert.Equal("\"results/block.s2p\"", stored);
+
+        string csch = Path.Combine(schDir, "Bench.csch");
+        File.WriteAllText(csch, SchematicPersistence.Serialize(model, "Bench"));
+        string extracted = SchematicCircuit.CnlTextOf(csch);
+        Assert.Contains("File=\"results/block.s2p\"", extracted);
+        Assert.True(File.Exists(SnpPathPolicy.Resolve("results/block.s2p", SchematicCircuit.ReferenceBaseOf(csch), null)));
+    }
+
+    /// <summary>
     /// Readable in the two ways a machine can check: no symbol drawn over another, and no wire that
     /// is not horizontal or vertical. Over every netlist the gate draws.
     /// </summary>

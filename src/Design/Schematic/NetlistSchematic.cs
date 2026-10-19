@@ -178,7 +178,9 @@ public static class NetlistSchematic
     /// </summary>
     /// <param name="schematicDirectory">Where the drawing will be written, when known. The netlist
     /// reader resolves a Touchstone <c>File</c> to an absolute path; a schematic stores it relative to
-    /// its own folder, so it is rewritten relative to this one. Null leaves it absolute.</param>
+    /// the base it is read against (<see cref="SchematicCircuit.ReferenceBaseOf"/>: the workspace root
+    /// when this folder is inside one, else this folder), so it is rewritten relative to that. The
+    /// technology reference stays relative to this folder itself. Null leaves both absolute.</param>
     /// <param name="hints">Where each instance's copper is in the artwork it was recognised from, by instance
     /// name (brief-artsch-6 R-as6-3) — a layout point, y up. With hints, the elements hanging from one net of
     /// the main line are ordered along the artwork's path, and a two-pin one whose artwork lies on the left of
@@ -346,7 +348,7 @@ public static class NetlistSchematic
             var t = template.FirstOrDefault(d => d.Name == o.Name);
             string expr = o.Expression;
             if (kind == SymbolKind.Snp && o.Name.Equals("File", StringComparison.OrdinalIgnoreCase))
-                expr = RelativeFile(expr, schematicDirectory);
+                expr = RelativeFile(expr, FileBase(schematicDirectory));
             // A layer NAME is stored bare in a schematic — the extraction reads it raw and quotes it as it writes the
             // .cnl — so the .cnl's quotes are its line syntax, not part of the name ("Top Copper (1 oz)").
             if (IsLayerName(o.Name) && expr.Length >= 2 && expr[0] == '"' && expr[^1] == '"')
@@ -376,6 +378,17 @@ public static class NetlistSchematic
 
     private static bool IsLayerName(string parameter) =>
         parameter is "SignalLayer" or "GroundReference" || ViaSubstrateInjection.LayerParams.Contains(parameter);
+
+    /// <summary>The folder a schematic in <paramref name="schematicDirectory"/> resolves a <c>File</c> against —
+    /// <see cref="SchematicCircuit.ReferenceBaseOf"/>'s rule, taken from the folder because the drawing is not
+    /// written yet. Its own folder would be wrong inside a workspace: a test bench in <c>&lt;cell&gt;/schematic/</c>
+    /// stored <c>../../results/…</c>, which the extraction then resolved above the workspace.</summary>
+    private static string? FileBase(string? schematicDirectory)
+    {
+        if (schematicDirectory is null) return null;
+        string own = System.IO.Path.GetFullPath(schematicDirectory);
+        return CircuitRF.Design.Workspace.WorkspaceRootFinder.WorkspaceDirOf(own) ?? own;
+    }
 
     /// <summary>A quoted absolute path, relative to <paramref name="dir"/> — what a schematic stores,
     /// and what the extraction's own reader resolves back to the same absolute path.</summary>

@@ -254,13 +254,14 @@ source.
 ### Phantoms {#phantoms}
 
 A **phantom** is a body for SAR work, made of nested layers, each its own material. *3D ▸ Draw ▸ Phantom*
-offers five:
+offers six:
 
 | Phantom | Layers, outermost first | Starts as |
 |---|---|---|
 | **Head (3 ellipsoids)** | skin, skull, brain: concentric ellipsoids, each shell taken off every semi-axis | openEMS's head phantom: semi-axes 100, 80, 100 mm, shells 9 mm |
 | **Body (3 cylinders)** | skin, bone, tissue: coaxial cylinders of one length | openEMS's body phantom: radius 100 mm, 260 mm long, shells 8 and 10 mm |
-| **Flat Phantom** | shell, liquid: the liquid in an open-topped box, the shell on its floor and four walls | 200 × 150 × 100 mm, a 2 mm shell |
+| **Flat Phantom** | shell, liquid: the liquid in an open-topped box, the shell on its floor and four walls | 300 × 200 × 152 mm outside, a 2 mm shell, 150 mm of body liquid |
+| **Generic Head (circuitRF's own)** | ear-left, ear-right, shell, liquid: an ellipsoid shell of head liquid with a flat ear spacer each side | semi-axes 100, 78, 115 mm, a 2 mm shell, spacers 4 mm thick and 25 mm in radius |
 | **Sphere**, **Box** | one homogeneous body | radius 50 mm; a 100 mm cube |
 
 A phantom is one object: it moves, turns, hides and is left out of the solve as one, and the tree shows its
@@ -268,9 +269,12 @@ layers under it. Where layers overlap the **innermost wins**, so the brain is br
 shows only the dimensions its shape uses — semi-axes, radius and length, or size, and the shell thicknesses —
 and one material per layer under *Layers, outermost first*. The layers start as the tissue library's records
 of those openEMS phantoms (*Add Tissue Materials* in the technology editor puts the library beside the
-technology; see [Materials](materials.html)); the flat phantom's shell starts with none, so pick one. Every
+technology; see [Materials](materials.html)); the flat phantom and the generic head start in the tissue-simulating
+liquids and circuitRF's own shell material. Every
 layer is solved as a lossy dielectric. **Flatten Phantom** (its menu) replaces it with one ordinary solid per
 layer, `<phantom>_<layer>`, in a group named after it; the solve is the same.
+
+What each phantom's dimensions are drawn from, and the tissues that fill them: [Tissues and phantoms](phantoms.html).
 
 A **sheet on a cylinder** is a strip of zero thickness on the cylinder of one radius about x, y or z — a birdcage
 coil's rung or end ring — written in the `.c3d` as a `CylinderSheet` (`circuitrf reference 3d` has its fields:

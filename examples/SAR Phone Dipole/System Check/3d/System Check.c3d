@@ -1,0 +1,164 @@
+{
+ "FormatVersion": 1,
+ "DbuPerMicron": 1000,
+ "DisplayUnit": "Mm",
+ "SnapDbu": 1000000,
+ "Objects": [
+  {
+   "$type": "Sheet",
+   "Name": "armLo",
+   "Material": "PEC",
+   "Group": "dipole",
+   "Plane": "XY",
+   "Offset": 0,
+   "Rect": {
+    "Min": [
+     -34000000,
+     -1900000
+    ],
+    "Size": [
+     33000000,
+     3800000
+    ]
+   }
+  },
+  {
+   "$type": "Sheet",
+   "Name": "armHi",
+   "Material": "PEC",
+   "Group": "dipole",
+   "Plane": "XY",
+   "Offset": 0,
+   "Rect": {
+    "Min": [
+     1000000,
+     -1900000
+    ],
+    "Size": [
+     33000000,
+     3800000
+    ]
+   }
+  },
+  {
+   "$type": "Phantom",
+   "Name": "flat",
+   "Shape": "FlatBox",
+   "Centre": [
+    0,
+    0,
+    84000000
+   ],
+   "Size": [
+    164000000,
+    104000000,
+    152000000
+   ],
+   "Shell1": 2000000,
+   "Layers": [
+    {
+     "Name": "shell",
+     "Material": "Phantom shell (circuitRF's own)"
+    },
+    {
+     "Name": "liquid",
+     "Material": "Head tissue-simulating liquid"
+    }
+   ]
+  }
+ ],
+ "Variables": [],
+ "Ports": [
+  {
+   "Number": 1,
+   "Name": "feed",
+   "Kind": "Lumped",
+   "Plane": "XY",
+   "Offset": 0,
+   "Rect": {
+    "Min": [
+     -1000000,
+     -1900000
+    ],
+    "Size": [
+     2000000,
+     3800000
+    ]
+   },
+   "Z0": "50"
+  }
+ ],
+ "BandSweeps": [
+  {
+   "Name": "Bands",
+   "Template": "Template",
+   "BandsGHz": [
+    1.75,
+    1.95
+   ],
+   "DrivePowerW": 0.25,
+   "DriveReferredTo": "Incident"
+  }
+ ],
+ "Setups": [
+  {
+   "FormatVersion": 1,
+   "Name": "Template",
+   "Frequency": {
+    "StartExpr": "1.7",
+    "StopExpr": "2.1",
+    "StepExpr": "",
+    "NumPoints": 41,
+    "Mode": "PointCount",
+    "Kind": "Linear",
+    "StartUnit": "GHz",
+    "StopUnit": "GHz",
+    "StepUnit": "GHz"
+   },
+   "Solver3D": "OpenEms",
+   "AirBox": {
+    "XMin": {
+     "PaddingUm": 40000,
+     "Boundary": "Absorbing"
+    },
+    "XMax": {
+     "PaddingUm": 40000,
+     "Boundary": "Absorbing"
+    },
+    "YMin": {
+     "PaddingUm": 40000,
+     "Boundary": "Absorbing"
+    },
+    "YMax": {
+     "PaddingUm": 40000,
+     "Boundary": "Absorbing"
+    },
+    "ZMin": {
+     "PaddingUm": 40000,
+     "Boundary": "Absorbing"
+    },
+    "ZMax": {
+     "PaddingUm": 40000,
+     "Boundary": "Absorbing"
+    }
+   },
+   "OpenEms": {
+    "PmlCells": 8,
+    "EndCriterionDb": -40,
+    "MaxTimeSteps": 60000,
+    "SaveFieldsGHz": [],
+    "CellsPerWavelength": 15
+   },
+   "Sar": {
+    "FrequenciesGHz": [
+     1.9
+    ],
+    "MassesGrams": [
+     1,
+     10
+    ],
+    "Method": "Cube"
+   }
+  }
+ ]
+}

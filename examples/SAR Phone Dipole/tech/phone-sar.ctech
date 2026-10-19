@@ -1,0 +1,91 @@
+{
+ "FormatVersion": 1,
+ "Name": "Phone SAR system check",
+ "Materials": [
+  {
+   "Name": "PEC",
+   "Sigma20": 1e+30
+  },
+  {
+   "Name": "Phantom shell (circuitRF's own)",
+   "Epsr": 3.7,
+   "Source": "circuitRF's own value for the low-loss shell of a liquid phantom, not a measured material: relative permittivity 3.7 and no loss, chosen inside the bounds FCC Office of Engineering and Technology, OET Bulletin 65 Supplement C (Edition 01-01), 'Recommended characteristics of head and body phantoms', states for a phantom shell (dielectric constant below 5.0, loss tangent below 0.05). No density: a shell dissipates nothing here and is never tissue.",
+   "Color": "#E8E4D8"
+  },
+  {
+   "Name": "Head tissue-simulating liquid",
+   "Epsr": 41.34,
+   "Sigma20": 1.015,
+   "DensityKgM3": 1000,
+   "DielectricVsFrequency": [
+    {
+     "FrequencyHz": 150000000,
+     "Epsr": 52.3,
+     "SigmaSm": 0.76
+    },
+    {
+     "FrequencyHz": 300000000,
+     "Epsr": 45.3,
+     "SigmaSm": 0.87
+    },
+    {
+     "FrequencyHz": 450000000,
+     "Epsr": 43.5,
+     "SigmaSm": 0.87
+    },
+    {
+     "FrequencyHz": 835000000,
+     "Epsr": 41.5,
+     "SigmaSm": 0.9
+    },
+    {
+     "FrequencyHz": 900000000,
+     "Epsr": 41.5,
+     "SigmaSm": 0.97
+    },
+    {
+     "FrequencyHz": 915000000,
+     "Epsr": 41.5,
+     "SigmaSm": 0.98
+    },
+    {
+     "FrequencyHz": 1450000000,
+     "Epsr": 40.5,
+     "SigmaSm": 1.2
+    },
+    {
+     "FrequencyHz": 1610000000,
+     "Epsr": 40.3,
+     "SigmaSm": 1.29
+    },
+    {
+     "FrequencyHz": 1800000000,
+     "Epsr": 40,
+     "SigmaSm": 1.4
+    },
+    {
+     "FrequencyHz": 2000000000,
+     "Epsr": 40,
+     "SigmaSm": 1.4
+    },
+    {
+     "FrequencyHz": 2450000000,
+     "Epsr": 39.2,
+     "SigmaSm": 1.8
+    },
+    {
+     "FrequencyHz": 3000000000,
+     "Epsr": 38.5,
+     "SigmaSm": 2.4
+    },
+    {
+     "FrequencyHz": 5800000000,
+     "Epsr": 35.3,
+     "SigmaSm": 5.27
+    }
+   ],
+   "Source": "Target values of a head tissue-simulating liquid for phone SAR: FCC Office of Engineering and Technology, OET Bulletin 65 Supplement C (Edition 01-01), Evaluating Compliance with FCC Guidelines for Human Exposure to Radiofrequency Electromagnetic Fields, Appendix C, table 'Tissue dielectric parameters for head and body phantoms' (its 1800-2000 MHz row is entered at both ends). The bulletin interpolates linearly between the closest pair of target frequencies, which is what circuitRF does; it does not extrapolate, and neither does circuitRF. Density: 1000 kg/m3, as stated under the same table. Epsr and Sigma20 are the interpolated values at 1 GHz, for a build that does not read the table. A reference value for research use, not a compliance claim.",
+   "Color": "#C8E0E8"
+  }
+ ]
+}

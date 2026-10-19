@@ -915,3 +915,31 @@ below 0.1 and ten times below the other, else null (a one-port, a non-S file, an
 reporter's four vendor `_series.s2p` part files the residuals were ~4e-16 against ~2. The enum's
 doc comment used to say the fixture is "not about the data" and cannot be inferred; it now points
 here. Gate: `tests/RfCore.Tests/TouchstoneNoiseBlockTests.cs`.
+
+## openEMS's HDF5 files through PureHDF: the layout, and the three things a reader gets wrong (brief-sar-4, recorded by brief-sar-13, 2026-10-18)
+
+`src/RfCore/Hdf5/` reads openEMS 0.37.0's raw SAR dump, its frequency-domain field dumps and `sar_calc`'s result, and writes
+CSXCAD's `DiscMaterial` voxel files, all through the PureHDF 2.1.2 the `.mat` export already shipped (overview O1: no HDF5
+code of circuitRF's own, no new dependency). The layout was taken with `h5dump` and h5py from real files, then read back
+with PureHDF row by row:
+
+| | Raw SAR dump (DumpType 29) | FD field dump (10, 11) | `sar_calc` result | `DiscMaterial` |
+|---|---|---|---|---|
+| superblock | 2 | 2 | 2 | 0 (symbol-table groups) |
+| layout | contiguous | contiguous | contiguous | `/DiscData` chunked, deflate 9 |
+| data | `/CellData/{Conductivity,Density,Volume}` float32 (nx, ny, nz); `/FieldData/FD/f<k>` (3, nx, ny, nz), compound {r, i} float32 | `f<k>` the same compound | `f<k>` float32 (nx, ny, nz) | `/DiscData` **uint8 (nz, ny, nx)**; `/mesh/{x,y,z}` float32 |
+| `d_order` | `XYZ` (cells), `NXYZ` (field) | `NXYZ` | `XYZ` | none |
+| frequency | float64 | float64 | **float32** | — |
+
+- **`dump_type` is the field, not the DumpType.** An E dump (DumpType 10) says `dump_type = 0`, an H dump (11) says 1; that it
+  is frequency-domain is the `/FieldData/FD` group. Only the raw dump says 29.
+- **Mesh lines are always metres.** `mesh_scaling` beside them is the setup's drawing unit (1e-3 for mm) and is never to be
+  applied. The raw dump's `/Mesh` lines are cell **centres** (`dual_mesh = 1`), with widths in `/CellWidth`.
+- **The DiscMaterial is x-fastest with no `d_order`.** CSXCAD indexes its flat buffer ix + iy·Nx + iz·Nx·Ny, so the
+  dataset's dimensions are (nz, ny, nx); every other openEMS file is C order over (x, y, z), circuitRF's own.
+  `OpenEmsArrayOrder.ToCsxcadOrder` is the one permutation, and CSXCAD itself is the gate: a transposed 3 × 2 × 2 file gives
+  the wrong tissue to 10 of its 12 voxels. The legacy `ZYX` order (`--legacyHDF5Dumps`) is refused, naming `d_order`.
+- **The index is one byte**, so one DiscMaterial holds at most 255 tissues besides air; SAR-11 refuses more, naming the limit.
+- **`sar_calc`'s exit status is inverted** (it returns its success bool: 1 is success). Judge it by its output file.
+
+Gates: `tests/Ui.Tests/Sar/OpenEmsHdf5Tests.cs`, `DiscMaterialWriterTests.cs`. Detail: `docs/design/sar.md` §6.

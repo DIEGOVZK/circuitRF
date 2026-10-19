@@ -1,6 +1,6 @@
 # circuitRF — SAR and B1 for MRI coil designers and phone SAR
 
-**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7), SAR-6 done (§8), SAR-7 done (§9), SAR-8 done (§10; the birdcage moved to SAR-8b), SAR-9 done (§11), SAR-10 done (§12), SAR-11 done (§13), SAR-12 done (§14) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
+**Status:** SAR-1 done (§1–§3), SAR-2 done (§4), SAR-3 done (§5), SAR-4 done (§6), SAR-5 done (§7), SAR-6 done (§8), SAR-7 done (§9), SAR-8 done (§10; the birdcage moved to SAR-8b), SAR-9 done (§11), SAR-10 done (§12), SAR-11 done (§13), SAR-12 done (§14), SAR-13 done (§15: acceptance) · **Series:** [`brief-sar-0-overview.md`](../sonnet-briefs/brief-sar-0-overview.md) ·
 **Reference data:** [`testdata/sar/openems-ref/`](../../testdata/sar/openems-ref/README.md) · **Builds on:**
 [`em-3d.md`](em-3d.md) (the openEMS backend) and [`em-3d-f0-findings.md`](em-3d-f0-findings.md) (its validated versions).
 
@@ -2068,3 +2068,85 @@ placement that remembers itself (by design: it writes ordinary transforms). open
 axis plane and a port whose direction leaves the axes (`CsxcadWriter`, before any process), so a tilt that is not a quarter
 turn is for a device of solids — a STEP model, a box — not for a drawn strip antenna fed by a lumped port; a tilt about the
 face's normal keeps a sheet in its plane and is written as a polygon.
+
+---
+
+## 15. Acceptance: the series against overview §4 (SAR-13)
+
+Every item of overview §4, its tolerance, the value measured and where, and whether it passes. Nothing was widened (O4); two
+comparisons were made like with like by the owner's decision (2026-10-18), and those rows say so. Values are per watt accepted
+unless stated.
+
+### 15.1 The numbers (R-sar13-1)
+
+| # | §4 item | Tolerance | Measured | Where | Verdict |
+|---|---|---|---|---|---|
+| 1 | SAR engine: local SAR against `sar_calc` on the same raw dump | 1e-5 relative | **3.3e-7** worst of 463,363 tissue cells (`sar_calc --method SIMPLE --mass 0` on circuitRF's own loop-coil dump, SAR-8 run (a), against circuitRF's local-SAR volume of the same run; no cell differs in which cells are tissue). Measured in SAR-13; until then held only by the analytic block (1e-6) and by item 2 | this section | pass |
+| 2 | SAR engine: 10 g peak against `sar_calc` | 0.5 % | **identical** (3.91953e-27, same cell) on `Dipole_SAR`'s raw dump | §7.5 | pass |
+| 3 | SAR engine: 1 g peak against `sar_calc` | 0.5 % | **identical** on the random phantom, where 1 g cubes reach the grid's edge | §7.5 | pass |
+| 4 | SAR engine: every averaged cell within 1 % on ≥ 99 % of cells | 1 %, 99 % | **100 %** of cells, worst 7.8e-7 (10 g, dipole); 100 %, worst 1.1e-7 (1 g, random) | §7.5 | pass |
+| 5 | SAR engine: analytic, a uniform block | exact to the stated tolerance | local 2.5e-4 W/kg to 1e-6; 10 g average equal to local everywhere | §7.8 | pass |
+| 6 | SAR engine: analytic, a layered slab under a plane wave | exact to the stated tolerance | **not built.** The layered case is the two-layer block, whose 1 g cube across the interface has a hand value, held exactly; no plane-wave slab was made. circuitRF's openEMS writer has no plane-wave excitation, and SAR-5 held the averaging against `sar_calc` on real dumps instead | §7.8 | **miss**: not measured |
+| 7 | `Dipole_SAR` (a): \|S11\| across the band | 0.01 linear | 7.4e-4 at the worst of 11 points | §9.2 | pass |
+| 8 | (a): Zin at f0 | 1 % | 0.036 % | §9.2 | pass |
+| 9 | (a): accepted power | 1 % | equal as a fraction of the incident wave, 0.99777 both. Compared as a fraction because each run's watts are its own pulse's | §9.2 | pass |
+| 10 | (a): psSAR10g | 2 % | **+0.09 %** (2.4372 against 2.4350 W/kg); the reference's own run-to-run spread is 0.24 % | §9.2, §3.2 | pass |
+| 11 | (a): whole-phantom SAR | 2 % | +0.02 % | §9.2 | pass |
+| 12 | (a): power budget | 95–100 % | 97.99 % (reference 97.93 %) | §9.2 | pass, after one defect fixed: the far-field surface sat inside the PML on given lines (budget 80.9 % first) |
+| 13 | `Dipole_SAR` (b), circuitRF's own grid: psSAR10g, explained | 5 % | **−2.45 %**, same peak cell; cause: the resolved 0.2 mm strip is a thinner radiator than the script's unresolved line (Zin 54.6 + j8.6 against 53.1 + j3.7 Ω), then the coarser cells before the skin | §9.4 | pass |
+| 14 | `MRI_Loop_Coil` (a): S11 minimum frequency | 0.5 MHz | 0 (298.18 against 298.18 MHz), over the 245.4 ns both runs ran — the owner's like-with-like decision; each to its own end, also 298.18 against 298.18 | §10.5 | pass |
+| 15 | (a): S11 depth | 1 dB | 0.01 dB (−50.42 against −50.41 dB) over the common window; each to its own end the depths differ by 5.5 dB, which is where each run's ring-down was cut, not the model | §10.5 | pass (owner's window) |
+| 16 | (a): \|B1+\| at the phantom centre | 3 % | **−0.34 %** against the reference re-sampled to the cell centre (0.2416 µT/√W) — the owner's decision, because the tutorial's DumpMode 0 samples H half a cell off and that alone is 3.0 %. Against the printed 0.2489: −3.3 % | §10.4 | pass (owner's sampling) |
+| 17 | (a): peak local SAR | 5 % | −0.64 % on both planes | §10.6 | pass, after one defect fixed: the feed's box lay 0.3 nm inside the given lines and openEMS excited nothing |
+| 18 | (a): B1+ and SAR planes correlated | ≥ 0.99 | SAR 1.0000 / 1.0000; \|B1+\| 0.9997 / 1.0000 — with the phantom voxelized as the tutorial's is (0.914 / 0.925 with the smooth layers) | §10.3, §10.6 | pass |
+| 19 | Co-simulation: B1+ against SAR-8's lumped run | 2 % | **+1.50 %** | §11.6 | pass |
+| 20 | Co-simulation: psSAR10g | 3 % | **+2.97 %**, the same cell | §11.6 | pass, at the edge. Four fifths of it is SAR-8's ring-down cut at −36 dB (run to −60 dB: +0.59 %); the remaining uniform 0.29 % in field is **not explained** |
+| 21 | Co-simulation: no EM run after a capacitor change, by a counter | 0 launches | 0 openEMS launches over two recombinations (`CosimNoEmRunTests`), 0 over the optimizer (`LoopCoilOptimizeTests`) and over 200 yield trials (`CapacitorYieldTests`) | §11.8, §12.5 | pass |
+| 22 | No regression: every existing openEMS gate after the move to 0.37.0 final | green | the F0 cases re-run on 0.37.0: the long ones bit-identical, the three short ones moved by at most 3.6e-6 in \|S\| (they stopped at a different step) | §3.2, em-3d-f0-findings.md §6 | pass |
+
+**The birdcage** (SAR-8b) is not an overview §4 item: the owner moved it out of SAR-8 and gave it its own gates, R-sar8b-6.
+Its numbers and verdict are §10a.5's. **`Dipole_SAR` (b)'s and `MRI_Loop_Coil` (b)'s own-grid differences** are explained in
+§9.4 and §10.7; the loop's 7 % resonance shift on circuitRF's grid is a generator property (cells normal to a sheet), and
+changing the generator is the owner's.
+
+**One miss, item 6**, and it is a missing measurement, not a disagreement.
+
+### 15.2 Owner decisions and their outcomes
+
+| | Decision (2026-10-17) | Outcome |
+|---|---|---|
+| O1 | Reuse PureHDF 2.1.2 for HDF5 | Done (SAR-4): every openEMS file and CSXCAD's DiscMaterial read and written with it, no HDF5 code of circuitRF's own and no new dependency. Found: CSXCAD reads a DiscMaterial's index as one byte, so a body holds at most 255 tissues (§6.4, §13.3) |
+| O2 | The Gabriel 1996 model implemented by circuitRF, plus an importer for a tissue table the user downloads | **Model done** (SAR-2): 16 tissues, evaluated at the SAR frequency, against an independent evaluation of the published parameters. **The importer was not built** (R-sar2-6): it needed the MCP `import` tool to gain a mode first; SAR-11 has since given it a `what` selector, so the way is open. Eight tissues ship with no density, and no tissue with thermal values, because no free source for them was verified (§4.3) |
+| O3 | `sar_calc` as an optional cross-check | Done (SAR-5, SAR-6): `Sar.CrossCheck`; identical 10 g peaks on the dipole and the loop coil; found only beside the openEMS that wrote the dump; judged by its output file, its exit status being inverted |
+| O4 | §4's tolerances as proposed | Kept; none widened. Two comparisons made like with like by the owner (2026-10-18): B1+ at the cell centre (item 16) and S11 over a common time window (items 14–15) |
+| O5 | Octave on the developer machine, the birdcage in the reference set | Done (SAR-1): the birdcage reference ran 53 min on 0.37.0 and is in the local reference set; replicated by SAR-8b on circuitRF's cylindrical grid (§10a) |
+| O6 | Co-simulation lives in a schematic: an S-parameter block plus per-port fields | Done (SAR-9, SAR-10): the `fields` analysis, field goals, tuning, the optimizer, yield and multi-channel drive, none of which starts an EM run |
+
+Decisions taken during the series and recorded where they were taken: the reference data stays local, never in the
+repository (SAR-1); openEMS's list is of tested versions (SAR-1); the bundled phantom voxelized as one DiscMaterial (SAR-8);
+the birdcage as its own brief (SAR-8); timings need not be exact when runs share the machine (SAR-12).
+
+### 15.3 The examples (R-sar13-2, R-sar13-3)
+
+Two example workspaces ship, each run once here on openEMS 0.37.0 while another openEMS run shared the machine:
+
+- **SAR MRI Loop Coil** — `LoopPorts.c3d` on circuitRF's own grid (`CellsPerWavelength` 30 at 498 MHz, 1.04 M cells against the
+  tutorial's 3.04 M; 98–498 MHz in 41 points), the EM run 95 s. A test bench puts the three gap capacitors, a feed capacitor and a
+  series match around the `.s4p` and optimizes them against S11 ≤ −20 dB at 298 MHz, mean |B1+| over the brain ≥ 0.2 µT/√W and
+  psSAR10g ≤ 2 W/kg, both per watt available: simplex, 21 iterations, 40 evaluations, 4 s, no EM run. At the optimum, against
+  §11.6's co-simulation on the tutorial's grid: mean |B1+| −0.4 %, psSAR10g −2.9 %, the single-cell peak of local SAR −26 %. The
+  README says so, as the cost of the grid; the coarse cells normal to the coil's plane also move the tutorial's 5.4 pF to about
+  6.4 pF on this grid (§10.7), which the circuit absorbs.
+- **SAR Phone Dipole** — §14.5's system check at 1.75 and 1.95 GHz by a band sweep at 0.25 W incident: psSAR1g 41.95 and
+  40.19 W/kg per W, psSAR10g 21.61 and 20.66; at 1.75 GHz the dipole reflects 28 % of the incident power. Two runs, 5.2 min.
+
+### 15.4 What a reviewer should know before `sar` is merged
+
+- **The Courant estimate's warning fires on both examples** (openEMS's time step 1.01 and 1.03 times circuitRF's estimate,
+  "outside 0.5–1"). The answer is openEMS's and is unaffected; the warning is about circuitRF's pre-run estimate and appears on
+  every run of either example.
+- **`netlist --to-schematic` wrote an SnP `File` relative to the `.csch`'s folder** (`../../results/…` for a test bench in a
+  cell), where a schematic resolves it against the workspace root. Found authoring the loop coil's bench, and fixed in
+  `NetlistSchematic` (`src/Design/RESOLVED.md`).
+- **The optimizer cannot reach a −20 dB match over 2 MHz** on a loaded coil of Q ≈ 110: the match band is about 0.5 MHz. The
+  example's goal is at 298 MHz alone, as SAR-10's test is.

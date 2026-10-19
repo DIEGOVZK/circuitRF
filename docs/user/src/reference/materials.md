@@ -143,10 +143,10 @@ A body tissue's permittivity and conductivity change strongly with frequency: mu
 - a **table of target values at named frequencies**, the way a tissue-simulating liquid is specified. It is
   interpolated between rows and **refused outside them**.
 
-A 3D run evaluates every such material **once**, at the sweep's centre frequency, and the solver uses those values across
-the whole sweep. The run's notes give the frequency and each value. `explain` with `--materials` lists the problem's
+A 3D run evaluates every such material **once**, at the setup's first SAR frequency when it computes SAR and otherwise
+at the sweep's centre, and the solver uses those values across the whole sweep. The run's notes give the frequency and each value. `explain` with `--materials` lists the problem's
 materials as the solver receives them. Because the values hold at that one frequency only, a result such as SAR is valid
-there and nowhere else. To work at another frequency, centre the sweep on it. A tissue is a lossy dielectric, so an
+there and nowhere else. To work at another frequency, make a setup for it. A tissue is a lossy dielectric, so an
 object made of one needs no Role.
 
 **Add Tissue Materials**, on the technology editor's Materials tab, copies circuitRF's tissue library beside the
@@ -159,6 +159,8 @@ technology and names it. The library holds:
 
 Every record cites its source. Where no source gives a tissue's density, the record states none: add one, with its
 source, to your own copy before computing SAR in that tissue.
+
+The whole library, its sources and the phantoms it fills: [Tissues and phantoms](phantoms.html).
 
 Selecting a tissue shows a **Frequency dependence** card: εr and σ **at f**, for a frequency you type (`298M`,
 `298 MHz`), and a small plot of both against frequency. The model is in the record and is edited in the file. εr and
