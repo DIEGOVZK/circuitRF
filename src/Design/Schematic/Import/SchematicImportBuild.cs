@@ -91,6 +91,10 @@ public sealed class ImportBuiltSchematic
 
     /// <summary>Pins in this scope the comparison leaves out on both sides (ground symbols, no-connects).</summary>
     public required IReadOnlySet<ForeignPinRef> Excluded { get; init; }
+
+    /// <summary>The source's pins on ground in this scope — one net with every other scope's, which a hierarchy's check
+    /// needs when it joins its cells (<see cref="ImportConnectivity.Flatten"/>).</summary>
+    public IReadOnlySet<ForeignPinRef> GroundPins { get; init; } = new HashSet<ForeignPinRef>();
 }
 
 /// <summary>What <see cref="SchematicImportBuild.Build"/> made, in memory: nothing is written.</summary>
@@ -409,6 +413,7 @@ public static class SchematicImportBuild
             {
                 CellName = sheetCell?.Name ?? "", SheetCell = sheetCell, Directory = directory, Model = model, TestBench = tb,
                 Placement = placement, InstancePins = instancePins, PortNames = portNames, GeometricNets = geometric, Excluded = excluded,
+                GroundPins = pinNodes.Where(n => IsGroundRoot(_logical.Find(n)) && !excluded.Contains(Ref(n))).Select(Ref).ToHashSet(),
             };
         }
 
@@ -648,8 +653,7 @@ public static class SchematicImportBuild
             for (int s = 0; s < sheets.Count; s++)
             {
                 offsets[s] = (x, 0);
-                double width = sheets[s].Width > 0 ? sheets[s].Width : ContentRight(sheets[s]);
-                x += Math.Ceiling((width + PageGap * P) / P) * P;
+                x = NextPageX(x, sheets[s].Width > 0 ? sheets[s].Width : ContentRight(sheets[s]));
             }
             return offsets;
         }
@@ -915,6 +919,10 @@ public static class SchematicImportBuild
     };
 
     /// <summary>A net name as a schematic label carries it: no whitespace.</summary>
+    /// <summary>Where the page after one at <paramref name="x"/> of <paramref name="width"/> mils goes when pages are tiled
+    /// left to right — the build's rule for a flat design's pages, and a reader's for the pages of one hierarchical sheet.</summary>
+    internal static double NextPageX(double x, double width) => x + Math.Ceiling((width + PageGap * P) / P) * P;
+
     internal static string NetName(string text) =>
         new([.. text.Trim().Select(c => char.IsWhiteSpace(c) || c is '"' or ';' or '=' ? '_' : c)]);
 

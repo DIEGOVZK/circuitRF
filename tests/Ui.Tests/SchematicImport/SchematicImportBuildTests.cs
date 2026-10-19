@@ -137,11 +137,13 @@ public sealed class SchematicImportBuildTests : IDisposable
     }
 
     /// <summary>Overview D5: a hierarchical design's child sheet becomes a cell of its own — a rectangle symbol whose pins are
-    /// its ports and a schematic whose Pins are its hierarchical labels — and each side's nets match the source's.</summary>
+    /// its ports and a schematic whose Pins are its hierarchical labels — and each side's nets match the source's. Declared
+    /// nets span the hierarchy, so the check flattens the cells through the sheet's pins and joins every cell's ground
+    /// (brief-schimp-4's hierarchical binary designs); a declaration the drawing does not make is a difference.</summary>
     [Fact]
     public void AHierarchicalDesign_ImportsItsChildSheetAsACellAndMatchesOnBothSides()
     {
-        var source = new ForeignSchematic("kicad_sch", Path.Combine(_dir, "hier.kicad_sch"),
+        ForeignSchematic Source(IReadOnlyList<IReadOnlySet<ForeignPinRef>> declared) => new("kicad_sch", Path.Combine(_dir, "hier.kicad_sch"),
         [
             new ForeignSheet("Root")
             {
@@ -152,21 +154,31 @@ public sealed class SchematicImportBuildTests : IDisposable
             },
             new ForeignSheet("Stage")
             {
-                Instances = [new("R3", 1, "R", 1000, 1000, Rotation: 90, Value: "50")],
-                Wires = [W((500, 1000), (800, 1000)), W((1200, 1000), (1500, 1000))],
-                Labels = [new(ForeignLabelKind.Hierarchical, "IN", 500, 1000), new(ForeignLabelKind.Hierarchical, "OUT", 1500, 1000)],
+                Instances = [new("R3", 1, "R", 1000, 1000, Rotation: 90, Value: "50"), new("R4", 1, "R", 1500, 1300, Value: "75")],
+                Wires = [W((500, 1000), (800, 1000)), W((1200, 1000), (1500, 1000)), W((1500, 1000), (1500, 1100))],
+                Labels = [new(ForeignLabelKind.Hierarchical, "IN", 500, 1000), new(ForeignLabelKind.Hierarchical, "OUT", 1500, 1000),
+                          new(ForeignLabelKind.Power, "GND", 1500, 1500)],
             },
-        ], [TwoPin("R")], "Root", Hierarchical: true);
+        ], [TwoPin("R")], "Root", Hierarchical: true) { DeclaredNets = declared };
+        static IReadOnlySet<ForeignPinRef> Net(params string[] pins) =>
+            pins.Select(p => new ForeignPinRef(p.Split('.')[0], p.Split('.')[1])).ToHashSet();
 
-        var result = SchematicImport.Import(source, _dir, "Top");
+        var result = SchematicImport.Import(Source([Net("R1.1", "R3.2"), Net("R3.1", "R2.1", "R4.1"), Net("R1.2", "R2.2", "R4.2")]),
+                                            _dir, "Top");
 
         Assert.True(result.Ok, result.Refusal);
         Assert.True(result.Connectivity!.Matched, string.Join("\n", result.Messages));
+        Assert.True(result.Connectivity.Declared?.Matched, string.Join("\n", result.Messages));
         string child = Path.Combine(_dir, "hier_parts", "Stage");
         Assert.Equal([child], result.CreatedCells);
         var (stage, _, _) = SchematicPersistence.LoadFromFile(Path.Combine(child, "schematic", "Stage.csch"));
         Assert.Equal(["IN", "OUT"], stage.Components.Where(c => c.Symbol == SymbolKind.Pin)
                                          .Select(c => c.Parameters.Single(p => p.Name == "Name").Expression).Order());
+
+        string again = Directory.CreateDirectory(Path.Combine(_dir, "again")).FullName;
+        var wrong = SchematicImport.Import(Source([Net("R1.1", "R3.1"), Net("R3.2", "R2.1", "R4.1"), Net("R1.2", "R2.2", "R4.2")]),
+                                           again, "Top");
+        Assert.False(wrong.Connectivity!.Declared!.Matched);
     }
 
     private static ForeignSchematic OnePart(string reference, string symbol, string? value, int pins = 2)

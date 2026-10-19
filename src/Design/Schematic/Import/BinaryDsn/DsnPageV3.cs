@@ -4,15 +4,16 @@
 // body opens with a counted block (DsnBytes.SkipBlob) — so a section this reader does not read is SKIPPED by its sizes and
 // reported, never misread:
 //
-//   page record  0x0A; body: u32 0, NAME, SIZE ("A3"), two timestamps, the same 150-byte block (width and height now in
-//                µm, grid 2540), then the title block(s) as 0x41 records
+//   page record  0x0A; body: u32 0, NAME, SIZE ("A3"), two timestamps, the same 150-byte block (width and height in the
+//                unit its grid is stated in: µm with grid 2540, or 1/1000 inch with grid 100), then the
+//                title block(s) as 0x41 records
 //   nets         u16 count of 0x34 records
 //   (list)       u16 count of records, skipped by size
 //   net names    u16 count of (name, u32 net id), plain as in version 2; every net is named, auto-named ones "N…"
 //   wires        u16 count of 0x14 records: u32 id, u32 NET, u32 colour, x1 y1 x2 y2 (i32), a byte, u16 count of ALIAS
 //                records (u32 0, x y (i32), u32 colour, u32 rotation, u32, NAME), display properties, 8 bytes
-//   parts        u16 count of 0x0D records (see Part)
-//   (list)       u16 count of records — empty
+//   parts        u16 count of records: 0x0D parts (see Part) and 0x0C hierarchical blocks (see Block)
+//   ports        u16 count of 0x17 hierarchical ports (see Port); empty on a page with none
 //   globals      u16 count of 0x25 records, each followed by u32 WIRE and a byte
 //   off-page     u16 count of 0x26 records, each followed by u32 WIRE and a byte — the same layout as a global
 //   (lists)      u16 counts of records: two empty, then the page's text and graphics, then two empty
@@ -25,7 +26,7 @@ internal static class DsnPageV3
 {
     private const int FixedHeader = 150;
 
-    public static DsnPage Read(DsnBytes r)
+    public static DsnPage Read(DsnBytes r, DsnCache cache)
     {
         var (pageEnd, _, _) = r.Record(0x0A);
         r.SkipBlob();
@@ -51,8 +52,19 @@ internal static class DsnPageV3
         for (int i = 0; i < nw; i++) wires.Add(Wire(r, aliases));
         int np = r.U16();
         var parts = new List<DsnPart>(np);
-        for (int i = 0; i < np; i++) parts.Add(Part(r));
-        Unread(r, "list after the parts", skipped);
+        var blocks = new List<DsnBlock>();
+        for (int i = 0; i < np; i++)
+            if (r.Peek() == 0x0C) blocks.Add(Block(r, cache));
+            else parts.Add(Part(r));
+        var ports = new List<DsnGlobal>();
+        int nports = r.U16();
+        for (int i = 0; i < nports; i++)
+            if (r.Peek() == 0x17) ports.Add(Port(r));
+            else
+            {
+                skipped.Add($"An item of type 0x{r.Peek():X2} among page {name}'s ports was not read; this reader has not seen one.");
+                r.Pos = r.Record().End;
+            }
         var globals = Globals(r, 0x25);
         var offPages = Globals(r, 0x26);
         Unread(r, "first list after the off-page connectors", skipped);
@@ -64,6 +76,8 @@ internal static class DsnPageV3
         {
             OffPages = offPages,
             Aliases = aliases,
+            Blocks = blocks,
+            Ports = ports,
             Skipped = skipped,
         };
     }
@@ -148,6 +162,69 @@ internal static class DsnPageV3
         int unit = r.U16();
         r.Pos = end;
         return new DsnPart(reference, symbol, value, pairs, pos, rot & 3, (rot & 4) != 0, pins, unit + 1);
+    }
+
+    /// <summary>
+    /// 0x0C: a part's layout up to its displayed properties and the byte after them (no symbol NAME — an empty string),
+    /// then the block's own rectangle symbol as an inline 0x18 record (DsnCache.Inline), then the block's NAME ("HPF"), u32
+    /// IMPLEMENTATION (string index: the schematic it places), 8 bytes, u16, u16 pin count and the pins as a part's.
+    /// </summary>
+    private static DsnBlock Block(DsnBytes r, DsnCache cache)
+    {
+        var (end, _, _) = r.Record(0x0C);
+        r.SkipBlob();
+        r.Skip(8);
+        r.Str();
+        r.U32();
+        r.Skip(8);
+        var pos = ((int)r.I16(), (int)r.I16());
+        r.U8();
+        int rot = r.U8();
+        r.Skip(2);
+        r.SkipRecords();                         // displayed properties
+        r.U8();
+        var body = cache.Inline(r);
+        string name = r.Str();
+        int implementation = (int)r.U32();
+        r.Skip(8);
+        r.U16();
+        int np = r.U16();
+        if (np > 10_000) throw r.Fail($"a hierarchical block claims {np} pins");
+        var pins = new List<DsnPlacedPin>(np);
+        for (int i = 0; i < np; i++)
+        {
+            var (pinEnd, _, _) = r.Record(0x10);
+            r.SkipBlob();
+            int index = r.U16();
+            var at = ((int)r.I16(), (int)r.I16());
+            pins.Add(new DsnPlacedPin(index, at, r.U32()));
+            r.Pos = pinEnd;
+        }
+        r.Pos = end;
+        return new DsnBlock(name, implementation, pos, rot & 3, (rot & 4) != 0, body, pins);
+    }
+
+    /// <summary>0x17: as a global's body (u32 0, u32 NAME, u32 library, the SYMBOL's name, u32 id, 8 bytes, x y, colour,
+    /// rotation), then 2 bytes, display-property records, a byte and u32 WIRE — inside the record, where a global's wire
+    /// follows it.</summary>
+    private static DsnGlobal Port(DsnBytes r)
+    {
+        var (end, _, _) = r.Record(0x17);
+        r.SkipBlob();
+        int net = (int)r.U32();
+        r.U32();
+        string symbol = r.Str();
+        r.U32();
+        r.Skip(8);
+        var pos = ((int)r.I16(), (int)r.I16());
+        r.U8();
+        int rot = r.U8();
+        r.Skip(2);
+        r.SkipRecords();
+        r.U8();
+        uint wire = r.U32();
+        r.Pos = end;
+        return new DsnGlobal(symbol, net, pos, rot & 3, (rot & 4) != 0, wire);
     }
 
     /// <summary>A u16 count of records of <paramref name="type"/> (0x25 globals, 0x26 off-page connectors): body u32 0,

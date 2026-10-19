@@ -101,12 +101,16 @@ imported.
 
 Each produced schematic is extracted by `NetExtractor` (a black-box resolver answers every cell with one `Pin` per symbol
 pin, so a model-less symbol cell still binds its nets), instance pins are translated back to source pins through the
-build's own table, and the result is compared as **sets of pin sets** with the source's geometric nets — and, for a flat
-design whose format declares nets, with those. Single-pin nets, no-connect pins and ground-symbol pins are left out of
+build's own table, and the result is compared as **sets of pin sets** with the source's geometric nets — and, when the
+format declares nets, with those. A hierarchy's declared nets span its sheets while its cells are built one at a time, so
+both sides are first FLATTENED (`ImportConnectivity.Flatten`): each sheet instance's pin is joined to its cell's port,
+every cell's ground is one net, and the synthetic pins are dropped. That is possible only when every sheet cell is placed
+once — a schematic placed twice holds one set of references for two places — and otherwise each cell is still checked
+against its own drawing. Single-pin nets, no-connect pins and ground-symbol pins are left out of
 both sides. Each difference names its pins: "joined in the source, split in the import" or the converse. The import still
 completes; the report carries the verdict.
 
-When a flat source declares nets, its declared nets are also compared with its OWN drawing (`SourceAgreement`, R-si3-3):
+When a source declares nets, its declared nets are also compared with its OWN drawing (`SourceAgreement`, R-si3-3):
 a difference there is the file's record disagreeing with its picture, which no import can reconcile, and the report says
 so in those words rather than leaving the user to infer it from two failed comparisons.
 
@@ -212,12 +216,15 @@ layout fact is in `src/Design/RESOLVED.md`.
 - **`DsnLibrary`** — the `Library` stream: the version (u16 major, u16 minor after a 32-byte title) and the STRING
   TABLE every record indexes (found by its count, not walked to). Version 2 indexes it 1-based; version 3 opens it with
   an empty string that index 0 names.
-- **`DsnCache`** — each symbol view's graphics (lines, arcs, ellipses, polylines), body size and pins (name, start,
-  hotspot), found by name. Version 3 skips a graphic kind it does not draw by its size and counts it.
+- **`DsnCache`** — each symbol view's graphics (lines, arcs, ellipses, polylines; in version 3 also rectangles and filled
+  polygons, and text, which is counted and not drawn), body size and pins (name, start, hotspot), found by name. A
+  polyline's and a polygon's points are stored **Y first**. Each pin is drawn as the line from its start to its hotspot,
+  which the symbol's graphics do not include. Version 3 skips a graphic kind it does not draw by its size and counts it.
 - **`DsnPageV2` / `DsnPageV3`** — one page each, read in order: title blocks, nets, net names, wires (with their net
   id, and in version 3 their aliases), parts (reference, symbol view, value, properties, position, rotation code, unit,
   and every pin's page position and wire), ground/power symbols and off-page connectors (the symbol's name, the NET name
-  by string index, the wire). Version 3 is version 2's sections with every record size-prefixed, so a section not read
+  by string index, the wire); in version 3 also hierarchical BLOCKS (in the parts list: their own rectangle symbol inline,
+  their name, the schematic they place, their pins) and hierarchical PORTS (the list after the parts). Version 3 is version 2's sections with every record size-prefixed, so a section not read
   is skipped by size and reported; in version 2 it is a refusal.
 - **`BinaryDsnReader`** — version dispatch (2.0, 3.2; anything else refused with the EDIF route), the transform
   (rotation code r turns a quarter counter-clockwise on screen, re-anchored at the turned body's top-left; bit 2
@@ -226,6 +233,14 @@ layout fact is in `src/Design/RESOLVED.md`.
   part's pins are numbered per unit (`A1`, `B1`). A net the file names as one but draws in pieces (an alias spelling
   another piece's automatic name) gets a label on each piece; an alias or such a label spelling an off-page or power
   name is that design-wide net, a global label.
+- **Hierarchy (version 3.2).** Each `Views/` storage is a schematic. The root is the one no block places; each schematic
+  becomes one sheet with its pages tiled left to right in it (`SchematicImportBuild.NextPageX`, the build's own page
+  rule), so a multi-page schematic stays one cell and its off-page connectors join within it. Blocks become sheet
+  instances, ports hierarchical labels; ground and power names stay design-wide, off-page names their schematic's. A
+  design of one schematic that has ports keeps them as hierarchical labels — the import's port candidates. A version-2
+  design with several schematics is refused.
 
 Gate: `tests/Ui.Tests/SchematicImport/CompoundFileTests.cs` (built containers) and `BinaryDsnReaderTests.cs` (refusals
-on built containers).
+and symbol graphics on built containers).
+`SchematicImportBuildTests.AHierarchicalDesign_…` holds the flattened check on a committed source, ground across cells
+included, and that a wrong declaration is caught.

@@ -36,6 +36,13 @@ internal sealed record DsnPart(
 /// wire it touches.</summary>
 internal sealed record DsnGlobal(string SymbolName, int NetIndex, (int X, int Y) Position, int Rotation, bool Mirror, uint Wire);
 
+/// <summary>A hierarchical block (version 3): a rectangle placing the schematic its value names — <paramref name="ImplementationIndex"/>, a
+/// string index — with <paramref name="Body"/> its own rectangle symbol (width, height and named pins), and each pin placed and wired as a
+/// part's are.</summary>
+internal sealed record DsnBlock(
+    string Name, int ImplementationIndex, (int X, int Y) Position, int Rotation, bool Mirror, DsnSymbol Body,
+    IReadOnlyList<DsnPlacedPin> Pins);
+
 /// <summary>A net alias: a name its wire carries, its text at <paramref name="At"/>.</summary>
 internal sealed record DsnAlias(string Name, (int X, int Y) At, uint Wire);
 
@@ -46,6 +53,13 @@ internal sealed record DsnPage(
 {
     public IReadOnlyList<DsnGlobal> OffPages { get; init; } = [];
     public IReadOnlyList<DsnAlias> Aliases { get; init; } = [];
+
+    /// <summary>Hierarchical blocks (version 3; held in the parts list).</summary>
+    public IReadOnlyList<DsnBlock> Blocks { get; init; } = [];
+
+    /// <summary>Hierarchical ports (version 3; the list after the parts): the name its schematic is joined to its
+    /// block's pin by, laid out as a global is.</summary>
+    public IReadOnlyList<DsnGlobal> Ports { get; init; } = [];
 
     /// <summary>What the page holds that is not read, one sentence each.</summary>
     public IReadOnlyList<string> Skipped { get; init; } = [];

@@ -20555,3 +20555,40 @@ lists them).
   the artwork-to-schematic emit writes). Rows of `SchematicImportMap.Rules` with `CaseFromName`; they match only when
   the part after the first `-` is a case `SmtCaseTable` knows, so `R-WIDE` stays a symbol cell.
   The reference rule is unchanged on purpose: `RB1`, `RC`, `RE` stay symbol cells.
+
+## Binary .DSN: hierarchy, and four reader defects found reviewing SI-4 (2026-10-19)
+
+Version 3.2 designs can be hierarchical. **This supersedes the "hierarchical designs — refused" line above.**
+
+- **A hierarchical BLOCK is a part record of type 0x0C in the parts list**, laid out as a part up to its displayed
+  properties and the byte after them (its symbol name an empty string), then **its own rectangle symbol as an inline
+  0x18 record** — the cache's symbol layout with an empty name and library: width, height and pins named after the
+  child's ports, zero-length (start = hotspot) — then the block's NAME, a u32 string index naming the
+  **schematic it places**, and its placed pins as a part's (index into the inline symbol, page position,
+  wire). The pins land at position + hotspot for rotation 0, as a part's do.
+- **A hierarchical PORT is a 0x17 record in the list after the parts** (empty in a flat design): a global's body (net-name
+  index, symbol `PORTLEFT-L`/`PORTRIGHT-L`, position, rotation), then 2 bytes, display properties, a byte and the u32
+  WIRE — **inside** the record, where a global's wire follows it.
+- **The root is the schematic no block places.** Each schematic becomes one `ForeignSheet` with its pages tiled in it by
+  the build's own rule (`SchematicImportBuild.NextPageX`), because SI-1 builds one cell per sheet and a two-page root
+  must stay one cell. Off-page connectors then join within that cell; power names stay design-wide.
+- **The declared nets of a hierarchy are flat** (block pin ↔ child port by name), so `ImportConnectivity.Flatten` joins
+  each cell's nets through its sheet instances before comparing. Every cell's ground is node 0,
+  so a child's `0` and its parent's are one net:
+  `ImportBuiltSchematic.GroundPins` (the drawing's side) and `Extract`'s `ground` (the import's side) carry it. A
+  schematic placed by two blocks has one set of references for both places: no flat pin sets exist, so the declared
+  check is skipped there and says so.
+- **Defect: polyline points are stored Y FIRST.** Read as (x, y), a 2.0 transistor's emitter arrow sat off its emitter
+  line (`(18,1),(19,8),(14,3)` against an emitter from (0,15) to (10,20)); read (y, x) it lies on it. Polygons (0x2C)
+  store theirs the same way — a diode's triangle points right only so. Connectivity never sees a graphic, so a wrong
+  reading still matches.
+- **Defect: rectangles (0x28) and polygons (0x2C) were not drawn** in 3.2 — every IC body and every diode triangle. Their
+  layouts: rectangle x1 y1 x2 y2 (i32), style, width, FILL (0 solid, 1 none), hatch; polygon style, width, fill, hatch, then
+  a u16 count of points. Read in version 3 only; 2.0 still refuses the symbol, and that is
+  now reported as an unreadable symbol, not as one missing from the cache.
+- **Defect: a pin's own line was never drawn.** A pin is the line from its start (the body edge) to its hotspot; the
+  symbol's graphics stop at the body, so an IC's 30-unit pins left its rectangle floating clear of its wires. Text (0x2E)
+  in a symbol is now counted by name in the notes rather than as an unknown graphic.
+- **Defect: a page's ports were skipped**, so a one-schematic design with hierarchical ports lost their names and its
+  port candidates. They are hierarchical labels now (global when a flat design has several pages, since a port reaches
+  every page of its schematic).

@@ -4091,8 +4091,9 @@ parsing, refusals and reporting; a comment-stripped source scan (`SchematicImpor
   differences can be looked at (overview D8), and `import.schematic.not-matched` says so; a build machine must not
   read a mismatch as success. Any refusal (unreadable file, a name already taken, a symbol cell that exists and
   differs) writes nothing and exits 1.
-- **A binary `.DSN` design** (a compound file) is read in versions 2.0 and 3.2 (SI-4, `src/Design/RESOLVED.md`); any
-  other version is a refusal naming it, with the EDIF export as the way in. `--codepage` decodes its text too.
+- **A binary `.DSN` design** (a compound file) is read in versions 2.0 and 3.2 (SI-4, `src/Design/RESOLVED.md`),
+  hierarchical designs in 3.2 — one cell per schematic, as for any hierarchical source; any other version is a refusal
+  naming it, with the EDIF export as the way in. `--codepage` decodes its text too.
 
 Gate: `tests/Ui.Tests/SchematicImport/SchematicImportEntryPointTests.cs` — the CLI as a process against the in-process
 `SchematicImport.Import` on one committed fixture, byte for byte except the provenance timestamp.

@@ -47,9 +47,14 @@ public static class ImportConnectivity
 
         var differences = new List<string>();
         var produced = new List<IReadOnlySet<ForeignPinRef>>();
+        var extracted = new List<IReadOnlyList<IReadOnlySet<ForeignPinRef>>>();
+        var grounds = new List<IReadOnlySet<ForeignPinRef>>();
         foreach (var schematic in built.Schematics)
         {
-            var sets = Extract(schematic);
+            var ground = new HashSet<ForeignPinRef>();
+            var sets = Extract(schematic, ground);
+            extracted.Add(sets);
+            grounds.Add(ground);
             string where = schematic.SheetCell is { } cell ? $" (sheet {cell.SheetName})" : "";
             differences.AddRange(Differences(schematic.GeometricNets, sets, schematic.Excluded).Select(d => d + where));
             if (schematic.SheetCell is null) produced = sets;
@@ -57,23 +62,93 @@ public static class ImportConnectivity
         var geometric = new ConnectivityComparison("the source's drawing", differences.Count == 0, differences);
 
         ConnectivityComparison? declared = null, agreement = null;
-        // A hierarchical design's declared nets span its sheets while its cells are compared one at a time, so they are
-        // not compared here; each cell is still checked against its own sheet's drawing.
-        if (source.DeclaredNets is { } nets && built.Top is { } top && !source.Hierarchical)
+        if (source.DeclaredNets is { } nets && built.Top is { } top)
         {
-            var d = Differences(nets, produced, top.Excluded);
-            declared = new ConnectivityComparison("the source's declared nets", d.Count == 0, d);
-            var self = Differences(nets, top.GeometricNets, top.Excluded)
-                .Select(x => x.Replace("the source", "the declared nets", StringComparison.Ordinal)
-                              .Replace("the import", "the drawing", StringComparison.Ordinal)).ToList();
-            agreement = new ConnectivityComparison("the source's drawing, by its declared nets", self.Count == 0, self);
+            // A hierarchy's declared nets span its sheets while its cells are built one at a time: both sides are flattened
+            // through the sheet instances first — possible only when every sheet cell is placed once, since a cell placed
+            // twice holds one set of references for two places. Otherwise each cell is still checked against its drawing.
+            IReadOnlyList<IReadOnlySet<ForeignPinRef>>? import = produced, drawing = top.GeometricNets;
+            IReadOnlySet<ForeignPinRef> excluded = top.Excluded;
+            if (source.Hierarchical)
+            {
+                import = Flatten(built, extracted, grounds);
+                drawing = Flatten(built, [.. built.Schematics.Select(s => s.GeometricNets)], [.. built.Schematics.Select(s => s.GroundPins)]);
+                excluded = built.Schematics.SelectMany(s => s.Excluded).ToHashSet();
+            }
+            if (import is not null && drawing is not null)
+            {
+                var d = Differences(nets, import, excluded);
+                declared = new ConnectivityComparison("the source's declared nets", d.Count == 0, d);
+                var self = Differences(nets, drawing, excluded)
+                    .Select(x => x.Replace("the source", "the declared nets", StringComparison.Ordinal)
+                                  .Replace("the import", "the drawing", StringComparison.Ordinal)).ToList();
+                agreement = new ConnectivityComparison("the source's drawing, by its declared nets", self.Count == 0, self);
+            }
         }
         return new ImportConnectivityResult(geometric, declared, agreement);
     }
 
+    /// <summary>
+    /// One hierarchy's nets as one design's: <paramref name="sets"/>[i] are <paramref name="built"/>'s schematic i's nets, in
+    /// which a sheet instance's pin is (instance, port) and a sheet cell's own port is <see cref="PortReference"/>, and
+    /// <paramref name="grounds"/>[i] its pins on ground — which is one net in every cell. Each instance pin is joined to its
+    /// cell's port, and both are dropped. Null when a sheet cell is placed other than once.
+    /// </summary>
+    internal static List<IReadOnlySet<ForeignPinRef>>? Flatten(ImportBuildResult built, IReadOnlyList<IReadOnlyList<IReadOnlySet<ForeignPinRef>>> sets,
+                                                               IReadOnlyList<IReadOnlySet<ForeignPinRef>> grounds)
+    {
+        var cells = built.Schematics.Where(s => s.SheetCell is not null).ToDictionary(s => s.SheetCell!.Name, s => s.SheetCell!, StringComparer.Ordinal);
+        var placed = new Dictionary<string, int>(StringComparer.Ordinal);
+        var parent = new Dictionary<ForeignPinRef, ForeignPinRef>();
+        var synthetic = new HashSet<ForeignPinRef>();
+        ForeignPinRef Find(ForeignPinRef k)
+        {
+            if (!parent.TryGetValue(k, out var p)) return parent[k] = k;
+            return p.Equals(k) ? k : parent[k] = Find(p);
+        }
+        void Union(ForeignPinRef a, ForeignPinRef b) => parent[Find(a)] = Find(b);
+        ForeignPinRef Port(string cell, string port) => new($"{PortReference(port).Reference}:{cell}", port);
+        var ground = new ForeignPinRef("<ground>", "");
+        synthetic.Add(ground);
+
+        for (int i = 0; i < built.Schematics.Count; i++)
+        {
+            var schematic = built.Schematics[i];
+            foreach (var inst in schematic.TestBench.Instances)
+            {
+                if (!cells.TryGetValue(inst.Reference, out var cell) || !schematic.InstancePins.TryGetValue(inst.InstanceName, out var pins)) continue;
+                placed[cell.Name] = placed.GetValueOrDefault(cell.Name) + 1;
+                for (int k = 0; k < pins.Count && k < cell.Ports.Count; k++)
+                    if (pins[k] is { } pin)
+                    {
+                        var port = Port(cell.Name, SchematicImportBuild.NetName(cell.Ports[k]));
+                        synthetic.Add(pin);
+                        synthetic.Add(port);
+                        Union(pin, port);
+                    }
+            }
+            foreach (var pin in grounds[i]) Union(pin, ground);
+            string scope = schematic.SheetCell?.Name ?? "";
+            foreach (var set in sets[i])
+            {
+                ForeignPinRef? first = null;
+                foreach (var r in set)
+                {
+                    var member = r.Reference == PortReference("").Reference ? Port(scope, r.PinNumber) : r;
+                    if (!member.Equals(r)) synthetic.Add(member);
+                    if (first is { } f) Union(member, f); else { first = member; Find(member); }
+                }
+            }
+        }
+        if (cells.Keys.Any(c => placed.GetValueOrDefault(c) != 1)) return null;
+        return [.. parent.Keys.Where(k => !synthetic.Contains(k)).GroupBy(Find)
+                              .Select(g => (IReadOnlySet<ForeignPinRef>)g.ToHashSet()).Where(s => s.Count >= 2)];
+    }
+
     /// <summary>The built schematic's nets, as source pins: NetExtractor's instances read back through the build's own
     /// table of which source pin each port is, and each <c>Pin</c> as the port it names.</summary>
-    internal static List<IReadOnlySet<ForeignPinRef>> Extract(ImportBuiltSchematic schematic)
+    /// <param name="ground">Given, receives the source pins on ground (the net <c>0</c>).</param>
+    internal static List<IReadOnlySet<ForeignPinRef>> Extract(ImportBuiltSchematic schematic, HashSet<ForeignPinRef>? ground = null)
     {
         var model = schematic.Model;
         model.SchematicDirectory ??= schematic.Directory;
@@ -94,6 +169,7 @@ public static class ImportConnectivity
         // A Pin OWNS its net's name in the extraction, so the net it is on is the net of that name.
         foreach (var port in schematic.PortNames)
             if (byNet.ContainsKey(port)) Put(port, PortReference(port));
+        if (ground is not null && byNet.TryGetValue("0", out var zero)) ground.UnionWith(zero);
         return [.. byNet.Values.Where(s => s.Count >= 2).Select(s => (IReadOnlySet<ForeignPinRef>)s)];
     }
 

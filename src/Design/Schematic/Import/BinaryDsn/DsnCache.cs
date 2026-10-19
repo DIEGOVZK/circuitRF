@@ -12,6 +12,12 @@
 // Records are FOUND by name: each occurrence of the wanted name is tried as a record and accepted only when the whole
 // symbol parses. In version 2 an unknown graphic is a refusal — with no length, nothing after it can be read; in version 3
 // it is skipped by its size and counted.
+//
+// Graphics: line 0x29, arc 0x2A, ellipse 0x2B and polyline 0x2D in both versions; rectangle 0x28 and polygon 0x2C in
+// version 3 only (version 2 refuses them). A polyline's and a polygon's points are i16 pairs stored Y FIRST: read as
+// (x, y), a transistor's emitter arrow lands off its emitter line and a diode's triangle points down out of its body.
+// Rectangles and polygons carry a fill after their style and width, 0 solid and 1 none. Text 0x2E (version 3) is
+// counted and not drawn: a symbol here has no text shape.
 
 namespace CircuitRF.Design.Schematic.Import.BinaryDsn;
 
@@ -22,6 +28,10 @@ internal sealed record DsnLine(int X1, int Y1, int X2, int Y2) : DsnGraphic;
 internal sealed record DsnArc(int X1, int Y1, int X2, int Y2, int Sx, int Sy, int Ex, int Ey) : DsnGraphic;
 internal sealed record DsnEllipse(int X1, int Y1, int X2, int Y2) : DsnGraphic;
 internal sealed record DsnPolyline(IReadOnlyList<(int X, int Y)> Points) : DsnGraphic;
+internal sealed record DsnRectangle(int X1, int Y1, int X2, int Y2, bool Filled) : DsnGraphic;
+internal sealed record DsnPolygon(IReadOnlyList<(int X, int Y)> Points, bool Filled) : DsnGraphic;
+/// <summary>Text drawn in a symbol (version 3, 0x2E) — read for its count only: a symbol here carries no text.</summary>
+internal sealed record DsnText : DsnGraphic;
 
 internal sealed record DsnPin(string Name, (int X, int Y) Start, (int X, int Y) Hot, int Shape);
 
@@ -46,6 +56,10 @@ internal sealed class DsnCache(byte[] bytes, EdifText text, int major)
         return symbol;
     }
 
+    /// <summary>Whether the cache names <paramref name="name"/> at all — so a symbol <see cref="Find"/> cannot return was
+    /// there and unreadable, not absent.</summary>
+    public bool Mentions(string name) => IndexOfName(System.Text.Encoding.Latin1.GetBytes(name), 0) >= 0;
+
     /// <summary>The position of the u16 length of the next occurrence of the name — a length, the name, its NUL — whose
     /// name starts at or after <paramref name="from"/>.</summary>
     private int IndexOfName(byte[] needle, int from)
@@ -68,7 +82,7 @@ internal sealed class DsnCache(byte[] bytes, EdifText text, int major)
             if (start < 0) break;
             byte type = bytes[start];
             if (type is not (0x18 or >= 0x21 and <= 0x24) || (bytes[start + 1] | bytes[start + 2] << 8) != n) continue;
-            try { return Body(new DsnBytes(bytes, "Cache", text) { Pos = nameAt }); }
+            try { return Body(new DsnBytes(bytes, "Cache", text) { Pos = nameAt }, requireLibrary: true); }
             catch (DsnFormatException) { }
         }
         return null;
@@ -81,17 +95,28 @@ internal sealed class DsnCache(byte[] bytes, EdifText text, int major)
         {
             if (!bytes.AsSpan(nameAt - 8 - n, 4).SequenceEqual(Magic)) continue;
             if (BitConverter.ToUInt32(bytes, nameAt - 4 - n) != n) continue;
-            try { return Body(new DsnBytes(bytes, "Cache", text) { Pos = nameAt }); }
+            try { return Body(new DsnBytes(bytes, "Cache", text) { Pos = nameAt }, requireLibrary: true); }
             catch (DsnFormatException) { return null; }
         }
         return null;
     }
 
-    private DsnSymbol Body(DsnBytes r)
+    /// <summary>A version-3 symbol held INSIDE another record — a hierarchical block's rectangle and its named pins, which
+    /// names no library: the 0x18 record at the cursor, read through its end.</summary>
+    public DsnSymbol Inline(DsnBytes r)
+    {
+        var (end, _, _) = r.Record(0x18);
+        r.SkipBlob();
+        var symbol = Body(r, requireLibrary: false);
+        r.Pos = end;
+        return symbol;
+    }
+
+    private DsnSymbol Body(DsnBytes r, bool requireLibrary)
     {
         string name = r.Str();
         string library = r.Str();
-        if (library.Length < 3) throw r.Fail("no library path");
+        if (requireLibrary && library.Length < 3) throw r.Fail("no library path");
         r.U32();                                 // colour
         int ng = r.U16();
         if (ng > 10_000) throw r.Fail($"a symbol claims {ng} graphics");
@@ -141,6 +166,9 @@ internal sealed class DsnCache(byte[] bytes, EdifText text, int major)
             0x2A => new DsnArc(r.I32(), r.I32(), r.I32(), r.I32(), r.I32(), r.I32(), r.I32(), r.I32()),
             0x2B => new DsnEllipse(r.I32(), r.I32(), r.I32(), r.I32()),
             0x2D => Polyline(r),
+            0x28 when major >= 3 => Rectangle(r),
+            0x2C when major >= 3 => Polygon(r),
+            0x2E when major >= 3 => new DsnText(),
             _ when major >= 3 => null,
             _ => throw r.Fail($"a symbol graphic of type 0x{type:X2}, which this reader has not seen", at),
         };
@@ -159,11 +187,36 @@ internal sealed class DsnCache(byte[] bytes, EdifText text, int major)
         static DsnPolyline Polyline(DsnBytes r)
         {
             r.Skip(8);                           // style, width
+            return new DsnPolyline(Points(r));
+        }
+
+        static DsnRectangle Rectangle(DsnBytes r)
+        {
+            int x1 = r.I32(), y1 = r.I32(), x2 = r.I32(), y2 = r.I32();
+            r.Skip(8);                           // style, width
+            return new DsnRectangle(x1, y1, x2, y2, r.U32() == 0);
+        }
+
+        static DsnPolygon Polygon(DsnBytes r)
+        {
+            r.Skip(8);                           // style, width
+            bool filled = r.U32() == 0;
+            r.Skip(4);                           // hatch
+            return new DsnPolygon(Points(r), filled);
+        }
+
+        // A u16 count of i16 points, each stored Y first (see the header).
+        static List<(int X, int Y)> Points(DsnBytes r)
+        {
             int n = r.U16();
-            if (n > 10_000) throw r.Fail($"a polyline claims {n} points");
+            if (n > 10_000) throw r.Fail($"a graphic claims {n} points");
             var pts = new List<(int, int)>(n);
-            for (int i = 0; i < n; i++) pts.Add((r.I16(), r.I16()));
-            return new DsnPolyline(pts);
+            for (int i = 0; i < n; i++)
+            {
+                int y = r.I16(), x = r.I16();
+                pts.Add((x, y));
+            }
+            return pts;
         }
 
         // type, u32 size, u32 0 — returns the size, the cursor on the payload.
