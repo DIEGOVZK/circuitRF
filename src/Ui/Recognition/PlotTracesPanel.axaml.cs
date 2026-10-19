@@ -3,6 +3,7 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -48,6 +49,20 @@ public partial class PlotTracesPanel : UserControl
         // Posted: chosen on the canvas after a re-read, the row's container is not made yet.
         if (e.PropertyName is nameof(PlotSessionViewModel.SelectedTrace) or nameof(PlotSessionViewModel.Detailed))
             Dispatcher.UIThread.Post(BringSelectedIntoView, DispatcherPriority.Loaded);
+    }
+
+    /// <summary>Copy under a fitted row (R-pdg2-4): the fit's expression text to the clipboard.</summary>
+    private async void OnCopyFit(object? sender, RoutedEventArgs e)
+    {
+        string? text = (sender as Control)?.DataContext switch
+        {
+            PlotTraceRowViewModel row => row.FitExpression,
+            PlotTraceGroupViewModel group => group.FitExpression,
+            _ => null,
+        };
+        if (text is null || TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
+        try { await clipboard.SetTextAsync(text); }
+        catch (Exception) { /* a clipboard another process holds: nothing copied, nothing else to do */ }
     }
 
     /// <summary>Scrolls the column just enough to show the selected row (R-ptu3-1).</summary>

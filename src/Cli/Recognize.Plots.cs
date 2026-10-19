@@ -69,14 +69,15 @@ internal static partial class Recognize
         foreach (var p in pictures) Console.Error.WriteLine($"[circuitRF] reading {p.Path} as a plot picture");
         var session = PlotReading.Read(inputs, flags.ReadingOptions(factor), RunHost.Control);
 
-        // The overlays and the CSV: written whatever the Touchstone's fate.
+        // The overlays and the CSV: written whatever the Touchstone's fate, each fitted trace's fit with them (R-pdg2-3).
+        var fits = TraceFit.Session(session, flags.Fits);
         for (int i = 0; i < pictures.Count; i++)
-            o.Picture.WriteOverlay(Verb, ImageOverlay.BuildPlot(session, i), pictures[i].Source, i + 1, pictures.Count);
+            o.Picture.WriteOverlay(Verb, ImageOverlay.BuildPlot(session, i, fits), pictures[i].Source, i + 1, pictures.Count);
         string? csv = null;
         if (flags.Csv is { } csvTarget)
         {
             csv = Path.GetFullPath(csvTarget);
-            if (Write(csv, () => PlotCsv.WriteFile(csv, session)) is { } failed) return failed;
+            if (Write(csv, () => PlotCsv.WriteFile(csv, session, fits)) is { } failed) return failed;
             JsonRun.AddOutput("csv", csv);
         }
 
@@ -153,7 +154,8 @@ internal static partial class Recognize
             return new PlotTraceJson(t.Name, t.Plot, t.Curve.Hex, t.Curve.StyleName, t.Assignment.ToString(), t.Assignment.Assigned, t.Evidence,
                                      t.Samples.Count, t.Resolution, t.ResolutionUnit, xs.Count > 0 ? xs.Min() : null, xs.Count > 0 ? xs.Max() : null,
                                      t.Frequency?.Source, t.Frequency?.Direction, t.Curve.Gaps.Count, t.Curve.Bridged, t.Curve.Ambiguous.Count,
-                                     t.Parametric ? null : PlotReading.Side(t.Axis), t.AxisEvidence.Length > 0 ? t.AxisEvidence : null);
+                                     t.Parametric ? null : PlotReading.Side(t.Axis), t.AxisEvidence.Length > 0 ? t.AxisEvidence : null,
+                                     built.Fits.TryGetValue(t.Name, out var fit) ? FitJson(fit) : null);
         }).ToList();
         var markers = session.Markers.Select(m => new PlotMarkerJson(m.Name, m.Plot, m.Trace > 0 ? $"T{m.Trace}" : null, m.FrequencyHz,
                                                                       m.Placed ? Math.Round(m.X, 2) : null, m.Placed ? Math.Round(m.Y, 2) : null,
@@ -169,6 +171,16 @@ internal static partial class Recognize
             Image = PictureFlags.ImageJson(pictures[0].Source, pictures[0].Kind),
             Plots = json,
         };
+    }
+
+    private static PlotFitJson FitJson(TraceFitResult f)
+    {
+        static double? Finite(double v) => double.IsFinite(v) ? v : null;
+        return new PlotFitJson(f.Spec.Model.ToString().ToLowerInvariant(), f.Spec.Model == TraceFitModel.Polynomial ? f.Spec.Degree : null,
+                               f.Expression, f.Expression is null ? null : f.LogX ? $"log10({f.XVariable})" : f.XVariable,
+                               f.XUnit.Length > 0 ? f.XUnit : null, f.Coefficients, Finite(f.RmsResidual), Finite(f.RmsResidualPx),
+                               f.Spec.Model == TraceFitModel.Spline && f.Fitted ? f.Knots : null,
+                               f.Spec.Model == TraceFitModel.Spline && f.Fitted ? f.Smoothing : null, f.Pieces, f.Refusal);
     }
 
     private static string Unit(double multiplier) => multiplier switch

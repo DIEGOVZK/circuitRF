@@ -296,6 +296,10 @@ internal static class ToolCatalog
             "Plots: assign a trace: <T3|#rrggbb|solid|dashed|dotted>[@plot]=S21:db, quantities db, mag, phase, rad, re, im, "
           + "complex, vswr, rl, il; or =ignore. On a plot with a y axis on both sides, append ,axis=left|right to say which "
           + "one it is read against (T3=S21:phase,axis=right), or give the axis alone (T3=axis=right)."),
+        new("fit",         "--fit",          OptKind.StrRepeat,
+            "Plots: fit a curve to a rectangular trace, written in place of the raw reading in the Touchstone and as y_fit in the "
+          + "CSV: <T3|#rrggbb|solid|dashed|dotted|all>[@plot]=linear|exp|poly[:<degree 1-8>]|spline[:<RMS in the trace's units>]|none "
+          + "(T3=poly:3, all=linear, T2=spline:0.05). Each fit's expression, coefficients and residual are in the result."),
         new("smithZ0",     "--smith-z0",     OptKind.Str,    "Plots: a Smith chart's reference impedance (50Ohm, the stated default)."),
         new("freq",        "--freq",         OptKind.StrRepeat,
             "Plots: a chart trace's start and stop frequency, <trace>=<start>..<stop> (T4=1GHz..5GHz); combines with markers."),

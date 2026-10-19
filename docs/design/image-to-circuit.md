@@ -1225,6 +1225,46 @@ refusal carries the flag and the dialog control that answers it. Version 1.1, DB
 picture's name and SHA-256, every calibration's residual, every trace's assignment, evidence, resolution and frequency
 rule, every fill and phase rule, the grid, and the health check (passivity, reciprocity, causality).
 
+### 15.7.1 Fitting a trace (brief-pdg-2-curve-fit.md) — `TraceFit`
+
+A digitised trace is a pixel reading: a step of one pixel's worth of value and the jitter of a pen's edge. A fit smooths
+that and gives the curve a formula. It runs **after** reading, on samples; the reader is untouched. Models: linear,
+exponential `a·exp(b·x) + c`, polynomial (degree 1–8) and a cubic smoothing spline.
+
+- **In the trace's own plotted units** — dB for a dB trace, degrees for phase (unwrapped first, so a wrapped sawtooth is
+  one curve), the axis's value otherwise — against x in the axis's DISPLAY unit (`f in GHz`), or `log10(f)` on a log x
+  axis. Rectangular traces only; a chart trace offers None.
+- **Well conditioned.** Every least-squares fit is Householder QR on x centred and scaled to [−1, 1]; a polynomial is
+  expanded back to raw x for display only, and evaluated in its centred form. A degree-6 polynomial on x in hertz
+  (1e9…1e10) comes back to 1e-9 relative, where the raw normal equations would span ~1e120.
+- **The exponential** starts from a log-linear fit of `y − c₀` (`c₀` beyond the data's extreme on the side its
+  curvature points to, tried at five distances), refined by Levenberg–Marquardt on the y residuals. It refuses, with a
+  sentence, when LM does not converge, when the rate goes to zero (a straight line), or when it explains under ~91 % of
+  the variation (RMS above 0.3 of the trace's standard deviation) — a sine reads "explains only 15 %".
+- **The spline** is Reinsch's: `Σ wᵢ(yᵢ − g)² + α∫g″²`, a pentadiagonal LDLᵀ per α, α bisected in log until the RMS
+  residual against the raw reading equals the target — **one pixel's worth (the trace's resolution) by default**, a
+  typed RMS otherwise. It has no compact equation: `spline · N knots`.
+- **Exact stays exact**: a marker's readout weighs ×100 in every least-squares fit and has σ = 0 in the spline, which
+  therefore passes through it. **Never extrapolates**: `Evaluate` is NaN outside the trace's own x range.
+- **Residuals** against the raw reading, in units and in pixels (each sample's own `PerPixel`): under ~0.5 px fits the
+  drawing; several px is the wrong model. A degree-4 polynomial on the band-pass's dB(S21) hump is 8 px RMS.
+- **The expression** is circuitRF expression text in `f` (frequency axis) or `x`, coefficients at round-trip precision,
+  each term's sign the operator before it (`- 0.00041*f^2`, never a negative literal raised to a power); the unit stands
+  beside it. `TraceFitTests` evaluates it through Core's `Evaluator` against the fit to 1e-9.
+
+**Where it applies.** Pieces TraceJoin joins share one fit made on the joined curve, whichever session the caller has:
+a joined trace lists its pieces (`PlotTraceRead.Pieces`), so a fit asked of any piece is the joined trace's, and
+`TraceFit.Session` keys the result under every piece's name. `TouchstoneAssembly` evaluates a fit at each grid
+frequency in place of resampling the samples; the per-quantity handling after that (dB → magnitude, phase → radians) is
+unchanged, and an unfitted trace is exactly as before. The CSV gains `y_fit` (a phase fit put on the sample's branch);
+`y` stays what was read. Each fit is a line of the report and the header; a refused fit leaves the trace as read and is
+a finding, never a refusal of the file. The overlay draws a fit thin and dashed in magenta (teal beside a magenta trace)
+over its trace, and it is never hit-tested.
+
+Measured on a crisp circuitRF plot (a 2 Ω + 5 nH low-pass, 1–5 GHz, `TraceFitTests`): degree 4 sits 0.04 px from the
+reading and writes |Δ|S21|| 0.00593 against the reading's 0.00592 — both are the y calibration's bias, which a fit
+carries unchanged. A fit removes noise; on a picture with little, it can only match the reading, to its model's error.
+
 ### 15.8 Minimum phase (R-im14-10) — `MinimumPhase`
 
 The cepstral Hilbert transform of ln|S|, on **the bilinear map of the whole axis**: f = f_top·tan(θ/2) for θ in

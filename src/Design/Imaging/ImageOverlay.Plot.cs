@@ -4,8 +4,10 @@
 // with its number; every tick label the reader read, green where the axis fit kept it and amber where it was rejected or
 // unread — a right-hand y axis's as well as the left's; each trace drawn over its curve in its own colour and labelled with
 // its assignment (amber while unassigned), a trace read against the right-hand y axis tagged → R (brief-pdg-1 R-pdg1-3);
-// bridged gaps dashed; ambiguous crossings amber; markers at the points they mark. The dialog's canvas and the CLI's
-// --overlay picture draw these same items.
+// bridged gaps dashed; ambiguous crossings amber; markers at the points they mark; and a fitted trace's fit
+// (brief-pdg-2-curve-fit.md R-pdg2-4) thin and dashed over it in a colour that contrasts with the trace's, mapped back
+// through the axes, so a fit that missed is seen at a glance — the trace's own colour is never covered. The dialog's
+// canvas and the CLI's --overlay picture draw these same items.
 
 using System.Globalization;
 using CircuitRF.Design.Imaging.Plots;
@@ -20,8 +22,15 @@ public sealed partial class ImageOverlay
     /// <summary>The id prefix of a trace — <c>trace:T3</c> — so the traces table and the canvas name each other.</summary>
     public const string TracePrefix = "trace:";
 
-    /// <summary>What was read on picture <paramref name="picture"/> of <paramref name="session"/>.</summary>
-    public static ImageOverlay BuildPlot(PlotSession session, int picture)
+    /// <summary>The id prefix of a trace's fitted curve — <c>fit:T3</c>. Drawn, never selected.</summary>
+    public const string FitPrefix = "fit:";
+
+    /// <summary>The fitted curve's colour beside a trace's: magenta, or teal beside a trace near magenta.</summary>
+    public static int FitColour(int traceRgb) => PlotInk.Distance(traceRgb, 0xD81B9A) < 140 ? 0x00A3A3 : 0xD81B9A;
+
+    /// <summary>What was read on picture <paramref name="picture"/> of <paramref name="session"/>, with each trace's fit in
+    /// <paramref name="fits"/> (by trace name) drawn over it.</summary>
+    public static ImageOverlay BuildPlot(PlotSession session, int picture, IReadOnlyDictionary<string, TraceFitResult>? fits = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         var items = new List<ImageOverlayItem>();
@@ -83,6 +92,9 @@ public sealed partial class ImageOverlay
             items.Add(new ImageOverlayItem($"{TracePrefix}{t.Name}", ImageOverlayClass.Trace, [.. runs.Where(r => r.Count > 0)], false,
                                            $"{t.Name} {what}{side}", t.Curve.Rgb, (!t.Assignment.Assigned && !t.Assignment.Ignored) || t.AxisAmbiguous, t.Name,
                                            PixelBounds.Of(pts).Inflate(2)));
+            if (fits is not null && fits.TryGetValue(t.Name, out var fit) && fit.Fitted
+                && session.Plots[t.Plot - 1] is { Rect: { X: { } xa } rect } plot && rect.AxisOn(t.Axis) is { } ya)
+                FitCurve(items, t, fit, xa, ya, plot.Frame);
             foreach (var (x, y) in t.Curve.Ambiguous)
                 items.Add(new ImageOverlayItem($"ambiguous:{t.Name}:{x.ToString("0", CultureInfo.InvariantCulture)}", ImageOverlayClass.Crossing, [],
                                                true, "ambiguous crossing", Colours.Amber, true, null, new PixelBounds(x - 6, y - 6, x + 6, y + 6), (x, y, 6)));
@@ -94,6 +106,32 @@ public sealed partial class ImageOverlay
                                            label, null, m.FrequencyHz is null, null, new PixelBounds(m.X - 5, m.Y - 5, m.X + 5, m.Y + 5), (m.X, m.Y, 5)));
         }
         return new ImageOverlay(items, null, [], [], null, pixelAnchors: true);
+    }
+
+    /// <summary>The fit of <paramref name="t"/> across its pixel columns, one point a column, broken where a phase fit
+    /// changes branch with the trace beneath it.</summary>
+    private static void FitCurve(List<ImageOverlayItem> items, PlotTraceRead t, TraceFitResult fit, AxisCalibration xa, AxisCalibration ya, PlotFrame frame)
+    {
+        var under = t.Samples.Where(s => double.IsFinite(s.Y)).OrderBy(s => s.Px).ToList();
+        if (under.Count < 2) return;
+        var runs = new List<List<(double X, double Y)>> { new() };
+        int k = 0;
+        for (double px = Math.Ceiling(under[0].Px); px <= under[^1].Px; px++)
+        {
+            while (k + 1 < under.Count && Math.Abs(under[k + 1].Px - px) <= Math.Abs(under[k].Px - px)) k++;
+            double y = TraceFit.EvaluateNear(fit, xa.ValueAt(px), under[k].Y);
+            double py = double.IsFinite(y) ? ya.PixelAt(y) : double.NaN;
+            if (!double.IsFinite(py) || (runs[^1].Count > 0 && Math.Abs(py - runs[^1][^1].Y) > (frame.Bottom - frame.Top) / 2))
+            {
+                if (runs[^1].Count > 0) runs.Add([]);
+                if (!double.IsFinite(py)) continue;
+            }
+            runs[^1].Add((px, py));
+        }
+        var drawn = runs.Where(r => r.Count > 1).ToList();
+        if (drawn.Count == 0) return;
+        items.Add(new ImageOverlayItem($"{FitPrefix}{t.Name}", ImageOverlayClass.Trace, [.. drawn], false, null, FitColour(t.Curve.Rgb), false, null,
+                                       PixelBounds.Of(drawn.SelectMany(r => r))));
     }
 
     /// <summary>A quantity as the overlay labels it: <c>dB</c>, <c>phase</c>, <c>|S|</c>, <c>Γ</c>.</summary>

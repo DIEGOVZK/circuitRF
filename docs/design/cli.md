@@ -3915,6 +3915,7 @@ Flags (`@<n>` names a plot; none means plot 1):
 | `--grid 1GHz..5GHz/81[log]` | the Touchstone's grid (default: the traces' common range at the densest trace's resolution, a 1-2-5 step) |
 | `--format db`, `ma`, `ri` | the Touchstone's format (DB) |
 | `--ports 2` | the file's ports, 1-4 (default: the highest port any trace names); a trace naming a port beyond it waits, as an unassigned one does |
+| `--fit "<T3 / #rrggbb / solid / dashed / dotted / all>[@n]=<model>"` | a curve fitted to a rectangular trace (brief-pdg-2): `linear`, `exp`, `poly[:<degree 1-8>]` (3), `spline[:<RMS in the trace's units>]` (one pixel), `none`; repeatable, the last naming a trace wins. The fit is written to the Touchstone in place of the raw reading and as the CSV's `y_fit`; pieces of one entry joined into one curve share one fit |
 | `--csv out.csv` | the raw digitised traces in each plot's own units — never resampled, and **never waits** |
 | `--keep-sources on`, `off` | the source pictures beside the Touchstone as `<name>.source.png`, `.source-2.png` … (on) |
 | `--overlay out.png` | each picture with what was read drawn over it; picture n's beside it as `out-n.png` |
@@ -3931,16 +3932,22 @@ reading (a line per plot and trace), the report and the matrix — where every e
 `result.recognize.plots`: the pictures (name, SHA-256), the plots (type, calibrations with residuals and every tick
 label — a right-hand second y axis as `y2` beside `x` and `y`, with its `y2Title`, and `ySide: "right"` on a plot whose
 only y axis is on the right), the traces (assignment, evidence, points, resolution, range, frequency source and
-direction, and a rectangular trace's `axis`, `left` or `right`, with its `axisEvidence` on a plot with two y axes), the
-markers, the matrix map, the grid, the paths written, the refusal and the health line. The CSV's last column is
-`y_axis`.
+direction, a rectangular trace's `axis`, `left` or `right`, with its `axisEvidence` on a plot with two y axes, and a
+fitted trace's `fit` — `model`, `degree`, `expression` in circuitRF's expression language, its `variable` (`f`, `x`, or
+`log10(f)` on a log x axis) and `xUnit`, `coefficients` lowest power first, `rms` in the trace's units and `rmsPx`, a
+spline's `knots` and `smoothing`, the `pieces` fitted together, or only a `refusal`), the markers, the matrix map, the
+grid, the paths written, the refusal and the health line. The CSV ends `y_axis`, `y_fit`; `y` stays what was read.
+A refused fit (an exponential that does not converge or explains too little, a degree above the distinct x values, a
+chart trace) leaves its trace as read, is a line of the report and the header, and never refuses the file. With a fit
+set the overlay draws it thin and dashed over its trace.
 
-Over the protocol every flag is a field (`pictures`, `plot`, `xAxis`, `yAxis`, `y2Axis`, `xLog`, `yLog`, `y2Log`, `trace`, `smithZ0`,
-`freq`, `phase`, `fill`, `prefer`, `grid`, `format`, `csv`, `keepSources`) and the overlay comes back as image content,
+Over the protocol every flag is a field (`pictures`, `plot`, `xAxis`, `yAxis`, `y2Axis`, `xLog`, `yLog`, `y2Log`, `trace`, `fit`,
+`smithZ0`, `freq`, `phase`, `fill`, `prefer`, `grid`, `format`, `csv`, `keepSources`) and the overlay comes back as image content,
 so an agent can check every reading by eye and answer an unassigned trace with `trace`. Gate:
 `tests/Ui.Tests/PlotRecognition/PlotCliVerbTests.cs` — two pictures to `-o x.s2p` as a process, byte for byte the
 in-process assembly's but the time line TouchstoneIO writes; a Smith trace with no frequency exits 1 naming `--freq`;
-`--y2-axis` calibrates the right axis and `axis=right` moves a trace (brief-pdg-1); the source scan.
+`--y2-axis` calibrates the right axis and `axis=right` moves a trace (brief-pdg-1); `--fit T1=poly:2` puts a `fit` in
+the JSON and a filled `y_fit` in the CSV (brief-pdg-2); the source scan.
 
 ## 27. A picture as `convert`'s source — the image reader, the scale, the overlay
 

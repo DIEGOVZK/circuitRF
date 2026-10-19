@@ -159,6 +159,26 @@
                                                               MinWidth="72" PlaceholderText="mixed" ToolTip.Tip="{Binding AxisEvidence}"/>
                                                 </StackPanel>
                                             </StackPanel>
+                                            <!-- The fit (R-pdg2-4): what replaces the raw reading in the Touchstone, and its readout. -->
+                                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="30,0,0,0">
+                                                <TextBlock Text="Fit" FontSize="12" Opacity="0.8" VerticalAlignment="Center" Width="20"/>
+                                                <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.FitModels}" SelectedIndex="{Binding FitIndex}"
+                                                          MinWidth="104" PlaceholderText="mixed" IsEnabled="{Binding FitEnabled}"
+                                                          ToolTip.Tip="{Binding FitTip}" ToolTip.ShowOnDisabled="True"/>
+                                                <TextBox Text="{Binding DegreeText}" Width="44" PlaceholderText="3" IsVisible="{Binding IsPolynomial}"
+                                                         ToolTip.Tip="The polynomial's degree, 1 to 8. Empty: 3."/>
+                                                <TextBox Text="{Binding SmoothingText}" Width="84" PlaceholderText="{Binding SmoothingWatermark}" IsVisible="{Binding IsSpline}"
+                                                         ToolTip.Tip="How far the spline may stand from the reading: its RMS residual, in the trace's own units. Empty: one pixel's worth, which removes the pixel noise and nothing the picture resolves."/>
+                                            </StackPanel>
+                                            <Grid ColumnDefinitions="*,Auto" Margin="30,0,0,0" IsVisible="{Binding HasFit}">
+                                                <StackPanel Spacing="1">
+                                                    <SelectableTextBlock Text="{Binding FitReadout}" FontSize="11" TextWrapping="Wrap" Classes.error="{Binding FitRefused}"/>
+                                                    <SelectableTextBlock Text="{Binding FitResidual}" FontSize="11" Opacity="0.75"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Content="Copy" FontSize="11" Padding="6,1" Margin="6,0,0,0" VerticalAlignment="Top"
+                                                        IsEnabled="{Binding CanCopyFit}" Click="OnCopyFit"
+                                                        ToolTip.Tip="Copy the fit's expression, in circuitRF's expression language. Its variable's unit is beside it, not in it."/>
+                                            </Grid>
                                             <!-- A chart trace is a group of its own: its frequency row (R-im14-8 (3)). -->
                                             <Border Classes="slot" Classes.wants="{Binding First.NeedsFrequency}" Margin="26,0,0,0" IsVisible="{Binding IsChart}">
                                                 <StackPanel Orientation="Horizontal" Spacing="6">
@@ -208,6 +228,26 @@
                                                               MinWidth="72" ToolTip.Tip="{Binding AxisEvidence}"/>
                                                 </StackPanel>
                                             </StackPanel>
+                                            <!-- The fit (R-pdg2-4): what replaces the raw reading in the Touchstone, and its readout. -->
+                                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="30,0,0,0">
+                                                <TextBlock Text="Fit" FontSize="12" Opacity="0.8" VerticalAlignment="Center" Width="20"/>
+                                                <ComboBox ItemsSource="{x:Static rec:PlotTraceRowViewModel.FitModels}" SelectedIndex="{Binding FitIndex}"
+                                                          MinWidth="104" PlaceholderText="mixed" IsEnabled="{Binding FitEnabled}"
+                                                          ToolTip.Tip="{Binding FitTip}" ToolTip.ShowOnDisabled="True"/>
+                                                <TextBox Text="{Binding DegreeText}" Width="44" PlaceholderText="3" IsVisible="{Binding IsPolynomial}"
+                                                         ToolTip.Tip="The polynomial's degree, 1 to 8. Empty: 3."/>
+                                                <TextBox Text="{Binding SmoothingText}" Width="84" PlaceholderText="{Binding SmoothingWatermark}" IsVisible="{Binding IsSpline}"
+                                                         ToolTip.Tip="How far the spline may stand from the reading: its RMS residual, in the trace's own units. Empty: one pixel's worth, which removes the pixel noise and nothing the picture resolves."/>
+                                            </StackPanel>
+                                            <Grid ColumnDefinitions="*,Auto" Margin="30,0,0,0" IsVisible="{Binding HasFit}">
+                                                <StackPanel Spacing="1">
+                                                    <SelectableTextBlock Text="{Binding FitReadout}" FontSize="11" TextWrapping="Wrap" Classes.error="{Binding FitRefused}"/>
+                                                    <SelectableTextBlock Text="{Binding FitResidual}" FontSize="11" Opacity="0.75"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Content="Copy" FontSize="11" Padding="6,1" Margin="6,0,0,0" VerticalAlignment="Top"
+                                                        IsEnabled="{Binding CanCopyFit}" Click="OnCopyFit"
+                                                        ToolTip.Tip="Copy the fit's expression, in circuitRF's expression language. Its variable's unit is beside it, not in it."/>
+                                            </Grid>
                                             <SelectableTextBlock FontSize="11" Opacity="0.75" Margin="30,0,0,0" TextWrapping="Wrap">
                                                 <Run Text="{Binding RangeText}"/><Run Text=" · "/><Run Text="{Binding Points}"/><Run Text=" points · "/><Run Text="{Binding ResolutionText}"/><Run Text=" per pixel · plot "/><Run Text="{Binding Plot}"/>
                                             </SelectableTextBlock>

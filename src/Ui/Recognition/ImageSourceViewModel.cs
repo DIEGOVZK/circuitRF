@@ -161,7 +161,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         // A typed tick label reads as typed at once — one value alone blocks the reading until the second (PTU-7).
         Plots.AxisTextChanged += () =>
         {
-            if (Plots.Session is { } session) Overlay = Plots.Relabel(ImageOverlay.BuildPlot(session, Plots.ShownPicture));
+            if (Plots.Session is { } session) Overlay = Plots.Relabel(ImageOverlay.BuildPlot(session, Plots.ShownPicture, Plots.Assembly?.Fits));
         };
         // Create… (a plot's) is enabled by what enables Create: re-read whenever its tooltip is.
         PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CreateTip)) CreatePlotCommand.NotifyCanExecuteChanged(); };
@@ -169,7 +169,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         {
             OnPropertyChanged(nameof(Raster));
             OnPropertyChanged(nameof(CanRestorePicture));
-            if (Plots.Session is { } session) Overlay = Plots.Relabel(ImageOverlay.BuildPlot(session, Plots.ShownPicture));
+            if (Plots.Session is { } session) Overlay = Plots.Relabel(ImageOverlay.BuildPlot(session, Plots.ShownPicture, Plots.Assembly?.Fits));
             Plots.AskLabel(null);   // the clicked label was on the picture no longer shown
             SelectTraceItem();
         };
@@ -1270,7 +1270,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             Scale.Update(null, false);
             LayerRows.Clear();
             Plots.Apply(plot.Session, plot.Assembly);
-            Overlay = Plots.Relabel(ImageOverlay.BuildPlot(plot.Session, Plots.ShownPicture));
+            Overlay = Plots.Relabel(ImageOverlay.BuildPlot(plot.Session, Plots.ShownPicture, plot.Assembly.Fits));
             SelectTraceItem();
             if (plot.Session.Plots.Count == 0)
                 SetFailure("No plot was found: no rectangular axes with a grid or ticks, and no Smith or polar chart.", offersKind: true);
@@ -1445,7 +1445,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         {
             var kept = await Task.Run(() =>
             {
-                if (csv) { PlotCsv.WriteFile(path, session); return (IReadOnlyList<KeptPicture>)[]; }
+                if (csv) { PlotCsv.WriteFile(path, session, assembly.Fits); return (IReadOnlyList<KeptPicture>)[]; }
                 return TouchstoneAssembly.WriteFile(assembly, path, inputs, keep);
             });
             IsCreating = false;

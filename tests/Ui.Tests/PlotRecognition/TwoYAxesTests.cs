@@ -99,14 +99,16 @@ public sealed class TwoYAxesTests(PlotPictureSet pictures, ITestOutputHelper out
     }
 
     [Fact]
-    public void TheCsv_EndsWithEachTracesYAxis()
+    public void TheCsv_CarriesEachTracesYAxis()
     {
+        // y_axis was the last column until brief-pdg-2's y_fit was appended after it.
         var s = Read("two-y");
         var lines = PlotCsv.Write(s).Split('\n', StringSplitOptions.RemoveEmptyEntries).Where(l => !l.StartsWith('#')).ToList();
-        Assert.Equal("y_axis", lines[0].Split(',')[^1]);
+        int col = Array.IndexOf(lines[0].Split(','), "y_axis");
+        Assert.Equal(10, col);
         foreach (var t in s.Traces)
             Assert.All(lines.Skip(1).Where(l => l.StartsWith(t.Name + ",", StringComparison.Ordinal)),
-                       l => Assert.Equal(PlotReading.Side(t.Axis), l.Split(',')[^1]));
-        Assert.Contains(lines, l => l.EndsWith(",right", StringComparison.Ordinal));
+                       l => Assert.Equal(PlotReading.Side(t.Axis), l.Split(',')[col]));
+        Assert.Contains(lines, l => l.Split(',')[col] == "right");
     }
 }

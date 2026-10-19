@@ -115,6 +115,8 @@ public sealed partial class ImageOverlay
         {
             if (!shown(item.Class) && !(item.Unknown && shown(ImageOverlayClass.Unknown))) continue;
             if (!item.Bounds.Inflate(tolerancePx).Contains(x, y)) continue;
+            // A trace's fitted curve is drawn over the trace, which is what a click there means (brief-pdg-2 R-pdg2-4).
+            if (item.Id.StartsWith(FitPrefix, StringComparison.Ordinal)) continue;
             int rank = item.Class switch
             {
                 ImageOverlayClass.Crossing => 0,

@@ -119,6 +119,10 @@ public sealed record PlotTraceRead(int Number, int Plot, TraceCurve Curve, PlotA
 
     public string Name => $"T{Number}";
 
+    /// <summary>The numbers of the pieces TraceJoin joined into this trace (brief-pdg-2-curve-fit.md R-pdg2-3); empty for a
+    /// trace not joined. A fit asked of any piece is the joined trace's.</summary>
+    public IReadOnlyList<int> Pieces { get; init; } = [];
+
     /// <summary>On a plot with two y axes, nothing said which one it is read against (R-pdg1-2 (6)).</summary>
     public bool AxisAmbiguous => AxisEvidence == NoAxisEvidence;
 

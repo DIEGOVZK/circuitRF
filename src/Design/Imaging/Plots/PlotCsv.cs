@@ -9,7 +9,9 @@
 // columns), so a wide table would be mostly empty cells. A rectangular trace fills x and y; a chart trace fills re and
 // im, and x when its frequency is known. `exact` marks a sample that came from a marker's readout rather than pixels.
 // `y_axis` says which y axis a rectangular trace was read against, `left` or `right` (brief-pdg-1-two-y-axes.md
-// R-pdg1-5), empty for a chart trace; it is the LAST column because column order is a format.
+// R-pdg1-5), empty for a chart trace. `y_fit` (brief-pdg-2-curve-fit.md R-pdg2-3) is a fitted trace's fit at each
+// sample's x, empty where no fit is set — `y` stays exactly what was read. Each new column goes LAST, because column order
+// is a format.
 
 using System.Globalization;
 using System.Text;
@@ -19,10 +21,11 @@ namespace CircuitRF.Design.Imaging.Plots;
 public static class PlotCsv
 {
     /// <summary>The columns, in order.</summary>
-    public static readonly IReadOnlyList<string> Columns = ["trace", "plot", "assignment", "x", "x_unit", "y", "y_unit", "re", "im", "exact", "y_axis"];
+    public static readonly IReadOnlyList<string> Columns = ["trace", "plot", "assignment", "x", "x_unit", "y", "y_unit", "re", "im", "exact", "y_axis", "y_fit"];
 
     /// <summary>The session's traces as CSV text, <c>\n</c> line ends. Pure.</summary>
-    public static string Write(PlotSession session)
+    /// <param name="fits">The fits by trace name (<see cref="TraceFit.Session"/>, a Touchstone result's own); null fits none.</param>
+    public static string Write(PlotSession session, IReadOnlyDictionary<string, TraceFitResult>? fits = null)
     {
         ArgumentNullException.ThrowIfNull(session);
         var sb = new StringBuilder();
@@ -41,6 +44,7 @@ public static class PlotCsv
             else if (t.Frequency is not null) (xScale, xUnit) = (1e9, "GHz");
             string assignment = t.Assignment.ToString();
             string side = t.Parametric ? "" : PlotReading.Side(t.Axis);
+            var fit = !t.Parametric && fits is not null && fits.TryGetValue(t.Name, out var got) && got.Fitted ? got : null;
             foreach (var s in t.Samples)
             {
                 sb.Append(t.Name).Append(',').Append(t.Plot.ToString(CultureInfo.InvariantCulture)).Append(',').Append(assignment).Append(',');
@@ -49,14 +53,17 @@ public static class PlotCsv
                     sb.Append(",,").Append(Num(s.Value.Real)).Append(',').Append(Num(s.Value.Imaginary));
                 else
                     sb.Append(Num(s.Y)).Append(',').Append(t.ResolutionUnit).Append(",,");
-                sb.Append(',').Append(s.Exact ? '1' : '0').Append(',').Append(side).Append('\n');
+                sb.Append(',').Append(s.Exact ? '1' : '0').Append(',').Append(side).Append(',');
+                if (fit is not null && TraceFit.EvaluateNear(fit, s.X, s.Y) is var y && double.IsFinite(y)) sb.Append(Num(y));
+                sb.Append('\n');
             }
         }
         return sb.ToString();
     }
 
     /// <summary>Writes <see cref="Write"/>'s text to <paramref name="path"/>, atomically.</summary>
-    public static void WriteFile(string path, PlotSession session) => Cells.AtomicFile.WriteAllText(path, Write(session));
+    public static void WriteFile(string path, PlotSession session, IReadOnlyDictionary<string, TraceFitResult>? fits = null) =>
+        Cells.AtomicFile.WriteAllText(path, Write(session, fits));
 
     private static string FrequencyUnit(double multiplier) => multiplier switch
     {

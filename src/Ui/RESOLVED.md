@@ -39916,3 +39916,17 @@ tab index (a `ConditionalWeakTable` keyed by the tool), and `Restore` moves the 
 position rather than "first" by rule, which is the same answer for both reported cases, since both
 panels are `Order = 0` in every shipped layout. Gate:
 `WBondRound5Tests.HidingAndRestoringATab_PutsItBackInItsOwnTabPosition` (front and middle tab).
+
+## Plot digitiser: a fit per trace in the traces table (brief-pdg-2-curve-fit, 2026-10-18)
+
+- **A fit is held by trace name as the row's controls hold it** (`PlotTraceRowViewModel.FitChoice`: model, degree text,
+  smoothing text), not as a parsed spec, so a degree typed out of range survives the re-read and `Blocked()` can name it.
+  An edit on one piece is written under every piece `TraceFit.FittedWith` returns — the pieces TraceJoin joins share one
+  fit — and the fits ride the existing assignment undo (`AssignmentState.Fits`).
+- **What the fit made comes back on the Touchstone** (`TouchstoneAssemblyResult.Fits`, set even when the file is
+  refused), so the rows' readouts, the overlay (`ImageOverlay.BuildPlot`'s `fits`) and the CSV all show the assembly's
+  own fits rather than a second computation.
+- **Copy is a Click handler in `PlotTracesPanel`**, reading the row's or group's `FitExpression` from the button's
+  DataContext; the view models hold no clipboard.
+- **A fitted curve is a `Trace`-class overlay item with id `fit:T3`**, drawn thin and dashed in its own colour by the
+  canvas and skipped by `ImageOverlay.HitTest`, so a click on it still selects the trace beneath.

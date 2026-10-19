@@ -20370,3 +20370,27 @@ the run settings behind each: `docs/design/sar.md` §9.4, §10.5, §10.7, §11.6
   A clean worktree of HEAD fails all four with the same messages: the plotter's own `s21db` picture reads unassigned (its
   y title `S(2,1) dB20` now reads `S(2 t1 dB20`, which the entry grammar does not take), and the Smith picture's markers
   give no frequency. The cause was not investigated here.
+
+## A curve fitted to a digitised trace (brief-pdg-2-curve-fit, 2026-10-18)
+
+- **The brief's end-to-end gate could not hold on the picture it named.** A degree-4 polynomial on the plotter's
+  `s21db` (the band-pass's resonance hump) is 8 px RMS from the reading: the wrong model, as the fit's own pixel residual
+  says. The gate draws a new picture instead, `s21lowpass` (2 Ω + 5 nH, which degree 4 describes to 1.0e-4 in |S|). Even
+  there the fit does not beat the reading: on a crisp plot the reading is almost noise-free (the fit sits 0.04 px from
+  it) and what error is left is the y calibration's bias, which a fit carries unchanged (|Δ|S21|| 0.00593 fitted against
+  0.00592 read). So the gate holds the fit to adding nothing beyond its model's error (+2e-4), not to beating the reading.
+- **Single-digit negative tick labels are mostly not read.** The plotter's auto-scaled `-6 … 0` labels on that curve
+  read 1 of 7 (also with `--y -8:0`), so the axis stayed uncalibrated; `-6:2` and `-10:0` read. A reader finding, left
+  for a reader brief: the picture is drawn with `--y -6:2`.
+- **Pieces are fitted together whichever session a caller passes.** The dialog assembles a session TraceJoin has already
+  joined and the CLI one it has not (see PTU-5's entry). `TraceFit.Session` joins itself, and a joined trace now lists its
+  pieces (`PlotTraceRead.Pieces`), so a fit named by any piece is the joined curve's and the result is keyed under every
+  piece's name in both cases. The CLI still writes no joined Touchstone; only the fit is shared.
+- **The exponential refuses on three grounds**, since LM on a sine does not reliably fail to converge: it stops on tiny
+  improvements, or drifts toward the straight-line limit (`a → ∞`, `b → 0`). So a fit is refused when LM does not
+  converge, when its rate (over the half-span) falls under 1e-6, or when its RMS exceeds 0.3 of the trace's standard
+  deviation (it explains under ~91 % of the variation). A polynomial or spline is never refused for fitting poorly: its
+  pixel residual says so.
+- **`TouchstoneAssemblyTests.S11AndAPassiveS21…` and `AnS21AboveZeroDb…` fail on this tree** with "T1 is unassigned",
+  read from the plotter's `s21db` and `amp21`: the y-title misread recorded under PDG-1, raised before any fit code runs
+  (neither test sets a fit). Not caused here.

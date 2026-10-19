@@ -135,16 +135,18 @@ public sealed partial class ImageOverlay
                         canvas.DrawPath(path, stroke);
                     }
                     // A trace is drawn on a white halo so it shows over its own curve; a bridged gap dashed.
+                    bool fitted = item.Id.StartsWith(FitPrefix, StringComparison.Ordinal);
                     if (item.Class == ImageOverlayClass.Trace)
                     {
                         stroke.Color = C(0xFFFFFF, 0.9);
                         stroke.StrokeWidth = pen + (float)(2 * u);
-                        if (!item.Id.StartsWith(GapPrefix, StringComparison.Ordinal)) canvas.DrawPath(path, stroke);
+                        if (!item.Id.StartsWith(GapPrefix, StringComparison.Ordinal) && !fitted) canvas.DrawPath(path, stroke);
                     }
                     stroke.Color = C(colour);
-                    stroke.StrokeWidth = pen;
-                    // A bridged gap and an annotation stroke dashed: not read as line work.
-                    stroke.PathEffect = item.Id.StartsWith(GapPrefix, StringComparison.Ordinal) || item.Class == ImageOverlayClass.Annotation
+                    // A fitted curve thin, so the trace's own colour shows beside it (brief-pdg-2 R-pdg2-4).
+                    stroke.StrokeWidth = fitted ? (float)u : pen;
+                    // A bridged gap, a fitted curve and an annotation stroke dashed: not read as line work.
+                    stroke.PathEffect = item.Id.StartsWith(GapPrefix, StringComparison.Ordinal) || fitted || item.Class == ImageOverlayClass.Annotation
                         ? SKPathEffect.CreateDash([(float)(4 * u), (float)(3 * u)], 0) : null;
                     canvas.DrawPath(path, stroke);
                     stroke.PathEffect = null;

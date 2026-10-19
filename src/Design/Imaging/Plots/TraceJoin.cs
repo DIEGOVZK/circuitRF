@@ -13,7 +13,8 @@ public static class TraceJoin
 {
     /// <summary>The pieces as one trace: their points in x order, the longer piece's kept where two overlap in x. One
     /// piece is returned unchanged. The joined trace is the longest piece's — its colour and assignment — named after the
-    /// first piece along x, with the coarsest resolution of them all.</summary>
+    /// first piece along x, with the coarsest resolution of them all, and lists every piece's number in
+    /// <see cref="PlotTraceRead.Pieces"/>.</summary>
     public static PlotTraceRead Join(IReadOnlyList<PlotTraceRead> pieces)
     {
         ArgumentNullException.ThrowIfNull(pieces);
@@ -31,7 +32,11 @@ public static class TraceJoin
         }
         var longest = pieces.OrderByDescending(Span).ThenBy(p => p.Number).First();
         var first = pieces.OrderBy(Start).ThenBy(p => p.Number).First();
-        return longest with { Number = first.Number, Samples = [.. samples.OrderBy(s => s.X)], Resolution = pieces.Max(p => p.Resolution) };
+        return longest with
+        {
+            Number = first.Number, Samples = [.. samples.OrderBy(s => s.X)], Resolution = pieces.Max(p => p.Resolution),
+            Pieces = [.. pieces.OrderBy(Start).ThenBy(p => p.Number).Select(p => p.Number)],
+        };
     }
 
     /// <summary>The session with every set of rectangular traces on one plot assigned the same entry and quantity joined

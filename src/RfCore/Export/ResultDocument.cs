@@ -1650,7 +1650,41 @@ namespace RfCore.Export
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         string? Axis = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        string? AxisEvidence = null);
+        string? AxisEvidence = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        PlotFitJson? Fit = null);
+
+    /// <summary>A trace's fit (brief-pdg-2-curve-fit.md R-pdg2-5); a refused one carries only its refusal.</summary>
+    /// <param name="Model"><c>linear</c>, <c>exponential</c>, <c>polynomial</c> or <c>spline</c>.</param>
+    /// <param name="Expression">circuitRF expression text in <paramref name="Variable"/>; null for a spline and a refused fit.</param>
+    /// <param name="Variable"><c>f</c>, <c>x</c>, or <c>log10(f)</c> on a log x axis.</param>
+    /// <param name="XUnit">The variable's unit (<c>GHz</c>).</param>
+    /// <param name="Coefficients">Lowest power first in raw x; an exponential's <c>[a, b, c]</c> of <c>a·exp(b·x) + c</c>.</param>
+    /// <param name="Rms">The RMS residual against the raw reading, in the trace's units.</param>
+    /// <param name="RmsPx">The same in pixels.</param>
+    /// <param name="Pieces">The pieces fitted together as one curve.</param>
+    public sealed record PlotFitJson(
+        string                Model,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        int?                  Degree,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?               Expression,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?               Variable,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?               XUnit,
+        IReadOnlyList<double> Coefficients,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        double?               Rms,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        double?               RmsPx,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        int?                  Knots,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        double?               Smoothing,
+        IReadOnlyList<string> Pieces,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        string?               Refusal);
 
     /// <param name="Trace">The trace it sits on (<c>T3</c>), or null.</param>
     public sealed record PlotMarkerJson(

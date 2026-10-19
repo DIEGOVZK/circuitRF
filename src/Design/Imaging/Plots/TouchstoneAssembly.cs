@@ -7,7 +7,9 @@
 // range is never extrapolated — the range shrinks, and the report says which trace bounded it.
 //
 // RESAMPLING keeps each quantity in the space it was drawn in: dB linearly in dB, phase unwrapped then linearly, a
-// chart's Γ in the complex plane, and along log f where the frequency axis was logarithmic.
+// chart's Γ in the complex plane, and along log f where the frequency axis was logarithmic. A trace given a FIT
+// (brief-pdg-2-curve-fit.md R-pdg2-3) is not resampled: its fit is evaluated at each grid frequency in its place, in the
+// same plotted units, and everything after that point is unchanged. A refused fit leaves the trace as read and says so.
 //
 // WHAT IS NOT PLOTTED IS NEVER A SILENT GUESS (overview D6 applied here). Each missing phase and each missing entry
 // takes a stated default, recorded in the file's header and shown in the dialog's matrix grid one click from being
@@ -104,6 +106,9 @@ public sealed record TouchstoneAssemblyOptions
     public int? Ports { get; init; }
 
     public MatrixFormat Format { get; init; } = MatrixFormat.DB;
+
+    /// <summary>The fits asked of traces (<c>--fit</c>, the traces table's Fit combo); a trace none names is resampled.</summary>
+    public IReadOnlyList<PlotFitOverride> Fits { get; init; } = [];
 }
 
 /// <summary>Where one entry of the matrix came from — the dialog's matrix grid and the header both say it.</summary>
@@ -127,6 +132,10 @@ public sealed record TouchstoneAssemblyResult(
 {
     public bool Ok => Snp is not null;
 
+    /// <summary>The fits made, by trace name — every piece of a joined trace under its own name (R-pdg2-3); refused ones
+    /// too. Set whether or not the file was refused.</summary>
+    public IReadOnlyDictionary<string, TraceFitResult> Fits { get; init; } = new Dictionary<string, TraceFitResult>();
+
     /// <summary>The file's extension, <c>.s2p</c>.</summary>
     public string Extension => $".s{Ports}p";
 }
@@ -141,8 +150,11 @@ public static class TouchstoneAssembly
         ArgumentNullException.ThrowIfNull(session);
         var o = options ?? new TouchstoneAssemblyOptions();
         var report = new List<string>();
+        // The fits first, so a refused file still reports them (R-pdg2-3).
+        var fits = TraceFit.Session(session, o.Fits);
+        foreach (var fit in fits.Values.Distinct()) report.Add(TraceFit.Line(fit));
         TouchstoneAssemblyResult Refuse(string kind, string sentence, string flag, string control, int ports = 0, IReadOnlyList<MatrixCell>? matrix = null) =>
-            new(null, new AssemblyRefusal(kind, sentence, flag, control), ports, matrix ?? [], null, [], report, null, o.Format);
+            new(null, new AssemblyRefusal(kind, sentence, flag, control), ports, matrix ?? [], null, [], report, null, o.Format) { Fits = fits };
 
         var traces = session.Traces.Where(t => !t.Assignment.Ignored && !session.Plots[t.Plot - 1].Excluded).ToList();
         // ── refusals: an uncalibrated axis, an unassigned trace, a chart trace with no frequency ──
@@ -181,7 +193,7 @@ public static class TouchstoneAssembly
             return Refuse("unassigned", $"a trace names port {ports}; a Touchstone from plots is up to {MaxPorts} ports", "--trace", "the traces table");
 
         // ── each trace as frequency → value, sorted, in its own resampling space ──
-        var series = traces.Select(t => Series.Of(t, session.Plots[t.Plot - 1])).Where(s => s.F.Length >= 2).ToList();
+        var series = traces.Select(t => Series.Of(t, session.Plots[t.Plot - 1], fits.GetValueOrDefault(t.Name))).Where(s => s.F.Length >= 2).ToList();
         if (series.Count == 0) return Refuse("empty", "no trace has two points to resample", "--trace", "the traces table");
 
         // An entry drawn only as a phase (or only one of re/im) has no magnitude to put the phase on.
@@ -313,7 +325,7 @@ public static class TouchstoneAssembly
 
         var health = TouchstoneHealth.Analyze(snp);
         report.Add(HealthLine(health));
-        return new TouchstoneAssemblyResult(snp, null, ports, Cells(ports, cells), grid, header, report, health, o.Format);
+        return new TouchstoneAssemblyResult(snp, null, ports, Cells(ports, cells), grid, header, report, health, o.Format) { Fits = fits };
     }
 
     /// <summary>Writes the file as Touchstone 1.1 (R-im14-11). <paramref name="dated"/> adds the time line
@@ -375,10 +387,11 @@ public static class TouchstoneAssembly
 
     // ── internals ──────────────────────────────────────────────────────────────────────────────────────────
 
-    /// <summary>A trace as sorted frequency → value, in the space it resamples in.</summary>
-    private sealed record Series(PlotTraceRead Trace, double[] F, double[] V, Complex[] C, bool Log, bool Chart)
+    /// <summary>A trace as sorted frequency → value, in the space it resamples in; <paramref name="Fit"/> evaluated in place
+    /// of the resampling when it was made.</summary>
+    private sealed record Series(PlotTraceRead Trace, double[] F, double[] V, Complex[] C, bool Log, bool Chart, TraceFitResult? Fit = null)
     {
-        public static Series Of(PlotTraceRead t, PlotRead p)
+        public static Series Of(PlotTraceRead t, PlotRead p, TraceFitResult? fit)
         {
             bool log = p.Rect?.X?.Scale == AxisScale.Log;
             var pts = t.Samples.Where(s => !double.IsNaN(s.X) && s.X > 0).OrderBy(s => s.X).ToList();
@@ -386,13 +399,15 @@ public static class TouchstoneAssembly
             var merged = pts.GroupBy(s => s.X).Select(g => g.FirstOrDefault(s => s.Exact) is { Exact: true } e ? e
                                                        : g.First() with { Y = g.Average(s => s.Y), Value = Mean(g.Select(s => s.Value)) }).ToList();
             var f = merged.Select(s => s.X).ToArray();
-            var a = t.Assignment;
-            double[] v = a.IsMagnitude
-                ? [.. merged.Select(s => 20 * Math.Log10(Math.Max(1e-12, PlotQuantity.Magnitude(a.Quantity, s.Y))))]
-                : a.IsPhase ? Unwrap([.. merged.Select(s => PlotQuantity.Radians(a.Quantity, s.Y))])
-                : [.. merged.Select(s => s.Y)];
-            return new Series(t, f, v, [.. merged.Select(s => s.Value)], log, t.Parametric);
+            return new Series(t, f, Space(t.Assignment, [.. merged.Select(s => s.Y)]), [.. merged.Select(s => s.Value)], log, t.Parametric,
+                              fit is { Fitted: true } && !t.Parametric ? fit : null);
         }
+
+        /// <summary>Plotted values in the space they resample in: dB for a magnitude, unwrapped radians for a phase.</summary>
+        private static double[] Space(PlotAssignment a, double[] y) =>
+            a.IsMagnitude ? [.. y.Select(v => 20 * Math.Log10(Math.Max(1e-12, PlotQuantity.Magnitude(a.Quantity, v))))]
+            : a.IsPhase ? Unwrap([.. y.Select(v => PlotQuantity.Radians(a.Quantity, v))])
+            : y;
 
         private static Complex Mean(IEnumerable<Complex> c)
         {
@@ -400,7 +415,10 @@ public static class TouchstoneAssembly
             return l.Count == 0 ? Complex.Zero : new Complex(l.Average(x => x.Real), l.Average(x => x.Imaginary));
         }
 
-        public double[] At(double[] freqs) => [.. freqs.Select(f => Interp(F, V, f, Log))];
+        public double[] At(double[] freqs) => Fit is { } fit
+            // The grid lies inside every trace's range; the clamp only answers rounding at its ends.
+            ? Space(Trace.Assignment, [.. freqs.Select(f => TraceFit.Evaluate(fit, Math.Clamp(f, fit.XMin, fit.XMax)))])
+            : [.. freqs.Select(f => Interp(F, V, f, Log))];
 
         public Complex[] ComplexAt(double[] freqs) =>
             [.. freqs.Select(f => new Complex(Interp(F, [.. C.Select(c => c.Real)], f, Log), Interp(F, [.. C.Select(c => c.Imaginary)], f, Log)))];

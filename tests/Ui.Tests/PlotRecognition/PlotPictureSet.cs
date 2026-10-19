@@ -3,7 +3,9 @@
 // process start. A picture is drawn the first time a test asks for it and kept for the class.
 //
 // THE NETWORKS: ForeignPlots.Answer's series-LC band-pass (R = 2 Ω, L = 10 nH, C = 0.4 pF between 50 Ω ports),
-// simulated by the sparam engine over 1–5 GHz (and 0.2–20 GHz for the log-frequency picture); the committed
+// simulated by the sparam engine over 1–5 GHz (and 0.2–20 GHz for the log-frequency picture); a gentler low-pass, 2 Ω
+// and 5 nH in series and no C (LowPassS21), a smooth curve a degree-4 polynomial describes to 1e-4 in |S|
+// (brief-pdg-2-curve-fit.md §3 (8)); the committed
 // potentially_unstable_amp.s2p for a gain above 0 dB; and a uniform line, written here as a .s1p: Γ = −⅓·e^(∓jπf/1 GHz),
 // a 25 Ω load a quarter wave long at 1 GHz, turning clockwise (the physical sense) or counter-clockwise.
 //
@@ -52,6 +54,9 @@ public sealed class PlotPictureSet : IDisposable
         analysis SP1 type=sparam start=1 stop=5 npts=201 Unit=GHz
         """;
 
+    /// <summary>The <c>s21lowpass</c> picture's S21: 2 Ω and 5 nH in series between 50 Ω ports.</summary>
+    public static Complex LowPassS21(double f) => 100 / new Complex(102, 2 * Math.PI * f * 5e-9);
+
     /// <summary>The uniform line's reflection; <paramref name="clockwise"/> turns it the physical way.</summary>
     public static Complex Line(double f, bool clockwise = true) =>
         -1.0 / 3 * Complex.Exp(new Complex(0, (clockwise ? -1 : 1) * Math.PI * f / 1e9));
@@ -66,6 +71,7 @@ public sealed class PlotPictureSet : IDisposable
             switch (name)
             {
                 case "s21db": Plot(Lc(), png, "cube=S,i=2,j=1,y=db20"); break;
+                case "s21lowpass": Plot(Lc(lowPass: true), png, "cube=S,i=2,j=1,y=db20", "--y", "-6:2"); break;
                 case "s21ph": Plot(Lc(), png, "cube=S,i=2,j=1,y=phase"); break;
                 case "s11db": Plot(Lc(), png, "cube=S,i=1,j=1,y=db20"); break;
                 case "s11log":
@@ -126,12 +132,13 @@ public sealed class PlotPictureSet : IDisposable
 
     // ── drawing ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    private string Lc(bool wide = false)
+    private string Lc(bool wide = false, bool lowPass = false)
     {
-        string s2p = Path.Combine(Dir, wide ? "lcw.s2p" : "lc.s2p");
+        string s2p = Path.Combine(Dir, lowPass ? "lp.s2p" : wide ? "lcw.s2p" : "lc.s2p");
         if (File.Exists(s2p)) return s2p;
         string cnl = Path.ChangeExtension(s2p, ".cnl");
-        File.WriteAllText(cnl, wide ? LcCnl.Replace("start=1 stop=5 npts=201", "start=0.2 stop=20 npts=401") : LcCnl);
+        File.WriteAllText(cnl, lowPass ? string.Join('\n', LcCnl.Replace("L:L1 a b L=10 nH", "L:L1 a out L=5 nH").Split('\n').Where(l => !l.StartsWith("C:C1", StringComparison.Ordinal)))
+                             : wide ? LcCnl.Replace("start=1 stop=5 npts=201", "start=0.2 stop=20 npts=401") : LcCnl);
         Run("sparam", cnl, "-o", s2p);
         return s2p;
     }

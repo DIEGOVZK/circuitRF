@@ -212,6 +212,13 @@ public sealed class ImageOverlayCanvas : Control
         var litTraces = vm.Plots.Lit(PlotTraceLink.TraceName(vm.SelectedItem));
         foreach (var item in overlay.Items)
         {
+            if (item.Class == ImageOverlayClass.Trace && item.Id.StartsWith(ImageOverlay.FitPrefix, StringComparison.Ordinal))
+            {
+                // A trace's fitted curve (brief-pdg-2 R-pdg2-4): thin and dashed in its own contrasting colour, over the trace.
+                context.DrawGeometry(null, new Pen(new ImmutableSolidColorBrush(Rgb(item.Rgb ?? ImageOverlay.FitColour(0))), px,
+                                                   new ImmutableDashStyle([4, 3], 0)), GeometryOf(item));
+                continue;
+            }
             if (item.Class == ImageOverlayClass.Trace)
             {
                 DrawTrace(context, item, PlotTraceLink.TraceName(item) is { } traceName && litTraces.Contains(traceName), px);

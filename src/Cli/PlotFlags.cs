@@ -21,6 +21,7 @@ internal sealed class PlotFlags
     public readonly List<(int Plot, PlotAxis Axis, bool Log)> Scales = [];
     public readonly List<PlotTraceOverride> Traces = [];
     public readonly List<PlotFrequencyOverride> Frequencies = [];
+    public readonly List<PlotFitOverride> Fits = [];
     public readonly Dictionary<(int I, int J), PhaseRule> Phase = [];
     public readonly Dictionary<(int I, int J), FillRule> Fill = [];
     public readonly Dictionary<(int I, int J), string> Prefer = [];
@@ -102,6 +103,17 @@ internal sealed class PlotFlags
                     return Bad("<T3|#rrggbb|solid|dashed|dotted>[@plot]=S21:db (or ignore), optionally ,axis=left|right (or axis=right alone); "
                              + "quantities db, mag, phase, rad, re, im, complex, vswr, rl, il");
                 Traces.Add(new PlotTraceOverride(v[..eq].Trim(), assignment, side));
+                break;
+            }
+            case "--fit":
+            {
+                // <selector>=<model>[:<degree or smoothing>], the selector --trace's or all (brief-pdg-2-curve-fit.md R-pdg2-5).
+                int eq = v.LastIndexOf('=');
+                var spec = eq > 0 ? TraceFitSpec.Parse(v[(eq + 1)..]) : null;
+                if (spec is null)
+                    return Bad("<T3|#rrggbb|solid|dashed|dotted|all>[@plot]=<model>: linear, exp, poly[:<degree 1-8>] (3 by default), "
+                             + "spline[:<RMS in the trace's units>] (one pixel by default) or none");
+                Fits.Add(new PlotFitOverride(v[..eq].Trim(), spec));
                 break;
             }
             case "--smith-z0":
@@ -218,6 +230,7 @@ internal sealed class PlotFlags
         Grid = Grid,
         Format = Format ?? MatrixFormat.DB,
         Ports = Ports,
+        Fits = [.. Fits],
     };
 
     // ── spellings ────────────────────────────────────────────────────────────

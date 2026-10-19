@@ -364,6 +364,21 @@ in either view stays in the other, and a Simple row whose pieces differ shows *m
 quantity are joined into one curve before the Touchstone is made, and the report names them:
 `joined S21 db: T37 + T39 + T42 + T50`.
 
+**Fit.** A curve read off a picture steps by one pixel's worth of value and carries the wobble of the pen's edge.
+**Fit** under a curve's row smooths it: **Linear**, **Exponential**, **Polynomial** (with its degree, 1 to 8, 3 when
+left empty) or **Spline**. The fitted curve replaces what was read in the Touchstone. It is fitted in the units the curve
+is drawn in &mdash; dB, degrees &mdash; against frequency in the axis's unit, or its logarithm on a logarithmic axis. A
+**Spline** follows the curve as closely as one pixel unless you type how far it may stand from it, in the curve's own
+units (`0.05`). Pieces joined into one curve share one fit, so in Simple view the fit is set on the colour row. A Smith
+or polar curve is not fitted.
+
+Under a fitted row is its equation with the unit of its variable, `-0.51 + 0.012*f - 0.00041*f^2 · f in GHz` (a spline
+says `spline · 412 knots`), and how far it stands from what was read, `RMS 0.012 dB (0.3 px)`. Under about half a pixel
+it follows the drawing; several pixels means another model fits better. **Copy** puts the equation on the clipboard, in
+the form a variable or a parameter takes. On the picture the fit is drawn thin and dashed over its curve, so a fit that
+misses shows at once. An exponential that cannot describe the curve says so and leaves the curve as read. Choosing a
+fit is undone with **Undo**.
+
 **Frequency along a Smith or polar trace.** A chart has no frequency axis. It comes from markers on the trace whose
 readouts show their frequency, or from a rectangular plot of the same entry in the session, matched point by point; with
 neither, the trace's **Start** and **Stop** are highlighted and wait for you. Between known frequencies they are spread
@@ -395,8 +410,9 @@ pictures beside the file**, each picture is copied beside it as `<name>.source.p
 Display, and its passivity, reciprocity and causality check goes to Messages.
 
 **CSV** writes the curves exactly as read, in each plot's own units, and never waits: any plot digitises, S-parameters
-or not &mdash; a temperature against time comes out just as well. Its last column, `y_axis`, says which y axis each
-rectangular curve was read against.
+or not &mdash; a temperature against time comes out just as well. Its `y_axis` column says which y axis each
+rectangular curve was read against, and its last column, `y_fit`, holds a fitted curve's fit at each point beside the
+value read.
 
 | Reads well | Reads less well |
 |---|---|

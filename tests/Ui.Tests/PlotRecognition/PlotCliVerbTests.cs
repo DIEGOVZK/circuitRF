@@ -72,6 +72,26 @@ public sealed class PlotCliVerbTests(PlotPictureSet pictures, ITestOutputHelper 
     }
 
     [Fact]
+    public void Fit_PutsAFitInTheJson_AndAYFitColumnInTheCsv()
+    {
+        // brief-pdg-2-curve-fit.md §3 (9).
+        string png = pictures.Picture("s21db");
+        string csv = Path.Combine(pictures.Dir, "cli", "fit.csv");
+        var (exit, stdout, stderr) = Cli("recognize", png, "--trace", "T1=S21:db", "--fit", "T1=poly:2", "--csv", csv, "--json");
+        Assert.True(exit == 0, stderr);
+
+        var fit = System.Text.Json.Nodes.JsonNode.Parse(stdout)!["result"]!["recognize"]!["plots"]!["traces"]!.AsArray()
+                      .Single(t => (string?)t!["name"] == "T1")!["fit"]!;
+        Assert.Equal(("polynomial", 2, "GHz"), ((string?)fit["model"], (int?)fit["degree"], (string?)fit["xUnit"]));
+        Assert.Equal(3, fit["coefficients"]!.AsArray().Count);
+        Assert.False(string.IsNullOrEmpty((string?)fit["expression"]));
+
+        var lines = File.ReadAllLines(csv).Where(l => !l.StartsWith('#')).ToList();
+        Assert.Equal("y_fit", lines[0].Split(',')[^1]);
+        Assert.All(lines.Skip(1).Where(l => l.StartsWith("T1,", StringComparison.Ordinal)), l => Assert.NotEmpty(l.Split(',')[^1]));
+    }
+
+    [Fact]
     public void SrcCli_NamesNoPlotReadingStep()
     {
         string repo = PalaceBackendTests.RepoRoot();
@@ -84,6 +104,8 @@ public sealed class PlotCliVerbTests(PlotPictureSet pictures, ITestOutputHelper 
             "MatrixCell", "PhaseRule", "MissingPhase", "FillRule", "PlotCsv", "PlotKind", "PlotType", "PlotQuantity", "PlotQuantityKind",
             "PlotAssignment", "AxisClicks", "AxisScale", "AxisCalibration", "AxisLabel", "RectCalibration", "SmithCalibration",
             "PolarCalibration", "LegendEntry", "TraceCurve", "TraceStyle", "TraceHints", "PlotFrame", "PlotAxis", "PlotSide",
+            // brief-pdg-2's fits: the option a flag spells, the entry point the overlay and the CSV take them from, the result.
+            "PlotFitOverride", "TraceFitSpec", "TraceFitModel", "TraceFit", "TraceFitResult",
         ];
         var declared = Directory.GetFiles(Path.Combine(repo, "src", "Design", "Imaging", "Plots"), "*.cs")
             .SelectMany(f => Regex.Matches(File.ReadAllText(f),

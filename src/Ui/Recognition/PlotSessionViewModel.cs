@@ -11,6 +11,10 @@
 //
 // THE USER'S CHOICES OUTLIVE A RE-READ: an assignment is held by trace name (T3, the CLI's selector), a fill or phase rule
 // by entry, an exclusion and an Ignore here box by plot number. A re-read rebuilds every row from what came back and lays the choices over it.
+//
+// A FIT (brief-pdg-2-curve-fit.md R-pdg2-4) is held by trace name too, as the --fit a command line would type, and set on
+// every piece fitted together with the one edited — the pieces TraceJoin joins share one fit. What a fit made comes back
+// with the Touchstone (TouchstoneAssemblyResult.Fits) and is shown under its row and drawn over its trace.
 
 using System;
 using System.Collections.Generic;
@@ -156,11 +160,40 @@ public sealed partial class PlotTraceRowViewModel : ObservableObject
     /// <summary>The Axis combo (R-pdg1-3): the y axis a trace is read against.</summary>
     public static readonly IReadOnlyList<string> Sides = ["Left", "Right"];
 
+    /// <summary>The Fit combo (R-pdg2-4); its index is <see cref="TraceFitModel"/>'s.</summary>
+    public static readonly IReadOnlyList<string> FitModels = ["None", "Linear", "Exponential", "Polynomial", "Spline"];
+
+    /// <summary>A fit as the row's controls hold it: the model's index, the degree and smoothing typed (empty for the default).</summary>
+    public readonly record struct FitChoice(int Model, string Degree, string Smoothing)
+    {
+        /// <summary>The fit it says, or null while the degree or smoothing typed is not one.</summary>
+        public TraceFitSpec? Spec
+        {
+            get
+            {
+                var model = (TraceFitModel)Math.Clamp(Model, 0, FitModels.Count - 1);
+                string degreeText = Degree ?? "", smoothingText = Smoothing ?? "";
+                int degree = 3;
+                if (model == TraceFitModel.Polynomial && degreeText.Trim().Length > 0
+                    && !(int.TryParse(degreeText.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out degree) && degree >= 1 && degree <= TraceFitSpec.MaxDegree))
+                    return null;
+                double? smoothing = null;
+                if (model == TraceFitModel.Spline && smoothingText.Trim().Length > 0)
+                {
+                    if (!double.TryParse(smoothingText.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double v) || !(v > 0) || !double.IsFinite(v))
+                        return null;
+                    smoothing = v;
+                }
+                return new TraceFitSpec(model, degree, smoothing);
+            }
+        }
+    }
+
     private readonly Action<PlotTraceRowViewModel> _changed;
     private bool _loading = true;
 
     public PlotTraceRowViewModel(PlotTraceRead t, PlotRead plot, string startText, string stopText, Action<PlotTraceRowViewModel> changed,
-                                 IReadOnlyList<string>? entryChoices = null)
+                                 IReadOnlyList<string>? entryChoices = null, FitChoice fitChoice = default, TraceFitResult? fit = null)
     {
         _changed = changed;
         EntryChoices = entryChoices ?? Entries;
@@ -194,8 +227,68 @@ public sealed partial class PlotTraceRowViewModel : ObservableObject
             : $"Read against the {PlotReading.Side(t.Axis)} y axis, from {PlotReading.AxisEvidenceText(t.AxisEvidence)}.";
         _startText = startText;
         _stopText = stopText;
+        // A chart trace is never fitted: its combo offers None alone, and says why (R-pdg2-1).
+        FitEnabled = !IsChart;
+        _fitIndex = IsChart ? 0 : fitChoice.Model;
+        _degreeText = fitChoice.Degree ?? "";
+        _smoothingText = fitChoice.Smoothing ?? "";
+        FitTip = IsChart
+            ? "A chart trace is not fitted: only a trace on rectangular axes has an x to fit against, so its only fit is None."
+            : "Fit a curve to the trace: the fit replaces the raw reading in the Touchstone and is the CSV's y_fit; the y column stays what was read.";
+        SmoothingWatermark = $"{TraceFit.Num(t.Resolution)}{TraceFit.UnitAfter(t.ResolutionUnit)}";
+        Fit = fit;
         _loading = false;
     }
+
+    // ── the fit (R-pdg2-4) ──
+
+    [ObservableProperty] private int _fitIndex;
+
+    /// <summary>A polynomial's degree, 1–8; empty is 3.</summary>
+    [ObservableProperty] private string _degreeText;
+
+    /// <summary>A spline's RMS target in the trace's units; empty is one pixel's worth.</summary>
+    [ObservableProperty] private string _smoothingText;
+
+    public bool FitEnabled { get; }
+    public string FitTip { get; }
+
+    /// <summary>The smoothing box's watermark: the resolution default.</summary>
+    public string SmoothingWatermark { get; }
+
+    public bool IsPolynomial => FitIndex == (int)TraceFitModel.Polynomial;
+    public bool IsSpline => FitIndex == (int)TraceFitModel.Spline;
+
+    public FitChoice Choice => new(FitIndex, DegreeText, SmoothingText);
+
+    /// <summary>The user has chosen the fit controls.</summary>
+    public bool FitEdited { get; private set; }
+
+    /// <summary>What the fit made — the joined curve's when the trace is one piece of it; null when none is set.</summary>
+    public TraceFitResult? Fit { get; }
+
+    public bool HasFit => Fit is not null;
+    public bool FitRefused => Fit?.Refusal is not null;
+
+    /// <summary>The expression with its variable's unit beside it, <c>spline · N knots</c>, or why it was refused.</summary>
+    public string FitReadout => Fit?.Readout ?? "";
+
+    /// <summary><c>RMS 0.012 dB (0.3 px)</c>.</summary>
+    public string FitResidual => Fit?.ResidualText ?? "";
+
+    /// <summary>What Copy copies: the expression text alone; null for a spline or no fit.</summary>
+    public string? FitExpression => Fit is { Fitted: true } f ? f.Expression : null;
+
+    public bool CanCopyFit => FitExpression is not null;
+
+    partial void OnFitIndexChanged(int value)
+    {
+        OnPropertyChanged(nameof(IsPolynomial));
+        OnPropertyChanged(nameof(IsSpline));
+        if (!_loading) { FitEdited = true; _changed(this); }
+    }
+    partial void OnDegreeTextChanged(string value) { if (!_loading) { FitEdited = true; _changed(this); } }
+    partial void OnSmoothingTextChanged(string value) { if (!_loading) { FitEdited = true; _changed(this); } }
 
     public string Name { get; }
     public int Plot { get; }
@@ -297,10 +390,16 @@ public sealed partial class PlotTraceGroupViewModel : ObservableObject
             m.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName is not (nameof(PlotTraceRowViewModel.EntryIndex) or nameof(PlotTraceRowViewModel.QuantityIndex)
-                                           or nameof(PlotTraceRowViewModel.AxisIndex))) return;
+                                           or nameof(PlotTraceRowViewModel.AxisIndex) or nameof(PlotTraceRowViewModel.FitIndex)
+                                           or nameof(PlotTraceRowViewModel.DegreeText) or nameof(PlotTraceRowViewModel.SmoothingText))) return;
                 OnPropertyChanged(nameof(EntryIndex));
                 OnPropertyChanged(nameof(QuantityIndex));
                 OnPropertyChanged(nameof(AxisIndex));
+                OnPropertyChanged(nameof(FitIndex));
+                OnPropertyChanged(nameof(IsPolynomial));
+                OnPropertyChanged(nameof(IsSpline));
+                OnPropertyChanged(nameof(DegreeText));
+                OnPropertyChanged(nameof(SmoothingText));
                 RefreshChoice();
             };
     }
@@ -373,6 +472,43 @@ public sealed partial class PlotTraceGroupViewModel : ObservableObject
         get => Same(m => m.AxisIndex);
         set { if (value >= 0 && value != AxisIndex) _batch(() => { foreach (var m in Members) m.AxisIndex = value; }); }
     }
+
+    // ── the fit, on the colour row (R-pdg2-3) ──
+
+    /// <summary>The pieces' fit, or −1 (<i>mixed</i>). Choosing one fits every piece.</summary>
+    public int FitIndex
+    {
+        get => Same(m => m.FitIndex);
+        set { if (value >= 0 && value != FitIndex) _batch(() => { foreach (var m in Members) m.FitIndex = value; }); }
+    }
+
+    public string DegreeText
+    {
+        get => First.DegreeText;
+        set { if (value != DegreeText) _batch(() => { foreach (var m in Members) m.DegreeText = value; }); }
+    }
+
+    public string SmoothingText
+    {
+        get => First.SmoothingText;
+        set { if (value != SmoothingText) _batch(() => { foreach (var m in Members) m.SmoothingText = value; }); }
+    }
+
+    public bool FitEnabled => !IsChart && Members.All(m => m.FitEnabled);
+    public string FitTip => First.FitTip;
+    public string SmoothingWatermark => First.SmoothingWatermark;
+    public bool IsPolynomial => FitIndex == (int)TraceFitModel.Polynomial;
+    public bool IsSpline => FitIndex == (int)TraceFitModel.Spline;
+
+    /// <summary>The fitted piece's readout: pieces fitted together show one fit.</summary>
+    private PlotTraceRowViewModel Fitted => Members.FirstOrDefault(m => m.HasFit) ?? First;
+
+    public bool HasFit => Fitted.HasFit;
+    public bool FitRefused => Fitted.FitRefused;
+    public string FitReadout => Fitted.FitReadout;
+    public string FitResidual => Fitted.FitResidual;
+    public string? FitExpression => Fitted.FitExpression;
+    public bool CanCopyFit => Fitted.CanCopyFit;
 
     private int Same(Func<PlotTraceRowViewModel, int> f) => Members.Select(f).Distinct().Count() == 1 ? f(First) : -1;
 }
@@ -462,6 +598,9 @@ public sealed partial class PlotSessionViewModel : ObservableObject
 
     /// <summary>The y axis the user chose for a trace, by name (R-pdg1-3).</summary>
     private readonly Dictionary<string, PlotSide> _side = new(StringComparer.Ordinal);
+
+    /// <summary>The fit the user chose for a trace, by name, as its controls hold it (R-pdg2-4).</summary>
+    private readonly Dictionary<string, PlotTraceRowViewModel.FitChoice> _fit = new(StringComparer.Ordinal);
     private readonly Dictionary<(int I, int J), FillRule> _fill = [];
     private readonly Dictionary<(int I, int J), (int Index, string Delay)> _phase = [];
     private readonly List<PlotIgnoreBox> _ignore = [];
@@ -503,7 +642,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
 
     partial void OnPortsTextChanged(string? oldValue, string newValue)
     {
-        if (!_undoing) Remember(new AssignmentState(new(_assign, StringComparer.Ordinal), oldValue ?? "", new(_side, StringComparer.Ordinal)));
+        if (!_undoing) Remember(State() with { Ports = oldValue ?? "" });
         OnPropertyChanged(nameof(PortsInvalid));
         SyncChoices();
         if (!_undoing) Changed?.Invoke();
@@ -523,13 +662,15 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         OnPropertyChanged(nameof(AutoPortsText));
     }
 
-    /// <summary>The assignments the user made, the port count and the axes chosen, as one undo step restores them.</summary>
-    private sealed record AssignmentState(Dictionary<string, PlotAssignment> Assign, string Ports, Dictionary<string, PlotSide> Sides);
+    /// <summary>The assignments the user made, the port count, the axes and the fits chosen, as one undo step restores them.</summary>
+    private sealed record AssignmentState(Dictionary<string, PlotAssignment> Assign, string Ports, Dictionary<string, PlotSide> Sides,
+                                          Dictionary<string, PlotTraceRowViewModel.FitChoice> Fits);
 
     private readonly Stack<AssignmentState> _undo = new();
     private bool _undoing;
 
-    private AssignmentState State() => new(new(_assign, StringComparer.Ordinal), PortsText, new(_side, StringComparer.Ordinal));
+    private AssignmentState State() => new(new(_assign, StringComparer.Ordinal), PortsText, new(_side, StringComparer.Ordinal),
+                                           new(_fit, StringComparer.Ordinal));
 
     private void Remember(AssignmentState before)
     {
@@ -559,6 +700,8 @@ public sealed partial class PlotSessionViewModel : ObservableObject
             foreach (var (name, a) in back.Assign) _assign[name] = a;
             _side.Clear();
             foreach (var (name, side) in back.Sides) _side[name] = side;
+            _fit.Clear();
+            foreach (var (name, fit) in back.Fits) _fit[name] = fit;
             PortsText = back.Ports;
         }
         finally { _undoing = false; }
@@ -569,7 +712,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
     private static bool Same<T>(Dictionary<string, T> a, Dictionary<string, T> b) =>
         a.Count == b.Count && a.All(kv => b.TryGetValue(kv.Key, out var v) && Equals(v, kv.Value));
 
-    private bool Unchanged(AssignmentState before) => Same(before.Assign, _assign) && Same(before.Sides, _side);
+    private bool Unchanged(AssignmentState before) => Same(before.Assign, _assign) && Same(before.Sides, _side) && Same(before.Fits, _fit);
 
     /// <summary>Raised when anything the reading or the file depends on changed: the dialog reads again.</summary>
     public event Action? Changed;
@@ -708,6 +851,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         Pictures.Clear();
         _assign.Clear();
         _side.Clear();
+        _fit.Clear();
         ForgetUndo();
         _freq.Clear();
         _excluded.Clear();
@@ -756,6 +900,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         // Plot and trace numbers move when a picture goes; choices held by number would land on the wrong one.
         _assign.Clear();
         _side.Clear();
+        _fit.Clear();
         ForgetUndo();
         _freq.Clear();
         _excluded.Clear();
@@ -777,6 +922,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         Renumber();
         _assign.Clear();
         _side.Clear();
+        _fit.Clear();
         ForgetUndo();
         _freq.Clear();
         _excluded.Clear();
@@ -823,6 +969,11 @@ public sealed partial class PlotSessionViewModel : ObservableObject
             return "The output grid needs a start, a stop (with units) and a number of points, at least 2.";
         foreach (var ((i, j), (index, delay)) in _phase)
             if (index == 2 && Seconds(delay) is null) return $"S{i}{j}'s delay needs a time with its unit (250 ps).";
+        foreach (var (trace, fit) in _fit.OrderBy(f => f.Key, StringComparer.Ordinal))
+            if (fit.Spec is null)
+                return fit.Model == (int)TraceFitModel.Polynomial
+                    ? $"{trace}'s polynomial degree needs a whole number from 1 to {TraceFitSpec.MaxDegree.ToString(CultureInfo.InvariantCulture)}."
+                    : $"{trace}'s spline smoothing needs a positive RMS in the trace's own units (0.05), or nothing for one pixel.";
         return null;
     }
 
@@ -904,6 +1055,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         Grid = Grid(),
         Format = FormatIndex switch { 1 => MatrixFormat.MA, 2 => MatrixFormat.RI, _ => MatrixFormat.DB },
         Ports = TypedPorts(),
+        Fits = [.. _fit.Where(f => f.Value.Spec is not null).Select(f => new PlotFitOverride(f.Key, f.Value.Spec!))],
     };
 
     private double? Z0()
@@ -1070,7 +1222,8 @@ public sealed partial class PlotSessionViewModel : ObservableObject
         foreach (var t in session.Traces)
         {
             var (start, stop) = _freq.GetValueOrDefault(t.Name, ("", ""));
-            Traces.Add(new PlotTraceRowViewModel(t, session.Plots[t.Plot - 1], start, stop, OnTraceEdited, EntryChoices));
+            Traces.Add(new PlotTraceRowViewModel(t, session.Plots[t.Plot - 1], start, stop, OnTraceEdited, EntryChoices,
+                                                 _fit.GetValueOrDefault(t.Name, new(0, "", "")), assembly.Fits.GetValueOrDefault(t.Name)));
         }
         Groups.Clear();
         foreach (var (members, debris) in PlotColourGroups.Group(session))
@@ -1132,7 +1285,7 @@ public sealed partial class PlotSessionViewModel : ObservableObject
 
     private void OnTraceEdited(PlotTraceRowViewModel row)
     {
-        if (row.Edited || row.AxisEdited)
+        if (row.Edited || row.AxisEdited || row.FitEdited)
         {
             var before = _quiet > 0 || _undoing ? null : State();
             if (row.Edited)
@@ -1141,6 +1294,10 @@ public sealed partial class PlotSessionViewModel : ObservableObject
                 else _assign.Remove(row.Name);
             }
             if (row.AxisEdited) _side[row.Name] = row.Side;
+            // Pieces fitted together share one fit (R-pdg2-3): an edit on one is an edit on all of them.
+            if (row.FitEdited)
+                foreach (string name in Session is { } s ? TraceFit.FittedWith(s, row.Name) : [row.Name])
+                    _fit[name] = row.Choice;
             if (before is not null && !Unchanged(before)) Remember(before);
         }
         _freq[row.Name] = (row.StartText, row.StopText);
