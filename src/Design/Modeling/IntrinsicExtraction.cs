@@ -42,7 +42,8 @@ public sealed class IntrinsicExtraction
 
     /// <summary>
     /// Every data set's intrinsic data (R-mc4-6). <paramref name="data"/> is the open document's normalised data
-    /// (<see cref="CmcCache.Open"/>); <paramref name="values"/> overrides network variables (a fit's trial point).
+    /// (<see cref="CmcCache.Open"/>); <paramref name="values"/> overrides network variables (a fit's trial point) over the
+    /// document's own <see cref="NetworkVariableSettings.Value"/>s.
     /// Throws <see cref="ModelingException"/> for a refused input and <see cref="OperationCanceledException"/> when
     /// cancelled; in both cases nothing is written.
     /// </summary>
@@ -55,6 +56,14 @@ public sealed class IntrinsicExtraction
         var pads = PadDeembedding.Load(padsSettings, dir);
         string? netPath = netSettings.Schematic is null ? null : DataImport.ResolveSource(dir, netSettings.Schematic);
         SixPinNetwork? network = netPath is null ? null : SixPinNetwork.Load(netPath);
+        // The document's own values (a typed or fitted Value, MC-5) first, then the caller's trial point over them.
+        var docValues = netSettings.Values;
+        if (values is not null || docValues.Count > 0)
+        {
+            var merged = new Dictionary<string, double>(docValues, StringComparer.Ordinal);
+            if (values is not null) foreach (var (k, v) in values) merged[k] = v;
+            values = merged;
+        }
         var resolved = network?.Values(values);
 
         string shared = SharedKey(dir, padsSettings, netPath, resolved, netSettings.FlatnessBand);

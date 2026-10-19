@@ -436,7 +436,8 @@ carries intrinsic voltages of its own gets `max |ΔV|` in one note.
 `Vgs`, `Vds`, `Ig`, `Id` as measured and `Vgsi`, `Vdsi` computed (both clouds, for [P1] Fig. 6.5), `Excluded`;
 for S data also `Y [point, freq, port, port]`, `Cond`, `Flagged`, a cube per quantity on `(point, freq)`,
 `Flatness [point, quantity]`, the `Band` used, and `Notes` (a label axis) when there were any. `Compute` is the same
-work for one set with no cache — what MC-5 calls at each trial point.
+work for one set with no cache. `Run` solves the network at the variables' document `Value`s (MC-5) with the
+caller's overrides on top, so a fitted value changes the key and reopens nothing stale.
 
 The cache is `<name>.cmc-cache/intrinsic/<key>.npy`, the key a SHA-256 over the data's own `.npy` bytes, the set's
 conditions and exclusions as the `.cmc` writes them, the pads block and each pad file's bytes, the network file's
@@ -445,7 +446,79 @@ computed). Entries are written only when every set is done — a cancellation wr
 file and a rename, and entries no set uses are removed. `CmcCache`'s folder swap carries the subfolder across.
 **Known gap:** a file a network schematic itself references (an `SnP` block) is not in the key.
 
-## 7. Where it lives
+## 7. Fitting the network (MC-5)
+
+### 7.1 One least-squares problem (`NetworkFit`, R-mc5-1, R-mc5-2)
+
+Every method is a residual vector over the network's free variables, the network solved by the engine at each
+trial point (`SixPinNetwork.Blocks`). Three kinds of term:
+
+- **(a) Flatness**, at the active points: each of `Re Y_ij` and `Im Y_ij/ω` of the de-embedded intrinsic Y about its
+  own mean over the flatness band, divided by the point's admittance scale (its measured capacitance at the band's
+  bottom, and `max(|G|, ω_mid·C)` for the conductances). A correct shell leaves the intrinsic device a lumped
+  `G + jωC` ([P1] §5.6.3), so the minimum is the shell that makes it one.
+- **(b) The cold-FET models** ([P1] §5.5.2), compared in the MEASURED domain by variable projection: each trial
+  de-embeds the cold point, fits the cold core in closed form, embeds that core back and compares.
+  - *Pinch-off*, Vds = 0: `Gm = 0`, `R_DS → ∞` and intrinsic `C_DS = 0` (the book's own assumption), so the core is
+    `[[Cgs + Cgd, −Cgd], [−Cgd, Cgd]]`, linear in its two unknowns. Residual: Y per entry ÷ ω·C_scale — eq. 5.4's
+    quantities, with the series elements kept, which is the only thing that separates an outer capacitance from an
+    inner one on one device (the book separates them with a scaled array instead).
+  - *Forward gate, extreme* (§5.5.2.4.1): the intrinsic device is one node, so the model is the network's `Y_aa` —
+    its admittance with the intrinsic ports shorted. Residual: Z ÷ Z_scale (eq. 5.7's domain). Embedding through
+    `Y_aa − Y_ab Z (I + Y_bb Z)⁻¹ Y_ba` keeps a zero core impedance finite.
+  - *Forward gate, moderate* (Fig. 5.17): `Z_int = [[Z1 + Rch/3, Rch/2], [Rch/2, Rch]]`, `1/Z1 = 1/R1 + jωC1`
+    linear in its unknowns, `R_ch` a document setting (a test structure's; a refusal when absent).
+- **(c)** optionally, S of the band-mean `G + jωC` embedded, against the measured S at every frequency.
+
+Each term's cost is its weight times its mean square (defaults `Flatness` 1, `Cold` 1, `SmallSignal` 0). A mutual is
+solved at `|k| ≤ 0.999` — the engine is never handed a non-physical coupling, whose warning goes straight to stderr —
+and the excess is a penalty residual that is zero inside. Bounds default to R-mc4-2's (`Min` 0, `Max` 100× start).
+A tie is `value(To) × Factor`, applied whenever values are composed, so it holds exactly; a tied or locked variable
+is not a coordinate. A locked variable's `Value` is the fixed value — typed, or taken from EM.
+
+### 7.2 The points
+
+A point is at Vds = 0 V within 20 mV. Pinch-off, when not named: the lowest Vgs whose low-frequency `Y22` is
+capacitive (`Re < ½|Y22|`). Forward gate: the highest Vgs whose low-frequency `Y11` is resistive and whose gate
+current, when measured, flows in. Active, when not named: off (lowest Vgs at the highest Vds), on (highest Vgs at
+the lowest Vds), the knee (highest Vgs, the first Vds whose Id reaches 90 % of the saturated one; without currents
+the Vds nearest a quarter of the highest) and saturation. The chosen points are written back into `Fit`, so the user
+edits a choice rather than starting one. Cold-FET methods refuse a missing cold point naming the bias it needs; the
+multi-bias fit notes a missing one and goes on.
+
+### 7.3 Search (R-mc5-3)
+
+Coordinates are the unit box: logarithmic for a positive quantity (from `Min`, or a millionth of `Max` when `Min`
+is 0), linear otherwise; a free variable without both bounds is a refusal. **Cold-FET direct** alternates
+Levenberg–Marquardt on the capacitances (pinch-off term, series held) and on the R, L and M values (forward term,
+capacitances held) until a round moves nothing by 1e-7, at most eight rounds, then polishes both terms together —
+the moderate core's `R1` against `Rg` is a valley the alternation zig-zags along (measured: cost 2.4e-3 stalled,
+4.2e-8 with the joint polish). **Multi-bias** runs the registry's CMA-ES (default) or DE per start with seed
+`Seed + start`, from the same start point, `Budget` evaluations each (default 200 per variable), polishes each
+start's best with Levenberg–Marquardt and keeps the lowest cost. A batch is evaluated in parallel and told back in
+order, so the same seed gives the same values on any core count. Progress is a stage per start; cancellation is
+checked per batch and throws — nothing is returned, nothing written.
+
+### 7.4 Identifiability (R-mc5-4)
+
+At the solution: the residual Jacobian by central differences (in ln v for a logarithmic variable), `s² =
+SSR/(m − n)`, `Cov = s²(JᵀJ)⁻¹` through the SVD of the unit-diagonal `JᵀJ` (a direction the data does not see is a
+huge variance, not a failure). Per variable: the standard error, the relative error, the most-correlated partner and
+`ρ`, the spread of the polished starts, and `at bound Min`/`Max` within 0.5 % of the box. **Poorly determined** is a
+relative error above `PoorRelativeError` (0.2) or `|ρ|` above `PoorCorrelation` (0.95). Lines: `Cpgi poorly
+determined (ρ = −0.98 with Cpga)` (or `(±35 %)`), `rg at bound Max (520)`, and one suggestion per variable or pair:
+`Lock Cpga, or tie it to Cpgi × 1.43.` Measured on the GaN network: `ρ(Cpga, Cpgi)` is −0.999 with data to 2 GHz and
+−0.70 with data to 40 GHz.
+
+### 7.5 The result in the document (R-mc5-5)
+
+`Run` returns `NetworkFitResult`; `Apply` writes each fitted and tied variable's `Value`, the resolved `Fit`
+settings and the `Result` record (`Method`, `Cost`, per-variable `StdError`/`Spread`/`AtBound`, the report lines and
+the `Digest` of the schematic path and values); `FitFile` reads, fits, applies and writes — what the window and the
+`model` verb call. The intrinsic cache keys on the values, so it invalidates itself. A later step records the digest
+it was computed through as `"Network"` in its `Steps` entry; `StaleSteps` names every entry whose digest differs.
+
+## 8. Where it lives
 
 | Path | What |
 |---|---|
@@ -458,8 +531,9 @@ file and a rename, and entries no set uses are removed. `CmcCache`'s folder swap
 | `src/RfCore/Export/MatReader.cs` | MAT v5 and v7.3 |
 | `src/Design/Modeling/` | MC-4: `CmcExtrinsic`, `PinNetwork` (with `ModelingException`), `SixPinNetwork` and `PadNetwork`, `StockNetworks` and `StockNetworks/*.csch`, `PadDeembedding`, `IntrinsicExtraction`, `IntrinsicQuantities` |
 | `src/Engine/Modeling/NetworkAlgebra.cs` | MC-4: `C2` and the conversions and de-embeddings |
+| `src/Design/Modeling/` | MC-5: `NetworkFit` (with `NetworkFitProblem`, the residual terms, the drivers and the report), `NetworkFitSettings` and `NetworkFitRecord` |
 
-## 8. Gates (MC-1 … MC-4)
+## 9. Gates (MC-1 … MC-5)
 
 `tests/Core.Tests/Composed/CmodelFormatTests`; `tests/Engine.Tests/Composed/` — `ComposedFetEquivalenceTests`
 (against an SDD with the same expressions in the same network: DC to 1e-12, S at three biases to 1e-9, HB
@@ -488,3 +562,12 @@ pad refused naming both ranges), `IntrinsicReReferencingTests` (intrinsic voltag
 nodes to 1e-9; instrument with bias-path R equals device), `IntrinsicQuantitiesTests` (the elements to 1e-8 —
 measured ~1e-14; a 1.5× `Lg` takes `Cgs` flatness from ~1e-15 to ~0.11). The truth is
 `Support/SyntheticFetData.cs`.
+
+MC-5: `tests/Ui.Tests/ModelComposer/` — `ColdFetExtractionTests` (the classic shell from a pinch-off and a forward
+point with 1e-4 noise on S, both forward variants, every element from starts 25–40 % off: moderate within 0.2 %,
+extreme within 0.7 % except `Cpgd` 3 %, its collapsed core's 0.02 Ω landing on the series resistances; the refusal),
+`MultiBiasNetworkFitTests` (the GaN network, six series elements and a tied `Cpga`/`Cpda` within 0.4 %, the
+de-embedded elements at the true network's own noise floor, bounds, the tie, the document round trip and a stale
+step, the same seed bit for bit), `IdentifiabilityReportTests`, `NetworkFitCancelTests` (cancelled 20 evaluations
+into the first start, the `.cmc` byte for byte unchanged). The per-bias cores are hand-written in
+`Support/SyntheticFetData.cs`: a linear SDD per active point, plain R and C for the cold states.

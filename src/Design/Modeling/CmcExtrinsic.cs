@@ -11,7 +11,11 @@
 //   "Network": { "Schematic": "gan-two-shell.csch",
 //                "Variables": { "rg": { "Min": 0, "Max": 520, "Lock": false, "Tie": { "To": "rd", "Factor": 1 },
 //                                       "Scaling": "perFingerInverse" } },
-//                "FlatnessBand": [1e9, 5e9] }
+//                "FlatnessBand": [1e9, 5e9],
+//                "Fit": { …the fit's settings, NetworkFitSettings… }, "Result": { …what the last fit found… } }
+//
+// A variable's "Value" is the value in use (MC-5): typed and locked (a fixed value, or one taken from EM), or the
+// last fit's. Absent, the schematic's own value is used.
 //
 // Absent blocks mean no pads and no network: the data is already at the device plane, or already intrinsic.
 
@@ -50,6 +54,8 @@ public sealed record NetworkVariableSettings
     public VariableTie? Tie { get; init; }
     /// <summary>A <see cref="PeripheryScaling"/> rule name (D9); null takes the network's default.</summary>
     public string? Scaling { get; init; }
+    /// <summary>The value in use, base SI (MC-5): typed, or the last fit's; null takes the schematic's.</summary>
+    public double? Value { get; init; }
 }
 
 /// <summary>The network block.</summary>
@@ -61,6 +67,14 @@ public sealed record NetworkSettings
         new Dictionary<string, NetworkVariableSettings>(StringComparer.Ordinal);
     /// <summary>The band the flatness metric spans, Hz (R-mc4-5); null takes 1/10 to 1/2 of the data's top frequency.</summary>
     public (double Lo, double Hi)? FlatnessBand { get; init; }
+    /// <summary>The fit's settings (MC-5); null takes every default.</summary>
+    public NetworkFitSettings? Fit { get; init; }
+    /// <summary>What the last fit found (MC-5); null before one has run.</summary>
+    public NetworkFitRecord? Result { get; init; }
+
+    /// <summary>Every variable's <see cref="NetworkVariableSettings.Value"/> that is set — the overrides a solve takes.</summary>
+    public IReadOnlyDictionary<string, double> Values =>
+        Variables.Where(kv => kv.Value.Value is not null).ToDictionary(kv => kv.Key, kv => kv.Value.Value!.Value, StringComparer.Ordinal);
 
     public static NetworkSettings None { get; } = new();
 }
@@ -68,8 +82,8 @@ public sealed record NetworkSettings
 public static class CmcExtrinsic
 {
     private static readonly string[] PadsKeys = ["Kind", "Open", "Short", "Gate", "Drain"];
-    private static readonly string[] NetworkKeys = ["Schematic", "Variables", "FlatnessBand"];
-    private static readonly string[] VariableKeys = ["Min", "Max", "Lock", "Tie", "Scaling"];
+    private static readonly string[] NetworkKeys = ["Schematic", "Variables", "FlatnessBand", "Fit", "Result"];
+    private static readonly string[] VariableKeys = ["Min", "Max", "Lock", "Tie", "Scaling", "Value"];
     private static readonly string[] TieKeys = ["To", "Factor"];
 
     /// <summary>The document's pads block, validated; <see cref="PadsSettings.None"/> when absent.</summary>
@@ -90,7 +104,11 @@ public static class CmcExtrinsic
 
     /// <summary>The document with its network block replaced.</summary>
     public static CmcDocument With(CmcDocument d, NetworkSettings network) =>
-        d with { Network = network.Schematic is null && network.Variables.Count == 0 && network.FlatnessBand is null ? null : ToJson(network) };
+        d with
+        {
+            Network = network.Schematic is null && network.Variables.Count == 0 && network.FlatnessBand is null
+                      && network.Fit is null && network.Result is null ? null : ToJson(network),
+        };
 
     // ── Reading ───────────────────────────────────────────────────────────────
 
@@ -151,7 +169,7 @@ public static class CmcExtrinsic
                 var s = new NetworkVariableSettings
                 {
                     Min = Num(e, "Min", $"{f}.Min"), Max = Num(e, "Max", $"{f}.Max"),
-                    Lock = Bool(e, "Lock", $"{f}.Lock"), Tie = tie, Scaling = scaling,
+                    Lock = Bool(e, "Lock", $"{f}.Lock"), Tie = tie, Scaling = scaling, Value = Num(e, "Value", $"{f}.Value"),
                 };
                 if (s.Min is { } lo && s.Max is { } hi && !(lo <= hi))
                     throw new CmcFormatException($"{f}.Max", $"{G(hi)} is below the minimum {G(lo)}.");
@@ -171,7 +189,12 @@ public static class CmcExtrinsic
             if (!(lo >= 0 && hi > lo)) throw new CmcFormatException("Network.FlatnessBand", $"{G(lo)} to {G(hi)} Hz is not a band.");
             band = (lo, hi);
         }
-        return new NetworkSettings { Schematic = Path(o, "Schematic", "Network"), Variables = vars, FlatnessBand = band };
+        return new NetworkSettings
+        {
+            Schematic = Path(o, "Schematic", "Network"), Variables = vars, FlatnessBand = band,
+            Fit = o["Fit"] is { } fn ? NetworkFitSettings.Parse(fn, "Network.Fit") : null,
+            Result = o["Result"] is { } rn ? NetworkFitRecord.Parse(rn, "Network.Result") : null,
+        };
     }
 
     // ── Writing (fixed order, so the same block writes the same bytes) ────────
@@ -201,26 +224,29 @@ public static class CmcExtrinsic
                 if (s.Lock) e["Lock"] = true;
                 if (s.Tie is { } t) e["Tie"] = new JsonObject { ["To"] = t.To, ["Factor"] = t.Factor };
                 if (s.Scaling is not null) e["Scaling"] = s.Scaling;
+                if (s.Value is { } v) e["Value"] = v;
                 vo[name] = e;
             }
             o["Variables"] = vo;
         }
         if (n.FlatnessBand is { } b) o["FlatnessBand"] = new JsonArray(b.Lo, b.Hi);
+        if (n.Fit is { } fit) o["Fit"] = fit.ToJson();
+        if (n.Result is { } r) o["Result"] = r.ToJson();
         return o;
     }
 
     // ── Field helpers: every miss names its field ────────────────────────────
 
-    private static JsonObject Obj(JsonNode node, string f) =>
+    internal static JsonObject Obj(JsonNode node, string f) =>
         node as JsonObject ?? throw new CmcFormatException(f, "it is not an object.");
 
-    private static void Only(JsonObject o, string f, string[] keys)
+    internal static void Only(JsonObject o, string f, string[] keys)
     {
         foreach (var (name, _) in o)
             if (Array.IndexOf(keys, name) < 0) throw new CmcFormatException($"{f}.{name}", "it is not a field this circuitRF knows.");
     }
 
-    private static string? Str(JsonObject o, string name, string f, bool required = true)
+    internal static string? Str(JsonObject o, string name, string f, bool required = true)
     {
         var v = o[name];
         if (v is null)
@@ -239,15 +265,22 @@ public static class CmcExtrinsic
         return s;
     }
 
-    private static double? Num(JsonObject o, string name, string f) => o[name] is { } v ? NumberOf(v, f) : null;
+    internal static double? Num(JsonObject o, string name, string f) => o[name] is { } v ? NumberOf(v, f) : null;
 
-    private static double NumberOf(JsonNode? v, string f)
+    internal static double NumberOf(JsonNode? v, string f)
     {
         if (v is JsonValue jv && jv.TryGetValue<double>(out var x) && double.IsFinite(x)) return x;
+        // A block built in memory holds an integer as one, which TryGetValue<double> does not convert.
+        if (v is JsonValue iv)
+        {
+            if (iv.TryGetValue<int>(out var i)) return i;
+            if (iv.TryGetValue<long>(out var l)) return l;
+            if (iv.TryGetValue<ulong>(out var u)) return u;
+        }
         throw new CmcFormatException(f, "it is not a number.");
     }
 
-    private static bool Bool(JsonObject o, string name, string f)
+    internal static bool Bool(JsonObject o, string name, string f)
     {
         var v = o[name];
         if (v is null) return false;
@@ -255,5 +288,5 @@ public static class CmcExtrinsic
         throw new CmcFormatException(f, "it is not true or false.");
     }
 
-    private static string G(double v) => v.ToString("G6", CultureInfo.InvariantCulture);
+    internal static string G(double v) => v.ToString("G6", CultureInfo.InvariantCulture);
 }

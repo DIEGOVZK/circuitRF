@@ -20732,3 +20732,27 @@ on short stubs carrying net labels `P1…P6`; same-name labels join the stubs to
 
 MC-3's `CmcFormatTests` wrote arbitrary JSON into `Pads`/`Network` to prove later-phase blocks survive; those two
 are validated now, so the test round-trips valid MC-4 blocks and the opaque claim stays with `Steps`.
+
+## Model Composer MC-5: fitting the extrinsic network (2026-10-19)
+
+**The cold-core elements are not coordinates.** Each trial point de-embeds the cold point, fits the core in closed
+form (the pinch-off capacitances; the moderate core's `1/Z1 = 1/R1 + jωC1`), embeds it back and compares with the
+measurement. Only the network's own variables reach the optimiser, and the residual stays in the measured domain
+where the noise is — which is what the identifiability report's `s²` assumes.
+
+**Alternating the two cold fits stalls on the moderate core.** Its `R1` and the network's `Rg` share a valley (only
+`R1`'s `1/(1 + (ωR1C1)²)` tells them apart), and capacitances-then-series zig-zags along it: cost 2.4e-3 after eight
+rounds with `Rg` 60 % off. A final polish of both cold terms together reaches 4.2e-8 and every element within 0.2 %.
+
+**The engine prints a non-physical coupling to stderr.** `MutualInductanceModel` writes `k ≥ 1` with
+`Console.Error.WriteLine`, once per elaborated instance — and a fit elaborates per trial point, so a global search
+exploring small inductances printed hundreds of lines. The fit solves each mutual at `|k| ≤ 0.999` (scaling the
+variable its `M` names) and carries the excess as the penalty residual, so the engine never sees one.
+
+**A `JsonValue` built from an `int` does not yield a `double`.** `TryGetValue<double>` is false for a node created
+in memory as `o["Starts"] = 4`, though the same text parsed from a file converts. `CmcExtrinsic.NumberOf` takes
+`int`, `long` and `ulong` too, so a block validated before it is ever written does not refuse its own integers.
+
+**The flatness metric has a noise floor, and it is not small.** With 1e-4 noise on S, the TRUE network leaves the
+de-embedded `Cds` of a 0.1 pF point spread by 2.1 % across the band. A gate on flatness compares with the true
+network on the same data, never with a fixed level.

@@ -7,6 +7,7 @@ using CircuitRF.Core.Tests.Composed;
 using CircuitRF.Design.Modeling;
 using CircuitRF.Engine;
 using CircuitRF.Engine.Modeling;
+using CircuitRF.Engine.Optimization;
 using Xunit;
 
 namespace CircuitRF.Ui.Tests.ModelComposer;
@@ -21,6 +22,9 @@ namespace CircuitRF.Ui.Tests.ModelComposer;
 /// <item>the nonlinear device of <see cref="ComposedTestModels"/> inside the GaN network, solved at DC, whose internal
 /// node voltages are the intrinsic truth.</item>
 /// </list>
+///
+/// MC-5 adds multi-bias S: at each bias a core written by hand — a linear SDD for an active point, plain R and C for
+/// the cold-FET states of [P1] §5.5.2 — inside a network written by hand, with deterministic noise on S.
 /// </summary>
 public static class SyntheticFetData
 {
@@ -128,6 +132,91 @@ public static class SyntheticFetData
     /// <summary>A stock network copied into a fresh folder, loaded.</summary>
     public static SixPinNetwork Stock(string id) =>
         SixPinNetwork.Load(StockNetworks.CopyInto(Directory.CreateTempSubdirectory("crf-mc4-net-").FullName, id));
+
+    // ── MC-5: multi-bias S, per-bias cores ─────────────────────────────────────
+
+    /// <summary>A linear active core as an SDD cell <c>dut (g d s)</c>, the shape of <see cref="CoreCell"/>.</summary>
+    public static string ActiveCore(double gg, double gm, double gds, double cgs, double cgd, double cds, double cm) =>
+        "define dut (g d s)\n" +
+        $"SDD:q g s d s I[1,0]={R(gg)}*_v1 I[2,0]={R(gm)}*_v1+{R(gds)}*_v2 " +
+        $"I[1,1]={R(cgs + cgd)}*_v1-{R(cgd)}*_v2 I[2,1]={R(cm - cgd)}*_v1+{R(cds + cgd)}*_v2\n" +
+        "end\n";
+
+    /// <summary>The pinch-off cold core of [P1] §5.5.2.2: junction capacitances only, intrinsic C_DS zero.</summary>
+    public static string PinchOffCore(double cgs, double cgd) =>
+        $"define dut (g d s)\nC:CGS g s C={R(cgs)}\nC:CGD g d C={R(cgd)}\nend\n";
+
+    /// <summary>The strongly forward-biased core of [P1] §5.5.2.4.1: three small resistances to one node.</summary>
+    public static string ExtremeForwardCore(double r) =>
+        $"define dut (g d s)\nR:RG g x R={R(r)}\nR:RD d x R={R(r)}\nR:RS s x R={R(r)}\nend\n";
+
+    /// <summary>The moderately forward-biased core of [P1] Fig. 5.17: R1 ∥ C1, −Rch/6 at the gate, Rch/2 to drain and source.</summary>
+    public static string ModerateForwardCore(double r1, double c1, double rch) =>
+        $"define dut (g d s)\nR:R1 g a R={R(r1)}\nC:C1 g a C={R(c1)}\nR:RN a x R={R(-rch / 6)}\n" +
+        $"R:RD d x R={R(rch / 2)}\nR:RS s x R={R(rch / 2)}\nend\n";
+
+    /// <summary>
+    /// One data set of S (50 Ω, common source): at each bias, its <c>dut</c> core inside <paramref name="networkDefine"/>
+    /// (a six-pin define block named <paramref name="cell"/>), with Gaussian noise of standard deviation
+    /// <paramref name="noise"/> on each real and imaginary part, seeded so the data is the same every run.
+    /// </summary>
+    public static NormalisedData Biased(string networkDefine, string cell, double[] freqs, double noise,
+                                        params (BiasPoint Bias, string Core)[] points)
+    {
+        var flat = new Complex[points.Length * freqs.Length * 4];
+        var rng = new SplitMix64(20261019);
+        for (int p = 0; p < points.Length; p++)
+        {
+            string cnl = networkDefine + points[p].Core + $"{cell}:XN a b 0 gi di si\ndut:XC gi di si\n" +
+                         "Port:P1 a 0 Num=1 Z=50 Ohm\nPort:P2 b 0 Num=2 Z=50 Ohm\n";
+            var (lib, tb) = new CnlReader().Read(cnl);
+            using var nl = new Elaborator(lib).Elaborate(tb);
+            var s = SParameterEngine.Run(nl, freqs)["S"];
+            for (int k = 0; k < freqs.Length; k++)
+                for (int i = 0; i < 2; i++)
+                    for (int j = 0; j < 2; j++)
+                        flat[((p * freqs.Length + k) * 2 + i) * 2 + j] =
+                            (Complex)s[k, i, j] + new Complex(noise * rng.NextGaussian(), noise * rng.NextGaussian());
+        }
+        return new NormalisedData { Points = [.. points.Select(x => x.Bias)], Ports = 2, FrequenciesHz = freqs, S = flat, Z0 = 50 };
+    }
+
+    /// <summary>The cold points every MC-5 gate shares: pinched off at Vgs = −4 V, and the gate forward-biased.</summary>
+    public static (BiasPoint, string) PinchOffPoint => (new BiasPoint("pinch", -4, 0, -1e-9, 0), PinchOffCore(0.12e-12, 0.10e-12));
+
+    public static (BiasPoint, string) ForwardPoint(ForwardVariant variant) =>
+        (new BiasPoint("forward", 1.5, 0, 0.02, -0.01),
+         variant == ForwardVariant.Extreme ? ExtremeForwardCore(0.02) : ModerateForwardCore(3, 0.5e-12, 1.5));
+
+    /// <summary>Four active points — off, on, the knee and saturation — each its own linear core, with drain currents
+    /// shaped so the automatic choice picks all four.</summary>
+    public static (BiasPoint, string)[] ActivePoints =>
+    [
+        (new BiasPoint("off", -3, 10, -1e-9, 0), ActiveCore(0, 0, 2e-4, 0.10e-12, 0.03e-12, 0.08e-12, 0)),
+        (new BiasPoint("on", 0, 1, 1e-6, 0.05), ActiveCore(1e-4, 0.06, 0.04, 0.40e-12, 0.12e-12, 0.10e-12, 0.01e-12)),
+        (new BiasPoint("knee", 0, 4, 1e-6, 0.095), ActiveCore(1e-4, 0.11, 0.008, 0.37e-12, 0.06e-12, 0.09e-12, 0.025e-12)),
+        (new BiasPoint("sat", 0, 10, 1e-6, 0.1), ActiveCore(Gg, Gm, Gds, Cgs, Cgd, Cds, Cm)),
+    ];
+
+    /// <summary>A <c>.cmc</c> in a fresh folder with one Device-plane data set <c>bias</c> and stock network
+    /// <paramref name="stock"/>; each variable starts at <paramref name="start"/>'s value when it names one, and is
+    /// locked at the schematic's (the truth) otherwise. <paramref name="tie"/> ties variables, which are not locked.</summary>
+    public static (string Cmc, CmcDocument Doc) Document(string stock, NetworkFitSettings fit,
+                                                          IReadOnlyDictionary<string, double> start,
+                                                          IReadOnlyDictionary<string, VariableTie>? tie = null)
+    {
+        string dir = Directory.CreateTempSubdirectory("crf-mc5-").FullName;
+        string cmc = Path.Combine(dir, "fet.cmc");
+        var doc = StockNetworks.Choose(new CmcDocument { Kind = CmcKind.Active, DataSets = [Set("bias", ReferencePlane.Device)] }, cmc, stock);
+        var n = CmcExtrinsic.Network(doc);
+        var vars = n.Variables.ToDictionary(
+            kv => kv.Key,
+            kv => start.TryGetValue(kv.Key, out var v) ? kv.Value with { Value = v }
+                : tie?.GetValueOrDefault(kv.Key) is { } t ? kv.Value with { Tie = t }
+                : kv.Value with { Lock = true },
+            StringComparer.Ordinal);
+        return (cmc, CmcExtrinsic.With(doc, n with { Variables = vars, Fit = fit }));
+    }
 
     public static CmcDataSet Set(string name, ReferencePlane plane, BiasPathOhms? path = null) => new()
     {

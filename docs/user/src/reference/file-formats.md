@@ -211,8 +211,27 @@ A pad file must cover the data's frequencies; one that does not is refused, nami
 | Field | What it holds |
 |---|---|
 | `Schematic` | The network, a `.csch` with exactly six pins: 1, 2, 3 the extrinsic gate, drain and source, 4, 5, 6 the intrinsic ones. Its VAR block's variables are its element values. |
-| `Variables` | Per variable: `Min`, `Max`, `Lock` (`true` holds it at its value), `Tie` (`To` another variable, times `Factor`) and `Scaling` (`fixed`, `perFinger` or `perFingerInverse`). |
+| `Variables` | Per variable: `Min`, `Max`, `Lock` (`true` holds it at its value), `Tie` (`To` another variable, times `Factor`), `Scaling` (`fixed`, `perFinger` or `perFingerInverse`) and `Value`, the value in use in base SI — typed and locked for a fixed value, or written by a fit. Absent: the schematic's own value. |
 | `FlatnessBand` | `[low, high]` in Hz: the band the frequency flatness of the intrinsic elements is measured over. Absent: 1/10 to 1/2 of the data's highest frequency. |
+| `Fit` | How the network is fitted — see below. Every field is optional. |
+| `Result` | What the last fit found: `Method`, `Cost`, per fitted variable its `StdError`, `Spread` across the starts and `AtBound` (`Min` or `Max`), the `Report` lines, and a `Digest` of the values. Written by the fit. |
+
+`Fit` holds:
+
+| Field | What it holds |
+|---|---|
+| `Method` | `MultiBias` (the default), `ColdFet`, or `ColdFetThenMultiBias` — the cold-FET values as the start of the multi-bias fit. |
+| `PinchOff`, `Forward` | The cold points, each `{ "Set", "Point" }`. Absent: chosen at Vds = 0 V — the lowest Vgs that is pinched off, and the highest with the gate conducting. A cold-FET method without one stops, naming the bias it needs. |
+| `ForwardVariant` | `Extreme` (the default: the device collapsed to a node by strong forward gate current) or `Moderate` (a gentler forward bias, with the channel resistance). |
+| `ChannelResistance` | Ω, for `Moderate`: the channel resistance, from another test structure. |
+| `ColdBand` | `[low, high]` in Hz for the cold points. Absent: every frequency. |
+| `Active` | The active points of the multi-bias fit, a list of `{ "Set", "Point" }`. Absent: one off, one on, one near the knee and one in saturation, chosen from the data and written here after a fit. |
+| `Weights` | `Flatness` (1), `Cold` (1) and `SmallSignal` (0): the frequency flatness of the intrinsic elements at the active points, the cold-FET models at the cold points, and S against a fitted small-signal circuit. |
+| `Starts`, `Seed`, `Algorithm`, `Budget` | The global search: 4 seeded starts (seed 1) of `cmaes` or `de`, each spending `Budget` evaluations (200 per variable) before a gradient polish. The same seed gives the same values. |
+| `PoorRelativeError`, `PoorCorrelation` | A value whose relative error exceeds the first (0.2), or whose correlation with another exceeds the second (0.95), is reported as poorly determined, with a lock or a tie suggested. |
+
+R, L and C values stay at or above zero by default, a mutual's coupling stays below 1, and a value that ends on a
+bound is reported as at that bound.
 
 A stock network — GaN two-shell, classic single shell or series only — is copied beside the `.cmc` when
 chosen and is then an ordinary schematic. An R, L, C or mutual value starts with `Min` 0 and `Max` 100 times
