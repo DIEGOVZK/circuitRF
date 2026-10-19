@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Input.Platform;
 using CircuitRF.Ui.WBond;
 using CircuitRF.WBond;
+using CircuitRF.Ui.Clipboard;
 
 namespace CircuitRF.Ui.Views.WBond;
 
@@ -160,7 +161,7 @@ public partial class WBondProfileView
     {
         if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return;
 
-        string? text = await clipboard.TryGetTextAsync();
+        string? text = await ClipboardRead.TextAsync(clipboard);
 
         if (!ProfileCoordinateText.TryRead(text, editor.DisplayUnit, out var shape, out long heightNm))
             return;

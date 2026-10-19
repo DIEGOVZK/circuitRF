@@ -1034,7 +1034,7 @@ public partial class SmithChartView : UserControl
             // there, it REPLACES it, and the recognizer reads the drawn x of each end to decide which
             // is the generator. A nudge would be a nudge of the whole cascade and would mean nothing.
             var payload = await SchematicClipboard.PasteAsync(clipboard, offsetX: 0, offsetY: 0);
-            return payload is { } p ? (p.Comps, (IReadOnlyList<EditableWire>)p.Wires) : null;
+            return payload is { } p ? (p.Comps, (IReadOnlyList<EditableWire>)p.Wires, p.TechnologyPath) : null;
         };
 
         vm.ChartCopySink = container => PlotExporter.CopyPlotToClipboardAsync(

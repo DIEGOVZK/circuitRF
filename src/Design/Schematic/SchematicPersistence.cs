@@ -858,14 +858,20 @@ public static class SchematicPersistence
     /// name with no wire under it names nothing. <b>Until 2026-09-24 no label travelled at all</b>:
     /// the fragment was wires and parts only, so copying a drawing into another schematic dropped
     /// every net name (RFin, VDD…) while the picture on the clipboard still showed them.</param>
+    /// <param name="technologyPath">The ABSOLUTE path of the technology the source schematic resolves, carried as
+    /// the fragment's <c>TechRef</c> so a reader with no technology of its own — the Smith Chart, turning a pasted
+    /// MLIN into a TLIN — can model the line on the board it was drawn for (<see cref="SelectionTechnologyPath"/>).
+    /// A schematic paste ignores it.</param>
     public static string SerializeSelection(
         IEnumerable<EditableComponent> comps,
         IEnumerable<EditableWire> wires,
         IEnumerable<EditableCanvasObject> canvasObjs,
         double sourceGridSize = 100.0,
-        IEnumerable<EditableNetLabel>? netLabels = null)
+        IEnumerable<EditableNetLabel>? netLabels = null,
+        string? technologyPath = null)
     {
         var scratch = new SchematicEditModel { GridSize = sourceGridSize };
+        if (technologyPath is { Length: > 0 } && Path.IsPathRooted(technologyPath)) scratch.TechRef = technologyPath;
         foreach (var c in comps)      scratch.Components.Add(c.Clone());
 
         // A clone takes a fresh Id, so each label's owner is re-pointed at its wire's clone.
@@ -920,5 +926,17 @@ public static class SchematicPersistence
         var model = FromFileModel(file, null);
         return (model.Components, model.Wires, model.CanvasObjects,
                 [.. model.NetLabels.Where(n => n.IsAnchored)], file.GridSize);
+    }
+
+    /// <summary>The technology path a fragment was copied with (<see cref="SerializeSelection"/>'s
+    /// <c>technologyPath</c>), or null — none was carried, or the text is not a fragment.</summary>
+    public static string? SelectionTechnologyPath(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<CschFile>(json, _jsonOpts)?.TechRef is { Length: > 0 } path && Path.IsPathRooted(path)
+                ? path : null;
+        }
+        catch (JsonException) { return null; }
     }
 }

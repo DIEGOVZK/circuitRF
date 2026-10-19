@@ -96,8 +96,9 @@ public sealed partial class RailRfViewModel
         {
             _document.HiddenLayers.RemoveWhere(k => !tech.Layers.Any(l => l.Key == k));
 
-            foreach (var layer in tech.Layers.OrderBy(l => l.ZOrder).ThenBy(l => l.Key.Layer)
-                                             .ThenBy(l => l.Key.Datatype))
+            // The .ctech's own order, as the layout editor's Layers list — not ZOrder, which is paint order and
+            // lists a board's Bottom Copper first.
+            foreach (var layer in tech.Layers)
                 BoardLayers.Add(new RailLayerRowViewModel(layer, _document.Shows(layer), SetLayerVisible));
         }
 

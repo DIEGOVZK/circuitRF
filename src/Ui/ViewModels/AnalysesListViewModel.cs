@@ -15,6 +15,7 @@ using CircuitRF.Ui.Commands.Analysis;
 using CircuitRF.Ui.Commands.Schematic;
 using CircuitRF.Ui.Schematic;
 using CircuitRF.Ui.Views.Dialogs;
+using CircuitRF.Ui.Clipboard;
 
 namespace CircuitRF.Ui.ViewModels;
 
@@ -429,7 +430,7 @@ public sealed partial class AnalysesListViewModel : ObservableObject
         var clipboard = TopLevel.GetTopLevel(window)?.Clipboard;
         if (clipboard is null) return;
 
-        string? json = await clipboard.TryGetTextAsync();
+        string? json = await ClipboardRead.TextAsync(clipboard);
         if (string.IsNullOrWhiteSpace(json)) return;
 
         List<Analysis> toPaste;

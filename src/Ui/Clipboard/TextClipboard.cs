@@ -60,9 +60,5 @@ public static class TextClipboard
         }).ToList();
     }
 
-    private static async Task<string?> TextOf(IClipboard clipboard)
-    {
-        try { return await clipboard.TryGetTextAsync(); }
-        catch { return null; }
-    }
+    private static Task<string?> TextOf(IClipboard clipboard) => ClipboardRead.TextAsync(clipboard);
 }

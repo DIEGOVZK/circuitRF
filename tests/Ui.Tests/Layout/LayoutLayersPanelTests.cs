@@ -54,6 +54,20 @@ public class LayoutLayersPanelTests : IDisposable
     private static LayerKey[] HitLayers(LayoutEditorViewModel vm, long x, long y) =>
         [.. LayoutHitTest.HitStack(vm.Model, vm.DrawTechnology, x, y, 0).Select(i => vm.Model.Shapes[i].Layer)];
 
+    /// <summary>The list is in the .ctech's order, not ZOrder: a board paints Bottom Copper beneath Top Copper, so a
+    /// ZOrder sort listed the copper upside down against the technology (designer round 21).</summary>
+    [Fact]
+    public void TheLayersList_IsInTheTechnologysOrder_NotPaintOrder()
+    {
+        var tech = TwoLayerTech();
+        tech.Layers[0].ZOrder = 20;
+        tech.Layers[1].ZOrder = 0;
+
+        var vm = TraceOverPlane(tech);
+
+        Assert.Equal(["Top", "Ground"], vm.LayerRows.Select(r => r.Name));
+    }
+
     // ── 1. The .ctech carries no view state ───────────────────────────────────────────────────────
 
     [Fact]

@@ -81,5 +81,6 @@ public sealed partial class SchematicViewModel
     }
 
     private LineTypeSwapContext SwapContext()
-        => new(SchematicTechnology.Of(EditModel), LineTypeSwap.BenchTopFrequencyHz(EditModel));
+        => new(SchematicTechnology.Of(EditModel), LineTypeSwap.BenchTopFrequencyHz(EditModel),
+               AngleFrequencyHz: LineEntryConversion.ReferenceFrequencyHz(EditModel));
 }

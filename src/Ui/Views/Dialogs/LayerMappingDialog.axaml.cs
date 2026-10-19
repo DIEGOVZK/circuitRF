@@ -145,9 +145,8 @@ public sealed record LayerMappingDialogResult(IReadOnlyList<LayerMappingRow> Row
 /// </summary>
 public static class LayerMappingRows
 {
-    /// <summary>The layers a row may be mapped onto: the destination's own, in paint order.</summary>
+    /// <summary>The layers a row may be mapped onto: the destination's own, in the order its .ctech lists them.</summary>
     public static List<LayerPickerItem> Targets(Technology? destTech) => (destTech?.Layers ?? [])
-        .OrderBy(l => l.ZOrder)
         .Select(l => new LayerPickerItem(l.Key, l.Name, l.Color))
         .ToList();
 

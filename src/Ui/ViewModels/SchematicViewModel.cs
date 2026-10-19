@@ -2116,8 +2116,23 @@ public sealed partial class SchematicViewModel : ObservableObject
         var moveCmd = new MoveCommand(EditModel, compSnaps, allWireSnaps, objSnaps,
             detachClears: detachClears.Count > 0 ? detachClears : null);
 
-        // Chain auto-wires (always empty when mergeCmd is set — mergeCmd requires compSnaps.Count==0)
+        // A single part that dragged NOTHING along — no wire followed it, no stub or pin-on-pin wire
+        // had to be grown — is connected to nothing, which is what a pasted or duplicated part is
+        // until it is dropped. Dropped along a wire, it breaks into it exactly as a palette placement
+        // does (SeriesPartInsertion); anything already wired in stays a plain move.
         IUiCommand finalCmd = moveCmd;
+        if (compSnaps.Count == 1 && selWireSnaps.Count == 0 && objSnaps.Count == 0
+            && followWireSnaps.Count == 0 && autoWireCmds.Count == 0
+            && _dragPinOnPinContacts is not { Count: > 0 })
+        {
+            var snap    = compSnaps[0];
+            var landing = snap.Component.Clone();
+            landing.X = snap.EndX;
+            landing.Y = snap.EndY;
+            finalCmd = WithSeriesWireCuts(moveCmd, landing, moving: snap.Component);
+        }
+
+        // Chain auto-wires (always empty when mergeCmd is set — mergeCmd requires compSnaps.Count==0)
         foreach (var wc in autoWireCmds)
             finalCmd = new CompositeCommand(finalCmd, wc);
 
@@ -3468,11 +3483,11 @@ public sealed partial class SchematicViewModel : ObservableObject
 
         if (comps.Count == 0 && wires.Count == 0 && cobjs.Count == 0) return;
 
-        Execute(new SchematicPasteCommand(
+        Execute(WithSeriesWireCutsForOne(new SchematicPasteCommand(
             EditModel, comps, wires, cobjs,
             ids => Selection.SetAll(ids),
             sourceGridSize: EditModel.GridSize,
-            messageSink: _messageSink));
+            messageSink: _messageSink), comps, wires, cobjs));
     }
 
     /// <summary>
@@ -3830,10 +3845,13 @@ public sealed partial class SchematicViewModel : ObservableObject
     /// placement — the stretch of wire between its own two pins, which would otherwise short it out.
     ///
     /// <para>Called by both commit paths (<see cref="CommitPlacement"/> for a built-in kind,
-    /// <see cref="CommitCellPlacementAsync"/> for a cell or kit part) and by nothing else, which is
-    /// what makes "only when first placed" a property of the call graph rather than of a persisted
-    /// flag. A later drag is a <c>MoveCommand</c> and a paste is <c>SchematicPasteCommand</c>;
-    /// neither passes through here.</para>
+    /// <see cref="CommitCellPlacementAsync"/> for a cell or kit part), by a paste or Ctrl-drag
+    /// duplicate of ONE part (<see cref="WithSeriesWireCutsForOne"/>), and by the drag of a single
+    /// part connected to nothing — the three ways a COPY of a part arrives. That is what makes
+    /// "only when a part arrives" a property of the call graph rather than of a persisted flag; the
+    /// drag of a part already wired in is a plain <c>MoveCommand</c> and never passes through here.
+    /// <paramref name="moving"/> is the dragged part itself, still at its start, whose pins the
+    /// span scan must not count.</para>
     ///
     /// <para><b>Which parts qualify is not asked here.</b> There is no list of kinds:
     /// <see cref="SeriesPartInsertion.FindShortedSpans"/> answers it geometrically — two pins, both
@@ -3845,13 +3863,26 @@ public sealed partial class SchematicViewModel : ObservableObject
     /// looks exactly right. The cuts are built BEFORE any of them runs, so each reads the wire list
     /// the user dropped onto.</para>
     /// </summary>
-    private IUiCommand WithSeriesWireCuts(IUiCommand place, EditableComponent comp)
+    private IUiCommand WithSeriesWireCuts(IUiCommand place, EditableComponent comp,
+                                          EditableComponent? moving = null)
     {
-        var cuts = SeriesPartInsertion.FindShortedSpans(EditModel, comp);
+        var cuts = SeriesPartInsertion.FindShortedSpans(EditModel, comp, moving);
         for (int i = cuts.Count - 1; i >= 0; i--)
             place = new CompositeCommand(new CutWireSpanCommand(EditModel, cuts[i]), place);
         return place;
     }
+
+    /// <summary>
+    /// <see cref="WithSeriesWireCuts"/> for a paste or a duplicate: only when the fragment is ONE
+    /// part and nothing else. A fragment with wires of its own brings its own connections, and two
+    /// pasted parts have no single pair of pins to break a run between.
+    /// </summary>
+    private IUiCommand WithSeriesWireCutsForOne(
+        IUiCommand paste, List<EditableComponent> comps,
+        List<EditableWire> wires, List<EditableCanvasObject> cobjs)
+        => comps.Count == 1 && wires.Count == 0 && cobjs.Count == 0
+            ? WithSeriesWireCuts(paste, comps[0])
+            : paste;
 
     /// <summary>
     /// wbond.md §9.2 route 2 — places a <c>.wBond</c> design as a component (M3).
@@ -5335,7 +5366,8 @@ public sealed partial class SchematicViewModel : ObservableObject
             .Where(n => n.IsAnchored && wholeWireIds.Contains(n.OwnerWireId))
             .ToList();
         await SchematicClipboard.CopyAsync(clipboard, comps, wires, objs, EditModel.GridSize,
-                                           netLabels, EditModel.SchematicDirectory);
+                                           netLabels, EditModel.SchematicDirectory,
+                                           technologyPath: SchematicTechnology.Resolve(EditModel).Path);
         if (cut) DeleteSelection();
     }
 
@@ -5370,7 +5402,7 @@ public sealed partial class SchematicViewModel : ObservableObject
             PlaceBomTable(text, source: "the clipboard");
             return;
         }
-        var (comps, wires, cobjs, srcGrid, netLabels) = result.Value;
+        var (comps, wires, cobjs, srcGrid, netLabels, _) = result.Value;
         PasteFragment(comps, wires, cobjs, srcGrid, netLabels);
     }
 
@@ -5395,11 +5427,11 @@ public sealed partial class SchematicViewModel : ObservableObject
                 c => Math.Abs(c.X - x) < 1e-6 && Math.Abs(c.Y - y) < 1e-6));
         SchematicPasteGeometry.Translate(comps, wires, cobjs, dx, dy);
 
-        Execute(new SchematicPasteCommand(
+        Execute(WithSeriesWireCutsForOne(new SchematicPasteCommand(
             EditModel, comps, wires, cobjs,
             ids => Selection.SetAll(ids),
             sourceGridSize: sourceGridSize,
             messageSink: _messageSink,
-            netLabels: netLabels));
+            netLabels: netLabels), comps, wires, cobjs));
     }
 }

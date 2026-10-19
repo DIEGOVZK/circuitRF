@@ -39,6 +39,7 @@ public class RailLayerVisibilityTests
         var tech = vm.Board!.Technology;
         Assert.NotEmpty(tech.Layers);
         Assert.Equal(tech.Layers.Count, vm.BoardLayers.Count);
+        Assert.Equal(tech.Layers.Select(l => l.Key), vm.BoardLayers.Select(r => r.Key));   // the .ctech's order
 
         foreach (var layer in tech.Layers)
         {

@@ -15586,7 +15586,9 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
 
         try
         {
-            CopyDirectoryRecursive(oldDir, newDir);
+            // What is OPEN, not what was last saved: an unsaved schematic or layout of the cell is
+            // written over its copy (CellDuplicate), and the original is left dirty and untouched.
+            var fromEditors = CellDuplicate.Copy(oldDir, newDir, _registry, AllLayoutSessions());
 
             // Every primary the cell has takes the new cell's name — the LAYOUT included, which it
             // was not before: a duplicate of a cell with artwork opened a folder called "amp_v2"
@@ -15595,6 +15597,8 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
             ApplyPrimaryRenames(workspaceDir, newDir, cellNode.Name, newName);
 
             _factory.ProjectTreeTool?.Refresh();
+            if (fromEditors.Count > 0)
+                Messages.Info($"The copy includes the unsaved edits to {fromEditors.Count} open view(s) of '{cellNode.Name}'.");
             Messages.Success("Duplicated", newDir);
         }
         catch (Exception ex)
@@ -15771,15 +15775,6 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
     }
 
     // Copies a directory tree recursively (all files and sub-directories).
-    private static void CopyDirectoryRecursive(string source, string destination)
-    {
-        Directory.CreateDirectory(destination);
-        foreach (var file in Directory.GetFiles(source))
-            File.Copy(file, Path.Combine(destination, Path.GetFileName(file)));
-        foreach (var dir in Directory.GetDirectories(source))
-            CopyDirectoryRecursive(dir, Path.Combine(destination, Path.GetFileName(dir)));
-    }
-
     // ── Private helpers ───────────────────────────────────────────────────────
 
     // ---- Active-document tracking (Properties region) ───────────────────────
@@ -18066,8 +18061,8 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         foreach (var dir in priorSessions)
             allDocs.AddRange(RecoveryManager.LoadSession(dir));
 
-        // Delete all prior session dirs whether or not we restore (v1: offer once, discard on decline).
-        // We do this AFTER loading so we always have the content to restore.
+        // Prior session dirs are deleted only once the offer is answered (Restore or Discard) — after
+        // loading, so the content to restore is always in hand.
 
         if (allDocs.Count == 0)
         {
@@ -18077,12 +18072,9 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
             return;
         }
 
+        // No window to ask from: nothing was offered, so nothing is discarded — the next launch asks.
         var window = ResolveOwner(null);
-        if (window is null)
-        {
-            foreach (var dir in priorSessions) RecoveryManager.DeletePriorSession(dir);
-            return;
-        }
+        if (window is null) return;
 
         int n = allDocs.Count;
         var dlg = new Views.Dialogs.SaveChangesDialog(
@@ -18114,7 +18106,9 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
             Messages.Success($"Restored {n} document{(n == 1 ? "" : "s")} from previous session.");
         }
 
-        // Delete prior sessions regardless of result (offer once — v1).
+        // Restore and Discard both settle the offer; Later (or closing the dialog) leaves the files
+        // where they are, so the next launch offers them again.
+        if (!RecoveryManager.AnswerSettlesOffer(dlg.Result)) return;
         foreach (var dir in priorSessions)
             RecoveryManager.DeletePriorSession(dir);
     }

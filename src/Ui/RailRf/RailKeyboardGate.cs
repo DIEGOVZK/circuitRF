@@ -4,6 +4,7 @@
 
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 
 namespace CircuitRF.Ui.RailRf;
@@ -50,6 +51,13 @@ public static class RailKeyboardGate
 
         return false;
     }
+
+    /// <summary>
+    /// Whether a key press is <b>L</b>, the Layers list's own key — the layout editor's (bare L, never from a field
+    /// that types it: a text box, or a combobox's type-to-select).
+    /// </summary>
+    public static bool IsLayerListKey(Key key, KeyModifiers modifiers, object? focused) =>
+        key == Key.L && modifiers == KeyModifiers.None && focused is not ComboBox && !IsTextEntry(focused);
 
     /// <summary>
     /// The predicate a window hands to <c>LayoutCanvas.NavigationKeysSuppressed</c>.

@@ -705,6 +705,11 @@ the length. Unlike TLIN, its impedance and loss follow from the geometry and the
 being stated. The parameters dialog shows the **Z0** (and εeff) the current `W` gives on the resolved
 substrate; type a Z0 there instead and `W` is set to the width that gives it, as one undoable edit.
 
+The length can be stated electrically instead, as `E` at `F` in place of `L`, exactly as a TLIN's is:
+**Use electrical length** in the parameters dialog converts the current `L` at the line's own εeff, and
+**Use physical length** converts it back, so switching never changes the line a run simulates. CPWG and
+SLIN have the same button. Layout always draws the physical length.
+
 {{table: components/Mlin}}
 
 ### Grounded Coplanar Waveguide (CPWG) {#cpwg}

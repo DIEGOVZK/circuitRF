@@ -82,6 +82,7 @@ public partial class RailRfWindow : Window
         WireLiveArtwork();
         WireEscape();
         WireUndoKeys();
+        WireLayerListKey();
 
         // The railRF chapter of the reference, through the launcher every other Help button in the
         // application uses — the Match Designer's own line.
@@ -302,6 +303,29 @@ public partial class RailRfWindow : Window
         if (!command.CanExecute(null)) return;
 
         command.Execute(null);
+        e.Handled = true;
+    }, RoutingStrategies.Bubble);
+
+    // ── L: the Layers list (owner, 2026-10-18) ───────────────────────────────────────
+
+    /// <summary>
+    /// <b>L</b> opens and closes the board panel's Layers list, as it does in the layout editor — the key that
+    /// gives the canvas its width back and brings the list back in one press. Bubbling and deferring to a
+    /// handled key, as Escape and undo do here, and only while the board panel is showing: a list in a hidden
+    /// panel would toggle with nothing to see. Closing the list while it holds focus hands focus to the canvas,
+    /// or the next key would go nowhere.
+    /// </summary>
+    private void WireLayerListKey() => AddHandler(KeyDownEvent, (_, e) =>
+    {
+        if (e.Handled) return;
+        if (!RailKeyboardGate.IsLayerListKey(e.Key, e.KeyModifiers,
+                TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement()))
+            return;
+        if (Vm is not { ShowBoard: true } vm) return;
+
+        bool focusWasInList = BoardLayerListPanel.IsKeyboardFocusWithin;
+        vm.ToggleLayerListCommand.Execute(null);
+        if (focusWasInList && !vm.ShowLayerList) BoardCanvas.Focus();
         e.Handled = true;
     }, RoutingStrategies.Bubble);
 

@@ -74,7 +74,7 @@ document, so what you draw appears in railRF as you draw it. Every result is <b>
 copper moves, because the numbers were measured on the board you have just changed; press
 <b>Run</b> again.</p>
 <p>Everything else about the panel is the layout editor's: the same pan, the same wheel zoom, the same
-<b>F</b>, <b>Z</b>, Ctrl/&#8984; +/&minus; and arrow keys.</p>
+<b>F</b>, <b>Z</b>, Ctrl/&#8984; +/&minus; and arrow keys, and <b>L</b> to open and close the Layers list.</p>
 </div>
 
 <div class="callout note">
@@ -91,7 +91,7 @@ choice.</p>
 
 <div class="callout note">
 <span class="label">Layer visibility is the window's own</span>
-<p>The <b>Layers</b> button in the board panel's toolbar opens a list of the board's drawing layers. Tick
+<p>The <b>Layers</b> button in the board panel's toolbar, or <b>L</b>, opens a list of the board's drawing layers. Tick
 or untick any of them to show or hide it on this board. The choice is saved in the <code>.crail</code>
 and nothing is written to the <code>.ctech</code>. The button at the right of the list's header,
 <b>Show all</b>, shows every layer again.</p>

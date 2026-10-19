@@ -70,6 +70,22 @@ public sealed class LayerMappingDialogTechnologyTests : IDisposable
         Assert.EndsWith("4 copper", row.Label);
     }
 
+    /// <summary>The targets are in the .ctech's order, not paint order (designer round 21).</summary>
+    [Fact]
+    public void TheTargets_AreInTheTechnologysOrder()
+    {
+        var tech = new Technology
+        {
+            Layers =
+            {
+                new LayerDef { Key = new LayerKey(1, 0), Name = "Top",    ZOrder = 20 },
+                new LayerDef { Key = new LayerKey(2, 0), Name = "Bottom", ZOrder = 0 },
+            },
+        };
+
+        Assert.Equal(["Top", "Bottom"], LayerMappingRows.Targets(tech).Select(t => t.Name));
+    }
+
     [Fact]
     public void UsingATechnology_OffersNoAddToTechnology()
     {

@@ -5120,3 +5120,28 @@ owner's framing before the fix and were gone after. Gate:
 
 Reversed-Z would remove the limit for every case, including an eye inside a drawn air box; it touches all three
 backends and the CPU mirror, so it was not done here.
+
+## A click on a trace beside a ground pour answered with the pour (designer round 21, 2026-10-18)
+
+On a Gerber-imported board no end of the input trace could be chosen for a port: every click on the
+trace placed the port on the ground pour's clearance edge beside it. The trace's end was covered by a
+placed footprint pad, so `LayoutConductorLookup.MergedWithOverlapping` unioned the overlapping copper —
+and its operand filter is a BOX test, so the pour (whose box is the whole board) went into that union
+too. The union then had fewer pieces than operands, and the piece answered was the first one whose box
+enclosed the click and the trace's box. The pour's box always does; whenever Clipper emitted the pour
+first, the click answered with the pour, and `NearestBoundaryPoint` snapped onto the pour's outline.
+Measured on the reported board: every point along the trace centre line answered with the 1,320-vertex
+pour; afterwards the trace (merged with its pad) and its end face.
+
+The piece answered must now also CONTAIN the point (edge inclusive, holes respected —
+`ContainsEdgeInclusive`). The same helper replaced `InstanceCopperAt`'s own test, which counted a point
+inside a hole as on the copper. Gate: `DesignerRound21PortEdgeTests` (the pour's clearance is a notch
+reaching the board edge, as on the board; with a hole instead, Clipper happens to emit the trace first
+and the old code passed).
+
+**A second cause on the same board, at the trace's other end:** the smallest-shape rule considered
+every VISIBLE layer, so the solder-mask opening over the device pin (and elsewhere a footprint's
+courtyard) — smaller than the trace under it — won the click and the port seated on the mask layer.
+A gesture (`onLayer` null) now considers only the drawing layers the stackup binds to a conductor or
+via entry; a technology with no such bindings keeps every visible layer, and a committed port
+(`onLayer` given) is untouched. Gate: `DesignerRound21PortEdgeTests.ASolderMaskOpeningOverTheEnd_…`.

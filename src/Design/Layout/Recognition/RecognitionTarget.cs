@@ -55,9 +55,24 @@ public sealed record RecognitionTarget(RecognitionTargetKind Kind, string? CellN
     public static string DefaultCellName(string clayPath) =>
         $"{Path.GetFileName(CellOf(clayPath) ?? Path.GetFileNameWithoutExtension(clayPath))}_model";
 
-    /// <summary>Whether writing into the artwork's own cell is offered: it is a cell, and it has no schematic view.</summary>
+    /// <summary>Whether writing into the artwork's own cell is offered: it is a cell, and it has no schematic view — or
+    /// its only drawing is an empty one, which Update Schematic from Layout leaves behind on a board of artwork with
+    /// no placed parts (designer feedback round 21). An empty drawing holds nothing to lose; refusing it sent the
+    /// user to a new cell for no reason.</summary>
     public static bool ArtworkCellOffered(string clayPath) =>
-        CellOf(clayPath) is { } cell && CellFolder.ResolvePrimary(cell, ViewType.Schematic).State == PrimaryState.NoView;
+        CellOf(clayPath) is { } cell && (CellFolder.ResolvePrimary(cell, ViewType.Schematic).State == PrimaryState.NoView
+                                         || EmptyPrimarySchematic(cell) is not null);
+
+    /// <summary><paramref name="cellDir"/>'s primary schematic when it is an empty drawing, else null.</summary>
+    internal static string? EmptyPrimarySchematic(string cellDir) =>
+        PrimarySchematic(cellDir) is { } path && File.Exists(path) && TryLoad(path) is { } model && IsEmptyDrawing(model) ? path : null;
+
+    /// <summary>Whether <paramref name="model"/> draws nothing at all: no component, wire, label, dot, canvas object,
+    /// analysis or measurement. Grid and view settings are not content.</summary>
+    public static bool IsEmptyDrawing(SchematicEditModel model) =>
+        model.Components.Count == 0 && model.Wires.Count == 0 && model.NetLabels.Count == 0 && model.Dots.Count == 0
+        && model.CanvasObjects.Count == 0 && model.Analyses.Count == 0 && model.Measurements.Count == 0
+        && model.Tuning is null or { IsEmpty: true };
 
     /// <summary>Whether <paramref name="cellDir"/>'s primary schematic was written by this command — it carries an
     /// <c>ArtworkSource</c> block — and so may be replaced.</summary>
@@ -204,18 +219,9 @@ public static partial class ArtworkRecognition
         schematicDir = existing is not null ? Path.GetDirectoryName(existing)! : CellFolder.SubFolderPath(cellDir, ViewType.Schematic);
 
         // ── the circuit, and its drawing ─────────────────────────────────────────────────────────────
-        var circuit = Emit(result, input, options.Emit);
+        var (circuit, model, drawRefusal) = DrawCircuit(result, input, schematicDir, options);
+        if (model is null) return Refused(drawRefusal!, circuit);
         var report = result.Report;
-
-        var drawn = NetlistSchematic.Build(new Library("netlist"), circuit.TestBench, schematicDir, circuit.Hints,
-                                           artworkSides: options.Emit.ArtworkSides);
-        if (drawn.Schematic is not { } model)
-            return Refused("The recognised circuit cannot be drawn: " + string.Join(" ", drawn.Refusals), circuit);
-        report.Add(RecognitionFindingClass.DrawingNotes, drawn.Notes.Count, string.Join(" ", drawn.Notes));
-
-        RecognitionProvenance.Apply(model, circuit);
-        model.TechRef = input.TechnologyPath is { } tech ? SchematicTechnology.StoredRef(Path.GetFullPath(tech), schematicDir) : null;
-        model.ArtworkSource = RecognitionProvenance.For(input, schematicDir, options.Now ?? DateTime.UtcNow, options.Emit);
 
         // ── the write: the schematic only, never the layout ─────────────────────────────────────────
         string path;
@@ -228,7 +234,13 @@ public static partial class ArtworkRecognition
                     path = CellCreate.Create(Path.GetDirectoryName(cellDir)!, cellName, CellViews.Schematic, model).SchematicPath!;
                     break;
                 case RecognitionTargetKind.ArtworkCell:
-                    path = CellCreate.WriteSchematicView(cellDir, cellName, cellName, model);
+                    // An empty drawing already there is written over in place, under its own name (ArtworkCellOffered).
+                    if (RecognitionTarget.EmptyPrimarySchematic(cellDir) is { } empty)
+                    {
+                        path = empty;
+                        SchematicPersistence.SaveToFile(path, model, cellName);
+                    }
+                    else path = CellCreate.WriteSchematicView(cellDir, cellName, cellName, model);
                     break;
                 default:
                     checkpoint = true;
@@ -250,5 +262,44 @@ public static partial class ArtworkRecognition
             (checkpoint ? $"A history checkpoint (\"{RecognitionTarget.ReplaceIntent}\") was taken, then " : "") +
             $"{cellName}'s schematic was {(checkpoint ? "replaced" : "written")}: {path}.");
         return new RecognitionRun(result, circuit, model, path, cellDir, null) { CheckpointTaken = checkpoint };
+    }
+
+    /// <summary>
+    /// Recognise, emit and draw, and write nothing: the schematic <see cref="Run"/> would write into
+    /// <paramref name="schematicDir"/> — provenance, technology reference and all — for a caller that puts it into a
+    /// schematic already open in an editor, as one undoable edit (Update Schematic from Layout on a layout that holds
+    /// artwork and no placed parts, designer feedback round 21). <see cref="RecognitionRun.SchematicPath"/> stays null;
+    /// a refusal is in <see cref="RecognitionRun.Refusal"/> and the drawing is null.
+    /// </summary>
+    public static RecognitionRun Draw(RecognitionInput input, string schematicDir,
+                                      RecognitionRunOptions? options = null, RunControl? control = null)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        ArgumentNullException.ThrowIfNull(schematicDir);
+        options ??= new RecognitionRunOptions();
+
+        var result = Recognize(input, control);
+        if (!result.Ok) return new RecognitionRun(result, null, null, null, null, result.Refusal ?? "The artwork could not be read.");
+        schematicDir = Path.GetFullPath(schematicDir);
+        var (circuit, model, refusal) = DrawCircuit(result, input, schematicDir, options);
+        return new RecognitionRun(result, circuit, model, null, Path.GetDirectoryName(schematicDir), refusal);
+    }
+
+    /// <summary>The emit and the drawing <see cref="Run"/> and <see cref="Draw"/> share: one circuit, drawn for
+    /// <paramref name="schematicDir"/>, with its provenance and technology reference stated against that folder.</summary>
+    private static (RecognitionCircuit Circuit, SchematicEditModel? Model, string? Refusal) DrawCircuit(
+        RecognitionResult result, RecognitionInput input, string schematicDir, RecognitionRunOptions options)
+    {
+        var circuit = Emit(result, input, options.Emit);
+        var drawn = NetlistSchematic.Build(new Library("netlist"), circuit.TestBench, schematicDir, circuit.Hints,
+                                           artworkSides: options.Emit.ArtworkSides);
+        if (drawn.Schematic is not { } model)
+            return (circuit, null, "The recognised circuit cannot be drawn: " + string.Join(" ", drawn.Refusals));
+        result.Report.Add(RecognitionFindingClass.DrawingNotes, drawn.Notes.Count, string.Join(" ", drawn.Notes));
+
+        RecognitionProvenance.Apply(model, circuit);
+        model.TechRef = input.TechnologyPath is { } tech ? SchematicTechnology.StoredRef(Path.GetFullPath(tech), schematicDir) : null;
+        model.ArtworkSource = RecognitionProvenance.For(input, schematicDir, options.Now ?? DateTime.UtcNow, options.Emit);
+        return (circuit, model, null);
     }
 }

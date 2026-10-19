@@ -615,6 +615,21 @@ public sealed class RailBoardViewTests(ITestOutputHelper output)
         // real TextBox with a real template under it.
     }
 
+    /// <summary><b>L</b> toggles the Layers list as in the layout editor: bare L only, and never from a field that
+    /// types it.</summary>
+    [Fact]
+    public void L_IsTheLayersListKey_ExceptWhereItIsALetter()
+    {
+        Assert.True(RailKeyboardGate.IsLayerListKey(Avalonia.Input.Key.L, KeyModifiers.None, null));
+        Assert.True(RailKeyboardGate.IsLayerListKey(Avalonia.Input.Key.L, KeyModifiers.None, new Button()));
+
+        Assert.False(RailKeyboardGate.IsLayerListKey(Avalonia.Input.Key.L, KeyModifiers.None, new TextBox()));
+        Assert.False(RailKeyboardGate.IsLayerListKey(Avalonia.Input.Key.L, KeyModifiers.None, new ComboBox()));
+        Assert.False(RailKeyboardGate.IsLayerListKey(Avalonia.Input.Key.L, KeyModifiers.Shift, null));
+        Assert.False(RailKeyboardGate.IsLayerListKey(Avalonia.Input.Key.L, KeyModifiers.Meta, null));
+        Assert.False(RailKeyboardGate.IsLayerListKey(Avalonia.Input.Key.K, KeyModifiers.None, null));
+    }
+
     // ══ R-rail8-5 — the arrow keys are the case the instruction turns on ═════════════════════
 
     /// <summary>

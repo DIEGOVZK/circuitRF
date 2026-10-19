@@ -112,6 +112,22 @@ public static class LayoutConductorLookup
         bool IsVisible(LayerKey key) =>
             visible.TryGetValue(key, out bool v) ? v : FallbackPalette.For(key).Visible;
 
+        // ── A GESTURE IS ONLY ATTRACTED TO METAL (designer round 21) ─────────────────────────────
+        //
+        // The smallest-shape rule below made a solder-mask opening or a footprint's courtyard — both
+        // smaller than the trace they sit on — win a click at a trace's end, so the port seated on a
+        // layer no EM run can drive. When the stackup says which drawing layers are metal (its
+        // conductor and via layers), a gesture considers only those. A technology with no stackup
+        // bindings says nothing, and every visible layer stays a candidate, as before. A committed
+        // port (onLayer given) is untouched: it never moves on its own.
+        var metal = new HashSet<LayerKey>();
+        if (tech is { } st)
+            foreach (var sl in st.Stackup.Layers)
+                if (sl.Kind is StackupKind.Conductor or StackupKind.Via)
+                    metal.UnionWith(sl.DrawingLayers);
+
+        bool IsGestureCandidate(LayerKey key) => IsVisible(key) && (metal.Count == 0 || metal.Contains(key));
+
         // ── COPPER THAT OVERLAPS IS ONE CONDUCTOR (round-7 field report, 2026-09-24) ─────────────
         //
         // A placed part's footprint pad lying over an imported board's own pad is two shapes and one
@@ -163,11 +179,18 @@ public static class LayoutConductorLookup
                 {
                     var union = LayoutBooleans.Union(operands, tech).Shapes;
                     // Nothing actually overlapped when the union has as many pieces as it had operands.
+                    //
+                    // The piece answered must CONTAIN THE POINT, not merely have a box around it
+                    // (designer round 21): a ground pour's box is the whole board, so it encloses every
+                    // trace's box too, and when the pour came out of the union ahead of the trace's own
+                    // piece a click on the trace answered with the POUR — the port then snapped to the
+                    // pour's clearance edge beside the trace and no end of the trace could be chosen.
                     if (union.Count < operands.Count)
                         answer = union.FirstOrDefault(u => LayoutGeometry.BboxOf(u) is var ub
                                                            && ub.MinX <= px && px <= ub.MaxX && ub.MinY <= py && py <= ub.MaxY
                                                            && ub.MinX <= box.MinX && box.MaxX <= ub.MaxX
-                                                           && ub.MinY <= box.MinY && box.MaxY <= ub.MaxY) ?? best;
+                                                           && ub.MinY <= box.MinY && box.MaxY <= ub.MaxY
+                                                           && ContainsEdgeInclusive(u, px, py, tech)) ?? best;
                 }
                 catch (Exception) { /* a degenerate operand: answer as drawn */ }
             }
@@ -190,13 +213,10 @@ public static class LayoutConductorLookup
             foreach (var s in instanceCopper[k].Shapes)
             {
                 if (!LayoutBooleans.IsClipperOperand(s)) continue;
-                if (onLayer is { } want ? s.Layer != want : !IsVisible(s.Layer)) continue;
+                if (onLayer is { } want ? s.Layer != want : !IsGestureCandidate(s.Layer)) continue;
                 var b = LayoutGeometry.BboxOf(s);
                 if (px < b.MinX || px > b.MaxX || py < b.MinY || py > b.MaxY) continue;
-                var paths = LayoutClipper.ToClipperPaths(s, LayoutFlattener.ResolveTolDbu(s, tech));
-                bool inside = paths.Any(path => Clipper2Lib.Clipper.PointInPolygon(new Clipper2Lib.Point64(px, py), path)
-                                                != Clipper2Lib.PointInPolygonResult.IsOutside);
-                if (!inside) continue;
+                if (!ContainsEdgeInclusive(s, px, py, tech)) continue;
                 double area = (double)(b.MaxX - b.MinX) * (b.MaxY - b.MinY);
                 if (area < foundArea) { foundArea = area; found = s; }
             }
@@ -215,7 +235,7 @@ public static class LayoutConductorLookup
             {
                 var shape = view.Shapes[i];
                 if (shape is LabelShape or BitmapShape) continue;
-                if (onLayer is { } want ? shape.Layer != want : !IsVisible(shape.Layer)) continue;
+                if (onLayer is { } want ? shape.Layer != want : !IsGestureCandidate(shape.Layer)) continue;
 
                 var bb = LayoutGeometry.BboxOf(shape);
                 if (bb.IsEmpty) continue;
@@ -284,6 +304,22 @@ public static class LayoutConductorLookup
 
             return null;
         };
+    }
+
+    /// <summary>Whether the point lies on the shape's copper, EDGE INCLUSIVE — inside (or on) the
+    /// outer ring and not strictly inside any hole. <c>ToClipperPaths</c> puts the outer ring first.
+    /// A point merely inside the outer ring is not enough: a pour's outer ring is the board.</summary>
+    private static bool ContainsEdgeInclusive(LayoutShape s, long px, long py, Technology? tech)
+    {
+        var paths = LayoutClipper.ToClipperPaths(s, LayoutFlattener.ResolveTolDbu(s, tech));
+        if (paths.Count == 0) return false;
+        var pt = new Clipper2Lib.Point64(px, py);
+        if (s is PathShape)   // a stroked path's outline pieces are all solid
+            return paths.Any(path => Clipper2Lib.Clipper.PointInPolygon(pt, path) != Clipper2Lib.PointInPolygonResult.IsOutside);
+        if (Clipper2Lib.Clipper.PointInPolygon(pt, paths[0]) == Clipper2Lib.PointInPolygonResult.IsOutside) return false;
+        for (int i = 1; i < paths.Count; i++)
+            if (Clipper2Lib.Clipper.PointInPolygon(pt, paths[i]) == Clipper2Lib.PointInPolygonResult.IsInside) return false;
+        return true;
     }
 
     /// <summary>

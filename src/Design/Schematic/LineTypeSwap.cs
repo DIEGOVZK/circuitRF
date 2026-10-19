@@ -22,7 +22,11 @@ public readonly record struct RememberedParameter(string Expression, string Unit
 /// where a TLIN's Z and εeff are computed and a width is synthesised. 0 is the static line.</param>
 /// <param name="GapMeters">A CPWG gap the user was ASKED for, used only when the component has neither a
 /// measured nor a remembered one.</param>
-public sealed record LineTypeSwapContext(Technology? Technology, double FrequencyHz = 0, double? GapMeters = null);
+/// <param name="AngleFrequencyHz">The frequency a TLIN's electrical length is stated at when the line it is made
+/// from states none of its own (<see cref="LineEntryConversion.ReferenceFrequencyHz"/>); 0 falls back to
+/// <paramref name="FrequencyHz"/>, and then to 1 GHz.</param>
+public sealed record LineTypeSwapContext(Technology? Technology, double FrequencyHz = 0, double? GapMeters = null,
+                                         double AngleFrequencyHz = 0);
 
 /// <summary>What <see cref="LineTypeSwap.Swap"/> returns: the new component, or why there is none.</summary>
 public sealed record LineTypeSwapResult
@@ -285,6 +289,18 @@ public static class LineTypeSwap
             double fHz = Si(Find(src, "F")) ?? 1e9;
             double? eeff = left.TryGetValue("Eeff", out var re) && NumericText.TryParseDouble(re.Expression, out double rv) ? rv
                          : comp.ArtworkMeasured.TryGetValue("Eeff", out double me) ? me : null;
+            if (comp.Symbol != SymbolKind.Tline)
+            {
+                // A planar line stating its length electrically: the length is ITS OWN line's at F, held as every
+                // other swap between planar lines holds L — not the new line's, which would hold the angle instead.
+                string? SrcLayer(string n) => Find(src, n)?.Expression is { Length: > 0 } s ? s.Trim('"') : null;
+                double? gSrc = comp.Symbol == SymbolKind.Cpwg ? Si(Find(src, "G")) : null;
+                if (Si(Find(src, "W")) is not { } wSrc || (comp.Symbol == SymbolKind.Cpwg && gSrc is null)
+                    || LineModel(comp.Symbol, wSrc, gSrc, SrcLayer("SignalLayer"), comp.Symbol == SymbolKind.Slin ? null : SrcLayer("GroundReference"),
+                                 StatedSubstrate(src, comp.Symbol), ctx.Technology, fHz).Model is not { } own)
+                    return new Built(null, $"'{name}': its width is not a plain number, so E cannot be converted to a length. Enter a number in W.");
+                eeff = own.Line.Eeff;
+            }
             if (eeff is null)
             {
                 if (Si(wRow) is not { } wM || LineModel(to, wM, gM, Layer("SignalLayer"), Layer("GroundReference"), stated, ctx.Technology, fHz).Model is not { } at)
@@ -308,8 +324,17 @@ public static class LineTypeSwap
         return new Built(ordered, null, Synthesised: synthesised);
     }
 
-    // ── TLIN, physical form ───────────────────────────────────────────────────────────────────────────
+    // ── TLIN ──────────────────────────────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// The TLIN a planar line is. <b>The angle form</b> — Z and E at F, the line's loss at F as A — because that is
+    /// how a TLIN is read and what the Smith Chart takes (designer feedback round 21; until then the swap wrote the
+    /// physical form, L with Eeff, and the angle had to be worked out by hand). F is the line's own when it states
+    /// its length electrically, else <see cref="LineTypeSwapContext.AngleFrequencyHz"/>, else the bench frequency,
+    /// else 1 GHz; Z, εeff and the loss are the model's at that same F. Two cases keep the physical form: an L that
+    /// is not a plain number (an expression has no angle until run time), and a TLIN an earlier swap set aside in
+    /// the physical form, which comes back as it was.
+    /// </summary>
     private static Built TlinRows(EditableComponent comp, LineTypeSwapContext ctx,
         SortedDictionary<string, RememberedParameter> left, List<string> notes)
     {
@@ -322,31 +347,65 @@ public static class LineTypeSwap
         if (from == SymbolKind.Cpwg && (gM = Si(Find(src, "G"))) is null)
             return new Built(null, $"'{name}': G is not a plain number, so its Z cannot be computed. Enter a number in G.");
         var lSource = Find(src, "L");
-        if (lSource is null)
-            return new Built(null, $"'{name}' has no L.");
+        var eSource = lSource is null ? Find(src, "E") : null;
+        if (lSource is null && eSource is null)
+            return new Built(null, $"'{name}' has neither L nor E.");
+        double? eStated = eSource is null ? null : Si(eSource);
+        if (eSource is not null && eStated is null)
+            return new Built(null, $"'{name}': E is not a plain number, so its Z cannot be computed at its F. Enter a number in E.");
+
+        double f = eSource is not null ? Si(Find(src, "F")) ?? 1e9
+                 : ctx.AngleFrequencyHz > 0 ? ctx.AngleFrequencyHz
+                 : ctx.FrequencyHz;
+        double? lM = eStated is not null ? null : Si(lSource);
+        bool angleForm = eStated is not null || lM is not null;
+        if (angleForm && !(f > 0))
+        {
+            f = 1e9;
+            notes.Add($"'{name}': nothing states a frequency, so E is the line's electrical length at 1 GHz.");
+        }
 
         string? Layer(string n) => Find(src, n)?.Expression is { Length: > 0 } s ? s.Trim('"') : null;
-        double f = ctx.FrequencyHz;
         var (model, why) = LineModel(from, wM, gM, Layer("SignalLayer"), from == SymbolKind.Cpwg || from == SymbolKind.Mlin ? Layer("GroundReference") : null,
                                      StatedSubstrate(src, from), ctx.Technology, f);
         if (model is null)
             return new Built(null, $"'{name}': {why}");
         var p = model.Line;
 
-        var rows = new List<EditableParameter>
+        List<EditableParameter> PhysicalForm()
         {
-            Row("Z", Fmt(p.Z0), "Ω", UnitDimension.Resistance, true),
-            lSource.Clone(),
-            Row("Eeff", Fmt(p.Eeff), "", UnitDimension.None, true),
-        };
-        if (f > 0)
-        {
-            rows.Add(Row("F", Fmt(f / 1e9), "GHz", UnitDimension.Frequency, true));
-            rows.Add(Row("Ac", Fmt(p.ConductorLossNpPerM * DbPerNeper), "", UnitDimension.None, false));
-            rows.Add(Row("Ad", Fmt(p.DielectricLossNpPerM * DbPerNeper), "", UnitDimension.None, false));
+            var physical = new List<EditableParameter>
+            {
+                Row("Z", Fmt(p.Z0), "Ω", UnitDimension.Resistance, true),
+                lSource!.Clone(),
+                Row("Eeff", Fmt(p.Eeff), "", UnitDimension.None, true),
+            };
+            if (f > 0)
+            {
+                physical.Add(Row("F", Fmt(f / 1e9), "GHz", UnitDimension.Frequency, true));
+                physical.Add(Row("Ac", Fmt(p.ConductorLossNpPerM * DbPerNeper), "", UnitDimension.None, false));
+                physical.Add(Row("Ad", Fmt(p.DielectricLossNpPerM * DbPerNeper), "", UnitDimension.None, false));
+            }
+            else
+                notes.Add($"'{name}': no S-parameter analysis states a frequency, so Z and Eeff are the static line's and the TLIN is lossless.");
+            return physical;
         }
+
+        List<EditableParameter> rows;
+        if (!angleForm)
+            rows = PhysicalForm();
         else
-            notes.Add($"'{name}': no S-parameter analysis states a frequency, so Z and Eeff are the static line's and the TLIN is lossless.");
+        {
+            double length = lM ?? PlanarLineAngle.LengthMeters(p.Eeff, eStated!.Value, f);
+            rows =
+            [
+                Row("Z", Fmt(p.Z0), "Ω", UnitDimension.Resistance, true),
+                eSource?.Clone() ?? Row("E", Fmt(PlanarLineAngle.AngleRad(p.Eeff, length, f) * 180.0 / Math.PI), "deg", UnitDimension.Angle, true),
+                Find(src, "F") is { } fRow && eSource is not null ? fRow.Clone() : Row("F", Fmt(f / 1e9), "GHz", UnitDimension.Frequency, true),
+            ];
+            double aDb = (p.ConductorLossNpPerM + p.DielectricLossNpPerM) * DbPerNeper * length;
+            if (aDb > 0) rows.Add(Row("A", Fmt(aDb), "", UnitDimension.None, false));
+        }
 
         // What an earlier swap from a TLIN set aside comes back — only onto the geometry it was set aside beside.
         var own = left.Keys.Where(TlinOwn.Contains).ToList();
@@ -376,9 +435,13 @@ public static class LineTypeSwap
                     rows = angle;
                 }
                 else
+                {
+                    // The physical form it was.
+                    if (angleForm && lSource is not null) rows = PhysicalForm();
                     for (int i = 0; i < rows.Count; i++)
                         if (left.TryGetValue(rows[i].Name, out var kept))
                             rows[i] = Restored(rows[i].Name, kept, rows[i].Dimension);
+                }
             }
             else
                 notes.Add($"'{name}': the TLIN values set aside earlier were for another width or length; Z and Eeff are computed for the line as it is.");
@@ -404,6 +467,27 @@ public static class LineTypeSwap
         substrate.AddRange(InjectedSubstrate(kind, signalLayer, groundReference, tech));
         string component = kind switch { SymbolKind.Mlin => "MLIN", SymbolKind.Cpwg => "CPWG", _ => "SLIN" };
         return LineCalculator.ModelAt(component, wM, gM, substrate, freqHz);
+    }
+
+    /// <summary>
+    /// A placed MLIN, CPWG or SLIN as the model a run elaborates — its own W (and G), layer choices and stated
+    /// overrides on <paramref name="tech"/> — asked for its line parameters at <paramref name="freqHz"/>; null with
+    /// the reason when W or G is not a plain number or the substrate refuses.
+    /// </summary>
+    public static (LineCalcModel? Model, string? Refusal) ModelOf(EditableComponent comp, Technology? tech, double freqHz)
+    {
+        ArgumentNullException.ThrowIfNull(comp);
+        var src = comp.Parameters;
+        if (comp.Symbol is not (SymbolKind.Mlin or SymbolKind.Cpwg or SymbolKind.Slin))
+            return (null, $"'{comp.InstanceName}' is not a microstrip, coplanar or stripline line.");
+        if (Si(Find(src, "W")) is not { } wM)
+            return (null, $"'{comp.InstanceName}': W is not a plain number. Enter a number in W.");
+        double? gM = null;
+        if (comp.Symbol == SymbolKind.Cpwg && (gM = Si(Find(src, "G"))) is null)
+            return (null, $"'{comp.InstanceName}': G is not a plain number. Enter a number in G.");
+        string? Layer(string n) => Find(src, n)?.Expression is { Length: > 0 } s ? s.Trim('"') : null;
+        return LineModel(comp.Symbol, wM, gM, Layer("SignalLayer"), comp.Symbol == SymbolKind.Slin ? null : Layer("GroundReference"),
+                         StatedSubstrate(src, comp.Symbol), tech, freqHz);
     }
 
     private static IReadOnlyList<ParameterAssignment> InjectedSubstrate(SymbolKind kind, string? signalLayer, string? groundReference, Technology? tech)

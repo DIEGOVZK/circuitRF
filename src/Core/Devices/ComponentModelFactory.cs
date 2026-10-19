@@ -2142,7 +2142,6 @@ public static class ComponentModelFactory
     private static MicrostripLineModel CreateMicrostripLineModel(IReadOnlyDictionary<string, Value> parameters)
     {
         double w = GetReal(parameters, "W", 0.0);
-        double l = GetReal(parameters, "L", 0.0);
         double h = GetReal(parameters, "H", DefaultSubstrateHMeters);
         double t = GetReal(parameters, "T", DefaultSubstrateTMeters);
         double er = GetReal(parameters, "Er", DefaultSubstrateEpsR);
@@ -2150,8 +2149,24 @@ public static class ComponentModelFactory
         double tanD = GetReal(parameters, "TanD", DefaultSubstrateTanD);
         double roughness = GetReal(parameters, "Roughness", 0.0);
         string name = MicrostripInstanceName(parameters, "MLIN");
+        double l = PlanarLineLength(parameters, len => new MicrostripLineModel(w, len, h, t, er, sigma, tanD, name, roughness));
 
         return new MicrostripLineModel(w, l, h, t, er, sigma, tanD, name, roughness);
+    }
+
+    /// <summary>
+    /// A planar line's L — or, when it states none, the length its electrical length <c>E</c> has at <c>F</c>
+    /// (1 GHz when unstated, TLIN's default) through the line's own dispersive εeff (<see cref="PlanarLineAngle"/>).
+    /// E arrives in radians, the elaborator having applied its angle unit as it does for TLIN's. L is
+    /// authoritative whenever present, as MKLOPF's L is over its F3db (designer feedback round 21).
+    /// </summary>
+    private static double PlanarLineLength(IReadOnlyDictionary<string, Value> parameters, Func<double, IPlanarLineModel> lineOfLength)
+    {
+        if (parameters.ContainsKey("L") || !parameters.ContainsKey("E")) return GetReal(parameters, "L", 0.0);
+        double fHz = GetReal(parameters, "F", 1e9);
+        if (!(fHz > 0))
+            throw new ParameterRefusalException(PlanarLineDiagnostics.ElectricalLengthFrequency(fHz).Render());
+        return PlanarLineAngle.LengthMeters(lineOfLength(1.0), GetReal(parameters, "E", 0.0), fHz);
     }
 
     // ── CPWG / SLIN (brief-artsch-1) ───────────────────────────────────────────────────────────
@@ -2164,20 +2179,24 @@ public static class ComponentModelFactory
         string name = MicrostripInstanceName(parameters, "CPWG");
         if (!parameters.ContainsKey("G"))
             throw new ArgumentException($"CPWG '{name}' states no G — the gap from the strip to the coplanar ground on each side.");
-        return new CoplanarLineModel(
-            GetReal(parameters, "W", 0.0), GetReal(parameters, "G", 0.0), GetReal(parameters, "L", 0.0),
+        CoplanarLineModel Of(double l) => new(
+            GetReal(parameters, "W", 0.0), GetReal(parameters, "G", 0.0), l,
             GetReal(parameters, "H", DefaultSubstrateHMeters), GetReal(parameters, "T", DefaultSubstrateTMeters),
             GetReal(parameters, "Er", DefaultSubstrateEpsR), GetReal(parameters, "Sigma", DefaultSubstrateSigmaSPerM),
             GetReal(parameters, "TanD", DefaultSubstrateTanD), name, GetReal(parameters, "Roughness", 0.0));
+        return Of(PlanarLineLength(parameters, Of));
     }
 
     private static StriplineModel CreateStriplineModel(IReadOnlyDictionary<string, Value> parameters)
-        => new(
-            GetReal(parameters, "W", 0.0), GetReal(parameters, "L", 0.0),
+    {
+        StriplineModel Of(double l) => new(
+            GetReal(parameters, "W", 0.0), l,
             GetReal(parameters, "H1", DefaultSubstrateHMeters / 2), GetReal(parameters, "H2", DefaultSubstrateHMeters / 2),
             GetReal(parameters, "T", DefaultSubstrateTMeters), GetReal(parameters, "Er", DefaultSubstrateEpsR),
             GetReal(parameters, "Sigma", DefaultSubstrateSigmaSPerM), GetReal(parameters, "TanD", DefaultSubstrateTanD),
             MicrostripInstanceName(parameters, "SLIN"), GetReal(parameters, "Roughness", 0.0));
+        return Of(PlanarLineLength(parameters, Of));
+    }
 
     // ── VIA / VIAGND (brief-via-component.md) ──────────────────────────────────────────────────
     // Every length is SI metres. A schematic instance on a technology has its barrel length, materials

@@ -73,7 +73,10 @@ public static class WBondMixedClipboard
     public static bool TryParse(string? text, out Payload payload)
     {
         payload = new Payload();
-        if (string.IsNullOrWhiteSpace(text)) return false;
+        // No marker anywhere in the text: not ours, and nothing worth handing to the deserializer. Most
+        // pastes are someone else's JSON, and a foreign shape (an array where a string is declared) throws
+        // inside System.Text.Json before the marker could be checked.
+        if (string.IsNullOrWhiteSpace(text) || !text.Contains(Marker, StringComparison.Ordinal)) return false;
 
         try
         {
@@ -86,9 +89,9 @@ public static class WBondMixedClipboard
             payload = parsed;
             return true;
         }
-        catch (JsonException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or NotSupportedException)
         {
-            return false;   // not JSON at all: not ours, and not an error worth surfacing
+            return false;   // not JSON, or not this shape: not ours, and not an error worth surfacing
         }
     }
 

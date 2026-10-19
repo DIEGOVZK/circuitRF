@@ -3323,8 +3323,9 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         RefreshLayerRows();
     }
 
-    /// <summary>Repopulates <see cref="AvailableLayers"/> from <see cref="Technology"/> (ordered by
-    /// ZOrder) or a small fixed fallback set (1/0 … 4/0) when there is no technology — gate 11.
+    /// <summary>Repopulates <see cref="AvailableLayers"/> from <see cref="Technology"/> (in the order the
+    /// .ctech lists them — not ZOrder, which is paint order and lists a board's Bottom Copper first) or a
+    /// small fixed fallback set (1/0 … 4/0) when there is no technology — gate 11.
     /// Called at construction and whenever <see cref="Technology"/> changes (L0c's live seam).
     /// Restores the layer the user PICKED if its key still exists; otherwise seeds
     /// <see cref="DefaultLayerChoice"/>, never throwing.
@@ -3339,7 +3340,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
 
         if (Technology is { Layers.Count: > 0 } tech)
         {
-            foreach (var l in tech.Layers.OrderBy(l => l.ZOrder))
+            foreach (var l in tech.Layers)
                 AvailableLayers.Add(new LayerPickerItem(l.Key, l.Name, l.Color));
         }
         else
@@ -3369,7 +3370,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
     /// <summary>
     /// The layer to land on when nothing has been picked (or the pick no longer exists): the topmost
     /// CONDUCTOR in stackup order that this view shows and lets be selected (the Layers list), failing that
-    /// the first visible-and-selectable layer of any kind (ZOrder order), failing that simply the first.
+    /// the first visible-and-selectable layer of any kind (the .ctech's order), failing that simply the first.
     /// No technology, or one with no conductor, lands on those fallbacks.
     ///
     /// <para><b>Visible/Selectable are a floor on what may be seeded, not a preference.</b> A layer

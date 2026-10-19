@@ -167,6 +167,14 @@ public sealed class RecoveryManager
         return result;
     }
 
+    /// <summary>
+    /// Whether an answer to the restore offer settles it — Restore (the documents are open again) and
+    /// Discard do; Later, and closing the dialog, do not. Until 2026-10 every answer deleted the prior
+    /// sessions, so the button labelled Later discarded the only copy of a scratch document's work.
+    /// </summary>
+    public static bool AnswerSettlesOffer(Views.Dialogs.SaveChangesResult answer)
+        => answer is Views.Dialogs.SaveChangesResult.Save or Views.Dialogs.SaveChangesResult.DontSave;
+
     /// <summary>Deletes a prior-session directory after restore or discard.</summary>
     public static void DeletePriorSession(string sessionDir)
     {

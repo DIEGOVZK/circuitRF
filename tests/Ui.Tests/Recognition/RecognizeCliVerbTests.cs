@@ -93,7 +93,10 @@ public sealed class RecognizeCliVerbTests(ITestOutputHelper output) : IDisposabl
         Assert.Contains("is a bare number", bare.StdErr);
 
         string cell = Path.GetDirectoryName(Path.GetDirectoryName(clay))!;
-        CellCreate.WriteSchematicView(cell, "Board", "Board", new CircuitRF.Design.Schematic.SchematicEditModel());
+        // A drawing with something in it: an EMPTY one is written over (designer feedback round 21).
+        var drawn = new CircuitRF.Design.Schematic.SchematicEditModel();
+        drawn.Components.Add(new CircuitRF.Design.Schematic.EditableComponent { InstanceName = "R1", Symbol = CircuitRF.Design.Schematic.SymbolKind.Resistor });
+        CellCreate.WriteSchematicView(cell, "Board", "Board", drawn);
         var artwork = Cli("recognize", clay, "--into", "artwork");
         Assert.Equal(1, artwork.Exit);
         Assert.Contains("--into new:<name>", artwork.StdErr);

@@ -488,7 +488,7 @@ public sealed class SmithClipboardTests
         var payload = ThroughTheClipboard(replacement);
 
         vm.NetworkPasteSource = () => Task.FromResult<(IReadOnlyList<EditableComponent>,
-                                                       IReadOnlyList<EditableWire>)?>(payload);
+                                                       IReadOnlyList<EditableWire>, string?)?>((payload.Comps, payload.Wires, null));
 
         await vm.PasteNetworkCommand.ExecuteAsync(null);
 
@@ -567,10 +567,11 @@ public sealed class SmithClipboardTests
         Assert.True(copied.PasteNetworkCommand.CanExecute(null));
 
         static Task<(IReadOnlyList<EditableComponent> Components,
-                     IReadOnlyList<EditableWire>      Wires)?> Payload(
+                     IReadOnlyList<EditableWire>      Wires,
+                     string?                          TechnologyPath)?> Payload(
             (IReadOnlyList<EditableComponent>, IReadOnlyList<EditableWire>) p)
             => Task.FromResult<(IReadOnlyList<EditableComponent>,
-                                IReadOnlyList<EditableWire>)?>(p);
+                                IReadOnlyList<EditableWire>, string?)?>((p.Item1, p.Item2, null));
     }
 
     // ── assertions and builders ──────────────────────────────────────────────

@@ -521,6 +521,7 @@ public class NetlistContractTests
         "loadpull_pursuit" => "analysis A1 type=loadpull_pursuit Tone=2e9 LoadTuner=L SourceTuner=S\n",
         "parametric_sweep" => "analysis Inner1 type=hb Tone=2e9\n" +
                               "analysis A1 type=parametric_sweep Var=P Inner=Inner1 Values=1,2\n",
+        "fields"           => "analysis A1 type=fields block=X1 freq=298 freqUnit=MHz\n",
         _ => throw new Xunit.Sdk.XunitException(
                  $"type={spec.Type} has no minimal directive in this test. Add one — a declared type " +
                  "token with no worked example is a token nothing proves the reader types."),

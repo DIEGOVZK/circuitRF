@@ -86,7 +86,7 @@ the strip at the bottom shows its progress.
 | Choice | Writes |
 |---|---|
 | **New cell** | A new cell beside the artwork's, holding a schematic only. The name defaults to `<cell>_model` and is checked as you type. |
-| **This cell's schematic** | The artwork's own cell. Offered **only when that cell has no schematic view**, so you can start a schematic there and clean it up in place. |
+| **This cell's schematic** | The artwork's own cell. Offered **only when that cell has no schematic view, or an empty one**, so you can start a schematic there and clean it up in place. An empty drawing is written over under its own name. |
 
 A name that is a cell this command created earlier turns the button into **Replace**; its confirmation says
 that a history checkpoint is taken first, so the replaced schematic can always be restored. A cell whose

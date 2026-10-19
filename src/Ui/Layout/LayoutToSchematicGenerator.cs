@@ -430,6 +430,20 @@ public static class LayoutToSchematicGenerator
             foreach (var (name, layoutVal) in origin.Parameters)
             {
                 var param = comp.Parameters.FirstOrDefault(p => p.Name == name);
+                if (param is null && name == "L" && layoutVal.Kind == PCellValueKind.Real
+                    && LineEntryConversion.AngleDegreesFor(comp, technology, layoutVal.AsReal()) is { } eDeg
+                    && comp.Parameters.FirstOrDefault(p => p.Name == "E") is { } eRow
+                    && eRow.Expression.Trim() != eDeg)
+                {
+                    // A line stated electrically takes the layout's length as its angle at its own F — writing L
+                    // beside the E it already states would leave the two disagreeing (designer feedback round 21).
+                    chain = Chain(chain, new Commands.Schematic.EditParameterCommand(schematic, eRow, eDeg, "deg"));
+                    anyChanged = true;
+                    lines.Add(new SchematicToLayoutGenerator.ReportLine(comp.InstanceName,
+                        $"{comp.InstanceName} — E changed from {eRow.Expression} {eRow.Unit} to {eDeg} deg (from layout)",
+                        SchematicToLayoutGenerator.ReportSeverity.Info));
+                    continue;
+                }
                 if (param is null) continue;
                 if (!SchematicToLayoutGenerator.TryResolveSiValue(param.Expression, param.Unit, scope, evaluator, out var schematicVal, out _))
                     continue;

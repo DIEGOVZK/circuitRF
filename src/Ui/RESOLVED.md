@@ -1,5 +1,59 @@
 # src/Ui — resolved briefs (detail, off the CLAUDE.md growth path)
 
+## Designer round 21 — copied lines shorted, a footprint on a line, a stale duplicate (2026-10-18)
+
+**A copied part dragged onto a wire stayed shorted.** Palette placement already broke into a wire
+(`SeriesPartInsertion`), but only the two placement commit paths called it. The field data shows the
+lines were COPIED (identical stored label offsets across a dozen MLINs): a paste lands in place or
+one grid step off, the user then drags it onto the run — a `MoveCommand`, which never cut. The rule
+is now "when a part ARRIVES": a paste or Ctrl-drag duplicate of exactly one part, and the drag of a
+single part that dragged nothing along (no wire followed, no stub or pin-on-pin wire grown — i.e. it
+was connected to nothing). A part already wired in is still a plain move, so moving a series part
+cannot re-partition a net. `FindShortedSpans` gained `moving`: for a drag it is handed a clone at the
+landing position, and the real part — still at its start inside the model — is skipped in the span
+scan, since its pins are leaving. Gate: `DesignerRound21SchematicTests` (drag, paste, wired-in move).
+
+**MLIN offered an SMD footprint.** R-fp2-2 put the Footprint row on every component; the owner has
+since turned it off for the line kinds. `FootprintDefaults.IsOffered` answers by palette CATEGORY
+(`Microstrip`, `TransmissionLine` — TLIN, CPWG, SLIN, MLIN, the bends/tees/crosses/tapers/MKLOPF and
+the vias), so a new line kind is excluded without a list. `EditableComponent.Footprint` reads null on
+those kinds as it already did on a wBond, so a footprint stored before the row went away is drawn,
+placed and exported by nothing — and left in the file, never rewritten. The MMIC passives are still
+offered one; nobody has asked.
+
+**Duplicate Cell copied the last SAVE.** It was a plain folder copy, so an unsaved schematic came out
+of the duplicate as it had been at the last save, while the original's tab still showed the newer
+drawing. The field workspace fits exactly: the duplicate's parts are the earlier, line-less 19-part
+schematic (moved and given lines by hand afterwards), not the 32-part one the original holds now. The
+`.ccell` with no `PrimarySchematic` was not the cause — `PrimaryViewRename` resolves the primary
+from the folder either way. `CellDuplicate.Copy` now writes every open, dirty schematic and layout
+under the cell over its copy (schematics from the session registry, layouts from
+`AllLayoutSessions`, since a tab's base layout frame is not registered). The original stays open
+and dirty, untouched. A dirty `.wBond` sidecar is not carried — only the `.clay`.
+
+**MLIN, CPWG and SLIN take E at F, and the Smith Chart pastes them.** The parameters dialog's TLIN
+Electrical / Physical button now shows on the three planar lines too (`LineEntryConversion`, `src/Design`);
+the factory reads `E` at `F` when no `L` is stated, through the model's own dispersive εeff
+(`PlanarLineAngle`), so the switch is exact against what a run stamps. A Smith paste converts each planar
+line to its TLIN by Swap Line Type on the copied technology, treats `Vdc`/`IProbe` as shorts (nets merged,
+ground winning) and drops by name what the short disconnects. **A trap in the arm refusal:** it looked
+only at nets with more than two series elements, but when the choke-plus-line arm hangs off a PORT's own
+net that net has two, the arm's far end passes for the walk's load end, and the paste succeeded with the
+port in mid-cascade. The arm is now also looked for on a port net with two series elements. Gate:
+`DesignerRound21LineConversionTests`.
+
+**The layout's Layers list ran against the `.ctech`.** `RebuildAvailableLayers` sorted by ZOrder, which is
+paint order: a board paints Bottom Copper beneath Top Copper, so the list (and the layer picker, the same
+collection) showed the copper upside down, and a Move Up in the technology editor — which swaps ZOrder with
+the row passed — moved the layer DOWN in the open layout. Both now take `Technology.Layers` in its stored
+order; a reorder already reached open layouts through `TechLiveChanged` → `TechnologyCache.SetLive` →
+`OnTechnologyChanged`, so nothing else was needed for it to follow live. railRF's layer list
+(`RailRfViewModel.RebuildBoardLayers`) and the Layer Mapping dialog's targets (`LayerMappingRows.Targets`)
+sorted the same way and take the stored order too. Gates:
+`LayoutLayersPanelTests.TheLayersList_IsInTheTechnologysOrder_NotPaintOrder`,
+`LayoutLiveTechnologyTests.LiveLayerReorder_WithoutSaving_ReordersTheOpenLayoutsLayersList`,
+`LayerMappingDialogTechnologyTests.TheTargets_AreInTheTechnologysOrder`.
+
 ## Properties Inspector stuck after Project Tree use — fixed for every document type at once (owner, 2026-10-05)
 
 Owner report: after deleting `.clay` files in the Project Tree, clicking a component in an already-open
@@ -39812,3 +39866,39 @@ tree with nothing selected before, showed Topology as a text box, and was missin
   through the editor's dispatcher post (`C3dEditorViewModel.Post`, the toolbar combo's New Material… precedent). The object's
   own Material combo is not in a rebuilt list and was never affected. Gate (the deferral, not the crash, which needs a real
   ComboBox): `SarEditorTests.APhantomLayerPick_CommitsAfterThePick`.
+
+## Copying a Data Display plot ended the process on Windows; the recovery offer's Later discarded (designer round 21, 2026-10-18)
+
+Field report (Windows, 1.0.13): copying a plot crashed the application twice. Both reports have the same fatal:
+`COMException: EnumFormatEtc failed` from `Avalonia.Win32.OleDataObjectToDataTransferWrapper.ProvideFormats`, reached
+through `DisplayWindowViewModel.Copy → PerformCopy → CheckPasteStateAsync`. Copy writes the clipboard (on Windows
+through `WindowsClipboard.SetClipboard`, our own Win32 write) and immediately re-reads it to decide whether Paste is
+enabled; the OLE data object Avalonia enumerates can be mid-replacement, or held by another process, and the read
+throws out of a call whose signature promises null. Unhandled on the UI thread, that terminates.
+
+**One reader, not a try per call site.** `src/Ui/Clipboard/ClipboardRead` — `TextAsync(IClipboard?)` and the generic
+`Try(read, fallback)` — answers "nothing pasteable" and notes the refusal on the crash trail. Every read that had no
+guard goes through it (the Data Display's text reader, the Analyses panel's Paste, the schematic inline-edit Paste,
+both wBond pastes, `ImageClipboard`'s format/file/bitmap reads); `C3dClipboard.ReadAsync` and `TextClipboard`'s private
+reader delegate to it. The Data Display view model also guards its injected reader itself, which is the testable half.
+Writes were not touched: `PlotExporter.SetClipboardDataAsync` already caught on the Avalonia path, and the Win32 path
+did not throw in either report.
+
+**`WBondMixedClipboard.TryParse`** threw a first-chance `InvalidOperationException` (an array where a string is
+declared) on someone else's JSON before it could check its marker. It now returns false unless the marker string is in
+the text at all, and treats `InvalidOperationException`/`NotSupportedException` like `JsonException`.
+
+**The lost schematic: no deleting route found.** The second session's trail shows the cell's schematic reporting "No
+analysis defined" at its first run after the restart, where the first session had run it with one — so what was on
+disk at relaunch was older than what had been run. Ruled out: every `.csch` write is `AtomicFile` (temp + rename, a
+process crash leaves the previous file); no crash handler saves anything; `UpdateSchematicFromLayout` creates its empty
+schematic only when the file does not exist; no `File.Delete` in `src/Ui` touches a cell view; a cell schematic with no
+`PrimarySchematic` in `.ccell` is ordinary (`CellFolder.ResolvePrimary`'s sole-file branch). The editor has no autosave
+for a SAVED document — only scratch documents are autosaved — so any edit after the last save of a cell schematic is
+lost in a crash, and Save with a Data Display tab active saves only that display. What would settle it: the session's
+Messages panel lines for "Saved" before the crash, and whether the restart offered to restore documents.
+
+**What was found on that path, and fixed:** the restore offer (`CheckForRecovery`) deleted the prior sessions whatever
+the answer, so Later — and a launch with no window to ask from — discarded the only copy of a scratch document's work.
+Only Restore and Discard settle the offer now (`RecoveryManager.AnswerSettlesOffer`). Gate:
+`DesignerRound21CrashTests`.

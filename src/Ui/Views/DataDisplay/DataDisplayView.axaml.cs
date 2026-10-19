@@ -9,6 +9,7 @@ using Avalonia.Platform.Storage;
 using CircuitRF.Ui.DataDisplay;
 using CircuitRF.Ui.DataDisplay.ViewModels;
 using CircuitRF.Ui.Views.Dialogs;
+using CircuitRF.Ui.Clipboard;
 
 namespace CircuitRF.Ui.Views.DataDisplay;
 
@@ -122,11 +123,7 @@ public partial class DataDisplayView : UserControl
 
         win.SetRichCopyAction((containers, theme) =>
             PlotExporter.CopyContainersToClipboardAsync(this, containers, theme));
-        win.SetGetClipboardTextAction(async () =>
-        {
-            var cb = TopLevel.GetTopLevel(this)?.Clipboard;
-            return cb is null ? null : await cb.TryGetTextAsync();
-        });
+        win.SetGetClipboardTextAction(() => ClipboardRead.TextAsync(TopLevel.GetTopLevel(this)?.Clipboard));
 
         win.DataSourceLibrary.FindMissingFileAsync = path => FindMissingSnpFileAsync(path);
         win.DataSourceLibrary.AddSourceFileRequested = AddOneDataFileAsync;

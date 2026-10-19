@@ -29,12 +29,12 @@
             <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding BandsText}" ToolTip.Tip="One SAR frequency per run: each band is its own setup, its liquid evaluated there."/>
             <TextBlock Grid.Row="1" Grid.Column="2" Text="Rated power (W)" VerticalAlignment="Center" FontSize="12"/>
             <StackPanel Grid.Row="1" Grid.Column="3" Orientation="Horizontal" Spacing="6">
-                <TextBox Text="{Binding PowerText}" Width="80" Watermark="1" ToolTip.Tip="The conducted power the device delivers. Blank: 1 W, so the table reads per watt."/>
+                <TextBox Text="{Binding PowerText}" Width="80" PlaceholderText="1" ToolTip.Tip="The conducted power the device delivers. Blank: 1 W, so the table reads per watt."/>
                 <ComboBox ItemsSource="{Binding ReferredChoices}" SelectedItem="{Binding ReferredTo}"
                           ToolTip.Tip="Accepted: the power entering the antenna. Incident: before the antenna's own mismatch, read from each band's Touchstone."/>
             </StackPanel>
             <TextBlock Grid.Row="2" Grid.Column="0" Text="Duty cycle" VerticalAlignment="Center" FontSize="12"/>
-            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DutyText}" Watermark="none" ToolTip.Tip="A scaling factor above 0 and at most 1; blank: none."/>
+            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding DutyText}" PlaceholderText="none" ToolTip.Tip="A scaling factor above 0 and at most 1; blank: none."/>
             <TextBlock Grid.Row="2" Grid.Column="2" Text="Reference values for" VerticalAlignment="Center" FontSize="12"/>
             <ComboBox Grid.Row="2" Grid.Column="3" ItemsSource="{Binding ExposureChoices}" SelectedItem="{Binding Exposure}" HorizontalAlignment="Stretch"/>
             <TextBlock Grid.Row="3" Grid.Column="0" Text="Your own values" VerticalAlignment="Top" FontSize="12" Margin="0,4,0,0"/>

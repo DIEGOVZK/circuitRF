@@ -546,6 +546,13 @@ because silently dropping an expression would change the circuit.</li>
 </ol>
 </div>
 
+Three things are translated before the rules apply, and the strip names each one it translated. An
+MLIN, CPWG or SLIN is pasted as the TLIN it is, on the technology it was copied with, at the chart's
+design frequency. A DC voltage source is pasted as a short &mdash; the supply rail is ground at RF &mdash;
+and so is a current probe. A part the short leaves with no signal on it, such as the supply's bypass
+capacitor, is left out by name. A bias arm of two parts in series to the shorted supply (a choke and a
+line) is refused naming both, because a shunt arm on the chart is a single element.
+
 **Which end is the generator** is decided by a `Term`/`Port` with the lowest `Num` if there is one, and
 otherwise by geometry: the leftmost end when the strip is drawn generator-left, the rightmost when it
 is mirrored. **The strip says which of the two rules fired**, because they can disagree and you are the

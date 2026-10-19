@@ -476,7 +476,11 @@ source `.clay` (relative), the scope and its rings, the options, the parts CSV's
 
 `NewCell(name)` creates the cell beside the artwork's with `CellCreate.Create` (schematic only; an existing name or one
 `NameValidator` rejects is a refusal). `ArtworkCell` writes the artwork cell's primary schematic, offered only while it
-has no schematic view. `Replace(cell)` rewrites a primary schematic that carries `ArtworkSource`, after
+has no schematic view or its primary drawing is empty (`RecognitionTarget.IsEmptyDrawing` — written over in place, under
+its own name; designer feedback round 21). `ArtworkRecognition.Draw` is the same recognise-emit-draw with no write, for
+Update Schematic from Layout on artwork with nothing placed: it puts the drawing into the open, empty schematic as one
+undoable edit (`FillEmptySchematicCommand`). A placed instance with a `SchematicId` takes its kind and value from the
+linked component in the cell's schematic (evidence `instance`); an expression that does not read as a number is a note. `Replace(cell)` rewrites a primary schematic that carries `ArtworkSource`, after
 `WorkspaceCheckpoints.BeforeWrite` (a `SavePoint`, intent "Create Schematic from Artwork"); one without it is refused —
 *"<cell>'s schematic was not created from artwork; choose a new cell"*. The `.clay` is never written.
 

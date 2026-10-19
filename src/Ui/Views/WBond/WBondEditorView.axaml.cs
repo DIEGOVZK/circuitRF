@@ -13,6 +13,7 @@ using CircuitRF.Ui.Views.Dialogs;
 using CircuitRF.Ui.Theming;
 using CircuitRF.WBond;
 using Avalonia.Styling;
+using CircuitRF.Ui.Clipboard;
 
 namespace CircuitRF.Ui.Views.WBond;
 
@@ -430,7 +431,7 @@ public partial class WBondEditorView : UserControl
         if (_bound is null) return false;
         if (TopLevel.GetTopLevel(this)?.Clipboard is not { } clipboard) return false;
 
-        string? text = await clipboard.TryGetTextAsync();
+        string? text = await ClipboardRead.TextAsync(clipboard);
 
         // The one shared unwrap: a mixed envelope splits, anything else is offered to both parsers
         // and each refuses what is not its own.

@@ -82,19 +82,21 @@ public sealed class LineTypeSwapTests : IDisposable
     }
 
     [Fact]
-    public void MlinToTlin_ComputesZAndEeff_AsTheMlinModelHasThemAtF()
+    public void MlinToTlin_ComputesZAndE_AsTheMlinModelHasThemAtF()
     {
         var tech = PlanarLineInjectionTests.FourLayer();
         var mlin = Line(SymbolKind.Mlin, ("W", "0.4", "mm"), ("L", "10", "mm"), ("SignalLayer", "Top", ""));
 
         var tlin = LineTypeSwap.Swap(mlin, SymbolKind.Tline, new LineTypeSwapContext(tech, F)).Component!;
 
-        // The line calculator's elaborated MLIN on the same conductor, at the same width and frequency.
+        // The line calculator's elaborated MLIN on the same conductor, at the same width and frequency; the TLIN
+        // states the angle form — Z and E at F — rather than L with Eeff.
         var model = LineCalculator.Calculate(tech, new LineCalcRequest("Top", [0.4e-3], [], null, F)).Rows.Single().Model!;
         Assert.Equal(model.Line.Z0, Value(tlin, "Z"), 1e-6);
-        Assert.Equal(model.Line.Eeff, Value(tlin, "Eeff"), 1e-7);
-        Assert.Equal("10 mm", Text(tlin, "L"));
+        double eDeg = 360.0 * F * 10e-3 * Math.Sqrt(model.Line.Eeff) / 299_792_458.0;
+        Assert.Equal(eDeg, double.Parse(tlin.Parameters.Single(p => p.Name == "E").Expression, CultureInfo.InvariantCulture), 1e-4);
         Assert.Equal("6 GHz", Text(tlin, "F"));
+        Assert.DoesNotContain(tlin.Parameters, p => p.Name is "L" or "Eeff");
     }
 
     [Fact]

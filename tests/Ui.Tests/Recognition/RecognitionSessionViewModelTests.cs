@@ -82,9 +82,14 @@ public sealed class RecognitionSessionViewModelTests : IDisposable
     {
         var runner = new RecordingRunner();
         var bare = await Open(Cell("Bare", CellViews.Layout), runner);
-        var drawn = await Open(Cell("Drawn", CellViews.Layout | CellViews.Schematic), runner);
+        // An empty drawing counts as none (designer feedback round 21): Update Schematic from Layout leaves one behind.
+        var empty = await Open(Cell("Empty", CellViews.Layout | CellViews.Schematic), runner);
+        var drawnSchematic = new SchematicEditModel();
+        drawnSchematic.Components.Add(new EditableComponent { InstanceName = "R1" });
+        var drawn = await Open(CellCreate.Create(_root, "Drawn", CellViews.Layout | CellViews.Schematic, drawnSchematic).LayoutPath!, runner);
 
         Assert.True(bare.ArtworkCellOffered);
+        Assert.True(empty.ArtworkCellOffered);
         Assert.False(drawn.ArtworkCellOffered);
         Assert.Equal("Bare_model", bare.NewCellName);
     }

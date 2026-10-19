@@ -84,6 +84,24 @@ public class LayoutLiveTechnologyTests
         Assert.Equal(new Rgba(9, 8, 7), h.LayoutVm.Technology!.Layers[0].Color);
     }
 
+    /// <summary>A reorder in the .ctech editor reorders the open layout's Layers list and its layer picker
+    /// immediately, unsaved — the list follows the technology's order (designer round 21).</summary>
+    [Fact]
+    public void LiveLayerReorder_WithoutSaving_ReordersTheOpenLayoutsLayersList()
+    {
+        // As on a board: the layer listed first paints on top, so ZOrder runs against the list.
+        var tech = FreshTech();
+        tech.Layers[0].ZOrder = 20;
+        tech.Layers[1].ZOrder = 0;
+        using var h = new Harness(tech);
+        Assert.Equal(["Metal1", "Metal2"], h.LayoutVm.LayerRows.Select(r => r.Name));
+
+        h.EditorVm.MoveLayer(h.EditorVm.Layers[1], -1);
+
+        Assert.Equal(["Metal2", "Metal1"], h.LayoutVm.LayerRows.Select(r => r.Name));
+        Assert.Equal(["Metal2", "Metal1"], h.LayoutVm.AvailableLayers.Select(l => l.Name));
+    }
+
     /// <summary>The seam carries colour and FILL — not visibility, which is the layout's own view
     /// state since brief-layout-layers-panel.md.</summary>
     [Fact]

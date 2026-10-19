@@ -519,3 +519,29 @@ board showed:
   **Ground-tied needs the shapes' own net names, not the partition's.** The first try used "joined to ground by a via"
   alone, then the island's partition net name — both are galvanic, so an unnamed RF line with a shorted stub read as
   ground and lost its edge ports (`PortDiscoveryTests.AnEdgeOnGroundTiedCopperIsNoPort` holds both halves).
+
+## Update Schematic from Layout on imported artwork (designer feedback round 21, 2026-10-18)
+
+Two field boards, both Gerber imports. On the first (copper and four port labels, no placed parts) Update Schematic
+from Layout did nothing and said nothing; on the second (eight footprints placed over the imported pads) it updated
+the eight parts and modelled none of the traces or vias between them.
+
+- **Root cause, both:** the command walks `LayoutInstance`s only (R-L5-19, "no wiring"). The recognition that
+  reads copper as lines lives behind Create ▸ Schematic from Artwork, which the user never reached for — the update
+  was the obvious command. Running `recognize` on the first board gives exactly the two expected chains
+  (P1→CPWG 7.96 mm→CPWG 0.86 mm→P2, and the mirror P3→P4).
+- **A trap that compounded it:** the no-op update CREATES an empty `.csch` in the artwork cell, and from then on the
+  artwork cell was no longer offered as a recognition target ("already has a schematic view"). An empty drawing now
+  counts as none (`RecognitionTarget.IsEmptyDrawing`) and is written over under its own name.
+- **Fix:** with nothing placed and an empty schematic, the update draws the recognised circuit into the open schematic
+  as one undoable edit — `ArtworkRecognition.Draw` (Run's recognise-emit-draw, no write) + `FillEmptySchematicCommand`.
+  A schematic with anything in it is never changed: splicing lines into a hand-drawn drawing would have to guess
+  which wire each trace replaces, and the part on the far end (a chip modelled as an SnP) has no placement at all.
+  There, the update reports the unmodelled copper and names Create ▸ Schematic from Artwork.
+- **Placed parts were read with kind and value unknown** on the second board (every one a capacitor variable) —
+  `LayoutPartKind.Of` is null by design on an instance the schematic owns ("the schematic knows"), and the reading
+  never asked the schematic. `PartReading` now reads the cell's primary schematic (else the sibling) by `SchematicId`.
+  The editor stores `70k` with unit `Ω`, which the bill-of-materials reader refuses with the space; the expression
+  and unit are tried together, run together, then the expression alone.
+- **Slow:** the second board's recognition takes ~54 s wall (285 s CPU) — 1,589 filled silkscreen shapes and 2,900
+  copper shapes. Not addressed; it is why the update does not run a recognition just to list trace lengths.

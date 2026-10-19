@@ -1231,6 +1231,18 @@ public static class SchematicToLayoutGenerator
         if (reference == "MKLOPF")
             ResolveMklopfCanonicalParams(resolved, technology, layerSelection);
 
+        // The same for a line stating its length electrically (designer feedback round 21): the generator draws
+        // L, so E at F becomes the length the run simulates — LineEntryConversion, through the model's own εeff.
+        if (LineEntryConversion.Applies(comp.Symbol) && !resolved.ContainsKey("L") && resolved.ContainsKey("E"))
+        {
+            var si = resolved.Where(kv => kv.Key is "W" or "G" or "E" or "F")
+                             .ToDictionary(kv => kv.Key, kv => resolved.Real(kv.Key), StringComparer.Ordinal);
+            if (LineEntryConversion.LengthMeters(comp.Symbol, si, signalOverride, groundOverride, technology) is { } lengthM)
+                resolved["L"] = lengthM;
+            resolved.Remove("E");
+            resolved.Remove("F");
+        }
+
         string cellDir;
         try
         {

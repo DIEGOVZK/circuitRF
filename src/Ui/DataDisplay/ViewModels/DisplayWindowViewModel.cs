@@ -707,7 +707,7 @@ public partial class DisplayWindowViewModel : ViewModelBase, ITrialSelectionList
         if (_getClipboardTextAction is null) return;
         var display = DataDisplay;
         if (display is null) return;
-        var text = await _getClipboardTextAction();
+        var text = await ReadClipboardTextAsync();
         if (!TryParseDataDisplayConfig(text, out var config) || config is null) return;
 
         var added = await display.PasteFromConfigAsync(config);
@@ -729,10 +729,18 @@ public partial class DisplayWindowViewModel : ViewModelBase, ITrialSelectionList
             PasteCommand.NotifyCanExecuteChanged();
             return;
         }
-        string? text = await _getClipboardTextAction();
+        string? text = await ReadClipboardTextAsync();
         _canPaste = TryParseDataDisplayConfig(text, out _);
         PasteCommand.NotifyCanExecuteChanged();
     }
+
+    /// <summary>The clipboard's text through the view's reader, null when it cannot be read. Copy re-reads
+    /// the clipboard straight after writing it, and a platform that refuses that read (Windows throws when
+    /// the data object is replaced mid-enumeration) must leave Paste disabled, not end the process.</summary>
+    private Task<string?> ReadClipboardTextAsync()
+        => _getClipboardTextAction is null
+            ? Task.FromResult<string?>(null)
+            : CircuitRF.Ui.Clipboard.ClipboardRead.Try(_getClipboardTextAction, null);
 
     private static bool TryParseDataDisplayConfig(
         string? text,

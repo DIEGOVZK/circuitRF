@@ -40,10 +40,11 @@ public sealed partial class SmithChartViewModel
     /// <summary>
     /// Reads one schematic selection back off the system clipboard — the view's single call to
     /// <c>SchematicClipboard.PasteAsync</c>. Null, or a null answer, means there was nothing of ours
-    /// there.
+    /// there. <c>TechnologyPath</c> is the technology the selection was copied with, or null.
     /// </summary>
     public Func<Task<(IReadOnlyList<EditableComponent> Components,
-                      IReadOnlyList<EditableWire>      Wires)?>>? NetworkPasteSource { get; set; }
+                      IReadOnlyList<EditableWire>      Wires,
+                      string?                          TechnologyPath)?>>? NetworkPasteSource { get; set; }
 
     /// <summary>
     /// Puts the chart on the system clipboard — the view's single call to
@@ -120,8 +121,19 @@ public sealed partial class SmithChartViewModel
             return;
         }
 
+        // The technology a pasted microstrip line is modelled on is the one it was COPIED with — this document
+        // keeps none (designer feedback round 21). Read only when there is a path; a path that will not load
+        // refuses a pasted line by name rather than modelling it on another board.
+        Technology? technology = null;
+        string? technologyRefusal = null;
+        if (p.TechnologyPath is { Length: > 0 } techPath)
+        {
+            try   { technology = TechPersistence.LoadFromFile(techPath); }
+            catch (Exception ex) { technologyRefusal = $"'{techPath}' could not be read ({ex.Message})."; }
+        }
+
         var result = SmithPasteRecognizer.Recognize(
-            p.Components, p.Wires, MirrorNetwork, _design.DesignFrequencyHz);
+            p.Components, p.Wires, MirrorNetwork, _design.DesignFrequencyHz, technology, technologyRefusal);
 
         if (result.Refusal is { Length: > 0 } refusal)
         {

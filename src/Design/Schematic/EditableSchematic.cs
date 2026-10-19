@@ -727,16 +727,18 @@ public sealed class EditableComponent
     /// rewritten or re-derived (R-fp2-1c): a stored reference the application rewrites is a
     /// reference that changes under a user who did not change it.
     ///
-    /// <para><b>Always null on a wBond</b>, whatever it carries: a wirebond is made by a bonding
-    /// machine and has no land pattern, so a <c>Footprint</c> on one (written before the Inspector
-    /// stopped offering it) is drawn by nothing, placed by nothing and exported by nothing. It is left
-    /// in the file rather than deleted — still never rewritten.</para>
+    /// <para><b>Always null on a wBond and on a line kind</b>, whatever it carries: a wirebond is
+    /// made by a bonding machine and a transmission or microstrip line is drawn from its own geometry
+    /// (<see cref="FootprintDefaults.IsOffered"/>), so neither has a land pattern,
+    /// and a <c>Footprint</c> on one (written before the Inspector stopped offering it) is drawn by
+    /// nothing, placed by nothing and exported by nothing. It is left in the file rather than
+    /// deleted — still never rewritten.</para>
     /// </summary>
     public string? Footprint
     {
         get
         {
-            if (Symbol == SymbolKind.WBond) return null;
+            if (Symbol == SymbolKind.WBond || !FootprintDefaults.IsOffered(Symbol)) return null;
             var p = Parameters.FirstOrDefault(q =>
                 q.Name.Equals(ArtworkParameters.FootprintName, StringComparison.OrdinalIgnoreCase));
             return string.IsNullOrWhiteSpace(p?.Expression) ? null : p!.Expression;

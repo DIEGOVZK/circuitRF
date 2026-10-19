@@ -52,10 +52,10 @@ internal static class ImageClipboard
     public static async Task<PictureClipboardContents> PeekAsync(TopLevel top)
     {
         if (top.Clipboard is not { } clipboard) return PictureClipboardContents.Nothing;
-        var formats = await clipboard.GetDataFormatsAsync();
+        var formats = await ClipboardRead.Try(clipboard.GetDataFormatsAsync, []);
         IReadOnlyList<string> files = [];
         if (formats.Contains(DataFormat.File))
-            files = [.. (await clipboard.TryGetFilesAsync() ?? []).Select(f => f.TryGetLocalPath() ?? f.Name)];
+            files = [.. (await ClipboardRead.Try(clipboard.TryGetFilesAsync, null) ?? []).Select(f => f.TryGetLocalPath() ?? f.Name)];
         bool bitmap = formats.Contains(DataFormat.Bitmap) || (OperatingSystem.IsWindows() && WindowsClipboard.HasPng());
         return new PictureClipboardContents(bitmap, files);
     }
@@ -67,12 +67,12 @@ internal static class ImageClipboard
     public static async Task<ImageSourceResult?> TryReadAsync(TopLevel top)
     {
         if (top.Clipboard is not { } clipboard) return null;
-        var files = await clipboard.TryGetFilesAsync();
+        var files = await ClipboardRead.Try(clipboard.TryGetFilesAsync, null);
         if (files is { Length: > 0 })
             return files.Length == 1 && files[0].TryGetLocalPath() is { } path && File.Exists(path) ? ImageSource.FromFile(path) : null;
         if (OperatingSystem.IsWindows() && WindowsClipboard.TryGetPng(top.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero) is { } png)
             return ImageSource.FromBytes(png);
-        if (await clipboard.TryGetBitmapAsync() is not { } bitmap) return null;
+        if (await ClipboardRead.Try(clipboard.TryGetBitmapAsync, null) is not { } bitmap) return null;
         using var stream = new MemoryStream();
         bitmap.Save(stream);
         return ImageSource.FromBytes(stream.ToArray());

@@ -147,6 +147,12 @@ public partial class ParameterEditorViewModel
             }
         }
 
+        // A line stated electrically: the length it is, beside its εeff (designer feedback round 21).
+        if (eeff.Length > 0 && _target is { } lineTarget && LineEntryConversion.Applies(lineTarget.Symbol)
+            && LineEntryConversion.IsElectrical(lineTarget.Parameters) && _schematicVm is { } svmLine
+            && LineEntryConversion.Switch(lineTarget, SchematicTechnology.Of(svmLine.EditModel), 0).Parameters?.FirstOrDefault(p => p.Name == "L") is { } lRow)
+            eeff += $" · L {lRow.Expression} {lRow.Unit}";
+
         MlinZ0Text        = z0;
         MlinEeffText      = eeff;
         MlinImpedanceNote = note;

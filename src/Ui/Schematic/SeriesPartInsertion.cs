@@ -45,11 +45,15 @@ namespace CircuitRF.Ui.Schematic;
 /// judgement — a second wire whose own vertex falls INSIDE the span is still refused below, so any
 /// wire that reaches this point spans the whole cut and is in the same position as the first.</para>
 ///
-/// <para><b>Placement only.</b> The callers are <c>SchematicViewModel.CommitPlacement</c> and
-/// <c>CommitCellPlacementAsync</c> — the two commit paths, covering the click-arm, the
-/// drag-and-drop and the cell/kit placements — so a later drag of a placed part reaches none of
-/// this, and a paste or a type-change does not either. There is deliberately no "has this already
-/// run" flag on the component: the entry points ARE the once.</para>
+/// <para><b>When a part ARRIVES, not whenever it moves.</b> The callers are
+/// <c>SchematicViewModel.CommitPlacement</c> and <c>CommitCellPlacementAsync</c> — the two commit
+/// paths, covering the click-arm, the drag-and-drop and the cell/kit placements — and the three
+/// ways a part arrives as a COPY: a paste of one part, a Ctrl-drag duplicate of one part, and the
+/// drag of a single part that is connected to nothing (which is what a pasted or duplicated part
+/// is until it is dropped somewhere). A copied line dragged onto the run it was copied for is the
+/// same gesture as a palette drop, and leaving it shorted was a field report. A drag of a part that
+/// is already wired in, a multi-part drag and a type-change still reach none of this. There is
+/// deliberately no "has this already run" flag on the component: the entry points ARE the once.</para>
 ///
 /// <para>Framework-free (no Avalonia), like <see cref="WireGeometry"/> — headless-testable.</para>
 /// </summary>
@@ -71,10 +75,12 @@ public static class SeriesPartInsertion
     /// empty when there is none, when the part is not two-terminal, or when removing them would
     /// change the circuit. <paramref name="part"/> is the component about to be placed and is NOT
     /// expected to be in <paramref name="model"/> yet — which is also what keeps its own pins out of
-    /// the "something else is in the way" scan.
+    /// the "something else is in the way" scan. For a DRAG, <paramref name="part"/> is a copy at the
+    /// landing position and <paramref name="moving"/> is the part itself, still at its start: its
+    /// own pins are skipped by the same rule, since they are about to leave.
     /// </summary>
     public static IReadOnlyList<ShortedSpan> FindShortedSpans(
-        SchematicEditModel model, EditableComponent part)
+        SchematicEditModel model, EditableComponent part, EditableComponent? moving = null)
     {
         const double tol = SchematicEditModel.ConnectTolerance;
 
@@ -109,7 +115,7 @@ public static class SeriesPartInsertion
             }
         }
 
-        return found.Count > 0 && SpanIsClear(model, found) ? found : [];
+        return found.Count > 0 && SpanIsClear(model, found, moving) ? found : [];
     }
 
     /// <summary>
@@ -117,7 +123,8 @@ public static class SeriesPartInsertion
     /// ends themselves are excluded on purpose: that is where the part's own pins land, and a
     /// wire, pin or dot meeting the run exactly there stays connected to the part afterwards.
     /// </summary>
-    private static bool SpanIsClear(SchematicEditModel model, List<ShortedSpan> cuts)
+    private static bool SpanIsClear(
+        SchematicEditModel model, List<ShortedSpan> cuts, EditableComponent? moving)
     {
         const double tol = SchematicEditModel.ConnectTolerance;
         var (ax, ay) = cuts[0].First;
@@ -132,11 +139,14 @@ public static class SeriesPartInsertion
 
         // Another component's pin tapping the run mid-span.
         foreach (var c in model.Components)
+        {
+            if (ReferenceEquals(c, moving)) continue;   // its pins are leaving: they are not in the run
             foreach (var def in model.PortDefsOf(c))
             {
                 var (px, py) = model.PortWorldOf(c, def);
                 if (Inside(px, py)) return false;
             }
+        }
 
         // A net label anchored inside the run: the name belongs to the copper about to go away.
         foreach (var l in model.NetLabels)

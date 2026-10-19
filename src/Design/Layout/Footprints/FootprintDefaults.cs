@@ -37,6 +37,18 @@ public static class FootprintDefaults
     public static bool IsDiscreteRlc(SymbolKind symbol) => _discreteRlc.Contains(symbol);
 
     /// <summary>
+    /// True when a component of this kind may carry a <c>Footprint</c> at all — false for every
+    /// transmission-line and microstrip kind (TLIN, CPWG, SLIN, MLIN, MBEND, MCURVE, MTEE, MCROSS,
+    /// MTAPER, MKLOPF, the vias). A line's artwork IS its geometry — drawn by its generator from W and
+    /// L, or by the line itself — so a land pattern chosen beside it is a second, contradictory answer
+    /// to "what does this look like on the board". Asked by the CATEGORY the palette already files the
+    /// part under, so a line kind added later is excluded without anyone remembering a list.
+    /// </summary>
+    public static bool IsOffered(SymbolKind symbol)
+        => ComponentTypeRegistry.Get(symbol).Category
+            is not (ComponentCategory.Microstrip or ComponentCategory.TransmissionLine);
+
+    /// <summary>
     /// The <c>Footprint</c> value a freshly placed <paramref name="symbol"/> takes on
     /// <paramref name="technology"/>, or <c>null</c> for <b>None</b> — which is the answer
     /// everywhere but the discrete RLC family on a board (R-fp2-3c).

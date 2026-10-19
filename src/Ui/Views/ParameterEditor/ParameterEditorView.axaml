@@ -128,12 +128,12 @@
                     Padding="6,2"
                     ToolTip.Tip="Switch between length (L) and 3dB-cutoff-frequency (F3db) entry — converts the current design to the equivalent value, it does not reset it"
                     Command="{Binding ToggleMklopfLengthEntryCommand}"/>
-            <!-- TLIN entry-mode switch: Electrical (E at F) <-> Physical (L, Eeff), converted at F -->
+            <!-- Line entry-mode switch (TLIN, MLIN, CPWG, SLIN): Electrical (E at F) <-> Physical (L), converted at F -->
             <Button Content="{Binding TlinEntryToggleLabel}"
-                    IsVisible="{Binding IsTlinTarget}"
+                    IsVisible="{Binding IsLineEntryTarget}"
                     FontSize="10"
                     Padding="6,2"
-                    ToolTip.Tip="Switch between electrical length (E at F) and physical length (L with Eeff) — converts at F, so the line does not change"
+                    ToolTip.Tip="Switch between electrical length (E at F) and physical length (L) — converts at F, so the line does not change"
                     Command="{Binding ToggleTlinEntryCommand}"/>
         </StackPanel>
         <TextBlock Text="{Binding TlinEntryNote}"

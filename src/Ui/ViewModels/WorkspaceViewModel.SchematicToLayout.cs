@@ -4,6 +4,10 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.Input;
 using CircuitRF.Ui.Layout;
+using CircuitRF.Design.Layout.Recognition;
+using CircuitRF.Design.Schematic;
+using CircuitRF.Ui.Commands.Schematic;
+using CircuitRF.Ui.Recognition;
 using CircuitRF.Ui.Messages;
 using CircuitRF.Ui.Schematic;
 using CircuitRF.Ui.WBond;
@@ -426,6 +430,21 @@ public partial class WorkspaceViewModel
             result.CreatedCount, result.UpdatedCount, result.UnchangedCount, 0,
             result.OverwrittenParameterCount, "Update Schematic from Layout", overwrittenNoun: "schematic edits");
 
+        // Designer feedback round 21: an imported board is ARTWORK — copper, no placed parts — and the walk above
+        // reads placed parts only, so on such a board this command did nothing and said nothing. With nothing placed
+        // and nothing drawn yet, the artwork is read as a circuit (the recognition Create ▸ Schematic from Artwork
+        // runs, at its defaults) and drawn into this schematic as one undoable edit. A schematic the user has drawn is
+        // never touched: there, the copper between the placed parts is reported with the command that models it.
+        bool walkedNothing = result.Command is null && result.CreatedCount + result.UpdatedCount + result.UnchangedCount == 0;
+        int artworkCopper = TopLevelConductorShapes(layoutVm);
+        if (walkedNothing && artworkCopper > 0 && RecognitionTarget.IsEmptyDrawing(schematicVm.EditModel))
+            await DrawArtworkIntoSchematic(layoutPath, layoutVm, schematicVm, schematicDir);
+        else if (!walkedNothing && artworkCopper > 0 && schematicVm.EditModel.ArtworkSource is null)
+            Messages.Info($"Update Schematic from Layout: {artworkCopper} copper shape{(artworkCopper == 1 ? "" : "s")} outside the placed " +
+                          "parts — traces, pours and vias — are not modelled by this command, which places and updates parts. " +
+                          "Design ▸ Create ▸ Schematic from Artwork… reads them as lines and vias, with the placed parts' kinds " +
+                          "and values taken from this schematic.");
+
         await OfferSymbolsForPlacedCells(result.CellsWithoutSymbols);
 
         // §9.6/WB42 — the WIRE layer, which this command had no knowledge of at all (owner,
@@ -458,6 +477,75 @@ public partial class WorkspaceViewModel
                 Messages.Warning($"'{primaryBeforeName}' remains this cell's primary schematic — '{Path.GetFileName(targetPath)}' was written but not made primary.");
             }
         }
+    }
+
+    /// <summary>The layout's own copper — shapes and vias on a conductor of its stackup, outside any placed cell.</summary>
+    private static int TopLevelConductorShapes(LayoutEditorViewModel layoutVm)
+    {
+        if (layoutVm.Technology?.Stackup is not { } stackup) return 0;
+        var copper = stackup.Layers.Where(l => l.Kind == StackupKind.Conductor)
+                                   .SelectMany(l => l.DrawingLayers).ToHashSet();
+        return copper.Count == 0 ? 0 : layoutVm.Model.Shapes.Count(s => copper.Contains(s.Layer));
+    }
+
+    /// <summary>
+    /// Update Schematic from Layout on artwork with nothing placed (designer feedback round 21): the saved layout's
+    /// artwork read as a circuit — <see cref="ArtworkRecognition.Draw"/>, the recognition Create ▸ Schematic from
+    /// Artwork runs, at its defaults — and put into the open, empty schematic as one undoable edit. The report goes to
+    /// Messages exactly as that command's does; a refusal says why nothing was drawn.
+    /// </summary>
+    private async Task DrawArtworkIntoSchematic(string layoutPath, LayoutEditorViewModel layoutVm,
+                                                SchematicViewModel schematicVm, string schematicDir)
+    {
+        const string label = "Update Schematic from Layout";
+        if (layoutVm.IsDirty)
+            Messages.Warning($"{label} reads the saved layout's artwork; save it to include the edits made since.");
+
+        var options = new RecognitionRunOptions
+        {
+            Emit = new RecognitionEmitOptions
+            {
+                ArtworkSides = CircuitRF.Ui.Theming.AppPreferencesIo.Load().LinkSchematicLayoutOrientation ?? true,
+            },
+        };
+        RecognitionRun run;
+        try
+        {
+            run = await Task.Run(() => ArtworkRecognition.Draw(ArtworkRecognitionRunner.Instance.Load(layoutPath), schematicDir, options));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            Messages.Error($"{label}: the layout could not be read: {ex.Message}");
+            return;
+        }
+
+        if (run.Schematic is not { } drawn)
+        {
+            Messages.Warning($"{label}: the layout has no placed parts, and its artwork could not be read as a circuit: {run.Refusal}");
+            return;
+        }
+        // Read off the editor's thread: the schematic may have gained content meanwhile, and is then left alone.
+        if (!RecognitionTarget.IsEmptyDrawing(schematicVm.EditModel))
+        {
+            Messages.Warning($"{label}: the schematic was drawn in while the artwork was being read, so nothing was added to it.");
+            return;
+        }
+
+        schematicVm.Execute(new FillEmptySchematicCommand(schematicVm.EditModel, drawn, "Update Schematic from Layout (artwork)"));
+        foreach (var finding in run.Report.Findings)
+        {
+            var items = finding.Anchors
+                .Select(a => new MessageItem(CreateSchematicFromArtworkViewModel.AnchorText(run.Result.Parts, a),
+                                             () => ProbeArtworkAt(layoutPath, a)))
+                .ToList();
+            if (items.Count > 0) Messages.PostItems(MessageLevel.Info, $"{label}: {finding.Sentence}", items, null);
+            else Messages.Post(MessageLevel.Info, $"{label}: {finding.Sentence}");
+        }
+        int lines = drawn.Components.Count(c => c.FromArtwork && LineTypeSwap.IsLineKind(c.Symbol));
+        int parts = drawn.Components.Count(c => c.FromArtwork) - lines;
+        Messages.Success($"{label}: the layout has no placed parts, so its artwork was read as a circuit and drawn into the " +
+                         $"schematic — {lines} line element{(lines == 1 ? "" : "s")} and {parts} other component{(parts == 1 ? "" : "s")}. " +
+                         "Undo takes it back off.");
     }
 
     /// <summary>

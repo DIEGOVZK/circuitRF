@@ -18,10 +18,5 @@ public static class C3dClipboard
     }
 
     /// <summary>The clipboard's text, or null when it holds none (or cannot be read).</summary>
-    public static async Task<string?> ReadAsync(IClipboard? clipboard)
-    {
-        if (clipboard is null) return null;
-        try { return await clipboard.TryGetTextAsync(); }
-        catch { return null; }
-    }
+    public static Task<string?> ReadAsync(IClipboard? clipboard) => ClipboardRead.TextAsync(clipboard);
 }

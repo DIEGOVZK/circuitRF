@@ -995,7 +995,8 @@ public partial class SchematicView : UserControl
             .ToList();
         IntPtr ownerHwnd = TopLevel.GetTopLevel(this)?.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
         await SchematicClipboard.CopyAsync(clipboard, comps, wires, objs, model.GridSize,
-                                           netLabels, model.SchematicDirectory, ownerHwnd);
+                                           netLabels, model.SchematicDirectory, ownerHwnd,
+                                           SchematicTechnology.Resolve(model).Path);
         if (cut) vm.DeleteSelection();
     }
 
@@ -1403,7 +1404,7 @@ public partial class SchematicView : UserControl
     {
         var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
         if (clipboard is null) return;
-        var paste = await clipboard.TryGetTextAsync();
+        var paste = await ClipboardRead.TextAsync(clipboard);
         if (string.IsNullOrEmpty(paste)) return;
 
         var start = Math.Min(InlineEditBox.SelectionStart, InlineEditBox.SelectionEnd);

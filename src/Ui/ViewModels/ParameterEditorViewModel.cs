@@ -244,13 +244,16 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
     // DEFAULT (FootprintDefaults) and, from brief 4, what is OFFERED.
 
     /// <summary>
-    /// Whether the Footprint row is shown: on every component but a <b>wBond</b>. A wirebond has no
-    /// land pattern — a bonding machine places it, not a pick-and-place one, and Update Layout writes
-    /// its wires as the cell's <c>.wBond</c> sidecar rather than as an instance that could carry one.
-    /// That is the ONE exclusion, and it is by what the part physically is, not a list of kinds that
-    /// happen to have no default (R-fp2-2 still holds for everything else).
+    /// Whether the Footprint row is shown: on every component but a <b>wBond</b> and the line kinds.
+    /// A wirebond has no land pattern — a bonding machine places it, not a pick-and-place one, and
+    /// Update Layout writes its wires as the cell's <c>.wBond</c> sidecar rather than as an instance
+    /// that could carry one. A transmission line or microstrip part has no land pattern either: its
+    /// artwork is its own geometry (<see cref="FootprintDefaults.IsOffered"/>). Both exclusions are
+    /// by what the part physically is, not a list of kinds that happen to have no default (R-fp2-2
+    /// still holds for everything else).
     /// </summary>
-    public bool ShowFootprintRow => IsNotEmptyState && !IsWBond;
+    public bool ShowFootprintRow => IsNotEmptyState && !IsWBond
+        && (_target is null || FootprintDefaults.IsOffered(_target.Symbol));
 
     /// <summary>The <b>None</b> row — index 0, always.</summary>
     public const string FootprintNoneRow = "None";
@@ -432,6 +435,7 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
     private void RefreshFootprintPanel()
     {
         if (_target is null) return;
+        OnPropertyChanged(nameof(ShowFootprintRow));   // a type change can move a part into or out of the line kinds
 
         string? stored = _target.Footprint;
         _footprintStored = stored;

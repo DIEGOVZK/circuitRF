@@ -372,12 +372,24 @@ What moves in this direction depends on what the instance is:
 A cell placed this way that has **no symbol view at all** would render as a bare box with no pins, so
 you are asked once — for the whole run, not once per cell — whether to generate symbols for them.
 
+**A layout of artwork with nothing placed in it** — an imported Gerber board — has no instances to walk.
+When the schematic it writes to is also empty, the command reads the artwork instead, exactly as
+[Create ▸ Schematic from Artwork](artwork-to-schematic.html) does at its defaults, and draws the lines,
+vias, ports and parts it finds into that schematic as one undoable action. The findings go to Messages.
+It reads the **saved** layout. A schematic that already has anything in it is never changed this way.
+
+On a board where parts **are** placed over imported copper, the parts are updated as usual, and Messages
+says how much copper outside them the command does not model. **Create ▸ Schematic from Artwork** models
+it, as lines and vias between the parts, and takes each placed part's kind and value from the schematic
+it is linked to.
+
 <div class="callout note">
 <span class="label">What cannot be represented in the other view</span>
 <p>Neither direction wires anything: <strong>Update Schematic from Layout places and updates components
-and does not draw nets.</strong> And hand-drawn artwork in a layout has no schematic counterpart at all —
-only <em>instances</em> cross the boundary, never loose shapes. Both cases are reported, so the omission
-is visible rather than silent.</p>
+and does not draw nets.</strong> And hand-drawn artwork beside placed instances has no schematic
+counterpart — only <em>instances</em> cross the boundary, never loose shapes, unless nothing is placed
+and the schematic is empty, as above. Both cases are reported, so the omission is visible rather than
+silent.</p>
 <p>A layout-first PCell has no existing schematic parameter to inherit a unit from, so a newly created
 component's length-dimensioned parameters take the <strong>technology's own default display unit</strong>
 — mil on a PCB, µm on an MMIC die.</p>

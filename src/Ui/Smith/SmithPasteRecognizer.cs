@@ -73,11 +73,18 @@ public static class SmithPasteRecognizer
     /// <param name="designFrequencyHz">What a line's reference frequency defaults to when the pasted
     /// component carries none — the same default <see cref="SmithElementFactory"/> uses on
     /// placement.</param>
+    /// <param name="technology">The technology the selection was copied with — what a pasted MLIN, CPWG or SLIN is
+    /// modelled on to become a TLIN. Null is the line models' own fallback board, which is also what the source
+    /// schematic simulates when it resolves no technology.</param>
+    /// <param name="technologyRefusal">Why the technology the selection was copied with could not be read; a
+    /// pasted planar line is then refused with it rather than modelled on the wrong board.</param>
     public static SmithPasteResult Recognize(
         IReadOnlyList<EditableComponent> components,
         IReadOnlyList<EditableWire>      wires,
         bool                             mirrored,
-        double                           designFrequencyHz)
+        double                           designFrequencyHz,
+        Technology?                      technology        = null,
+        string?                          technologyRefusal = null)
     {
         ArgumentNullException.ThrowIfNull(components);
         ArgumentNullException.ThrowIfNull(wires);
@@ -86,21 +93,48 @@ public static class SmithPasteRecognizer
             return SmithPasteResult.No("There is no schematic selection on the clipboard to paste.");
 
         // ── 1. Vocabulary (R-smith7-6 rule 1) ────────────────────────────────
+        // Two translations come first (designer feedback round 21). A DC voltage source is a short at RF — the
+        // supply rail is AC ground — and an ammeter is a short at every frequency, so each joins its two nets
+        // (step 2b). And a planar line becomes the TLIN it is, on the technology it was copied with: the Smith
+        // Chart has no technology of its own and keeps none (owner decision), so the line is converted here, at
+        // the chart's design frequency, by the parameter editor's own Swap Line Type.
         var candidates = new List<EditableComponent>();
         var ports      = new List<EditableComponent>();
+        var shorts     = new List<EditableComponent>();
+        var converted  = new List<string>();
 
-        foreach (var c in components)
+        foreach (var original in components)
         {
+            var c = original;
             if (c.Symbol == SymbolKind.Ground) continue;
 
             if (c.Symbol is SymbolKind.Term or SymbolKind.TermG or SymbolKind.Pin)
             { ports.Add(c); continue; }
 
+            if (c.Symbol is SymbolKind.Vdc or SymbolKind.IProbe)
+            { shorts.Add(c); continue; }
+
+            if (c.CellRef is null && LineEntryConversion.Applies(c.Symbol))
+            {
+                if (technologyRefusal is { Length: > 0 })
+                    return SmithPasteResult.No(
+                        $"{Named(c)} is a {ComponentTypeRegistry.DisplayName(c.Symbol)}, and turning it into a TLIN "
+                      + $"needs the technology it was copied with: {technologyRefusal}");
+                var swap = LineTypeSwap.Swap(c, SymbolKind.Tline,
+                    new LineTypeSwapContext(technology, designFrequencyHz, AngleFrequencyHz: designFrequencyHz));
+                if (swap.Component is null)
+                    return SmithPasteResult.No(
+                        $"{Named(c)} could not be turned into a TLIN: {swap.Refusal}");
+                c = swap.Component;
+                converted.Add(c.InstanceName);
+            }
+
             if (!IsVocabulary(c.Symbol))
                 return SmithPasteResult.No(
                     $"{Named(c)} is a {ComponentTypeRegistry.DisplayName(c.Symbol)}, which the "
                   + "Smith Chart cannot represent. Its vocabulary is R, L, C, SRLC, PRLC, Z1P, S1P, "
-                  + "S2P, TLIN and the two stubs — plus grounds and ports.");
+                  + "S2P, TLIN, MLIN, CPWG, SLIN (each pasted as a TLIN) and the two stubs — plus grounds, "
+                  + "ports and DC voltage sources (pasted as shorts).");
 
             candidates.Add(c);
         }
@@ -129,6 +163,22 @@ public static class SmithPasteRecognizer
         var instances = new Dictionary<string, Instance>(StringComparer.Ordinal);
         foreach (var inst in extraction.TestBench.Instances) instances[inst.InstanceName] = inst;
 
+        // ── 2b. The shorts: each one's nets become one net, ground when either is ground ──
+        var alias = new Dictionary<string, string>(StringComparer.Ordinal);
+        string Canon(string net)
+        {
+            while (alias.TryGetValue(net, out var to)) net = to;
+            return net;
+        }
+        foreach (var s in shorts)
+        {
+            if (!instances.TryGetValue(s.InstanceName, out var inst) || inst.NetBindings.Count < 2) continue;
+            string a = Canon(inst.NetBindings[0]), b = Canon(inst.NetBindings[1]);
+            if (a == b) continue;
+            if (a == GroundNet || (b != GroundNet && string.CompareOrdinal(a, b) < 0)) alias[b] = a;
+            else alias[a] = b;
+        }
+
         // ── 3. One record per element: its nets, its placement, its values ───
         var wired = new List<Wired>(candidates.Count);
         foreach (var c in candidates)
@@ -138,8 +188,9 @@ public static class SmithPasteRecognizer
                     $"{Named(c)} is not connected to anything the pasted selection carries, so there "
                   + "is no place in the cascade for it.");
 
-            var signal = inst.NetBindings.Where(n => n != GroundNet).Distinct(StringComparer.Ordinal).ToList();
-            bool grounded = inst.NetBindings.Any(n => n == GroundNet) || ImplicitlyGrounded(c);
+            var nets = inst.NetBindings.Select(Canon).ToList();
+            var signal = nets.Where(n => n != GroundNet).Distinct(StringComparer.Ordinal).ToList();
+            bool grounded = nets.Any(n => n == GroundNet) || ImplicitlyGrounded(c);
 
             wired.Add(new Wired(c, signal, grounded));
         }
@@ -148,9 +199,35 @@ public static class SmithPasteRecognizer
         var portNets = new List<(string Net, int? Num, EditableComponent Comp)>();
         foreach (var p in ports)
         {
-            string? on = PortNet(p, instances, extraction);
+            string? on = PortNet(p, instances, extraction) is { } raw ? Canon(raw) : null;
             if (on is null || on == GroundNet) continue;      // a port on ground says nothing about an end
             portNets.Add((on, IntParam(p, "Num"), p));
+        }
+
+        // ── 4b. What a short cut off ─────────────────────────────────────────
+        // With the supply shorted, a bypass capacitor has both pins on ground and a bias network hangs off the
+        // cascade through ground alone. Neither carries signal, so each is left out and NAMED — and only when a
+        // short did it: without one, the refusals below stand, because a selection that is two circuits is then
+        // something the user drew and may not have meant.
+        var leftOut = new List<string>();
+        if (shorts.Count > 0 && portNets.Count > 0)
+        {
+            var reached = new HashSet<string>(portNets.Select(p => p.Net), StringComparer.Ordinal);
+            for (bool grew = true; grew;)
+            {
+                grew = false;
+                foreach (var w in wired)
+                    if (w.Signal.Any(reached.Contains))
+                        foreach (var n in w.Signal) grew |= reached.Add(n);
+            }
+            foreach (var w in wired.Where(w => !w.Signal.Any(reached.Contains)).ToList())
+            {
+                wired.Remove(w);
+                leftOut.Add(w.Comp.InstanceName);
+            }
+            if (wired.Count == 0)
+                return SmithPasteResult.No(
+                    "With the DC sources pasted as shorts, nothing in the selection is left between the ports.");
         }
 
         var distinctPortNets = portNets.Select(p => p.Net).Distinct(StringComparer.Ordinal).ToList();
@@ -254,12 +331,35 @@ public static class SmithPasteRecognizer
             Add(seriesDegree, p.NetA, p);
             Add(seriesDegree, p.NetB!, p);
         }
+        // The commonest branch is an arm of two elements in series to ground — a choke and the line to a shorted
+        // supply. Say so: "a branch" alone names no element of it. The arm hangs either off a net with more than
+        // two through elements, or off a port's own net, where it would otherwise pass for the walk's far end.
+        string? ArmFrom(string branchNet, List<Placed> on)
+        {
+            foreach (var e in on)
+            {
+                string far = e.NetA == branchNet ? e.NetB! : e.NetA;
+                if (seriesDegree.GetValueOrDefault(far)?.Count != 1 || distinctPortNets.Contains(far)) continue;
+                var toGround = shunt.Where(s => s.NetA == far).Select(s => s.Wired.Comp.InstanceName).ToList();
+                if (toGround.Count == 0) continue;
+                return $"{e.Wired.Comp.InstanceName} and {string.Join(", ", toGround)} are one arm from net {branchNet} "
+                     + "to ground, in series. A Smith cascade's shunt arm is a single element, so this arm cannot be "
+                     + "represented.";
+            }
+            return null;
+        }
+        foreach (var (branchNet, on) in seriesDegree)
+            if (on.Count == 2 && distinctPortNets.Contains(branchNet) && ArmFrom(branchNet, on) is { } arm)
+                return SmithPasteResult.No(arm);
         foreach (var (branchNet, on) in seriesDegree)
             if (on.Count > 2)
+            {
+                if (ArmFrom(branchNet, on) is { } arm) return SmithPasteResult.No(arm);
                 return SmithPasteResult.No(
                     $"Net {branchNet} has {on.Count} through-path elements on it "
                   + $"({string.Join(", ", on.Select(p => p.Wired.Comp.InstanceName))}); that is a "
                   + "branch, and a Smith cascade is a walk with no branches in it.");
+            }
 
         // The ends of the walk: nets with fewer than two series elements on them. A cascade with no
         // series elements at all has ONE net and both of its ends are that net, which is a real
@@ -347,12 +447,24 @@ public static class SmithPasteRecognizer
         var elements = new List<SmithElement>(ordered.Count);
         foreach (var p in ordered)
         {
-            if (Convert(p, designFrequencyHz) is not { } converted)
+            if (Convert(p, designFrequencyHz) is not { } element)
                 return SmithPasteResult.No(Refusal(p));
-            elements.Add(converted);
+            elements.Add(element);
         }
 
-        return SmithPasteResult.Yes(elements, endRule);
+        // What was translated is said, by name: none of it is visible in the cascade afterwards.
+        var said = new List<string> { endRule };
+        if (converted.Count > 0)
+            said.Add($"{string.Join(", ", converted)} {(converted.Count == 1 ? "was" : "were")} pasted as "
+                   + $"{(converted.Count == 1 ? "a TLIN" : "TLINs")}, modelled on the technology "
+                   + $"{(technology is null ? "the models fall back to (none was copied with the selection)" : "it was copied with")}.");
+        if (shorts.Count > 0)
+            said.Add($"{string.Join(", ", shorts.Select(s => s.InstanceName))} {(shorts.Count == 1 ? "was" : "were")} pasted as "
+                   + $"{(shorts.Count == 1 ? "a short" : "shorts")}.");
+        if (leftOut.Count > 0)
+            said.Add($"{string.Join(", ", leftOut)} {(leftOut.Count == 1 ? "is" : "are")} left out: with the supply shorted "
+                   + $"{(leftOut.Count == 1 ? "it carries" : "they carry")} no signal.");
+        return SmithPasteResult.Yes(elements, string.Join(" ", said));
     }
 
     // ── the two intermediate records ─────────────────────────────────────────

@@ -28,6 +28,8 @@ public static class SchematicClipboard
     /// Places JSON text + SVG vector + PNG raster on the clipboard simultaneously so
     /// receiving apps can pick the richest representation they understand.
     /// Color variant and background transparency are read from <see cref="ClipboardRenderPolicy"/>.
+    /// <paramref name="technologyPath"/> is the source schematic's resolved technology, carried for a reader that
+    /// has none (<see cref="SchematicPersistence.SerializeSelection"/>).
     /// </summary>
     public static async Task CopyAsync(
         IClipboard clipboard,
@@ -37,11 +39,12 @@ public static class SchematicClipboard
         double gridSize = 100.0,
         IReadOnlyList<EditableNetLabel>?    netLabels = null,
         string?                             schematicDirectory = null,
-        IntPtr                              ownerHwnd = default)
+        IntPtr                              ownerHwnd = default,
+        string?                             technologyPath = null)
     {
         if (components.Count == 0 && wires.Count == 0 && canvasObjects.Count == 0) return;
 
-        string json = SchematicPersistence.SerializeSelection(components, wires, canvasObjects, gridSize, netLabels);
+        string json = SchematicPersistence.SerializeSelection(components, wires, canvasObjects, gridSize, netLabels, technologyPath);
 
         var (variant, transparent) = ClipboardRenderPolicy.Resolve();
         var renderTheme = SchematicRenderTheme.FromTheme(ThemeService.Active, variant);
@@ -101,10 +104,11 @@ public static class SchematicClipboard
     /// <c>SourceGridSize</c> in the result is the P that was active when the content was copied —
     /// pass it to <c>SchematicPasteCommand</c> so cross-grid snapping can be applied (§5).
     /// <c>NetLabels</c> are anchored to the returned wires, so they follow any offset applied to them.
+    /// <c>TechnologyPath</c> is the technology the source schematic resolved when it was copied, or null.
     /// </summary>
     public static async Task<(List<EditableComponent> Comps, List<EditableWire> Wires,
         List<EditableCanvasObject> CanvasObjs, double SourceGridSize,
-        List<EditableNetLabel> NetLabels)?> PasteAsync(
+        List<EditableNetLabel> NetLabels, string? TechnologyPath)?> PasteAsync(
         IClipboard clipboard,
         double offsetX = 100, double offsetY = 100)
     {
@@ -157,7 +161,7 @@ public static class SchematicClipboard
                 newCobjs.Add(no);
             }
 
-            return (newComps, newWires, newCobjs, srcGrid, newLabels);
+            return (newComps, newWires, newCobjs, srcGrid, newLabels, SchematicPersistence.SelectionTechnologyPath(json));
         }
         catch { return null; }
     }

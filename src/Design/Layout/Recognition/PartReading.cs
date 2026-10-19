@@ -72,6 +72,9 @@ public static class PartReading
         public PartEvidenceSource PadSource;
         public readonly List<PlacedPin> Pads = [];
         public SymbolKind? PlacedKind;
+        /// <summary>The linked schematic component's kind and value text, for an instance the schematic owns.</summary>
+        public SymbolKind? LinkedKind;
+        public string? LinkedValue;
         public SmtCase? InstanceCase, LandCase, PlacementCase;
         public LandPatternCandidate? Land;
         public Bbox Body = Bbox.Empty;
@@ -97,14 +100,22 @@ public static class PartReading
 
         // ── 1. placed footprint instances ─────────────────────────────────────────────────────────
         var cells = PlacedPins.FootprintsOf(view);
+        var linked = LinkedComponents(input.ClayPath);
         foreach (var group in ctx.PlacedPads.Where(p => p.Refdes is { Length: > 0 })
                                             .GroupBy(p => p.Refdes!, StringComparer.OrdinalIgnoreCase))
         {
             var d = new Draft { Refdes = group.Key, RefdesSource = PartEvidenceSource.Instance, PadSource = PartEvidenceSource.Instance };
             d.Pads.AddRange(group);
             if (!InScope(ctx, d.X, d.Y)) continue;
-            d.PlacedKind = view.Instances.Where(i => string.Equals(i.DisplayRefDes, group.Key, StringComparison.OrdinalIgnoreCase))
-                                         .Select(LayoutPartKind.Of).FirstOrDefault(k => k is not null);
+            var placed = view.Instances.Where(i => string.Equals(i.DisplayRefDes, group.Key, StringComparison.OrdinalIgnoreCase)).ToList();
+            d.PlacedKind = placed.Select(LayoutPartKind.Of).FirstOrDefault(k => k is not null);
+            // An instance the schematic owns stores no kind (LayoutPartKind.Of) - the schematic knows - so it is read there.
+            if (placed.Select(i => i.SchematicId).FirstOrDefault(id => id is { Length: > 0 }) is { } id
+                && linked.TryGetValue(id, out var comp))
+            {
+                d.LinkedKind = comp.Symbol;
+                d.LinkedValue = LinkedValueText(comp);
+            }
             if (cells.TryGetValue(group.Key, out string? cell)) d.InstanceCase = CaseOfCell(cell);
             drafts.Add(d);
         }
@@ -283,7 +294,15 @@ public static class PartReading
         // ── kind: refdes prefix, placed PartKind, bill-of-materials words ─────────────────────────
         PartKind? kind = null;
         if (named && KindFromRefdes(d.Refdes!, pads, notes) is { } byPrefix) { kind = byPrefix; evidence[PartField.Kind] = PartEvidenceSource.Refdes; }
-        if (FromSymbol(d.PlacedKind) is { } placedKind)
+        // The schematic a placed part is linked to states its kind outright; the designator only what is usual.
+        if (FromSymbol(d.LinkedKind) is { } linkedKind)
+        {
+            if (kind is { } prefixKind && prefixKind != linkedKind && kind is PartKind.R or PartKind.L or PartKind.C)
+                notes.Add($"its designator says {PartsTable.KindText(prefixKind)}; the linked schematic says {PartsTable.KindText(linkedKind)}, which was taken");
+            kind = linkedKind;
+            evidence[PartField.Kind] = PartEvidenceSource.Instance;
+        }
+        else if (FromSymbol(d.PlacedKind) is { } placedKind)
         {
             if (kind is null) { kind = placedKind; evidence[PartField.Kind] = PartEvidenceSource.Instance; }
             else if (kind != placedKind && kind is PartKind.R or PartKind.L or PartKind.C)
@@ -362,11 +381,22 @@ public static class PartReading
                 if (read.All(v => Same(v, read[0]))) { value = read[0]; evidence[PartField.Value] = PartEvidenceSource.Bom; }
                 else notes.Add("the bill-of-materials rows disagree about the value; none was taken");
             }
+            // No bill of materials says: the linked schematic's own value, when it is a number of the right dimension
+            // (an expression naming a variable is not read, and says so).
+            else if (d.LinkedValue is { } text && FromSymbol(d.LinkedKind) == kind)
+            {
+                if (ReadLinkedValue(text, sym, dim) is { } si)
+                {
+                    value = si;
+                    evidence[PartField.Value] = PartEvidenceSource.Instance;
+                }
+                else notes.Add($"the linked schematic's value '{text}' is not a number; none was taken");
+            }
             if (kind == PartKind.R && value == 0)
             {
                 kind = PartKind.Short;
                 value = null;
-                evidence[PartField.Kind] = PartEvidenceSource.Bom;
+                evidence[PartField.Kind] = evidence[PartField.Value];
                 evidence.Remove(PartField.Value);
             }
         }
@@ -526,6 +556,56 @@ public static class PartReading
                 return PartKind.Ignore;
             default: return null;
         }
+    }
+
+    /// <summary>
+    /// The components of the schematic a layout's placed instances are linked to, by instance name: the cell's primary
+    /// schematic, else the one beside the layout (Update Layout from Schematic's own pairing). Empty when there is none or
+    /// it cannot be read; the instances then read as before, kind and value unknown.
+    /// </summary>
+    private static Dictionary<string, EditableComponent> LinkedComponents(string? clayPath)
+    {
+        var map = new Dictionary<string, EditableComponent>(StringComparer.OrdinalIgnoreCase);
+        if (clayPath is null) return map;
+        var sibling = CellFolder.SiblingView(Path.GetFullPath(clayPath), ViewType.Layout, ViewType.Schematic);
+        string? path = sibling.CellDir is { } cell ? RecognitionTarget.PrimarySchematic(cell) : null;
+        path ??= sibling.TargetPath;
+        if (path is null || !File.Exists(path)) return map;
+        try
+        {
+            foreach (var c in SchematicPersistence.LoadFromFile(path).model.Components)
+                if (c.InstanceName is { Length: > 0 } name) map.TryAdd(name, c);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or System.Text.Json.JsonException)
+        {
+            map.Clear();
+        }
+        return map;
+    }
+
+    /// <summary>
+    /// A linked component's value in base SI, read with the bill-of-materials reader: the expression and its unit as
+    /// stored (<c>150 nH</c>), then run together (<c>70kΩ</c> — the prefix may sit in the expression), then the
+    /// expression alone in the kind's dimension. Null when none reads as a number of <paramref name="dim"/>.
+    /// </summary>
+    private static double? ReadLinkedValue(string text, SymbolKind sym, UnitDimension dim)
+    {
+        int split = text.LastIndexOf(' ');
+        string expr = split < 0 ? text : text[..split], unit = split < 0 ? "" : text[(split + 1)..];
+        foreach (string spelling in new[] { text, expr + unit, expr })
+            if (BomTablePaste.TryReadValue(spelling, sym, false, out double si, out var got) && got == dim) return si;
+        return null;
+    }
+
+    /// <summary>An R, L or C component's value as text a bill of materials would hold (<c>150 nH</c>), or null.</summary>
+    private static string? LinkedValueText(EditableComponent c)
+    {
+        string? name = c.Symbol switch
+        {
+            SymbolKind.Resistor => "R", SymbolKind.Inductor => "L", SymbolKind.Capacitor => "C", _ => null,
+        };
+        var p = name is null ? null : c.Parameters.FirstOrDefault(q => q.Name == name);
+        return p is { Expression: { Length: > 0 } e } ? $"{e.Trim()} {p.Unit}".Trim() : null;
     }
 
     private static PartKind? FromSymbol(SymbolKind? kind) => kind switch
