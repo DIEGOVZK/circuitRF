@@ -161,10 +161,14 @@ public partial class PlotContainerViewModel : ViewModelBase
     /// the strips their full width and the graph region stays exactly where it was. What moves is
     /// where the strips are DRAWN.
     /// </summary>
-    public ITransform LeftLabelStripTransform  => new TranslateTransform(ChartInsetView,  0);
+    public ITransform LeftLabelStripTransform  => new TranslateTransform(StripOffsetView,  0);
 
     /// <inheritdoc cref="LeftLabelStripTransform"/>
-    public ITransform RightLabelStripTransform => new TranslateTransform(-ChartInsetView, 0);
+    public ITransform RightLabelStripTransform => new TranslateTransform(-StripOffsetView, 0);
+
+    /// <summary>The inset less <see cref="PlotCanvasGeometry.StripGap"/>, so the strips stop a
+    /// little short of the disc rather than touching it — the same gap the export leaves.</summary>
+    private double StripOffsetView => ChartInsetView - PlotCanvasGeometry.StripGap(LabelStripViewWidth);
 
     /// <summary>Republishes the two strip transforms. Called wherever
     /// <see cref="LabelStripMargin"/> is: the inset moves with the very same things — the container's

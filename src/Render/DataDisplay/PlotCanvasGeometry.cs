@@ -66,6 +66,17 @@ public static class PlotCanvasGeometry
     public static double StripLogicalWidth(double height) => Math.Max(height * 0.05, 10.0);
 
     /// <summary>
+    /// The gap between the chart disc's edge and the innermost label strip, as a fraction of one
+    /// strip's width — so it scales with the strip, the zoom and the export alike. Flush against the
+    /// disc, the label read as crowding the chart (owner report, 2026-10-18).
+    /// </summary>
+    public const double StripGapFraction = 0.25;
+
+    /// <summary>The gap <see cref="StripGapFraction"/> describes, for a strip of
+    /// <paramref name="stripWidth"/>, in the same units.</summary>
+    public static double StripGap(double stripWidth) => stripWidth * StripGapFraction;
+
+    /// <summary>
     /// How far the chart disc's left edge sits INSIDE the canvas's left edge, in the same units as
     /// <paramref name="canvasWidth"/>. The right edge is the mirror of it.
     /// </summary>

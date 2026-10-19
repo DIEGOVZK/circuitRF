@@ -172,7 +172,8 @@ public static class PlotComposer
             // PlotCanvasGeometry.ChartInset, and the loop below that draws them. Measured here too,
             // or a wide Smith container would reserve page margin for strips that are drawn well
             // inside it and the composed picture would sit off-centre.
-            double inset = PlotCanvasGeometry.ChartInset(c.Plot, c.ViewWidth, c.ViewHeight);
+            double inset = PlotCanvasGeometry.ChartInset(c.Plot, c.ViewWidth, c.ViewHeight)
+                         - PlotCanvasGeometry.StripGap(sw);
 
             bndL = Math.Min(bndL, c.ViewLeft + inset - nLeft  * sw);
             bndT = Math.Min(bndT, c.ViewTop);
@@ -235,8 +236,9 @@ public static class PlotComposer
                 // measured from the canvas. On a container much wider than it is tall that put the
                 // Y label a whole empty band away from the chart; PlotCanvasGeometry.ChartInset has
                 // the owner report it comes from.
-                float vpLeft  = (float)(tf.Viewport.X * plotW);
-                float vpRight = (float)((tf.Viewport.X + tf.Viewport.Width) * plotW);
+                float gap     = (float)PlotCanvasGeometry.StripGap(stripW);
+                float vpLeft  = (float)(tf.Viewport.X * plotW) - gap;
+                float vpRight = (float)((tf.Viewport.X + tf.Viewport.Width) * plotW) + gap;
 
                 for (int i = 0; i < nLeft; i++)
                 {

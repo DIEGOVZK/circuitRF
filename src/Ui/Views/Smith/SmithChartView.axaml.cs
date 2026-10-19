@@ -649,13 +649,14 @@ public partial class SmithChartView : UserControl
         var chart     = PlotCanvasGeometry.ChartRect(vm.ChartPlot, canvasW, canvasH);
 
         double stripW = container.LabelStripViewWidth;
+        double gap    = PlotCanvasGeometry.StripGap(stripW);
 
         LeftStripHost.Height  = chart.Height;
         LeftStripHost.Margin  = new Thickness(
-            Math.Max(0.0, chart.Left - container.LeftLabelStrips.Count * stripW), chart.Top, 0, 0);
+            Math.Max(0.0, chart.Left - gap - container.LeftLabelStrips.Count * stripW), chart.Top, 0, 0);
 
         RightStripHost.Height = chart.Height;
-        RightStripHost.Margin = new Thickness(chart.Left + chart.Width, chart.Top, 0, 0);
+        RightStripHost.Margin = new Thickness(chart.Left + chart.Width + gap, chart.Top, 0, 0);
     }
 
     /// <summary>
