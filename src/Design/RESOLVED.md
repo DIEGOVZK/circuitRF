@@ -20437,3 +20437,24 @@ the run settings behind each: `docs/design/sar.md` §9.4, §10.5, §10.7, §11.6
 - **`ComponentImport.BuildSymbol(drawing, portByDeclaration, portCount, messages)`** is the factored symbol half; Import
   Component's own `BuildSymbol(part, terminals, messages)` now computes its numbering and calls it. **`SchematicMerge`**
   holds the image paste's renaming, unchanged, plus an instance rename only Import Schematic asks for.
+
+## Import Schematic: the `.kicad_sch` reader (brief-schimp-2, 2026-10-19)
+
+- **The transform order: turn, then mirror.** The format turns a placed symbol counter-clockwise on screen first and
+  mirrors it on screen after. The two orders agree at 0° and 180°, so only a quarter-turned mirrored part shows a
+  wrong order — which is what `opamp_units.kicad_sch`'s unit A is.
+- **Symbol-cell pins are no longer snapped to the 100-mil pin grid** (`ComponentImport.BuildSymbol(…, snapPins: false)`,
+  `KitTemplateSymbol.BuildFromDrawing(…, snapPins)`, default true so kits and Import Component are unchanged and no
+  `TranslationVersion` bump is owed). SI-1's note above said a symbol whose own pins are 50 apart "is snapped": that puts
+  adjacent pins on a 50-mil pitch on one point, and the check reports them "joined in the import, split in the source".
+  Unsnapped, the schematic's own `GridSize` (already the source's grid, R-si1-6) keeps them apart.
+- **`~{NAME}` is an overbar, not a bus group.** `_{x}` and `^{x}` are sub/superscript. The `{…}` bus-group test excludes a
+  prefix ending in `~`, `_` or `^`; without that, an inverted signal's hierarchical label was dropped as a bus.
+- **Hidden power-input pins still join the net their name gives** in the current editor (its own manual says so), so the
+  reader applies `ImplicitNet` in every epoch and reports the count with the file version rather than branching on it.
+- **Pinless parts** (mounting holes, logos) are left out by the reader with a counted note; SI-1 would otherwise refuse
+  the whole import for "a symbol with no pins".
+- **Open, SI-1's policy, not changed here:** a child sheet with NO sheet pins — one that connects to its parent only by
+  global labels and power symbols — is still refused ("has no ports"). Importing it would
+  also need global nets joined across cells, which D5's cell-local nets do not do.
+

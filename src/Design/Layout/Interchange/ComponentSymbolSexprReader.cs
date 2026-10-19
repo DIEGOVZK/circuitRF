@@ -53,23 +53,59 @@ public static class ComponentSymbolSexprReader
             ? symbols[0]
             : symbols.FirstOrDefault(s => string.Equals(s.Atom(0), wanted, StringComparison.Ordinal)) ?? symbols[0];
 
-        var part = new ComponentPart { Name = chosen.Atom(0) ?? "symbol" };
-        part.Messages.AddRange(parsed.Diagnostics);
+        var part = ReadSymbol(chosen);
+        part.Messages.InsertRange(0, parsed.Diagnostics);
 
         foreach (var other in symbols)
             if (!ReferenceEquals(other, chosen) && other.Atom(0) is { Length: > 0 } name)
                 part.UnimportedSections.Add(name);
 
-        if (chosen.Child("extends") is { } ext)
+        return new ReadResult(part, null);
+    }
+
+    /// <summary>
+    /// One already-parsed <c>(symbol …)</c> node — a library's entry, or one a schematic embeds in its
+    /// <c>lib_symbols</c> in the same grammar (brief-schimp-2). Properties and the drawing of unit 1.
+    /// </summary>
+    public static ComponentPart ReadSymbol(PcbNode symbol)
+    {
+        var part = new ComponentPart { Name = symbol.Atom(0) ?? "symbol" };
+
+        if (symbol.Child("extends") is { } ext)
             part.Messages.Add(
                 $"This symbol is derived from \"{ext.Atom(0)}\" — a derived symbol inherits its base's " +
                 "drawing, which this phase does not resolve. Only what this definition states itself " +
                 "was read.");
 
-        ReadProperties(chosen, part);
-        part.Symbol = ReadDrawing(chosen, part);
-        return new ReadResult(part, null);
+        ReadProperties(symbol, part);
+        part.Symbol = ReadDrawing(symbol, part);
+        return part;
     }
+
+    /// <summary>
+    /// The drawing of unit <paramref name="unit"/> of a parsed <c>(symbol …)</c> node: what unit 0 shares with every
+    /// unit, plus that unit's own, at the standard body style. A pin the format marks hidden draws no lead — the
+    /// authoring editor does not draw it either. Messages go to <paramref name="part"/>.
+    /// </summary>
+    public static ComponentSymbolDrawing ReadUnit(PcbNode symbol, int unit, ComponentPart part)
+    {
+        var drawing = new ComponentSymbolDrawing { Name = part.Name };
+        foreach (var sub in symbol.Children("symbol"))
+        {
+            var (u, style) = UnitAndStyleOf(sub.Atom(0) ?? "", part.Name);
+            if (u != 0 && u != unit || style > 1) continue;
+            foreach (var node in sub.Nodes)
+                if (node.Tag != "pin" || !IsHidden(node)) ReadDrawingNode(node, drawing, part);
+        }
+        foreach (var node in symbol.Nodes)
+            if (node.Tag is not "symbol" and not "property" && (node.Tag != "pin" || !IsHidden(node)))
+                ReadDrawingNode(node, drawing, part);
+        return drawing;
+    }
+
+    /// <summary>A pin the format marks hidden: a bare <c>hide</c> atom in one epoch, <c>(hide yes)</c> in a later one.</summary>
+    public static bool IsHidden(PcbNode pin)
+        => pin.HasAtom("hide") || pin.Child("hide") is { } h && h.Atom(0) is null or "yes";
 
     // ── Properties ──────────────────────────────────────────────────────────────────────────────
 

@@ -61,14 +61,17 @@ internal static class KitTemplateSymbol
     /// <para>Falls back to the box body when the file declared terminals and drew nothing — an
     /// honest outcome for an annotation-only symbol, and the same thing the library path produces.</para>
     /// </summary>
+    /// <param name="snapPins">False keeps every pin exactly where the drawing puts it — Import Schematic's symbol cells
+    /// (brief-schimp-2), whose source may pitch pins at 50 mils and whose schematic is drawn on that finer grid; the
+    /// snap would land two such pins on one point. Kits always snap.</param>
     internal static Symbol? BuildFromDrawing(IReadOnlyList<KitSymbolPin>? pins,
                                              IReadOnlyList<KitSymbolShape>? body,
-                                             double scale)
+                                             double scale, bool snapPins = true)
     {
         if (pins is null || pins.Count == 0) return null;
         if (!double.IsFinite(scale) || scale <= 0) scale = ChooseScaleFor(pins, body);
 
-        var placed = PlacePins(pins, scale, flipY: false);      // drawing is already y-down
+        var placed = PlacePins(pins, scale, flipY: false, snapPins);      // drawing is already y-down
 
         // Where each pin WOULD have been without the connection-grid snap, keyed by the file's own
         // untouched coordinates so the match is exact rather than a tolerance. See PinFollow below.
@@ -332,15 +335,15 @@ internal static class KitTemplateSymbol
         };
     }
 
-    private static List<SymbolPin> PlacePins(IReadOnlyList<KitSymbolPin> pins, double scale, bool flipY)
+    private static List<SymbolPin> PlacePins(IReadOnlyList<KitSymbolPin> pins, double scale, bool flipY, bool snap = true)
     {
         var placed = new List<SymbolPin>(pins.Count);
         for (int i = 0; i < pins.Count; i++)
         {
             double y = flipY ? -pins[i].Y * scale : pins[i].Y * scale;
             placed.Add(new SymbolPin(
-                DsnSymbolReader.SnapToPinGrid(pins[i].X * scale),
-                DsnSymbolReader.SnapToPinGrid(y),
+                snap ? DsnSymbolReader.SnapToPinGrid(pins[i].X * scale) : pins[i].X * scale,
+                snap ? DsnSymbolReader.SnapToPinGrid(y) : y,
                 i + 1,
                 string.IsNullOrWhiteSpace(pins[i].Name) ? (i + 1).ToString() : pins[i].Name)
             {

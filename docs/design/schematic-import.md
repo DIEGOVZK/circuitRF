@@ -1,7 +1,7 @@
 # Import Schematic
 
-**Status:** SI-1 implemented (the neutral model, the map, the build, the check, the two write paths). Readers: SI-2
-(`.kicad_sch`), SI-3 (EDIF 2.0.0), SI-4 (the binary `.DSN` design in a CFBF container). Entry points: SI-5. Source of
+**Status:** SI-1 implemented (the neutral model, the map, the build, the check, the two write paths); SI-2 implemented
+(the `.kicad_sch` reader, §8). Readers still to come: SI-3 (EDIF 2.0.0), SI-4 (the binary `.DSN` design in a CFBF container). Entry points: SI-5. Source of
 decisions: `docs/sonnet-briefs/brief-schimp-0-overview.md` (D1–D11). Each phase keeps this note current.
 
 ## 1. The pipeline
@@ -73,7 +73,8 @@ pin's `ImplicitNet`, and ground. A net is named by its best label (power/global,
 made unique; an unnamed net is a quiet `N`k, drawn without a label when one group of its wires reaches every pin.
 
 **Placement.** A symbol cell's symbol is translated so its first pin is the local origin, and the instance is placed with
-that pin on the source's point — every pin a whole number of grid squares from the first lands exactly. A native part
+that pin on the source's point. Its pins are NOT snapped to the 100-mil pin grid (`BuildSymbol(…, snapPins: false)`), so
+a part pitching pins at 50 mils keeps them apart and every pin lands exactly. A native part
 takes the rotation and on-grid origin nearest its source pins; a pin it misses is re-joined by one dog-leg, the source
 wire never moved. A pin the source joins by touching a label or pin (no wire), and a hidden power pin, get a net label on
 the pin. Each wired physical ground group keeps its wires and gets a ground symbol where the source grounded it; a
@@ -122,3 +123,35 @@ edit carries the `GridSize` the drawing needs; the editor adds it as one undo st
 CFBF signature → `BinaryDsn` (SI-4 confirms by its root streams); text starting `(kicad_sch` → `KicadSch`; text starting
 `(edif` → `Edif200` when its `edifVersion` is `2 0 0`, else refused naming the version. Anything else, an ASCII `.dsn` kit
 symbol and a routing `.dsn` included, is `Unknown` with "not a schematic design".
+
+## 8. The `.kicad_sch` reader — `SchematicSexprReader.cs` (SI-2)
+
+`SchematicSexprReader.Read(path) → ForeignSchematicRead` (a `ForeignSchematic`, or a refusal). Parsed with `PcbSexpr`;
+each `lib_symbols` entry goes through `ComponentSymbolSexprReader.ReadSymbol`/`ReadUnit` (the symbol library's own
+reader, now taking a parsed node) for its drawing, while the reader takes the pins itself because the neutral model needs
+their type, `hide`, length and side. Nothing outside the file is looked up. `DeclaredNets` is null: the format declares
+no nets, so the geometric check is the check.
+
+- **Units and axes.** Millimetres → mils by `mm / 0.0254` (to 1e-4 mil). The sheet is Y down and is not flipped; the
+  embedded symbols are Y up and stay so.
+- **A placed symbol's transform.** The format turns counter-clockwise on screen by its angle, THEN mirrors on screen
+  (`mirror x` top-to-bottom, `mirror y` left-right). In `ForeignInstance`'s terms: no mirror → rotation `−angle`;
+  `mirror y` → mirrored, rotation `angle`; `mirror x` → mirrored, rotation `angle + 180`. Held by
+  `opamp_units.kicad_sch`.
+- **References.** The symbol's own `instances` block on the sheet path that reached it, else the root file's
+  `symbol_instances` keyed by path (the older epoch), else its Reference property. A child file placed by several sheets
+  is read ONCE (D5), by the first path; it is one `ForeignSheet` named after its file stem.
+- **Power symbols** (`(power)` in `lib_symbols`) become `ForeignLabel(Power)` named by their Value (a local power symbol a
+  local label) — ground-named ones are ground through the map. One whose pin is not a power input (a rule-check flag)
+  is left out and counted. A hidden power-input pin on any other part carries `ImplicitNet` = its pin name, in every
+  version of the format to date; the report says how many and under which version.
+- **Buses.** Bus segments, bus entries and labels on a bus are drawing: each member connects by its own label on its own
+  wire, exactly as the source's editor requires. A bus-named sheet pin or hierarchical label (`D[0..7]`, `{A B}`) is not
+  expanded; the report lists those buses, because their members are not joined across the sheet boundary (D11).
+  `~{X}`, `_{x}`, `^{x}` are text markup, not bus groups.
+- **Not carried, one counted sentence per kind (R-si2-3):** images, tables, rule areas, net-class directives, circles,
+  arcs and curves drawn on the sheet, pinless parts (mounting holes, logos), alternate body styles (imported with the
+  standard body). The file's version is reported and branched on nowhere.
+
+Fixtures: `testdata/schematic-import/sexpr/` (authored, tiny). The gate is
+`tests/Ui.Tests/SchematicImport/SchematicSexprReaderTests.cs`.

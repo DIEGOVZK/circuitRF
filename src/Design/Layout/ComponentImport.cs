@@ -374,8 +374,11 @@ public static class ComponentImport
     /// named as drawn and numbered by <paramref name="portByDeclaration"/> (declaration index → port index), and a
     /// message when any pin had to be snapped onto the connection grid. Null when the drawing declares no pin.
     /// </summary>
+    /// <param name="snapPins">False keeps each pin where the drawing puts it, for a schematic drawn on a finer grid than
+    /// circuitRF's (Import Schematic, brief-schimp-2); Import Component always snaps.</param>
     public static CircuitRF.Design.Symbol.Symbol? BuildSymbol(
-        ComponentSymbolDrawing drawing, IReadOnlyDictionary<int, int> portByDeclaration, int portCount, List<string> messages)
+        ComponentSymbolDrawing drawing, IReadOnlyDictionary<int, int> portByDeclaration, int portCount, List<string> messages,
+        bool snapPins = true)
     {
         if (drawing.Pins.Count == 0) return null;
 
@@ -385,7 +388,7 @@ public static class ComponentImport
         var pins = drawing.Pins.Select(p => new KitSymbolPin(p.Name, p.XMil, -p.YMil, p.NameAlign)).ToList();
         var shapes = drawing.Shapes.Select(FlipY).ToList();
 
-        var symbol = KitTemplateSymbol.BuildFromDrawing(pins, shapes, SymbolScale);
+        var symbol = KitTemplateSymbol.BuildFromDrawing(pins, shapes, SymbolScale, snapPins);
         if (symbol is null) return null;
 
         // Both strings are kept: SymbolPin.Name is the symbol's pin name, and the layout pin carries

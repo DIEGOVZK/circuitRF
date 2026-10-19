@@ -17,8 +17,8 @@
 // ── WHAT IS DRAWN WHERE ─────────────────────────────────────────────────────────────────────────
 //
 // A symbol cell's symbol is translated so its first pin is the local origin, and the instance is placed with that pin
-// at the source's point: every pin a whole number of grid squares from the first then lands exactly where the source's
-// did. A native part is fitted to its source pins (the rotation and on-grid origin nearest them); a pin it misses is
+// at the source's point: its pins are NOT snapped to circuitRF's 100-mil pin grid (a source pitching pins at 50 mils would
+// have two land on one point — brief-schimp-2), so every pin lands exactly where the source's did. A native part is fitted to its source pins (the rotation and on-grid origin nearest them); a pin it misses is
 // re-joined by NetlistSchematic's one dog-leg, the source wire never moved (D6). A pin the source connects by touching a
 // label or another pin, with no wire, is joined by a net label on it. Each physical ground group with wires keeps its
 // wires and a ground symbol where the source grounded it; a ground pin with no wire gets a ground symbol on the pin.
@@ -844,7 +844,7 @@ public static class SchematicImportBuild
 
         var messages = new List<string>();
         var ports = Enumerable.Range(0, unit.Pins.Count).ToDictionary(i => i, i => i + 1);
-        if (ComponentImport.BuildSymbol(drawing, ports, unit.Pins.Count, messages) is not { } built) return null;
+        if (ComponentImport.BuildSymbol(drawing, ports, unit.Pins.Count, messages, snapPins: false) is not { } built) return null;
         foreach (var m in messages) notes.Add($"{name}: {m}");
         var pins = built.Pins.OrderBy(p => p.PortIndex).Select(p => ((float)p.LocalX, (float)p.LocalY)).ToList();
         return new ImportSymbolCell(name, symbol.Key, unit.Unit, symbol.DisplayName, built, SymbolPersistence.Serialize(built), numbers, pins);
@@ -866,7 +866,7 @@ public static class SchematicImportBuild
         }
         drawing.Shapes.Add(new KitSymbolRectangle(si.X - first.X, first.Y - si.Y, si.X + si.Width - first.X, first.Y - (si.Y + si.Height), false));
         var messages = new List<string>();
-        if (ComponentImport.BuildSymbol(drawing, Enumerable.Range(0, ports.Count).ToDictionary(i => i, i => i + 1), ports.Count, messages) is not { } built)
+        if (ComponentImport.BuildSymbol(drawing, Enumerable.Range(0, ports.Count).ToDictionary(i => i, i => i + 1), ports.Count, messages, snapPins: false) is not { } built)
             return null;
         foreach (var m in messages) notes.Add($"{name}: {m}");
         var pins = built.Pins.OrderBy(p => p.PortIndex).Select(p => ((float)p.LocalX, (float)p.LocalY)).ToList();
