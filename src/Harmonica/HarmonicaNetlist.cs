@@ -300,7 +300,7 @@ public sealed class HarmonicaNetlist
     }
 
     /// <summary>
-    /// brief-modelcomposer-23 R-mc23-2 — <c>ComposedFet:DUT g d s File="…" N=… m=…</c> plus the non-default switches.
+    /// brief-modelcomposer-23 R-mc23-2 — <c>ComposedFET:DUT g d s File="…" N=… m=…</c> plus the non-default switches.
     /// Three nets, so a self-heating model closes on its own <c>Rth ∥ Cth</c>; the source is the package-plane source
     /// like every other kind's (§4.3). The file is quoted (a path may hold spaces) and absolute, since the generated
     /// netlist is read with no base directory.
@@ -310,7 +310,7 @@ public sealed class HarmonicaNetlist
         if (dut.ModelFile is not { Length: > 0 } file)
             throw new InvalidOperationException("A Model Composer DUT names no .cmodel file; choose one in File ▸ Set DUT…");
 
-        var sb = new StringBuilder($"ComposedFet:{Dut}  {gate} {drain} {source}  File=\"{file}\"");
+        var sb = new StringBuilder($"ComposedFET:{Dut}  {gate} {drain} {source}  File=\"{file}\"");
         if (dut.Fingers is { } n) sb.Append(CultureInfo.InvariantCulture, $"  N={n}");
         if (dut.Multiplicity != 1.0) sb.Append($"  m={Num(dut.Multiplicity)}");
         foreach (var (key, value) in dut.Switches.Write()) sb.Append($"  {key}={value}");

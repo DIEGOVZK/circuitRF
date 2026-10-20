@@ -40005,3 +40005,19 @@ now, the spelling every other S cube in the repo uses, and the preset slices `i`
 **The fit summary line (R-mc15-1) comes from the record, not the report.** `CurrentFit.Summary` / `ChargeFit.Summary`
 build "Id: ANN 2×8 · held-out 0.8 % · domain 412 pts" from the step's `Errors` and settings; the run's own last report
 line is whatever the fit happened to say last and was what the status strip showed before.
+
+## Model Composer review fixes (2026-10-20)
+
+**An unclipped `SchematicCanvas` painted over the toolbar above it.** The network panel's buttons showed only when
+hovered: the canvas fills its whole background, and with nothing clipping it that fill covered the row above until a
+hover repainted the button. The schematic editor sets `ClipToBounds` on its canvas; every Model Composer canvas does too.
+
+**A click with the lasso armed recorded the exclusion and showed nothing.** The bias plane drew a point excluded from
+the loaded data's flag, which changes only when the data's reload after the edit finishes, and on an eight-set document
+that is long enough to click again. The second click read the point as already excluded and included it again, so the
+pair of clicks did nothing at all. The bias plane now reads exclusions from the document. Gate: `BiasPlaneLassoTests`,
+which holds the reload back while it checks the plot.
+
+**Plot titles were twice the axis labels' size.** The renderer draws a title at `FontSizeLabel × 1.4` and an axis label
+at `FontSizeTicks × 0.9`. The Model Composer sets `FontSizeLabel` on its two plots so the title is a tenth larger than
+the labels, as harmonicaRF does for its own titles; the Data Display's defaults are unchanged.

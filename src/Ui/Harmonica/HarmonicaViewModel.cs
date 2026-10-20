@@ -731,7 +731,7 @@ public sealed partial class HarmonicaViewModel : ObservableObject
     public static DutSpec ComposedDutFor(string cmodelPath, DutSpec current) => new()
     {
         Kind         = DutKind.Composed,
-        TypeName     = "ComposedFet",
+        TypeName     = "ComposedFET",
         ModelFile    = System.IO.Path.GetFullPath(cmodelPath),
         Multiplicity = current.Multiplicity,
     };

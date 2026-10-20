@@ -25,7 +25,7 @@ The data is at the **probe** plane. The pads come off with the open and short du
 The document carries every step:
 
 - **Network**: `Lg`, `Ld` and `Ls` fitted by the multi-bias method; every other value is held at the stock value.
-- **Thermal**: self-heating with Rth = 25 K/W and τth = 10 µs, typed rather than extracted (see the note below).
+- **Thermal**: self-heating with Rth = 25 °C/W and τth = 10 µs, typed rather than extracted (see the note below).
 - **Current**: ANN `Id` and `Ig`, with the junction temperature and the drain-lag state as inputs.
 - **Traps**: CaptureEmission drain lag at its defaults, from the three trap-setting levels 0, 10 and 20 V. The
   pulses from 10 V that go above 10 V lie beyond their trap-setting bias and are kept for validation only.
@@ -37,16 +37,17 @@ doubled, its series resistances halved and its Rth halved:
 | Bench | What it runs |
 |---|---|
 | `GanPowerSweep` | A class-AB stage at 2 GHz, Vgs −0.8 V, Vdd 8 V, 50 Ω in and out, drive swept −4 … 22 dBm |
-| `GanLoadpull` | The same device over a polar grid of 49 loads, each driven to 3 dB compression |
+| `GanLoadpull` | The same device over 49 loads centred between its maximum-power and maximum-efficiency loads, each driven to 3 dB compression |
 
 **Settings chosen for this example**, with what a real job would use:
 
 | Setting | Here | A real job |
 |---|---|---|
 | Data points | ≤ 150 per I–V set, 49 S biases, 12 frequencies | Denser near the knee and pinch-off; 50+ frequencies |
-| Rth | Typed, 25 K/W | Extracted from pulsed I–V at two or more chuck temperatures, when drain lag is not modelled; typed from a thermal simulation when it is |
+| Rth | Typed, 25 °C/W | Extracted from pulsed I–V at two or more chuck temperatures, when drain lag is not modelled; typed from a thermal simulation when it is |
 | `IgFloor` | 1e-7 | The default 1e-4 suits a gate whose leakage is not needed. This example's gate current spans ten decades, and at pinch-off the default's resolution is microamps |
 | Network | Three inductances free | Every value free that the data determines; check the ± and the ⚠ marks |
+| Drain bias | 8 V. The drain swings to about twice its bias, and this data ends at Vds 20 V | The rated drain voltage, with I–V data reaching past twice it |
 
 **Why Rth is typed.** A pulse from a 0 V drain leaves the drain-lag state half a volt short of its DC value, because
 capture slows as the gap closes. Rth extraction compares pulsed and DC currents at the same bias, and reads that half

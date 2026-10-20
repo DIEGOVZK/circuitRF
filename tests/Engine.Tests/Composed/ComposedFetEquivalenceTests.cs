@@ -20,7 +20,7 @@ public sealed class ComposedFetEquivalenceTests(ITestOutputHelper output)
 {
     private static readonly string ModelPath = ComposedTestModels.WriteTemp(ComposedTestModels.Model());
 
-    private static string Composed => $"ComposedFet:X1 g d 0 File=\"{ModelPath}\"\n";
+    private static string Composed => $"ComposedFET:X1 g d 0 File=\"{ModelPath}\"\n";
     private static string Reference => ComposedTestModels.SddGlobals
                                      + ComposedTestModels.ReferenceCell("ref") + "ref:X1 g d 0\n";
 

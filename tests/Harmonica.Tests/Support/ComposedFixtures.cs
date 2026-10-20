@@ -31,7 +31,7 @@ internal static class ComposedFixtures
         Dut = new DutSpec
         {
             Kind         = DutKind.Composed,
-            TypeName     = "ComposedFet",
+            TypeName     = "ComposedFET",
             ModelFile    = file ?? ExampleModel,
             Fingers      = fingers,
             Multiplicity = m,

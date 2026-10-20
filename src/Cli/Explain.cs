@@ -1165,7 +1165,7 @@ internal static class Explain
             ? Path.GetFullPath(path)
             : Path.GetDirectoryName(Path.GetFullPath(path))!;
 
-        // A ComposedFet's model file resolves by the elaborator's own rule (brief-modelcomposer-13 R-mc13-5), never by the
+        // A ComposedFET's model file resolves by the elaborator's own rule (brief-modelcomposer-13 R-mc13-5), never by the
         // cell walk: a .cmodel is a file, and the walk would answer a question elaboration never asks.
         if (reference.EndsWith(".cmodel", StringComparison.OrdinalIgnoreCase))
         {

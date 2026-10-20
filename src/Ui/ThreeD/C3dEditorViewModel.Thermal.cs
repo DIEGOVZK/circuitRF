@@ -496,12 +496,12 @@ public sealed partial class C3dEditorViewModel
         if (text.Length > 0)
         {
             if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) || !(v >= 0) || !double.IsFinite(v))
-                return "A contact resistance is zero (perfect contact) or a positive number, m²·K/W (1e-5 is a thin solder).";
+                return "A contact resistance is zero (perfect contact) or a positive number, m²·°C/W (1e-5 is a thin solder).";
             r = v;
         }
         static bool Same(C3dContactResistance c, string a, string b)
             => c.Between.Count == 2 && (c.Between[0] == a && c.Between[1] == b || c.Between[0] == b && c.Between[1] == a);
-        ChangeRecords(r is null ? $"Clear the contact {a}–{b}" : $"Contact {a}–{b}: {text} m²·K/W", d =>
+        ChangeRecords(r is null ? $"Clear the contact {a}–{b}" : $"Contact {a}–{b}: {text} m²·°C/W", d =>
         {
             d.ContactResistances.RemoveAll(c => Same(c, a, b));
             if (r is { } rv) d.ContactResistances.Add(new C3dContactResistance { Between = [a, b], ResistanceM2KW = rv });
@@ -748,7 +748,7 @@ public sealed partial class C3dEditorViewModel
         double[] f = [.. keep.Select(i => zth.FrequencyHz[i])];
         double[] y = [.. keep.Select(i => phase ? zth.Z[i].Phase * 180 / Math.PI : zth.Z[i].Magnitude)];
         string who = place == source ? $"'{place}'" : $"'{place}' per watt in '{source}'";
-        ThermalLine = new C3dThermalLine($"Z_th of {who}{(phase ? " — phase" : "")}", f, y, "Frequency (Hz)", phase ? "arg Z_th (°)" : "|Z_th| (K/W)", LogX: true);
+        ThermalLine = new C3dThermalLine($"Z_th of {who}{(phase ? " — phase" : "")}", f, y, "Frequency (Hz)", phase ? "arg Z_th (°)" : "|Z_th| (°C/W)", LogX: true);
         return null;
     }
 
@@ -870,7 +870,7 @@ public sealed partial class C3dEditorViewModel
             yield return new Viewer3DMenuItem("Thermal", Children:
             [
                 new Viewer3DMenuItem("Contact Resistance…", () => TextRequested?.Invoke($"Contact resistance {a}–{b}",
-                    $"m²·K/W, for this contact only (prefilled from {says}; empty removes the override):", prefill,
+                    $"m²·°C/W, for this contact only (prefilled from {says}; empty removes the override):", prefill,
                     text => SetContactResistance(a, b, text)), Tip: "The two must touch; the value overrides the technology's pair value for this contact."),
             ]);
         }

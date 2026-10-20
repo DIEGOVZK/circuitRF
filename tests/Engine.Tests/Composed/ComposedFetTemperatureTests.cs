@@ -48,5 +48,5 @@ public sealed class ComposedFetTemperatureTests
     }
 
     private static string Two(string path)
-        => $"ComposedFet:X1 g d 0 File=\"{path}\"\nComposedFet:X2 g d 0 File=\"{path}\" N=2\n";
+        => $"ComposedFET:X1 g d 0 File=\"{path}\"\nComposedFet:X2 g d 0 File=\"{path}\" N=2\n";
 }

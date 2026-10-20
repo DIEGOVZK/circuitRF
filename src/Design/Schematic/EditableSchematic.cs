@@ -161,14 +161,16 @@ public static class SymbolPortDefs
             case SymbolKind.FetStatz:
             case SymbolKind.FetMaterka:
             case SymbolKind.FetAngelov:
-            // A composed FET binds g d s exactly as the FET laws do (brief-modelcomposer-1 R-mc1-9).
-            case SymbolKind.ComposedFet:
             // The p-channel laws keep the SAME pin order and the same geometry — they are the same
             // component with every sign reversed, and the elaborator's FET branch reads both.
             case SymbolKind.PFetCurtice:
             case SymbolKind.PFetStatz:
             case SymbolKind.PFetMaterka:
                 return [("g", -200f, 0f), ("d", 0f, -200f), ("s", 0f, 200f)];
+            // A composed FET binds g d s exactly as the FET laws do (brief-modelcomposer-1 R-mc1-9), and its fourth pin is
+            // the thermal node t (MC-9 R-mc9-2) — written to the netlist only when something is wired to it.
+            case SymbolKind.ComposedFET:
+                return [("g", -200f, 0f), ("d", 0f, -200f), ("s", 0f, 200f), ("t", 200f, 0f)];
             // JFET family: gate LEFT, drain TOP, source BOTTOM — the MESFET's arrangement on
             // screen. Pin ORDER is the contract the elaborator reads when it expands the three nets
             // into the model's three intrinsic ports and mints an internal net per non-zero ohmic
@@ -675,7 +677,7 @@ public sealed class EditableComponent
         // A composed FET draws the symbol its model (or this instance) names — a library symbol or a
         // .csym beside the .cmodel — and the standard FET glyph when that does not resolve. Both the
         // file and the choice are in the reference, which is the symbol cache's key.
-        ?? (Symbol == SymbolKind.ComposedFet
+        ?? (Symbol == SymbolKind.ComposedFET
                 ? ComposedFetSymbolProvider.RefFor(
                       Parameters.FirstOrDefault(p => p.Name == ComposedFetSymbolProvider.FileParameter)?.Expression,
                       Parameters.FirstOrDefault(p => p.Name == ComposedFetSymbolProvider.SymbolParameter)?.Expression)
@@ -779,7 +781,7 @@ public sealed class EditableComponent
     /// <summary>A composed FET's switch annotation — <c>linear C · no gate lag</c> — or empty at the defaults and for every
     /// other kind (brief-modelcomposer-21 R-mc21-7).</summary>
     public string SwitchesLabelText()
-        => Symbol != SymbolKind.ComposedFet ? ""
+        => Symbol != SymbolKind.ComposedFET ? ""
          : CircuitRF.Core.Devices.Composed.ComposedSwitches.Annotate(
                name => Parameters.FirstOrDefault(p => p.Name == name)?.Expression);
 
@@ -1120,7 +1122,8 @@ public sealed class EditableComponent
                         (float)pin.LocalX, (float)pin.LocalY,
                         state,
                         pin.NameAlign,
-                        ShowPinNames ?? SymbolPinNames.IsStated(pin.Name));
+                        ShowPinNames ?? SymbolPinNames.IsStated(pin.Name),
+                        Optional: Symbol == SymbolKind.ComposedFET && pin.PortIndex == 3);
                 }).ToList();
             }
             else

@@ -217,7 +217,7 @@ runs and calls the same function, so a document an agent builds opens in the win
 7. `model` with `noun=check-charge` checks charge conservation (exit 3 above the threshold). `noun=validate` compares
    the model with every data set at the plane it was measured at (exit 3 when a tolerance is missed).
 8. `model` with `noun=export` and `output` writes the `.cmodel`. Place it in a netlist as
-   `ComposedFet:X1 g d 0 File=fet.cmodel N=8` and `run` it like any other device.
+   `ComposedFET:X1 g d 0 File=fet.cmodel N=8` and `run` it like any other device.
 
 A model that does not come from data — equations from a paper, a table another simulator wrote, a network trained in
 another framework — needs no `.cmc`. `reference` with topic `cmodel` gives the file and scripts that write it; the agent

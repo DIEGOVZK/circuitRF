@@ -1,6 +1,6 @@
 # circuitRF — Model Composer and the composed FET
 
-**Status:** built, MC-1 … MC-16 — the `.cmodel` format and the `ComposedFet` device (MC-1); table and ANN constituents
+**Status:** built, MC-1 … MC-16 — the `.cmodel` format and the `ComposedFET` device (MC-1); table and ANN constituents
 with guided extrapolation (MC-2); the `.cmc` document, its data and cache (MC-3); pads, the six-pin network and the
 intrinsic data (MC-4); the extrinsic fit (MC-5); the ANN trainer (MC-6); the currents and DC/RF dispersion (MC-7); the
 charges and Check Charge Conservation (MC-8); temperature and self-heating (MC-9); traps (MC-10); export, validation and
@@ -23,7 +23,7 @@ builds; the overview remains the record of why each decision was taken.
 **Model Composer** (Tools ▸ Model Composer…) turns measured or simulated device data into a nonlinear FET
 model that DC, S-parameters and harmonic balance use, and turns S-parameter blocks into passive models.
 Its document is the `.cmc`; what it exports for a transistor is a `.cmodel`, which a schematic places as a
-`ComposedFet`. A passive model exports as an ordinary cell.
+`ComposedFET`. A passive model exports as an ordinary cell.
 
 The device is not generated SDD text: its core needs table and ANN evaluation with exact derivatives,
 guided extrapolation, internal state nodes and allocation-free grid evaluation, none of which an SDD
@@ -35,7 +35,7 @@ line can carry.
 |---|---|
 | D1 | `.cmc` is the composer document (JSON); `.cmodel` is a ZIP of `model.json` + `arrays/*.npy`; `<name>.cmc-cache/` is derived data. |
 | D2 | A `.cmc` is `Active` (a three-terminal FET) or `Passive` (an N-port). |
-| D3 | `ComposedFet:X1 g d s File=… N=…` elaborates **as a cell**: the network's elements plus one `ComposedCore` on `gi di si`. |
+| D3 | `ComposedFET:X1 g d s File=… N=…` elaborates **as a cell**: the network's elements plus one `ComposedCore` on `gi di si`. |
 | D4 | Constituents `Id`, `Ig`, `Qg`, `Qd` (optional `IdRF`); each an Equation, a Table or an ANN. Charges are always charge functions; there is no transconductance delay (the charges carry it). |
 | D5 | An extrinsic network is a six-pin `.csch`: extrinsic G, D, S, then intrinsic G, D, S; its variables are its element values. Stock networks ship as resources. |
 | D6 | Every data set records where its bias voltages were measured; the composer models in intrinsic voltages. |
@@ -207,7 +207,7 @@ Every refusal is a `CmodelFormatException` whose message begins with the field: 
 
 ### 4.1 Elaboration as a cell (R-mc1-5)
 
-`Elaborator.ComposedFetCell` intercepts a `ComposedFet` line before the primitive branch:
+`Elaborator.ComposedFetCell` intercepts a `ComposedFET` line before the primitive branch:
 
 1. Three nets, or four when the model self-heats — the fourth is the thermal node `t` (§12.2); four on a model
    without `Thermal` is refused naming the file. Parameters `File`, `N`, `m` (or `M`) and `Symbol` (artwork,
@@ -283,7 +283,7 @@ clamped ambient.
 
 ### 4.5 The symbol (R-mc1-9)
 
-`SymbolKind.ComposedFet` (palette: Devices, with Nonlinear and DataFiles as filters) carries `File`, `N`
+`SymbolKind.ComposedFET` (palette: Devices, with Nonlinear and DataFiles as filters) carries `File`, `N`
 and `Symbol`. Its glyph is a virtual reference, `composedfet://<symbol>|<file>`, resolved by
 `ComposedFetSymbolProvider` through the `CellSymbolResolver` seam SpiceModel and wBond use:
 
@@ -870,7 +870,7 @@ and at the middle of the current step's intrinsic I–V points (`ChargeFit.Typed
   constant voltage the trajectory is a line in `(vgs, vds)`, `∮C11 dvgs = 0` along it for any `C11`, and no
   capacitance makes DC — the check as first written could not fail. An ellipse encloses area, the same ellipse at
   every `f` makes the displacement DC exactly `f·∮C·dv`, and conduction DC cancels in the difference.
-- The composer's model is run as a `ComposedFet` of a temporary `.cmodel` whose network joins each pin to its
+- The composer's model is run as a `ComposedFET` of a temporary `.cmodel` whose network joins each pin to its
   intrinsic one through 1 µΩ (`ChargeFit.IntrinsicNetwork`), with zero currents until the current step has run.
 
 ## 12. Temperature and self-heating (MC-9)
@@ -1129,7 +1129,7 @@ temporary file and a rename, so a refusal, failure or cancellation leaves no fil
 node; none beyond. A library symbol qualifies only when its kind's own pins are `g, d, s` in that order (the FET laws) —
 a JFET's or BJT's three pins mean something else in the same positions. A `.csym` is stored relative to the `.cmodel`
 (the provider resolves it from there) and relative to the `.cmc` in `Steps.Export.Settings.Symbol`.
-`ComposedFetPlacement.Payload` is `SchematicPersistence.SerializeSelection` of one `ComposedFet` (absolute `File`,
+`ComposedFetPlacement.Payload` is `SchematicPersistence.SerializeSelection` of one `ComposedFET` (absolute `File`,
 `N = N0`, the symbol) — the editor's own paste reads it.
 
 ### 14.4 Validation (`ModelValidation`, R-mc11-4, R-mc11-5)
@@ -1156,7 +1156,7 @@ large-signal set. The data is compared at the device plane: pads are not re-embe
 
 ### 14.5 Loadpull of a composed FET
 
-A `ComposedFet`'s terminals sit behind its extrinsic network, so no nonlinear device touches the nets its tuners sit on.
+A `ComposedFET`'s terminals sit behind its extrinsic network, so no nonlinear device touches the nets its tuners sit on.
 `LoadpullEngine` takes such a tuner net into the HB interface as an extra node and reads Pout and the bias currents from
 the tuners' own branch currents (the load tuner's Z_Port and choke, the source tuner's Z_Port and choke) through the
 linear back-solver; a tuner on a device terminal reads the interface current exactly as before. Pout is therefore the
@@ -1415,7 +1415,7 @@ capacitances at a jittered grid: 2.5 % and 0.17 % away from the edge; a Gaussian
 it, 0.12 at most beyond three widths, the drain row untouched), `ConservationCheckLargeSignalTests` (the truth as a charge SDD: 7e-23
 of the fundamental; with its gate current as capacitances times dV/dt through two auxiliary ports, the f→2f and
 2f→3f steps agree to 5e-6 and the spurious DC is 0.41 % of the fundamental), `TranscapacitanceReportTests` (the
-synthetic `.cmodel` through a `ComposedFet`: curl 6e-6, `Cm` 39 fF RMS reported), `DriftChargeTests` (an [I11]
+synthetic `.cmodel` through a `ComposedFET`: curl 6e-6, `Cm` 39 fF RMS reported), `DriftChargeTests` (an [I11]
 truth as an SDD at its intrinsic plane, `Id` the truth's: QGS, QGD and QDS within 0.34 %, `Qdrift` at `Id = 0`
 0.27 % of its size, held-out capacitances within 0.29 %), `ChargeMethodsTests` (the Depletion template recovers a
 depletion truth's capacitances to 1e-15 of their range through `EquationFit`'s derivative terms, and the composer's
@@ -1454,7 +1454,7 @@ block byte-identical to none; the current step under `None` records exactly what
 `Support/SyntheticTrapData.cs`; the engine gates' device is `tests/Engine.Tests/Composed/Support/TrapTestModels.cs`.
 
 MC-11: `tests/Ui.Tests/ModelComposer/` — `CmodelExportTests` (a `.cmc` whose steps record the SDD truth's equations, its
-data that truth's multi-bias S through the GaN network: the export as a `ComposedFet` against the truth's SDD, DC node
+data that truth's multi-bias S through the GaN network: the export as a `ComposedFET` against the truth's SDD, DC node
 voltages, S at three biases and HB to 1e-9; no N0, an unfitted charge step and data changed under the steps each refused
 by name, no file left), `SymbolChoiceTests` (a 2-pin and an unheated 4-pin `.csym` refused and absent from the
 candidates, a JFET kind absent; the stored `.csym` relative to the model, in the `.cmc`, and in the pasted instance),
@@ -1555,7 +1555,7 @@ Each departure from the briefs, with its reason. The detail of each is in the `R
 | MC-8 | Check (c) with the drain held at DC | The drain is driven in quadrature: with `vds` constant every loop integral is zero and the check could never fail. The interpolant for tables and check (a) is a network, not an RBF (33 % curl on conservative data). [I11] eq. 4's `CGD,drift` is used in its exact form (the printed one drops `τ(gm − gds)/2`). Check (a) reads no curl within 2 % of the hull's edge. |
 | MC-9 | Pin 4 "exposes ΔT" with an external network in series | Pin 4 is the junction node and what attaches there is in parallel with the model's Rth (owner, following the references and compact-model practice). |
 | MC-10 | — | The trap node's normalising capacitance is 1 mF, where both the DC `gmin` floor and HB's charge round-off clear. Drain–source exchange with traps is refused; `Custom` odd states are gate-like and even drain-like; beyond points still train `Ig`. |
-| MC-11 | Loadpull of a composed FET by per-load HB sweeps | `LoadpullEngine` accepts a tuner on a net no nonlinear device touches (the extrinsic terminal), so `lp` and `lpp` run a `ComposedFet` (owner); the report's PA classes follow harmonicaRF's intrinsic-load method (owner). |
+| MC-11 | Loadpull of a composed FET by per-load HB sweeps | `LoadpullEngine` accepts a tuner on a net no nonlinear device touches (the extrinsic terminal), so `lp` and `lpp` run a `ComposedFET` (owner); the report's PA classes follow harmonicaRF's intrinsic-load method (owner). |
 | MC-12 | — | A new expression built-in, `validrange(x, lo, hi)`, carries a family cell's out-of-range warning; library bounds run 0 … 1000× the seed; a family needs three training geometries and one held out. |
 | MC-14 | — | Free-standing net labels now travel on the schematic clipboard: the stock networks connect through them. |
 | MC-15 | A charge surface; ΔQ maps in the report's display | The charge surface is drawn as a contour (the surface renderer draws angle axes only); a `.cdd` contour is loadpull-only, so the ΔQ maps there are families. |
@@ -1637,7 +1637,7 @@ the benches.
 
 **`ComposedSwitches`** (`src/Core/Devices/Composed/`) is the one reader and writer of the six switches — `Charge`,
 `LinearC`, `GateLag`, `DrainLag`, `SelfHeating`, `Dispersion`, read by `BooleanParameter`, a bare spelling taken as written
-before anything is evaluated. The elaborator reads them off the `ComposedFet` line, keys `_composedCells` on them, and
+before anything is evaluated. The elaborator reads them off the `ComposedFET` line, keys `_composedCells` on them, and
 writes the non-default ones onto the synthesised `ComposedCore`, so each core is built with them; `NetExtractor` writes a
 switch only when it is not the default, the schematic's annotation and `explain` go through `Annotate`, and the parameter
 editor's picker is the registry's. A non-default instance adds one note per run (`X1: linear C at the bias point, no gate

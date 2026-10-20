@@ -294,7 +294,7 @@ the same model object.
     harmonicaRF using the standard expression language;
   - `NonlinearC`, `Diode` (for teaching and for the degenerate cases);
   - any **external device** — a compiled Verilog-A `.osdi`, or a vendor-kit part via `senior-worker`;
-  - a **Model Composer `.cmodel`** (`DutKind.Composed`), placed as `ComposedFet:DUT g d s File=… N=… m=…`
+  - a **Model Composer `.cmodel`** (`DutKind.Composed`), placed as `ComposedFET:DUT g d s File=… N=… m=…`
     plus its non-default switches (brief-modelcomposer-23). It elaborates as a cell — the model's extrinsic
     network around a nonlinear core on `gi di si` — so the netlist has no component called `DUT`:
     `HarmonicaContext.DutDevice` is the core (`DUT.core`), and every intrinsic reader evaluates that.

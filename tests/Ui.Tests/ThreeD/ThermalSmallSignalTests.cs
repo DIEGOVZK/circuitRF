@@ -118,7 +118,7 @@ public sealed class ThermalSmallSignalTests(ITestOutputHelper output) : IDisposa
         output.WriteLine(stdout);
         output.WriteLine(stderr);
         Assert.True(code == 0, stderr);
-        Assert.Contains("Rth matrix (K/W)", stdout);
+        Assert.Contains("Rth matrix (°C/W)", stdout);
 
         var data = DataSetImporter.Import(Path.Combine(ws, "results", "Cell Pulsed.thermal.npy")).DataSet;
         var rth = data[$"{ThermalRunService.SmallSignalGroup}.{ThermalRunService.RthCube}"];
@@ -209,7 +209,7 @@ public sealed class ThermalSmallSignalTests(ITestOutputHelper output) : IDisposa
                       new DataCube([new Axis("freq", [0, 10, 100], "Hz")], [new Complex(2, 0), new Complex(1.5, -0.5), new Complex(0.4, -0.3)]));
         var zth = Assert.Single(ThermalResultTable.From(ds).Zth);
         Assert.Equal(("die_top", "west", 3), (zth.Place, zth.Source, zth.Z.Length));
-        var plot = CircuitRF.Ui.ThreeD.ThermalPlots.Line(new CircuitRF.Ui.ThreeD.C3dThermalLine("Z", [10, 100], [1.58, 0.5], "Frequency (Hz)", "|Z_th| (K/W)", LogX: true));
+        var plot = CircuitRF.Ui.ThreeD.ThermalPlots.Line(new CircuitRF.Ui.ThreeD.C3dThermalLine("Z", [10, 100], [1.58, 0.5], "Frequency (Hz)", "|Z_th| (°C/W)", LogX: true));
         Assert.Equal(CircuitRF.Render.DataDisplay.AxisScale.Log, plot.Axes.XScale);
         Assert.Single(plot.Traces);
     }

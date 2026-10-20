@@ -25,7 +25,7 @@ Every material is one of circuitRF's generic materials, from `tech/generic-mater
   the 2 µm GaN epitaxy is not drawn — drawn, it would force micrometre elements over the whole die. **Thermal Channel vs
   Surface** draws it, one finger at a time.
 - **The bond lines** — 20 µm of sintered silver under the die, 50 µm of solder under the flange — are **contact resistances**,
-  each its thickness over its conductivity (`ContactResistances` in the 3D view: 1E-07 and 8.62E-07 m²·K/W). A thin layer
+  each its thickness over its conductivity (`ContactResistances` in the 3D view: 1E-07 and 8.62E-07 m²·°C/W). A thin layer
   drawn as a solid meshes at its own thickness across its whole area, and these two alone would multiply the run time.
 - **The heatsink** is the bottom face of the interface material, held at `Ths`. Every other face is insulated.
 
@@ -43,16 +43,16 @@ The measures: `Rth_jc = (Tmax(die_top) - Tavg(flange_bot)) / Pdiss`, `Rth_jc_hot
 `Rth_ja = (Tmax(die_top) - Ths) / Pdiss`, and `T_interface = Tavg(board_under)`.
 
 **"Case temperature" here is the flange bottom's AVERAGE.** A lab's definition may differ — a thermocouple under the centre of the
-flange reads close to its hottest point — and the difference is not small: at 11 W, `Rth_jc` is **5.83 K/W** against the average
-and `Rth_jc_hot` is **5.42 K/W** against the hottest point. Say which one a datasheet number means before comparing.
+flange reads close to its hottest point — and the difference is not small: at 11 W, `Rth_jc` is **5.83 °C/W** against the average
+and `Rth_jc_hot` is **5.42 °C/W** against the hottest point. Say which one a datasheet number means before comparing.
 
 ## Results
 
 | Pdiss | Die top | Rth_jc | Rth_ja |
 |---|---|---|---|
-| 3 W | 116.2 °C | 5.08 K/W | 10.41 K/W |
-| 7 W | 160.5 °C | 5.45 K/W | 10.79 K/W |
-| 11 W | 207.9 °C | 5.83 K/W | 11.18 K/W |
+| 3 W | 116.2 °C | 5.08 °C/W | 10.41 °C/W |
+| 7 W | 160.5 °C | 5.45 °C/W | 10.79 °C/W |
+| 11 W | 207.9 °C | 5.83 °C/W | 11.18 °C/W |
 
 At 11 W the flange bottom averages **143.8 °C** and the board's underside **89.58 °C**.
 
@@ -74,8 +74,8 @@ instead) — the heat spreading from the die through the flange and funnelling i
 | | Order 1 (shipped) | Order 2 |
 |---|---|---|
 | Die top, 11 W | 207.9 °C | 210.9 °C |
-| Rth_jc, 11 W | 5.83 K/W | 5.99 K/W |
-| Rth_ja, 11 W | 11.18 K/W | 11.45 K/W |
+| Rth_jc, 11 W | 5.83 °C/W | 5.99 °C/W |
+| Rth_ja, 11 W | 11.18 °C/W | 11.45 °C/W |
 | Run | 1 min 17 s, 1.1 GB | 17 min 55 s, 8.3 GB |
 
 Order 1 reads the junction about 2.5 % cool. The setup refines the mesh at the source (`SizeFromSources` 12) to recover most of
@@ -97,7 +97,7 @@ k_xy = 81.74 and k_z = 7.241 W/(m·K), and the vias are no longer meshed.
 | | Vias as drawn (shipped) | Effective block |
 |---|---|---|
 | Die top, 11 W | 207.9 °C | 194.0 °C |
-| Rth_ja, 11 W | 11.18 K/W | 9.91 K/W |
+| Rth_ja, 11 W | 11.18 °C/W | 9.91 °C/W |
 | Run | 1 min 17 s | 3 min 10 s |
 
 The block reads the die **13.9 K** cooler: here it is an optimistic approximation, and it did not make this run faster. It pays

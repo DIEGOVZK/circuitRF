@@ -1900,7 +1900,7 @@ glyph, the pins and the parameter table.</p>
 
 {{table: components/VerilogA}}
 
-### Composed FET model (ComposedFet) {#composedfet}
+### Composed FET model (ComposedFET) {#composedfet}
 
 {{symbol: composed-fet}}
 
@@ -1909,7 +1909,7 @@ A transistor model built from measured or simulated device data, placed from its
 for a script of your own:
 
 ```
-ComposedFet:X1  g d s  File="gan_8x125.cmodel"  N=8
+ComposedFET:X1  g d s  File="gan_8x125.cmodel"  N=8
 ```
 
 It simulates as the circuit it is: the model's extrinsic network as ordinary resistors, inductors,
@@ -1924,25 +1924,35 @@ by its rule — fixed, per finger, or inversely per finger. `m` places whole dev
 A model extracted at one temperature is used as it is at any other, with one warning naming both. A
 model over a temperature range follows `temp`, held to that range.
 
-A self-heating model has a thermal node, `X1.t`, whose voltage is the device's temperature rise in kelvin;
-its currents and charges follow `temp` plus that rise. On a four-pin symbol, pin 4 is that node:
+A self-heating model has a thermal node, `X1.t`, whose voltage is the device's temperature rise in °C;
+its currents and charges follow `temp` plus that rise. Pin 4 is that node. On the standard symbol it is the
+lead on the right, starting at a small open circle; it appears only when the model self-heats:
 
 ```
-ComposedFet:X1  g d s t  File="gan_8x125.cmodel"
+ComposedFET:X1  g d s t  File="gan_8x125.cmodel"
 R:RSINK  t 0  R=20
 ```
 
 The model's own thermal resistance already runs from `t` to ground, so what you attach there sits in
-parallel with it.
+parallel with it. Left unwired, pin 4 is no connection and the device keeps its own thermal network.
+
+`Rth` (°C/W) and `Cth` (J/°C) set this device's thermal resistance and capacitance at its finger count,
+in place of the model's own scaled to `N`; blank keeps the model's. A model with a ladder of thermal
+poles scales every pole by the same factor. A model that does not self-heat refuses them.
+
+```
+ComposedFET:X1  g d s  File="gan_8x125.cmodel"  N=8  Rth=40  Cth=2.5e-6
+```
 
 The glyph is the model's own symbol, which the `Symbol` row changes per instance; pins 1, 2 and 3 are
-`g`, `d` and `s`. A symbol that cannot be found draws as the standard FET, with one warning.
+`g`, `d` and `s`, and a pin 4 is `t`. A symbol that cannot be found draws as the standard FET, with one
+warning.
 
 Ten switches turn one part of the model off on one instance — the intrinsic charge, its nonlinearity (all of it,
 or one capacitance at a time), gate lag, drain lag, self-heating and dispersion — without refitting anything:
 [Switching parts of the model off](model-composer.html#switches).
 
-{{table: components/ComposedFet}}
+{{table: components/ComposedFET}}
 
 ## System-level blocks
 

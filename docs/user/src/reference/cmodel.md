@@ -3,8 +3,8 @@ title: Writing a .cmodel
 slug: reference/cmodel.html
 doc-kind: Reference Guide
 breadcrumb: Docs > Reference > Writing a .cmodel
-lede: The composed FET model file, field by field, with complete scripts that write one — so a model from equations, a table or a neural network you trained elsewhere runs as a ComposedFet without the Model Composer.
-keywords: .cmodel, composed FET model, ComposedFet, FET model file format, model.json, write a transistor model, MATLAB, Python, numpy, table model, ANN model, neural network model, B-spline, extrinsic network, charge conservation, agent
+lede: The composed FET model file, field by field, with complete scripts that write one — so a model from equations, a table or a neural network you trained elsewhere runs as a ComposedFET without the Model Composer.
+keywords: .cmodel, composed FET model, ComposedFET, FET model file format, model.json, write a transistor model, MATLAB, Python, numpy, table model, ANN model, neural network model, B-spline, extrinsic network, charge conservation, agent
 ---
 
 <nav class="toc">
@@ -31,7 +31,7 @@ keywords: .cmodel, composed FET model, ComposedFet, FET model file format, model
 
 ## What a .cmodel is {#what}
 
-A `.cmodel` is a nonlinear FET model that a [`ComposedFet`](components.html#composedfet) places in a circuit. It holds
+A `.cmodel` is a nonlinear FET model that a [`ComposedFET`](components.html#composedfet) places in a circuit. It holds
 an extrinsic network of ordinary R, L, C and mutual elements, and a nonlinear core on the network's intrinsic gate,
 drain and source. The core has four **constituents**: the drain current `Id`, the gate current `Ig`, and the gate and
 drain charges `Qg` and `Qd`. Each constituent is one of three methods:
@@ -129,7 +129,7 @@ VDS = 5
 Vdc:VG  g 0  Vdc=VGS V
 IProbe:ID  dd d
 Vdc:VD  dd 0  Vdc=VDS V
-ComposedFet:X1  g d 0  File="fet.cmodel"  N=4
+ComposedFET:X1  g d 0  File="fet.cmodel"  N=4
 analysis DC1 type=dc
 measure Id_A = DC1.I("ID")
 ```
@@ -156,7 +156,7 @@ modification time changes, so a script can rewrite it between runs.
    instance's `N`, and the core on the intrinsic nets `gi`, `di`, `si`. The core's currents and charges are
    multiplied by `N/N0`.
 
-`circuitrf check` and a placed `ComposedFet` call the same reader, so a file that `check` passes is a file that loads,
+`circuitrf check` and a placed `ComposedFET` call the same reader, so a file that `check` passes is a file that loads,
 and the refusal sentence is the same in both.
 
 **Fields that are not part of the format are ignored, not refused**, at the top level and inside `BasePeriphery`,
@@ -192,7 +192,7 @@ Numbers are in base SI units — volts, amps, coulombs, siemens, seconds, ohms �
 | `Kind`, `Terminals` | `Fet`; `G`, `D`, `S` — the symbol's pins 1, 2 and 3. Both are required and take exactly these values. |
 | `BasePeriphery` | `Fingers` (N0) and `UnitWidth` (`"125 um"`, a number, a space and a length unit) of the device the constituents describe. |
 | `Temperature` | `{ "Mode": "Single", "T0": 25 }` — valid at one temperature, with no temperature input — or `{ "Mode": "Range", "Tmin": …, "Tmax": … }`, in °C. |
-| `Thermal` | Self-heating, on a `Range` model only: `{ "Rth": …, "Cth": … }` in K/W and J/K, or a `Ladder` of up to five such poles, at the base periphery; optionally `RthSlope` (K/W per K) and `Tref` (°C) for a thermal resistance that varies with the ambient. The device then has a thermal node `t` whose voltage is the temperature rise, into which it puts its dissipated power, with `Rth ∥ Cth` (or the ladder) from it to ground; every constituent is evaluated at the run's temperature plus that rise. A symbol's pin 4 is that node, so a heatsink network attached there is in parallel with the model's own. `Rth` scales by N0/N and `Cth` by N/N0. |
+| `Thermal` | Self-heating, on a `Range` model only: `{ "Rth": …, "Cth": … }` in °C/W and J/°C, or a `Ladder` of up to five such poles, at the base periphery; optionally `RthSlope` (°C/W per °C) and `Tref` (°C) for a thermal resistance that varies with the ambient. The device then has a thermal node `t` whose voltage is the temperature rise, into which it puts its dissipated power, with `Rth ∥ Cth` (or the ladder) from it to ground; every constituent is evaluated at the run's temperature plus that rise. A symbol's pin 4 is that node, so a heatsink network attached there is in parallel with the model's own. `Rth` scales by N0/N and `Cth` by N/N0. |
 | `Traps` | Trapping: `Model` (`CaptureEmission`, `Custom`, or another installed model), `States` (the enabled ones: `phi1` gate-lag, `phi2` drain-lag), the model's `Parameters` and the `Levels` each state was trained at, in volts. Each state is a node of the device whose voltage is the state; the states are inputs of `Id` and `Qd`, never of `Ig` or `Qg`. `Coupling` is `Trained` (the default, never written) or `Shift`: under `Shift`, `Id` takes no state and is evaluated at a shifted gate voltage, `Id(vgs − ΔV, vds, T)` with `ΔV = ShiftDrain·(phi2 − vds) + ShiftGate·(vgs − phi1)` over the enabled states, so it equals the trap-free current at every DC bias; `ShiftDrain` and `ShiftGate` (V/V) are then in `Parameters`, one per enabled state. `Shift` is refused for a model other than `CaptureEmission`, with an `Id` that takes a trap state, and with a strength that is missing or not finite. `CaptureEmission`'s parameters are `TauCapt1`/`TauCapt2` and `TauEmit1`/`TauEmit2` (s), `Xref` and `Vc` (V), and with thermally activated emission `Ea1`/`Ea2` (eV) and `Tref` (°C). A `Custom` model adds `Expressions`: per state its `Dynamics` (dphi/dt, in V/s) and `Dc` (its DC value) over the state, `vgs`, `vds`, `T` (°C) and its parameters — the `Dc` without the state itself; the `Dc` must be a fixed point of the `Dynamics`. Absent: no traps. Not combined with `Core.Dispersion` or `Core.Symmetry: Exchange`. |
 | `Network` | `Netlist`: `.cnl` text holding one `define` block with exactly six pins — extrinsic gate, drain, source, then intrinsic gate, drain, source — and its element values as variables. `Scaling`: each variable's rule, `fixed` (the default), `perFinger` or `perFingerInverse`. See [The extrinsic network](#network). |
 | `Core.Constituents` | `Id`, `Ig`, `Qg` and `Qd`, each `{ "Method", "Inputs", … }`, the method one of `Equation`, `Table` or `ANN` (and `Drift` for the two charges). An `Equation` carries `Expression` and `Parameters` (named constants). A `Table` names its arrays in `Table` — a grid of values and the coefficients of the smooth spline through them — and records its `Smoothing`. An `ANN` names its arrays in `Network` and its hidden layers' `Activation`, `Tanh` or `Sigmoid`. `Ig` carries two of whichever its method uses, `IgGs` and `IgGd`. Inputs are `vgs` and `vds` in volts, `T` in °C for a `Range` model, and the trap states in volts for a model with `Traps`. Currents are in A, charges in C. An optional `IdRF` is the drain current at RF, with `Core.Dispersion`. |
@@ -576,7 +576,7 @@ Model Composer chapter:
 the charges create; it exits 3 above the threshold. A model written as charge functions passes by construction, so a
 failure means a charge does not read the voltages the core gives it.
 
-A `.cmodel` written elsewhere runs wherever one from the Model Composer does: as a `ComposedFet` in any schematic or
+A `.cmodel` written elsewhere runs wherever one from the Model Composer does: as a `ComposedFET` in any schematic or
 netlist, and as [harmonicaRF](harmonicarf.html)'s device.
 
 ## For an AI agent {#agents}
@@ -588,7 +588,7 @@ an agent writes the model with its own tools:
 2. Write a script that builds `model.json` (and any arrays) and zips it, as in [the example](#example), and run it
    with the agent's own shell.
 3. `check path=<f.cmodel>` — 0 errors, or one sentence naming the field to fix.
-4. Write a bench `.cnl` placing `ComposedFet:X1 g d s File="<f.cmodel>"`, `check` it, and `run` it.
+4. Write a bench `.cnl` placing `ComposedFET:X1 g d s File="<f.cmodel>"`, `check` it, and `run` it.
 5. For a model with nonlinear charges, `model noun=check-charge path=<bench.cnl> device=X1 bias=<vgs>,<vds>`.
 
 To build a model from measured data instead, use the `model` tool, whose steps write a `.cmodel` for you; the

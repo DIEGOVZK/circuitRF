@@ -42,7 +42,7 @@ public sealed class ModelAgentEndToEndTests(ITestOutputHelper output) : IDisposa
         Assert.Contains("Current: fresh.", explain, StringComparison.Ordinal);
         Assert.Contains("Charge: fresh.", explain, StringComparison.Ordinal);
 
-        File.WriteAllText(Path.Combine(_dir, "amp.cnl"), Bench("ComposedFet:X1 g d 0 File=fet.cmodel\n"));
+        File.WriteAllText(Path.Combine(_dir, "amp.cnl"), Bench("ComposedFET:X1 g d 0 File=fet.cmodel\n"));
         Step("hb", "amp.cnl", "-o", "amp.npy");
         File.WriteAllText(Path.Combine(_dir, "truth.cnl"),
             ComposedTestModels.SddGlobals + ComposedTestModels.ReferenceCell("ref") + Bench("ref:X1 g d 0\n"));

@@ -75,8 +75,8 @@ public sealed class ThermalInterfacesBlocksTests(ITestOutputHelper output) : IDi
         string notes = string.Join("\n", run.Notes ?? []);
         output.WriteLine(notes);
         Assert.Contains("Interface resistances in force", notes);
-        Assert.Contains("'flange' | 'die1': 1E-05 m²·K/W from the technology's pair 'Die' / 'Copper'", notes);
-        Assert.Contains("'flange' | 'die2': 3E-05 m²·K/W from the document's ContactResistances override", notes);
+        Assert.Contains("'flange' | 'die1': 1E-05 m²·°C/W from the technology's pair 'Die' / 'Copper'", notes);
+        Assert.Contains("'flange' | 'die2': 3E-05 m²·°C/W from the document's ContactResistances override", notes);
         double dT = run.Data!["dT"].RealValues[0], expected = 2e-5 * 1 / (600e-6 * 600e-6);
         output.WriteLine($"die2 − die1 = {dT:F3} K; ΔR″·P/A = {expected:F3} K");
         Assert.InRange(dT, 0.9 * expected, 1.1 * expected);
@@ -328,7 +328,7 @@ public sealed class ThermalInterfacesBlocksTests(ITestOutputHelper output) : IDi
         var w = Run(ws, wholeDoc, "Hot", "Whole");
         var h = Run(ws, halfDoc, "Hot", "Half");
         double rw = w.Data!["Rth"].RealValues[0], rh = h.Data!["Rth"].RealValues[0];
-        output.WriteLine($"Rth whole {rw:F5} K/W, half {rh:F5} K/W ({100 * (rh - rw) / rw:+0.000;-0.000} %)");
+        output.WriteLine($"Rth whole {rw:F5} °C/W, half {rh:F5} °C/W ({100 * (rh - rw) / rw:+0.000;-0.000} %)");
         Assert.Contains(h.Notes!, n => n.Contains("the modelled part is 1/2 of the device"));
         Assert.True(Math.Abs(rh - rw) <= 5e-3 * rw, $"half {rh} vs whole {rw}");
 

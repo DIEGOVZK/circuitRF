@@ -11,7 +11,7 @@
       { "Name": "channel", "Readme": "202.7 °C" },
       { "Name": "IR spot, 3 µm", "Readme": "182.5 °C" },
       { "Name": "offset, 3 µm spot", "Readme": "20.2 K" },
-      { "Name": "Rth_ch", "Readme": "470.9 K/W" }
+      { "Name": "Rth_ch", "Readme": "470.9 °C/W" }
     ],
     "IrSpot": [
       { "ir_spot_um": 1,  "dT_ch_ir": 18.07985, "Readme": "18.1 K" },
@@ -21,7 +21,7 @@
     "Alternatives": [
       {
         "Name": "order 1",
-        "Readme": [ "12 s", "199.5 °C", "18.4 K", "458.2 K/W" ],
+        "Readme": [ "12 s", "199.5 °C", "18.4 K", "458.2 °C/W" ],
         "Recorded": { "ChannelMax": 199.5444, "dT_ch_ir": 18.43627, "Rth_ch": 458.1775 }
       }
     ]
@@ -42,9 +42,9 @@
       { "Name": "centre finger", "Readme": "105.1 °C" },
       { "Name": "edge finger", "Readme": "101.6 °C" },
       { "Name": "centre minus edge", "Readme": "3.5 K" },
-      { "Name": "own Rth, edge finger", "Readme": "52.91 K/W" },
-      { "Name": "own Rth, fourth finger", "Readme": "53.17 K/W" },
-      { "Name": "neighbour's Rth", "Readme": "20.52 K/W" },
+      { "Name": "own Rth, edge finger", "Readme": "52.91 °C/W" },
+      { "Name": "own Rth, fourth finger", "Readme": "53.17 °C/W" },
+      { "Name": "neighbour's Rth", "Readme": "20.52 °C/W" },
       { "Name": "rise, edge finger", "Readme": "15.84 K" },
       { "Name": "rise, fourth finger", "Readme": "19.13 K" },
       { "Name": "pulse peak, fourth finger", "Readme": "90.71 °C" },

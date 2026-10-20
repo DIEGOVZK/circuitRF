@@ -107,8 +107,8 @@ public sealed class GuidedExtrapolationTests(ITestOutputHelper output)
             """;
 
         var settings = new AnalysisSettings { DcBiasStepping = DcBiasSteppingMode.Never, NonlinearAbsTol = 1e-12 };
-        var a = ComposedFetEquivalenceTests.Dc(bench + $"ComposedFet:X1 g d 0 File=\"{ann}\"\n", settings);
-        var b = ComposedFetEquivalenceTests.Dc(bench + $"ComposedFet:X1 g d 0 File=\"{twin}\"\n", settings);
+        var a = ComposedFetEquivalenceTests.Dc(bench + $"ComposedFET:X1 g d 0 File=\"{ann}\"\n", settings);
+        var b = ComposedFetEquivalenceTests.Dc(bench + $"ComposedFET:X1 g d 0 File=\"{twin}\"\n", settings);
 
         foreach (string node in (string[])["g", "d", "X1.gi", "X1.di", "X1.si"])
         {

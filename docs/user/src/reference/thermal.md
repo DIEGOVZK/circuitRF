@@ -28,7 +28,7 @@ install it.
   material states one, and then a Newton loop over temperature (the run's notes give its steps). Silicon carbide, gallium
   nitride, gold and copper carry tables in circuitRF's generic library; that is why an Rth changes with power.
 - **Contacts.** Two touching solids conduct perfectly unless a resistance is stated: a technology's *ThermalInterfaces* for a
-  pair of materials (the generic library's GaN/SiC nucleation layer, 3.3E-08 m²·K/W), or a document's override for one contact.
+  pair of materials (the generic library's GaN/SiC nucleation layer, 3.3E-08 m²·°C/W), or a document's override for one contact.
   A thin bond line — a die attach, a solder layer — is usually best stated this way, as its thickness over its conductivity,
   rather than drawn (see [the mesh](#mesh)).
 - **Boundaries**: fixed temperature, convection, or insulated (every face nothing names). Set by right-clicking a face;
@@ -54,17 +54,17 @@ from 3 W to 11 W; the run takes about 1 min 17 s and 1.1 GB on an Apple M4 (the 
 
 | Pdiss | Die top | Rth_jc | Rth_ja |
 |---|---|---|---|
-| 3 W | 116.2 °C | 5.08 K/W | — |
-| 11 W | 207.9 °C | 5.83 K/W | 11.18 K/W |
+| 3 W | 116.2 °C | 5.08 °C/W | — |
+| 11 W | 207.9 °C | 5.83 °C/W | 11.18 °C/W |
 
 **What "case" means is a choice.** `Rth_jc` reads the case as the flange bottom's average (143.8 °C at 11 W); against the
-flange bottom's hottest point, where a thermocouple under the die would sit, it is 5.42 K/W. A datasheet's number means one
+flange bottom's hottest point, where a thermocouple under the die would sit, it is 5.42 °C/W. A datasheet's number means one
 of these, and they differ by about 8 %.
 
 **An external check.** The heat crosses the interface material in one dimension, so its top must average
 85 + 11 × 100 µm / (3 W/(m·K) × 80 mm²) = 89.58 °C at 11 W — and the probe on it reads exactly that.
 
-**The via field as a block.** Enabling the view's effective block over the vias reads the die at 194.0 °C (Rth_ja 9.91 K/W):
+**The via field as a block.** Enabling the view's effective block over the vias reads the die at 194.0 °C (Rth_ja 9.91 °C/W):
 13.9 K cooler than the vias drawn, and in 3 min 10 s rather than 1 min 17 s on this board. The block is an approximation that
 runs cool; it pays where there are hundreds of vias.
 
@@ -75,7 +75,7 @@ GaN/SiC interface resistance, passivation, gate, **field plate**, source and dra
 in a 0.5 × 0.25 µm channel at the drain-side edge of the gate, the substrate's bottom at 85 °C, and a symmetry plane at the
 finger's mid-width. About 3 min 28 s and 2.0 GB, on 216,837 tetrahedra.
 
-The channel reaches 202.7 °C (`Rth_ch` 470.9 K/W for the whole finger). An **IR spot** probe — a disk on the passivation's
+The channel reaches 202.7 °C (`Rth_ch` 470.9 °C/W for the whole finger). An **IR spot** probe — a disk on the passivation's
 top, straight over the channel, the average an infrared microscope reports — reads 182.5 °C through a 3 µm spot: an offset
 of 20.2 K. The field plate hides the channel, and the passivation above it is reached only by heat that spreads. The spot's
 size moves the answer more than anything else:
@@ -89,7 +89,7 @@ size moves the answer more than anything else:
 So an IR temperature needs its spot size, and the correction to the channel belongs to that spot.
 
 **Order 2 matters here.** The same mesh at element order 1 runs in 12 s but reads the channel at 199.5 °C, the offset at
-18.4 K and `Rth_ch` at 458.2 K/W: 9 % low on the offset. A sub-micrometre heat source needs the curvature order 2 carries.
+18.4 K and `Rth_ch` at 458.2 °C/W: 9 % low on the offset. A sub-micrometre heat source needs the curvature order 2 carries.
 
 The workspace's second cell, **Eight Fingers**, is the plan of an eight-finger array (0.25 W a finger): the fourth finger
 reaches 105.1 °C and the edge one 101.6 °C, 3.5 K cooler (58,032 tetrahedra; it solves in less time than *One Finger*), because the middle of an array has neighbours on both sides.
@@ -114,7 +114,7 @@ of 1/period. It does not use a fit of the heat that travels from one source to a
 gestures: {{anchor: drawing-in-3d.html#thermal-rth|The 3D Editor ▸ Rth, Z_th and pulses}}.
 
 In *Eight Fingers* (a half model, so each figure is per watt in the modelled half of a finger), an edge finger's own
-resistance is 52.91 K/W, the fourth finger's 53.17 K/W, and a neighbour adds 20.52 K/W. With all eight on, the edge finger
+resistance is 52.91 °C/W, the fourth finger's 53.17 °C/W, and a neighbour adds 20.52 °C/W. With all eight on, the edge finger
 rises 15.84 K and the fourth 19.13 K. A 1 ms, 10 % duty pulse train takes the fourth finger to a peak of 90.71 °C; a single
 pulse reaches 90.62 °C, and the average is 85.75 °C. The heat that crosses from the edge finger arrives late, and it is
 counted exactly because the pulse is solved at the harmonics of 1 kHz rather than read from a fitted network.
@@ -223,7 +223,7 @@ in order:
 - draw fine detail only where it is — *Channel vs Surface* draws the epitaxy on a 20 µm cell, *Die to Heatsink* does not draw it;
 - set *MinThroughThickness* to 1 (both examples do);
 - choose **element order** by what you read: order 1 is several times faster, and on *Die to Heatsink* it reads the junction
-  2.5 % cool (207.9 °C against 210.9 °C at order 2, Rth_jc 5.83 against 5.99 K/W and Rth_ja 11.18 against 11.45 K/W; the order-2 run took 17 min 55 s and 8.3 GB); on *Channel vs Surface* order 2 is
+  2.5 % cool (207.9 °C against 210.9 °C at order 2, Rth_jc 5.83 against 5.99 °C/W and Rth_ja 11.18 against 11.45 °C/W; the order-2 run took 17 min 55 s and 8.3 GB); on *Channel vs Surface* order 2 is
   kept.
 
 `circuitrf explain <view> --analysis <setup>` estimates the tetrahedra, unknowns and memory before anything is meshed, and the

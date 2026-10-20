@@ -16,10 +16,10 @@
       { "Name": "die top at 11 W", "Readme": "207.9 °C" },
       { "Name": "die top at 3 W", "Readme": "116.2 °C" },
       { "Name": "flange bottom average at 11 W", "Readme": "143.8 °C" },
-      { "Name": "Rth_jc at 3 W", "Readme": "5.08 K/W" },
-      { "Name": "Rth_jc at 11 W", "Readme": "5.83 K/W" },
-      { "Name": "Rth_jc_hot at 11 W", "Readme": "5.42 K/W" },
-      { "Name": "Rth_ja at 11 W", "Readme": "11.18 K/W" },
+      { "Name": "Rth_jc at 3 W", "Readme": "5.08 °C/W" },
+      { "Name": "Rth_jc at 11 W", "Readme": "5.83 °C/W" },
+      { "Name": "Rth_jc_hot at 11 W", "Readme": "5.42 °C/W" },
+      { "Name": "Rth_ja at 11 W", "Readme": "11.18 °C/W" },
       { "Name": "T_interface at 11 W", "Readme": "89.58 °C" }
     ]
   },
@@ -35,7 +35,7 @@
     {
       "Name": "order 2",
       "Mesh": "order 2, the same mesh",
-      "Readme": [ "17 min 55 s", "8.3 GB", "210.9 °C", "5.99 K/W", "11.45 K/W" ],
+      "Readme": [ "17 min 55 s", "8.3 GB", "210.9 °C", "5.99 °C/W", "11.45 °C/W" ],
       "Recorded": { "Pdiss": 11, "DieTop": 210.923, "Rth_jc": 5.98652, "Rth_ja": 11.4476 }
     },
     {
@@ -47,7 +47,7 @@
     {
       "Name": "the via field as an effective block",
       "Mesh": "268,502 tetrahedra of order 1",
-      "Readme": [ "3 min 10 s", "194.0 °C", "9.91 K/W", "13.9 K" ],
+      "Readme": [ "3 min 10 s", "194.0 °C", "9.91 °C/W", "13.9 K" ],
       "Recorded": { "Pdiss": 11, "DieTop": 194.0327, "Rth_jc": 5.768505, "Rth_ja": 9.912063 }
     }
   ]

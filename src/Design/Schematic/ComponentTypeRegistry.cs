@@ -489,9 +489,9 @@ public static class ComponentTypeRegistry
         // A composed FET (brief-modelcomposer-1): a .cmodel the Model Composer wrote, placed as a
         // device. Beside VerilogA for VerilogA's reason — a transistor circuitRF does not ship — and
         // DataFiles as a filter keyword for the same reason, since what is placed is a FILE.
-        [SymbolKind.ComposedFet]   = new("ComposedFet", "X",
+        [SymbolKind.ComposedFET]   = new("ComposedFET", "X",
             Category: ComponentCategory.Devices,
-            SearchTerms: ["ComposedFet", "Model Composer", "cmodel", ".cmodel", "FET", "HEMT", "GaN",
+            SearchTerms: ["ComposedFET", "Model Composer", "cmodel", ".cmodel", "FET", "HEMT", "GaN",
                           "transistor", "measured model", "table model", "neural network", "device",
                           "nonlinear", "model file"],
             IsCommon: false,
@@ -1172,7 +1172,7 @@ public static class ComponentTypeRegistry
         SymbolKind.FetStatz        => "FET_Statz",
         SymbolKind.FetMaterka      => "FET_Materka",
         SymbolKind.FetAngelov      => "FET_Angelov",
-        SymbolKind.ComposedFet     => ComponentModelFactory.ComposedFetTypeName,
+        SymbolKind.ComposedFET     => ComponentModelFactory.ComposedFetTypeName,
         // Two engine components over one model, so the netlist says which transistor it is rather
         // than leaving it to a parameter that a later edit could silently disagree with the symbol.
         // p-channel is a leading "P" on the engine name, for the three laws that have one.
@@ -1332,7 +1332,7 @@ public static class ComponentTypeRegistry
          : WBondParameterDescription(kind, parameterName) is { Length: > 0 } wbDesc ? wbDesc
          : PlanarLineParameterDescription(kind, parameterName) is { Length: > 0 } plDesc ? plDesc
          : TlineParameterDescription(kind, parameterName) is { Length: > 0 } tlDesc ? tlDesc
-         : kind is SymbolKind.ComposedFet ? ComposedFetParameterDescription(parameterName)
+         : kind is SymbolKind.ComposedFET ? ComposedFetParameterDescription(parameterName)
          : kind is not SymbolKind.VerilogA ? "" : parameterName switch
         {
             "File"  => "The model to load: a compiled model (.osdi), or Verilog-A source (.va, .vams) "
@@ -1349,14 +1349,18 @@ public static class ComponentTypeRegistry
             _       => "",
         };
 
-    /// <summary>A composed FET's three rows (brief-modelcomposer-1).</summary>
+    /// <summary>A composed FET's rows (brief-modelcomposer-1, -9, -21).</summary>
     private static string ComposedFetParameterDescription(string parameterName) => parameterName switch
     {
         "File"   => "The .cmodel to place — a model the Model Composer exported.",
         "N"      => "The finger count. Blank is the model's own base finger count; the intrinsic device "
                   + "and each network element scale from it by the rule the model records.",
         "Symbol" => "The symbol drawn: a library symbol's name or a .csym path relative to the .cmodel. "
-                  + "Blank is the model's own. Its pins 1, 2 and 3 are g, d and s.",
+                  + "Blank is the model's own. Its pins 1, 2 and 3 are g, d and s; a pin 4 is the thermal node t.",
+        "Rth"    => "This device's thermal resistance, °C/W, at its finger count. Blank is the model's own, scaled to N. "
+                  + "Only a model that self-heats has one.",
+        "Cth"    => "This device's thermal capacitance, J/°C, at its finger count. Blank is the model's own, scaled to N. "
+                  + "With Rth it sets the thermal time constant Rth·Cth.",
         ComposedSwitches.ChargeName      => "Off: no intrinsic charge at all. The network's capacitors stay.",
         ComposedSwitches.LinearCName     => "On: the intrinsic charge is linearised at the quiescent DC bias point.",
         ComposedSwitches.LinearCgsName   => "On: Cgs is held at its bias-point value; the other capacitances follow the model.",
@@ -2296,14 +2300,17 @@ public static class ComponentTypeRegistry
             // result names, and a user studying one device can stop paying for the rest. Absent means
             // true as well, so a schematic saved before this existed behaves identically.
             // A composed FET: the .cmodel, the finger count (blank = the model's own N0) and the symbol
-            // (blank = the model's own). Symbol is artwork and never reaches the engine.
+            // (blank = the model's own). Symbol is artwork and never reaches the engine. Rth and Cth (blank = the
+            // model's, scaled to N) set this device's own thermal network.
             // The ten instance switches (brief-modelcomposer-21, -22) follow, seeded at their defaults — the model as fitted —
             // and never drawn; extraction writes one only when it is not the default.
-            case SymbolKind.ComposedFet:
+            case SymbolKind.ComposedFET:
                 return [
                     new("File",   "",     "", true,  UnitDimension.None),
                     new("N",      "",     "", true,  UnitDimension.None),
                     new("Symbol", "",     "", false, UnitDimension.None),
+                    new("Rth",    "",     "", false, UnitDimension.None),
+                    new("Cth",    "",     "", false, UnitDimension.None),
                     .. ComposedSwitches.Names.Select(n => new DefaultParam(
                         n, ComposedSwitches.DefaultOf(n) ? "true" : "false", "", false, UnitDimension.None)),
                 ];
@@ -3677,7 +3684,7 @@ public static class ComponentTypeRegistry
         (SymbolKind.Via or SymbolKind.ViaGnd, "IncludeC")                                => ShowBiasOptions,
         // A composed FET's instance switches (brief-modelcomposer-21): yes or no. A switch bound to an expression keeps a
         // text box (ParameterRowViewModel), since a picker cannot hold one.
-        (SymbolKind.ComposedFet, _) when ComposedSwitches.IsSwitch(paramName)                => ComposedSwitchOptions,
+        (SymbolKind.ComposedFET, _) when ComposedSwitches.IsSwitch(paramName)                => ComposedSwitchOptions,
         _ => null,
     };
 

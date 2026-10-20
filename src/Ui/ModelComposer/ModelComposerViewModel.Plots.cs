@@ -40,11 +40,23 @@ public sealed partial class ModelComposerViewModel
         PlotHost = new DataDisplayViewModel(new DataSourceLibraryViewModel(), addEmptyPlot: false, selectEmptyPlot: false);
         RectContainer = PlotHost.AddPlot(PlotType.Rect, FreqUnit.GHz, left: 0, top: 0, width: 320, height: 198);
         SmithContainer = PlotHost.AddPlot(PlotType.Smith, FreqUnit.GHz, left: 0, top: 0, width: 320, height: 320);
-        foreach (var p in new[] { RectPlot, SmithPlot }) { p.IsFixedReadout = true; p.Axes.LockedPanning = true; }
+        foreach (var p in new[] { RectPlot, SmithPlot })
+        {
+            p.IsFixedReadout = true;
+            p.Axes.LockedPanning = true;
+            p.Axes.FontSizeLabel = TitleFontSizeLabel(p.Axes);
+        }
         PlotHost.SelectOnly((PlotContainerViewModel?)null);
         BiasPlaneLasso = new BiasPlaneLasso(() => _biasPlanePoints, OnLasso);
         RebuildPlotTabs();
     }
+
+    /// <summary>
+    /// The title a tenth larger than the axis labels. The renderer draws a title at <c>FontSizeLabel × 1.4</c> and an axis
+    /// label at <c>FontSizeTicks × 0.9</c>, which left the title twice the labels' size in a panel this small; harmonicaRF
+    /// sets <c>FontSizeLabel</c> for its own title for the same reason (<c>HarmonicaPanelRenderer.RectTitleFontSizeLabel</c>).
+    /// </summary>
+    private static double TitleFontSizeLabel(Axes axes) => axes.FontSizeTicks * 0.9 * 1.1 / 1.4;
 
     // ── tabs ─────────────────────────────────────────────────────────────────
 
@@ -169,14 +181,16 @@ public sealed partial class ModelComposerViewModel
         plot.CustomTitle = $"{sd.Set.Name} · {(byVgs ? "Id(Vds)" : "Id(Vgs)")}";
         var groups = sd.Data.Points.Where(p => !p.Excluded)
                        .GroupBy(p => Math.Round(byVgs ? p.Vgs : p.Vds, 6)).OrderBy(g => g.Key).ToList();
-        int c = 0;
         foreach (var g in groups)
         {
             var pts = g.OrderBy(p => byVgs ? p.Vds : p.Vgs).ToList();
             if (pts.Count < 2) continue;
-            plot.Traces.Add(Xy($"{(byVgs ? "Vgs" : "Vds")} {ModelValueFormat.G(g.Key)} V",
-                               [.. pts.Select(p => byVgs ? p.Vds : p.Vgs)], [.. pts.Select(p => p.Id * 1e3)],
-                               byVgs ? "Vds" : "Vgs", "V", c++, line: true, marker: null));
+            var t = Xy($"{(byVgs ? "Vgs" : "Vds")} {ModelValueFormat.G(g.Key)} V",
+                       [.. pts.Select(p => byVgs ? p.Vds : p.Vgs)], [.. pts.Select(p => p.Id * 1e3)],
+                       byVgs ? "Vds" : "Vgs", "V", FamilyColour, line: true, marker: MarkerType.Circle);
+            t.Properties.MarkerSize = SmallMarker;
+            t.Properties.Custom = false;
+            plot.Traces.Add(t);
         }
         var excluded = sd.Data.Points.Where(p => p.Excluded).ToList();
         if (excluded.Count > 0)
@@ -198,6 +212,9 @@ public sealed partial class ModelComposerViewModel
         var flagged = new List<(double X, double Y)>();
         var fit = new List<(double X, double Y)>();
         var flags = Loaded.Flags.Select(f => (f.DataSet, f.Point)).ToHashSet();
+        // Excluded as the DOCUMENT says, not as the loaded data last said: a click shows at once, while the data's reload
+        // behind it is still running — a second click in that gap read the point as still included and put it back.
+        var excluded = Document.DataSets.SelectMany(s => s.Exclusions.Select(x => (s.Name, x.Point))).ToHashSet();
         var fitPoints = IsNetworkStep ? FitPoints.Select(r => (r.Set, r.Point)).ToHashSet() : [];
         foreach (var set in Document.DataSets)
         {
@@ -215,20 +232,22 @@ public sealed partial class ModelComposerViewModel
                 if (ShowIntrinsic && n is { } nn) intr.Add(nn);
                 var at = ShowIntrinsic && n is { } m ? m : e;
                 drawn.Add(new BiasPlanePoint(set.Name, p.PointId, at.X, at.Y));
-                if (p.Excluded) excl.Add(at);
+                if (excluded.Contains((set.Name, p.PointId))) excl.Add(at);
                 if (flags.Contains((set.Name, p.PointId))) flagged.Add(at);
                 if (fitPoints.Contains((set.Name, p.PointId))) fit.Add(at);
             }
         }
         _biasPlanePoints = drawn;
         plot.CustomTitle = "Bias plane";
-        if (ext.Count > 0) plot.Traces.Add(Scatter("extrinsic", ext, 1, MarkerType.Circle, 4));
-        if (intr.Count > 0) plot.Traces.Add(Scatter("intrinsic", intr, 0, MarkerType.Circle, 6));
-        if (fit.Count > 0) plot.Traces.Add(Scatter("fit points", fit, 4, MarkerType.Square, 8));
-        if (flagged.Count > 0) plot.Traces.Add(Scatter("flagged", flagged, 3, MarkerType.TriangleUp, 8));
-        if (excl.Count > 0) plot.Traces.Add(Scatter("excluded", excl, 9, MarkerType.Cross, 9));
+        // Sizes in the Data Display's marker units (a fraction of the plot's size): small enough that a dense bias grid
+        // still reads as points, the cursor's star only a little larger than a point.
+        if (ext.Count > 0) plot.Traces.Add(Scatter("extrinsic", ext, 1, MarkerType.Circle, 0.8));
+        if (intr.Count > 0) plot.Traces.Add(Scatter("intrinsic", intr, 0, MarkerType.Circle, 1.0));
+        if (fit.Count > 0) plot.Traces.Add(Scatter("fit points", fit, 4, MarkerType.Square, 1.4));
+        if (flagged.Count > 0) plot.Traces.Add(Scatter("flagged", flagged, 3, MarkerType.TriangleUp, 1.4));
+        if (excl.Count > 0) plot.Traces.Add(Scatter("excluded", excl, 9, MarkerType.Cross, 1.6));
         if (SelectedVgs is { } cg && SelectedVds is { } cd)
-            plot.Traces.Add(Scatter("cursor", [(cd.Value, cg.Value)], 2, MarkerType.Star, 11));
+            plot.Traces.Add(Scatter("cursor", [(cd.Value, cg.Value)], 2, MarkerType.Star, 1.8));
         Labels(plot, "Vds (V)", "Vgs (V)");
     }
 
@@ -320,6 +339,13 @@ public sealed partial class ModelComposerViewModel
     }
 
     // ── trace helpers (railRF's own shapes) ──────────────────────────────────
+
+    /// <summary>The one colour an I–V family is drawn in — blue, the palette's second, so it never reads as the Data
+    /// Display's red first trace — with every member the same: a family is one quantity drawn several times.</summary>
+    private const int FamilyColour = 1;
+
+    /// <summary>The marker size a family's data points are drawn at: present, not prominent.</summary>
+    private const double SmallMarker = 0.8;
 
     private static double[] Values(DataCube c) => [.. Enumerable.Range(0, c.Axes[0].Values.Length).Select(i => (double)c[i])];
 

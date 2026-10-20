@@ -178,8 +178,8 @@ internal static class ExplainThermal
                     var pair = tech?.FindThermalInterface(ma, mb);
                     if (over is null && pair is null) continue;
                     walks.Add(new ResolutionStepJson($"{at}: interface '{a.Name}' | '{b.Name}'", null,
-                        over is not null ? $"{G(over.ResistanceM2KW)} m²·K/W, the document's ContactResistances override"
-                                         : $"{G(pair!.ResistanceM2KW)} m²·K/W, the pair '{pair.MaterialA}' / '{pair.MaterialB}'",
+                        over is not null ? $"{G(over.ResistanceM2KW)} m²·°C/W, the document's ContactResistances override"
+                                         : $"{G(pair!.ResistanceM2KW)} m²·°C/W, the pair '{pair.MaterialA}' / '{pair.MaterialB}'",
                         "applied: the contact's nodes are duplicated and the two sides joined through R″ (a contact override wins over " +
                         "the technology's material pair, for that contact only). Listed where the bounding boxes touch; the run " +
                         "reports the area the mesh actually shares"));

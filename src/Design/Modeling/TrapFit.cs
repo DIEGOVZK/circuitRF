@@ -2,7 +2,7 @@
 //
 //   1. The model is a setting: None (the default), CaptureEmission or Custom, or any model a developer registers — one
 //      contract (src/Core/Devices/Composed/Traps). The settings become the .cmodel's Traps block, checked by the same
-//      registry the device compiles it with, so a block the step accepts is one a ComposedFet loads.
+//      registry the device compiles it with, so a block the step accepts is one a ComposedFET loads.
 //   2. The data's trap states (R-mc10-4). A pulsed set's trap-setting bias is its PrePulse level when it has one (double
 //      pulse) and its quiescent point otherwise, both re-referenced to intrinsic like any point (IntrinsicExtraction's
 //      Setting cube). Per enabled state, a pulsed point is TOWARD the setting when its own DC state lies on the setting's
@@ -157,7 +157,7 @@ public static partial class TrapFit
 
     /// <summary>
     /// The <c>.cmodel</c> block the settings describe, with <paramref name="levels"/> when given, checked by the registry —
-    /// so the step refuses exactly what a <c>ComposedFet</c> would. Every declared parameter of an enabled state is written
+    /// so the step refuses exactly what a <c>ComposedFET</c> would. Every declared parameter of an enabled state is written
     /// with its value, so the model states what it was built with.
     /// </summary>
     public static ModelTraps Block(TrapFitSettings s, IReadOnlyDictionary<string, IReadOnlyList<double>>? levels = null,

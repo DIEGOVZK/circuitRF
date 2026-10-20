@@ -81,6 +81,18 @@ internal static class CircuitSource
     public static string CnlTextOf(string cschPath) => SchematicCircuit.CnlTextOf(cschPath);
 
     /// <summary>
+    /// What a run verb's input resolves its relative file references against — a <c>.cnl</c> its own folder, as
+    /// <c>CnlReader.ReadFile</c> reads it; a <c>.csch</c> the workspace root, as Simulate elaborates it
+    /// (<see cref="SchematicCircuit.ReferenceBaseOf"/>). Every elaborator and every sweep engine of one run takes this
+    /// one base: a schematic's folder handed to a sweep while the first elaboration read the working directory found a
+    /// ComposedFET's <c>.cmodel</c> only when the verb ran from the workspace root.
+    /// </summary>
+    public static string? ReferenceBaseOf(string inputPath) =>
+        DocumentKinds.Classify(inputPath) == DocumentKind.Schematic
+            ? SchematicCircuit.ReferenceBaseOf(inputPath)
+            : Path.GetDirectoryName(Path.GetFullPath(inputPath));
+
+    /// <summary>
     /// A run verb's input: a `.cnl` read as itself, or a `.csch` EXTRACTED in memory (R-aut11-1).
     ///
     /// <para><b>Why a run verb takes a schematic at all.</b> Until this landed the automation

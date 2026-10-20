@@ -383,7 +383,7 @@ public static class ModelValidationReport
             if (idx.Count < 2) continue;
             double rth = idx.Sum(k => allP[k] * allRise[k]) / idx.Sum(k => allP[k] * allP[k]);
             double model = thermal.RthAt(group.Key);
-            lines.Add($"Rth at {G(group.Key)} °C: data {G(rth)} K/W, model {G(model)} K/W ({G(100 * (model - rth) / rth)} %)");
+            lines.Add($"Rth at {G(group.Key)} °C: data {G(rth)} °C/W, model {G(model)} °C/W ({G(100 * (model - rth) / rth)} %)");
         }
         if (lines.Count == 0) lines.Add("Thermal: too few heated DC points to estimate Rth from the data.");
         return new ReportSection("Thermal", ds, lines, new Dictionary<string, string>());

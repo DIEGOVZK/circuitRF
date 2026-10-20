@@ -349,15 +349,15 @@ public sealed partial class ModelComposerViewModel
         var s = ThermalFit.Settings(Document);
         SelfHeating = s.SelfHeating;
         Rth = s.Rth is { } rth ? Num(rth) : "";
-        Cth = s.Cth is { } cth ? ModelValueFormat.Eng(cth, "J/K") : "";
+        Cth = s.Cth is { } cth ? ModelValueFormat.Eng(cth, "J/°C") : "";
         Ladder = string.Join(", ", s.Ladder.Select(p => $"{Num(p.Fraction)}:{ModelValueFormat.Eng(p.Tau, "s")}"));
         var plan = ThermalFit.Plan(Document, Loaded.Data);
         OneTemperature = Loaded.Data.Count > 0 && plan.IsSingle;
         T0Text = $"T0 {ModelValueFormat.G(plan.T0)} °C";
         var r = ThermalFit.Record(Document);
         ThermalResidual = r?.Extraction is { } e
-            ? $"Rth {(r.Rth is { } x ? ModelValueFormat.G(x) : "—")} K/W · residual {ModelValueFormat.G(100 * e.ResidualRelative)} % over {e.Used} pts"
-            : r?.Rth is { } rr ? $"Rth {ModelValueFormat.G(rr)} K/W" : "";
+            ? $"Rth {(r.Rth is { } x ? ModelValueFormat.G(x) : "—")} °C/W · residual {ModelValueFormat.G(100 * e.ResidualRelative)} % over {e.Used} pts"
+            : r?.Rth is { } rr ? $"Rth {ModelValueFormat.G(rr)} °C/W" : "";
     }
 
     partial void OnSelfHeatingChanged(bool value) => EditThermal(s => s with { SelfHeating = value }, $"self-heating {(value ? "on" : "off")}");
@@ -366,14 +366,15 @@ public sealed partial class ModelComposerViewModel
     {
         if (value.Trim().Length == 0) { EditThermal(s => s with { Rth = null }, "Rth extracted"); return; }
         if (TryNum(value, out double v) && v > 0) EditThermal(s => s with { Rth = v }, $"Rth {value}");
-        else if (!_loadingSteps) Error($"Thermal: '{value}' is not a thermal resistance in K/W.");
+        else if (!_loadingSteps) Error($"Thermal: '{value}' is not a thermal resistance in °C/W.");
     }
 
     partial void OnCthChanged(string value)
     {
         if (value.Trim().Length == 0) { EditThermal(s => s with { Cth = null }, "Cth none"); return; }
-        if (ModelValueFormat.TryParse(value, "J/K", out double v) && v > 0) EditThermal(s => s with { Cth = v }, $"Cth {value}");
-        else if (!_loadingSteps) Error($"Thermal: '{value}' is not a thermal capacitance in J/K.");
+        // J/°C, and J/K too: the same number, and the SI spelling a user may type.
+        if ((ModelValueFormat.TryParse(value, "J/°C", out double v) || ModelValueFormat.TryParse(value, "J/K", out v)) && v > 0) EditThermal(s => s with { Cth = v }, $"Cth {value}");
+        else if (!_loadingSteps) Error($"Thermal: '{value}' is not a thermal capacitance in J/°C.");
     }
 
     partial void OnLadderChanged(string value)
@@ -709,6 +710,7 @@ public sealed partial class ModelComposerViewModel
                     ? result
                     : new ValidationResult(result.ModelPath, [.. Validation.Items.Where(i => i.Set != set), .. result.Items], result.Notes);
                 RefreshValidation();
+                RebuildPlotTabs();
                 int failed = result.Items.Count(i => !i.Passed);
                 if (failed > 0) Warn($"{failed} of {result.Items.Count} item(s) outside their tolerances.");
                 else Info(result.Items.Count > 0 ? $"{result.Items.Count} item(s) within their tolerances." : result.Notes.FirstOrDefault() ?? "Nothing to validate.");
@@ -735,12 +737,15 @@ public sealed partial class ModelComposerViewModel
 
     public ObservableCollection<SymbolRow> Symbols { get; } = [];
     [ObservableProperty] private SymbolRow? _selectedSymbol;
+
+    /// <summary>A row of the Export step's symbol menu.</summary>
+    [RelayCommand]
+    private void ChooseSymbol(SymbolRow? row) { if (row is not null) SelectedSymbol = row; }
     [ObservableProperty] private string _exportPath = "";
     /// <summary>The one line naming the stale steps that block Export; empty when nothing is stale.</summary>
     [ObservableProperty] private string _exportBlocked = "";
     /// <summary>The last export written, which Copy instance places.</summary>
     [ObservableProperty] private string? _exportedModel;
-    [ObservableProperty] private string _peripheryText = "";
 
     /// <summary>Passive: the cell name, the library (or workspace) folder, the cell's parameters.</summary>
     [ObservableProperty] private string _cellName = "";
@@ -770,7 +775,6 @@ public sealed partial class ModelComposerViewModel
             if (PassiveStep.Record(Document) is { } r) foreach (string line in r.Report.Take(12)) CellParameters.Add(line);
             return;
         }
-        PeripheryText = Document.BasePeriphery is { } p ? $"N0 {p.Fingers} · W0 {p.UnitWidth}" : "N0 and W0 are not set.";
         if (DocumentPath is { } path && ExportPath.Length == 0)
             ExportPath = Path.ChangeExtension(path, CmodelFile.Extension);
         string outDir = ExportPath.Length > 0 ? Path.GetDirectoryName(Path.GetFullPath(ExportPath))! : DocumentFolder ?? "";
@@ -782,28 +786,18 @@ public sealed partial class ModelComposerViewModel
         string want = SelectedSymbol?.Value ?? CmodelExport.Settings(Document).Symbol ?? "";
         Symbols.Clear();
         foreach (var c in ModelSymbols.Candidates(ws, outDir, thermal))
-            Symbols.Add(new SymbolRow(c.Value, c.Label, c.Pins, SymbolDrawing(c.Value, outDir)));
+            Symbols.Add(new SymbolRow(c.Value, c.Label, c.Pins, GlyphRef(c.Value, outDir, thermal)));
         SelectedSymbol = Symbols.FirstOrDefault(s => s.Value == want) ?? Symbols.FirstOrDefault();
     }
 
-    /// <summary>A symbol drawn as one placed composed FET carrying it, as the schematic canvas would draw the instance.</summary>
-    private static SchematicModel? SymbolDrawing(string value, string outDir)
-    {
-        try
-        {
-            var c = new EditableComponent { InstanceName = "X1", Symbol = SymbolKind.ComposedFet };
-            foreach (var p in ComponentTypeRegistry.DefaultParameters(SymbolKind.ComposedFet, 3))
-                c.Parameters.Add(new EditableParameter
-                {
-                    Name = p.Name, Unit = p.Unit, ShowOnSchematic = false, Dimension = p.Dimension,
-                    Expression = p.Name == ComposedFetSymbolProvider.SymbolParameter
-                        ? value.EndsWith(".csym", StringComparison.OrdinalIgnoreCase) ? Path.GetFullPath(Path.Combine(outDir, value)) : value
-                        : p.Expression,
-                });
-            return SchematicPersistence.Deserialize(SchematicPersistence.SerializeSelection([c], [], [])).model.BuildRenderModel().Model;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException) { return null; }
-    }
+    /// <summary>
+    /// The reference a symbol's glyph is drawn from: a library name as it is, a <c>.csym</c> by its full path, and the
+    /// standard symbol with its thermal pin when the model self-heats — the glyph a placed instance of the export will show.
+    /// </summary>
+    private static string GlyphRef(string value, string outDir, bool thermal) =>
+        ComposedFetSymbolProvider.RefFor("", value.Length == 0
+            ? thermal ? ComposedFetSymbolProvider.ThermalGlyph : ""
+            : value.EndsWith(".csym", StringComparison.OrdinalIgnoreCase) ? Path.GetFullPath(Path.Combine(outDir, value)) : value);
 
     /// <summary>Asks where the <c>.cmodel</c> goes, given its suggested name; null when cancelled.</summary>
     public Func<string, Task<string?>>? PickModelPath { get; set; }

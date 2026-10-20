@@ -290,7 +290,7 @@ public static class ThermalFit
             rth = (b1 * a22 - b2 * a12) / det;
             slope = (a11 * b2 - a12 * b1) / det;
         }
-        if (!(rth > 0)) throw new ModelingException(StepName, $"the fit gives Rth = {G(rth)} K/W, which is not a thermal resistance.");
+        if (!(rth > 0)) throw new ModelingException(StepName, $"the fit gives Rth = {G(rth)} °C/W, which is not a thermal resistance.");
 
         double ss = 0, size = 0;
         foreach (var p in points)
@@ -303,7 +303,7 @@ public static class ThermalFit
         var record = new ThermalExtractionRecord(residual, relative, points.Count, low, unresolved,
             (points.Min(p => p.Vgs), points.Max(p => p.Vgs)), (points.Min(p => p.Vds), points.Max(p => p.Vds)),
             (points.Min(p => p.P), points.Max(p => p.P)));
-        report.Add($"Rth {G(rth)} K/W from {points.Count} DC point(s), residual {G(residual)} K; " +
+        report.Add($"Rth {G(rth)} °C/W from {points.Count} DC point(s), residual {G(residual)} K; " +
                    $"{low} below {G(100 * settings.MinPower)} % of the largest power left out, {unresolved} unresolved.");
         return new Extraction(rth, slope, tref, record);
     }

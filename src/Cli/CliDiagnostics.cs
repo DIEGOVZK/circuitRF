@@ -1669,7 +1669,7 @@ internal static class CliDiagnostics
 
     /// <summary>A relative reference that resolved to nothing. Names what was looked for and the
     /// directory it was looked in (R-aut4-8).</summary>
-    /// <summary>A file reference (a ComposedFet's <c>.cmodel</c>) that resolves, by elaboration's rule, to no file.</summary>
+    /// <summary>A file reference (a ComposedFET's <c>.cmodel</c>) that resolves, by elaboration's rule, to no file.</summary>
     public static Diagnostic ExplainRefFileNotFound(string reference, string resolved) => Diagnostic.Create(
         "explain.ref.file-not-found", DiagnosticSeverity.Error,
         "'{reference}' resolves to '{resolved}', which does not exist.",

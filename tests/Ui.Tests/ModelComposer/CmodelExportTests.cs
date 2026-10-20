@@ -46,7 +46,7 @@ public sealed class CmodelExportTests(ITestOutputHelper output)
         string path = Path.Combine(Path.GetDirectoryName(cmc)!, "out", "fet.cmodel");
         var result = CmodelExport.Export(cmc, path, created: "2026-10-19T00:00:00Z");
         foreach (string line in result.Lines) output.WriteLine(line);
-        string composed = $"ComposedFet:X1 g d 0 File=\"{path}\" N=4\n";
+        string composed = $"ComposedFET:X1 g d 0 File=\"{path}\" N=4\n";
 
         var (a, b) = (Dc(Bench(-0.4, 6) + composed), Dc(Bench(-0.4, 6) + ExportFixture.Truth()));
         foreach (string node in (string[])["g", "d", "X1.di"])

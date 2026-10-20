@@ -34,5 +34,14 @@ public sealed class ModelComposerChargeStepTests
         Assert.Equal(cube.RealValues, contour.Grid!.Values);
         Assert.Equal(cube.Axes[1].Values, contour.Grid.XSpace);
         Assert.Equal(cube.Axes[0].Values, contour.Grid.YSpace);
+
+        // A charge surface is drawn in the prefix its title names, so its contour labels are short numbers, not 0.
+        vm.SelectedPlotTab = ModelComposerViewModel.QgTab;
+        var qg = Assert.Single(vm.RectPlot.Traces, x => x.ContourData is not null).ContourData!;
+        double peak = qg.Grid!.Values.Where(double.IsFinite).Max(Math.Abs);
+        Assert.InRange(peak, 1, 1000);
+        var (scale, prefix) = ModelComposerViewModel.ChargePrefix(plots.Data["Qg.model"].RealValues.Where(double.IsFinite).Max(Math.Abs));
+        Assert.EndsWith($", {prefix}C", vm.RectPlot.CustomTitle);
+        Assert.Equal(plots.Data["Qg.model"].RealValues[0] * scale, qg.Grid.Values[0], 1e-9);
     }
 }

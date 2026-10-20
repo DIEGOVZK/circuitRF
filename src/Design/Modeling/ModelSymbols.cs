@@ -6,7 +6,8 @@
 // A library symbol qualifies only when its kind's own pins are g, d, s in that order — the FET laws' arrangement — because
 // a JFET's or a BJT's three pins mean something else in the same positions.
 //
-// The default, written as no symbol at all, is the standard three-terminal FET symbol (ComposedFetSymbolProvider).
+// The default, written as no symbol at all, is the standard FET symbol (ComposedFetSymbolProvider), with the thermal pin
+// when the model self-heats.
 
 using CircuitRF.Design.Schematic;
 using CircuitRF.Design.Symbol;
@@ -22,7 +23,7 @@ public static class ModelSymbols
     /// kind, whose glyph is the standard symbol (no value at all).</summary>
     public static IReadOnlyList<string> LibraryNames { get; } =
         [.. Enum.GetValues<SymbolKind>()
-                .Where(k => k != SymbolKind.ComposedFet)
+                .Where(k => k != SymbolKind.ComposedFET)
                 .Where(k => SymbolPortDefs.For(k).Select(p => p.Name).SequenceEqual(["g", "d", "s"]))
                 .Select(k => k.ToString())];
 
@@ -67,7 +68,7 @@ public static class ModelSymbols
     /// </summary>
     public static IReadOnlyList<SymbolChoice> Candidates(string? workspaceDirectory, string baseDirectory, bool thermal)
     {
-        var list = new List<SymbolChoice> { new("", "FET (standard)", 3) };
+        var list = new List<SymbolChoice> { new("", "FET (standard)", thermal ? 4 : 3) };
         list.AddRange(LibraryNames.Select(n => new SymbolChoice(n, n, 3)));
         if (workspaceDirectory is null || !Directory.Exists(workspaceDirectory)) return list;
         foreach (string file in Directory.EnumerateFiles(workspaceDirectory, "*.csym", SearchOption.AllDirectories)

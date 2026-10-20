@@ -1797,6 +1797,38 @@ public static class NetExtractor
     /// probes touching each other and nothing else are still reading nothing, and reporting one of
     /// them as connected would be worse than reporting neither.</para>
     /// </summary>
+    /// <summary>
+    /// True when a pin touches anything: a wire in its net, another component's pin, or a net label placed on it. A
+    /// pin detached from the schematic is wired to nothing.
+    /// </summary>
+    private static bool IsPinWired(
+        SchematicEditModel model, EditableComponent comp, (float LocalX, float LocalY, int PortIndex) def,
+        UnionFind uf, Func<double, double, (long, long)> QK,
+        Dictionary<string, CellSymbolResolution>? cellRefResolutions)
+    {
+        if (comp.IsPortDetached(def.PortIndex)) return false;
+        var (px, py) = model.PortWorldOf(comp, def);
+        var key = QK(px, py);
+        if (!uf.Contains(key)) return false;
+        var root = uf.Find(key);
+        bool InNet((long, long) k) => uf.Contains(k) && uf.Find(k) == root;
+
+        if (model.Wires.Any(w => w.Points.Any(pt => InNet(QK(pt.X, pt.Y))))) return true;
+        if (model.NetLabels.Any(l => QK(l.X, l.Y) == key)) return true;
+        foreach (var other in model.Components)
+        {
+            if (other.Disable is DisableState.Open) continue;
+            foreach (var d in GetEffectivePortDefs(model, other, cellRefResolutions))
+            {
+                if (ReferenceEquals(other, comp) && d.PortIndex == def.PortIndex) continue;
+                if (other.IsPortDetached(d.PortIndex)) continue;
+                var (ox, oy) = model.PortWorldOf(other, d);
+                if (InNet(QK(ox, oy))) return true;
+            }
+        }
+        return false;
+    }
+
     private static bool IsVProbeConnected(
         SchematicEditModel model, EditableComponent probe,
         UnionFind uf, Func<double, double, (long, long)> QK,
@@ -2198,11 +2230,15 @@ public static class NetExtractor
         // A composed FET (brief-modelcomposer-1): pins 1/2/3 are g d s BY NUMBER, whatever symbol draws
         // them. `Symbol` is artwork and never reaches the engine; a blank `N` means the model's own
         // base finger count and is dropped rather than written as `N=` (the empty-value trap).
-        if (comp.Symbol == SymbolKind.ComposedFet)
+        if (comp.Symbol == SymbolKind.ComposedFET)
         {
+            // Pin 4 is the thermal node t (MC-9 R-mc9-2). Unwired it is no connection: the line keeps three nets, so a
+            // model that does not self-heat places with the standard glyph's thermal pin left open.
             var cfNets = new List<string>();
             foreach (var def in GetEffectivePortDefs(model, comp, cellRefResolutions).OrderBy(d => d.PortIndex))
             {
+                if (def.PortIndex == 3 && !IsPinWired(model, comp, def, uf, QK, cellRefResolutions)) continue;
+                if (def.PortIndex > 3) continue;
                 var (px, py) = model.PortWorldOf(comp, def);
                 cfNets.Add(NetForPort(comp, def.PortIndex, px, py, uf, QK, netNames, detachedKeys));
             }

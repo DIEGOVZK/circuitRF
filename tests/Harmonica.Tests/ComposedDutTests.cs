@@ -31,9 +31,9 @@ public sealed class ComposedDutTests(ITestOutputHelper output)
         var model = ComposedFixtures.Model(switches: switches, fingers: 8, m: 2);
         string text = HarmonicaNetlist.Build(model).Text;
 
-        string line = text.Split('\n').Single(l => l.StartsWith("ComposedFet:DUT", StringComparison.Ordinal)).Trim();
+        string line = text.Split('\n').Single(l => l.StartsWith("ComposedFET:DUT", StringComparison.Ordinal)).Trim();
         // With no package the gate and drain ARE the termination planes (HarmonicaNetlist.Series' own rule).
-        Assert.Equal($"ComposedFet:DUT  n_srcterm n_ldterm 0  File=\"{ComposedFixtures.ExampleModel}\"  N=8  m=2  LinearC=true  DrainLag=false", line);
+        Assert.Equal($"ComposedFET:DUT  n_srcterm n_ldterm 0  File=\"{ComposedFixtures.ExampleModel}\"  N=8  m=2  LinearC=true  DrainLag=false", line);
 
         // Read back, the instance carries exactly what the DutSpec says.
         var (lib, tb) = new CnlReader().Read(text);

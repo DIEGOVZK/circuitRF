@@ -517,10 +517,10 @@ public static partial class ThermalRunService
         {
             var c = lowering.Contacts[i];
             if (split.Faces[i] > 0)
-                lines.Add($"'{c.SolidA}' | '{c.SolidB}': {G(c.ResistanceM2KW)} m²·K/W from {c.Source}, over " +
+                lines.Add($"'{c.SolidA}' | '{c.SolidB}': {G(c.ResistanceM2KW)} m²·°C/W from {c.Source}, over " +
                           $"{G(split.AreaM2[i] * 1e6)} mm² ({split.Faces[i]} face(s))");
             else if (c.Source.Contains("override", StringComparison.Ordinal))
-                lines.Add($"'{c.SolidA}' | '{c.SolidB}': the override of {G(c.ResistanceM2KW)} m²·K/W applies nowhere — the two share no face in the mesh");
+                lines.Add($"'{c.SolidA}' | '{c.SolidB}': the override of {G(c.ResistanceM2KW)} m²·°C/W applies nowhere — the two share no face in the mesh");
         }
         if (lines.Count > 0)
             notes.Add($"Interface resistances in force ({split.CopiedNodes:N0} node(s) duplicated): " + string.Join("; ", lines) + ".");

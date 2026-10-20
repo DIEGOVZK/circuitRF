@@ -298,7 +298,7 @@
                         <StackPanel Spacing="3" IsVisible="{Binding !OneTemperature}">
                             <CheckBox Content="Self-heating" IsChecked="{Binding SelfHeating}"/>
                             <Grid ColumnDefinitions="*,110">
-                                <TextBlock Classes="lbl" Text="Rth (K/W)"/>
+                                <TextBlock Classes="lbl" Text="Rth (°C/W)"/>
                                 <ctl:InlineEditText Grid.Column="1" Text="{Binding Rth, Mode=TwoWay}" HorizontalContentAlignment="Right"
                                                     ToolTip.Tip="Blank to extract it from the data"/>
                             </Grid>
@@ -450,7 +450,23 @@
                             <Button Grid.Column="1" Content="Run stale" Command="{Binding RunStaleCommand}"/>
                         </Grid>
                         <StackPanel Spacing="4" IsVisible="{Binding IsActive}">
-                            <TextBlock Text="{Binding PeripheryText}"/>
+                            <Border Classes="card">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Classes="panelhdr" Text="Base periphery"/>
+                                    <Grid ColumnDefinitions="*,90">
+                                        <TextBlock Classes="lbl" Text="N0"/>
+                                        <ctl:InlineEditText Grid.Column="1" Text="{Binding PeripheryFingers, Mode=TwoWay}"
+                                                            HorizontalContentAlignment="Right" ToolTip.Tip="Fingers of the measured device"/>
+                                    </Grid>
+                                    <Grid ColumnDefinitions="*,90">
+                                        <TextBlock Classes="lbl" Text="W0"/>
+                                        <ctl:InlineEditText Grid.Column="1" Text="{Binding PeripheryWidth, Mode=TwoWay}"
+                                                            HorizontalContentAlignment="Right" ToolTip.Tip="Unit gate width, e.g. 125 um"/>
+                                    </Grid>
+                                    <TextBlock Classes="warn" Text="{Binding PeripheryWarning}"
+                                               IsVisible="{Binding PeripheryWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                </StackPanel>
+                            </Border>
                             <Border Classes="card">
                                 <StackPanel Spacing="2">
                                     <TextBlock Classes="panelhdr" Text="Scaling"/>
@@ -467,20 +483,15 @@
                                 </StackPanel>
                             </Border>
                             <TextBlock Classes="panelhdr" Text="Symbol"/>
-                            <ListBox Classes="rows" ItemsSource="{Binding Symbols}" SelectedItem="{Binding SelectedSymbol}" MaxHeight="260">
-                                <ListBox.ItemsPanel>
-                                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
-                                </ListBox.ItemsPanel>
-                                <ListBox.ItemTemplate>
-                                    <DataTemplate x:DataType="mc:SymbolRow">
-                                        <StackPanel Width="76" Spacing="1" ToolTip.Tip="{Binding PinsText}">
-                                            <ctl:SchematicCanvas Model="{Binding Drawing}" ShowGrid="False" Height="56"
-                                                                 IsHitTestVisible="False" DragDrop.AllowDrop="False"/>
-                                            <TextBlock FontSize="10" Text="{Binding Label}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ListBox.ItemTemplate>
-                            </ListBox>
+                            <!-- One symbol, drawn large; a click opens the menu of every symbol the model can take, each row
+                                 its own glyph — the Smith Chart's Add menu (SmithChartView.BuildElementMenus). -->
+                            <Button Name="SymbolButton" HorizontalAlignment="Left" Padding="4" ToolTip.Tip="Choose the symbol">
+                                <StackPanel Width="150" Spacing="2">
+                                    <ctl:PaletteGlyphControl Kind="ComposedFET" SymbolCellDir="{Binding SelectedSymbol.GlyphRef}" Height="110"/>
+                                    <TextBlock FontSize="11" Text="{Binding SelectedSymbol.Label}" TextTrimming="CharacterEllipsis"
+                                               HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBox Text="{Binding ExportPath}" FontSize="11" ToolTip.Tip="The .cmodel's path"/>
                                 <Button Grid.Column="1" Classes="tool" Command="{Binding PickExportPathCommand}" ToolTip.Tip="Choose">
@@ -529,7 +540,7 @@
                                                 <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
                                                 <TextBlock Grid.Column="1" Classes="lbl" Text="{Binding Score}"/>
                                             </Grid>
-                                            <ctl:SchematicCanvas Model="{Binding Drawing}" ShowGrid="False" Height="90"
+                                            <ctl:SchematicCanvas Model="{Binding Drawing}" ShowGrid="False" Height="90" ClipToBounds="True"
                                                                  IsHitTestVisible="False" DragDrop.AllowDrop="False"/>
                                         </StackPanel>
                                     </Border>

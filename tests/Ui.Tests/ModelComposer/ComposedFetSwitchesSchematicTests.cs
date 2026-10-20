@@ -14,7 +14,7 @@ public sealed class ComposedFetSwitchesSchematicTests
 {
     private static EditableComponent Fet(params (string Name, string Expression)[] switches)
     {
-        var c = new EditableComponent { InstanceName = "X1", Symbol = SymbolKind.ComposedFet, X = 0, Y = 0 };
+        var c = new EditableComponent { InstanceName = "X1", Symbol = SymbolKind.ComposedFET, X = 0, Y = 0 };
         c.Parameters.Add(new EditableParameter { Name = "File", Expression = "gan.cmodel" });
         foreach (var (name, expression) in switches)
             c.Parameters.Add(new EditableParameter { Name = name, Expression = expression, ShowOnSchematic = false });
@@ -33,8 +33,8 @@ public sealed class ComposedFetSwitchesSchematicTests
     [Fact]
     public void DefaultSwitches_ExtractByteIdentically_AndANonDefaultOneIsWritten()
     {
-        var defaults = ComponentTypeRegistry.DefaultParameters(SymbolKind.ComposedFet, 3)
-            .Where(d => d.Name is not ("File" or "N" or "Symbol")).Select(d => (d.Name, d.Expression)).ToArray();
+        var defaults = ComponentTypeRegistry.DefaultParameters(SymbolKind.ComposedFET, 3)
+            .Where(d => d.Name is not ("File" or "N" or "Symbol" or "Rth" or "Cth")).Select(d => (d.Name, d.Expression)).ToArray();
         Assert.Equal(10, defaults.Length);
 
         string before = Cnl(Fet());

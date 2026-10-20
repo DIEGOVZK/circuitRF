@@ -394,7 +394,7 @@ public static partial class ModelCommands
                 ? [$"network: {r.Method}, cost {G(r.Cost)}.", .. r.Report.Lines, .. r.Notes] : [],
             "thermal" => ThermalFit.FitFile(cmcPath, rc).Record is var t
                 ? t.Report.Count > 0 ? t.Report
-                  : [t.Rth is { } rth ? $"thermal: Rth {G(rth)} K/W." : $"thermal: no self-heating; data at {string.Join(", ", t.Temperatures.Select(G))} °C."]
+                  : [t.Rth is { } rth ? $"thermal: Rth {G(rth)} °C/W." : $"thermal: no self-heating; data at {string.Join(", ", t.Temperatures.Select(G))} °C."]
                 : [],
             "current" => CurrentFit.FitFile(cmcPath, rc).Record.Report,
             "traps" => TrapFit.FitFile(cmcPath, rc) is var (traps, current) ? [.. traps.Record.Report, .. current?.Record.Report ?? []] : [],
@@ -465,7 +465,7 @@ public static partial class ModelCommands
             var plan = ThermalFit.Plan(doc, data);
             var heating = ThermalFit.Heating(doc);
             string mode = plan.IsSingle ? $"single, {G(plan.T0)} °C" : $"range, {string.Join(", ", plan.Temperatures.Select(G))} °C";
-            string self = heating.SelfHeating ? heating.Rth is { } rth ? $"; self-heating, Rth {G(rth)} K/W" : "; self-heating, Rth not yet extracted" : "";
+            string self = heating.SelfHeating ? heating.Rth is { } rth ? $"; self-heating, Rth {G(rth)} °C/W" : "; self-heating, Rth not yet extracted" : "";
             lines.Add(new ModelLine("temperature", "", $"temperature: {mode}{self}."));
         }
 

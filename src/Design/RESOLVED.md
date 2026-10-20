@@ -21121,3 +21121,23 @@ write `Shift` when a model is chosen on a document with no pulsed I–V.
 **Under the shift the current step must not train on the RF conductances.** With self-heating modelled the current step
 trains `Id` on every S point's `Gm`/`Gds` (MC-9); the trap part of the DC/RF difference would then be absorbed into
 `Id₀` and the strengths would fit to near zero. Under `Shift` that training is skipped, with one line.
+
+## ComposedFET: the thermal pin on a schematic, and the rename (2026-10-20)
+
+**The thermal node existed in the engine and could not be wired on a schematic.** MC-9 made a fourth net the thermal
+node, but the default glyph was the FET laws' three-pin one. The standard ComposedFET glyph now has pin 4 on the right
+(a lead starting at a small open circle, so it does not read as an electrical terminal), shown only when the instance's
+model self-heats, as `ModelSymbols` already required of a `.csym`. Unwired it is NO connection: `NetExtractor` writes
+three nets (`IsPinWired`), and `SchematicPortDef.Optional` keeps the renderer from drawing it as an open pin.
+
+**The g, d and s on the symbol came from the cell-symbol path.** A placed ComposedFET resolves through
+`CellSymbolResolver` (`composedfet://`), which prints a pin's stated name beside it. The built-in glyphs it hands out now
+carry no pin names; a `.csym` keeps its author's.
+
+**`Rth` and `Cth` on an instance** replace the model's scaled values for that device (`ComposedNetworkTemplate.Synthesize`);
+every pole of a ladder scales by the one factor, and a model that does not self-heat refuses them.
+
+**Renamed to ComposedFET everywhere a user reads it.** The netlist keyword, the `.csch` symbol name, the palette, the
+messages and the docs. Old files still open: the factory and the elaborator compare the keyword ignoring case, and
+System.Text.Json reads the `.csch` symbol enum ignoring case (`ComposedFetSymbolTests.ASchematicSavedAsComposedFet_StillOpens`).
+C# identifiers (`ComposedFetSymbolProvider`, `ComposedFetTypeName`) are unchanged.

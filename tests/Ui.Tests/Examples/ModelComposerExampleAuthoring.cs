@@ -59,6 +59,8 @@ public sealed class ModelComposerExampleAuthoring(ITestOutputHelper output)
         string ws = Path.Combine(examples, Folder);
         string readme = Path.Combine(ws, "README.md");
         string? keptReadme = File.Exists(readme) ? File.ReadAllText(readme) : null;
+        var keptLayouts = HandLaid.Select(c => Path.Combine(ws, c, "schematic", c + ".csch"))
+                                  .Where(File.Exists).ToDictionary(f => f, File.ReadAllText);
         if (Directory.Exists(ws)) Directory.Delete(ws, true);
 
         WorkspaceCreate.Create(examples, Folder, null);
@@ -74,7 +76,13 @@ public sealed class ModelComposerExampleAuthoring(ITestOutputHelper output)
         BuildPassiveSpiral(ws);
         BuildGanBenches(ws);
         BuildSpiralFilter(ws);
+        foreach (var (file, text) in keptLayouts) File.WriteAllText(file, text);
     }
+
+    /// <summary>The bench schematics whose component placement was tidied by hand after they were drawn: a rebuild draws them
+    /// from their netlists, then puts the hand-laid file back. A change to a bench's netlist is a change to its hand-laid
+    /// schematic too: `circuitrf netlist` of the two must agree.</summary>
+    private static readonly string[] HandLaid = ["GanPowerSweep"];
 
     // ── The network, a cell ───────────────────────────────────────────────────
 
@@ -218,7 +226,7 @@ public sealed class ModelComposerExampleAuthoring(ITestOutputHelper output)
         IProbe:Iin  Vin  g
         L:L1  g  n2  L=100 nH
         Vdc:V1  n2  0  Vdc=VGS V
-        ComposedFet:X1  g  Vout  0  File="synthetic-gan/gan_4x125.cmodel"  N=8
+        ComposedFET:X1  g  Vout  0  File="synthetic-gan/gan_4x125.cmodel"  N=8
         L:L2  n3  Vout  L=100 nH
         IProbe:IDC  VDD  n3
         Vdc:V2  VDD  0  Vdc=VDD V
@@ -244,7 +252,7 @@ public sealed class ModelComposerExampleAuthoring(ITestOutputHelper output)
         VDS = 8
         temp = 25
         Tuner:SourceTuner1  Vin  0  Zdefault=1e-6  Z0=50  BiasTee=on  Vbias=VGS  Z[1]=50  Z[2]=1e-6  Z[3]=1e-6
-        ComposedFet:X1  Vin  Vout  0  File="synthetic-gan/gan_4x125.cmodel"  N=8
+        ComposedFET:X1  Vin  Vout  0  File="synthetic-gan/gan_4x125.cmodel"  N=8
         Tuner:LoadTuner1  Vout  0  Zdefault=1e-6  Z0=50  BiasTee=on  Vbias=VDS  Z[1]=50  Z[2]=1e-6  Z[3]=1e-6
         analysis LP1 type=loadpull Tone="RFfreq" ToneUnit=GHz MaxHarm=5 LoadTuner=LoadTuner1 SourceTuner=SourceTuner1 Grid="GanLoadpull/schematic/load_grid.gam" Sweep=Load TuneHarm=1 Compression=3 GainType=Gt PinStart=-4 PinStep=1 PinMax=26
         labelednets Vin Vout
@@ -254,8 +262,31 @@ public sealed class ModelComposerExampleAuthoring(ITestOutputHelper output)
     {
         Draw(ws, "GanPowerSweep", PowerSweepNetlist);
         Draw(ws, "GanLoadpull", LoadpullNetlist);
-        File.Copy(Path.Combine(ws, "..", "Loadpull", "Loadpull", "schematic", "load_grid.gam"),
-                  Path.Combine(ws, "GanLoadpull", "schematic", "load_grid.gam"));
+        File.WriteAllText(Path.Combine(ws, "GanLoadpull", "schematic", "load_grid.gam"), LoadGrid());
+    }
+
+    /// <summary>
+    /// The loadpull grid, centred on this device: rings about Γc = 0.25+j0.15, which lies between the maximum-power load
+    /// (near 0.1∠180°) and the maximum-efficiency load (near 0.67∠27°), both found on a 277-point Γ map. The Loadpull
+    /// example's polar grid about 50 Ω, which this bench first copied, put the efficiency optimum on its outer ring.
+    /// </summary>
+    private static string LoadGrid()
+    {
+        var c = new System.Numerics.Complex(0.25, 0.15);
+        var lines = new List<string>
+        {
+            "# gamma Z0=50 mag_ang",
+            "# 49 loads for the 8-finger GanLoadpull bench: rings of |Gamma - Gc| = 0.12, 0.24, 0.36, 0.48 at 12 angles about",
+            "# Gc = 0.25+j0.15, which lies between the maximum-power load (near 0.1 at 180 deg) and the maximum-efficiency load",
+            "# (near 0.67 at 27 deg), so both sit inside the grid with loads on every side. Points are |Gamma| and angle in degrees.",
+        };
+        var points = new List<System.Numerics.Complex> { c };
+        foreach (double r in new[] { 0.12, 0.24, 0.36, 0.48 })
+            for (int a = 0; a < 360; a += 30)
+                points.Add(c + System.Numerics.Complex.FromPolarCoordinates(r, a * Math.PI / 180));
+        foreach (var p in points)
+            lines.Add(FormattableString.Invariant($"{p.Magnitude:F4}  {p.Phase * 180 / Math.PI:F2}"));
+        return string.Join("\n", lines) + "\n";
     }
 
     /// <summary>A test bench cell whose schematic is <paramref name="netlist"/> drawn — <c>netlist --to-schematic</c>'s own

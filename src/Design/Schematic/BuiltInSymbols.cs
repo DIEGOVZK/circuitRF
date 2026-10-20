@@ -116,6 +116,7 @@ public static class BuiltInSymbols
     private static readonly Symbol _diode         = BuildDiode();
     private static readonly Symbol _fet           = BuildFet(nChannel: true);
     private static readonly Symbol _pfet          = BuildFet(nChannel: false);
+    private static readonly Symbol _composedFet   = BuildComposedFet();
     private static readonly Symbol _jfetN         = BuildJfet(nChannel: true);
     private static readonly Symbol _jfetP         = BuildJfet(nChannel: false);
     private static readonly Symbol _igbtN         = BuildIgbt(nChannel: true);
@@ -289,8 +290,9 @@ public static class BuiltInSymbols
             case SymbolKind.FetStatz:
             case SymbolKind.FetMaterka:
             case SymbolKind.FetAngelov:
-            // A composed FET falls back to the same glyph when its own symbol does not resolve.
-            case SymbolKind.ComposedFet: return _fet;
+                                         return _fet;
+            // A composed FET: the same glyph, and its thermal pin (brief-modelcomposer-9 R-mc9-2).
+            case SymbolKind.ComposedFET: return _composedFet;
             // The p-channel laws share one glyph with each other and none with the n-channel ones:
             // the gate arrow is the only thing on the drawing that says which channel this is.
             case SymbolKind.PFetCurtice:
@@ -692,6 +694,18 @@ public static class BuiltInSymbols
 
     private static Symbol BuildFet(bool nChannel) =>
         JunctionGateFet(nChannel, nChannel ? SymbolKind.FetCurtice : SymbolKind.PFetCurtice);
+
+    // ── Composed FET — the FET glyph and a fourth, THERMAL pin ────────────────
+    // Pins: gate (-200,0) LEFT, drain (0,-200) TOP, source (0,+200) BOTTOM, as every FET law; and the thermal node t
+    // (+200,0) RIGHT. The thermal lead starts at an open circle standing off the body, so it does not read as a fourth
+    // electrical terminal. Left unwired it is no connection at all: the device extracts as g d s and keeps its own
+    // thermal network. Wired, whatever sits there is in parallel with that network.
+
+    private static Symbol BuildComposedFet() => Sym([
+        .. JunctionGateFet(nChannel: true, SymbolKind.FetCurtice).Primitives,
+        Circ(54, 0, 14),                              // the thermal node
+        L(  68,    0,  200,    0),                    // thermal lead
+    ], SymbolKind.ComposedFET);
 
     // ── BJT — base bar, collector and emitter arms, arrow on the emitter ──────
     // Pins: base (-200,0) LEFT, collector (0,-200) TOP, emitter (0,+200) BOTTOM. Same envelope and

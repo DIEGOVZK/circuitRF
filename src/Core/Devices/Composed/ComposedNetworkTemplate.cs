@@ -7,7 +7,7 @@ namespace CircuitRF.Core.Devices.Composed;
 
 /// <summary>
 /// A <c>.cmodel</c>'s extrinsic network, read and checked once, ready to be turned into the cell a
-/// <c>ComposedFet</c> elaborates as (D3, R-mc1-5) at any finger count.
+/// <c>ComposedFET</c> elaborates as (D3, R-mc1-5) at any finger count.
 ///
 /// <para><b>The values the cell holds are NUMBERS, already scaled.</b> Every variable is resolved
 /// once here, multiplied by its rule's factor in <see cref="Synthesize"/>, and every element
@@ -180,9 +180,15 @@ public sealed class ComposedNetworkTemplate
     /// multiplier. A resistance varying with the ambient is taken at <paramref name="ambientC"/>. With
     /// <paramref name="thermalPin"/> the thermal node is the cell's fourth port: whatever the instance attaches there sits
     /// in parallel with the model's own network, as on a compact model's exposed thermal node.</para>
+    ///
+    /// <para><paramref name="rth"/> and <paramref name="cth"/>, when finite, are the placed device's own DC thermal
+    /// resistance and total thermal capacitance at <paramref name="n"/> fingers — an instance's <c>Rth</c> and
+    /// <c>Cth</c>. Every section of a ladder scales by the one factor that makes its sum that value, so the ladder keeps
+    /// its shape; the multiplier still applies on top, as it does to the model's own values.</para>
     /// </summary>
     public Cell Synthesize(string cellName, int n, int n0, double multiplicity, Instance core,
-                           ModelThermal? thermal = null, double ambientC = 25, bool thermalPin = false)
+                           ModelThermal? thermal = null, double ambientC = 25, bool thermalPin = false,
+                           double rth = double.NaN, double cth = double.NaN)
     {
         // Each scaled value is base SI, stated in its stand-in unit so a unit-bearing variable stays one: an element field
         // typed in pF that names it is not scaled by its site unit a second time (var-unit-wins), as it was not when the
@@ -231,6 +237,9 @@ public sealed class ComposedNetworkTemplate
             if (thermalPin) cell.Ports.Add(ThermalNet);
             double rFactor = thermal.RthAt(ambientC) / thermal.Rth * PeripheryScaling.Factor(PeripheryScaling.PerFingerInverse, n, n0);
             double cFactor = PeripheryScaling.Factor(PeripheryScaling.PerFinger, n, n0);
+            if (double.IsFinite(rth)) rFactor = rth / thermal.Rth;
+            double cTotal = thermal.Poles.Sum(p => p.Cth);
+            if (double.IsFinite(cth)) cFactor = cTotal > 0 ? cth / cTotal : 0;
             var names = ThermalElementNames(thermal).ToList();
             int poles = thermal.Poles.Count;
             for (int k = 0; k < poles; k++)
@@ -238,7 +247,9 @@ public sealed class ComposedNetworkTemplate
                 string a = k == 0 ? ThermalNet : $"{ThermalNet}_{k}";
                 string b = k == poles - 1 ? "0" : $"{ThermalNet}_{k + 1}";
                 cell.Instances.Add(Element(names[2 * k], "R", a, b, "R", thermal.Poles[k].Rth * rFactor));
-                cell.Instances.Add(Element(names[2 * k + 1], "C", a, b, "C", thermal.Poles[k].Cth * cFactor));
+                // A model with no thermal capacitance at all takes a typed Cth in proportion to each section's resistance.
+                double c = double.IsFinite(cth) && cTotal <= 0 ? cth * thermal.Poles[k].Rth / thermal.Rth : thermal.Poles[k].Cth * cFactor;
+                cell.Instances.Add(Element(names[2 * k + 1], "C", a, b, "C", c));
             }
 
             Instance Element(string name, string type, string a, string b, string parameter, double value)

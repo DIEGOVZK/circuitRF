@@ -56,7 +56,7 @@ public sealed class SymbolChoiceTests
         var (comps, _, _, _) = SchematicPersistence.DeserializeSelection(ComposedFetPlacement.Payload(path));
         var c = Assert.Single(comps);
         string P(string name) => c.Parameters.Single(p => p.Name == name).Expression;
-        Assert.Equal(SymbolKind.ComposedFet, c.Symbol);
+        Assert.Equal(SymbolKind.ComposedFET, c.Symbol);
         Assert.Equal(Path.GetFullPath(path).Replace('\\', '/'), P("File"));
         Assert.Equal("4", P("N"));
         Assert.Equal("../hemt.csym", P("Symbol"));

@@ -30,11 +30,11 @@ public sealed class SelfHeatingSwitchTests
     public void Off_IsTheIsothermalDeviceAtAmbient_AndPinFourSitsAtNoRise()
     {
         string bench = "temp = 25\n" + Bench(0, 6);
-        var heated = Dc(bench + $"ComposedFet:X1 g d 0 t File=\"{HotPath}\"\n");
+        var heated = Dc(bench + $"ComposedFET:X1 g d 0 t File=\"{HotPath}\"\n");
         Assert.True(heated["t"] > 1, $"ΔT = {heated["t"]} with self-heating on");
 
-        var off   = Dc(bench + $"ComposedFet:X1 g d 0 t File=\"{HotPath}\" SelfHeating=false\n");
-        var truth = Dc(bench + $"ComposedFet:X1 g d 0 File=\"{IsothermalPath}\"\n");
+        var off   = Dc(bench + $"ComposedFET:X1 g d 0 t File=\"{HotPath}\" SelfHeating=false\n");
+        var truth = Dc(bench + $"ComposedFET:X1 g d 0 File=\"{IsothermalPath}\"\n");
         Assert.True(Math.Abs(off["t"]) <= 1e-12, $"ΔT = {off["t"]} with self-heating off");
         foreach (string node in (string[])["X1.gi", "X1.di", "X1.n1", "X1.n3"])
             Assert.True(Math.Abs(off[node] - truth[node]) <= 1e-9 * Math.Max(Math.Abs(truth[node]), 1e-3),

@@ -19,7 +19,7 @@ public enum DutKind
     /// <summary>A two-terminal built-in, for teaching and for the degenerate cases.</summary>
     Diode,
     /// <summary>
-    /// A Model Composer <c>.cmodel</c>, placed as a <c>ComposedFet</c> (brief-modelcomposer-23). It elaborates as a cell —
+    /// A Model Composer <c>.cmodel</c>, placed as a <c>ComposedFET</c> (brief-modelcomposer-23). It elaborates as a cell —
     /// its extrinsic network around a nonlinear core on <c>gi di si</c> — so its intrinsic plane is located by construction:
     /// the core's own ports, with no naming step.
     /// </summary>

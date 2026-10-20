@@ -47,7 +47,7 @@ public sealed class ComposedCoreGridTests
     [Fact]
     public void AnAnnModel_EqualsItsEquationTwin_InDcSpAndHb()
     {
-        string Fet(string path) => $"ComposedFet:X1 g d 0 File=\"{path}\"\n";
+        string Fet(string path) => $"ComposedFET:X1 g d 0 File=\"{path}\"\n";
 
         // DC.
         var bench = ComposedFetEquivalenceTests.Bench(-0.4, 6);

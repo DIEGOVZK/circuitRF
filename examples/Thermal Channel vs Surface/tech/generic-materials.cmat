@@ -405,7 +405,7 @@
       "MaterialA": "Gallium nitride",
       "MaterialB": "Silicon carbide (4H, semi-insulating)",
       "ResistanceM2KW": 3.3e-08,
-      "Source": "The thermal boundary resistance of the nucleation layer between a GaN epitaxial layer and a SiC substrate: 3.3e-8 m2 K/W is representative of the values Manoi, Pomeroy, Killat and Kuball measured (IEEE Electron Device Letters 31, 1395, 2010), which differed by several times between growth processes. It is a property of the process, not of the two materials: replace it with your own process's value."
+      "Source": "The thermal boundary resistance of the nucleation layer between a GaN epitaxial layer and a SiC substrate: 3.3e-8 m² °C/W is representative of the values Manoi, Pomeroy, Killat and Kuball measured (IEEE Electron Device Letters 31, 1395, 2010), which differed by several times between growth processes. It is a property of the process, not of the two materials: replace it with your own process's value."
     }
   ]
 }

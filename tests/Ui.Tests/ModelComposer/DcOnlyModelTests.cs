@@ -111,7 +111,7 @@ public sealed class DcOnlyModelTests(ITestOutputHelper output)
         string bench = $"""
             Port:P1 g 0 Num=1 Z=50 Ohm
             Port:P2 d 0 Num=2 Z=50 Ohm
-            ComposedFet:X1 g d 0 File="{core}" N=4
+            ComposedFET:X1 g d 0 File="{core}" N=4
 
             """;
         var (lib, tb) = new CnlReader().Read(bench);

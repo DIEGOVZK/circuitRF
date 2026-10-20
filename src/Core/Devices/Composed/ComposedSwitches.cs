@@ -94,7 +94,7 @@ public sealed record ComposedSwitches
         DrainLagName    => DrainLag,
         SelfHeatingName => SelfHeating,
         DispersionName  => Dispersion,
-        _ => throw new ArgumentException($"'{name}' is not a ComposedFet switch.", nameof(name)),
+        _ => throw new ArgumentException($"'{name}' is not a ComposedFET switch.", nameof(name)),
     };
 
     /// <summary>These switches with one of them set — what an editor writes back on a toggle. An unknown name changes nothing.</summary>

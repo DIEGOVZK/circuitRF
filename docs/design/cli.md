@@ -4147,7 +4147,7 @@ the functions the window's Model Validation Report dialog calls, so the two PDFs
 ### 31.4 `check`, `explain` and the protocol
 
 `check` already reads a `.cmc` and a `.cmodel` through their validators (MC-1, MC-3). `explain --ref x.cmodel` resolves
-the file by `Elaborator.ResolveFileReference`, the rule a `ComposedFet`'s `File` is resolved by at elaboration.
+the file by `Elaborator.ResolveFileReference`, the rule a `ComposedFET`'s `File` is resolved by at elaboration.
 Over MCP the verb is the `model` tool, one mode per noun; `reference cmc` and `reference cmodel` serve the file-formats
 page's own sections (the `.cmc` adds the walk of its step settings), and the server's instructions carry the
 new → import → deembed → fit → check-charge → export → validate recipe.

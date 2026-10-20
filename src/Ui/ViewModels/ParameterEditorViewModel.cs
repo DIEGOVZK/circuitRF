@@ -917,7 +917,7 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
         {
             AdoptCellDeclaredParameters(comp);
             if (comp.Symbol == SymbolKind.SpiceModel) AdoptSpiceModelDeclaredParameters(comp);
-            if (comp.Symbol == SymbolKind.ComposedFet) AdoptComposedFetSwitches(comp);
+            if (comp.Symbol == SymbolKind.ComposedFET) AdoptComposedFetSwitches(comp);
 
             var built = new List<ParameterRowViewModel>();
             foreach (var param in comp.Parameters)
@@ -967,7 +967,7 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
                     row.ExpressionPlaceholder = WBondPlaceholderFor(param.Name);
                     ConfigureWBondTemperatureRow(row);
                 }
-                if (comp.Symbol == SymbolKind.ComposedFet && ComposedSwitches.IsSwitch(param.Name))
+                if (comp.Symbol == SymbolKind.ComposedFET && ComposedSwitches.IsSwitch(param.Name))
                 {
                     SwitchRows.Add(row);
                     continue;
@@ -1065,15 +1065,16 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Gives a composed FET placed before its switches existed (brief-modelcomposer-21) the six switch rows, at their
-    /// defaults — the instance it already is. Same rule as <see cref="AdoptDefaultSnpParameters"/>: no undo entry, and an
+    /// Gives a composed FET placed before its switches existed (brief-modelcomposer-21) the switch rows, at their
+    /// defaults — the instance it already is — and the blank Rth and Cth rows. Same rule as <see cref="AdoptDefaultSnpParameters"/>: no undo entry, and an
     /// existing value is never touched.
     /// </summary>
     private static void AdoptComposedFetSwitches(EditableComponent comp)
     {
-        foreach (var d in ComponentTypeRegistry.DefaultParameters(SymbolKind.ComposedFet, comp.PortCount))
+        foreach (var d in ComponentTypeRegistry.DefaultParameters(SymbolKind.ComposedFET, comp.PortCount))
         {
-            if (!ComposedSwitches.IsSwitch(d.Name)) continue;
+            // The switches and the thermal pair arrived after the first composed FETs were placed.
+            if (!ComposedSwitches.IsSwitch(d.Name) && d.Name is not ("Rth" or "Cth")) continue;
             if (comp.Parameters.Any(p => p.Name.Equals(d.Name, StringComparison.Ordinal))) continue;
             comp.Parameters.Add(new EditableParameter
             {
@@ -1270,7 +1271,7 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
         SyncVerilogAFromModelFile();
     }
 
-    // ── ComposedFet: the model's symbol follows its File (brief-modelcomposer-1 R-mc1-9) ──────────
+    // ── ComposedFET: the model's symbol follows its File (brief-modelcomposer-1 R-mc1-9) ──────────
 
     /// <summary>The File this composed FET carried when last looked at; null until the target is
     /// first seen, so opening the dialog is never mistaken for an edit.</summary>
@@ -1294,7 +1295,7 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
             _composedFetTarget = _target;
             _composedFetFile   = null;
         }
-        if (_target is null || _schematicVm is null || _target.Symbol != SymbolKind.ComposedFet) return;
+        if (_target is null || _schematicVm is null || _target.Symbol != SymbolKind.ComposedFET) return;
 
         string  file     = ParamValue(_target, ComposedFetSymbolProvider.FileParameter);
         string? previous = _composedFetFile;

@@ -68,7 +68,7 @@ visually until you draw one.
       <tr><td><code>.charm</code></td><td>harmonicaRF document — the DUT, the source and load termination planes at every harmonic, the package, the display configuration and the markers. See <a href="harmonicarf.html">harmonicaRF</a>.</td></tr>
       <tr><td><code>.wBond</code></td><td>wBond design — bondwire geometry: the wires, their arrays and profiles, the substrate and the solver settings. Self-contained and shareable. See <a href="wbond.html">wBond</a>.</td></tr>
       <tr><td><code>.crail</code></td><td>railRF document — the rails, their sources, loads and reference, the parts and the part library they resolve against, the target and the band. See <a href="railrf.html">railRF</a>.</td></tr>
-      <tr><td><code>.cmodel</code></td><td>Composed FET model — a nonlinear transistor model placed as a <code>ComposedFet</code>: its extrinsic network, its current and charge constituents, the finger count and gate width it was measured at, the temperatures it is valid at, its symbol and where it came from. A ZIP holding a readable <code>model.json</code> and any arrays as <code>.npy</code>. See <a href="cmodel.html">Writing a .cmodel</a>.</td></tr>
+      <tr><td><code>.cmodel</code></td><td>Composed FET model — a nonlinear transistor model placed as a <code>ComposedFET</code>: its extrinsic network, its current and charge constituents, the finger count and gate width it was measured at, the temperatures it is valid at, its symbol and where it came from. A ZIP holding a readable <code>model.json</code> and any arrays as <code>.npy</code>. See <a href="cmodel.html">Writing a .cmodel</a>.</td></tr>
       <tr><td><code>.cmc</code></td><td>Model Composer document — the data a model is built from and the conditions it was measured under, from which a <code>.cmodel</code> is exported. JSON text; its data stays in the files it names, with a cache beside it in <code>&lt;name&gt;.cmc-cache/</code>. See <a href="#cmc">The Model Composer document</a>.</td></tr>
       <tr><td><code>.csmith</code></td><td>Smith Chart document — a generator impedance over frequency and an ordered cascade of two-pin elements, plus what the chart is normalized to, the overlays, the markers and the constant-Q setting. Numbers are in base SI. See <a href="smith-chart.html">Smith Chart</a>.</td></tr>
     </tbody>
@@ -279,9 +279,9 @@ temperature the model is valid at that temperature only and self-heating is unav
 | Field | What it holds |
 |---|---|
 | `SelfHeating` | `true` to give the model a thermal node, and to put each DC point at its junction temperature. Needs two or more temperatures. |
-| `Rth` | A typed thermal resistance in K/W. Absent: extracted from pulsed I–V at two or more chuck temperatures and DC I–V at the same biases. |
+| `Rth` | A typed thermal resistance in °C/W. Absent: extracted from pulsed I–V at two or more chuck temperatures and DC I–V at the same biases. |
 | `RthModel` | `Constant` (the default) or `Linear`: an extracted thermal resistance that varies linearly with the ambient. |
-| `Cth`, `TauTh`, `Ladder`, `FitTau` | At most one: a thermal capacitance in J/K; a thermal time constant in s; a ladder of `{ "Fraction", "Tau" }` poles whose fractions of `Rth` add up to 1; or `true` to fit the time constant to the low-frequency roll-off of the S data's Re Y22, which is refused while traps are modelled. |
+| `Cth`, `TauTh`, `Ladder`, `FitTau` | At most one: a thermal capacitance in J/°C; a thermal time constant in s; a ladder of `{ "Fraction", "Tau" }` poles whose fractions of `Rth` add up to 1; or `true` to fit the time constant to the low-frequency roll-off of the S data's Re Y22, which is refused while traps are modelled. |
 | `PulsedSets`, `DcSets` | The sets the extraction reads. Absent: every `PulsedIv` set whose quiescent bias dissipates nothing, and every `DcIv` set. |
 | `MinPower` | 0.1: DC points dissipating less than this fraction of the largest DC power are left out of the extraction. |
 | `Isothermal` | How the isothermal drain current is built, with the same fields as the current step's `Id`. Absent: the current step's own. |

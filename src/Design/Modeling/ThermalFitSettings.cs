@@ -93,8 +93,8 @@ public sealed record ThermalFitSettings
             FitTau = Bool(o, "FitTau", $"{f}.FitTau"),
             TauSets = o["TauSets"] is { } t ? CurrentFitSettings.Names(t, $"{f}.TauSets") : [],
         };
-        if (s.Rth is { } r && !(r > 0)) throw new CmcFormatException($"{f}.Rth", "it is not a positive thermal resistance in K/W.");
-        if (s.Cth is { } c && !(c > 0)) throw new CmcFormatException($"{f}.Cth", "it is not a positive thermal capacitance in J/K.");
+        if (s.Rth is { } r && !(r > 0)) throw new CmcFormatException($"{f}.Rth", "it is not a positive thermal resistance in °C/W.");
+        if (s.Cth is { } c && !(c > 0)) throw new CmcFormatException($"{f}.Cth", "it is not a positive thermal capacitance in J/°C.");
         if (s.TauTh is { } tau && !(tau > 0)) throw new CmcFormatException($"{f}.TauTh", "it is not a positive time in seconds.");
         int given = (s.Cth is null ? 0 : 1) + (s.TauTh is null ? 0 : 1) + (s.Ladder.Count > 0 ? 1 : 0) + (s.FitTau ? 1 : 0);
         if (given > 1) throw new CmcFormatException(f, "Cth, TauTh, Ladder and FitTau each set the dynamics; give at most one.");

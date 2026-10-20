@@ -45,7 +45,7 @@ public sealed class BranchLinearChargesGanTests(ITestOutputHelper output)
         C:CB2 out d C=1e-6
         L:LB2 vd d L=1e-3
         Vdc:VD vd 0 V={Vds:R}
-        ComposedFet:X1 g d 0 File="{ModelPath}" N=8 {switches}
+        ComposedFET:X1 g d 0 File="{ModelPath}" N=8 {switches}
 
         """;
 
@@ -157,7 +157,7 @@ public sealed class BranchLinearChargesGanTests(ITestOutputHelper output)
         try
         {
             string cnl = Path.Combine(dir, "device.cnl");
-            File.WriteAllText(cnl, $"ComposedFet:X1 g d 0 File=\"{ModelPath}\" {branch}=true\n");
+            File.WriteAllText(cnl, $"ComposedFET:X1 g d 0 File=\"{ModelPath}\" {branch}=true\n");
             var c = ConservationCheck.LargeSignal(cnl, "X1", new LargeSignalSettings
             {
                 Bias = (-1.2, 7), Tolerance = ConservationCheck.StateNodeTolerance,

@@ -261,7 +261,7 @@ public static class MaterialValidation
             else if (!(i.ResistanceM2KW > 0) || !double.IsFinite(i.ResistanceM2KW))
                 problems.Add(Problem(TechValidation.Ids.InterfaceInvalid, DiagnosticSeverity.Error,
                     string.Create(CultureInfo.InvariantCulture,
-                        $"The thermal interface between \"{i.MaterialA}\" and \"{i.MaterialB}\" states a resistance of {i.ResistanceM2KW} m²·K/W; it must be positive. Two materials in perfect contact need no interface record.")));
+                        $"The thermal interface between \"{i.MaterialA}\" and \"{i.MaterialB}\" states a resistance of {i.ResistanceM2KW} m²·°C/W; it must be positive. Two materials in perfect contact need no interface record.")));
         }
         foreach (var g in interfaces.Where(i => !string.IsNullOrWhiteSpace(i.MaterialA) && !string.IsNullOrWhiteSpace(i.MaterialB))
                                     .GroupBy(i => i.PairKey, StringComparer.Ordinal).Where(g => g.Count() > 1))

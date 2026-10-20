@@ -3248,3 +3248,12 @@ advertise it yet.
 
 Measured, routine tier: the four gate classes take ~7 s together; the end-to-end run's exported model drives a 2 GHz
 stage to within 0.04 dB of the truth's output.
+
+## Run verbs resolved a schematic's file references against two different folders (2026-10-20)
+
+`hb`, `lp`/`lpp`, `sparam`, `dc` and `elab` elaborated with no `BaseDirectory` (so relative to the working directory),
+then handed a parametric sweep the SCHEMATIC's own folder. Simulate uses the workspace root for both. A `.csch` whose
+ComposedFET names `synthetic-gan/gan_4x125.cmodel` therefore ran only when the verb was started from the workspace root,
+and from anywhere else its first sweep point reported the model missing under `GanPowerSweep/schematic/`. Every
+elaborator and every sweep engine of one run now takes `CircuitSource.ReferenceBaseOf(input)`: the workspace root for a
+`.csch` (`SchematicCircuit.ReferenceBaseOf`), the file's own folder for a `.cnl`, as `CnlReader.ReadFile` reads it.

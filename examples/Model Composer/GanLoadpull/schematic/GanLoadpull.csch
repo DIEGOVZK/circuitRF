@@ -80,7 +80,7 @@
     },
     {
       "InstanceName": "X1",
-      "Symbol": "ComposedFet",
+      "Symbol": "ComposedFET",
       "X": 600,
       "Y": -0,
       "Rotation": "R0",
@@ -104,7 +104,7 @@
       ],
       "LabelOffsets": [
         [
-          230,
+          415,
           -325
         ]
       ]

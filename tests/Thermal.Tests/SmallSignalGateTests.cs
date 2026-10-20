@@ -207,7 +207,7 @@ public sealed class SmallSignalGateTests(ITestOutputHelper output)
         var fit = FosterFit.Fit(freqs, values);
         double rth = values[0].Real;
         output.WriteLine($"{fit.Terms.Count} terms; fit error {100 * fit.FitError:F4} %; ΣR {fit.Rth:R} against Rth {rth:R}");
-        foreach (var t in fit.Terms) output.WriteLine($"  R {t.R:G6} K/W, τ {t.Tau:G4} s");
+        foreach (var t in fit.Terms) output.WriteLine($"  R {t.R:G6} °C/W, τ {t.Tau:G4} s");
         Assert.True(fit.FitError < 0.01, $"fit error {fit.FitError:G3}");
         Assert.All(fit.Terms, t => Assert.True(t.R >= 0));
         Assert.True(Math.Abs(fit.Rth - rth) <= 1e-6 * rth, $"ΣR {fit.Rth} against {rth}");

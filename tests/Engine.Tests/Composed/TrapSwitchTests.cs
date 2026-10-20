@@ -34,7 +34,7 @@ public sealed class TrapSwitchTests
     }
 
     private static string Fet(string path, string switches = "", string name = "X1")
-        => $"ComposedFet:{name} g d 0 File=\"{path}\" {switches}\n";
+        => $"ComposedFET:{name} g d 0 File=\"{path}\" {switches}\n";
 
     private static ComposedCoreModel Core(ElaboratedNetlist nl, string fet = "X1")
         => nl.Components.Where(c => c.InstancePath.StartsWith(fet + ".", StringComparison.Ordinal))

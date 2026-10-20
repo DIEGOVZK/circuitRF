@@ -244,7 +244,7 @@ public sealed class LoadpullEngine
         int loadDutNode = loadEc.Nodes.Length > 0 ? loadEc.Nodes[0] : 0;
         int srcDutNode  = srcEc.Nodes.Length  > 0 ? srcEc.Nodes[0]  : 0;
 
-        // A tuner on a net no nonlinear device touches — a ComposedFet's terminals always sit behind its own
+        // A tuner on a net no nonlinear device touches — a ComposedFET's terminals always sit behind its own
         // linear network — joins the HB interface as an extra node: V there is then solved and reported
         // like any interface node, its nonlinear current is zero, and Pout and the bias currents are read
         // from the tuner's own branches instead (ComputeLoadCurrent, ComputeSourceInputCurrent). A tuner

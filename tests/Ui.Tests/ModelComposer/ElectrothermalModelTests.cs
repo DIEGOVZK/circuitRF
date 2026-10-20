@@ -62,7 +62,7 @@ public sealed class ElectrothermalModelTests
         "temp = 25\n" +
         $"Vdc:VG vg 0 V={R(vgs)}\nIProbe:IPG vg lg\nL:LG lg g L=1\nC:CG pa g C=1\nPort:P1 pa 0 Num=1 Z=50 Ohm\n" +
         $"Vdc:VD vd 0 V={R(vds)}\nIProbe:IPD vd ld\nL:LD ld d L=1\nC:CD pb d C=1\nPort:P2 pb 0 Num=2 Z=50 Ohm\n" +
-        $"ComposedFet:X1 g d 0 File=\"{path}\"\n";
+        $"ComposedFET:X1 g d 0 File=\"{path}\"\n";
 
     private static double DcDrainCurrent(string path, double vgs, double vds)
     {

@@ -8,7 +8,7 @@ using Xunit.Abstractions;
 namespace CircuitRF.Ui.Tests.ModelComposer;
 
 /// <summary>
-/// A loadpull of a placed <c>ComposedFet</c> runs — its terminals sit behind its own extrinsic network, so no nonlinear
+/// A loadpull of a placed <c>ComposedFET</c> runs — its terminals sit behind its own extrinsic network, so no nonlinear
 /// device touches the tuners' nets, and the loadpull engine reads Pout from the load tuner's branch currents. Gate: at each
 /// load, Pout over the drive ladder equals an HB power sweep of the same model into the same load; a loadpull pursuit
 /// finds both optima.

@@ -49,7 +49,7 @@ public sealed class ThermallyActivatedEmissionTests(ITestOutputHelper output)
         double Recovery(double ambient)
         {
             var nl = ComposedFetEquivalenceTests.Elaborate($"temp = {ambient}\n" + ComposedFetEquivalenceTests.Bench(-0.6, 6) +
-                                                           $"ComposedFet:X1 g d 0 File=\"{path}\"\n");
+                                                           $"ComposedFET:X1 g d 0 File=\"{path}\"\n");
             var dc = NonlinearDcEngine.Run(nl);
             Assert.True(dc.Converged);
             var core = nl.Components.Single(c => c.Model is ComposedCoreModel);

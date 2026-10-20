@@ -624,11 +624,11 @@ public enum SymbolKind
     /// Appended so no existing kind's ordinal moves.</summary>
     MMiter,
 
-    /// <summary>A composed FET model placed as a device (engine "ComposedFet", brief-modelcomposer-1):
+    /// <summary>A composed FET model placed as a device (engine "ComposedFET", brief-modelcomposer-1):
     /// the <c>.cmodel</c> its <c>File</c> names, at <c>N</c> fingers. Pins g, d, s in the FET family's
     /// order and geometry; the glyph is the model's own symbol (<c>Symbol</c>), drawn through
     /// <see cref="ComposedFetSymbolProvider"/>. Appended so no existing kind's ordinal moves.</summary>
-    ComposedFet,
+    ComposedFET,
 }
 
 public enum PortConnectionState { Unconnected, Connected }
@@ -646,9 +646,11 @@ public enum SymbolRotation { R0 = 0, R90 = 90, R180 = 180, R270 = 270 }
 /// <param name="ShowName">Whether to draw <paramref name="Name"/> beside the pin. Decided once, when
 /// the render model is built, from the symbol's pin names and the instance's own override — never
 /// per frame. False for every built-in, whose pin labels are text inside its artwork already.</param>
+/// <param name="Optional">A pin that may be left unwired, which is then no connection rather than an open one — a
+/// composed FET's thermal pin. It draws no unconnected marker.</param>
 public sealed record SchematicPortDef(
     string Name, float LocalX, float LocalY, PortConnectionState State,
-    SymbolPinNameAlign NameAlign = SymbolPinNameAlign.Left, bool ShowName = false);
+    SymbolPinNameAlign NameAlign = SymbolPinNameAlign.Left, bool ShowName = false, bool Optional = false);
 
 /// <summary>A placed component instance with pre-computed world bounding boxes.</summary>
 public sealed class SchematicComponent

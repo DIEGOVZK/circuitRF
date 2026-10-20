@@ -257,17 +257,17 @@ public static class HarmonicaInputs
         }
 
         yield return Make(model, KeyComposedFile, "cmodel", dut.ModelFile ?? "", "",
-            ComponentTypeRegistry.ParameterDescription(SymbolKind.ComposedFet, "File"), HarmonicaInputEntry.Text);
+            ComponentTypeRegistry.ParameterDescription(SymbolKind.ComposedFET, "File"), HarmonicaInputEntry.Text);
         yield return Make(model, KeyComposedFingers, "N",
             dut.Fingers?.ToString(CultureInfo.InvariantCulture) ?? loaded?.N0.ToString(CultureInfo.InvariantCulture) ?? "", "",
-            ComponentTypeRegistry.ParameterDescription(SymbolKind.ComposedFet, "N"), HarmonicaInputEntry.Integer);
+            ComponentTypeRegistry.ParameterDescription(SymbolKind.ComposedFET, "N"), HarmonicaInputEntry.Integer);
 
         string name = dut.ModelFile is { Length: > 0 } f ? System.IO.Path.GetFileName(f) : "";
         foreach (string sw in ComposedSwitches.Names)
         {
             string? missing = loaded is null ? null : ComposedSwitches.MissingPart(sw, loaded);
             string tip = missing is null
-                ? ComponentTypeRegistry.ParameterDescription(SymbolKind.ComposedFet, sw)
+                ? ComponentTypeRegistry.ParameterDescription(SymbolKind.ComposedFET, sw)
                 : $"'{name}' {missing}; {sw}=false changes nothing.";
             yield return new HarmonicaInput(SwitchPrefix + sw, sw, dut.Switches[sw] ? "1" : "0", "", tip,
                                             HarmonicaInputEntry.Boolean, Structural: true, Locked: missing is not null);

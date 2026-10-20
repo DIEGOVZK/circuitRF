@@ -1022,7 +1022,7 @@
                                  ToolTip.Tip="The ambient a wire in air loses its heat to, °C" LostFocus="OnThermalLostFocus" KeyDown="OnThermalKey"/>
                         <TextBlock Classes="colhdr" VerticalAlignment="Center" Text="Bond"/>
                         <TextBox Classes="cell" Width="80" Text="{Binding ViewModel.ThermalBondThermal}" PlaceholderText="perfect"
-                                 ToolTip.Tip="A bond's interface thermal resistance, m²·K/W; empty: a perfect bond (the heel takes its pad's temperature)"
+                                 ToolTip.Tip="A bond's interface thermal resistance, m²·°C/W; empty: a perfect bond (the heel takes its pad's temperature)"
                                  LostFocus="OnThermalLostFocus" KeyDown="OnThermalKey"/>
                         <TextBox Classes="cell" Width="80" Text="{Binding ViewModel.ThermalBondElectrical}" PlaceholderText="perfect"
                                  ToolTip.Tip="A bond's specific contact resistance, Ω·m²; empty: a perfect bond" LostFocus="OnThermalLostFocus" KeyDown="OnThermalKey"/>

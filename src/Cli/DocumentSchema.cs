@@ -845,7 +845,7 @@ internal static class DocumentSchema
             fold leaves; a Stat of Max, Min or Avg — what T(probe) and the result's T:<probe>
             report; an optional LimitC), MeshRegions (a
             box and a target SizeUm, for every Gmsh-meshed setup), ContactResistances (two
-            touching objects and a resistance, m²·K/W, overriding the technology's material pair — 0 is
+            touching objects and a resistance, m²·°C/W, overriding the technology's material pair — 0 is
             perfect contact, one pair per entry; a run splits the contact and joins its sides through it), EffectiveBlocks (Name, Min, Size and
             Enabled, false when omitted: enabled, the board dielectric, planes and via barrels of a
             layout instance inside the box become one block of diagonal conductivity — per layer

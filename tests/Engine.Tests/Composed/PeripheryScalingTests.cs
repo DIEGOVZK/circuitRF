@@ -15,7 +15,7 @@ public sealed class PeripheryScalingTests
     public void TwiceTheBaseFingers_EqualsTheHandScaledNetlist()
     {
         // Core doubled, perFinger doubled, perFingerInverse halved, fixed unchanged.
-        string composed = $"ComposedFet:X1 g d 0 File=\"{ModelPath}\" N=8\n";
+        string composed = $"ComposedFET:X1 g d 0 File=\"{ModelPath}\" N=8\n";
         string byHand   = ComposedTestModels.SddGlobals
                         + ComposedTestModels.ReferenceCell("ref", coreScale: 2, resistorScale: 0.5, innerCapScale: 2)
                         + "ref:X1 g d 0\n";
@@ -45,7 +45,7 @@ public sealed class PeripheryScalingTests
     public void ANonIntegerFingerCount_IsRefused()
     {
         var ex = Assert.Throws<ParameterRefusalException>(
-            () => Elaborate(Bench(-0.6, 6) + $"ComposedFet:X1 g d 0 File=\"{ModelPath}\" N=2.5\n"));
+            () => Elaborate(Bench(-0.6, 6) + $"ComposedFET:X1 g d 0 File=\"{ModelPath}\" N=2.5\n"));
         Assert.Contains("finger count", ex.Message);
         Assert.Contains("X1", ex.Message);
     }

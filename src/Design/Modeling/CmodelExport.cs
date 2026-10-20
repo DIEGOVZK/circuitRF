@@ -236,7 +236,7 @@ public static class CmodelExport
         var lines = new List<string>
         {
             $"{Path.GetFileName(outPath)}: N0 {periphery(model)} · {Temperature(model.Temperature)}" +
-            (model.Thermal is { } th ? $" · Rth {th.Rth.ToString("G4", CultureInfo.InvariantCulture)} K/W" : "") +
+            (model.Thermal is { } th ? $" · Rth {th.Rth.ToString("G4", CultureInfo.InvariantCulture)} °C/W" : "") +
             (model.Traps is { } tr ? $" · traps {tr.Model} ({string.Join(", ", tr.States)}){(tr.Shifted ? ", threshold shift" : "")}" : ""),
         };
         // R-mc18-2: a model whose charges are zero is legitimate, and said so.

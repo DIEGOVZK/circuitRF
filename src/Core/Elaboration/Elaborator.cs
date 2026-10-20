@@ -2032,7 +2032,7 @@ public sealed class Elaborator
     private string ResolveSnpFilePath(string file) => ResolveFileReference(file, BaseDirectory);
 
     /// <summary>
-    /// How a file parameter (an SnP's or a ComposedFet's <c>File</c>) resolves against the directory a netlist is
+    /// How a file parameter (an SnP's or a ComposedFET's <c>File</c>) resolves against the directory a netlist is
     /// elaborated from — the ONE rule, so <c>explain --ref</c> can answer exactly as elaboration does
     /// (brief-modelcomposer-13 R-mc13-5).
     /// </summary>
@@ -2049,22 +2049,27 @@ public sealed class Elaborator
 
     /// <summary>The cell each distinct (<c>.cmodel</c>, <c>N</c>, <c>m</c>) elaborates as, built once
     /// per elaboration. Never added to a library, the palette or a file.</summary>
-    private readonly Dictionary<(string Path, long Stamp, int N, double M, bool ThermalPin, double AmbientC, ComposedSwitches Switches), Cell> _composedCells = [];
+    private readonly Dictionary<(string Path, long Stamp, int N, double M, bool ThermalPin, double AmbientC, ComposedSwitches Switches,
+                                 double Rth, double Cth), Cell> _composedCells = [];
 
-    /// <summary>What a ComposedFet line may carry: its model, size and multiplier, and the instance switches
+    /// <summary>What a ComposedFET line may carry: its model, size and multiplier, and the instance switches
     /// (brief-modelcomposer-21). <c>Symbol</c> is the schematic's alone and is read by nothing here.</summary>
     private static readonly string[] ComposedParams =
-        ["File", "N", MultiplierParamName, "M", "Symbol", .. ComposedSwitches.Names];
+        ["File", "N", MultiplierParamName, "M", "Symbol", RthParam, CthParam, .. ComposedSwitches.Names];
+
+    /// <summary>A placed device's own thermal resistance (°C/W) and capacitance (J/°C), at its finger count, in place of the
+    /// model's scaled ones. Blank is the model's.</summary>
+    public const string RthParam = "Rth", CthParam = "Cth";
 
     /// <summary>
-    /// The in-memory cell one <c>ComposedFet</c> instance elaborates as (R-mc1-5): its <c>.cmodel</c>
+    /// The in-memory cell one <c>ComposedFET</c> instance elaborates as (R-mc1-5): its <c>.cmodel</c>
     /// loaded through the cache, its network scaled to <c>N</c> fingers (R-mc1-7), and the
     /// <c>ComposedCore</c> on <c>gi di si</c>. Every refusal names the instance.
     /// </summary>
     private Cell ComposedFetCell(Instance inst, string childPath, Scope parentScope,
                                  out ComposedSwitches switches, out LoadedComposedModel loaded)
     {
-        string who = $"ComposedFet '{childPath}'";
+        string who = $"ComposedFET '{childPath}'";
 
         if (inst.NetBindings.Count is not (3 or 4))
             throw new InvalidOperationException(
@@ -2073,7 +2078,7 @@ public sealed class Elaborator
         foreach (var ov in inst.Overrides)
             if (!ComposedParams.Contains(ov.Name, StringComparer.Ordinal))
                 throw new InvalidOperationException(
-                    $"{who}: '{ov.Name}' is not a parameter of a ComposedFet; it takes File, N, m, " +
+                    $"{who}: '{ov.Name}' is not a parameter of a ComposedFET; it takes File, N, m, Rth, Cth, " +
                     string.Join(", ", ComposedSwitches.Names.SkipLast(1)) + " and " + ComposedSwitches.Names[^1] + ".");
 
         try { switches = ComposedSwitches.Read(inst.Overrides, ov => EvalOverride(inst, ov, parentScope)); }
@@ -2124,8 +2129,28 @@ public sealed class Elaborator
                     new Dictionary<string, Value> { [MultiplierParamName] = EvalOverride(inst, mOv, parentScope) },
                     childPath);
 
+        double rth = ThermalOverride(RthParam, "°C/W"), cth = ThermalOverride(CthParam, "J/°C");
+        if ((double.IsFinite(rth) || double.IsFinite(cth)) && loaded.Model.Thermal is null)
+            throw new InvalidOperationException(
+                $"{who}: Rth and Cth set a self-heating model's thermal network, and '{Path.GetFileName(file)}' does not " +
+                "self-heat; leave them blank.");
+
+        double ThermalOverride(string name, string unit)
+        {
+            if (inst.Overrides.FirstOrDefault(o => o.Name == name) is not { } ov || string.IsNullOrWhiteSpace(ov.Expression))
+                return double.NaN;
+            var v = EvalOverride(inst, ov, parentScope);
+            double x = v.Kind == ValueKind.Real ? v.AsReal() : double.NaN;
+            if (!double.IsFinite(x) || x <= 0)
+                throw new ParameterRefusalException(
+                    $"'{childPath}': {name}={v} is not a thermal {(name == RthParam ? "resistance" : "capacitance")}; " +
+                    $"give a positive number in {unit}, or leave it blank for the model's own.");
+            return x;
+        }
+
         long stamp = File.GetLastWriteTimeUtc(file).Ticks;
-        if (_composedCells.TryGetValue((file, stamp, n, m, thermalPin, _ambientC, switches), out var cached)) return cached;
+        var key = (file, stamp, n, m, thermalPin, _ambientC, switches, rth, cth);
+        if (_composedCells.TryGetValue(key, out var cached)) return cached;
 
         var coreParams = new List<ParameterAssignment>
         {
@@ -2146,8 +2171,8 @@ public sealed class Elaborator
         var t = loaded.Model.Temperature;
         double ambient = t.Mode == TemperatureMode.Range ? Math.Clamp(_ambientC, t.Tmin, t.Tmax) : _ambientC;
         var cell = loaded.Network.Synthesize(
-            $"ComposedFet({Path.GetFileName(file)},N={n})", n, loaded.N0, m, core, thermal, ambient, thermalPin);
-        _composedCells[(file, stamp, n, m, thermalPin, _ambientC, switches)] = cell;
+            $"ComposedFET({Path.GetFileName(file)},N={n})", n, loaded.N0, m, core, thermal, ambient, thermalPin, rth, cth);
+        _composedCells[key] = cell;
         return cell;
     }
 

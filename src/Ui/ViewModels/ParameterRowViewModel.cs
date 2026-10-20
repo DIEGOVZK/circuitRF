@@ -617,7 +617,7 @@ public sealed partial class ParameterRowViewModel : ObservableObject
         // where it found nothing: a kit part's own declaration is the authority on its own values,
         // and a built-in primitive has no cell for it to have come from.
         // A composed FET's switch bound to an expression (GateLag=gl) stays a text box: a picker could not show it.
-        bool switchExpression = ownerSymbol == SymbolKind.ComposedFet
+        bool switchExpression = ownerSymbol == SymbolKind.ComposedFET
                              && CircuitRF.Core.Devices.Composed.ComposedSwitches.IsSwitch(param.Name)
                              && _stagedExpression.Trim().Length > 0
                              && CircuitRF.Core.Devices.Composed.ComposedSwitches.Spelling(_stagedExpression) is null;

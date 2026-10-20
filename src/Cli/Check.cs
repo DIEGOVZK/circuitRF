@@ -1151,7 +1151,7 @@ internal static class Check
 
     /// <summary>
     /// A <c>.cmodel</c>, through <see cref="CmodelFile.Read(string)"/> — the reader a placed
-    /// <c>ComposedFet</c> loads it with, which validates before it returns. No rule of its own: the
+    /// <c>ComposedFET</c> loads it with, which validates before it returns. No rule of its own: the
     /// refusal printed is the validator's sentence, naming the field.
     /// </summary>
     private static void CheckComposedModel(string path, Findings f)

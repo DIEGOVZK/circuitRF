@@ -5155,3 +5155,13 @@ as long as only the editor drew overlays: its view model rebuilds the overlay wi
 first frame. The Import Schematic dialog's preview, a `SchematicCanvas` with no edit session, drew its zoom box as
 `Empty with { RubberBand = … }` and threw on every frame of the drag. `Empty` is now declared last. Gate:
 `ImportSchematicPreviewNavigationTests.TheEmptyOverlay_DrawsARubberBand`.
+
+## One far-out sample erased a trace's whole line in the window (2026-10-20)
+
+A power sweep run before MC-25 had one unconverged point where `DE` read −9.9e11. In the window the trace's markers drew
+and its line did not draw at all; the `render` verb, on the CPU raster, drew the same `.cdd` correctly. Skia's GPU
+canvas gives up on a path with a coordinate that far out, and the markers survived because each is its own small path.
+`TraceRenderer.ClippedPolyline` now clips every segment to a box four canvas sizes wide before it reaches the path
+(Liang–Barsky, in double precision), so the part of each segment inside the plot is drawn exactly and nothing beyond
+the box reaches Skia. Gate: `OutOfRangeLineTests` checks the path's bounds, because a CPU-raster pixel test passes
+without the fix.

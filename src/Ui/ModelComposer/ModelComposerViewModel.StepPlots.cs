@@ -28,18 +28,43 @@ public sealed partial class ModelComposerViewModel
                         CurlGateTab = "Curl Qg", CurlDrainTab = "Curl Qd", PathsGateTab = "Paths Qg", PathsDrainTab = "Paths Qd", SpectrumTab = "Spectrum",
                         IvTab = "I–V", PowerTab = "Power", LoadpullTab = "Loadpull", ImTab = "IM";
 
-    /// <summary>The tabs of a model step, or null for a step whose tabs are MC-14's.</summary>
+    /// <summary>
+    /// The tabs of a model step, or null for a step whose tabs are MC-14's. Each step shows only what it fits or checks: a
+    /// Validate tab appears once that comparison has run, a Tj tab only when Rth was extracted, and Export shows the
+    /// exported model's own I–V against its data.
+    /// </summary>
     private IReadOnlyList<string>? ModelStepTabs() => StepName switch
     {
         "Current" => [OutputTab, TransferTab, ErrorTab, GmTab, GdsTab, DomainTab],
         "Charge" => [CvGateTab, CvDrainTab, QgTab, QdTab, DQgTab, DQdTab],
-        "Thermal" => [TjTab, DcIvTab],
+        "Thermal" => StepPlots is { Step: "Thermal" } tp && !tp.Data.Contains("P") ? [DcIvTab] : [TjTab, DcIvTab],
         "Traps" => TrapFit.Settings(Document) is { Modelled: true, Shifted: true } ? [GmTab, GdsTab] : [PulsedTab, DcIvTab],
         "Check" => [CurlGateTab, CurlDrainTab, PathsGateTab, PathsDrainTab, SpectrumTab],
-        "Validate" => [STab, SmithTab, IvTab, PowerTab, LoadpullTab, ImTab],
-        "Export" => [BiasPlaneTab],
+        "Validate" => ValidateTabs(),
+        "Export" => [OutputTab, TransferTab],
         _ => null,
     };
+
+    /// <summary>The comparisons the last validation ran, as tabs; every one before any has run.</summary>
+    private IReadOnlyList<string> ValidateTabs()
+    {
+        IReadOnlyList<string> all = [STab, SmithTab, IvTab, PowerTab, LoadpullTab, ImTab];
+        if (Validation is not { Items.Count: > 0 } v) return all;
+        var kinds = v.Items.Select(i => i.Kind).ToHashSet();
+        var tabs = all.Where(t => t switch
+        {
+            STab or SmithTab => kinds.Contains(ValidationKind.SParams),
+            IvTab => kinds.Contains(ValidationKind.DcIv) || kinds.Contains(ValidationKind.PulsedIv),
+            PowerTab => kinds.Contains(ValidationKind.PowerSweep),
+            LoadpullTab => kinds.Contains(ValidationKind.Loadpull),
+            ImTab => kinds.Contains(ValidationKind.TwoTone),
+            _ => false,
+        }).ToList();
+        return tabs.Count > 0 ? tabs : all;
+    }
+
+    /// <summary>The step whose plot data the selected step draws: Export draws the Current step's model.</summary>
+    private string PlotDataStep => StepName == "Export" ? "Current" : StepName;
 
     // ── the step's plot data, off the UI thread ──────────────────────────────
 
@@ -61,7 +86,7 @@ public sealed partial class ModelComposerViewModel
     /// </summary>
     private void RequestStepPlots()
     {
-        if (!IsActive || IsChoosingKind || DocumentPath is not { } path || !ModelStepPlots.Steps.Contains(StepName))
+        if (!IsActive || IsChoosingKind || DocumentPath is not { } path || !ModelStepPlots.Steps.Contains(PlotDataStep))
         {
             _stepPlotsKey = null;
             if (StepPlots is not null) { StepPlots = null; OnPropertyChanged(nameof(StepPlots)); }
@@ -70,7 +95,7 @@ public sealed partial class ModelComposerViewModel
         string results = Document.Steps is JsonObject steps
             ? string.Join("\u0001", steps.Select(kv => kv.Key + (kv.Value is JsonObject o ? o["Result"]?.ToJsonString() : "")))
             : "";
-        string key = $"{StepName}\u0002{results}\u0002{System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Loaded)}";
+        string key = $"{PlotDataStep}\u0002{results}\u0002{System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(Loaded)}";
         if (key == _stepPlotsKey) return;
         _stepPlotsKey = key;
         try { _plotsCts?.Cancel(); } catch (ObjectDisposedException) { }
@@ -78,7 +103,7 @@ public sealed partial class ModelComposerViewModel
         _plotsCts = cts;
         var doc = Document;
         var loaded = Loaded;
-        string step = StepName;
+        string step = PlotDataStep;
         PlotsTask = Compute();
 
         async Task Compute()
@@ -99,6 +124,7 @@ public sealed partial class ModelComposerViewModel
                 StepPlots = (StepPlotData?)r;
                 StepPlotBuilds++;
                 OnPropertyChanged(nameof(StepPlots));
+                RebuildPlotTabs();
                 RebuildPlots();
             });
         }
@@ -112,7 +138,7 @@ public sealed partial class ModelComposerViewModel
         if (ModelStepTabs() is null || IsPassive) return false;
         switch (StepName)
         {
-            case "Current": CurrentPlot(plot); break;
+            case "Current" or "Export": CurrentPlot(plot); break;
             case "Charge": ChargePlot(plot); break;
             case "Thermal": ThermalPlot(plot); break;
             case "Traps": TrapsPlot(plot); break;
@@ -148,6 +174,7 @@ public sealed partial class ModelComposerViewModel
     {
         double[] f = R(ds, $"{set}.{family}"), xs = R(ds, $"{set}.{x}"), ym = R(ds, $"{set}.{meas}");
         if (f.Length == 0 || xs.Length != f.Length) return 0;
+        // Every member in the one family colour: measured as small circles, the model as lines through them.
         int c = 0;
         foreach (var g in Enumerable.Range(0, f.Length).GroupBy(k => Math.Round(f[k], 6)).OrderBy(g => g.Key))
         {
@@ -155,12 +182,17 @@ public sealed partial class ModelComposerViewModel
             var pts = g.OrderBy(k => xs[k]).ToArray();
             string label = $"{familyName} {ModelValueFormat.G(g.Key)} V";
             if (ym.Length == f.Length)
-                plot.Traces.Add(Xy(label, [.. pts.Select(k => xs[k])], [.. pts.Select(k => ym[k] * scale)], x, "V", c, line: false, marker: MarkerType.Circle));
+            {
+                var m = Xy(label, [.. pts.Select(k => xs[k])], [.. pts.Select(k => ym[k] * scale)], x, "V", FamilyColour, line: false, marker: MarkerType.Circle);
+                m.Properties.MarkerSize = SmallMarker;
+                m.Properties.Custom = false;
+                plot.Traces.Add(m);
+            }
             foreach (var (cube, tag, type) in model)
             {
                 double[] ys = R(ds, $"{set}.{cube}");
                 if (ys.Length != f.Length || pts.Length < 2) continue;
-                var t = Xy($"{label} {tag}", [.. pts.Select(k => xs[k])], [.. pts.Select(k => ys[k] * scale)], x, "V", c, line: true, marker: null);
+                var t = Xy($"{label} {tag}", [.. pts.Select(k => xs[k])], [.. pts.Select(k => ys[k] * scale)], x, "V", FamilyColour, line: true, marker: null);
                 t.Properties.LineType = type;
                 plot.Traces.Add(t);
             }
@@ -247,8 +279,8 @@ public sealed partial class ModelComposerViewModel
         {
             case CvGateTab: CvSlice(plot, sp, sweepGate: true); break;
             case CvDrainTab: CvSlice(plot, sp, sweepGate: false); break;
-            case QgTab: Surface(plot, sp.Data, "Qg.model", "Qg (model)"); break;
-            case QdTab: Surface(plot, sp.Data, "Qd.model", "Qd (model)"); break;
+            case QgTab: ChargeSurface(plot, sp.Data, "Qg.model", "Qg (model)"); break;
+            case QdTab: ChargeSurface(plot, sp.Data, "Qd.model", "Qd (model)"); break;
             case DQgTab: Surface(plot, sp.Data, "dQg", "Qg − line integral, % of range"); break;
             case DQdTab: Surface(plot, sp.Data, "dQd", "Qd − line integral, % of range"); break;
         }
@@ -285,6 +317,32 @@ public sealed partial class ModelComposerViewModel
         plot.CustomTitle = title;
         if (ds.Contains(cube)) MapTrace(plot, title, ds[cube]);
         Labels(plot, "vds (V)", "vgs (V)");
+    }
+
+    /// <summary>
+    /// A charge surface in the SI prefix that puts its largest value between 1 and 1000 — named in the title — so its
+    /// contour labels are short numbers. In coulombs a GaN FET's charges are 1e-13 and every label read 0.
+    /// </summary>
+    private void ChargeSurface(Plot plot, DataSet ds, string cube, string title)
+    {
+        if (!ds.Contains(cube)) { Surface(plot, ds, cube, title); return; }
+        var map = ds[cube];
+        double peak = map.RealValues.Where(double.IsFinite).Select(Math.Abs).DefaultIfEmpty(0).Max();
+        var (scale, prefix) = ChargePrefix(peak);
+        string named = $"{title}, {prefix}C";
+        plot.CustomTitle = named;
+        MapTrace(plot, named, map, scale);
+        Labels(plot, "vds (V)", "vgs (V)");
+    }
+
+    /// <summary>The factor and the prefix that bring <paramref name="peak"/> coulombs to between 1 and 1000 of a unit.</summary>
+    internal static (double Scale, string Prefix) ChargePrefix(double peak)
+    {
+        (double, string)[] prefixes = [(1e18, "a"), (1e15, "f"), (1e12, "p"), (1e9, "n"), (1e6, "µ"), (1e3, "m"), (1, "")];
+        if (!(peak > 0)) return (1, "");
+        foreach (var (scale, prefix) in prefixes)
+            if (peak * scale < 1000) return (scale, prefix);
+        return (1, "");
     }
 
     private void ThermalPlot(Plot plot)
@@ -484,10 +542,10 @@ public sealed partial class ModelComposerViewModel
     /// A square map (axes vgs, vds; vds fastest) as a filled contour on the rectangular plot — x = vds, y = vgs — with its
     /// grid's outline, which frames the autoscale.
     /// </summary>
-    private static void MapTrace(Plot plot, string name, DataCube map)
+    private static void MapTrace(Plot plot, string name, DataCube map, double scale = 1)
     {
         double[] vgs = map.Axes[0].Values, vds = map.Axes[1].Values;
-        var grid = new SurfaceGrid(vds, vgs, map.RealValues);
+        var grid = new SurfaceGrid(vds, vgs, scale == 1 ? map.RealValues : [.. map.RealValues.Select(v => v * scale)]);
         var t = CubeTrace(name, Style(0, LineType.Solid, 1.0, null));
         t.ContourData = new ContourData
         {

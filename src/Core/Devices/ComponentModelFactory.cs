@@ -115,7 +115,7 @@ public static class ComponentModelFactory
         };
 
     /// <summary>The <c>.cnl</c> token of a placed <c>.cmodel</c> (D3).</summary>
-    public const string ComposedFetTypeName  = "ComposedFet";
+    public const string ComposedFetTypeName  = "ComposedFET";
 
     /// <summary>The <c>.cnl</c> token of a composed FET's intrinsic nonlinear core alone.</summary>
     public const string ComposedCoreTypeName = "ComposedCore";
@@ -151,7 +151,7 @@ public static class ComponentModelFactory
             return CreateComposedCoreModel(parameters, ambientC);
         if (typeName.Equals(ComposedFetTypeName, StringComparison.OrdinalIgnoreCase))
             throw new ParameterRefusalException(
-                "a ComposedFet elaborates as a cell — its network and its ComposedCore — and is never " +
+                "a ComposedFET elaborates as a cell — its network and its ComposedCore — and is never " +
                 "built as one model.");
         if (typeName.Equals("Mutual", StringComparison.OrdinalIgnoreCase))
             return CreateMutualModel(parameters);
@@ -628,7 +628,7 @@ public static class ComponentModelFactory
     /// <summary>
     /// The core of a composed FET: the <c>.cmodel</c> its <c>File</c> names (an absolute path once the
     /// elaborator has resolved it), loaded through <see cref="Composed.ComposedModelCache"/>, at
-    /// <c>N</c> fingers (default <c>N0</c>), with the instance switches its ComposedFet stated (brief-modelcomposer-21).
+    /// <c>N</c> fingers (default <c>N0</c>), with the instance switches its ComposedFET stated (brief-modelcomposer-21).
     /// </summary>
     private static Composed.ComposedCoreModel CreateComposedCoreModel(
         IReadOnlyDictionary<string, Value> parameters, double ambientC)
@@ -652,7 +652,7 @@ public static class ComponentModelFactory
 
     /// <summary>
     /// <c>N</c> as a finger count: a positive integer, refused otherwise with a sentence that says what
-    /// <c>N</c> is — the one rule <c>ComposedFet</c> and <c>ComposedCore</c> share.
+    /// <c>N</c> is — the one rule <c>ComposedFET</c> and <c>ComposedCore</c> share.
     /// </summary>
     public static int ComposedFingerCount(Value nv)
     {

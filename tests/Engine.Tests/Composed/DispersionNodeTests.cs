@@ -42,7 +42,7 @@ public sealed class DispersionNodeTests(ITestOutputHelper output)
         return m with { Core = m.Core with { Id = Constituent.Equation(ComposedTestModels.IdEq, Inputs, RfParams) } };
     }
 
-    private static string Fet(string path) => $"ComposedFet:X1 g d 0 File=\"{path}\"\n";
+    private static string Fet(string path) => $"ComposedFET:X1 g d 0 File=\"{path}\"\n";
 
     [Fact]
     public void Dc_IsTheDcCurrent()

@@ -19,7 +19,7 @@ Thermal needs **Gmsh**; the first run without it offers to install it.
 | **Eight Fingers** | 3D view, µm | Eight fingers at the 40 µm pitch on 100 µm of SiC over a 500 µm copper–tungsten carrier, 1 × 1 mm. The setup `Array`: the Rth matrix, Z_th, and a radar pulse train |
 
 Every material is one of circuitRF's generic materials, from `tech/generic-materials.cmat` — including the **GaN/SiC interface
-resistance**, 3.3E-08 m²·K/W, which the library states as a pair and every run applies where the epitaxy meets the substrate.
+resistance**, 3.3E-08 m²·°C/W, which the library states as a pair and every run applies where the epitaxy meets the substrate.
 It is a property of a growth process, not of the two materials: put your own process's value there.
 
 ## One Finger
@@ -40,7 +40,7 @@ It is a property of a growth process, not of the two materials: put your own pro
 | Channel, `Tmax(channel_T)` | 202.7 °C |
 | IR spot, `Tavg(ir)`, 3 µm | 182.5 °C |
 | `dT_ch_ir`, the offset | 20.2 K |
-| `Rth_ch`, the whole finger | 470.9 K/W |
+| `Rth_ch`, the whole finger | 470.9 °C/W |
 
 **Why there is an offset at all.** The heat is generated in a sliver under the gate's edge and spreads down into the SiC; the
 surface above it is reached only through the passivation, and the gold field plate over the channel spreads what does reach it
@@ -62,7 +62,7 @@ under the gate's edge, the field plate above it, and the heat fanning out into t
 *Surface*) paints every exposed face instead.
 
 **Element order 2 is kept here, on purpose.** At order 1 the same mesh runs in **12 s** but reads the channel at **199.5 °C**,
-the offset at **18.4 K** and `Rth_ch` at **458.2 K/W**: 9 % low on exactly the number this example exists for. The heat sits in a
+the offset at **18.4 K** and `Rth_ch` at **458.2 °C/W**: 9 % low on exactly the number this example exists for. The heat sits in a
 sub-micrometre region and order 1 cannot follow its curvature.
 
 ## Eight Fingers
@@ -77,8 +77,8 @@ fingers' mid-length: 58,032 tetrahedra.
 | Edge finger, `T_edge` | 101.6 °C |
 | `dT_centre_edge` | 3.5 K |
 
-**The Rth matrix** (the run prints it, and plots it from the tree): each finger's own resistance is **52.91 K/W** at the edge and
-**53.17 K/W** for the fourth finger, and a neighbour adds **20.52 K/W** per watt. These are per watt in the MODELLED half of each
+**The Rth matrix** (the run prints it, and plots it from the tree): each finger's own resistance is **52.91 °C/W** at the edge and
+**53.17 °C/W** for the fourth finger, and a neighbour adds **20.52 °C/W** per watt. These are per watt in the MODELLED half of each
 finger (the run's notes say so). With all eight on, the edge finger rises **15.84 K** and the fourth **19.13 K**: the middle
 of the array runs hotter because it has neighbours on both sides.
 

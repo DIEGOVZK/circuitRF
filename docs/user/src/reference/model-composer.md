@@ -48,7 +48,7 @@ keywords: model extraction, device modeling, FET model, GaN HEMT, extrinsic netw
 ## What it does {#what}
 
 Model Composer builds a model from data. For a transistor it builds a **nonlinear FET model**, a `.cmodel` that a
-schematic places as a [`ComposedFet`](components.html#composedfet) and that DC, S-parameters, harmonic balance and
+schematic places as a [`ComposedFET`](components.html#composedfet) and that DC, S-parameters, harmonic balance and
 loadpull all use. For an N-port it builds a **passive model**, an ordinary cell of R, L, C and mutuals with the fitted
 values as its parameters.
 
@@ -477,8 +477,8 @@ points the plots and the cursor's lists at it.
 | S | The four S-parameters in dB at the cursor's bias |
 | Smith | S11 and S22 at the cursor's bias |
 
-**Excluding points.** On the bias plane, light the × lamp, choose a reason, then click a point or drag a lasso around
-several. Points already excluded are included again. Each click or lasso is one undo step.
+**Excluding points.** On the bias plane, light the lasso lamp under the plot tabs, choose a reason, then click a point
+or drag a lasso around several. Points already excluded are included again. Each click or lasso is one undo step.
 
 **Base periphery.** N0 (fingers) and W0 (unit gate width, with its unit, e.g. `125 um`) of the measured device. Export
 needs them; until they are set the Data step shows the one warning that says so.
@@ -501,7 +501,7 @@ rule. After a fit, ± is each value's standard error, and ⚠ marks a poorly det
 correlated partner or the bound it sits at.
 
 **The fit.** Method (ColdFet, MultiBias, ColdFetThenMultiBias, or Fixed, which holds every value), seed and the three
-weights. The multi-bias fit's bias points are marked ■ on the bias plane; with the × lamp lit on the Network step a
+weights. The multi-bias fit's bias points are marked ■ on the bias plane; with the lasso lamp lit on the Network step a
 click or lasso adds points to that set or takes them out.
 
 | Plot tab | Shows |
@@ -633,9 +633,11 @@ table and the region where the drive-up converged. **Export PDF…** writes ever
 
 ## The Export step {#export}
 
-`N0` and `W0`, the scaling rule of each network value, the symbol — only symbols with gate, drain and source pins (and a
-fourth for the thermal node of a self-heating model) are offered — and the `.cmodel`'s path. **Export** writes it;
-**Copy instance** puts an instance of it on the clipboard, ready to paste into a schematic.
+`N0` and `W0`, which can be changed here as on the Data step, the scaling rule of each network value, the symbol, and
+the `.cmodel`'s path. The symbol shows as one picture; click it for the menu of every symbol the model can take, which
+are those with gate, drain and source pins (and a fourth for the thermal node of a self-heating model). **Export** writes
+the model; **Copy instance** puts an instance of it on the clipboard, ready to paste into a schematic. The plots show
+the model's Output and Transfer curves against its data.
 
 A step whose result predates the data or the network blocks Export with one line naming it; **Run stale** re-runs the
 stale steps in order.
@@ -648,7 +650,7 @@ its parameters.
 
 ## Switching parts of the model off {#switches}
 
-Ten instance switches turn one effect off on one `ComposedFet`, so you can see what it costs the circuit in gain,
+Ten instance switches turn one effect off on one `ComposedFET`, so you can see what it costs the circuit in gain,
 efficiency or linearity:
 
 | Switch | Default | What changes |
@@ -697,7 +699,7 @@ Each switch is an ordinary parameter, so it can be bound to a variable and swept
 
 ```
 gl = 1
-ComposedFet:X1  g d s  File="gan_8x125.cmodel"  GateLag=gl
+ComposedFET:X1  g d s  File="gan_8x125.cmodel"  GateLag=gl
 analysis HB1 type=hb Tone=2 GHz MaxHarm=5
 analysis SW1 type=parametric_sweep Var=gl Values=1,0 Inner=HB1
 ```

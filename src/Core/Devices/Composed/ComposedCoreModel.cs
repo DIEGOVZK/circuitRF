@@ -95,7 +95,7 @@ public sealed class ComposedCoreModel : ComponentModel, IBiasFrozen
     /// <summary>The switches this instance evaluates the model with.</summary>
     public ComposedSwitches Switches { get; }
 
-    /// <summary>The ComposedFet instance this core belongs to, for a refusal; set by the elaborator.</summary>
+    /// <summary>The ComposedFET instance this core belongs to, for a refusal; set by the elaborator.</summary>
     public string Label { get; internal set; } = "";
 
     /// <summary>The temperature the constituents are evaluated at, °C — the run's ambient clamped to

@@ -12,7 +12,7 @@ namespace CircuitRF.Core.Devices.Composed;
 /// <summary>
 /// A <c>.cmodel</c> the reader refuses. <see cref="Exception.Message"/> is one sentence that begins with
 /// the FIELD it is about (<c>Core.Constituents.Id.Method: …</c>), which is what <c>check</c> prints and
-/// what a placed <c>ComposedFet</c> reports (R-mc1-2).
+/// what a placed <c>ComposedFET</c> reports (R-mc1-2).
 /// </summary>
 public sealed class CmodelFormatException(string field, string sentence)
     : Exception($"{field}: {sentence}")
@@ -30,7 +30,7 @@ public sealed class CmodelFormatException(string field, string sentence)
 ///
 /// <para><b>The validator is the only one.</b> <see cref="Read(string)"/> calls <see cref="Validate"/>
 /// before returning, and <c>check</c> calls <see cref="Read(string)"/> — so a file <c>check</c> passes
-/// is a file a <c>ComposedFet</c> loads, and the sentence a refusal prints is the same in both.</para>
+/// is a file a <c>ComposedFET</c> loads, and the sentence a refusal prints is the same in both.</para>
 /// </summary>
 public static class CmodelFile
 {
@@ -760,12 +760,12 @@ public static class CmodelFile
         {
             string f = ladder ? $"Thermal.Ladder[{k}]" : "Thermal";
             if (!(double.IsFinite(th.Poles[k].Rth) && th.Poles[k].Rth > 0))
-                throw new CmodelFormatException($"{f}.Rth", "it is not a positive thermal resistance in K/W.");
+                throw new CmodelFormatException($"{f}.Rth", "it is not a positive thermal resistance in °C/W.");
             if (!(double.IsFinite(th.Poles[k].Cth) && th.Poles[k].Cth > 0))
-                throw new CmodelFormatException($"{f}.Cth", "it is not a positive thermal capacitance in J/K.");
+                throw new CmodelFormatException($"{f}.Cth", "it is not a positive thermal capacitance in J/°C.");
         }
         if (!double.IsFinite(th.RthSlope))
-            throw new CmodelFormatException("Thermal.RthSlope", "it is not a number of K/W per K.");
+            throw new CmodelFormatException("Thermal.RthSlope", "it is not a number of °C/W per °C.");
         if (!double.IsFinite(th.Tref))
             throw new CmodelFormatException("Thermal.Tref", "it is not a temperature.");
         if (!(th.RthAt(m.Temperature.Tmin) > 0 && th.RthAt(m.Temperature.Tmax) > 0))

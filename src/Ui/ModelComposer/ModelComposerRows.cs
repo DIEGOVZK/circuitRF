@@ -308,8 +308,9 @@ public sealed partial class ValidationRow(string set, string kind, string tolera
     [ObservableProperty] private bool? _passed;
 }
 
-/// <summary>One symbol a model can be exported with (R-mc15-8): its value, label, pin count and thumbnail.</summary>
-public sealed record SymbolRow(string Value, string Label, int Pins, SchematicModel? Drawing)
+/// <summary>One symbol a model can be exported with (R-mc15-8): its value, label, pin count, and the symbol reference its
+/// glyph is drawn from (a <c>composedfet://</c> one, which a <c>PaletteGlyphControl</c> resolves with no document).</summary>
+public sealed record SymbolRow(string Value, string Label, int Pins, string GlyphRef)
 {
     public string PinsText => $"{Pins} pins";
 }

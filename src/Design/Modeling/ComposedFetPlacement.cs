@@ -1,4 +1,4 @@
-// The placement payload (brief-modelcomposer-11 R-mc11-3): one ComposedFet instance — File, N = N0 and the symbol — in
+// The placement payload (brief-modelcomposer-11 R-mc11-3): one ComposedFET instance — File, N = N0 and the symbol — in
 // the schematic clipboard format, which the window puts on the clipboard so the user pastes it into any .csch (the Smith
 // Chart tool's pattern). It is SchematicPersistence's own selection JSON, so a paste is the editor's ordinary paste.
 //
@@ -20,8 +20,8 @@ public static class ComposedFetPlacement
     {
         string path = Path.GetFullPath(cmodelPath);
         var model = CmodelFile.Read(path);
-        var c = new EditableComponent { InstanceName = instanceName, Symbol = SymbolKind.ComposedFet };
-        foreach (var p in ComponentTypeRegistry.DefaultParameters(SymbolKind.ComposedFet, 3))
+        var c = new EditableComponent { InstanceName = instanceName, Symbol = SymbolKind.ComposedFET };
+        foreach (var p in ComponentTypeRegistry.DefaultParameters(SymbolKind.ComposedFET, 3))
             c.Parameters.Add(new EditableParameter
             {
                 Name = p.Name, Unit = p.Unit, ShowOnSchematic = p.ShowOnSchematic, Dimension = p.Dimension,

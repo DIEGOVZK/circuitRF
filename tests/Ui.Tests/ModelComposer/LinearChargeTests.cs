@@ -88,7 +88,7 @@ public sealed class LinearChargeTests(ITestOutputHelper output)
             C:CB2 out d C=1e-6
             L:LB2 vd d L=1e-3
             Vdc:VD vd 0 V={vds[0]:R}
-            ComposedFet:X1 g d 0 File="{path}" N=4
+            ComposedFET:X1 g d 0 File="{path}" N=4
 
             """;
         var (lib, tb) = new CnlReader().Read(bench);

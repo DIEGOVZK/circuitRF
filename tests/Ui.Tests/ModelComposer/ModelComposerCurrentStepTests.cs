@@ -8,7 +8,8 @@ namespace CircuitRF.Ui.Tests.ModelComposer;
 
 /// <summary>
 /// brief-modelcomposer-15 R-mc15-2: a current fit run from the window updates the I–V overlay — a measured trace (symbols)
-/// and a model trace (a line) for every family member — and the error map and the training domain's outline are drawn.
+/// and a model trace (a line) for every family member, all one colour — the error map and the training domain's outline are
+/// drawn, and the Export step shows the same overlay.
 /// </summary>
 public sealed class ModelComposerCurrentStepTests
 {
@@ -54,5 +55,15 @@ public sealed class ModelComposerCurrentStepTests
 
         vm.SelectedPlotTab = ModelComposerViewModel.DomainTab;
         Assert.Contains(vm.RectPlot.Traces, x => x.CubeName == "domain" && x.Properties.LineEnabled);
+
+        // One family, one colour: every member of the overlay is drawn in the same blue.
+        vm.SelectedPlotTab = ModelComposerViewModel.OutputTab;
+        Assert.Single(vm.RectPlot.Traces.Select(x => x.Properties.LineColorIndex).Distinct());
+
+        // Export draws the same overlay: the model it writes, against its data.
+        vm.SelectedStep = vm.Steps.First(s => s.Name == "Export");
+        if (vm.PlotsTask is { } e) await e;
+        Assert.Equal([ModelComposerViewModel.OutputTab, ModelComposerViewModel.TransferTab], vm.PlotTabs);
+        Assert.Equal(model.Count, vm.RectPlot.Traces.Count(x => x.Properties.LineEnabled && x.CubeName!.EndsWith(" model", StringComparison.Ordinal)));
     }
 }

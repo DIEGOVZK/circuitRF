@@ -108,7 +108,7 @@ public static partial class ThermalRunService
             var flat = new double[n * n];
             for (int i = 0; i < n; i++) for (int j = 0; j < n; j++) flat[i * n + j] = rth.R[i, j];
             double[] index = [.. Enumerable.Range(0, n).Select(i => (double)i)];
-            output.Cubes.Add((SmallSignalGroup, RthCube, new DataCube([new Axis("rise", index, "", names), new Axis("source", index, "", names)], flat) { Unit = "K/W" }));
+            output.Cubes.Add((SmallSignalGroup, RthCube, new DataCube([new Axis("rise", index, "", names), new Axis("source", index, "", names)], flat) { Unit = "°C/W" }));
             var p = new double[n];
             for (int j = 0; j < n; j++)
             {
@@ -120,7 +120,7 @@ public static partial class ThermalRunService
             output.Cubes.Add((SmallSignalGroup, RthCube + ":dT", new DataCube([new Axis("source", index, "", names)], dT) { Unit = "K" }));
             output.Cubes.Add((SmallSignalGroup, RthCube + ":P", new DataCube([new Axis("source", index, "", names)], p) { Unit = "W" }));
             output.Notes.Add($"Rth matrix ({n} × {n}, {stat}, {rth.Unknowns:N0} unknowns, {(rth.Solver == ThermalSolverKind.Direct ? "one factorisation" : "one AMG hierarchy")}, " +
-                             $"{n} solve(s)): diagonal {string.Join(", ", Enumerable.Range(0, n).Select(i => $"{names[i]} {G(rth.R[i, i])}"))} K/W; " +
+                             $"{n} solve(s)): diagonal {string.Join(", ", Enumerable.Range(0, n).Select(i => $"{names[i]} {G(rth.R[i, i])}"))} °C/W; " +
                              $"largest asymmetry {rth.Asymmetry:G3} of the largest entry" +
                              (stat == RthStatistic.Max ? " (expected with Max: a source's hottest point is not a mean the stiffness matrix is symmetric in)."
                               : rth.Tangent ? " (the tangent is not symmetric)." : " (Avg is symmetric by construction: this is the solve's own check)."));
@@ -202,7 +202,7 @@ public static partial class ThermalRunService
             {
                 var z = Series(o, j);
                 string key = $"{places[o]}:{zSources[j].Name}";
-                output.Cubes.Add((SmallSignalGroup, "Zth:" + key, new DataCube([freqAxis], z) { Unit = "K/W" }));
+                output.Cubes.Add((SmallSignalGroup, "Zth:" + key, new DataCube([freqAxis], z) { Unit = "°C/W" }));
                 if (z.Any(v => !double.IsFinite(v.Real) || !double.IsFinite(v.Imaginary)))
                 {
                     output.Warnings.Add($"Z_th of '{places[o]}' per watt in '{zSources[j].Name}' is not finite at every frequency (the probe reads " +
@@ -214,7 +214,7 @@ public static partial class ThermalRunService
                 var fit = FosterFit.Fit(freqs, z, self ? FosterFit.ReweightPasses : 1);
                 fits[o, j] = fit;
                 double[] term = [.. Enumerable.Range(0, fit.Terms.Count).Select(k => (double)k)];
-                output.Cubes.Add((SmallSignalGroup, $"Foster:{key}:R", new DataCube([new Axis("term", term)], [.. fit.Terms.Select(x => x.R)]) { Unit = "K/W" }));
+                output.Cubes.Add((SmallSignalGroup, $"Foster:{key}:R", new DataCube([new Axis("term", term)], [.. fit.Terms.Select(x => x.R)]) { Unit = "°C/W" }));
                 output.Cubes.Add((SmallSignalGroup, $"Foster:{key}:tau", new DataCube([new Axis("term", term)], [.. fit.Terms.Select(x => x.Tau)]) { Unit = "s" }));
                 output.Cubes.Add((SmallSignalGroup, $"Foster:{key}:error", DataCube.Scalar(fit.FitError)));
                 if (self && fit.FitError > FosterWarnAbove)

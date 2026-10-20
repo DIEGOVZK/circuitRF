@@ -62,16 +62,15 @@ namespace CircuitRF.Render.DataDisplay
                 foreach (var curve in trace.FamilyCurves)
                 {
                     using var p = new SKPath();
-                    bool first = true;
+                    var line = new ClippedPolyline(p, canvasSize);
                     foreach (var pt in curve.Points)
                     {
                         // A log X axis has no canvas position for X ≤ 0. The point is SKIPPED and
                         // the polyline BREAKS rather than being bridged, so the curve never claims a
                         // segment between a point that is drawn and one that is not; the count is
                         // reported on the X-axis label (Plot.LogXHiddenPointNote).
-                        if (!tf.XIsPlottable(pt.X)) { first = true; continue; }
-                        var px = tf.ToCanvas(pt.X, pt.Y, useSecond);
-                        if (first) { p.MoveTo(px); first = false; } else p.LineTo(px);
+                        if (!tf.XIsPlottable(pt.X)) { line.Break(); continue; }
+                        line.Add(tf.ToCanvas(pt.X, pt.Y, useSecond));
                     }
                     canvas.DrawPath(p, paint);
                 }
@@ -259,6 +258,77 @@ namespace CircuitRF.Render.DataDisplay
 
         // ---- Path building ----------------------------------------------
 
+        /// <summary>
+        /// A polyline built segment by segment, each segment CLIPPED to a box a few canvas sizes wide before it reaches
+        /// the path. Skia drops a whole path when one coordinate is far enough out — an unconverged sweep point whose
+        /// efficiency read −9.9e11 erased its trace's line while every marker, drawn one at a time, still showed. A
+        /// segment clipped to the box keeps its direction, so the part inside the plot is drawn exactly; a non-finite
+        /// point breaks the line, as an unplottable X does.
+        /// </summary>
+        internal struct ClippedPolyline
+        {
+            private readonly SKPath _path;
+            private readonly double _x0, _y0, _x1, _y1;
+            private SKPoint _prev, _end;
+            private bool _hasPrev, _penDown;
+
+            public ClippedPolyline(SKPath path, (double W, double H) canvas)
+            {
+                _path = path;
+                double m = 4 * Math.Max(Math.Max(canvas.W, canvas.H), 1);
+                (_x0, _y0, _x1, _y1) = (-m, -m, canvas.W + m, canvas.H + m);
+                _prev = _end = default;
+                _hasPrev = _penDown = false;
+            }
+
+            public void Break() { _hasPrev = false; _penDown = false; }
+
+            public void Add(SKPoint p)
+            {
+                if (!float.IsFinite(p.X) || !float.IsFinite(p.Y)) { Break(); return; }
+                if (!_hasPrev)
+                {
+                    _prev = p;
+                    _hasPrev = true;
+                    // A lone point inside the box still starts the line, so a one-point trace builds the path it always did.
+                    if (Inside(p)) { _path.MoveTo(p); _end = p; _penDown = true; }
+                    return;
+                }
+                if (Clip(_prev, p, out var a, out var b))
+                {
+                    if (!_penDown || a != _end) _path.MoveTo(a);
+                    _path.LineTo(b);
+                    _end = b;
+                    _penDown = true;
+                }
+                else _penDown = false;
+                _prev = p;
+            }
+
+            private readonly bool Inside(SKPoint p) => p.X >= _x0 && p.X <= _x1 && p.Y >= _y0 && p.Y <= _y1;
+
+            /// <summary>Liang–Barsky: the part of a→b inside the box, in double precision; an end already inside is returned unchanged.</summary>
+            private readonly bool Clip(SKPoint pa, SKPoint pb, out SKPoint a, out SKPoint b)
+            {
+                double ax = pa.X, ay = pa.Y, dx = (double)pb.X - ax, dy = (double)pb.Y - ay;
+                double t0 = 0, t1 = 1;
+                bool ok = Edge(-dx, ax - _x0, ref t0, ref t1) && Edge(dx, _x1 - ax, ref t0, ref t1)
+                       && Edge(-dy, ay - _y0, ref t0, ref t1) && Edge(dy, _y1 - ay, ref t0, ref t1);
+                a = t0 == 0 ? pa : new SKPoint((float)(ax + t0 * dx), (float)(ay + t0 * dy));
+                b = t1 == 1 ? pb : new SKPoint((float)(ax + t1 * dx), (float)(ay + t1 * dy));
+                return ok;
+            }
+
+            private static bool Edge(double p, double q, ref double t0, ref double t1)
+            {
+                if (p == 0) return q >= 0;
+                double r = q / p;
+                if (p < 0) { if (r > t1) return false; if (r > t0) t0 = r; }
+                else { if (r < t0) return false; if (r < t1) t1 = r; }
+                return true;
+            }
+        }
+
         private static SKPath BuildPath(Trace trace, TransformSet tf)
         {
             var  path         = new SKPath();
@@ -278,15 +348,13 @@ namespace CircuitRF.Render.DataDisplay
             }
             else
             {
-                bool first = true;
+                var line = new ClippedPolyline(path, tf.CanvasSize);
                 foreach (var pt in trace.Points)
                 {
                     // See the family-curve loop above: an unplottable X breaks the polyline rather
                     // than being bridged across.
-                    if (!tf.XIsPlottable(pt.X)) { first = true; continue; }
-                    var px = tf.ToCanvas(pt.X, pt.Y, useSecondary);
-                    if (first) { path.MoveTo(px); first = false; }
-                    else        path.LineTo(px);
+                    if (!tf.XIsPlottable(pt.X)) { line.Break(); continue; }
+                    line.Add(tf.ToCanvas(pt.X, pt.Y, useSecondary));
                 }
             }
 

@@ -257,11 +257,11 @@ public static class InstanceNetContract
         ["OpAmp"] =
             "3 nets (in+, in−, out; the output referenced to ground), or 5 with Pins=5, adding the "
           + "supply pins V+ and V−, which carry no current.",
-        ["ComposedFet"] =
+        ["ComposedFET"] =
             "3 nets: g d s, bound to the symbol's pins 1, 2 and 3. A fourth, t, is the thermal node of " +
             "a model that has one.",
         ["ComposedCore"] =
-            "3 nets: the intrinsic gate, drain and source — gi di si inside a ComposedFet; 4 with the thermal node t of a self-heating model.",
+            "3 nets: the intrinsic gate, drain and source — gi di si inside a ComposedFET; 4 with the thermal node t of a self-heating model.",
         ["VerilogA"] =
             "Set by the compiled model the File parameter names: one net per declared terminal, " +
             "which the module's own source states and no registry here can.",

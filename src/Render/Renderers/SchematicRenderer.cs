@@ -999,7 +999,10 @@ public static class SchematicRenderer
             }
 
             if (!isConnected)
+            {
+                if (port.Optional) continue;
                 canvas.DrawRect(SKRect.Create(px - boxHalf, py - boxHalf, boxHalf * 2, boxHalf * 2), unconnPaint);
+            }
             else
                 canvas.DrawRect(SKRect.Create(px - connHalf, py - connHalf, connHalf * 2, connHalf * 2), connPaint);
         }

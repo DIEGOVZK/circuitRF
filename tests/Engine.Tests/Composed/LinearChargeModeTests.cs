@@ -20,7 +20,7 @@ public sealed class LinearChargeModeTests(ITestOutputHelper output)
 {
     private static readonly string ModelPath = ComposedTestModels.WriteTemp(ComposedTestModels.Model());
 
-    private static string Fet(string path, string switches = "") => $"ComposedFet:X1 g d 0 File=\"{path}\" {switches}\n";
+    private static string Fet(string path, string switches = "") => $"ComposedFET:X1 g d 0 File=\"{path}\" {switches}\n";
 
     [Fact]
     public void SParameters_AtTheBiasPoint_AreTheSameWithLinearC()

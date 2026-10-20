@@ -14,14 +14,14 @@ public sealed class ComposedFetProbeTests
     [Fact]
     public void TheIntrinsicNetAndANetworkElement_ResolveByPath()
     {
-        var nl = Elaborate(Bench(-0.6, 6) + $"ComposedFet:X1 g d 0 File=\"{ModelPath}\"\n");
+        var nl = Elaborate(Bench(-0.6, 6) + $"ComposedFET:X1 g d 0 File=\"{ModelPath}\"\n");
 
         Assert.True(nl.Nodes.TryGetIndex("X1.gi", out _));
         Assert.Contains(nl.Components, c => c.InstancePath == "X1.rg" && c.ComponentType == "R");
         Assert.Contains(nl.Components, c => c.InstancePath == "X1.core" && c.Model is ComposedCoreModel);
 
         // V(X1.gi) is a probe like any other: the DC solution reports it by that name.
-        var v = Dc(Bench(-0.6, 6) + $"ComposedFet:X1 g d 0 File=\"{ModelPath}\"\n");
+        var v = Dc(Bench(-0.6, 6) + $"ComposedFET:X1 g d 0 File=\"{ModelPath}\"\n");
         Assert.InRange(v["X1.gi"], -0.61, -0.59);
     }
 
@@ -32,7 +32,7 @@ public sealed class ComposedFetProbeTests
         string path = ComposedTestModels.WriteTemp(ComposedTestModels.Model());
         var cnl = new StringBuilder(Bench(-0.6, 6));
         for (int k = 0; k < 100; k++)
-            cnl.Append($"ComposedFet:X{k} g d 0 File=\"{path}\" N={1 + k % 3}\n");
+            cnl.Append($"ComposedFET:X{k} g d 0 File=\"{path}\" N={1 + k % 3}\n");
 
         var nl = Elaborate(cnl.ToString());
 

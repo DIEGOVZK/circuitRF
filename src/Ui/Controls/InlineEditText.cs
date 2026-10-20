@@ -121,8 +121,17 @@ public sealed class InlineEditText : Panel
     public bool IsEditing
     {
         get => _isEditing;
-        private set => SetAndRaise(IsEditingProperty, ref _isEditing, value);
+        private set
+        {
+            SetAndRaise(IsEditingProperty, ref _isEditing, value);
+            // The list row this editor sits in carries the class "inlineediting" while it is open, so a window can drop the
+            // row's selection highlight and let the box read as the thing being edited (the Model Composer does).
+            this.FindAncestorOfType<ListBoxItem>()?.Classes.Set(EditingRowClass, value);
+        }
     }
+
+    /// <summary>The class an enclosing <see cref="ListBoxItem"/> carries while this editor is open.</summary>
+    public const string EditingRowClass = "inlineediting";
 
     /// <summary>Raised after a commit has written <see cref="Text"/>.</summary>
     public event EventHandler<string>? Committed;

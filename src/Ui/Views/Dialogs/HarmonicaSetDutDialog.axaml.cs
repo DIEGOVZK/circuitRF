@@ -318,7 +318,7 @@ public partial class HarmonicaSetDutDialog : Window
                 IsEnabled = missing is null,
             };
             ToolTip.SetTip(check, missing is null
-                ? ComponentTypeRegistry.ParameterDescription(SymbolKind.ComposedFet, sw)
+                ? ComponentTypeRegistry.ParameterDescription(SymbolKind.ComposedFET, sw)
                 : $"'{name}' {missing}; {sw}=false changes nothing.");
             check.IsCheckedChanged += (_, _) =>
             {

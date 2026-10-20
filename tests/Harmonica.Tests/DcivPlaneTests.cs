@@ -51,7 +51,7 @@ public sealed class DcivPlaneTests(ITestOutputHelper output)
                 Vdc:VG g 0 Vdc={N(vgs)}
                 Vdc:VD dd 0 Vdc={N(vds)}
                 IProbe:IX dd d
-                ComposedFet:X g d 0 File="{ComposedFixtures.ExampleModel}"
+                ComposedFET:X g d 0 File="{ComposedFixtures.ExampleModel}"
                 """;
             var (lib, tb) = new CnlReader().Read(bench);
             using var nl = new Elaborator(lib).Elaborate(tb);

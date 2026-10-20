@@ -913,7 +913,7 @@ A choice the window would ask you for is refused, naming the flag that answers i
 <span class="prompt">$ </span>circuitrf model fit fet.cmc --step all --seed 1
 <span class="prompt">$ </span>circuitrf model export fet.cmc -o fet.cmodel</code></pre>
 
-Then place it — `ComposedFet:X1 g d 0 File=fet.cmodel` — and run it like any device.
+Then place it — `ComposedFET:X1 g d 0 File=fet.cmodel` — and run it like any device.
 
 Exit **0** done; **1** refused; **3** finished, but a check failed; **130** cancelled, with nothing written. `fit --step
 all` keeps the steps that finished before a cancellation. Over MCP it is the `model` tool, one mode per noun.

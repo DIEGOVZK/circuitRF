@@ -164,7 +164,7 @@ public static class CellInterfaceWatch
             {
                 if (!portsById.TryGetValue(c.Id, out var ports)) continue;
                 foreach (var p in ports)
-                    if (p.State == PortConnectionState.Unconnected)
+                    if (p.State == PortConnectionState.Unconnected && !p.Optional)
                         unconnected.Add($"{NameOf(c)}.{p.Name}");
             }
 

@@ -141,7 +141,7 @@ public static class C3dThermal
                 found.Add(D.ContactShape(label, "names a pair another entry already names; one contact takes one resistance"));
             // brief-em3d-76 R-em3d76-1b — zero is perfect contact: an override may say so where the technology states a pair value
             if (!(c.ResistanceM2KW >= 0) || !double.IsFinite(c.ResistanceM2KW))
-                found.Add(D.ContactShape(label, $"has a resistance of {Num(c.ResistanceM2KW)} m²·K/W; it must be zero (perfect contact) or positive"));
+                found.Add(D.ContactShape(label, $"has a resistance of {Num(c.ResistanceM2KW)} m²·°C/W; it must be zero (perfect contact) or positive"));
             Unread(c.Unread, $"The contact resistance {label}", found);
         }
         return found;

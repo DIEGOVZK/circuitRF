@@ -376,7 +376,7 @@ public static class ConservationCheck
         {
             CmodelFile.Write(model, Path.Combine(dir, "model.cmodel"));
             string cnl = Path.Combine(dir, "check.cnl");
-            File.WriteAllText(cnl, "ComposedFet:X1 g d s File=model.cmodel\n");
+            File.WriteAllText(cnl, "ComposedFET:X1 g d s File=model.cmodel\n");
             var s = settings with
             {
                 Bias = settings.Bias ?? CurrentFit.Middle([.. data.X.Select(p => new[] { p.Vgs, p.Vds })]),

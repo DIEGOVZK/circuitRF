@@ -9,14 +9,15 @@ namespace CircuitRF.Design.Schematic;
 using Symbol = global::CircuitRF.Design.Symbol.Symbol;
 
 /// <summary>
-/// The symbol of a placed <see cref="SymbolKind.ComposedFet"/> (brief-modelcomposer-1 R-mc1-9): the
+/// The symbol of a placed <see cref="SymbolKind.ComposedFET"/> (brief-modelcomposer-1 R-mc1-9): the
 /// one the instance's <c>Symbol</c> parameter names — copied from the model when it is placed, and
 /// changed per instance in the Inspector — or, when that is blank, the one the <c>.cmodel</c> itself
 /// names.
 ///
 /// <para><b>What a symbol may be.</b> A library symbol, by its kind's name (<c>FetAngelov</c>), or a
 /// <c>.csym</c> path relative to the <c>.cmodel</c>. Its pins 1, 2 and 3 bind to <c>g d s</c> by NUMBER,
-/// so a <c>.csym</c> lacking any of them cannot be this device's symbol.</para>
+/// so a <c>.csym</c> lacking any of them cannot be this device's symbol; a pin 4 is the thermal node <c>t</c>. The
+/// standard glyph has the fourth when the model self-heats.</para>
 ///
 /// <para><b>It always draws.</b> A symbol that does not resolve falls back to the standard
 /// three-terminal FET glyph, in the FET family's pin geometry, so the instance stays placeable and
@@ -35,6 +36,10 @@ public static class ComposedFetSymbolProvider
     public const string SymbolParameter = "Symbol";
 
     private const char Separator = '|';
+
+    /// <summary>The symbol name that draws the standard glyph WITH its thermal pin whatever the model — what the Model
+    /// Composer's symbol picker previews for a self-heating model before it is exported.</summary>
+    public const string ThermalGlyph = "ComposedFET";
 
     /// <summary>The reference for an instance carrying these parameters. The file goes LAST, so a path
     /// containing the separator cannot be mistaken for the symbol field.</summary>
@@ -68,7 +73,7 @@ public static class ComposedFetSymbolProvider
     /// </summary>
     public static string? Diagnose(string instanceName, string? file, string? symbol, string? schematicDir)
         => Choose(RefFor(file, symbol), schematicDir).Missing is { } missing
-            ? $"ComposedFet '{instanceName}': its symbol '{missing}' does not resolve; the standard FET symbol is drawn."
+            ? $"ComposedFET '{instanceName}': its symbol '{missing}' does not resolve; the standard FET symbol is drawn."
             : null;
 
     /// <summary>The model's own <c>Symbol</c>, or null — what placing an instance copies into it.</summary>
@@ -79,20 +84,34 @@ public static class ComposedFetSymbolProvider
         catch (Exception) { return null; }
     }
 
+    /// <summary>True when the model the stored <c>File</c> names self-heats — it then has a thermal node to offer.</summary>
+    public static bool ModelSelfHeats(string? file, string? schematicDir)
+    {
+        if (ResolvePath(file, schematicDir) is not { } path || !File.Exists(path)) return false;
+        try { return ComposedModelCache.Load(path).Model.Thermal is not null; }
+        catch (Exception) { return false; }
+    }
+
     private static (Symbol Glyph, string? Missing) Choose(string symbolRef, string? schematicDir)
     {
-        var fallback = BuiltInSymbols.Primitives(SymbolKind.ComposedFet, 3);
-        if (Parse(symbolRef) is not { } r) return (fallback, null);
+        // The standard glyph carries the thermal pin t only for a model that has a thermal node, so a model that does not
+        // self-heat never shows a pin it would refuse.
+        var parsed = Parse(symbolRef);
+        var fallback = Unlabelled(parsed is { } p0 && ModelSelfHeats(p0.File, schematicDir)
+            ? BuiltInSymbols.Primitives(SymbolKind.ComposedFET, 4)
+            : BuiltInSymbols.Primitives(SymbolKind.FetCurtice, 3));
+        if (parsed is not { } r) return (fallback, null);
 
         string name = r.Symbol.Trim();
         string? modelPath = ResolvePath(r.File, schematicDir);
         if (name.Length == 0) name = (ModelSymbol(r.File, schematicDir) ?? "").Trim();
         if (name.Length == 0) return (fallback, null);
 
+        if (name == ThermalGlyph) return (Unlabelled(BuiltInSymbols.Primitives(SymbolKind.ComposedFET, 4)), null);
         if (!name.EndsWith(".csym", StringComparison.OrdinalIgnoreCase))
             return Enum.TryParse<SymbolKind>(name, ignoreCase: false, out var kind)
                    && SymbolPortDefs.For(kind).Length == 3
-                ? (BuiltInSymbols.Primitives(kind, 3), null)
+                ? (Unlabelled(BuiltInSymbols.Primitives(kind, 3)), null)
                 : (fallback, name);
 
         // A .csym is relative to the .cmodel, which is what makes a model and its symbol travel together.
@@ -109,6 +128,17 @@ public static class ComposedFetSymbolProvider
         bool hasGds = Enumerable.Range(0, 3).All(k => loaded.Pins.Any(p => p.PortIndex == k));
         return hasGds ? (loaded, null) : (fallback, name);
     }
+
+    /// <summary>
+    /// A built-in glyph with its pins' names cleared. A placed composed FET is drawn through the cell-symbol path, which
+    /// prints a pin's stated name beside it — right for a library part, whose artwork carries no labels, but a FET glyph
+    /// says which lead is the gate by its shape, and g, d and s printed on it read as clutter. A <c>.csym</c> keeps the
+    /// names its author drew.
+    /// </summary>
+    private static Symbol Unlabelled(Symbol glyph) =>
+        new(glyph.Primitives,
+            [.. glyph.Pins.Select(p => new SymbolPin(p.LocalX, p.LocalY, p.PortIndex) { NameAlign = p.NameAlign })],
+            glyph.PortCount);
 
     private static string Unquote(string? s)
     {

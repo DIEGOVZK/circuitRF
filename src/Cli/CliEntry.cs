@@ -338,7 +338,8 @@ static int RunSparam(string[] args)
             return kindRefusal;
         var (lib, tb) = source;
         ApplySets(tb, sets);
-        var nl = new Elaborator(lib).Elaborate(tb);
+        string? refBase = CircuitSource.ReferenceBaseOf(input);
+        var nl = new Elaborator(lib) { BaseDirectory = refBase }.Elaborate(tb);
         var shown = PrintWarnings(nl);
 
         // Prefer typed SParameterAnalysis from the netlist unless --freq was explicitly given.
@@ -391,7 +392,7 @@ static int RunSparam(string[] args)
                 (pp.Length > 0 ? $", PassiveParams={string.Join(",", pp)}" : ""));
         }
 
-        var ds  = SParameterEngine.Run(nl, lib, tb, baseDirectory: null, freqs, settings,
+        var ds  = SParameterEngine.Run(nl, lib, tb, baseDirectory: refBase, freqs, settings,
                                        control: RunHost.Control, ndf: ndfReq);
 
         // AGAIN, AFTER THE RUN — the engine reports what it finds while assembling and solving, long
@@ -491,7 +492,7 @@ static int RunDc(string[] args)
             return kindRefusal;
         var (lib, tb) = source;
         ApplySets(tb, sets);
-        var nl = new Elaborator(lib).Elaborate(tb);
+        var nl = new Elaborator(lib) { BaseDirectory = CircuitSource.ReferenceBaseOf(input) }.Elaborate(tb);
         var shown = PrintWarnings(nl);
 
         var result = NonlinearDcEngine.Run(nl, settings);
@@ -674,7 +675,8 @@ static int RunHb(string[] args)
             Console.Error.WriteLine($"[circuitRF] set {name} = {expr}");
         }
 
-        var nl    = new Elaborator(lib).Elaborate(tb);
+        string? refBase = CircuitSource.ReferenceBaseOf(input);
+        var nl    = new Elaborator(lib) { BaseDirectory = refBase }.Elaborate(tb);
         var shown = PrintWarnings(nl);
 
         // Pick what to run: the named analysis, else the outermost runnable chain that bottoms out
@@ -690,7 +692,7 @@ static int RunHb(string[] args)
 
         // brief-em3d-79: the dispatch is HbCircuitRun.Solve — the function a thermal setup driven from this circuit
         // calls too, so the two cannot run the chain differently. The announcement is the line this verb always printed.
-        var solved = HbCircuitRun.Solve(lib, tb, nl, top, settings, Path.GetDirectoryName(Path.GetFullPath(input)),
+        var solved = HbCircuitRun.Solve(lib, tb, nl, top, settings, refBase,
                                         RunHost.Control, Console.Error.WriteLine);
         DataSet      ds  = solved.Data;
         HbRunResult? run = solved.Run;
@@ -887,7 +889,8 @@ static int RunLoadpull(string[] args, bool pursuit)
             Console.Error.WriteLine($"[circuitRF] set {name} = {expr}");
         }
 
-        var nl    = new Elaborator(lib).Elaborate(tb);
+        string? refBase = CircuitSource.ReferenceBaseOf(input);
+        var nl    = new Elaborator(lib) { BaseDirectory = refBase }.Elaborate(tb);
         var shown = PrintWarnings(nl);
 
         var top = SelectTop(
@@ -910,7 +913,7 @@ static int RunLoadpull(string[] args, bool pursuit)
             Console.Error.WriteLine(
                 $"{kind} sweep '{psa.Name}': {psa.SweepValues.Length} point(s) over {psa.SweepVarName}");
             ds = ParametricSweepEngine.Run(psa, lib, tb, settings,
-                                           baseDirectory: Path.GetDirectoryName(Path.GetFullPath(input)),
+                                           baseDirectory: refBase,
                                            control: RunHost.Control,
                                            // Every point elaborates a netlist of its own and throws it
                                            // away; without this the warnings printed below are those of
@@ -1782,7 +1785,7 @@ static void PrintRth(RfCore.Data.DataSet data)
     int n = names.Length;
     double[] v = cube.RealValues;
     var inv = System.Globalization.CultureInfo.InvariantCulture;
-    Console.WriteLine("Rth matrix (K/W): the rise of each row's source per watt in each column's");
+    Console.WriteLine("Rth matrix (°C/W): the rise of each row's source per watt in each column's");
     int width = Math.Max(10, names.Max(x => x.Length) + 2);
     Console.WriteLine(new string(' ', width) + string.Concat(names.Select(x => x.PadLeft(width))));
     for (int i = 0; i < n; i++)
@@ -1900,7 +1903,7 @@ static int RunElab(string[] args)
         if (CircuitSource.ReadRunInput("elab", args[0], out int kindRefusal) is not { } source)
             return kindRefusal;
         var (lib, tb) = source;
-        var nl = new Elaborator(lib).Elaborate(tb);
+        var nl = new Elaborator(lib) { BaseDirectory = CircuitSource.ReferenceBaseOf(args[0]) }.Elaborate(tb);
         PrintWarnings(nl);
         Console.WriteLine($"{nl.Components.Count} component(s), {nl.Nodes.Count} node(s)");
         foreach (var c in nl.Components)

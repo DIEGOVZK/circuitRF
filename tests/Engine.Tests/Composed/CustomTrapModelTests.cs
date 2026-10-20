@@ -29,7 +29,7 @@ public sealed class CustomTrapModelTests(ITestOutputHelper output)
     private static readonly string BuiltIn = ComposedTestModels.WriteTemp(DrainLag());
     private static readonly string Written = ComposedTestModels.WriteTemp(With(Custom()));
 
-    private static string Fet(string path) => $"ComposedFet:X1 g d 0 File=\"{path}\"\n";
+    private static string Fet(string path) => $"ComposedFET:X1 g d 0 File=\"{path}\"\n";
 
     private static void Close(double a, double b, string what) =>
         Assert.True(Math.Abs(a - b) <= 1e-9 * Math.Max(Math.Abs(b), 1e-3), $"{what}: {a:R} vs {b:R}");

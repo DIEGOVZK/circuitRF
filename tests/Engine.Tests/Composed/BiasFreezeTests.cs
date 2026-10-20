@@ -18,7 +18,7 @@ public sealed class BiasFreezeTests
 {
     private static readonly string ModelPath = ComposedTestModels.WriteTemp(ComposedTestModels.Model());
 
-    private static string LinearFet => $"ComposedFet:X1 g d 0 File=\"{ModelPath}\" LinearC=true\n";
+    private static string LinearFet => $"ComposedFET:X1 g d 0 File=\"{ModelPath}\" LinearC=true\n";
 
     private static ComposedCoreModel Core(ElaboratedNetlist nl)
         => nl.Components.Select(c => c.Model).OfType<ComposedCoreModel>().Single();

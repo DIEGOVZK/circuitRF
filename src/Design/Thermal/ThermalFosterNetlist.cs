@@ -39,12 +39,12 @@ public static class ThermalFosterNetlist
         double z0 = double.Parse(network.Rth.ToString("G3", inv), inv);
         var b = new StringBuilder();
         b.AppendLine($"; circuitRF — the Foster thermal network of heat source '{source}', fitted by thermal setup '{setup}'.");
-        b.AppendLine("; The electrical analogy: power (W) is current (A) and temperature rise (K) is voltage (V), so a resistance in Ohm is");
-        b.AppendLine("; K/W and a capacitance in F is J/K. Pin 'th' takes the source's power; pin 'ref' is the reference (the heatsink).");
+        b.AppendLine("; The electrical analogy: power (W) is current (A) and temperature rise (°C) is voltage (V), so a resistance in Ohm is");
+        b.AppendLine("; °C/W and a capacitance in F is J/°C. Pin 'th' takes the source's power; pin 'ref' is the reference (the heatsink).");
         b.AppendLine("; FOSTER form: the stages' internal nodes are NOT physical temperatures — only the voltage across the pins (the rise");
         b.AppendLine($"; of '{source}''s own place, its mean, per watt in it) is. Not attached to any device's thermal node.");
         b.AppendLine($"; Fitted to Z_th over {Num(startHz)} Hz – {Num(stopHz)} Hz: {network.Terms.Count} stage(s), largest relative error " +
-                     $"{(100 * network.FitError).ToString("F3", inv)} %, ΣR = Rth = {Num(network.Rth)} K/W.");
+                     $"{(100 * network.FitError).ToString("F3", inv)} %, ΣR = Rth = {Num(network.Rth)} °C/W.");
         b.AppendLine();
         b.AppendLine($"define {cell} ( {ThermalPin} {ReferencePin} )");
         for (int i = 0; i < network.Terms.Count; i++)
@@ -57,7 +57,7 @@ public static class ThermalFosterNetlist
         }
         b.AppendLine($"end {cell}");
         b.AppendLine();
-        b.AppendLine($"; A one-port bench: Z_th = Z0 (1 + S11) / (1 - S11) with Z0 = {Num(z0)} Ohm (K/W).");
+        b.AppendLine($"; A one-port bench: Z_th = Z0 (1 + S11) / (1 - S11) with Z0 = {Num(z0)} Ohm (°C/W).");
         b.AppendLine($"Port:P1 {ThermalPin} 0 Num=1 Z={Value(z0)} Ohm");
         b.AppendLine($"{cell}:X1 {ThermalPin} 0");
         b.AppendLine($"analysis ZTH type=sparam start={Value(startHz)} stop={Value(stopHz)} npts={Math.Max(points, 2)} log Unit=Hz");

@@ -75,16 +75,21 @@
             <Setter Property="Padding" Value="4,2"/>
             <Setter Property="MinHeight" Value="0"/>
         </Style>
+        <!-- A row whose inline editor is open shows no selection or hover highlight, so the box reads as what is being
+             edited; the highlight returns when the edit commits (InlineEditText.EditingRowClass). -->
+        <Style Selector="ListBox.rows ListBoxItem.inlineediting /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
 
-        <!-- The owner's rule: centred text on buttons and in comboboxes, the selection and its items. -->
+        <!-- Centred text on buttons; a combobox's selection and its items are left-aligned, as everywhere else in circuitRF. -->
         <Style Selector="Button">
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
         </Style>
         <Style Selector="ComboBox">
-            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
         </Style>
         <Style Selector="ComboBoxItem">
-            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
         </Style>
 
         <!-- The editors' lit tool button. The Fluent theme paints hover and press on the inner presenter, so the accent

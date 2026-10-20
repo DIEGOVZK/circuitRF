@@ -301,7 +301,7 @@ public static class MaterialLibraries
             var first = entries[0].I;
             yield return new MaterialLibraryProblem(InterfaceConflictId,
                 $"The thermal interface between '{first.MaterialA}' and '{first.MaterialB}' is given different resistances by " +
-                string.Join(" and by ", entries.Select(e => $"{e.Source} ({e.I.ResistanceM2KW.ToString("G6", CultureInfo.InvariantCulture)} m²·K/W)")) +
+                string.Join(" and by ", entries.Select(e => $"{e.Source} ({e.I.ResistanceM2KW.ToString("G6", CultureInfo.InvariantCulture)} m²·°C/W)")) +
                 ". A technology must have one answer for a pair: make the values equal, or remove one.");
         }
     }

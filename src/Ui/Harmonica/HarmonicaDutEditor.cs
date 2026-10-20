@@ -126,7 +126,7 @@ public sealed class HarmonicaDutEditor
 
             case DutKind.Composed:
                 // A .cmodel declares no parameters of its own here: its file, N and switches are the whole of it.
-                TypeName = "ComposedFet";
+                TypeName = "ComposedFET";
                 Provider = null;
                 _parameters.Clear();
                 break;

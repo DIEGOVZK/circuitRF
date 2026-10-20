@@ -5,7 +5,7 @@ namespace CircuitRF.Core.Devices.Composed;
 
 /// <summary>
 /// The contents of a <c>.cmodel</c> — a composed nonlinear FET model, the file a
-/// <c>ComposedFet</c> instance names (brief-modelcomposer-1 R-mc1-1; <c>docs/design/model-composer.md</c>).
+/// <c>ComposedFET</c> instance names (brief-modelcomposer-1 R-mc1-1; <c>docs/design/model-composer.md</c>).
 ///
 /// <para>The container is a ZIP holding <c>model.json</c> (this record, minus <see cref="Arrays"/>) and
 /// one <c>arrays/&lt;name&gt;.npy</c> per entry of <see cref="Arrays"/>. <see cref="CmodelFile"/> reads,

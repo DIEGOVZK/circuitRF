@@ -17,7 +17,7 @@ public sealed class CaptureEmissionNodeTests(ITestOutputHelper output)
 {
     private static readonly string ModelPath = ComposedTestModels.WriteTemp(DrainLag());
 
-    private static string Fet(string path) => $"ComposedFet:X1 g d 0 File=\"{path}\"\n";
+    private static string Fet(string path) => $"ComposedFET:X1 g d 0 File=\"{path}\"\n";
 
     /// <summary>To 1e-12 of itself: the DC engine's gmin (1e-12 S) against the node's 1 S emission conductance
     /// (<c>C/τ_emit</c>) is the only thing between them.</summary>

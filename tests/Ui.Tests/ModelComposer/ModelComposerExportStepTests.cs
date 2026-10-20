@@ -7,7 +7,8 @@ namespace CircuitRF.Ui.Tests.ModelComposer;
 
 /// <summary>
 /// brief-modelcomposer-15 R-mc15-8: Export from the window writes the bytes <c>circuitrf model export</c> writes on the same
-/// document; the symbol picker offers no 2-pin symbol; a stale step blocks Export, and Run stale clears it.
+/// document; the symbol picker offers no 2-pin symbol; its plots are the exported model's I–V; a stale step blocks Export,
+/// and Run stale clears it.
 /// </summary>
 public sealed class ModelComposerExportStepTests
 {
@@ -39,6 +40,9 @@ public sealed class ModelComposerExportStepTests
 
         Assert.True(await vm.ExportAsync(), vm.StatusText);
         Assert.Equal(File.ReadAllBytes(Path.Combine(dir, "cli.cmodel")), File.ReadAllBytes(Path.Combine(dir, "window.cmodel")));
+
+        // The plots show what is exported — the model's I–V — and nothing about the bias plane.
+        Assert.Equal([Ui.ModelComposer.ModelComposerViewModel.OutputTab, Ui.ModelComposer.ModelComposerViewModel.TransferTab], vm.PlotTabs);
     }
 
     [Fact]

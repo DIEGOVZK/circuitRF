@@ -168,7 +168,7 @@ public sealed class PulseHarmonicsTests(ITestOutputHelper output)
                                       [.. Enumerable.Range(0, 4001).Select(k => period * k / 4000)]).Max();
         // the ripple about the average is what a pulse adds, and what a fit can get wrong: the DC term is exact either way
         double avg = PulseHarmonics.Average(brute, 1, load);
-        output.WriteLine($"δ {delta * 1e6:G4} µm; Re Z_transfer at least {transfer.Min(z => z.Real):G4} K/W (DC {transfer[0].Real:G4}); " +
+        output.WriteLine($"δ {delta * 1e6:G4} µm; Re Z_transfer at least {transfer.Min(z => z.Real):G4} °C/W (DC {transfer[0].Real:G4}); " +
                          $"{r.HarmonicCount} harmonics: peak {mine:R} K at {at:G4} s; 10⁴ harmonics: {reference:R} K at {refAt:G4} s; " +
                          $"ripple {mine - avg:G6} against {reference - avg:G6} K ({(mine - avg) / (reference - avg) - 1:G3}); " +
                          $"the Foster fit's ripple {old - avg:G6} K ({(old - avg) / (reference - avg) - 1:G3})");

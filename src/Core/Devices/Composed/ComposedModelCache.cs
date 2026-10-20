@@ -3,7 +3,7 @@ using System.Collections.Concurrent;
 namespace CircuitRF.Core.Devices.Composed;
 
 /// <summary>
-/// One <c>.cmodel</c>, read, validated and compiled: what every <c>ComposedFet</c> on it shares.
+/// One <c>.cmodel</c>, read, validated and compiled: what every <c>ComposedFET</c> on it shares.
 /// </summary>
 public sealed class LoadedComposedModel
 {
