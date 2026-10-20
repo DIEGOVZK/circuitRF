@@ -36,6 +36,9 @@
     <ProjectReference Include="../RfCore/RfCore.csproj" />
     <!-- brief-em3d-74: the thermal solver, which Design/Thermal's run service lowers a .c3d for and calls. -->
     <ProjectReference Include="../Thermal/CircuitRF.Thermal.csproj" />
+    <!-- brief-modelcomposer-11 R-mc11-6: the validation report's PA classes are harmonicaRF's own presets
+         (PaClassPresets), called rather than copied. -->
+    <ProjectReference Include="../Harmonica/CircuitRF.Harmonica.csproj" />
   </ItemGroup>
 
   <ItemGroup>

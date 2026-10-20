@@ -27,7 +27,11 @@ bytes. After this phase the series is **agent-ready**.
   levels each trap state was trained from;
 - `model export <doc.cmc> -o <out.cmodel> [--symbol …]`, or, passive,
   `model export <doc.cmc> --cell <workspace> <name>`;
-- `model validate <doc.cmc | model.cmodel> [--against <data set…>] [--tolerance …]`.
+- `model validate <doc.cmc | model.cmodel> [--against <data set…>] [--tolerance …]`;
+- `model report <doc.cmc> [--model <x.cmodel>] [-o <folder>] [--pdf <file.pdf>]` with every MC-11 R-mc11-6 option as a
+  flag (`--sections`, `--classes B,J,F,FInverse`, `--freq`, `--bias vgs,vds`, `--source-2f0 re,im`, `--ropt`, `--disc
+  radius,rings,spokes`, `--pin start,step,max`, `--compression`), defaulting to the options stored in the `.cmc`; the
+  PDF through the same Data Display document and composer the window's report export uses (MC-15).
 
 **R-mc13-2 — No logic in the verb.** Every noun parses arguments, calls the `src/Design/Modeling` function the
 window's command calls, and reports. A comment-stripped source scan of `src/Ui/ModelComposer` and

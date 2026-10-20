@@ -20868,3 +20868,35 @@ drain-like state, renamed from `a3`/`c3` so it cannot collide with `phi3`'s.
 **A charge fit after the trap settings changed read the wrong lanes.** The model takes the currents' trap block, so a
 `Qd` mapped under other states fed its trap values to the wrong seeds; `ChargeFit.Run` refuses the mismatch and asks
 for the currents to be fitted again. `AdjointExtra` also rebuilt `PointsWithT` (every point's array) once per point.
+
+## Model Composer MC-11: export, validation and the Model Validation Report (2026-10-19)
+
+- **`LoadpullEngine` cannot load-pull a `ComposedFet`.** It reads Pout and Pin from the nonlinear interface current at
+  each tuner's net and refuses a tuner on a net no nonlinear device touches ("… is not a nonlinear interface node") — and
+  a composed FET's terminals always sit behind its extrinsic network. So the `lp` verb refuses every composed model too.
+  Validation and the report run one HB power sweep per load instead (`ModelValidation.LoadSweep`), measured by probes at
+  the device terminals and written under the loadpull DataSet's canonical names so `LoadpullSurface` reads it unchanged.
+  The owner's position (paraphrased): reading Pout through the composed FET's linear network is valid — that network is
+  part of the model — and using the engine that way is acceptable; leaving the per-load sweep in place is also fine. The
+  engine fix is the load tuner's branch current from `HbLinearBackSolver`, mirroring `ComputeSourceInputCurrent`; it
+  needs the Hero 3/3B goldens re-gated, so it was left for its own phase.
+- **PA classes follow harmonicaRF's method, at the owner's direction**: `PaClassPresets.IntrinsicLoad` (Z0 = R_opt) at the
+  intrinsic plane, carried to the extrinsic plane by `IntrinsicAbcd`'s bilinear inverse with the output capacitance
+  linearized at the intrinsic DC bias (here the model's C22). A six-pin network generalises the fixed package chain:
+  the drain-side two-port with both gates AC-shorted — IntrinsicAbcd's own no-feedback condition. `src/Design` now
+  references `src/Harmonica` to call the presets rather than copy them.
+- **A lossy network makes intrinsic shorts and opens unreachable.** Behind the stock GaN network's 9.2 Ω `rd` every
+  near-short (R_opt/100) and, at 5 GHz, Class F's opens need a negative resistance at the extrinsic plane. harmonicaRF
+  writes such a marker anyway; a negative-resistance load in an HB loadpull is an active termination, so the report keeps
+  the reactance at the chart's edge and names each band.
+- **Compression from the running gain maximum.** The synthetic device's gain expands (12.5 → 13.3 dB) before it falls;
+  measuring from the first step put the compression point a step late. harmonicaRF's `PinSearch` rule is used.
+- **`LoadpullSurface` fits nothing below 6 loads** (`MinFitNodes`) and returns null MXP/MXE — a small test grid needs 7.
+- **A cache rebuild swaps the whole `<name>.cmc-cache/` folder** and carries only `intrinsic/` across, so a folder made in
+  it before an `Open` vanishes (the validation's `validate/` did). Open first, then create.
+- **A composed FET and its SDD twin give bit-identical HB results** in the power-sweep gate (0 dB, 0 pp): both evaluate
+  the same compiled expressions in the same netlist order. The S gate, through the network, differs at 1e-10.
+- **Default validation tolerances are measured-data tolerances** (|ΔS| median 0.01, 95 % 0.03): Lg × 1.5 passes them
+  (95 % 0.024 at 10 GHz), Lg × 3 fails (0.098). The gate perturbs by 3.
+- Large-signal CSV units: `CmcFile.UnitScale("dBm")` is not a dBm-aware scale, so powers, gain and efficiencies are read
+  in their own unit (dBm, dB, %) and any other unit on them is refused; only currents are scaled.

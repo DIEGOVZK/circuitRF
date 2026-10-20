@@ -7,7 +7,9 @@ MC-4 built (pads, the six-pin network, de-embedding, intrinsic re-referencing an
 MC-5 built (the extrinsic fit); MC-6 built (the ANN trainer); MC-7 built (the current constituents and the
 DC/RF dispersion); MC-8 built (the charge constituents and Check Charge Conservation); MC-9 built (temperature
 as an input, the thermal node, Rth extraction, the single-temperature model); MC-10 built (the trap contract and
-registry, `CaptureEmission` and `Custom`, trap-state training data, `Id` and `Qd` re-trained with the trap states) ·
+registry, `CaptureEmission` and `Custom`, trap-state training data, `Id` and `Qd` re-trained with the trap states); MC-11
+built (export to `.cmodel`, the symbol choice, the placement payload, staleness by data as well as network, validation
+against S, I–V and large-signal data, and the Model Validation Report's headless half) ·
 **Source:** `docs/sonnet-briefs/brief-modelcomposer-0-overview.md` (decisions D1–D16) and the phase briefs
 `brief-modelcomposer-1` … `-16` · **Primary reference:** [P1] J. C. Pedro, D. E. Root, J. Xu, L. C. Nunes,
 *Nonlinear Circuit Simulation and Modeling*, Cambridge University Press, 2018.
@@ -977,7 +979,108 @@ its adjoint problem gains a lane per state, the zero held along each at the anch
 it is trap-independent. `Qg` never takes them. `TrapFit.FitFile` runs the step and re-trains the currents through one
 `RunControl`, writing nothing when cancelled (D13).
 
-## 14. Where it lives
+## 14. Export, validation and the report (MC-11)
+
+### 14.1 Staleness (R-mc11-1)
+
+A fit stamps its `Steps.<step>` block with two digests as it writes: `Network` (`NetworkFit.Digest`, as MC-5 already
+did for the current and charge steps — now every step) and `Data` (`CmcStamps.DataDigest`): the pads block, and every
+data set a fit can read — its definition as the `.cmc` writes it and each source's SHA-256 from the cache index. The
+network fit's own record carries `Data` too. `CmcStamps.StaleSteps` lists every step whose stamp differs from the document
+now. A large-signal set is validation only and is left out, so adding one stales nothing; a step written before stamps
+existed carries none and is never called stale by the data.
+
+### 14.2 Export (`CmodelExport`)
+
+`Assemble` builds the whole `ComposedModel` in memory and validates it with MC-1's validator; `Export` writes it by a
+temporary file and a rename, so a refusal, failure or cancellation leaves no file.
+- **Network**: the six-pin `.csch` as one `define extrinsic (pins…)` block (`PinNetwork.DefineBlock`), every variable a
+  `parameters` entry holding its value in use as a number, `\n` line ends on every system; each variable's rule that is
+  not `fixed`. No network: the 1 µΩ pass-through `ChargeFit` already uses.
+- **Constituents** from the recorded current and charge steps with their arrays from the cache; `Gx`, `Dispersion` and
+  `Symmetry` from the current step; `Thermal` from the thermal record when self-heating is on; `Traps` from the current
+  record.
+- **Temperature**: `Single` at the current fit's data temperature unless a constituent reads `T`; then `Range` over the
+  plan (or the constituents' own boxes at one temperature).
+- **Refusals**, each naming its field: a Passive document; no `N0`; a stale step (all of them, in one sentence); an
+  unfitted current or charge step, or one whose arrays left the cache; traps modelled and not run; self-heating on and no
+  thermal network.
+- **Provenance**: the caller's `Created` (default now, UTC), the build's version without a commit suffix, each source's
+  hash from the cache index, and a digest of the network and steps blocks.
+
+### 14.3 The symbol and the placement (R-mc11-2, R-mc11-3)
+
+`ModelSymbols`: pins bind by number, so a symbol must have pins 1, 2 and 3; a fourth only on a model with a thermal
+node; none beyond. A library symbol qualifies only when its kind's own pins are `g, d, s` in that order (the FET laws) —
+a JFET's or BJT's three pins mean something else in the same positions. A `.csym` is stored relative to the `.cmodel`
+(the provider resolves it from there) and relative to the `.cmc` in `Steps.Export.Settings.Symbol`.
+`ComposedFetPlacement.Payload` is `SchematicPersistence.SerializeSelection` of one `ComposedFet` (absolute `File`,
+`N = N0`, the symbol) — the editor's own paste reads it.
+
+### 14.4 Validation (`ModelValidation`, R-mc11-4, R-mc11-5)
+
+The model is a `.cmodel` named by the caller or the current state exported to `<name>.cmc-cache/validate/model.cmodel`.
+Every item but the pulsed one is a generated `.cnl` (`ValidationBench`) run through its verb's own engine call:
+
+| item | testbench | measure |
+|---|---|---|
+| S (every CW S set) | ideal tees at the device-plane bias (MC-4's re-referencing, no network), ports at the data's Z0; the data's own frequencies | `PadDeembedding.Embed` (the inverse of `Remove`) back to the probe plane; \|ΔS\| median and 95th percentile over every entry; per-bias RMS |
+| DC I–V (DC sets, simulated tables with currents) | voltage sources and probes; `ComposedCore` for intrinsic-plane data | RMS ΔId over the set's current range |
+| Pulsed I–V | none: a DC solve cannot hold a trap state | the channel current at each point's MC-10 trap state and quiescent junction temperature, on MC-4's intrinsic data (`CurrentFit.Gather`) |
+| Power sweep | `P1Tone` behind the stated source terminations and a gate tee, a `Tuner` load with its tee, probes at both device terminals, `parametric_sweep` over `Pin` wrapping `hb` | Pout (dBm), gain, PAE, DE, Id, Ig from the probes; RMS ΔPout (or Δgain) and ΔPAE (or ΔDE) |
+| Two-tone | `PnTone`, two tones about the centre | carrier, IM3 (2f1 − f2), IM5 (3f1 − 2f2) by frequency on the mix axis |
+| Loadpull file | one power sweep per measured load (§14.5) | ΔPout and ΔPAE at each measured (load, drive) against the model's at the nearest drive within 0.05 dB |
+
+Biases run in parallel; a cancelled run throws and reports nothing. Items carry `.meas`/`.model` cubes on shared axes.
+
+**Large-signal data** (`DataConditions.LargeSignal`): `Measurement` (`PowerSweep`, `TwoTone`, `Loadpull`), the
+frequency, spacing, bias, `SourceZ`/`LoadZ` and their harmonic lists (a harmonic not listed is shorted). A CSV maps
+`pin pout gain pae de id ig im3 im5` — powers in dBm, gain in dB, efficiencies in %, a unit on those refused unless it is
+that one; a loadpull file is `Format: loadpull` through RfCore's `.spl`/`.lpcwave` readers. The cache never imports a
+large-signal set. The data is compared at the device plane: pads are not re-embedded for large signal.
+
+### 14.5 Why a loadpull here is a set of power sweeps
+
+`LoadpullEngine` reads Pout and Pin from the nonlinear interface current at each tuner's net, and refuses a tuner on a
+net no nonlinear device touches. A `ComposedFet`'s terminals sit behind its extrinsic network, so **no composed FET can
+be load-pulled by the engine (or the `lp` verb)**. Extending the engine — the load tuner's own branch current from the
+linear back-solver, as `ComputeSourceInputCurrent` already does for the source — is the fix, and is left for a phase that
+can re-gate the Hero 3/3B goldens; reading Pout through the model's network is valid, since the network is part of the
+model. `ModelValidation.LoadSweep` runs one HB power sweep per load through
+the HB run service, measured by probes at the device terminals — exact whatever sits between — and writes the loadpull
+DataSet under the canonical names a measured file carries (`Pout_dBm`, `Gt_dB`, `Efficiency`, `PAE` in %, …), so RfCore's
+`LoadpullSurface` (the Data Display's performance summary) reads it unchanged. Compression is measured from the running
+gain maximum, harmonicaRF's rule, and a point is cut one step past it as the engine's drive-up stops.
+
+### 14.6 The Model Validation Report (R-mc11-6)
+
+`ModelValidationReport.Generate` → `ModelReport` (sections of DataSets, lines and testbenches); `Write` → a folder with
+`report.npy` (one group per section), `summary.txt` and `testbenches/`. The options (`ReportOptions`) live in
+`Steps.Report.Settings`.
+- **DC**, **S**: the validation's items; S picks out the stated biases (default: lowest, middle, highest |S21| per set).
+- **Thermal** (self-heating model, DC data): each DC point's equivalent junction temperature — where the isothermal model
+  carries the measured current ([R11] §2.8) — against its power; the slope per ambient against `RthAt(ambient)`.
+- **Charge**: the model's `Qg`, `Qd` against the line integral (mean of paths A and B, RBF interpolants) of the measured
+  capacitances, as a difference map in % of each charge's range.
+- **C–V**: `C11 … C22` and `Cgs = C11 + C12`, `Cgd = −C12`, `Cds = C22 + C12`, `Cm = C21 − C12` against vgs at a family
+  of fixed vds and against vds at a family of fixed vgs (the outer axis is the legend), with the measured points nearest
+  each fixed voltage.
+- **PA classes** — harmonicaRF's method. Each class's intrinsic terminations to the fifth harmonic are
+  `PaClassPresets.IntrinsicLoad` (Z0 = R_opt), carried to the extrinsic plane in closed form as `IntrinsicAbcd` does:
+  the device's drain self-capacitance `C22` linearized at the intrinsic DC bias (R9D §3.4's linearized output
+  capacitance) is taken off the target, and the model's own network, as the drain-side two-port with both gates
+  AC-shorted (IntrinsicAbcd's no-feedback condition), is inverted bilinearly. A band at the map's pole takes its intrinsic
+  value; a band needing a negative resistance keeps its reactance at the chart's edge, and both are named. The source's
+  2f0 is the user's, at the extrinsic plane. The fundamental is load-pulled (§14.5) over a disc about the class's own
+  fundamental load (the disc's Möbius automorphism, so every point stays on the chart): performance at that load, at MXP
+  and MXE at the stated compression through `LoadpullSurface`, and the share of the disc that converged to that
+  compression — the region of convergence. Defaults: the middle S frequency, the largest measured vds, the vgs at 2 % of
+  the model's largest drain current there, `R_opt = 2·0.9·vds/Imax`, the source the conjugate of the model's input at
+  that load.
+
+The Data Display document and the dialog are the window's (MC-15); the `model report` noun is MC-13's.
+
+## 15. Where it lives
 
 | Path | What |
 |---|---|
@@ -1002,8 +1105,9 @@ it is trap-independent. `Qg` never takes them. `TrapFit.FitFile` runs the step a
 | `src/Design/Modeling/` | MC-9: `ThermalFit` (with `TemperaturePlan`, `ThermalHeating`), `ThermalFitSettings` (with `ThermalFitRecord`); `T` through `CurrentFit`, `EquationFit` and `ChargeFit` |
 | `src/Core/Devices/Composed/Traps/` | MC-10: `TrapModel.cs` (`ModelTraps`, `TrapParameter`, `TrapModelDefinition`, `TrapDynamics`, `RateTrapDynamics`), `TrapModels` (the registry), `CaptureEmissionTraps`, `CustomTraps`; the trap ports in `ComposedCoreModel` and lanes in `ComposedCoreProgram` (`DcSeeds`) |
 | `src/Design/Modeling/` | MC-10: `TrapFit` (with `TrapMapping`), `TrapFitSettings` (with `TrapFitRecord`); the `Setting` cube in `IntrinsicExtraction`; the trap states through `CurrentFit` and `ChargeFit` |
+| `src/Design/Modeling/` | MC-11: `CmcStamps`, `CmodelExport` (with `ExportSettings`), `ModelSymbols`, `ComposedFetPlacement`, `ValidationBench`, `ModelValidation` (with `LoadSweep`), `ModelValidationReport` (with `ReportOptions`); `PinNetwork.DefineBlock`, `PadDeembedding.Embed`, `DataImport.CsvRows`, `LargeSignalConditions` in `CmcDocument` |
 
-## 15. Gates (MC-1 … MC-10)
+## 16. Gates (MC-1 … MC-11)
 
 `tests/Core.Tests/Composed/CmodelFormatTests`; `tests/Engine.Tests/Composed/` — `ComposedFetEquivalenceTests`
 (against an SDD with the same expressions in the same network: DC to 1e-12, S at three biases to 1e-9, HB
@@ -1108,3 +1212,14 @@ and 20 V with the DC held out, each level's pulsed I–V within 1 % — measured
 data: unavailable, no `Traps`; dispersion refused), `TrapRegistryTests` (an unknown model refused by name; a `None`
 block byte-identical to none; the current step under `None` records exactly what it did without the step). The truth is
 `Support/SyntheticTrapData.cs`; the engine gates' device is `tests/Engine.Tests/Composed/Support/TrapTestModels.cs`.
+
+MC-11: `tests/Ui.Tests/ModelComposer/` — `CmodelExportTests` (a `.cmc` whose steps record the SDD truth's equations, its
+data that truth's multi-bias S through the GaN network: the export as a `ComposedFet` against the truth's SDD, DC node
+voltages, S at three biases and HB to 1e-9; no N0, an unfitted charge step and data changed under the steps each refused
+by name, no file left), `SymbolChoiceTests` (a 2-pin and an unheated 4-pin `.csym` refused and absent from the
+candidates, a JFET kind absent; the stored `.csym` relative to the model, in the `.cmc`, and in the pasted instance),
+`ValidationServiceTests` (S |ΔS| median 2.5e-10; Lg × 3 fails at 95 % 0.098; a power sweep against the truth's own HB
+passes and its testbench runs through the `hb` verb with exit 0), `ModelValidationReportTests` (each class's extrinsic
+loads present harmonicaRF's intrinsic targets through the network and C22 to 1e-9 where reachable; a report on a 7-point
+disc runs S, charge, C–V and two classes with MXP and MXE, and writes its folder). The fixture is
+`Support/ExportFixture.cs`.

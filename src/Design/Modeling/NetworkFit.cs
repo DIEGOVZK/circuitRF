@@ -130,7 +130,7 @@ public static class NetworkFit
         data ??= new CmcCache(cmcPath).Open(doc, rc).Data;
         var result = Run(cmcPath, doc, data, rc);
         rc?.ThrowIfCancellationRequested();
-        CmcFile.Write(cmcPath, Apply(doc, result));
+        CmcFile.Write(cmcPath, CmcStamps.StampNetwork(Apply(doc, result), CmcStamps.DataDigest(cmcPath, doc)));
         return result;
     }
 

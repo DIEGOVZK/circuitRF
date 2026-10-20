@@ -73,7 +73,7 @@ public static class TrapFit
     public static void Validate(CmcDocument doc)
     {
         if (Step(doc) is not { } o) return;
-        CmcExtrinsic.Only(o, $"Steps.{StepName}", ["Settings", "Result"]);
+        CmcExtrinsic.Only(o, $"Steps.{StepName}", ["Network", "Settings", "Result", CmcStamps.DataKey]);
         Settings(doc);
         Record(doc);
     }
@@ -123,7 +123,9 @@ public static class TrapFit
         var current = CurrentFit.Run(doc, data, intrinsic, CurrentFit.Settings(doc), rc);
         rc?.ThrowIfCancellationRequested();
         CurrentFit.WriteArrays(cmcPath, CurrentFit.CacheFolder, current.Record.Arrays, current.Arrays);
-        CmcFile.Write(cmcPath, CurrentFit.Apply(doc, current));
+        string digest = CmcStamps.DataDigest(cmcPath, doc);
+        CmcFile.Write(cmcPath, CmcStamps.Stamp(CmcStamps.Stamp(CurrentFit.Apply(doc, current), StepName, digest),
+                                               CurrentFit.StepName, digest));
         return (traps, current);
     }
 

@@ -122,7 +122,7 @@ public static class ChargeFit
     public static void Validate(CmcDocument doc)
     {
         if (Step(doc) is not { } o) return;
-        CmcExtrinsic.Only(o, $"Steps.{StepName}", ["Network", "Settings", "Result"]);
+        CmcExtrinsic.Only(o, $"Steps.{StepName}", ["Network", "Settings", "Result", CmcStamps.DataKey]);
         Settings(doc);
         Record(doc);
     }
@@ -171,7 +171,7 @@ public static class ChargeFit
         var result = Run(doc, data, intrinsic, settings, current, rc);
         rc?.ThrowIfCancellationRequested();
         CurrentFit.WriteArrays(cmcPath, CacheFolder, result.Record.Arrays, result.Arrays);
-        CmcFile.Write(cmcPath, Apply(doc, result));
+        CmcFile.Write(cmcPath, CmcStamps.Stamp(Apply(doc, result), StepName, CmcStamps.DataDigest(cmcPath, doc)));
         return result;
     }
 

@@ -57,11 +57,39 @@ simulated is inspectable.
 - Tolerances are settings. The summary is one line per item ("S |ΔS| median 0.006, 95 % 0.021 ✓").
 - Results are `DataSet`s with measured and model cubes on the same axes, for MC-15's overlays.
 
+**R-mc11-4a — Large-signal data** (added in this phase). A `LargeSignal` data set states its measurement in
+`Conditions.LargeSignal`: `PowerSweep` or `TwoTone` (a CSV of `pin pout gain pae de id ig im3 im5`, powers in dBm, gain in
+dB, efficiencies in %), or `Loadpull` (a `.spl`/`.lpcwave` through RfCore's readers, `Import.Format: loadpull`), with the
+frequency, tone spacing, bias, source and load impedances and their harmonic terminations. The cache never imports one;
+adding one stales no fitted step.
+
 **R-mc11-5 — Long work.** Through `RunControl`: one stage per item, biases in parallel where the run service
 allows, cancellable. A cancelled validation reports nothing (D13).
 
+**R-mc11-6 — The Model Validation Report** (owner request, 2026-10-19, paraphrased: one report showing the model's fit to
+measurement and its predicted PA performance, the options set in a dialog in MC-14/MC-15). The headless half is here: a
+function that runs every section the document's data supports and writes a folder (`report.npy` with one group per
+section, `summary.txt`, the testbenches), its options kept in `Steps.Report`:
+- DC I–V and pulsed I–V, measured against model;
+- the charge-surface difference (model against the line integral of the measured capacitances, % of range);
+- 1-D C–V: each capacitance and the circuit set Cgs Cgd Cds Cm against one voltage at a family of fixed values of the
+  other (the family is the legend), with the nearest measured points;
+- S at chosen biases, every S set at its own ambient temperature;
+- with a self-heating model and DC data: the equivalent junction temperature of each DC point against its power, the
+  data's Rth per ambient against the model's — the Rth validation when data over temperature exists;
+- PA performance at **Class B, J, F and F⁻¹** (any of harmonicaRF's classes), harmonics to the fifth, the source's 2f0 as
+  the user enters it. The terminations follow **harmonicaRF's method** (owner direction): its intrinsic presets carried
+  to the extrinsic plane through the model's own network with the output capacitance linearized at the intrinsic bias.
+  For each class: performance at the class's load and at MXP and MXE at the stated compression (RfCore's loadpull
+  surface, the Data Display's performance summary), and the **region of convergence** — the share of a disc of loads
+  about the class's fundamental load where HB converged to that compression.
+
+A loadpull of a composed FET is one HB power sweep per load: `LoadpullEngine` refuses a tuner on a net no nonlinear
+device touches, and a `ComposedFet`'s terminals sit behind its network. Reading Pout through that network is valid — the
+network is part of the model (owner, paraphrased) — and moving the engine onto it is a follow-up.
+
 ## 3. Not in this phase
-The export and validation UI (MC-15); the CLI spelling (MC-13).
+The export, validation and report UI (MC-15); the CLI spelling (MC-13).
 
 ## 4. Gates (minimal tests, run only these classes)
 - `CmodelExportTests` — a model composed from `SyntheticFetData`, exported and placed in a `.cnl`, simulates to the

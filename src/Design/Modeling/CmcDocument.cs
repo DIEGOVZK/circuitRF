@@ -53,6 +53,39 @@ public sealed record QuiescentBias(double Vgs, double Vds, double? Ig = null, do
 /// </summary>
 public sealed record PrePulse(double Vgs, double Vds, double Width, double Gap, double? Id = null);
 
+/// <summary>What a <see cref="DataSetKind.LargeSignal"/> set measured (MC-11).</summary>
+public enum LargeSignalMeasurement
+{
+    /// <summary>Output against input power at one source, load, bias and frequency; a CSV of pin, pout and what else.</summary>
+    PowerSweep,
+    /// <summary>Two equal tones about <see cref="LargeSignalConditions.FrequencyHz"/>; a CSV of pin, pout, im3 (and im5).</summary>
+    TwoTone,
+    /// <summary>A loadpull file (<c>.spl</c> or <c>.lpcwave</c>), read through RfCore's readers.</summary>
+    Loadpull,
+}
+
+/// <summary>
+/// The conditions a large-signal set was measured under (MC-11 R-mc11-4) — what its generated testbench reproduces.
+/// Voltages are at the set's reference plane, impedances in ohms at the measurement plane; a harmonic not listed is
+/// shorted. A loadpull file states its own loads, drive and (usually) its frequency.
+/// </summary>
+public sealed record LargeSignalConditions
+{
+    public required LargeSignalMeasurement Measurement { get; init; }
+    /// <summary>The fundamental, Hz; for two tones, their centre.</summary>
+    public double? FrequencyHz { get; init; }
+    /// <summary>Two tones: their spacing, Hz.</summary>
+    public double? SpacingHz { get; init; }
+    public double? Vgs { get; init; }
+    public double? Vds { get; init; }
+    public System.Numerics.Complex? SourceZ { get; init; }
+    public System.Numerics.Complex? LoadZ { get; init; }
+    /// <summary>The source termination at 2f0, 3f0, …; a harmonic beyond the list is shorted.</summary>
+    public IReadOnlyList<System.Numerics.Complex> SourceHarmonics { get; init; } = [];
+    /// <summary>The load termination at 2f0, 3f0, …; a harmonic beyond the list is shorted.</summary>
+    public IReadOnlyList<System.Numerics.Complex> LoadHarmonics { get; init; } = [];
+}
+
 /// <summary>An instrument's current limits, in amps — what the compliance flag reads (R-mc3-5).</summary>
 public sealed record ComplianceLimits(double? Gate = null, double? Drain = null);
 
@@ -74,6 +107,8 @@ public sealed record DataConditions
     public PrePulse? PrePulse { get; init; }
     public double? SoakTime { get; init; }
     public ComplianceLimits? Compliance { get; init; }
+    /// <summary>A <see cref="DataSetKind.LargeSignal"/> set's measurement (MC-11); required there and nowhere else.</summary>
+    public LargeSignalConditions? LargeSignal { get; init; }
     public string? Note { get; init; }
 
     public static DataConditions None { get; } = new();
@@ -90,6 +125,8 @@ public sealed record ColumnMap(string Column, string Quantity, string? Unit = nu
 public sealed record ImportSettings
 {
     public const string Touchstone = "touchstone", Csv = "csv", Npy = "npy", Mat = "mat";
+    /// <summary>A loadpull file, <c>.spl</c> or <c>.lpcwave</c> (a <see cref="LargeSignalMeasurement.Loadpull"/> set, MC-11).</summary>
+    public const string Loadpull = "loadpull";
 
     public required string Format { get; init; }
 

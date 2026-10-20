@@ -188,8 +188,10 @@ public sealed record NetworkFitRecord
         new Dictionary<string, FittedValueRecord>(StringComparer.Ordinal);
     /// <summary>The identifiability report's lines.</summary>
     public IReadOnlyList<string> Report { get; init; } = [];
+    /// <summary>The data digest the fit read (<see cref="CmcStamps.DataDigest"/>); null before stamps existed (MC-11).</summary>
+    public string? Data { get; init; }
 
-    private static readonly string[] Keys = ["Method", "Cost", "Digest", "Variables", "Report"];
+    private static readonly string[] Keys = ["Method", "Cost", "Digest", "Variables", "Report", "Data"];
     private static readonly string[] VariableKeys = ["StdError", "Spread", "AtBound"];
 
     public static NetworkFitRecord Parse(JsonNode node, string f)
@@ -218,6 +220,7 @@ public sealed record NetworkFitRecord
         {
             Method = Str(o, "Method", $"{f}.Method")!, Cost = Num(o, "Cost", $"{f}.Cost") ?? 0,
             Digest = Str(o, "Digest", $"{f}.Digest")!, Variables = vars, Report = report,
+            Data = Str(o, "Data", $"{f}.Data", required: false),
         };
     }
 
@@ -238,6 +241,7 @@ public sealed record NetworkFitRecord
             o["Variables"] = vo;
         }
         if (Report.Count > 0) o["Report"] = new JsonArray([.. Report.Select(r => (JsonNode)r!)]);
+        if (Data is not null) o["Data"] = Data;
         return o;
     }
 }

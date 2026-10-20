@@ -71,6 +71,18 @@ After a fit, one line in the status strip: "Id: ANN 2×8 · held-out 0.8 % · do
   - IM3/IM5 against input power.
 - "Show testbench" writes the generated `.cnl` beside the `.cmc` and reveals it.
 
+**R-mc15-7a — The Model Validation Report dialog** (owner request, 2026-10-19). From the Validate step and the toolbar,
+a dialog holding every MC-11 R-mc11-6 option — the sections; the S biases; the fixed voltages of the C–V families; the PA
+classes; the frequency, bias, R_opt and the source's fundamental and 2f0 terminations; the load disc (radius, rings,
+spokes); the drive ladder and the compression — each opening on the value stored in the `.cmc` or its default, and
+written back to `Steps.Report`. Generate runs MC-11's function off the UI thread with progress and Cancel; the result is:
+- a **Data Display document** (`.cdd`) beside the report folder, one tab per section, built by a preset in
+  `src/Render/DataDisplay/` (the `DoeDisplayPreset` pattern) so the CLI and the window build the same document: I–V
+  families (measured symbols, model lines), the ΔQ maps (contour), the C–V families with the fixed voltage as the legend,
+  S overlays at the chosen biases (rectangular and Smith), the Rth plot, and per class the loadpull contours with the
+  performance summary table (Preset, MXP, MXE) and the region-of-convergence map;
+- **Export PDF**: every tab, through `PlotComposer`, the composer `render` uses.
+
 **R-mc15-8 — The Export step.**
 - `N0`/`W0`, read-only here.
 - The scaling-rule table: the same rows as the network values, rule column only.
@@ -100,3 +112,5 @@ The example and the user pages (MC-16).
 - `ModelComposerExportStepTests` — export from the window is byte-identical to `circuitrf model export` on the same
   document; the symbol picker hides 2-pin symbols; a stale step blocks Export and Run stale clears it.
 - `ModelComposerSingleTemperatureTests` — a one-temperature document shows `T0` and no thermal controls.
+- `ModelReportDialogTests` — the dialog's options round-trip through `Steps.Report`; the preset's `.cdd` holds one tab per
+  section of a generated report, and its PDF is byte-identical to `circuitrf model report --pdf` on the same document.

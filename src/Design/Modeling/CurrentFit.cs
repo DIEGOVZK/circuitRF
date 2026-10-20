@@ -61,7 +61,7 @@ public static class CurrentFit
     public static void Validate(CmcDocument doc)
     {
         if (Step(doc) is not { } o) return;
-        CmcExtrinsic.Only(o, $"Steps.{StepName}", ["Network", "Settings", "Result"]);
+        CmcExtrinsic.Only(o, $"Steps.{StepName}", ["Network", "Settings", "Result", CmcStamps.DataKey]);
         Settings(doc);
         Record(doc);
     }
@@ -107,7 +107,7 @@ public static class CurrentFit
         var result = Run(doc, data, intrinsic, Settings(doc), rc);
         rc?.ThrowIfCancellationRequested();
         WriteArrays(cmcPath, CacheFolder, result.Record.Arrays, result.Arrays);
-        CmcFile.Write(cmcPath, Apply(doc, result));
+        CmcFile.Write(cmcPath, CmcStamps.Stamp(Apply(doc, result), StepName, CmcStamps.DataDigest(cmcPath, doc)));
         return result;
     }
 

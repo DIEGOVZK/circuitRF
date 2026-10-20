@@ -9,6 +9,7 @@
 // Steps.Charge (MC-8), Steps.Thermal (MC-9) and Steps.Traps (MC-10).
 
 using System.Globalization;
+using System.Numerics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -152,7 +153,7 @@ public static class CmcFile
     {
         if (c.ValueKind != JsonValueKind.Object) throw new CmcFormatException(f, "it is not an object.");
         Only(c, f, ["AmbientC", "ReferencePlane", "BiasPathOhms", "PulseWidth", "Period", "Quiescent", "SampleDelay",
-                    "TrapState", "PrePulse", "SoakTime", "Compliance", "Note"]);
+                    "TrapState", "PrePulse", "SoakTime", "Compliance", "LargeSignal", "Note"]);
 
         BiasPathOhms? bias = null;
         if (Has(c, "BiasPathOhms", out var b))
@@ -184,8 +185,12 @@ public static class CmcFile
             limits = new ComplianceLimits(OptNum(le, "Gate", $"{lf}.Gate"), OptNum(le, "Drain", $"{lf}.Drain"));
         }
 
+        LargeSignalConditions? large = null;
+        if (Has(c, "LargeSignal", out var lse)) large = ParseLargeSignal(lse, $"{f}.LargeSignal");
+
         return new DataConditions
         {
+            LargeSignal    = large,
             AmbientC       = OptNum(c, "AmbientC", $"{f}.AmbientC"),
             ReferencePlane = Has(c, "ReferencePlane", out _) ? Enum<ReferencePlane>(c, "ReferencePlane", $"{f}.ReferencePlane") : null,
             BiasPathOhms   = bias,
@@ -199,6 +204,38 @@ public static class CmcFile
             Compliance     = limits,
             Note           = Has(c, "Note", out _) ? Str(c, "Note", $"{f}.Note") : null,
         };
+    }
+
+    private static LargeSignalConditions ParseLargeSignal(JsonElement e, string f)
+    {
+        if (e.ValueKind != JsonValueKind.Object) throw new CmcFormatException(f, "it is not an object.");
+        Only(e, f, ["Measurement", "FrequencyHz", "SpacingHz", "Vgs", "Vds", "SourceZ", "LoadZ", "SourceHarmonics", "LoadHarmonics"]);
+        Complex? Z(string name) => Has(e, name, out var z) ? ComplexOf(z, $"{f}.{name}") : null;
+        IReadOnlyList<Complex> Zs(string name)
+        {
+            if (!Has(e, name, out var a)) return [];
+            if (a.ValueKind != JsonValueKind.Array) throw new CmcFormatException($"{f}.{name}", "it is not a list of [re, im] pairs.");
+            return [.. a.EnumerateArray().Select((x, i) => ComplexOf(x, $"{f}.{name}[{i}]"))];
+        }
+        return new LargeSignalConditions
+        {
+            Measurement     = Enum<LargeSignalMeasurement>(e, "Measurement", $"{f}.Measurement"),
+            FrequencyHz     = OptNum(e, "FrequencyHz", $"{f}.FrequencyHz"),
+            SpacingHz       = OptNum(e, "SpacingHz", $"{f}.SpacingHz"),
+            Vgs             = OptNum(e, "Vgs", $"{f}.Vgs"),
+            Vds             = OptNum(e, "Vds", $"{f}.Vds"),
+            SourceZ         = Z("SourceZ"),
+            LoadZ           = Z("LoadZ"),
+            SourceHarmonics = Zs("SourceHarmonics"),
+            LoadHarmonics   = Zs("LoadHarmonics"),
+        };
+    }
+
+    private static Complex ComplexOf(JsonElement z, string f)
+    {
+        if (z.ValueKind != JsonValueKind.Array || z.GetArrayLength() != 2 || z.EnumerateArray().Any(x => x.ValueKind != JsonValueKind.Number))
+            throw new CmcFormatException(f, "it is not an impedance written [re, im], in ohms.");
+        return new Complex(z[0].GetDouble(), z[1].GetDouble());
     }
 
     private static ImportSettings ParseImport(JsonElement e, string f)
@@ -302,6 +339,9 @@ public static class CmcFile
         ChargeFit.Validate(d);
         ThermalFit.Validate(d);
         TrapFit.Validate(d);
+        CmodelExport.Validate(d);
+        ModelValidation.Validate(d);
+        ModelValidationReport.Validate(d);
     }
 
     private static bool IsPulsed(DataSetKind k) => k is DataSetKind.PulsedIv or DataSetKind.PulsedSParams;
@@ -316,6 +356,9 @@ public static class CmcFile
             if (b.Gate < 0 || b.Drain < 0 || b.Source < 0)
                 throw new CmcFormatException($"{f}.BiasPathOhms", "a bias-path resistance is negative.");
         }
+        if (c.LargeSignal is not null && s.Kind != DataSetKind.LargeSignal)
+            throw new CmcFormatException($"{f}.LargeSignal", $"it applies only to a LargeSignal data set, and this one is {s.Kind}.");
+        if (s.Kind == DataSetKind.LargeSignal) ValidateLargeSignal(s, $"{f}.LargeSignal");
         if (!IsPulsed(s.Kind))
         {
             foreach (var (set, name) in new[] { (c.PulseWidth is not null, "PulseWidth"), (c.Period is not null, "Period"),
@@ -343,9 +386,66 @@ public static class CmcFile
         }
     }
 
+    /// <summary>The quantities a large-signal CSV maps (MC-11): powers in dBm, gain in dB, efficiencies in %, currents in A.</summary>
+    public static readonly IReadOnlyList<string> LargeSignalQuantities = ["pin", "pout", "gain", "pae", "de", "id", "ig", "im3", "im5"];
+
+    /// <summary>The one unit a large-signal quantity is read in (dBm, dB or %), or null for a current, which takes any.</summary>
+    public static string? LargeSignalUnit(string quantity) => quantity switch
+    {
+        "pin" or "pout" or "im3" or "im5" => "dBm",
+        "gain" => "dB",
+        "pae" or "de" => "%",
+        _ => null,
+    };
+
+    private static void ValidateLargeSignal(CmcDataSet s, string f)
+    {
+        if (s.Conditions.LargeSignal is not { } ls)
+            throw new CmcFormatException(f, "a LargeSignal data set states its measurement (PowerSweep, TwoTone or Loadpull) here.");
+        bool file = ls.Measurement == LargeSignalMeasurement.Loadpull;
+        if (file != (s.Import.Format == ImportSettings.Loadpull))
+            throw new CmcFormatException($"{f}.Measurement",
+                file ? "a Loadpull set is read from a loadpull file; its import format is loadpull."
+                     : $"a {ls.Measurement} set is read from a CSV/TSV file of its columns.");
+        if (!file)
+        {
+            if (ls.FrequencyHz is null) throw new CmcFormatException($"{f}.FrequencyHz", "it is missing; a power sweep is at one frequency.");
+            if (ls.Vgs is null || ls.Vds is null) throw new CmcFormatException(f, "the bias, Vgs and Vds, is missing.");
+        }
+        if (ls.Measurement == LargeSignalMeasurement.TwoTone && ls.SpacingHz is null)
+            throw new CmcFormatException($"{f}.SpacingHz", "two tones need their spacing.");
+        Positive(ls.FrequencyHz, $"{f}.FrequencyHz");
+        Positive(ls.SpacingHz, $"{f}.SpacingHz");
+        foreach (var (z, name) in new[] { (ls.SourceZ, "SourceZ"), (ls.LoadZ, "LoadZ") })
+            if (z is { Real: < 0 }) throw new CmcFormatException($"{f}.{name}", "its resistance is negative.");
+    }
+
     private static void ValidateImport(CmcDataSet s, string f)
     {
         var im = s.Import;
+        if (s.Kind == DataSetKind.LargeSignal)
+        {
+            if (im.Format == ImportSettings.Loadpull) return;
+            if (im.Format != ImportSettings.Csv) throw new CmcFormatException($"{f}.Format", "a LargeSignal set is read from csv or a loadpull file.");
+            if (im.Columns is not { Count: > 0 }) throw new CmcFormatException($"{f}.Columns", "a CSV/TSV import needs a column map.");
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (int k = 0; k < im.Columns.Count; k++)
+            {
+                var col = im.Columns[k];
+                if (!LargeSignalQuantities.Contains(col.Quantity))
+                    throw new CmcFormatException($"{f}.Columns[{k}].Quantity", $"'{col.Quantity}' is not one of {string.Join(", ", LargeSignalQuantities)}.");
+                if (!seen.Add(col.Quantity)) throw new CmcFormatException($"{f}.Columns[{k}].Quantity", $"'{col.Quantity}' is mapped twice.");
+                if (col.Unit is { } u)
+                {
+                    string? fixedUnit = LargeSignalUnit(col.Quantity);
+                    if (fixedUnit is not null ? u != fixedUnit : UnitScale(u) is null)
+                        throw new CmcFormatException($"{f}.Columns[{k}].Unit", fixedUnit is not null
+                            ? $"{col.Quantity} is read in {fixedUnit}; '{u}' is not that." : $"'{u}' is not a unit circuitRF knows.");
+                }
+            }
+            if (!seen.Contains("pin")) throw new CmcFormatException($"{f}.Columns", "the map needs a pin column.");
+            return;
+        }
         switch (im.Format)
         {
             case ImportSettings.Touchstone:
@@ -387,8 +487,10 @@ public static class CmcFile
                 if (im.Arrays.ContainsKey("S") && im.Arrays.ContainsKey("Y"))
                     throw new CmcFormatException($"{f}.Arrays", "map S or Y, not both.");
                 break;
+            case ImportSettings.Loadpull:
+                throw new CmcFormatException($"{f}.Format", $"a loadpull file holds large-signal data; a {s.Kind} set is not read from one.");
             default:
-                throw new CmcFormatException($"{f}.Format", $"'{im.Format}' is not touchstone, csv, npy or mat.");
+                throw new CmcFormatException($"{f}.Format", $"'{im.Format}' is not touchstone, csv, npy, mat or loadpull.");
         }
         Positive(im.FrequencyHz, $"{f}.FrequencyHz");
         Positive(im.Z0, $"{f}.Z0");
@@ -525,6 +627,25 @@ public static class CmcFile
                 Opt(w, "Drain", l.Drain);
                 w.WriteEndObject();
             }
+            if (c.LargeSignal is { } ls)
+            {
+                w.WriteStartObject("LargeSignal");
+                w.WriteString("Measurement", ls.Measurement.ToString());
+                Opt(w, "FrequencyHz", ls.FrequencyHz);
+                Opt(w, "SpacingHz", ls.SpacingHz);
+                Opt(w, "Vgs", ls.Vgs);
+                Opt(w, "Vds", ls.Vds);
+                if (ls.SourceZ is { } zs) WriteComplex(w, "SourceZ", zs);
+                if (ls.LoadZ is { } zl) WriteComplex(w, "LoadZ", zl);
+                foreach (var (list, name) in new[] { (ls.SourceHarmonics, "SourceHarmonics"), (ls.LoadHarmonics, "LoadHarmonics") })
+                {
+                    if (list.Count == 0) continue;
+                    w.WriteStartArray(name);
+                    foreach (var z in list) { w.WriteStartArray(); w.WriteNumberValue(z.Real); w.WriteNumberValue(z.Imaginary); w.WriteEndArray(); }
+                    w.WriteEndArray();
+                }
+                w.WriteEndObject();
+            }
             if (c.Note is { } note) w.WriteString("Note", note);
             w.WriteEndObject();
         }
@@ -586,6 +707,14 @@ public static class CmcFile
         foreach (var p in e.EnumerateObject())
             if (Array.IndexOf(keys, p.Name) < 0)
                 throw new CmcFormatException(f.Length == 0 ? p.Name : $"{f}.{p.Name}", "it is not a field this circuitRF knows.");
+    }
+
+    private static void WriteComplex(Utf8JsonWriter w, string name, Complex z)
+    {
+        w.WriteStartArray(name);
+        w.WriteNumberValue(z.Real);
+        w.WriteNumberValue(z.Imaginary);
+        w.WriteEndArray();
     }
 
     private static bool Has(JsonElement e, string name, out JsonElement v) =>

@@ -105,7 +105,7 @@ Z. Wang, Y. Guo, "A physics-informed neural network-based scalable model for GaN
 | MC-8 | `brief-modelcomposer-8-charges-and-conservation.md` | Qg and Qd by adjoint ANN (default), line integral, table or equation; **Check Charge Conservation** | MC-2, MC-4, MC-6 |
 | MC-9 | `brief-modelcomposer-9-temperature-and-self-heating.md` | Multi-temperature models, the thermal node, Rth extraction, the single-temperature model | MC-7, MC-8 |
 | MC-10 | `brief-modelcomposer-10-traps.md` | The trap-model contract, the capture/emission built-in, the custom expression model, trap-state training data from double-pulse or ordinary pulsed sets | MC-7 (MC-9 for thermal coupling) |
-| MC-11 | `brief-modelcomposer-11-export-and-validation.md` | Export to `.cmodel` with symbol, scaling rules and provenance; validation against S, I–V and large-signal data | MC-7, MC-8 (MC-9, MC-10 when present) |
+| MC-11 | `brief-modelcomposer-11-export-and-validation.md` | Export to `.cmodel` with symbol, scaling rules and provenance; validation against S, I–V and large-signal data; the Model Validation Report (headless) | MC-7, MC-8 (MC-9, MC-10 when present) |
 | MC-12 | `brief-modelcomposer-12-passive-models.md` | Passive: S-parameter analysis, ranked topology proposals, fit, geometry-family fit, export as a cell | MC-3, MC-5, MC-11 |
 | MC-13 | `brief-modelcomposer-13-cli-and-mcp.md` | The `model` verb and its MCP tool — **agent-ready here** | MC-11, MC-12 |
 | MC-14 | `brief-modelcomposer-14-window-and-data-steps.md` | The window: lifecycle, toolbar, panels, background tasks; Data, Pads and Network steps; passive Data and Topology | MC-13 |

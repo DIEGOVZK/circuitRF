@@ -114,6 +114,48 @@ public sealed class PadDeembedding
         return new NormalisedData { Points = data.Points, Ports = 2, FrequenciesHz = f, S = s, Z0 = data.Z0, C = data.C };
     }
 
+    /// <summary>
+    /// The inverse of <see cref="Remove"/> (MC-11): <paramref name="data"/>'s S moved from the device plane back to the probe
+    /// plane through the same pads, so a model's S is compared with the data where it was measured.
+    /// </summary>
+    public NormalisedData Embed(NormalisedData data, string setName, RunControl? rc = null)
+    {
+        if (Kind == PadsKind.None || data.S is null) return data;
+        double[] f = data.FrequenciesHz!;
+        Func<int, C2, C2> embed;
+        switch (Kind)
+        {
+            case PadsKind.OpenShort:
+            {
+                var yo = At(_open!, f, setName); var ys = At(_short!, f, setName);
+                embed = (k, s) => NetworkAlgebra.YToS(
+                    yo[k] + (NetworkAlgebra.SToY(s, data.Z0).Inverse() + (ys[k] - yo[k]).Inverse()).Inverse(), data.Z0);
+                break;
+            }
+            case PadsKind.TwoPorts:
+                embed = Uncascade(At(_gateFile!, f, setName), At(_drainFile!, f, setName), data.Z0);
+                break;
+            default:
+                embed = Uncascade(_gateNet!.Abcd(f, rc), _drainNet!.Abcd(f, rc), data.Z0);
+                break;
+        }
+        var s = (System.Numerics.Complex[])data.S.Clone();
+        for (int p = 0; p < data.Count; p++)
+            for (int k = 0; k < f.Length; k++)
+            {
+                int o = (p * f.Length + k) * 4;
+                var r = embed(k, new C2(s[o], s[o + 1], s[o + 2], s[o + 3]));
+                (s[o], s[o + 1], s[o + 2], s[o + 3]) = (r.A, r.B, r.C, r.D);
+            }
+        return new NormalisedData { Points = data.Points, Ports = 2, FrequenciesHz = f, S = s, Z0 = data.Z0, C = data.C };
+    }
+
+    private static Func<int, C2, C2> Uncascade(C2[] gate, C2[] drain, double z0)
+    {
+        var drainRev = drain.Select(NetworkAlgebra.Reverse).ToArray();
+        return (k, s) => NetworkAlgebra.AbcdToS(gate[k] * NetworkAlgebra.SToAbcd(s, z0) * drainRev[k], z0);
+    }
+
     private static Func<int, C2, C2> Cascade(C2[] gate, C2[] drain, double z0)
     {
         var drainInv = drain.Select(t => NetworkAlgebra.Reverse(t).Inverse()).ToArray();

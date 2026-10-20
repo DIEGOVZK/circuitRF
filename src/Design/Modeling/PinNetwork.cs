@@ -16,6 +16,7 @@ using System.Text.RegularExpressions;
 using CircuitRF.Core.Design;
 using CircuitRF.Core.Elaboration;
 using CircuitRF.Core.Expressions;
+using CircuitRF.Core.Netlist;
 using CircuitRF.Design.Schematic;
 using CircuitRF.Engine;
 using CircuitRF.Engine.Modeling;
@@ -203,6 +204,26 @@ public abstract class PinNetwork
         try { return new Elaborator(lib).Elaborate(tb); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         { throw new ModelingException(Path.GetFileName(SchematicPath), $"it does not elaborate ({ex.Message})."); }
+    }
+
+    /// <summary>
+    /// The network as one <c>define</c> block over its pins, every variable a <c>parameters</c> entry holding its number
+    /// in base SI — <paramref name="values"/> in place of the file's own — and every element as the schematic extracts
+    /// it: what a <c>.cmodel</c>'s <c>Network.Netlist</c> carries (MC-11 R-mc11-1). <c>\n</c> line ends on every system,
+    /// so the same network writes the same model bytes.
+    /// </summary>
+    public string DefineBlock(string name, IReadOnlyDictionary<string, double>? values = null)
+    {
+        var (_, tb) = SchematicCircuit.RoundTrip(_cnl, Path.GetFileNameWithoutExtension(SchematicPath), _referenceBase);
+        var resolved = Values(values);
+        var cell = new Cell(name);
+        cell.Ports.AddRange(PinNets);
+        foreach (var v in Variables)
+            cell.Parameters.Add(new ParameterDeclaration(v.Name, resolved[v.Name].ToString("R", CultureInfo.InvariantCulture)));
+        cell.Instances.AddRange(tb.Instances);
+        var lib = new Library("network");
+        lib.Cells.Add(cell);
+        return CnlWriter.Write(new TestBench("network"), lib).Replace("\r\n", "\n").Trim() + "\n";
     }
 
     protected const double PortZ0 = 50;

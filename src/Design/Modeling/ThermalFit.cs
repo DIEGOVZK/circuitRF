@@ -72,7 +72,7 @@ public static class ThermalFit
     public static void Validate(CmcDocument doc)
     {
         if (Step(doc) is not { } o) return;
-        CmcExtrinsic.Only(o, $"Steps.{StepName}", ["Settings", "Result"]);
+        CmcExtrinsic.Only(o, $"Steps.{StepName}", ["Network", "Settings", "Result", CmcStamps.DataKey]);
         Settings(doc);
         Record(doc);
     }
@@ -117,7 +117,7 @@ public static class ThermalFit
         var intrinsic = new IntrinsicExtraction(cmcPath).Run(doc, data, rc: rc);
         var result = Run(doc, data, intrinsic, Settings(doc), rc);
         rc?.ThrowIfCancellationRequested();
-        CmcFile.Write(cmcPath, Apply(doc, result));
+        CmcFile.Write(cmcPath, CmcStamps.Stamp(Apply(doc, result), StepName, CmcStamps.DataDigest(cmcPath, doc)));
         return result;
     }
 

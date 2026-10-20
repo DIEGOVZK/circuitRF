@@ -73,12 +73,14 @@ public sealed class CmcCache
         var data = new Dictionary<string, NormalisedData>(StringComparer.Ordinal);
         var entries = new List<SetEntry>();
         var fresh = new Dictionary<string, NormalisedData>(StringComparer.Ordinal);   // file → data to write
-        bool dirty = index is null || index.Count != doc.DataSets.Count;
+        // A large-signal set is validation only (MC-11): the validation reads it from its sources, so it is never cached.
+        bool dirty = index is null || index.Count != doc.DataSets.Count(CmcStamps.FeedsFits);
 
         for (int i = 0; i < doc.DataSets.Count; i++)
         {
             rc?.ThrowIfCancellationRequested();
             var set = doc.DataSets[i];
+            if (!CmcStamps.FeedsFits(set)) continue;
             string settings = SettingsKey(set);
             var old = index?.FirstOrDefault(e => e.Name == set.Name && e.Settings == settings);
             bool cached = old is not null && File.Exists(Path.Combine(Folder, old.File));
@@ -149,6 +151,15 @@ public sealed class CmcCache
             WriteAtomically(entries, fresh, index);
         }
         return new CmcOpenResult(data, status, warnings);
+    }
+
+    /// <summary>Each cached source's SHA-256 as the index recorded it, by (data set, source path); empty with no index.</summary>
+    public IReadOnlyDictionary<(string Set, string Source), string> SourceHashes()
+    {
+        var map = new Dictionary<(string, string), string>();
+        foreach (var e in ReadIndex() ?? [])
+            foreach (var s in e.Sources) map[(e.Name, s.Path)] = s.Sha256;
+        return map;
     }
 
     private SourceStamp Stamp(string src)

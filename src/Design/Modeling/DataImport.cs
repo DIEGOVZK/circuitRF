@@ -126,8 +126,24 @@ public static class DataImport
 
     private static NormalisedData Csv(CmcDataSet set, string dir, RunControl? rc)
     {
-        var im = set.Import;
         var points = new List<BiasPoint>();
+        foreach (var (id, v) in CsvRows(set, dir, rc))
+            points.Add(new BiasPoint(id, v["vgs"], v["vds"], Get(v, "ig"), Get(v, "id"))
+            {
+                AmbientC = Get(v, "T"), VgsIntrinsic = Get(v, "vgsi"), VdsIntrinsic = Get(v, "vdsi"),
+            });
+        return new NormalisedData { Points = points };
+    }
+
+    /// <summary>
+    /// Every data row of a CSV/TSV set's sources, in order: its stable id (<c>source:line</c>) and each mapped quantity's
+    /// value, scaled by its unit. The delimiter is inferred from the first row (tab, then <c>;</c> without <c>,</c>, then
+    /// <c>,</c>) unless the import states one. A large-signal set (MC-11) reads its columns through here too.
+    /// </summary>
+    internal static List<(string Id, Dictionary<string, double> Values)> CsvRows(CmcDataSet set, string dir, RunControl? rc)
+    {
+        var im = set.Import;
+        var rows = new List<(string, Dictionary<string, double>)>();
         foreach (string src in set.Sources)
         {
             rc?.ThrowIfCancellationRequested();
@@ -161,14 +177,11 @@ public static class DataImport
                     if (index[k] >= cells.Length) throw new DataImportException(where, $"the row has no column '{col.Column}'.");
                     v[col.Quantity] = Cell(cells[index[k]], col, where);
                 }
-                points.Add(new BiasPoint($"{src}:{ln + 1}", v["vgs"], v["vds"], Get(v, "ig"), Get(v, "id"))
-                {
-                    AmbientC = Get(v, "T"), VgsIntrinsic = Get(v, "vgsi"), VdsIntrinsic = Get(v, "vdsi"),
-                });
+                rows.Add(($"{src}:{ln + 1}", v));
             }
             rc?.TickStage();
         }
-        return new NormalisedData { Points = points };
+        return rows;
     }
 
     private static int ColumnIndex(ColumnMap c, string[]? header, string src)
