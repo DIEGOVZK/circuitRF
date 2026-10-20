@@ -61,6 +61,10 @@ public enum NodeKind
     /// cascade of two-pin elements (smith-chart.md §7). <c>SmithDesignIo</c> reads it.</summary>
     SmithFile,
 
+    /// <summary>A Model Composer document (<c>.cmc</c>) — the data and decisions a device model is built from
+    /// (brief-modelcomposer-14 R-mc14-1). <c>CmcFile</c> reads it.</summary>
+    ModelComposerFile,
+
     /// <summary>
     /// A part library (<c>.crlib</c>) — the models a board's part numbers resolve to
     /// (brief-railrf-24-part-library-editor.md R-rail24-1a). <c>PartLibraryIo</c> reads it.

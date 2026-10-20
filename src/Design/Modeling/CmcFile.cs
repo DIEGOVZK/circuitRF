@@ -77,7 +77,7 @@ public static class CmcFile
     }
 
     private static readonly string[] RootKeys =
-        ["FormatVersion", "Kind", "BasePeriphery", "DataSets", "Pads", "Network", "Steps", "Panels"];
+        ["FormatVersion", "Kind", "BasePeriphery", "DataSets", "Pads", "Network", "Steps", "Panels", "View"];
 
     private static CmcDocument ParseRoot(JsonElement root)
     {
@@ -115,6 +115,26 @@ public static class CmcFile
             panels = new CmcPanels { Hidden = Has(pe, "Hidden", out _) ? Strings(pe, "Hidden", "Panels.Hidden") : [] };
         }
 
+        var view = new CmcView();
+        if (Has(root, "View", out var ve))
+        {
+            Only(ve, "View", ["Step", "Cursor"]);
+            CmcBiasCursor? cursor = null;
+            if (Has(ve, "Cursor", out var ce))
+            {
+                Only(ce, "View.Cursor", ["Vgs", "Vds", "AmbientC", "Quiescent"]);
+                QuiescentBias? q = null;
+                if (Has(ce, "Quiescent", out var qe))
+                {
+                    Only(qe, "View.Cursor.Quiescent", ["Vgs", "Vds"]);
+                    q = new QuiescentBias(Num(qe, "Vgs", "View.Cursor.Quiescent.Vgs"), Num(qe, "Vds", "View.Cursor.Quiescent.Vds"));
+                }
+                cursor = new CmcBiasCursor(OptNum(ce, "Vgs", "View.Cursor.Vgs"), OptNum(ce, "Vds", "View.Cursor.Vds"),
+                                           OptNum(ce, "AmbientC", "View.Cursor.AmbientC"), q);
+            }
+            view = new CmcView { Step = Has(ve, "Step", out _) ? Str(ve, "Step", "View.Step") : null, Cursor = cursor };
+        }
+
         return new CmcDocument
         {
             FormatVersion = version,
@@ -125,6 +145,7 @@ public static class CmcFile
             Network       = Opaque(root, "Network"),
             Steps         = Opaque(root, "Steps"),
             Panels        = panels,
+            View          = view,
         };
     }
 
@@ -576,6 +597,27 @@ public static class CmcFile
                 w.WriteStartArray("Hidden");
                 foreach (string h in d.Panels.Hidden.Order(StringComparer.Ordinal)) w.WriteStringValue(h);
                 w.WriteEndArray();
+                w.WriteEndObject();
+            }
+            if (!d.View.IsDefault)
+            {
+                w.WriteStartObject("View");
+                if (d.View.Step is { } step) w.WriteString("Step", step);
+                if (d.View.Cursor is { } c)
+                {
+                    w.WriteStartObject("Cursor");
+                    Opt(w, "Vgs", c.Vgs);
+                    Opt(w, "Vds", c.Vds);
+                    Opt(w, "AmbientC", c.AmbientC);
+                    if (c.Quiescent is { } q)
+                    {
+                        w.WriteStartObject("Quiescent");
+                        w.WriteNumber("Vgs", q.Vgs);
+                        w.WriteNumber("Vds", q.Vds);
+                        w.WriteEndObject();
+                    }
+                    w.WriteEndObject();
+                }
                 w.WriteEndObject();
             }
             w.WriteEndObject();

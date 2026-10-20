@@ -42,6 +42,10 @@ public sealed class SixPinNetwork : PinNetwork
     /// refusal listing the pins found.</summary>
     public static SixPinNetwork Load(string cschPath) => new(Read(cschPath, 6, Role));
 
+    /// <summary><see cref="Load"/> for a schematic held as text — a pasted selection before it is written anywhere
+    /// (MC-14 R-mc14-8). <paramref name="name"/> stands in for its path in a refusal.</summary>
+    public static SixPinNetwork FromText(string name, string json) => new(ReadText(name, json, 6, Role));
+
     private string? PinNet(int pin) => pin == 3 ? "0" : null;
     private string Net(int pin) => pin == 3 ? "0" : PinNets[pin - 1];
 

@@ -10630,6 +10630,27 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
     /// (<see cref="CircuitRF.Design.RailRf.RailStartingLayout"/>). An empty window beside a workspace
     /// holding the board asked the user to go and find what was already in front of them.</para>
     /// </remarks>
+    /// <summary>
+    /// Tools ▸ Model Composer… (brief-modelcomposer-14 R-mc14-1): a new document — Active or Passive — in its own window.
+    /// Needs no workspace; the document is placed where its first save puts it.
+    /// </summary>
+    [RelayCommand]
+    private void NewModelComposer() =>
+        Views.ModelComposer.ModelComposerWindow.ShowNew(Views.WorkspaceLocator.WindowFor(this), p => OpenDocumentByPath(p));
+
+    /// <summary>Opens a <c>.cmc</c> in its Model Composer window — the double-click route from the tree.</summary>
+    public void OpenModelComposerPath(string path)
+    {
+        try
+        {
+            Views.ModelComposer.ModelComposerWindow.ShowFile(path, Views.WorkspaceLocator.WindowFor(this), p => OpenDocumentByPath(p));
+        }
+        catch (Exception ex)
+        {
+            Messages.Error($"Could not open {Path.GetFileName(path)}: {ex.Message}");
+        }
+    }
+
     [RelayCommand]
     private void NewRailRf() =>
         Views.RailRf.RailRfWindow.ShowStandalone(
@@ -11369,6 +11390,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
             case ".wbond": OpenWBondPath(abs);             return true;
             case ".crail": OpenRailPath(abs);              return true;
             case ".csmith": OpenSmithPath(abs);           return true;
+            case ".cmc":   OpenModelComposerPath(abs);    return true;
             // R-rail24-1a — the part library. Deliberately ABSENT from App.OpenFiles' own switch,
             // which is held shut against the three operating systems' type registrations: a `.crlib`
             // is opened from the design that references it, not from a file manager, and claiming the
@@ -11459,6 +11481,11 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
             // R-smith1-8 — a .csmith, likewise. Brief 4 is the window.
             case NodeKind.SmithFile:
                 OpenSmithPath(node.AbsolutePath);
+                return;
+
+            // brief-modelcomposer-14 R-mc14-1 — a .cmc opens its Model Composer window.
+            case NodeKind.ModelComposerFile:
+                OpenModelComposerPath(node.AbsolutePath);
                 return;
 
             // R-rail24-1a — a .crlib opens like any other document type. Until this row existed the

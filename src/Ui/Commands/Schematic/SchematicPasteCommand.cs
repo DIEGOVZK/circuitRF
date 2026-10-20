@@ -28,7 +28,8 @@ internal sealed class SchematicPasteCommand : IUiCommand
     /// snapped to the destination P and a warning is posted.
     /// </param>
     /// <param name="netLabels">Net labels anchored to <paramref name="wires"/> — a pasted drawing keeps
-    /// its net names (RFin, VDD…) rather than arriving as anonymous wires.</param>
+    /// its net names (RFin, VDD…) rather than arriving as anonymous wires — and free-standing ones, which name the pin
+    /// they sit on.</param>
     public SchematicPasteCommand(
         SchematicEditModel model,
         IEnumerable<EditableComponent>    comps,
@@ -45,9 +46,10 @@ internal sealed class SchematicPasteCommand : IUiCommand
         _cobjs    = cobjs.ToList();
         _reselect = reselect;
 
-        // Only a label whose wire is being pasted with it: a name with no wire under it names nothing.
+        // A label anchored to a wire comes only with its wire: a name with no wire under it names nothing. A free-standing
+        // one names the pin it sits on, and comes as it is.
         var pastedWireIds = _wires.Select(w => w.Id).ToHashSet();
-        _netLabels = (netLabels ?? []).Where(n => n.IsAnchored && pastedWireIds.Contains(n.OwnerWireId)).ToList();
+        _netLabels = (netLabels ?? []).Where(n => !n.IsAnchored || pastedWireIds.Contains(n.OwnerWireId)).ToList();
 
         if (sourceGridSize > 0 && Math.Abs(sourceGridSize - model.GridSize) > 1e-9)
             SnapToDestGrid(model.GridSize, model.AuthorGridSize, sourceGridSize, messageSink);
@@ -100,6 +102,11 @@ internal sealed class SchematicPasteCommand : IUiCommand
         {
             o.X = Snap(o.X, pAuthor);
             o.Y = Snap(o.Y, pAuthor);
+        }
+        foreach (var n in _netLabels.Where(n => !n.IsAnchored))
+        {
+            n.X = Snap(n.X, pDst);
+            n.Y = Snap(n.Y, pDst);
         }
 
         // Post-snap R7 validation: all connection points must be on P_dst (should always pass).

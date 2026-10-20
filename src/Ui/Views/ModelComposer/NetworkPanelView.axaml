@@ -1,0 +1,43 @@
+<!-- The network panel (brief-modelcomposer-14 R-mc14-8, R-mc14-9): the schematic canvas drawing the extrinsic network's
+     own .csch — or a passive document's topology — with .csch copy and paste in both directions, the Smith Chart's
+     pattern. A network without the six pins shows its one-line refusal under the canvas. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="using:CircuitRF.Ui.ModelComposer"
+             xmlns:ctl="using:CircuitRF.Ui.Controls"
+             xmlns:mi="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="CircuitRF.Ui.Views.ModelComposer.NetworkPanelView"
+             x:DataType="mc:ModelComposerViewModel">
+    <Border Classes="pane">
+        <Grid RowDefinitions="Auto,*,Auto">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="panelhdr" Text="{Binding NetworkName}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+                    <Button Name="StockButton" Classes="tool" IsVisible="{Binding IsActive}" ToolTip.Tip="Stock network">
+                        <mi:MaterialIcon Kind="BookOpenPageVariantOutline" Width="16" Height="16"/>
+                    </Button>
+                    <Button Classes="tool" Command="{Binding OpenNetworkCommand}" IsVisible="{Binding IsActive}" ToolTip.Tip="Open a six-pin .csch">
+                        <mi:MaterialIcon Kind="FolderOpenOutline" Width="16" Height="16"/>
+                    </Button>
+                    <Button Classes="tool" Command="{Binding EditNetworkCommand}" IsVisible="{Binding IsActive}" ToolTip.Tip="Edit in the schematic editor">
+                        <mi:MaterialIcon Kind="PencilOutline" Width="16" Height="16"/>
+                    </Button>
+                    <Border Classes="rule"/>
+                    <Button Classes="tool" Command="{Binding CopyNetworkCommand}" ToolTip.Tip="Copy (⌘C)">
+                        <mi:MaterialIcon Kind="ContentCopy" Width="16" Height="16"/>
+                    </Button>
+                    <Button Classes="tool" Command="{Binding PasteNetworkCommand}" ToolTip.Tip="Paste (⌘V)">
+                        <mi:MaterialIcon Kind="ContentPaste" Width="16" Height="16"/>
+                    </Button>
+                    <Button Name="FitButton" Classes="tool" ToolTip.Tip="Zoom to Fit">
+                        <mi:MaterialIcon Kind="FitToPage" Width="16" Height="16"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+            <ctl:SchematicCanvas Name="Canvas" Grid.Row="1" Margin="0,4,0,0" Model="{Binding NetworkDrawing}"
+                                 ShowGrid="False" DragDrop.AllowDrop="False" Focusable="True"/>
+            <TextBlock Grid.Row="2" Classes="warn" Text="{Binding NetworkRefusal}"
+                       IsVisible="{Binding NetworkRefusal, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+        </Grid>
+    </Border>
+</UserControl>

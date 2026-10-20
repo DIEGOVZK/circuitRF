@@ -152,6 +152,9 @@ public static class SchematicClipboard
                 newWires.Add(nw);
             }
 
+            foreach (var l in labels.Where(l => !l.IsAnchored))
+                newLabels.Add(new EditableNetLabel { Name = l.Name, X = l.X + offsetX, Y = l.Y + offsetY });
+
             var newCobjs = new List<EditableCanvasObject>(cobjs.Count);
             foreach (var o in cobjs)
             {

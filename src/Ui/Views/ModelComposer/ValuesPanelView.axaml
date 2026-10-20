@@ -1,0 +1,47 @@
+<!-- The values table (brief-modelcomposer-14 R-mc14-8): name · value · lock · min · max · tie · scaling (D9) · ± error,
+     and a mark on a poorly determined value whose tooltip names its correlated partner. Every cell is an edit — one
+     undo step — and numbers form one right-aligned column. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="using:CircuitRF.Ui.ModelComposer"
+             xmlns:ctl="using:CircuitRF.Ui.Controls"
+             xmlns:mi="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="CircuitRF.Ui.Views.ModelComposer.ValuesPanelView"
+             x:DataType="mc:ModelComposerViewModel">
+    <Border Classes="pane">
+        <Grid RowDefinitions="Auto,Auto,*">
+            <TextBlock Classes="panelhdr" Text="Values"/>
+            <Grid Grid.Row="1" ColumnDefinitions="64,74,22,64,64,60,*,62,14" Margin="4,0">
+                <TextBlock Classes="lbl" FontSize="10" Text="name"/>
+                <TextBlock Grid.Column="1" Classes="lbl" FontSize="10" Text="value" HorizontalAlignment="Right"/>
+                <mi:MaterialIcon Grid.Column="2" Kind="LockOutline" Width="11" Height="11" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="3" Classes="lbl" FontSize="10" Text="min" HorizontalAlignment="Right"/>
+                <TextBlock Grid.Column="4" Classes="lbl" FontSize="10" Text="max" HorizontalAlignment="Right"/>
+                <TextBlock Grid.Column="5" Classes="lbl" FontSize="10" Text="tie" HorizontalAlignment="Right"/>
+                <TextBlock Grid.Column="6" Classes="lbl" FontSize="10" Text="scaling" HorizontalAlignment="Center"/>
+                <TextBlock Grid.Column="7" Classes="lbl" FontSize="10" Text="±" HorizontalAlignment="Right"/>
+            </Grid>
+            <ListBox Grid.Row="2" Classes="rows" ItemsSource="{Binding NetworkValues}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="mc:NetworkValueRow">
+                        <Grid ColumnDefinitions="64,74,22,64,64,60,*,62,14">
+                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" FontWeight="SemiBold"/>
+                            <ctl:InlineEditText Grid.Column="1" Text="{Binding Value, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                            <CheckBox Grid.Column="2" IsChecked="{Binding Lock}" HorizontalAlignment="Center" MinWidth="0" Padding="0"/>
+                            <ctl:InlineEditText Grid.Column="3" Text="{Binding Min, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                            <ctl:InlineEditText Grid.Column="4" Text="{Binding Max, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                            <ctl:InlineEditText Grid.Column="5" Text="{Binding Tie, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                            <ComboBox Grid.Column="6" ItemsSource="{Binding $parent[ListBox].((mc:ModelComposerViewModel)DataContext).ScalingRules}"
+                                      SelectedItem="{Binding Scaling}" FontSize="11" MinHeight="0" Padding="4,0"
+                                      HorizontalAlignment="Stretch" Margin="2,0"/>
+                            <TextBlock Grid.Column="7" Text="{Binding Error}" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            <mi:MaterialIcon Grid.Column="8" Kind="AlertCircleOutline" Width="12" Height="12"
+                                             Foreground="{DynamicResource CrfWarningBrush}"
+                                             IsVisible="{Binding Poor}" ToolTip.Tip="{Binding PoorTip}"/>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Grid>
+    </Border>
+</UserControl>

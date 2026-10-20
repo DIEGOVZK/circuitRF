@@ -43,6 +43,7 @@ reference/symbol-editor.html       | Drawing and editing a symbol.
 reference/sdd.html                 | The Symbolically-Defined Device: writing a nonlinear model as equations.
 reference/nonlinear-capacitor.html | C(V) as a Taylor series, and the C–V Editor that fits one.
 reference/veriloga.html            | Running a compact model you supply, from Verilog-A source or a compiled artefact.
+reference/model-composer.html      | A nonlinear FET model, or a passive one, built from measured or simulated data.
 reference/match.html               | Direct synthesis of a bandpass matching network that absorbs both terminations.
 
 == Simulate

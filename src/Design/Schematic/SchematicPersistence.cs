@@ -892,7 +892,13 @@ public static class SchematicPersistence
 
         foreach (var n in netLabels ?? [])
         {
-            if (!n.IsAnchored || !cloneOf.TryGetValue(n.OwnerWireId, out var owner)) continue;
+            // A label standing alone names the net at the point it sits on — the pin under it — so it travels as it is.
+            if (!n.IsAnchored)
+            {
+                scratch.NetLabels.Add(new EditableNetLabel { X = n.X, Y = n.Y, Name = n.Name });
+                continue;
+            }
+            if (!cloneOf.TryGetValue(n.OwnerWireId, out var owner)) continue;
             scratch.NetLabels.Add(new EditableNetLabel
             {
                 X = n.X, Y = n.Y, Name = n.Name,
@@ -929,8 +935,9 @@ public static class SchematicPersistence
 
         // Accept any version for clipboard fragments — don't reject on version mismatch.
         var model = FromFileModel(file, null);
-        return (model.Components, model.Wires, model.CanvasObjects,
-                [.. model.NetLabels.Where(n => n.IsAnchored)], file.GridSize);
+        // Anchored labels ride their wires; a free-standing one names the pin it sits on (a fragment carries one only when
+        // its copier passed it — SerializeSelection).
+        return (model.Components, model.Wires, model.CanvasObjects, model.NetLabels, file.GridSize);
     }
 
     /// <summary>The technology path a fragment was copied with (<see cref="SerializeSelection"/>'s

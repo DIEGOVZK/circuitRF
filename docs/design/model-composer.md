@@ -379,7 +379,8 @@ in a fixed order with `\n` line ends — the same document writes the same bytes
 before it writes. **An unknown key anywhere is a refusal**: a misspelt condition silently dropped would
 leave a set measured under conditions nobody stated. `Pads`, `Network` and `Steps` are the exception —
 opaque `JsonNode`s, written back verbatim, so this build loses nothing a later phase wrote. `Panels` is
-written only when a panel is hidden (railRF's rule).
+written only when a panel is hidden (railRF's rule). `View` (MC-14) holds the window's selected step and bias cursor,
+written only when set — view state, never an undo step (§18).
 
 Rules the validator holds: a Passive document takes only `PassiveSParams` sets and no periphery, an Active
 one never takes them; names are unique; sources are relative; pulse conditions (`PulseWidth`, `Period`,
@@ -1357,3 +1358,31 @@ engine equals the fitted network to 1e-12; an existing name refused and the cell
 turns = 2.5 equals its laws to 1e-12 and warns once at 7), `PassiveStepFileTests` (Touchstone files named
 `via_{geometry}t` fitted as a family into the `.cmc`, read back, exported from the record). The data is
 `Passive/SyntheticPassiveData.cs`.
+
+## 18. The window (MC-14)
+
+`src/Ui/ModelComposer/` (view models) and `src/Ui/Views/ModelComposer/` (views): a toolbar in the schematic and layout
+editors' style, and railRF's panels — Steps (rail and the step's settings), Plots, Network and Values, each its own view
+with a lamp kept in `Panels`, the last lit lamp disabled, splitters both ways.
+
+**One document in memory, edited; the file is where runs happen.** Every edit is a `CmcEdit` — a label and a
+redo/undo pair over whatever document is current — so an undo after a run reverts the edit and keeps the run's result.
+A run that changes results (import, fit) writes the document, calls the file-based `ModelCommands` function the
+`model` verb calls, reads the result back and replays the edits made while it ran. The window's other needs are the
+shared functions in `ModelCommands.Window.cs` — `Save`, `Load` (the cache, the intrinsic data, the pad-removed data,
+the hygiene flags and the stale steps in one `ModelData`), `ChooseNetwork`, `UseNetworkFile`, `InstallNetwork`,
+`InstallTopology`, `Preview`, `Propose`, `Analyse` — so the window's folders hold no flow (`ModelComposerNoLogicTests`).
+
+**One task at a time.** A refresh (opening data, re-de-embedding after an edit to the data, the pads or the network)
+reads the document in memory, writes nothing, and gives way to a run the user asks for; a second run is refused in the
+status line. Progress is coalesced: a report stores the latest and posts a UI work item only when none is queued, so
+`UiWorkItems ≤ ProgressReports` however fast a fit reports. `CurrentTask` is the whole task, result handover and clean-up
+included — awaiting the worker alone let the next run start while the previous one was still clearing up.
+
+**The network panel** is `SchematicCanvas` drawing the network's `.csch`; copy and paste are a schematic selection on
+the clipboard, net labels included — the stock networks connect through free-standing labels at their pins, which the
+selection format now carries when its copier passes them.
+
+Gates: `ModelComposerLifecycleTests`, `ModelComposerPanelsTests`, `ModelComposerBackgroundTaskTests`,
+`ModelComposerNetworkPanelTests`, `ModelComposerNoLogicTests` — view-model driven with no application host, the
+lamp-to-panel wiring read from the AXAML, as railRF's window gate does.

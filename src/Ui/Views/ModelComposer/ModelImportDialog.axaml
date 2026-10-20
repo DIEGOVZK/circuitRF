@@ -1,0 +1,132 @@
+<!-- The Data step's importer (brief-modelcomposer-14 R-mc14-6): a file or folder, the pattern or the column map with a
+     live preview of the first rows, the conditions, and one line of what it read. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="using:CircuitRF.Ui.ModelComposer"
+        xmlns:mi="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        x:Class="CircuitRF.Ui.Views.ModelComposer.ModelImportDialog"
+        x:DataType="mc:ModelImportViewModel"
+        Title="Import Data"
+        Width="760" Height="560" MinWidth="620" MinHeight="460"
+        WindowStartupLocation="CenterOwner">
+    <Window.Styles>
+        <Style Selector="Button">
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="ComboBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBlock.lbl">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemBaseMediumColor}"/>
+        </Style>
+        <Style Selector="TextBlock.warn">
+            <Setter Property="Foreground" Value="{DynamicResource CrfWarningBrush}"/>
+        </Style>
+        <Style Selector="Border.card">
+            <Setter Property="Background"      Value="{DynamicResource SystemChromeLowColor}"/>
+            <Setter Property="BorderBrush"     Value="{DynamicResource CrfTileBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius"    Value="6"/>
+            <Setter Property="Padding"         Value="8,5"/>
+        </Style>
+    </Window.Styles>
+
+    <DockPanel Margin="12" Background="{DynamicResource SystemChromeMediumLowColor}">
+        <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,Auto" Margin="0,10,0,0">
+            <TextBlock Text="{Binding Line}" TextWrapping="Wrap" VerticalAlignment="Center"
+                       Classes.warn="{Binding Refused}"/>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                <Button Name="CancelButton" Content="Cancel" MinWidth="80"/>
+                <Button Name="ImportButton" Content="Import" MinWidth="80" IsDefault="True" IsEnabled="{Binding !Refused}"/>
+            </StackPanel>
+        </Grid>
+
+        <Grid ColumnDefinitions="320,12,*">
+            <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="90,*">
+                    <TextBlock Classes="lbl" Text="Kind"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" HorizontalAlignment="Stretch"/>
+                </Grid>
+                <Grid ColumnDefinitions="90,*,Auto,Auto">
+                    <TextBlock Classes="lbl" Text="Source"/>
+                    <TextBlock Grid.Column="1" Text="{Binding SourcesText}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                    <Button Name="FilesButton" Grid.Column="2" Padding="6,3" ToolTip.Tip="Files">
+                        <mi:MaterialIcon Kind="FileMultipleOutline" Width="16" Height="16"/>
+                    </Button>
+                    <Button Name="FolderButton" Grid.Column="3" Padding="6,3" Margin="2,0,0,0" ToolTip.Tip="A folder">
+                        <mi:MaterialIcon Kind="FolderOutline" Width="16" Height="16"/>
+                    </Button>
+                </Grid>
+                <Grid ColumnDefinitions="90,*">
+                    <TextBlock Classes="lbl" Text="Name"/>
+                    <TextBox Grid.Column="1" Text="{Binding Name}"/>
+                </Grid>
+                <Grid ColumnDefinitions="90,*" IsVisible="{Binding IsTouchstone}">
+                    <TextBlock Classes="lbl" Text="Pattern"/>
+                    <TextBox Grid.Column="1" Text="{Binding Pattern}" ToolTip.Tip="Fields {vgs} {vds} {T} {id} {ig} {geometry}; a unit as {id:mA}"/>
+                </Grid>
+                <Grid ColumnDefinitions="90,*" IsVisible="{Binding IsTouchstone}">
+                    <TextBlock Classes="lbl" Text="Read from"/>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding PatternSources}" SelectedItem="{Binding PatternSource}" HorizontalAlignment="Stretch"/>
+                </Grid>
+                <Grid ColumnDefinitions="90,*" IsVisible="{Binding IsMapped}">
+                    <TextBlock Classes="lbl" Text="Map" VerticalAlignment="Top" Margin="0,6,0,0"/>
+                    <TextBox Grid.Column="1" Text="{Binding Map}" AcceptsReturn="True" Height="70" TextWrapping="Wrap"
+                             ToolTip.Tip="name=quantity[:unit], e.g. Id=id:mA"/>
+                </Grid>
+                <CheckBox IsVisible="{Binding IsMapped}" IsChecked="{Binding Header}" Content="Header row"/>
+
+                <Border Classes="card">
+                    <StackPanel Spacing="4">
+                        <Grid ColumnDefinitions="90,*">
+                            <TextBlock Classes="lbl" Text="Ambient °C"/>
+                            <TextBox Grid.Column="1" Text="{Binding AmbientC}"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="90,*">
+                            <TextBlock Classes="lbl" Text="Plane"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding Planes}" SelectedItem="{Binding Plane}" HorizontalAlignment="Stretch"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="90,*,6,*">
+                            <TextBlock Classes="lbl" Text="Quiescent"/>
+                            <TextBox Grid.Column="1" Text="{Binding QuiescentVgs}" PlaceholderText="Vgs"/>
+                            <TextBox Grid.Column="3" Text="{Binding QuiescentVds}" PlaceholderText="Vds"/>
+                        </Grid>
+                        <TextBox Text="{Binding MoreConditions}" AcceptsReturn="True" Height="64" PlaceholderText="Key=Value"
+                                 ToolTip.Tip="Further conditions, one per line: PulseWidth=1e-6, BiasPathOhms.Gate=10"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <Grid Grid.Column="2" RowDefinitions="Auto,*,Auto,*">
+                <TextBlock Classes="lbl" Text="First lines"/>
+                <Border Grid.Row="1" Classes="card" Margin="0,2,0,6">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding PreviewRaw}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{Binding}" FontFamily="Menlo, Consolas, monospace" FontSize="11"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+                <TextBlock Grid.Row="2" Classes="lbl" Text="As read"/>
+                <Border Grid.Row="3" Classes="card" Margin="0,2,0,0">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding PreviewPoints}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Text="{Binding}" FontFamily="Menlo, Consolas, monospace" FontSize="11"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+        </Grid>
+    </DockPanel>
+</Window>

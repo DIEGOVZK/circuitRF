@@ -1,0 +1,50 @@
+<!-- The plots panel (brief-modelcomposer-14 R-mc14-2, R-mc14-6 … R-mc14-9): a tab strip, a Data Display PlotControl
+     — rectangular, or a Smith chart for the reflection tabs — and on the bias plane its three lamps: extrinsic ○,
+     intrinsic ● and the × that arms click-and-lasso exclusion, with the reason chosen from a short list. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="using:CircuitRF.Ui.ModelComposer"
+             xmlns:ddc="using:CircuitRF.Ui.DataDisplay.Controls"
+             xmlns:mi="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="CircuitRF.Ui.Views.ModelComposer.PlotsPanelView"
+             x:DataType="mc:ModelComposerViewModel">
+    <Border Classes="pane">
+        <Grid RowDefinitions="Auto,*,Auto">
+            <ItemsControl Name="TabStrip" ItemsSource="{Binding PlotTabs}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="2"/></ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <Button Classes="tool" Content="{Binding}" Click="OnTabClick"/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Panel Grid.Row="1" Margin="0,4,0,0">
+                <ddc:PlotControl Name="RectPlotControl" Plot="{Binding RectPlot}" Library="{Binding PlotHost.Library}"
+                                 CanDeletePlot="False" CanEditPlotProperties="True" IsVisible="{Binding !IsSmithTab}"/>
+                <ddc:PlotControl Name="SmithPlotControl" Plot="{Binding SmithPlot}" Library="{Binding PlotHost.Library}"
+                                 CanDeletePlot="False" CanEditPlotProperties="True" IsVisible="{Binding IsSmithTab}"/>
+            </Panel>
+
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="2" Margin="0,4,0,0" IsVisible="{Binding IsBiasPlaneTab}">
+                <Button Classes="tool" Classes.ToolActive="{Binding ShowExtrinsic}" Command="{Binding ToggleExtrinsicCommand}"
+                        ToolTip.Tip="Extrinsic bias">
+                    <mi:MaterialIcon Kind="CircleOutline" Width="14" Height="14"/>
+                </Button>
+                <Button Classes="tool" Classes.ToolActive="{Binding ShowIntrinsic}" Command="{Binding ToggleIntrinsicCommand}"
+                        ToolTip.Tip="Intrinsic bias">
+                    <mi:MaterialIcon Kind="Circle" Width="14" Height="14"/>
+                </Button>
+                <Border Classes="rule"/>
+                <Button Classes="tool" Classes.ToolActive="{Binding ExcludeArmed}" Command="{Binding ToggleExcludeCommand}"
+                        ToolTip.Tip="Click or lasso points to exclude or include them">
+                    <mi:MaterialIcon Kind="Close" Width="14" Height="14"/>
+                </Button>
+                <ComboBox ItemsSource="{Binding ExclusionReasons}" SelectedItem="{Binding ExclusionReason}"
+                          IsVisible="{Binding ExcludeArmed}" MinWidth="110" ToolTip.Tip="Reason"/>
+            </StackPanel>
+        </Grid>
+    </Border>
+</UserControl>

@@ -39956,3 +39956,22 @@ panels are `Order = 0` in every shipped layout. Gate:
   only `SchematicFileClassifier` saying "schematic" opens the dialog. A binary `.DSN` design classifies, and the dialog
   shows the reader's refusal until SI-4 lands.
 - The menu row is **Sc_hematic…** — `_S` is taken by STEP… in the same submenu.
+
+## The Model Composer window (brief-modelcomposer-14, 2026-10-19)
+
+**Free-standing net labels did not survive the schematic clipboard.** `SerializeSelection`, `DeserializeSelectionWithLabels`,
+`SchematicClipboard.PasteAsync` and `SchematicPasteCommand` all kept anchored labels only. A label with no owner wire is a
+real connection — it names the net of the pin it sits on — and the stock extrinsic networks (and anything drawn by
+`NetlistSchematic` or `SubcircuitCellBuilder`) connect every pin that way, so a copied network pasted back as parts with
+nothing joining them. Free labels now travel when the copier passes them: offset with the paste, snapped to the
+destination grid with everything else. The schematic editor's own Copy still passes only the labels anchored to its
+selected wires, so its behaviour is unchanged.
+
+**Await the whole task, not its worker.** The window's `CurrentTask` was first the worker's task, which completes before
+the awaiting method hands the result over and clears `IsRunning`. A run started straight after awaiting it found the
+previous task still "running" as a refresh, pre-empted it, and then had its own progress ignored when the old task's
+clean-up cleared `IsRunning` underneath it — the fit ran with no stage ever shown and could not be cancelled. It is now
+the whole operation.
+
+**A rail built for a reopened document selects its first step before the stored step is read**, which overwrote the
+`View.Step` the document carried. The stored view is captured before the rail is built and restored after.

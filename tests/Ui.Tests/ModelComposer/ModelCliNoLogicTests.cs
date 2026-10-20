@@ -13,7 +13,7 @@ public sealed class ModelCliNoLogicTests
 {
     /// <summary>What a flow is made of: reading data through the cache, de-embedding, a step's own run, writing the document,
     /// the model or a cache array. A shell that calls one of these is doing a flow's work.</summary>
-    private static readonly string[] FlowInternals =
+    internal static readonly string[] FlowInternals =
     [
         "CmcFile.Write(", "CmcFile.ToBytes(", "new CmcCache(", "new IntrinsicExtraction(", "DataImport.Import(", "CmcStamps.",
         "NetworkFit.FitFile(", "NetworkFit.Run(", "CurrentFit.FitFile(", "CurrentFit.Run(", "ChargeFit.FitFile(", "ChargeFit.Run(",
@@ -64,6 +64,6 @@ public sealed class ModelCliNoLogicTests
     private static string Source(string relative) => Strip(File.ReadAllText(Path.Combine(ModelCliFixture.RepoRoot(), relative)));
 
     /// <summary>Line and block comments removed, so a scan cannot be satisfied by prose.</summary>
-    private static string Strip(string code)
+    internal static string Strip(string code)
         => Regex.Replace(Regex.Replace(code, @"/\*.*?\*/", "", RegexOptions.Singleline), @"//[^\n]*", "");
 }

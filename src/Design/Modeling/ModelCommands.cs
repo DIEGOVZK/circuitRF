@@ -26,7 +26,7 @@ public sealed record FitOptions(string? Method = null, ulong? Seed = null, strin
     public static FitOptions None { get; } = new();
 }
 
-public static class ModelCommands
+public static partial class ModelCommands
 {
     /// <summary>The steps a fit can run, in the order <c>all</c> runs them.</summary>
     public static readonly IReadOnlyList<string> Steps = ["network", "thermal", "current", "traps", "charge", "passive"];

@@ -541,6 +541,8 @@
                              in-window Tools menu below; the two surfaces are hand-maintained and must
                              not drift. -->
                         <NativeMenuItem Header="Smith Chart" Command="{Binding NewSmithChartCommand}"/>
+                        <!-- brief-modelcomposer-14 R-mc14-1 — a window per .cmc; needs no workspace. Mirrored below. -->
+                        <NativeMenuItem Header="Model Composer…" Command="{Binding NewModelComposerCommand}"/>
                         <!-- brief-img-14 R-im14-13: the picture dialog, empty, in plot mode. Mirrored below. -->
                         <NativeMenuItem Header="Digitise Plot…" Command="{Binding DigitisePlotCommand}" ToolTip="Read the curves of a plot picture — rectangular, Smith or polar — into a CSV, or an S-parameter plot into a Touchstone file. Requires an open workspace."/>
                         <!-- wBond: WITHDRAWN FOR v1 (owner, 2026-08-17). The standalone wirebond
@@ -1583,6 +1585,12 @@
                         <ctl:PlotTypeGlyphControl Kind="Smith" Width="16" Height="16"
                             Stroke="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
                     </MenuItem.Icon>
+                </MenuItem>
+                <!-- brief-modelcomposer-14 R-mc14-1 — hand-mirrored with the macOS NativeMenu above. -->
+                <MenuItem Header="Model _Composer…"
+                          Command="{Binding NewModelComposerCommand}"
+                          ToolTip.Tip="Build a nonlinear FET model, or a passive model, from measured or simulated data. Opens with or without a workspace.">
+                    <MenuItem.Icon><mi:MaterialIcon Kind="IntegratedCircuitChip" Width="16" Height="16"/></MenuItem.Icon>
                 </MenuItem>
                 <!-- brief-img-14 R-im14-13 — hand-mirrored with the macOS NativeMenu above. -->
                 <MenuItem Header="_Digitise Plot…"

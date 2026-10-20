@@ -1,0 +1,198 @@
+<!-- The step rail and the selected step's settings (brief-modelcomposer-14 R-mc14-2, R-mc14-6 … R-mc14-9). One panel,
+     one lamp. Values, not prose: a disabled step says why on its tooltip and nowhere else. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="using:CircuitRF.Ui.ModelComposer"
+             xmlns:ctl="using:CircuitRF.Ui.Controls"
+             xmlns:dm="using:CircuitRF.Design.Modeling"
+             xmlns:mi="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+             x:Class="CircuitRF.Ui.Views.ModelComposer.StepsPanelView"
+             x:DataType="mc:ModelComposerViewModel">
+    <Border Classes="pane">
+        <Grid RowDefinitions="Auto,4,*">
+            <!-- The rail. -->
+            <ListBox Classes="rows" ItemsSource="{Binding Steps}" SelectedItem="{Binding SelectedStep}">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="mc:ModelStepItem">
+                        <Grid ColumnDefinitions="Auto,*,Auto" IsEnabled="{Binding IsEnabled}"
+                              Background="Transparent" ToolTip.Tip="{Binding Tip}" ToolTip.ShowOnDisabled="True">
+                            <mi:MaterialIcon Kind="{Binding Icon}" Width="16" Height="16" Margin="0,0,6,0"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"/>
+                            <Ellipse Grid.Column="2" Width="7" Height="7" IsVisible="{Binding IsStale}"
+                                     Fill="{DynamicResource CrfWarningBrush}" ToolTip.Tip="Stale"/>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <Border Grid.Row="1" Height="1" Background="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
+
+            <ScrollViewer Grid.Row="2" HorizontalScrollBarVisibility="Disabled" Margin="0,6,0,0">
+                <StackPanel Spacing="4">
+
+                    <!-- ── Data ─────────────────────────────────────────────── -->
+                    <StackPanel IsVisible="{Binding IsDataStep}" Spacing="4">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Classes="panelhdr" Text="Data sets"/>
+                            <Button Grid.Column="1" Classes="tool" Command="{Binding RunCommand}" CommandParameter="import"
+                                    ToolTip.Tip="Import a data set">
+                                <mi:MaterialIcon Kind="DatabaseImportOutline" Width="16" Height="16"/>
+                            </Button>
+                        </Grid>
+                        <ListBox Classes="rows" ItemsSource="{Binding DataSetRows}" SelectedItem="{Binding SelectedDataSet}" MaxHeight="220">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="mc:DataSetRow">
+                                    <StackPanel>
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="1" Classes="lbl" Text="{Binding Points}"/>
+                                        </Grid>
+                                        <TextBlock Classes="lbl" FontSize="11" TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Text>
+                                                <MultiBinding StringFormat="{}{0} · {1} · {2} · Q {3} {4}">
+                                                    <Binding Path="Kind"/>
+                                                    <Binding Path="Ambient"/>
+                                                    <Binding Path="Plane"/>
+                                                    <Binding Path="Quiescent"/>
+                                                    <Binding Path="PrePulse"/>
+                                                </MultiBinding>
+                                            </TextBlock.Text>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <Border Classes="card" IsVisible="{Binding IsActive}">
+                            <StackPanel Spacing="3">
+                                <TextBlock Classes="panelhdr" Text="Base periphery"/>
+                                <Grid ColumnDefinitions="*,90">
+                                    <TextBlock Classes="lbl" Text="N0"/>
+                                    <ctl:InlineEditText Grid.Column="1" Text="{Binding PeripheryFingers, Mode=TwoWay}"
+                                                        HorizontalContentAlignment="Right" ToolTip.Tip="Fingers of the measured device"/>
+                                </Grid>
+                                <Grid ColumnDefinitions="*,90">
+                                    <TextBlock Classes="lbl" Text="W0"/>
+                                    <ctl:InlineEditText Grid.Column="1" Text="{Binding PeripheryWidth, Mode=TwoWay}"
+                                                        HorizontalContentAlignment="Right" ToolTip.Tip="Unit gate width, e.g. 125 um"/>
+                                </Grid>
+                                <TextBlock Classes="warn" Text="{Binding PeripheryWarning}"
+                                           IsVisible="{Binding PeripheryWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                            </StackPanel>
+                        </Border>
+
+                        <ItemsControl ItemsSource="{Binding PassiveBlocks}" IsVisible="{Binding IsPassive}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock Classes="lbl" FontSize="11" Text="{Binding}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <ItemsControl ItemsSource="{Binding AnalysisLines}" IsVisible="{Binding IsPassive}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- ── Pads ─────────────────────────────────────────────── -->
+                    <StackPanel IsVisible="{Binding IsPadsStep}" Spacing="4">
+                        <TextBlock Classes="panelhdr" Text="Pads"/>
+                        <ComboBox ItemsSource="{Binding PadsKinds}" SelectedItem="{Binding PadsKind}" HorizontalAlignment="Stretch"/>
+                        <Grid ColumnDefinitions="50,*,Auto" IsVisible="{Binding PadsOpenShort}">
+                            <TextBlock Classes="lbl" Text="Open"/>
+                            <TextBlock Grid.Column="1" Text="{Binding PadsOpen}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            <Button Grid.Column="2" Classes="tool" Command="{Binding PickPadFileCommand}" CommandParameter="open" ToolTip.Tip="Choose">
+                                <mi:MaterialIcon Kind="FolderOpenOutline" Width="14" Height="14"/>
+                            </Button>
+                        </Grid>
+                        <Grid ColumnDefinitions="50,*,Auto" IsVisible="{Binding PadsOpenShort}">
+                            <TextBlock Classes="lbl" Text="Short"/>
+                            <TextBlock Grid.Column="1" Text="{Binding PadsShort}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            <Button Grid.Column="2" Classes="tool" Command="{Binding PickPadFileCommand}" CommandParameter="short" ToolTip.Tip="Choose">
+                                <mi:MaterialIcon Kind="FolderOpenOutline" Width="14" Height="14"/>
+                            </Button>
+                        </Grid>
+                        <Grid ColumnDefinitions="50,*,Auto" IsVisible="{Binding PadsTwoPorts}">
+                            <TextBlock Classes="lbl" Text="Gate"/>
+                            <TextBlock Grid.Column="1" Text="{Binding PadsGate}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            <Button Grid.Column="2" Classes="tool" Command="{Binding PickPadFileCommand}" CommandParameter="gate" ToolTip.Tip="Choose">
+                                <mi:MaterialIcon Kind="FolderOpenOutline" Width="14" Height="14"/>
+                            </Button>
+                        </Grid>
+                        <Grid ColumnDefinitions="50,*,Auto" IsVisible="{Binding PadsTwoPorts}">
+                            <TextBlock Classes="lbl" Text="Drain"/>
+                            <TextBlock Grid.Column="1" Text="{Binding PadsDrain}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                            <Button Grid.Column="2" Classes="tool" Command="{Binding PickPadFileCommand}" CommandParameter="drain" ToolTip.Tip="Choose">
+                                <mi:MaterialIcon Kind="FolderOpenOutline" Width="14" Height="14"/>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- ── Network ──────────────────────────────────────────── -->
+                    <StackPanel IsVisible="{Binding IsNetworkStep}" Spacing="4">
+                        <TextBlock Classes="panelhdr" Text="Network fit"/>
+                        <Grid ColumnDefinitions="70,*">
+                            <TextBlock Classes="lbl" Text="Method"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding NetworkMethods}" SelectedItem="{Binding NetworkMethod}" HorizontalAlignment="Stretch"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="70,*">
+                            <TextBlock Classes="lbl" Text="Seed"/>
+                            <ctl:InlineEditText Grid.Column="1" Text="{Binding NetworkSeed, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="70,*">
+                            <TextBlock Classes="lbl" Text="Bias points"/>
+                            <TextBlock Grid.Column="1" Text="{Binding FitPointsText}" HorizontalAlignment="Right"
+                                       ToolTip.Tip="Lasso on the bias plane to add or remove"/>
+                        </Grid>
+                        <Border Classes="card">
+                            <StackPanel Spacing="3">
+                                <TextBlock Classes="panelhdr" Text="Weights"/>
+                                <Grid ColumnDefinitions="*,70">
+                                    <TextBlock Classes="lbl" Text="Flatness"/>
+                                    <ctl:InlineEditText Grid.Column="1" Text="{Binding WeightFlatness, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                                </Grid>
+                                <Grid ColumnDefinitions="*,70">
+                                    <TextBlock Classes="lbl" Text="Cold"/>
+                                    <ctl:InlineEditText Grid.Column="1" Text="{Binding WeightCold, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                                </Grid>
+                                <Grid ColumnDefinitions="*,70">
+                                    <TextBlock Classes="lbl" Text="Small signal"/>
+                                    <ctl:InlineEditText Grid.Column="1" Text="{Binding WeightSmallSignal, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- ── Topology (passive) ───────────────────────────────── -->
+                    <StackPanel IsVisible="{Binding IsTopologyStep}" Spacing="4">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Classes="panelhdr" Text="{Binding TopologyName}"/>
+                            <Button Grid.Column="1" Classes="tool" Command="{Binding RunCommand}" CommandParameter="propose" ToolTip.Tip="Propose">
+                                <mi:MaterialIcon Kind="Lightbulb" Width="16" Height="16"/>
+                            </Button>
+                        </Grid>
+                        <ListBox Name="ProposalList" Classes="rows" ItemsSource="{Binding Proposals}">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="mc:ProposalRow">
+                                    <Border Classes="card" ToolTip.Tip="Double-click to choose">
+                                        <StackPanel Spacing="2">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"/>
+                                                <TextBlock Grid.Column="1" Classes="lbl" Text="{Binding Score}"/>
+                                            </Grid>
+                                            <ctl:SchematicCanvas Model="{Binding Drawing}" ShowGrid="False" Height="90"
+                                                                 IsHitTestVisible="False" DragDrop.AllowDrop="False"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </Border>
+</UserControl>

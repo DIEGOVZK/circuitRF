@@ -183,6 +183,24 @@ public sealed record CmcPanels
     public bool IsDefault => Hidden.Count == 0;
 }
 
+/// <summary>
+/// The window's bias cursor (MC-14 R-mc14-2): the bias every plot is drawn at. Voltages in volts, the ambient in °C;
+/// <see cref="Quiescent"/> picks a pulsed set's quiescent point (its currents are never written here).
+/// </summary>
+public sealed record CmcBiasCursor(double? Vgs = null, double? Vds = null, double? AmbientC = null, QuiescentBias? Quiescent = null);
+
+/// <summary>
+/// Where the window was left (MC-14 R-mc14-1): the selected step and the bias cursor, so a reopened document comes back
+/// where it was. View state, written only when something is set, and never an undo step.
+/// </summary>
+public sealed record CmcView
+{
+    public string? Step { get; init; }
+    public CmcBiasCursor? Cursor { get; init; }
+
+    public bool IsDefault => Step is null && Cursor is null;
+}
+
 /// <summary>The <c>.cmc</c> document (R-mc3-1).</summary>
 public sealed record CmcDocument
 {
@@ -200,4 +218,6 @@ public sealed record CmcDocument
     public JsonNode? Steps { get; init; }
 
     public CmcPanels Panels { get; init; } = new();
+
+    public CmcView View { get; init; } = new();
 }
