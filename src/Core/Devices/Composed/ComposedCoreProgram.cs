@@ -32,17 +32,22 @@ public sealed class ComposedCoreProgram
     /// <summary>The drain–source symmetry option (R-mc2-4).</summary>
     public DrainSourceSymmetry Symmetry { get; }
 
-    // One compiled function per payload entry, in a fixed order the core reads by field.
+    /// <summary>[P1] eq. 6.52's time constant, seconds, when the model carries <c>IdRF</c>; else null.</summary>
+    public double? DispersionTau { get; }
+
+    // One compiled function per payload entry, in a fixed order the core reads by field. IdRF is null
+    // unless the model is dispersive, and then Id is the DC current.
     internal readonly ComposedFunction Id, IgGs, IgGd, Qg, Qd;
+    internal readonly ComposedFunction? IdRF;
 
     private readonly string _label;
 
     private ComposedCoreProgram(IReadOnlyList<string> seeds, string label, DrainSourceSymmetry symmetry,
                                 ComposedFunction id, ComposedFunction igGs, ComposedFunction igGd,
-                                ComposedFunction qg, ComposedFunction qd)
+                                ComposedFunction qg, ComposedFunction qd, ComposedFunction? idRf, double? tau)
     {
         Seeds = seeds; _label = label; Symmetry = symmetry;
-        Id = id; IgGs = igGs; IgGd = igGd; Qg = qg; Qd = qd;
+        Id = id; IgGs = igGs; IgGd = igGd; Qg = qg; Qd = qd; IdRF = idRf; DispersionTau = tau;
     }
 
     /// <summary>Compiles a model already checked by <see cref="CmodelFile.Validate"/>.</summary>
@@ -74,7 +79,9 @@ public sealed class ComposedCoreProgram
             One(k.Ig, "Ig", "IgGs", Branch(k.Ig.Inputs, vgs: 1, vds: 0)),
             One(k.Ig, "Ig", "IgGd", Branch(k.Ig.Inputs, vgs: 1, vds: -1)),
             One(k.Qg, "Qg", k.Qg.PayloadKey, null),
-            One(k.Qd, "Qd", k.Qd.PayloadKey, null));
+            One(k.Qd, "Qd", k.Qd.PayloadKey, null),
+            k.IdRF is { } rf ? One(rf, "IdRF", rf.PayloadKey, Branch(rf.Inputs, vgs: 0, vds: 1)) : null,
+            k.Dispersion?.Tau);
     }
 
     /// <summary>The <c>Extrapolation.Gx</c> key of a current payload: <c>Id</c>, <c>IgGs</c>, <c>IgGd</c>.</summary>

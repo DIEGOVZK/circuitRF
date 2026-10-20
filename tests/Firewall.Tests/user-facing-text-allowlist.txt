@@ -1269,7 +1269,6 @@ src/Core/Devices/ComponentModelFactory.cs|'{file}' cannot be used: {ex.Message}
 src/Core/Devices/ComponentModelFactory.cs|N={(double.IsNaN(n) ? nv.ToString() : n.ToString(
 src/Core/Devices/ComponentModelFactory.cs|a ComposedFet elaborates as a cell — its network and its ComposedCore — and is never 
 src/Core/Devices/ComponentModelFactory.cs|no .cmodel file is specified; set 'File'.
-src/Core/Devices/Composed/ComposedCoreModel.cs|'{System.IO.Path.GetFileName(loaded.Path)}' carries IdRF, the DC/RF dispersion, 
 src/Core/Devices/Composed/ComposedCoreProgram.cs|input '{inputs[k]}' has no seed in this model.
 src/Core/Devices/Composed/CubicBSpline.cs|a spline axis needs at least two sites.
 src/Core/Devices/Composed/GuidedExtrapolation.cs|'{name}' is not an input.
@@ -1364,3 +1363,10 @@ src/Engine/Modeling/Ann/AnnTrainer.cs|the values' weights are not one number ≥
 src/Engine/Modeling/Ann/AnnTrainer.cs|the weight penalty and the term weights are numbers ≥ 0.
 src/Engine/Modeling/Ann/AnnTrainer.cs|the {what} have no points.
 src/Engine/Modeling/Ann/AnnTrainer.cs|there is nothing to train to: no values and no derivatives.
+
+# ── Model Composer MC-7: re-gridding and local gradients (2026-10-19) ──────────────
+# Argument checks of the numerics the current step calls with points it has already gathered and
+# counted; the step's own refusals are ModelingExceptions naming the data set or constituent.
+src/Engine/Modeling/LocalGradients.cs|one value per point.
+src/Engine/Modeling/Regrid.cs|a radial-basis interpolant needs at least three points, one value each.
+src/Engine/Modeling/Regrid.cs|the axis runs from lo up to hi.

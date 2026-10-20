@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Numerics;
 using System.Text;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Elaboration;
 using CircuitRF.Core.Netlist;
 using CircuitRF.Core.Tests.Composed;
@@ -8,6 +9,7 @@ using CircuitRF.Design.Modeling;
 using CircuitRF.Engine;
 using CircuitRF.Engine.Modeling;
 using CircuitRF.Engine.Optimization;
+using RfCore.Data;
 using Xunit;
 
 namespace CircuitRF.Ui.Tests.ModelComposer;
@@ -127,6 +129,94 @@ public static class SyntheticFetData
                 });
             }
         return points;
+    }
+
+    // ── MC-7: DC I–V of the nonlinear device ──────────────────────────────────
+
+    /// <summary>The extrinsic biases of the I–V training grid: 16 × 12 = 192 points, from pinch-off into forward gate
+    /// conduction (above ~0.7 V the gate diode carries milliamps, limited by rg and rs).</summary>
+    public static readonly double[] IvVgs = [-2.0, -1.8, -1.6, -1.4, -1.2, -1.0, -0.8, -0.6, -0.4, -0.2, 0.0, 0.2, 0.4, 0.6, 0.8, 1.0];
+    /// <summary>Denser below 1 V, as an I–V grid is: the knee is where the current bends fastest.</summary>
+    public static readonly double[] IvVds = [0, 0.2, 0.4, 0.6, 0.8, 1.2, 1.6, 2.4, 3.2, 4.8, 6.4, 10];
+
+    /// <summary>Held-out extrinsic biases, every one between the training grid's lines.</summary>
+    public static readonly double[] HeldVgs = [-1.9, -1.3, -0.7, -0.1, 0.5, 0.7, 0.9];
+    public static readonly double[] HeldVds = [0.3, 0.7, 1.4, 4, 8];
+
+    /// <summary>
+    /// DC I–V of <see cref="ComposedTestModels"/>' SDD device inside the GaN network at every (vgs, vds) of the two lists —
+    /// one temperature, one (DC) trap state. Terminal currents from probes; the intrinsic truth from the internal nodes.
+    /// </summary>
+    public static NormalisedData Iv(double[] vgsList, double[] vdsList)
+    {
+        var points = new List<BiasPoint>();
+        foreach (double vgs in vgsList)
+            foreach (double vds in vdsList)
+            {
+                string cnl = ComposedTestModels.SddGlobals + ComposedTestModels.ReferenceCell("ref") +
+                             $"Vdc:VG vg 0 V={R(vgs)}\nIProbe:IPG vg g\nref:X1 g d 0\nIProbe:IPD vd d\nVdc:VD vd 0 V={R(vds)}\n";
+                var (lib, tb) = new CnlReader().Read(cnl);
+                using var nl = new Elaborator(lib).Elaborate(tb);
+                var dc = NonlinearDcEngine.Run(nl);
+                Assert.True(dc.Converged);
+                var (rows, names) = nl.Nodes.ResultRows(excludeInternal: false);
+                var v = new Dictionary<string, double>(StringComparer.Ordinal);
+                for (int k = 0; k < rows.Length; k++) v[names[k]] = dc.NodeVoltages[rows[k] - 1];
+                points.Add(new BiasPoint($"Vgs{R(vgs)}_Vds{R(vds)}", vgs, vds, dc.ProbeCurrents["IPG"], dc.ProbeCurrents["IPD"])
+                {
+                    VgsIntrinsic = v["X1.gi"] - v["X1.si"],
+                    VdsIntrinsic = v["X1.di"] - v["X1.si"],
+                });
+            }
+        return new NormalisedData { Points = points };
+    }
+
+    /// <summary>
+    /// A document with one DcIv set <c>dc</c> at the device plane and the stock GaN network at the truth's own values,
+    /// and the intrinsic data of <paramref name="iv"/> through it — what the current step reads.
+    /// </summary>
+    public static (CmcDocument Doc, Dictionary<string, NormalisedData> Data, IntrinsicResult Intrinsic) IvDocument(NormalisedData iv)
+    {
+        string dir = Directory.CreateTempSubdirectory("crf-mc7-").FullName;
+        var set = new CmcDataSet
+        {
+            Name = "dc", Kind = DataSetKind.DcIv, Sources = ["dc.csv"],
+            Conditions = new DataConditions { ReferencePlane = ReferencePlane.Device, AmbientC = 25 },
+            Import = new ImportSettings
+            {
+                Format = ImportSettings.Csv,
+                Columns = [new("Vgs", "vgs", "V"), new("Vds", "vds", "V"), new("Ig", "ig", "A"), new("Id", "id", "A")],
+            },
+        };
+        var doc = StockNetworks.Choose(new CmcDocument { Kind = CmcKind.Active, DataSets = [set] },
+                                       Path.Combine(dir, "fet.cmc"), "gan-two-shell");
+        var network = SixPinNetwork.Load(DataImport.ResolveSource(dir, CmcExtrinsic.Network(doc).Schematic!));
+        var ds = IntrinsicExtraction.Compute(set, iv, PadDeembedding.Load(PadsSettings.None, dir), network, null, null, []);
+        var data = new Dictionary<string, NormalisedData>(StringComparer.Ordinal) { ["dc"] = iv };
+        return (doc, data, new IntrinsicResult(new Dictionary<string, DataSet>(StringComparer.Ordinal) { ["dc"] = ds }, []));
+    }
+
+    /// <summary>A fitted step written out as a <c>.cmodel</c> around the truth's own charges and network, loaded as a core
+    /// at the base periphery — the fitted currents exactly as the device evaluates them.</summary>
+    public static ComposedCoreModel Core(CurrentFitResult fit)
+    {
+        var truth = ComposedTestModels.Model();
+        var r = fit.Record;
+        var model = truth with
+        {
+            Core = truth.Core with { Id = r.Id, Ig = r.Ig, IdRF = r.IdRF, Dispersion = r.Tau is { } t ? new ModelDispersion(t) : null },
+            Extrapolation = r.Gx.Count > 0 ? new ModelExtrapolation(r.Gx) : null,
+            Arrays = fit.Arrays,
+        };
+        var loaded = ComposedModelCache.Load(ComposedTestModels.WriteTemp(model));
+        return new ComposedCoreModel(loaded, loaded.N0, 25);
+    }
+
+    /// <summary>The truth's core at the base periphery.</summary>
+    public static ComposedCoreModel TruthCore()
+    {
+        var loaded = ComposedModelCache.Load(ComposedTestModels.WriteTemp(ComposedTestModels.Model()));
+        return new ComposedCoreModel(loaded, loaded.N0, 25);
     }
 
     /// <summary>A stock network copied into a fresh folder, loaded.</summary>

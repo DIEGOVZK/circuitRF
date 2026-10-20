@@ -21,7 +21,15 @@ namespace CircuitRF.Core.Devices.Composed;
 /// <para><b>The internal-node seam</b> used by the thermal, trap and dispersion phases:
 /// <see cref="InternalStateNodeCount"/> ground-referenced nodes, minted by the elaborator after the two
 /// intrinsic ports as ordinary global unknowns — never eliminated locally, because their harmonic
-/// content matters in HB. This phase declares none.</para>
+/// content matters in HB.</para>
+///
+/// <para><b>DC/RF dispersion</b> (R-mc7-4, [P1] eq. 6.52) is the first user: one state node <c>x</c>, port
+/// 2, whose voltage is a current in amps. The drain carries <c>IdRF + x</c>, and the node's own port
+/// carries <c>i = x − (IdDC − IdRF)</c> with <c>q = τ·x</c>, so KCL there is
+/// <c>τ dx/dt + x = IdDC − IdRF</c>. At DC <c>x = IdDC − IdRF</c> and the drain carries <c>IdDC</c>; far
+/// above 1/τ, <c>x</c> cannot follow and the small-signal drain current is <c>IdRF</c>'s. Both currents
+/// are taken in the terminal frame (after the drain–source image), so <c>x</c> means the same on either
+/// side of <c>vds = 0</c>. The node is unscaled — <c>N/N0</c> multiplies the drain current it feeds.</para>
 /// </summary>
 public sealed class ComposedCoreModel : ComponentModel
 {
@@ -30,6 +38,8 @@ public sealed class ComposedCoreModel : ComponentModel
     private readonly double _temperatureC;
     private readonly bool   _hasT;
     private readonly bool   _exchange;
+    private readonly bool   _dispersive;
+    private readonly double _tau;
 
     /// <summary>The model this core evaluates.</summary>
     public LoadedComposedModel Loaded { get; }
@@ -43,16 +53,13 @@ public sealed class ComposedCoreModel : ComponentModel
 
     public ComposedCoreModel(LoadedComposedModel loaded, int n, double ambientC)
     {
-        if (loaded.Model.Core.IdRF is not null)
-            throw new ParameterRefusalException(
-                $"'{System.IO.Path.GetFileName(loaded.Path)}' carries IdRF, the DC/RF dispersion, " +
-                "which this circuitRF does not evaluate yet.");
-
         Loaded = loaded;
         N      = n;
         _p     = loaded.Program;
         _scale = (double)n / loaded.N0;
         _exchange = _p.Symmetry == DrainSourceSymmetry.Exchange;
+        _tau = _p.DispersionTau ?? 0.0;
+        _dispersive = _p.IdRF is not null;
 
         var t = loaded.Model.Temperature;
         _hasT = t.Mode == TemperatureMode.Range;
@@ -62,10 +69,10 @@ public sealed class ComposedCoreModel : ComponentModel
     public override int       PortCount => 2 + InternalStateNodeCount;
     public override ModelKind Kind      => ModelKind.Nonlinear;
 
-    /// <summary>Internal state nodes (thermal, trap, dispersion) — none in this phase.</summary>
-    public int InternalStateNodeCount => 0;
+    /// <summary>Internal state nodes (thermal, trap, dispersion): one, <c>x</c>, for a dispersive model.</summary>
+    public int InternalStateNodeCount => _dispersive ? 1 : 0;
 
-    public override string[] TerminalNames => ["gi", "si", "di", "si"];
+    public override string[] TerminalNames => _dispersive ? ["gi", "si", "di", "si", "x", "0"] : ["gi", "si", "di", "si"];
 
     public override void Stamp(IMnaContext mna, ElaboratedComponent c, double omega) { }
 
@@ -73,14 +80,17 @@ public sealed class ComposedCoreModel : ComponentModel
     /// as for the built-in FETs.</summary>
     public override Activity Activity => Activity.ActiveExact;
 
-    public override IReadOnlyList<(int P, int Q)> ControlledConductances => [(1, 0)];
+    /// <summary>With dispersion the drain's dependence on <c>x</c> is the other controlled source: zeroing
+    /// both leaves the drain a conductance.</summary>
+    public override IReadOnlyList<(int P, int Q)> ControlledConductances => _dispersive ? [(1, 0), (1, 2)] : [(1, 0)];
 
     public override NonlinearResult Evaluate(in PortVoltages v)
     {
-        var i  = new double[2];
-        var q  = new double[2];
-        var dg = new double[2, 2];
-        var dc = new double[2, 2];
+        int n = PortCount;
+        var i  = new double[n];
+        var q  = new double[n];
+        var dg = new double[n, n];
+        var dc = new double[n, n];
         EvaluateInto(v, i, q, dg, dc);
         return new NonlinearResult(i, q, dg, dc);
     }
@@ -91,14 +101,15 @@ public sealed class ComposedCoreModel : ComponentModel
 
     protected override void EvaluateInto(in PortVoltages v, double[] i, double[] q, double[,] dg, double[,] dc)
     {
-        Span<double> ri = stackalloc double[2], rq = stackalloc double[2],
-                     rg = stackalloc double[4], rc = stackalloc double[4];
-        Core(v[0], v[1], ri, rq, rg, rc);
-        for (int p = 0; p < 2; p++)
+        int n = PortCount;
+        Span<double> ri = stackalloc double[3], rq = stackalloc double[3],
+                     rg = stackalloc double[9], rc = stackalloc double[9];
+        Core(v[0], v[1], _dispersive ? v[2] : 0.0, ri, rq, rg, rc);
+        for (int p = 0; p < n; p++)
         {
             i[p] = ri[p];
             q[p] = rq[p];
-            for (int col = 0; col < 2; col++) { dg[p, col] = rg[p * 2 + col]; dc[p, col] = rc[p * 2 + col]; }
+            for (int col = 0; col < n; col++) { dg[p, col] = rg[p * n + col]; dc[p, col] = rc[p * n + col]; }
         }
     }
 
@@ -110,21 +121,23 @@ public sealed class ComposedCoreModel : ComponentModel
     public override void EvaluateGrid(ReadOnlySpan<double> portVoltages, ReadOnlySpan<double> controlCurrents,
                                       int sampleCount, GridResult into)
     {
-        into.EnsureShape(2, 0, sampleCount);
+        int n = PortCount;
+        into.EnsureShape(n, 0, sampleCount);
         into.ResetTerms();
-        Span<double> ri = stackalloc double[2], rq = stackalloc double[2],
-                     rg = stackalloc double[4], rc = stackalloc double[4];
+        Span<double> ri = stackalloc double[3], rq = stackalloc double[3],
+                     rg = stackalloc double[9], rc = stackalloc double[9];
         for (int t = 0; t < sampleCount; t++)
         {
-            Core(portVoltages[t], portVoltages[sampleCount + t], ri, rq, rg, rc);
-            for (int p = 0; p < 2; p++)
+            Core(portVoltages[t], portVoltages[sampleCount + t], _dispersive ? portVoltages[2 * sampleCount + t] : 0.0,
+                 ri, rq, rg, rc);
+            for (int p = 0; p < n; p++)
             {
                 into.I[into.PortBase(p) + t] = ri[p];
                 into.Q[into.PortBase(p) + t] = rq[p];
-                for (int col = 0; col < 2; col++)
+                for (int col = 0; col < n; col++)
                 {
-                    into.Dg[into.JacBase(p, col) + t] = rg[p * 2 + col];
-                    into.Dc[into.JacBase(p, col) + t] = rc[p * 2 + col];
+                    into.Dg[into.JacBase(p, col) + t] = rg[p * n + col];
+                    into.Dc[into.JacBase(p, col) + t] = rc[p * n + col];
                 }
             }
         }
@@ -140,7 +153,7 @@ public sealed class ComposedCoreModel : ComponentModel
     /// charge, [P1] eq. 6.63 in charge form). Each gradient maps through the image's Jacobian:
     /// <c>∂/∂vgs = ∂′/∂vgs′</c>, <c>∂/∂vds = −∂′/∂vgs′ − ∂′/∂vds′</c>.</para>
     /// </summary>
-    private void Core(double vgs, double vds, Span<double> i, Span<double> q, Span<double> dg, Span<double> dc)
+    private void Core(double vgs, double vds, double x, Span<double> i, Span<double> q, Span<double> dg, Span<double> dc)
     {
         bool image = _exchange && vds < 0;
         Span<double> seeds = stackalloc double[3];
@@ -150,21 +163,24 @@ public sealed class ComposedCoreModel : ComponentModel
         var s = seeds[.._p.Width];
 
         Span<double> gId = stackalloc double[3], gGs = stackalloc double[3], gGd = stackalloc double[3],
-                     gQg = stackalloc double[3], gQd = stackalloc double[3];
+                     gQg = stackalloc double[3], gQd = stackalloc double[3], gRf = stackalloc double[3];
 
         double id   = _p.Eval(_p.Id,   "Id",   s, gId);
         double igGs = _p.Eval(_p.IgGs, "IgGs", s, gGs);
         double igGd = _p.Eval(_p.IgGd, "IgGd", s, gGd);
         double qg   = _p.Eval(_p.Qg,   "Qg",   s, gQg);
         double qd   = _p.Eval(_p.Qd,   "Qd",   s, gQd);
+        double idRf = _dispersive ? _p.Eval(_p.IdRF!, "IdRF", s, gRf) : 0.0;
 
         if (image)
         {
-            FromImage(gId); FromImage(gGs); FromImage(gGd); FromImage(gQg); FromImage(gQd);
+            FromImage(gId); FromImage(gGs); FromImage(gGd); FromImage(gQg); FromImage(gQd); FromImage(gRf);
             id = -id;
+            idRf = -idRf;
             for (int k = 0; k < 2; k++)
             {
                 gId[k] = -gId[k];
+                gRf[k] = -gRf[k];
                 (gGs[k], gGd[k]) = (gGd[k], gGs[k]);
                 gQd[k] = -gQg[k] - gQd[k];
             }
@@ -173,17 +189,39 @@ public sealed class ComposedCoreModel : ComponentModel
         }
 
         double k0 = _scale;
+        int n = PortCount;
         i[0] = k0 * (igGs + igGd);
-        i[1] = k0 * (id - igGd);
         q[0] = k0 * qg;
         q[1] = k0 * qd;
         for (int col = 0; col < 2; col++)
         {
             dg[col]     = k0 * (gGs[col] + gGd[col]);
-            dg[2 + col] = k0 * (gId[col] - gGd[col]);
             dc[col]     = k0 * gQg[col];
-            dc[2 + col] = k0 * gQd[col];
+            dc[n + col] = k0 * gQd[col];
         }
+
+        if (!_dispersive)
+        {
+            i[1] = k0 * (id - igGd);
+            for (int col = 0; col < 2; col++) dg[n + col] = k0 * (gId[col] - gGd[col]);
+            return;
+        }
+
+        // [P1] eq. 6.52 through the state node: the drain follows IdRF + x, and x relaxes to IdDC − IdRF with τ.
+        i[1] = k0 * (idRf + x - igGd);
+        i[2] = x - (id - idRf);
+        q[2] = _tau * x;
+        for (int col = 0; col < 2; col++)
+        {
+            dg[n + col]     = k0 * (gRf[col] - gGd[col]);
+            dg[2 * n + col] = -(gId[col] - gRf[col]);
+            dc[2 * n + col] = 0.0;
+            dc[col * n + 2] = 0.0;
+            dg[col * n + 2] = 0.0;
+        }
+        dg[n + 2] = k0;
+        dg[2 * n + 2] = 1.0;
+        dc[2 * n + 2] = _tau;
     }
 
     private static void FromImage(Span<double> g) => g[1] = -g[0] - g[1];

@@ -26,6 +26,30 @@ public abstract class RuntimeEvaluator
 }
 
 /// <summary>
+/// A payload read through <see cref="OutputTransform.Asinh"/>: <c>f = s·sinh(u)</c>, so <c>∇f = s·cosh(u)·∇u</c> and
+/// <c>H_f w = s·cosh(u)·H_u w + s·sinh(u)·(∇u·w)·∇u</c> — exact, like the payload's own.
+/// </summary>
+public sealed class AsinhOutput(RuntimeEvaluator inner, double scale) : RuntimeEvaluator
+{
+    public override int InputCount => inner.InputCount;
+
+    public override double Evaluate(ReadOnlySpan<double> x, Span<double> grad, ReadOnlySpan<double> w, Span<double> hw)
+    {
+        int d = inner.InputCount;
+        double u = inner.Evaluate(x, grad, w, hw);
+        double sh = scale * Math.Sinh(u), ch = scale * Math.Cosh(u);
+        if (!w.IsEmpty)
+        {
+            double gw = 0.0;
+            for (int k = 0; k < d; k++) gw += grad[k] * w[k];
+            for (int k = 0; k < d; k++) hw[k] = ch * hw[k] + sh * gw * grad[k];
+        }
+        for (int k = 0; k < d; k++) grad[k] *= ch;
+        return sh;
+    }
+}
+
+/// <summary>
 /// A tensor-product cubic spline over a rectilinear grid (R-mc2-1): one <see cref="CubicBSpline"/> per
 /// axis, the axes allowed to be non-uniform, the coefficients fitted once when the model was written.
 /// C² on every axis, with exact first (and second) derivatives from the basis itself.

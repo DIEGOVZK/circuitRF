@@ -20756,3 +20756,32 @@ in memory as `o["Starts"] = 4`, though the same text parsed from a file converts
 **The flatness metric has a noise floor, and it is not small.** With 1e-4 noise on S, the TRUE network leaves the
 de-embedded `Cds` of a 0.1 pF point spread by 2.1 % across the band. A gate on flatness compares with the true
 network on the same data, never with a fixed level.
+
+## Model Composer MC-7: the current constituents (2026-10-19)
+
+**A gate current cannot be fitted by weighting a linear-output network.** Weighting each point by `1/max(|Ig|, I0)²`
+(the brief's log-magnitude weighting) made the ~160 near-zero reverse points outweigh the few forward ones by ten
+orders of magnitude: the forward conduction fitted to only 8 % of its range and held-out points were 2–3 decades off,
+whatever the floor. A table or network `Ig` is now fitted in `u = asinh(Ig/I0)`, unweighted, and the `.cmodel`
+carries `Transform: { Kind: Asinh, Scale: I0 }` on the constituent (`AsinhOutput` in `src/Core/Devices/Composed`):
+0.04 decades at conducting held-out points. An equation `Ig` keeps the weights, since its form spans the decades.
+
+**A table re-gridded through the extrapolated network rang.** The grid covers the hull's bounding box, and sites
+outside the hull were sampled with the guided extrapolation's `G_x` term — which grows with the square of the
+distance, to amps a few volts out. The interpolating spline carried that curvature back into the cells inside the
+hull: 7.7 % held-out error where the network it sampled was at 1.5 %, while table and network agreed to 1e-8 at
+every site inside. The source is now continued linearly (C¹, no `G_x`) outside the hull; the runtime adds `G_x`
+itself. Table and network now both read 1.5 %.
+
+**Relative weights make `Id` stiff.** With `IdFloor` 0.01, 2000 L-BFGS iterations (MC-6's default) left 5.6 % worst
+held-out error; 8000 reached 1.9 %. Held-out sweeps: floor 0.1 gave 0.6 % of the range against 2.7 % for 0.01, with
+no better fit at low current; uniform weights 0.1 % but three times the low-current error. The current step's
+defaults are `IdFloor` 0.1 and 6000 iterations.
+
+**[P1] eq. 6.49 is not testable by differencing conductances.** A local quadratic through measured `Gm`, `Gds` at a
+0.3 V grid called exactly conservative data (the gradient of one current) 86 % non-conservative. The residual is
+instead the share of the RF conductances the least-squares `IdRF` does not reproduce — 0.08 % on the same data.
+
+**The synthetic I–V grid needed to be denser at low `vds`.** With rows at 0 and 0.5 V the held-out row at 0.25 V sat
+in the steepest part of the knee between two lines, and every method was 5–10 % off there for want of data, not of
+fit. The fixture's 12 drain values are now denser below 1 V, as a measured grid is, with held-out rows between them.

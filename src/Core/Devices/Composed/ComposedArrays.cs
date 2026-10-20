@@ -74,9 +74,10 @@ internal static class RuntimePayload
     public static RuntimeEvaluator Build(ComposedModel model, Constituent c, string key, string field)
     {
         string name = c.Expression(key)!;
-        return c.Method == Constituent.TableMethod
+        RuntimeEvaluator f = c.Method == Constituent.TableMethod
             ? BuildTable(model, c, name, field)
             : BuildAnn(model, c, name, field);
+        return c.Transform is { } t ? new AsinhOutput(f, t.Scale) : f;
     }
 
     private static TableEvaluator BuildTable(ComposedModel model, Constituent c, string name, string field)

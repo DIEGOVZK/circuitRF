@@ -3,7 +3,9 @@
 **Status:** MC-1 built (the `.cmodel` format and the `ComposedFet` device, equation constituents);
 MC-2 built (table and ANN constituents, guided extrapolation, drain–source symmetry, grid evaluation);
 MC-3 built (the `.cmc` document, data sets, importers, the cache, data hygiene);
-MC-4 built (pads, the six-pin network, de-embedding, intrinsic re-referencing and quantities) ·
+MC-4 built (pads, the six-pin network, de-embedding, intrinsic re-referencing and quantities);
+MC-5 built (the extrinsic fit); MC-6 built (the ANN trainer); MC-7 built (the current constituents and the
+DC/RF dispersion) ·
 **Source:** `docs/sonnet-briefs/brief-modelcomposer-0-overview.md` (decisions D1–D16) and the phase briefs
 `brief-modelcomposer-1` … `-16` · **Primary reference:** [P1] J. C. Pedro, D. E. Root, J. Xu, L. C. Nunes,
 *Nonlinear Circuit Simulation and Modeling*, Cambridge University Press, 2018.
@@ -115,6 +117,11 @@ they were trained over. `Core.Symmetry` and the top-level `Extrapolation` appear
   (`outputs × inputs`) with `name.b1 … name.bL`, the last layer being the single linear output, and
   `name.outputOffset`, `name.outputScale` (`y = offset + scale·ŷ`). `ComposedArrays.Ann` builds them.
 - `Ig` names two payloads, `IgGs` and `IgGd`, under one method, one activation and one domain.
+- **`Transform` (MC-7)** on a table or ANN current: `{ "Kind": "Asinh", "Scale": I0 }` — the payload computes `u`
+  and the current is `I0·sinh(u)`, its gradient and Hessian-along-a-direction by the chain rule (`AsinhOutput`), so
+  guided extrapolation continues the current itself. It exists for the gate current (§9.3).
+- **`Core.Dispersion` (MC-7)**: `{ "Tau": τ }`, present exactly when `Core.Constituents.IdRF` is; `Id` is then
+  `IdDC`. `IdRF` takes a `G_x` like `Id`.
 
 ### 3.2 What the validator refuses
 
@@ -145,6 +152,8 @@ Every refusal is a `CmodelFormatException` whose message begins with the field: 
   in one, an output layer wider than one, a zero input scale, a `Smoothing`.
 - `Extrapolation.Gx`: missing for a table or ANN current, present for an equation current or an unknown
   key, or not a positive number. `Core.Symmetry`: anything but `None`/`Exchange`.
+- `Transform`: on an equation or a charge; a `Kind` other than `Asinh`; a `Scale` that is not a positive current.
+  `Core.Dispersion`: missing with `IdRF`, present without it, or a `Tau` that is not a positive time.
 
 ## 4. The device
 
@@ -183,7 +192,12 @@ the FET family's arrangement and the elaborator's same three-to-four net expansi
   (never eliminated locally — their harmonics matter in HB). MC-1 declares none.
 - `Activity` is `ActiveExact` with `gm` (port 1 on port 0) as the controlled conductance, as for the
   built-in FETs.
-- A model carrying `IdRF` is refused at construction until MC-7 evaluates it.
+- **Dispersion (MC-7, [P1] eq. 6.52).** A model with `IdRF` has one state node `x` (port 2, `(x, 0)`), whose voltage
+  is a current in amps. The drain carries `IdRF + x − IgGd`; the node's port carries `i = x − (IdDC − IdRF)` and
+  `q = τ·x`, so KCL there is `τ dx/dt + x = IdDC − IdRF` — at DC the drain carries `IdDC`, far above 1/τ its small
+  signal is `IdRF`'s. Both currents are taken in the terminal frame, after the drain–source image, so `x` means the
+  same on either side of `vds = 0`. `x` is unscaled; `N/N0` multiplies the drain current it feeds.
+  `ControlledConductances` adds `(1, 2)`: zeroing it with `gm` leaves the drain a conductance.
 - `ComposedCore` is also a `.cnl` token in its own right — the intrinsic device alone.
 - A table or ANN payload compiles to a `RuntimeFunction`: its inputs gathered from the seed lanes, the
   evaluator run inside its `GuidedExtrapolation`, its gradient scattered back (zero in a lane it does not
@@ -571,7 +585,90 @@ between operating systems. `Parallel` evaluates the blocks on several threads an
 Progress is a stage per start and a tick per iteration on `RunControl`; a cancel throws `OperationCanceledException`
 out of `Train`, so the caller keeps whatever network it had (D13).
 
-## 9. Where it lives
+## 9. The current constituents (MC-7)
+
+`CurrentFit` (`src/Design/Modeling/`): `Run` from the open data and its intrinsic result, `Apply` into
+`Steps.Current`, `FitFile` (read, open the cache, de-embed, fit, write — what the window and the `model` verb call),
+`Load` (the record and its arrays back from the cache, or null to fit again). Settings and record:
+`CurrentFitSettings`, `CurrentFitRecord`; templates: `CurrentTemplates`; parameter fits: `EquationFit`.
+
+### 9.1 Training points (R-mc7-1)
+
+The intrinsic points (`Vgsi`, `Vdsi`) of the chosen sets — by default every `DcIv`, `PulsedIv` and
+`SimulatedTables` set — excluded points removed. One temperature (set `AmbientC` and per-point `T`, within 0.01 °C)
+and one trap state (all DC, or all pulsed from one `Quiescent` and one `PrePulse`); a mix is refused naming the
+condition. A point with no drain current is left out, one with no gate current is left out of `Ig` only; with no
+gate current at all `Ig` is the equation `0`.
+
+**The gate split.** `Sign`: for `vds ≥ 0` a positive (forward) gate current is all `IgGs`, a negative one all `IgGd`
+(breakdown at the drain side); for `vds < 0` the roles exchange. At `vds = 0` with the gate forward, both junctions
+conduct and the split gives it all to `IgGs` — the terminal currents are still right, since the drain terminal
+carries `Id − IgGd` and the channel target is **`Id_terminal + IgGd`**. `GateSource`/`GateDrain` put it all in one.
+
+The training domain is the points' convex hull (`DataHygiene.Coverage`), refused when it has no area.
+
+### 9.2 Methods (R-mc7-2)
+
+Every method holds out the same points (`HeldOutSplit` over the domain, `HeldOutFraction`, seeded), so errors
+compare; a network is trained on the rest with no split of its own.
+
+- **ANN** (default, 2 × 8 `tanh`, 3 starts, 6000 iterations): MC-6 value training. `Id` weighs a point
+  `1/max(|Id|, IdFloor·max|Id|)²`. Measured on the synthetic device: `IdFloor` 0.1 gives 0.6 % worst held-out error
+  over the range where 0.01 gives 2.7 % for no better sub-threshold fit and uniform weights 0.1 % with sub-threshold
+  errors three times larger; the stiffness of relative weights also needs ~6000 L-BFGS iterations (2000 left 5.6 %).
+- **Table**: the scattered points re-gridded on the hull's bounding box at `GridStep` (exactly; the last site at or
+  beyond the hull), then MC-2's spline. The source is a network trained on the training points — continued
+  **linearly** outside the hull, never with its `G_x` term, which grows with the square of the distance and made the
+  spline ring back into the boundary cells (7.7 % against the network's own 1.5 %) — or `Regrid.Rbf` through the
+  points (multiquadric, coordinates normalised over the points). A step over twice `SmallestSwing` (0.05 V) reports
+  `table step 0.2 V: low-level IM below ~0.1 V swing unreliable` ([P1] Fig. 6.8).
+- **Equation**: a template — the `Id` laws of the built-in Angelov, Curtice quadratic and cubic, Statz and Materka
+  FETs, copied as expressions (no temperature coefficients, n-channel), and a `Diode` gate — or the user's own, its
+  parameters fitted by the registry's `cmaes` (or `de`) then Levenberg–Marquardt over the unit box (logarithmic for
+  a positive range of two decades), weighted as above. The expression compiles once with `vgs`, `vds` and the free
+  parameters as seed lanes, so at most 14 are free. Each template estimates its start from the data (peak `gm`, the
+  threshold, the knee). The gate's two branches share one parameter list, so a template's free parameters are
+  suffixed `Gs` and `Gd`.
+
+### 9.3 The gate current
+
+**Weighting alone cannot fit a gate current in a network or a table.** With a linear output and `1/|Ig|²` weights,
+the ~160 near-zero reverse points outweigh the handful of forward ones by ten orders of magnitude and the forward
+conduction is not fitted at all (8 % of its range, held-out points 2–3 decades off). So a table or network `Ig` is
+fitted in `u = asinh(Ig/I0)`, unweighted — an equal error in `u` is an equal ratio above `I0` — and exported with
+`Transform: Asinh, Scale: I0`, `I0 = IgFloor·max|Ig|` (default 1e-4: 0.17 decades at the faintest held-out points
+where 1e-6 gave 1.1). An equation `Ig` already has the decades in its form and is fitted to `Ig` weighted by
+`1/max(|Ig|, I0)²`.
+
+### 9.4 Domain, symmetry and the report (R-mc7-3, R-mc7-5)
+
+A table or ANN current carries the hull as its `Domain` and `G_x` = `GuidedExtrapolation.DefaultGx` of the largest
+own-branch conductance over the training points (never below 1e-12 S). With `Symmetry: Exchange` only `vds ≥ 0`
+points are used and the record carries the jumps at `vds = 0` over the domain's `vgs`: `2·Id(vgs, 0)` (value),
+`∂Id/∂vgs(vgs, 0)` (the slope in `vds` jumps by exactly that) and `IgGs − IgGd` (the gate branch). The report also
+has, per current, training and held-out RMS error, absolute and relative to the targets' range, and `Conductance`:
+the fitted `Gm`/`Gds` against the data's DC derivatives from `LocalGradients` (a local quadratic through the 12
+nearest points in normalised coordinates), RMS and relative.
+
+### 9.5 DC/RF dispersion (R-mc7-4)
+
+Off by default; the window presents it as the simpler alternative to modelling heating and traps (MC-9, MC-10),
+which [P1] prefers. `IdRF` is a network trained by MC-6 **derivative** training on the band-mean intrinsic `Gm` and
+`Gds` of the S sets (flagged frequencies left out), anchored to `IdDC` at `Reference` (default: the S point nearest
+the middle of the S data). `Tau` defaults to 1 µs ([X06]). **Eq. 6.49's residual** is the share of the RF
+conductances no single current reproduces — RMS `|∇IdRF − (Gm, Gds)|` over RMS `|(Gm, Gds)|` — zero when 6.49 holds
+(measured 0.08 % on conservative data). Testing 6.49 by differencing the conductances was tried and dropped: on a
+0.3 V grid it called exactly conservative data 86 % non-conservative.
+
+### 9.6 The record and the cache
+
+`Steps.Current` = `{ Network, Settings, Result }`. `Result.Constituents` are written by
+`CmodelFile.ConstituentJson`, so the `.cmc` and the `.cmodel` cannot spell one differently; the arrays are one
+grouped `.npy` in `<name>.cmc-cache/current/<key>.npy`, `key` a SHA-256 of their bytes, written by a temporary file
+and a rename after the fit, other entries removed. `CmcFile.Validate` parses `Steps.Current` (an unknown key is a
+refusal by field); other steps stay opaque. `NetworkFit.StaleSteps` names the step when the network moves on.
+
+## 10. Where it lives
 
 | Path | What |
 |---|---|
@@ -586,8 +683,11 @@ out of `Train`, so the caller keeps whatever network it had (D13).
 | `src/Engine/Modeling/NetworkAlgebra.cs` | MC-4: `C2` and the conversions and de-embeddings |
 | `src/Design/Modeling/` | MC-5: `NetworkFit` (with `NetworkFitProblem`, the residual terms, the drivers and the report), `NetworkFitSettings` and `NetworkFitRecord` |
 | `src/Engine/Modeling/Ann/` | MC-6: `AnnTrainer` (with its problem, settings and result records), `AnnObjective` (the loss and its adjoint gradient), `Lbfgs`, `HeldOutSplit`, `DeterministicMath` |
+| `src/Design/Modeling/` | MC-7: `CurrentFit`, `CurrentFitSettings` (with `CurrentFitRecord`), `CurrentTemplates`, `EquationFit` |
+| `src/Engine/Modeling/` | MC-7: `Regrid` (grid axes, sampling, the RBF source), `LocalGradients` |
+| `src/Core/Devices/Composed/` | MC-7: `ModelDispersion` and `OutputTransform` (records), `AsinhOutput` (evaluator), the state node in `ComposedCoreModel` |
 
-## 10. Gates (MC-1 … MC-6)
+## 11. Gates (MC-1 … MC-7)
 
 `tests/Core.Tests/Composed/CmodelFormatTests`; `tests/Engine.Tests/Composed/` — `ComposedFetEquivalenceTests`
 (against an SDD with the same expressions in the same network: DC to 1e-12, S at three biases to 1e-9, HB
@@ -636,3 +736,13 @@ measured 0.01 % and 0.03 % — where value-only training fits the values but mis
 `AnnDeterminismTests` (same seed bit for bit, parallel within 1e-12, another seed differs; the held-out set is the
 same after a shuffle and touches every octant), `AnnTrainingCancelTests` (cancelled ten iterations into the second
 start: no result, the caller's network unchanged).
+
+MC-7: `tests/Engine.Tests/Composed/DispersionNodeTests` (IdDC ≠ IdRF: DC node voltages as the `Id = IdDC` device's to
+1e-12; S at 0.5–20 GHz with τ = 1 ms as the `Id = IdRF` device biased at the same intrinsic point — measured 2.9e-8;
+HB's fundamental monotonic across ±2.5 decades of the corner, no step over a quarter of the swing, each end on its
+reference); `tests/Ui.Tests/ModelComposer/` — `CurrentFitAnnTests` (192 DC points of the SDD truth through the GaN
+network, one start, `Ig` at 2000 iterations: held-out `Id` 1.5 % of the range and 4.1 % of its own value, `Ig` 0.13
+decades where it conducts above I0; the record round-trips through the document), `CurrentFitTableTests` (the table
+1.5 %, as its network; the step warning at 0.2 V and not 0.1 V), `CurrentFitEquationTests` (the Angelov template
+recovers all seven parameters of Angelov data to 1e-3). `CmcFormatTests` refuses a misspelt `Steps.Current` key. The
+I–V grid (`SyntheticFetData.Iv`) is denser below 1 V, and the held-out biases lie between its lines.

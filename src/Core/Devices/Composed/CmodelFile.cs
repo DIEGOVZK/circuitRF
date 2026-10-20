@@ -177,6 +177,16 @@ public static class CmodelFile
                 _ => throw new CmodelFormatException("Core.Symmetry", $"'{option}' is not None or Exchange."),
             };
         }
+        ModelDispersion? dispersion = null;
+        if (coreObj.TryGetProperty("Dispersion", out var dsp))
+        {
+            if (dsp.ValueKind != JsonValueKind.Object)
+                throw new CmodelFormatException("Core.Dispersion", "it is not an object.");
+            foreach (var p in dsp.EnumerateObject())
+                if (p.Name != "Tau")
+                    throw new CmodelFormatException($"Core.Dispersion.{p.Name}", "it is not a field of Dispersion; the field is Tau.");
+            dispersion = new ModelDispersion(Num(dsp, "Tau", "Core.Dispersion.Tau"));
+        }
         var core = Obj(coreObj, "Constituents", "Core.Constituents");
         Constituent One(string name, bool optional = false)
         {
@@ -225,7 +235,8 @@ public static class CmodelFile
                                               Str(bp, "UnitWidth", "BasePeriphery.UnitWidth")),
             Temperature   = temperature,
             Network       = new ExtrinsicNetwork(Str(net, "Netlist", "Network.Netlist"), scaling),
-            Core          = new CoreConstituents(One("Id"), One("Ig"), One("Qg"), One("Qd"), idRf) { Symmetry = symmetry },
+            Core          = new CoreConstituents(One("Id"), One("Ig"), One("Qg"), One("Qd"), idRf)
+                            { Symmetry = symmetry, Dispersion = dispersion },
             Extrapolation = extrapolation,
             Symbol        = symbol,
             Provenance    = provenance,
@@ -242,6 +253,7 @@ public static class CmodelFile
         TrainingDomain? domain = null;
         double? smoothing = null;
         AnnActivation? activation = null;
+        OutputTransform? transform = null;
         foreach (var p in c.EnumerateObject())
         {
             switch (p.Name)
@@ -263,6 +275,15 @@ public static class CmodelFile
                         "Sigmoid" => AnnActivation.Sigmoid,
                         _ => throw new CmodelFormatException($"{field}.Activation", $"'{act}' is not Tanh or Sigmoid."),
                     };
+                    break;
+                case "Transform":
+                    if (p.Value.ValueKind != JsonValueKind.Object)
+                        throw new CmodelFormatException($"{field}.Transform", "it is not an object.");
+                    foreach (var q in p.Value.EnumerateObject())
+                        if (q.Name is not ("Kind" or "Scale"))
+                            throw new CmodelFormatException($"{field}.Transform.{q.Name}", "it is not a field of Transform; the fields are Kind and Scale.");
+                    transform = new OutputTransform(Str(p.Value, "Kind", $"{field}.Transform.Kind"),
+                                                    Num(p.Value, "Scale", $"{field}.Transform.Scale"));
                     break;
                 case "Parameters":
                     if (p.Value.ValueKind != JsonValueKind.Object)
@@ -291,6 +312,7 @@ public static class CmodelFile
             Domain      = domain,
             Smoothing   = smoothing,
             Activation  = activation,
+            Transform   = transform,
         };
     }
 
@@ -371,6 +393,7 @@ public static class CmodelFile
         ValidateConstituent(m, m.Core.Qg, "Qg", inputs);
         ValidateConstituent(m, m.Core.Qd, "Qd", inputs);
         if (m.Core.IdRF is { } idRf) ValidateConstituent(m, idRf, "IdRF", inputs);
+        ValidateDispersion(m);
         ValidateExtrapolation(m);
 
         if (m.Symbol is { Length: 0 })
@@ -403,6 +426,18 @@ public static class CmodelFile
             if (!keys.Contains(e.Key))
                 throw new CmodelFormatException($"{field}.{e.Key}",
                     $"{(c.Method == Constituent.TableMethod ? "a" : "an")} {c.Method} {name} is {string.Join(" and ", keys)}; '{e.Key}' is not one of them.");
+
+        if (c.Transform is { } tr)
+        {
+            if (c.Method == Constituent.EquationMethod)
+                throw new CmodelFormatException($"{field}.Transform", "an Equation states its current directly and has no transform.");
+            if (name is "Qg" or "Qd")
+                throw new CmodelFormatException($"{field}.Transform", "only a current has an output transform.");
+            if (tr.Kind != OutputTransform.Asinh)
+                throw new CmodelFormatException($"{field}.Transform.Kind", $"'{tr.Kind}' is not a known transform; the known one is {OutputTransform.Asinh}.");
+            if (!(double.IsFinite(tr.Scale) && tr.Scale > 0))
+                throw new CmodelFormatException($"{field}.Transform.Scale", "it is not a positive current in amps.");
+        }
 
         if (c.Method != Constituent.EquationMethod)
         {
@@ -509,6 +544,20 @@ public static class CmodelFile
         foreach (string input in inputs)
             if (input is not (ComposedCoreProgram.Vgs or ComposedCoreProgram.Vds) && !boxed.Contains(input))
                 throw new CmodelFormatException($"{field}.Box.{input}", "the input's training interval is missing.");
+    }
+
+    /// <summary><c>IdRF</c> and <c>Core.Dispersion</c> come together: one without the other has no meaning.</summary>
+    private static void ValidateDispersion(ComposedModel m)
+    {
+        var dsp = m.Core.Dispersion;
+        if (m.Core.IdRF is not null && dsp is null)
+            throw new CmodelFormatException("Core.Dispersion",
+                "it is missing; an IdRF constituent needs the time constant Tau of its DC/RF transition.");
+        if (dsp is null) return;
+        if (m.Core.IdRF is null)
+            throw new CmodelFormatException("Core.Dispersion", "there is no IdRF constituent for it to apply to.");
+        if (!(double.IsFinite(dsp.Tau) && dsp.Tau > 0))
+            throw new CmodelFormatException("Core.Dispersion.Tau", "it is not a positive time in seconds.");
     }
 
     /// <summary>Every table or ANN current payload has its <c>G_x</c>, and nothing else does.</summary>
@@ -619,6 +668,12 @@ public static class CmodelFile
 
             w.WriteStartObject("Core");
             if (m.Core.Symmetry != DrainSourceSymmetry.None) w.WriteString("Symmetry", m.Core.Symmetry.ToString());
+            if (m.Core.Dispersion is { } dsp)
+            {
+                w.WriteStartObject("Dispersion");
+                w.WriteNumber("Tau", dsp.Tau);
+                w.WriteEndObject();
+            }
             w.WriteStartObject("Constituents");
             WriteConstituent(w, "Id", m.Core.Id);
             WriteConstituent(w, "Ig", m.Core.Ig);
@@ -661,9 +716,37 @@ public static class CmodelFile
         return buffer.ToArray();
     }
 
+    /// <summary>
+    /// One constituent as <c>model.json</c> writes it — what a <c>.cmc</c> records for a fitted constituent before
+    /// export (brief-modelcomposer-7), so the two cannot spell one differently. Not validated here: a constituent
+    /// is validated with its model.
+    /// </summary>
+    public static string ConstituentJson(Constituent c)
+    {
+        using var buffer = new MemoryStream();
+        using (var w = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = false }))
+            WriteConstituentValue(w, c);
+        return Encoding.UTF8.GetString(buffer.ToArray());
+    }
+
+    /// <summary>The inverse of <see cref="ConstituentJson"/>; a malformed field is refused by <paramref name="field"/>.</summary>
+    public static Constituent ParseConstituentJson(string json, string field)
+    {
+        JsonDocument doc;
+        try { doc = JsonDocument.Parse(json); }
+        catch (JsonException ex) { throw new CmodelFormatException(field, $"it is not JSON ({ex.Message})."); }
+        using (doc) return ParseConstituent(doc.RootElement, field);
+    }
+
     private static void WriteConstituent(Utf8JsonWriter w, string name, Constituent c)
     {
-        w.WriteStartObject(name);
+        w.WritePropertyName(name);
+        WriteConstituentValue(w, c);
+    }
+
+    private static void WriteConstituentValue(Utf8JsonWriter w, Constituent c)
+    {
+        w.WriteStartObject();
         w.WriteString("Method", c.Method);
         w.WriteStartArray("Inputs");
         foreach (string i in c.Inputs) w.WriteStringValue(i);
@@ -671,6 +754,13 @@ public static class CmodelFile
         foreach (var e in c.Expressions) w.WriteString(e.Key, e.Value);
         if (c.Activation is { } act) w.WriteString("Activation", act.ToString());
         if (c.Smoothing is { } lambda) w.WriteNumber("Smoothing", lambda);
+        if (c.Transform is { } tr)
+        {
+            w.WriteStartObject("Transform");
+            w.WriteString("Kind", tr.Kind);
+            w.WriteNumber("Scale", tr.Scale);
+            w.WriteEndObject();
+        }
         if (c.Domain is { } d)
         {
             w.WriteStartObject("Domain");

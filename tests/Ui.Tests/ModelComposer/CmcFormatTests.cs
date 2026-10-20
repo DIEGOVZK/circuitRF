@@ -46,7 +46,8 @@ public sealed class CmcFormatTests
                 },
             },
         ],
-        Steps = JsonNode.Parse("""{"Current":{"Method":"ANN","Layers":[8,8]}}"""),
+        // Current is MC-7's (CurrentFit validates it); Charge is a later phase's, carried opaquely.
+        Steps = JsonNode.Parse("""{"Current":{"Settings":{"Id":{"Method":"Table","GridStep":0.05}}},"Charge":{"Method":"ANN","Layers":[8,8]}}"""),
         Panels = new CmcPanels { Hidden = ["Plots", "Data"] },
     };
 
@@ -61,7 +62,7 @@ public sealed class CmcFormatTests
     [Fact]
     public void PadsNetworkAndLaterPhaseBlocks_ArePreserved()
     {
-        // Pads and Network are MC-4's (CmcExtrinsic validates them); Steps is still carried opaquely.
+        // Pads and Network are MC-4's (CmcExtrinsic validates them); Steps is carried as written.
         const string pads = """{"Kind":"OpenShort","Open":"pads/open.s2p","Short":"pads/short.s2p"}""";
         const string network = """{"Schematic":"gan-two-shell.csch","Variables":{"Lg":{"Min":0,"Lock":true},"rg":{"Tie":{"To":"rd","Factor":0.5},"Scaling":"perFingerInverse"}},"FlatnessBand":[1000000000,5000000000]}""";
         string json = Encoding.UTF8.GetString(CmcFile.ToBytes(Sample())).TrimEnd().TrimEnd('}')
@@ -78,6 +79,7 @@ public sealed class CmcFormatTests
     [InlineData("\"AmbientC\"", "\"AmbiantC\"", "DataSets[0].Conditions.AmbiantC")]
     [InlineData("\"Vgs\": -3", "\"Vgs\": \"-3\"", "DataSets[0].Conditions.Quiescent.Vgs")]
     [InlineData("\"Name\": \"DC\"", "\"Name\": \"pulsed S, Q1\"", "DataSets[1].Name")]
+    [InlineData("\"GridStep\"", "\"GridStepp\"", "Steps.Current.Settings.Id.GridStepp")]
     public void ARefusal_NamesItsField(string find, string replace, string field)
     {
         string json = Encoding.UTF8.GetString(CmcFile.ToBytes(Sample()));

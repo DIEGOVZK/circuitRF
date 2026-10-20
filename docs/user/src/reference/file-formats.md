@@ -139,10 +139,12 @@ model always writes the same bytes.
 | `BasePeriphery` | `Fingers` (N0) and `UnitWidth` (`"125 um"`) of the device the model was extracted from. |
 | `Temperature` | `{ "Mode": "Single", "T0": 25 }` — valid at one temperature, with no temperature input — or `{ "Mode": "Range", "Tmin": …, "Tmax": … }`, in °C. |
 | `Network` | `Netlist`: `.cnl` text holding one `define` block with exactly six pins — extrinsic gate, drain, source, then intrinsic gate, drain, source — and its element values as variables. `Scaling`: each variable's rule, `fixed` (the default), `perFinger` or `perFingerInverse`. |
-| `Core.Constituents` | `Id`, `Ig`, `Qg` and `Qd`, each `{ "Method", "Inputs", … }`, the method one of `Equation`, `Table` or `ANN`. An `Equation` carries `Expression` and `Parameters` (named constants). A `Table` names its arrays in `Table` — a grid of values and the coefficients of the smooth spline through them — and records its `Smoothing`. An `ANN` names its arrays in `Network` and its hidden layers' `Activation`, `Tanh` or `Sigmoid`. `Ig` carries two of whichever its method uses, `IgGs` and `IgGd`. Inputs are `vgs` and `vds` in volts, and `T` in °C for a `Range` model. Currents are in A, charges in C. |
+| `Core.Constituents` | `Id`, `Ig`, `Qg` and `Qd`, each `{ "Method", "Inputs", … }`, the method one of `Equation`, `Table` or `ANN`. An `Equation` carries `Expression` and `Parameters` (named constants). A `Table` names its arrays in `Table` — a grid of values and the coefficients of the smooth spline through them — and records its `Smoothing`. An `ANN` names its arrays in `Network` and its hidden layers' `Activation`, `Tanh` or `Sigmoid`. `Ig` carries two of whichever its method uses, `IgGs` and `IgGd`. Inputs are `vgs` and `vds` in volts, and `T` in °C for a `Range` model. Currents are in A, charges in C. An optional `IdRF` is the drain current at RF, with `Core.Dispersion`. |
+| `Transform` (Table, ANN current) | `{ "Kind": "Asinh", "Scale": I0 }`: the arrays hold `u`, and the current is `I0·sinh(u)` — straight through zero within ±I0 and logarithmic beyond, so a current spanning many decades is held to the same ratio throughout. |
+| `Core.Dispersion` | `{ "Tau": τ }`, in seconds, present exactly when `IdRF` is: the drain current follows `Id` at DC and `IdRF` well above 1/(2πτ), moving between them as one pole. |
 | `Domain` (Table, ANN) | Where the constituent was trained: `Polygon`, a convex list of `[vgs, vds]` vertices, and `Box`, an interval per other input. Outside it the constituent is continued in a straight line from the nearest point of the domain; a current also gains a conductance that grows with the distance. |
 | `Core.Symmetry` | `Exchange`: the constituents describe `vds ≥ 0`, and a negative `vds` is the same device with drain and source exchanged. Absent for an asymmetric device. |
-| `Extrapolation` | `Gx`: for each table or ANN current (`Id`, `IgGs`, `IgGd`), the conductance in S that current gains outside its domain. |
+| `Extrapolation` | `Gx`: for each table or ANN current (`Id`, `IgGs`, `IgGd`, `IdRF`), the conductance in S that current gains outside its domain. |
 | `Symbol` | A library symbol's name, or a `.csym` path relative to the `.cmodel`. |
 | `Provenance` | `Created`, `CircuitRfVersion`, `Sources` (`Path`, `Sha256`) and `SettingsDigest`. |
 
@@ -162,7 +164,7 @@ except temperatures, in °C.
 | `DataSets` | Each with a `Name`, a `Kind`, its `Sources`, its `Conditions`, its `Import` settings and any `Exclusions`. |
 | `Pads` | How the probe pads are removed — see below. Absent when the data is at the device plane. |
 | `Network` | The six-pin extrinsic network and its variables' settings — see below. Absent when the data is intrinsic. |
-| `Steps` | The later steps' settings. |
+| `Steps` | Each model step's settings and result: `Current` below. A step not described here is kept as written. |
 | `Panels` | `Hidden`: the window panels switched off. Absent when every panel shows. |
 
 A data set's `Kind` is `DcIv`, `PulsedIv`, `SParams` (CW multi-bias), `PulsedSParams`, `SimulatedTables`
@@ -237,9 +239,31 @@ A stock network — GaN two-shell, classic single shell or series only — is co
 chosen and is then an ordinary schematic. An R, L, C or mutual value starts with `Min` 0 and `Max` 100 times
 its starting value.
 
+`Steps.Current` is the drain and gate currents' step: `Settings`, the `Result` of the last fit, and `Network`, a
+digest of the network values the fit was made through (a later network fit makes it stale). `Settings` holds:
+
+| Field | What it holds |
+|---|---|
+| `DataSets` | The I–V sets to fit to. Absent: every `DcIv`, `PulsedIv` and `SimulatedTables` set. They must share one temperature and, if pulsed, one `Quiescent` and `PrePulse`; a mix is refused, naming what differs. |
+| `Id`, `Ig` | Each `Method` (`ANN`, the default, `Table` or `Equation`) and that method's settings: `Hidden` (`[8, 8]`), `Activation` and `MaxIterations` (6000) for a network; `GridStep` (0.1 V), `Regrid` (`ANN`, or `RBF` through the points themselves) and `Smoothing` for a table; `Template` or the user's own `Expression` (`Id`) or `IgGs` and `IgGd` (`Ig`), with `Parameters` (`Value`, `Min`, `Max`, `Lock` each) and `Algorithm` (`cmaes`, `de` or `lm`) for an equation. The templates are `Angelov`, `CurticeQuadratic`, `CurticeCubic`, `Statz` and `Materka` for `Id`, and `Diode` for `Ig`. |
+| `IdFloor` | 0.1: `Id` is fitted to each point's own value down to this fraction of the largest current, and to that floor below it. |
+| `IgFloor` | 1e-4: `Ig` is fitted to the same ratio everywhere above this fraction of the largest gate current (`I0` of its `Transform`). |
+| `GateSplit` | `Sign` (the default): at `vds ≥ 0` a forward gate current is the gate–source branch and a reverse one the gate–drain branch, the other way round at `vds < 0`. `GateSource` or `GateDrain` puts all of it in one branch. |
+| `Symmetry` | `Exchange`: fit `vds ≥ 0` only, for a model with drain–source symmetry. |
+| `SmallestSwing` | 0.05 V: a table whose step is more than twice this warns that low-level intermodulation is unreliable. |
+| `Seed`, `Restarts`, `HeldOutFraction` | 1, 3 and 0.1: the same seed gives the same model; each network is trained from that many starts; that fraction of the points, spread over the domain, is never trained on and reports the error. |
+| `Dispersion` | Present to fit `IdRF`: `Tau` (1e-6 s), `DataSets` (absent: every S-parameter set), `Reference` (`[vgs, vds]` where `IdRF` equals `Id`; absent: the S point nearest the middle) and `Hidden`. |
+
+`Result` holds the fitted constituents exactly as the `.cmodel` will (`Constituents`), their `Gx`, `Tau`, and
+`Arrays` — the name of the cache file holding their arrays — then per current the training and held-out RMS
+error, absolute and relative to the range (`Errors`), `Conductance` (the fitted Gm and Gds against the data's
+own DC derivatives), `Symmetry` (with `Exchange`: the value, slope and gate jumps at `vds = 0`), `Eq649` (the
+share of the RF conductances no single current reproduces), `Reference` and the `Report` lines.
+
 The data read from the sources is cached in `<name>.cmc-cache/`. When a source changes it is read
-again; when one goes missing the cached copy is used, with a warning. The cache can be deleted at any
-time. `circuitrf check` reads a `.cmc` and names the field of anything it refuses.
+again; when one goes missing the cached copy is used, with a warning. A step's arrays are cached there
+too, and a missing one is fitted again. The cache can be deleted at any time. `circuitrf check` reads a
+`.cmc` and names the field of anything it refuses.
 
 ## Workspace › Library › Cell {#hierarchy}
 

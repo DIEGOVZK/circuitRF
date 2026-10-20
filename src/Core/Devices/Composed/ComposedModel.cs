@@ -82,7 +82,17 @@ public sealed record CoreConstituents(
     /// <summary>The drain–source symmetry option (R-mc2-4). Off by default: a field-plated power
     /// device is deliberately asymmetric ([P1] §6.5.5).</summary>
     public DrainSourceSymmetry Symmetry { get; init; } = DrainSourceSymmetry.None;
+
+    /// <summary>The DC/RF dispersion of [P1] eq. 6.52 (R-mc7-4): present exactly when <see cref="IdRF"/>
+    /// is, and then <see cref="Id"/> is the DC current <c>IdDC</c>.</summary>
+    public ModelDispersion? Dispersion { get; init; }
 }
+
+/// <summary>
+/// <c>Core.Dispersion</c>: the time constant τ, seconds, of [P1] eq. 6.52's one-pole transition from the
+/// DC current <c>IdDC</c> (below 1/τ) to the RF current <c>IdRF</c> (above it). Unscaled by periphery.
+/// </summary>
+public sealed record ModelDispersion(double Tau);
 
 /// <summary>
 /// <see cref="Exchange"/>: the constituents are defined for <c>vds ≥ 0</c>, and a point with
@@ -135,6 +145,10 @@ public sealed record Constituent
 
     /// <summary>An ANN's hidden-layer activation (R-mc2-2).</summary>
     public AnnActivation? Activation { get; init; }
+
+    /// <summary>A table or ANN current's output transform (MC-7): the payload holds <c>u</c> and the current is
+    /// <c>Scale·sinh(u)</c>. Null: the payload is the current itself.</summary>
+    public OutputTransform? Transform { get; init; }
 
     /// <summary>The single-payload key of this method: <c>Expression</c>, <c>Table</c> or <c>Network</c>.</summary>
     public string PayloadKey => PayloadKeyOf(Method);
@@ -193,6 +207,17 @@ public sealed record Constituent
             Expressions = [new("IgGs", igGs), new("IgGd", igGd)],
             Parameters  = [.. parameters.Select(p => new KeyValuePair<string, double>(p.Name, p.Value))],
         };
+}
+
+/// <summary>
+/// <c>Transform</c> on a table or ANN current (brief-modelcomposer-7): the payload computes <c>u</c>, and the current is
+/// <c>Scale·sinh(u)</c> — linear through zero within ±<c>Scale</c> and logarithmic beyond, so a payload trained in
+/// <c>u</c> fits a gate current spanning many decades to an equal RATIO everywhere above <c>Scale</c>, which a linear
+/// output weighted by <c>1/|I|²</c> cannot ([P1]'s log-magnitude fit of conduction currents). <c>Scale</c> in amps.
+/// </summary>
+public sealed record OutputTransform(string Kind, double Scale)
+{
+    public const string Asinh = "Asinh";
 }
 
 /// <summary>Where a model came from. Written as given — the writer stamps nothing itself, which is
