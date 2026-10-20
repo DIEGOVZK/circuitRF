@@ -265,8 +265,10 @@ public static class TraceImpedanceReportDocument
             // The verdict leads (R-imp5-4a), then the scope: what a reviewer filing the page needs first is
             // whether it passed, and then what "it" was.
             _y += 18;
-            using (var verdictInk = Fill(report.FailCount > 0 || report.AllTraces.Any(t => t.Verdict == TraceVerdict.Unsolved) ? FailInk
-                                         : report.WarningCount > 0 ? WarnInk : PassInk))
+            using (var verdictInk = Fill(report.FailCount > 0 || report.AllTraces.Any(t => t.Verdict == TraceVerdict.Unsolved)
+                                         || report.AllJunctions.Any(j => j.Verdict is TraceVerdict.Fail or TraceVerdict.Unsolved) ? FailInk
+                                         : report.WarningCount > 0 || report.AllJunctions.Any(j => j.Verdict == TraceVerdict.Warning)
+                                             ? WarnInk : PassInk))
                 C.DrawText(Clip(report.VerdictSentence, _h2, leftW), x0, _y, SKTextAlign.Left, _h2, verdictInk);
             float columnsTop = _y + 4;
 
@@ -917,8 +919,9 @@ public static class TraceImpedanceReportDocument
 
             if (layer.Traces.Count == 0)
             {
-                Paragraph("No traces were found on this layer: its copper is a plane or a pour, or nothing on it has two " +
-                          "long parallel edges facing each other.", Margin, _y, PageW - 2 * Margin, _body, Muted);
+                _y = Paragraph("No traces were found on this layer: its copper is a plane or a pour, or nothing on it has two " +
+                               "long parallel edges facing each other.", Margin, _y, PageW - 2 * Margin, _body, Muted);
+                JunctionTable(layer, section);
                 return;
             }
 
@@ -947,6 +950,7 @@ public static class TraceImpedanceReportDocument
                        "along the trace, with each type's share where it is more than one.",
                        Margin, _y, SKTextAlign.Left, _small, muted);
             _y += 10;
+            JunctionTable(layer, section);
 
             // The findings, numbered as on the map.
             var findings = Findings(layer);
@@ -978,6 +982,36 @@ public static class TraceImpedanceReportDocument
                     _y = Paragraph($"{tid}: {note}", Margin, _y, PageW - 2 * Margin, _body, Muted) + 2;
                 }
             }
+        }
+
+        // ── junctions (R-dfr22-3-6) ─────────────────────────────────────────────────────────────
+
+        private static readonly float[] JunctionCols = [Margin, Margin + 40, Margin + 90, Margin + 190, Margin + 250, Margin + 320, Margin + 380];
+
+        /// <summary>One row per junction arm, under the trace table: the junction, its kind and centre, then each arm's
+        /// trace, width, Z0 and result. Nothing when the layer has no junction.</summary>
+        private void JunctionTable(TraceLayerResult layer, string section)
+        {
+            if (layer.JunctionReviews.Count == 0) return;
+            string[] heads = ["ID", "Kind", $"At ({report.Unit})", "Arm", $"Width ({report.Unit})", "Z0 (Ω)", "Result"];
+            if (_y + 40 > Bottom) NewPage(section + " (continued)");
+            using var ink = Fill(Ink);
+            _y += 10;
+            C.DrawText("Junctions", Margin, _y, SKTextAlign.Left, _h2, ink);
+            _y += 4;
+            Header(JunctionCols, heads);
+            int row = 0;
+            foreach (var j in layer.JunctionReviews)
+                foreach (var (a, k) in j.Arms.Select((a, k) => (a, k)))
+                {
+                    if (_y + 13 > Bottom) { NewPage(section + " (continued)"); _y += 6; Header(JunctionCols, heads); }
+                    Row(JunctionCols,
+                        [k == 0 ? j.Id : "", k == 0 ? j.Kind : "", k == 0 ? $"{report.Num(j.X, 0)}, {report.Num(j.Y, 0)}" : "",
+                         a.TraceId ?? "arm", report.Num(a.Width, 0), Ohms(a.Z0), VerdictText(a.Verdict)],
+                        [Ink, Ink, Muted, Ink, Ink, Zc(a.Z0), VerdictInk(a.Verdict)],
+                        row++ % 2 == 1 ? new SKColor(0xfa, 0xfb, 0xfc) : null);
+                }
+            _y += 10;
         }
 
         // ── accepted findings (brief-impedance-5 R-imp5-4a) ─────────────────────────────────────

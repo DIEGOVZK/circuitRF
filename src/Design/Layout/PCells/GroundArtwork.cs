@@ -93,9 +93,12 @@ public static class GroundArtwork
     /// <param name="inSchematic">The schematic's instance names. A ground via whose instance is still in the schematic
     /// but whose pin is no longer on ground is removed (it would short that pin); one whose instance has left the
     /// schematic is left, as the instance itself is.</param>
+    /// <param name="marginHeights">How far the pour reaches beyond what it covers, in substrate heights — the
+    /// workspace's choice (R-dfr22-3-4).</param>
     public static GroundArtworkPlan Plan(LayoutView view, Technology? technology, string layoutBaseDir,
                                          IReadOnlyList<LayoutInstance> instances,
-                                         IReadOnlyList<GroundPin>? grounded, IReadOnlySet<string>? inSchematic)
+                                         IReadOnlyList<GroundPin>? grounded, IReadOnlySet<string>? inSchematic,
+                                         double marginHeights = GroundPourPlanner.DefaultMarginHeights)
     {
         if (technology is null) return GroundArtworkPlan.None;
 
@@ -224,7 +227,8 @@ public static class GroundArtwork
         // The pour, over the shapes as they will be.
         var removing = new HashSet<LayoutShape>(remove, ReferenceEqualityComparer.Instance);
         var after = view.Shapes.Where(s => !removing.Contains(s)).Concat(add).ToList();
-        var pours = GroundPourPlanner.Plan(view, technology, layoutBaseDir, after, instances, regions);
+        var pours = GroundPourPlanner.Plan(view, technology, layoutBaseDir, after, instances, regions,
+                                           marginHeights: marginHeights);
         var planned = new HashSet<string>(pours.Pours.Select(p => p.Ground.Name), StringComparer.Ordinal);
         foreach (var pour in pours.Pours)
         {

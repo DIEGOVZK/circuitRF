@@ -855,6 +855,21 @@ public sealed partial class ImpedancePanelViewModel : ObservableObject
         if (e.PropertyName == nameof(ImpedanceTraceResultRow.IsExpanded)) ApplyFilter();
     }
 
+    /// <summary>R-dfr22-3-6: the junctions, listed under the traces by the same filter — a placed tee's arms are too
+    /// short to be traces, and this is where they are reviewed.</summary>
+    public ObservableCollection<ImpedanceJunctionRow> JunctionRows { get; } = [];
+    public bool HasJunctionRows => JunctionRows.Count > 0;
+
+    /// <summary>Whether a junction of <paramref name="v"/> is listed under <paramref name="filter"/> — a trace's rule;
+    /// a junction carries no findings to accept.</summary>
+    internal static bool ShowsJunction(ImpedanceResultFilter filter, TraceVerdict v) => filter switch
+    {
+        ImpedanceResultFilter.Failures => v is TraceVerdict.Fail or TraceVerdict.Unsolved,
+        ImpedanceResultFilter.WarningsAndFailures => v is not TraceVerdict.Pass,
+        ImpedanceResultFilter.Accepted => false,
+        _ => true,
+    };
+
     private void ApplyFilter()
     {
         var keep = SelectedRow;
@@ -865,6 +880,12 @@ public sealed partial class ImpedancePanelViewModel : ObservableObject
             Rows.Add(t);
             if (t.IsExpanded) foreach (var child in t.Children) if (ShowsChild(Filter, child)) Rows.Add(child);
         }
+        JunctionRows.Clear();
+        if (Report is { } report)
+            foreach (var layer in report.Layers)
+                foreach (var j in layer.JunctionReviews)
+                    if (ShowsJunction(Filter, j.Verdict)) JunctionRows.Add(new ImpedanceJunctionRow(report, layer, j));
+        OnPropertyChanged(nameof(HasJunctionRows));
         SelectedRow = keep is not null && Rows.Contains(keep) ? keep : null;
         SetSelectedRows(_selectedRows.Where(Rows.Contains).ToList());
         OnPropertyChanged(nameof(EmptyRowsText));
@@ -1136,6 +1157,24 @@ public sealed partial class ImpedanceTraceResultRow : ImpedanceResultRow
 
     [RelayCommand]
     private void ToggleExpanded() => IsExpanded = !IsExpanded;
+}
+
+/// <summary>
+/// One junction (R-dfr22-3-6): verdict, id, kind and layer, and each arm's width, Z0 and verdict — the strings the CLI
+/// and the PDF print.
+/// </summary>
+public sealed class ImpedanceJunctionRow(TraceImpedanceReport report, TraceLayerResult layer, TraceJunctionReview junction)
+{
+    public TraceJunctionReview Junction { get; } = junction;
+    public string Id => Junction.Id;
+    public string LayerName { get; } = layer.Name;
+    public string KindText => Junction.Kind;
+    public string VerdictText { get; } = TraceImpedanceReport.VerdictText(junction.Verdict);
+    public bool IsPass => Junction.Verdict == TraceVerdict.Pass;
+    public bool IsWarning => Junction.Verdict == TraceVerdict.Warning;
+    public bool IsFail => Junction.Verdict is TraceVerdict.Fail or TraceVerdict.Unsolved;
+    public string ArmsText { get; } = string.Join(" · ", junction.Arms.Select(a =>
+        $"{a.TraceId ?? "arm"} {report.Len(a.Width)} {TraceImpedanceReport.OhmsText(a.Z0)} Ω"));
 }
 
 /// <summary>One finding, with its severity, in the sentence the PDF's findings list prints — and, when it

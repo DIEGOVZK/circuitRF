@@ -981,8 +981,11 @@ layout.
 3. Place instances in a packed, non-overlapping arrangement — rows by bounding box, roughly following
    schematic order. **No auto-routing. Say so loudly.** Auto-routing is a separate multi-month product,
    and pretending otherwise sets a bad expectation.
-4. Carry net names onto instance pins, and draw a **ratsnest**: thin straight lines on a system layer
-   between pins sharing a net. This is the guide that makes manual routing tractable.
+4. Carry net names onto instance pins, and draw a **ratsnest**: thin straight lines between pins sharing a
+   net that copper has not yet joined. This is the guide that makes manual routing tractable. **It is an
+   OVERLAY** (R-dfr22-3-5) &mdash; drawn by the canvas from the pins' nets and `DrcConnectivity`'s partition,
+   never a shape, never saved, never exported. The first ratsnest was written as `PathShape`s on a reserved
+   layer and had to be removed (R-L5h-3) because that made it selectable, exportable and fabricatable.
 5. **R16. Re-running must update, not duplicate.** Each generated instance stores the originating
    schematic component's stable `Id`. A second run reconciles: keep and leave in place anything already
    present, add what's new, and report (never auto-delete) what no longer exists in the schematic.

@@ -216,6 +216,7 @@
                             </NativeMenuItem.Menu>
                         </NativeMenuItem>
                         <NativeMenuItem Header="Draw Ground Pour"               Command="{Binding DrawGroundPourCommand}" ToolTip="Redraws the ground artwork Update Layout from Schematic draws, from where the parts are now: the ground pour under the microstrip lines and ground vias, with a clearance round every via passing through it, and the ground vias following their pads. Copper you drew or edited yourself is left alone. Requires an active layout document."/>
+                        <NativeMenuItem Header="Ground Pour Margin…"            Command="{Binding SetGroundPourMarginCommand}" CommandParameter="{Binding $parent[Window]}" ToolTip="How far the ground pour reaches beyond the lines and vias it covers, in substrate heights — recorded in the workspace. Requires an open workspace."/>
                         <NativeMenuItemSeparator/>
                         <NativeMenuItem Header="Check Design Rules"             Command="{Binding CheckDesignRulesCommand}" Gesture="Meta+Shift+K"/>
                     </NativeMenu>
@@ -570,6 +571,8 @@
                              layout view handles L itself. -->
                         <NativeMenuItem Header="Layers List" Command="{Binding ToggleLayoutLayerListCommand}"
                                         ToolTip="Open or close the Layers list of the active layout (L in the layout). Requires an active layout."/>
+                        <NativeMenuItem Header="Show Ratsnest" Command="{Binding ToggleRatsnestCommand}" ToggleType="CheckBox" IsChecked="{Binding IsRatsnestShown, Mode=OneWay}"
+                                        ToolTip="Thin lines between pins that share a net and are not yet joined by copper — a guide, never drawn into the layout. On after Update Layout from Schematic. Requires an active layout."/>
                         <NativeMenuItemSeparator/>
                         <NativeMenuItem Header="Panels">
                             <NativeMenuItem.Menu>
@@ -1211,6 +1214,12 @@
                           ToolTip.Tip="Redraws the ground artwork Update Layout from Schematic draws, from where the parts are now: the ground pour under the microstrip lines and ground vias, with a clearance round every via passing through it, and the ground vias following their pads. Copper you drew or edited yourself is left alone. Requires an active layout document.">
                     <MenuItem.Icon><mi:MaterialIcon Kind="Texture" Width="16" Height="16"/></MenuItem.Icon>
                 </MenuItem>
+                <MenuItem Header="Ground Pour _Margin…"
+                          Command="{Binding SetGroundPourMarginCommand}"
+                          CommandParameter="{Binding $parent[Window]}"
+                          ToolTip.Tip="How far the ground pour reaches beyond the lines and vias it covers, in substrate heights — recorded in the workspace. Requires an open workspace.">
+                    <MenuItem.Icon><mi:MaterialIcon Kind="ArrowExpandAll" Width="16" Height="16"/></MenuItem.Icon>
+                </MenuItem>
                 <Separator/>
                 <MenuItem Header="_Check Design Rules"
                           Command="{Binding CheckDesignRulesCommand}"
@@ -1626,6 +1635,11 @@
                           ToolTip.Tip="Open or close the Layers list of the active layout. Requires an active layout.">
                     <MenuItem.Icon><mi:MaterialIcon Kind="LayersSearchOutline" Width="16" Height="16"/></MenuItem.Icon>
                 </MenuItem>
+                <MenuItem Header="Show _Ratsnest"
+                          Command="{Binding ToggleRatsnestCommand}"
+                          ToggleType="CheckBox"
+                          IsChecked="{Binding IsRatsnestShown, Mode=OneWay}"
+                          ToolTip.Tip="Thin lines between pins that share a net and are not yet joined by copper — a guide, never drawn into the layout. On after Update Layout from Schematic. Requires an active layout."/>
                 <Separator/>
                 <!-- Reopen a closed tool panel. Without these, closing one strands it until
                      Reset Layout, which also discards every other panel placement. -->

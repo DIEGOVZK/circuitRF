@@ -1324,7 +1324,8 @@ namespace RfCore.Export
         int                                Fail,
         IReadOnlyList<ImpedanceLayerJson>  Layers,
         int                                Accepted = 0,
-        IReadOnlyList<ImpedanceStaleAcceptanceJson>? StaleAcceptances = null);
+        IReadOnlyList<ImpedanceStaleAcceptanceJson>? StaleAcceptances = null,
+        int?                               Junctions = null);
 
     /// <summary>An acceptance saved on the layout that matched no finding in this run — the trace was
     /// moved or re-routed, or the finding is gone. Listed, never removed by a run.</summary>
@@ -1339,11 +1340,30 @@ namespace RfCore.Export
 
     /// <param name="OutOfScope">Traces found on the layer and left out by the scope — counted, not
     /// listed.</param>
+    /// <param name="Junctions">Where traces meet, or a placed tee or cross, reviewed arm by arm
+    /// (R-dfr22-3-6). Absent when the layer has none.</param>
     public sealed record ImpedanceLayerJson(
         string                             Layer,
         int                                PoursSkipped,
         int                                OutOfScope,
-        IReadOnlyList<ImpedanceTraceJson>  Traces);
+        IReadOnlyList<ImpedanceTraceJson>  Traces,
+        IReadOnlyList<ImpedanceJunctionJson>? Junctions = null);
+
+    /// <summary>One junction reviewed through its copper (R-dfr22-3-6).</summary>
+    /// <param name="Kind"><c>tee</c>, <c>cross</c> or <c>plain</c>, by arm count.</param>
+    /// <param name="Verdict">The worst arm's: <c>pass</c>, <c>warning</c>, <c>fail</c> or <c>unsolved</c>.</param>
+    /// <param name="At">Where the arms' centre lines meet, µm.</param>
+    public sealed record ImpedanceJunctionJson(
+        string                                 Id,
+        string                                 Kind,
+        string                                 Verdict,
+        double[]                               At,
+        IReadOnlyList<ImpedanceJunctionArmJson> Arms);
+
+    /// <param name="Trace">The trace this arm is the end of, or absent for an arm too short to be one.</param>
+    /// <param name="Width">The arm's width, µm.</param>
+    /// <param name="Z0">Ω at that width through the layer's own cross-section, or absent when unsolved.</param>
+    public sealed record ImpedanceJunctionArmJson(string? Trace, double Width, double? Z0, string Verdict);
 
     /// <param name="Verdict"><c>pass</c>, <c>warning</c>, <c>fail</c> or <c>unsolved</c>.</param>
     /// <param name="StartsAt">What the start is: <c>via</c>, <c>pad</c>, <c>junction</c>,

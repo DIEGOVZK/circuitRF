@@ -514,6 +514,10 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
             _cycleCache.Clear();
             _pickedVertexIndex = null;
 
+            // R-dfr22-3-5: the ratsnest's pins and copper groups are re-read at the next draw, so a line
+            // disappears once copper joins its pins and follows a part to where it was moved.
+            _ratsnestStale = true;
+
             // ── AND THE SNAP-MARKER CYCLE, FOR THE SAME REASON AND ON THE SAME HOOK ──────────────
             //
             // Owner report, 2026-09-11: click a shape, press Delete, click the SAME spot to pick up
@@ -1635,11 +1639,9 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
     /// Everything under one click, ordered the way it is PAINTED: rulers first (they draw above every
     /// layer and above instances, R-rul-11), then shapes in §6.2's own z-order, then instances.
     ///
-    /// <para><b>Instances are still only reached when no shape was hit</b> — L3a's own rule
-    /// (R-L3a-5), preserved exactly. What changed is that they now live in the same stack rather than
-    /// being selected off to the side, so a ruler drawn over a placed cell can be clicked through to
-    /// reach it. With no rulers in the document this produces precisely the stack the shape-only
-    /// version did, which is why existing cycling behaviour is unchanged.</para>
+    /// <para><b>Instances are in every stack</b> (R-dfr22-3-3, replacing R-L3a-5's "only when no shape
+    /// was hit"): one lying inside a shape under the press ranks just above that shape, any other comes
+    /// after the shapes. Repeated presses cycle through all of them.</para>
     /// </summary>
     private List<LayoutPick> BuildPickStack(long px, long py, long tolDbu)
     {
@@ -1667,13 +1669,36 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         foreach (int i in shapes)
             if (i >= 0 && i < Model.Shapes.Count && Model.Shapes[i] is LabelShape { IsPort: true })
                 picks.Add(new LayoutPick(LayoutPickKind.Shape, i));
+
+        // ── INSTANCES ARE IN EVERY STACK (R-dfr22-3-3) ─────────────────────────────────────────
+        //
+        // They used to be reached only when no shape was hit, so a line placed on a ground plane could
+        // not be picked at all — not even by cycling — and the designer moved the plane away to move
+        // the lines. A part lying inside a shape that contains the press is what is being pointed at,
+        // so it ranks directly above that shape; any other instance goes after the shapes, as before.
+        var artwork = new List<int>();
         foreach (int i in shapes)
             if (!(i >= 0 && i < Model.Shapes.Count && Model.Shapes[i] is LabelShape { IsPort: true }))
-                picks.Add(new LayoutPick(LayoutPickKind.Shape, i));
-
-        if (shapes.Count == 0)
-            foreach (int i in LayoutHitTest.HitInstanceStack(Model, DrawTechnology, InstanceBaseDir, px, py, tolDbu))
-                picks.Add(new LayoutPick(LayoutPickKind.Instance, i));
+                artwork.Add(i);
+        var instances = LayoutHitTest.HitInstanceStack(Model, DrawTechnology, InstanceBaseDir, px, py, tolDbu);
+        var before = new Dictionary<int, List<int>>();   // artwork position -> instances ranked above it
+        var after = new List<int>();
+        foreach (int inst in instances)
+        {
+            var box = CellHierarchy.InstanceBbox(Model.Instances[inst], InstanceBaseDir);
+            int at = box.IsEmpty ? -1 : artwork.FindIndex(s => LayoutGeometry.BboxOf(Model.Shapes[s]) is var sb
+                                                              && sb.MinX <= box.MinX && sb.MinY <= box.MinY
+                                                              && sb.MaxX >= box.MaxX && sb.MaxY >= box.MaxY);
+            if (at < 0) after.Add(inst);
+            else (before.TryGetValue(at, out var list) ? list : before[at] = []).Add(inst);
+        }
+        for (int k = 0; k < artwork.Count; k++)
+        {
+            if (before.TryGetValue(k, out var above))
+                foreach (int inst in above) picks.Add(new LayoutPick(LayoutPickKind.Instance, inst));
+            picks.Add(new LayoutPick(LayoutPickKind.Shape, artwork[k]));
+        }
+        foreach (int inst in after) picks.Add(new LayoutPick(LayoutPickKind.Instance, inst));
 
         return picks;
     }
@@ -2339,6 +2364,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         _moveAnchorX = px; _moveAnchorY = py;
         _moveLiveDx = 0; _moveLiveDy = 0;
         _moveHasMoved = false;
+        _bodySnapSource = null;   // R-dfr22-3-1: re-read for this drag's own selection
     }
 
     // ── The COMPANION move (owner, 2026-08-27) ────────────────────────────────────────────────────
@@ -2699,6 +2725,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
                 // gesture. Alt arming a duplicate rebuilds the overlay into a ghost (see
                 // RebuildOverlay) rather than changing anything about the delta.
                 SetDuplicateDragArmed((mods & KeyModifiers.Alt) != 0);
+                _moveSnapTolDbu = snapTolDbu;
                 RecomputeMoveDelta(px, py, (mods & KeyModifiers.Shift) != 0);
                 RebuildOverlay();
                 break;
@@ -2823,6 +2850,11 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         else
         {
             (dx, dy) = (gridDx, gridDy);
+
+            // R-dfr22-3-1: a drag started on a BODY rather than a marker snaps its pins and edges to what it
+            // comes to rest against — the gap a line dragged beside a tee used to land with.
+            if (!_snapDragActive && !_pointSnapDragActive && GeometrySnapEnabled && _selectDragKind == SelectDragKind.Move)
+                TryBodySnap(ref dx, ref dy, _moveSnapTolDbu);
         }
 
         // ── A DRAGGED PORT REACHES THE EDGE TOO, NOT ONLY A PLACED ONE ──────────────────────────
@@ -4557,6 +4589,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
             Impedance = BuildImpedanceOverlay(),
             ImpedanceScope = BuildImpedanceScopeOverlay(),
             ArtworkProbe = _artworkProbe,
+            Ratsnest = RatsnestLines(),
             // pcell-parameter-handles.md: the selected PCell instance's parameter grips, and — while
             // one is being dragged live — the regenerated artwork to draw in that instance's place.
             PCellHandles = BuildPCellHandleMarkers(instanceDragOverrides),

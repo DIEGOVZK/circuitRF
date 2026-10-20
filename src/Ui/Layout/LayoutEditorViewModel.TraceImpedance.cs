@@ -375,6 +375,8 @@ public partial class LayoutEditorViewModel
                 });
             }
         }
-        return new ImpedanceOverlay(r.TargetOhms, r.TolerancePercent, traces, findings);
+        // R-dfr22-3-6: each junction coloured by its worst arm.
+        var junctions = r.AllJunctions.Select(j => new ImpedanceJunctionMarker(j.X, j.Y, j.WorstZ0(r.TargetOhms))).ToList();
+        return new ImpedanceOverlay(r.TargetOhms, r.TolerancePercent, traces, findings) { Junctions = junctions };
     }
 }

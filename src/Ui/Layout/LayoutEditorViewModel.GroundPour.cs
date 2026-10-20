@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using CircuitRF.Design.Layout.PCells;
 
@@ -16,7 +17,9 @@ public sealed partial class LayoutEditorViewModel
 {
     /// <summary>What <see cref="DrawGroundPour"/> would do now.</summary>
     internal GroundArtworkPlan PlanGroundArtwork()
-        => GroundArtwork.Plan(Model, Technology, InstanceBaseDir, Model.Instances, grounded: null, inSchematic: null);
+        => GroundArtwork.Plan(Model, Technology, InstanceBaseDir, Model.Instances, grounded: null, inSchematic: null,
+                              ViewModels.WorkspaceViewModel.ReadGroundPourMarginHeights(
+                                  WorkspaceRootDir is { Length: > 0 } root ? Path.Combine(root, ".cws") : null));
 
     /// <summary>Redraws the generated ground artwork as ONE undo entry and says what it did; says why when there is
     /// nothing to draw.</summary>

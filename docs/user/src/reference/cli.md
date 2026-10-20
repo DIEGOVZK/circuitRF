@@ -1142,21 +1142,25 @@ command-line spelling, still applies unless `--region` replaces it.
 
 stdout starts with the target and, on the next line, the **scope in words** &mdash; *Top Copper at 457 µm
 (1 trace). 21 traces on Top Copper are outside the scope and were not analysed.* &mdash; then one line per
-trace &mdash; `PASS`, `WARN` or `FAIL` &mdash; its findings under it (`!` a fail, `?` a warning), and a
-closing line *N pass, W warning, F fail*; stderr says which layer is being analysed. Traces outside the
+trace &mdash; `PASS`, `WARN` or `FAIL` &mdash; its findings under it (`!` a fail, `?` a warning), then
+one line per [junction](layout-editor.html#impedance-traces) &mdash; its kind and each arm's trace, width,
+Z0 and result &mdash; and a closing line *N pass, W warning, F fail*, with the junctions' counts after it
+when there are any; stderr says which layer is being analysed. Traces outside the
 scope are not cut, solved or listed, only counted, and they still count as grounded copper beside the
 traces under review. Lengths
 and coordinates are in **the layout's own unit**. With `--json` the result carries every layer, trace and
 finding, with coordinates and lengths in **µm** whatever the layout's unit, so a script reads one unit;
 `warningCount` sits beside `pass` and `fail`, a trace's verdict can be `"warning"`, and every finding
 carries `"severity": "warning"` or `"fail"` &mdash; and an accepted one `"accepted": { "reason", "date" }`.
-`accepted` counts the accepted findings and `staleAcceptances` lists the saved acceptances that matched
+Each layer's `junctions` lists its junctions (`id`, `kind`, `verdict`, `at`, and `arms`, each with
+`trace`, `width`, `z0` and `verdict`), and `junctions` at the top counts them; both are absent when there
+are none. `accepted` counts the accepted findings and `staleAcceptances` lists the saved acceptances that matched
 nothing (`key`, `kind`, `layer`, `summary`, `reason`, `date`). `scope` is the scope sentence and each layer's `outOfScope`
 its count of traces left out. With `--survey`, the result is `impedanceSurvey` instead: per layer its
 `classes`, each with `width`, `widthMin`, `widthMax`, `traces`, `length` (µm) and `typicalZ0`.
 
 **Exit codes follow [`check`](#check)'s convention**, counting **un-accepted** findings only. **0** when
-no trace fails &mdash; warnings are always reported and still exit 0 &mdash; **1** when one fails (or no part of it could be solved) or the
+no trace or junction fails &mdash; warnings are always reported and still exit 0 &mdash; **1** when one fails (or no part of it could be solved) or the
 run is refused, and with `--severity warning` when one warns; **130** on a cancellation. A cancelled run still writes the report for the layers that **finished**,
 and says on its first page that it was cancelled.
 

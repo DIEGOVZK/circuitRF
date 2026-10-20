@@ -40058,3 +40058,19 @@ the net; dragging one detached a wire; typed text vanished; an MLIN came out 57�
 - **Create Schematic from Artwork read the selection once.** The dialog is modeless; it now follows
   `LayoutEditorViewModel.SelectionChanged`, so a region picked after opening becomes the scope (and cancels the
   whole-board preview already running).
+
+## Layout round trip — body-drag snap, picking over a plane, ratsnest, tee review (DFR22-3, 2026-10-20)
+
+- **A part on a ground plane could not be picked, even by cycling.** `BuildPickStack` added instances only
+  `if (shapes.Count == 0)` (R-L3a-5), so any shape under the press — a plane — hid every instance. Instances are now
+  in every stack; one whose box lies inside a shape under the press ranks just above that shape.
+- **Only a marker-started drag snapped.** A body drag ran the snap query for the marker but never applied it, so a
+  line dragged beside a tee landed a grid step short and recognition read open ends. `TryBodySnap` (BodySnap.cs)
+  pulls the selection's pins onto pins/ports, else its outline edges flush onto facing parallel edges on the same
+  layer, through the spatial index; queries per move are counted (`BodySnapQueriesLastMove`), not timed.
+- **A placed tee was invisible to the impedance review.** Its arms are shorter than `SelectedMinAspect` widths, so
+  `Chain` dropped them before any junction could list them. Chain ends on a junction are now recorded before that
+  filter (`LayerWork.JunctionArms`) and cut and solved as arms; `Junctions` (read by recognition) is unchanged and
+  the arm reviews are a separate `JunctionReviews` list.
+- **The ratsnest is an overlay** (`LayoutEditorViewModel.Ratsnest.cs`): pins and copper groups are re-read once per
+  edit — it flattens and partitions — and a drag only offsets the dragged parts' pins.

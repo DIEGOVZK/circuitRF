@@ -54,6 +54,22 @@ public static partial class LayoutRenderer
 
         using var fill = new SKPaint { IsStroke = false, IsAntialias = true };
         using var ring = new SKPaint { IsStroke = true, IsAntialias = true };
+
+        // R-dfr22-3-6: a junction is a square in its worst arm's Z0 colour, ringed dark so it reads over the trace
+        // colours meeting at it.
+        foreach (var j in overlay.Junctions)
+        {
+            float h = DevicePixelsToPathSpace(scaleUm, ImpedanceMarkerRadiusDevicePixels);
+            var box = new SKRect(ps.X(j.X) - h, ps.Y(j.Y) - h, ps.X(j.X) + h, ps.Y(j.Y) + h);
+            fill.Color = j.WorstZ0 is { } z
+                ? TraceImpedanceReportDocument.Z0Color(z, overlay.TargetOhms, overlay.TolerancePercent)
+                : TraceImpedanceReportDocument.Unsolved;
+            canvas.DrawRect(box, fill);
+            ring.Color = new SKColor(0x10, 0x14, 0x18, 0xc0);
+            ring.StrokeWidth = DevicePixelsToPathSpace(scaleUm, 1.2);
+            canvas.DrawRect(box, ring);
+        }
+
         foreach (var f in overlay.Findings.OrderBy(f => f.Selected))
         {
             var colour = f.ReturnPath ? TraceImpedanceReportDocument.GroundMark : TraceImpedanceReportDocument.ZMark;

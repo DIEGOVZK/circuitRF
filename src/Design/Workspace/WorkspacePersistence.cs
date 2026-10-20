@@ -222,6 +222,15 @@ public sealed class CwsFile
     public string? DefaultAssemblyRef { get; set; }
 
     /// <summary>
+    /// How far the ground pour Update Layout from Schematic and Draw Ground Pour draw reaches beyond what it covers,
+    /// in substrate heights (R-dfr22-3-4). Null means <c>GroundPourPlanner.DefaultMarginHeights</c>. A design
+    /// setting, so it lives in the <c>.cws</c> beside the default technology rather than in the per-user
+    /// <c>.cwsuser</c>. No FormatVersion bump: an absent field loads as null.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? GroundPourMarginHeights { get; set; }
+
+    /// <summary>
     /// The Python interpreter this workspace settled on for PCell generator scripts — the command,
     /// with any prefix arguments after it (e.g. <c>py.exe -3</c>).
     ///

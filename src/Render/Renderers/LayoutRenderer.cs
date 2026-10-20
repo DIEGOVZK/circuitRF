@@ -1062,6 +1062,10 @@ public static partial class LayoutRenderer
                 if (opts.Overlay?.ArtworkProbe is { Count: > 0 } artworkProbe)
                     DrawArtworkProbe(canvas, artworkProbe, theme, ps, scaleUm);
 
+                // R-dfr22-3-5: the ratsnest. Overlay-only, like LVS — a guide to routing, not artwork.
+                if (opts.Overlay?.Ratsnest is { Count: > 0 } ratsnest)
+                    DrawRatsnest(canvas, ratsnest, ps, scaleUm);
+
                 // brief-impedance-3 R-imp3-3: the Impedance panel's results. Overlay-only, like LVS —
                 // results are review state, not document content, so no export ever draws them.
                 if (opts.Overlay?.ImpedanceScope is { } impedanceScope)

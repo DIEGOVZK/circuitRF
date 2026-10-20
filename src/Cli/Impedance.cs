@@ -296,7 +296,9 @@ internal static partial class Impedance
             return 130;
         }
         return report.FailCount > 0 || report.AllTraces.Any(t => t.Verdict == TraceVerdict.Unsolved)
-               || (o.WarningsFail && report.WarningCount > 0) ? 1 : 0;
+               || report.AllJunctions.Any(j => j.Verdict is TraceVerdict.Fail or TraceVerdict.Unsolved)
+               || (o.WarningsFail && (report.WarningCount > 0 || report.AllJunctions.Any(j => j.Verdict == TraceVerdict.Warning)))
+            ? 1 : 0;
     }
 
     /// <summary>
@@ -609,6 +611,13 @@ internal static partial class Impedance
                         : $"        {(issue.Fails ? '!' : '?')} {issue.Text}");
                 foreach (var note in t.Notes) sb.AppendLine($"        · {note}");
             }
+            // R-dfr22-3-6: each junction under the traces, arm by arm.
+            foreach (var j in layer.JunctionReviews)
+            {
+                string arms = string.Join(", ", j.Arms.Select(a => $"{a.TraceId ?? "arm"} {r.Len(a.Width)} {Z(a.Z0)} Ω {Verdict(a.Verdict)}"));
+                sb.AppendLine(string.Create(CultureInfo.InvariantCulture,
+                    $"  {j.Id,-5} {Verdict(j.Verdict),-4}  {j.Kind} at {r.Pt(j.X, j.Y)}: {arms}"));
+            }
         }
         sb.AppendLine();
         if (r.StaleAcceptances.Count > 0)
@@ -618,6 +627,11 @@ internal static partial class Impedance
             sb.AppendLine();
         }
         sb.AppendLine($"{r.TraceCount} trace(s) on {r.Layers.Count} layer(s): {r.PassCount} pass, {r.WarningCount} warning, {r.FailCount} fail." +
+                      (r.JunctionCount > 0
+                          ? $" And {r.JunctionCount} junction(s): {r.AllJunctions.Count(j => j.Verdict == TraceVerdict.Pass)} pass, " +
+                            $"{r.AllJunctions.Count(j => j.Verdict == TraceVerdict.Warning)} warning, " +
+                            $"{r.AllJunctions.Count(j => j.Verdict is TraceVerdict.Fail or TraceVerdict.Unsolved)} fail."
+                          : "") +
                       (r.AcceptedCount > 0 ? $" {r.AcceptedCount} finding(s) accepted." : "") +
                       (r.Cancelled ? $" Cancelled after {r.Layers.Count} of {r.LayersRequested.Count} layers." : ""));
         return sb.ToString();
@@ -648,10 +662,15 @@ internal static partial class Impedance
                     [.. t.Issues.Select(i => new ImpedanceIssueJson(
                         IssueId(i.Kind), i.Fails ? "fail" : "warning", [Um(i.X0), Um(i.Y0)], [Um(i.X1), Um(i.Y1)], i.Text,
                         i.Accepted is { } a ? new ImpedanceAcceptedJson(a.Reason, a.AcceptedUtc) : null))],
-                    t.Notes))]))],
+                    t.Notes))],
+                l.JunctionReviews.Count == 0 ? null : [.. l.JunctionReviews.Select(j => new ImpedanceJunctionJson(
+                    j.Id, j.Kind, j.Verdict.ToString().ToLowerInvariant(), [Um(j.X), Um(j.Y)],
+                    [.. j.Arms.Select(a => new ImpedanceJunctionArmJson(
+                        a.TraceId, Um(a.Width), a.Z0, a.Verdict.ToString().ToLowerInvariant()))]))]))],
             r.AcceptedCount,
             [.. r.StaleAcceptances.Select(a => new ImpedanceStaleAcceptanceJson(
-                a.Key, IssueId(a.Kind), a.LayerName, a.Summary, a.Reason, a.AcceptedUtc))]);
+                a.Key, IssueId(a.Kind), a.LayerName, a.Summary, a.Reason, a.AcceptedUtc))],
+            r.JunctionCount == 0 ? null : r.JunctionCount);
     }
 
     private static string IssueId(TraceIssueKind k) => k switch

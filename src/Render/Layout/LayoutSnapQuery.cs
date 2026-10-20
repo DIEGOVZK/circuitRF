@@ -32,6 +32,10 @@ public struct SnapQueryCounters
     public long BucketsProbed;
 }
 
+/// <summary>One straight outline edge in world coordinates, with its unit OUTWARD normal — the side away from the
+/// copper. A body drag pulls a dragged edge flush against a stationary one facing it (R-dfr22-3-1).</summary>
+public readonly record struct SnapEdge(double X0, double Y0, double X1, double Y1, double Nx, double Ny, LayerKey Layer);
+
 public static class LayoutSnapQuery
 {
     /// <summary>
@@ -156,6 +160,102 @@ public static class LayoutSnapQuery
                     result.Add(cand with { X = wx, Y = wy });
                 }
             }
+        }
+    }
+
+    // ── Outline edges, for a body drag's edge-to-edge snap (R-dfr22-3-1) ─────────────────────────
+
+    /// <summary>
+    /// The outer outline of every shape and placed instance whose box meets <paramref name="region"/>, in world
+    /// coordinates, each edge with its unit OUTWARD normal — what a dragged edge can be pulled flush against.
+    /// Bounded by the same L2b spatial index <see cref="FindCandidates"/> uses (no second search structure), filtered
+    /// to <paramref name="layers"/> (contact is a same-layer question: a plane under a line is not an edge it meets),
+    /// and capped at <paramref name="cap"/> edges. An instance contributes its own cell's shapes, one level deep.
+    /// </summary>
+    public static IReadOnlyList<SnapEdge> EdgesNear(
+        LayoutView view, Technology? tech, string baseDir, Bbox region, IReadOnlySet<LayerKey> layers,
+        IReadOnlySet<int>? excludeShapeIndices, IReadOnlySet<int>? excludeInstanceIndices, int cap,
+        ref SnapQueryCounters counters)
+    {
+        var edges = new List<SnapEdge>();
+        if (region.IsEmpty || layers.Count == 0) return edges;
+        var layerVisible = new LayerVisibility(tech);
+        Bbox InstanceBboxFor(LayoutInstance inst) => CellHierarchy.InstanceBbox(inst, baseDir);
+        foreach (var entry in view.SpatialIndex.QueryIntersecting(
+                     view.Shapes, view.Instances, InstanceBboxFor, CellLayoutResolver.Generation, region))
+        {
+            if (edges.Count >= cap) break;
+            if (entry.Kind == SpatialEntryKind.Shape)
+            {
+                if (entry.Index < 0 || entry.Index >= view.Shapes.Count) continue;
+                if (excludeShapeIndices is not null && excludeShapeIndices.Contains(entry.Index)) continue;
+                var shape = view.Shapes[entry.Index];
+                if (!layers.Contains(shape.Layer) || !layerVisible[shape.Layer]) continue;
+                counters.FeaturesExamined++;
+                AppendOutlineEdges(shape, tech, null, 0, 0, edges, cap);
+            }
+            else
+            {
+                if (entry.Index < 0 || entry.Index >= view.Instances.Count) continue;
+                if (excludeInstanceIndices is not null && excludeInstanceIndices.Contains(entry.Index)) continue;
+                AppendInstanceOutlineEdges(view.Instances[entry.Index], baseDir, tech, layers, edges, cap, ref counters);
+            }
+        }
+        return edges;
+    }
+
+    /// <summary>One instance's own cell outlines, placed — every array cell, up to <paramref name="cap"/> edges in
+    /// all. Shared by the dragged side and the stationary side, so both read an instance's copper the same way.</summary>
+    public static void AppendInstanceOutlineEdges(
+        LayoutInstance inst, string baseDir, Technology? tech, IReadOnlySet<LayerKey>? layers, List<SnapEdge> sink,
+        int cap, ref SnapQueryCounters counters)
+    {
+        var res = CellLayoutResolver.Resolve(inst.CellRef, baseDir);
+        if (res.State != CellLayoutState.Resolved) return;
+        var layerVisible = new LayerVisibility(tech);
+        int rows = Math.Max(1, inst.Rows), cols = Math.Max(1, inst.Cols);
+        for (int r = 0; r < rows; r++)
+        for (int c = 0; c < cols; c++)
+            foreach (var shape in res.View!.Shapes)
+            {
+                if (sink.Count >= cap) return;
+                if ((layers is not null && !layers.Contains(shape.Layer)) || !layerVisible[shape.Layer]) continue;
+                counters.FeaturesExamined++;
+                AppendOutlineEdges(shape, tech, inst, r, c, sink, cap);
+            }
+    }
+
+    /// <summary>A shape's OUTER ring as edges with outward normals, placed through <paramref name="inst"/>'s
+    /// transform when one is given. Labels, bitmaps, vias and paths carry no closed outline and add nothing.</summary>
+    public static void AppendOutlineEdges(LayoutShape shape, Technology? tech, LayoutInstance? inst, int row, int col,
+                                          List<SnapEdge> sink, int cap)
+    {
+        if (shape is LabelShape or BitmapShape or ViaShape or PathShape) return;
+        IReadOnlyList<long[]> rings;
+        try { rings = LayoutFlattener.Flatten(shape, LayoutFlattener.ResolveTolDbu(shape, tech)); }
+        catch (ArgumentOutOfRangeException) { return; }
+        if (rings.Count == 0) return;
+        var ring = rings[0];
+        int n = ring.Length / 2;
+        if (n < 3) return;
+        var xs = new double[n];
+        var ys = new double[n];
+        for (int i = 0; i < n; i++)
+        {
+            (long x, long y) = inst is null ? (ring[2 * i], ring[2 * i + 1])
+                                            : LayoutInstanceTransform.TransformPoint(ring[2 * i], ring[2 * i + 1], inst, row, col);
+            xs[i] = x; ys[i] = y;
+        }
+        double area2 = 0;
+        for (int i = 0; i < n; i++) { int j = (i + 1) % n; area2 += xs[i] * ys[j] - xs[j] * ys[i]; }
+        double sign = area2 >= 0 ? 1 : -1;   // counter-clockwise: the outside is on the right of each edge
+        for (int i = 0; i < n && sink.Count < cap; i++)
+        {
+            int j = (i + 1) % n;
+            double dx = xs[j] - xs[i], dy = ys[j] - ys[i];
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len <= 0) continue;
+            sink.Add(new SnapEdge(xs[i], ys[i], xs[j], ys[j], sign * dy / len, -sign * dx / len, shape.Layer));
         }
     }
 

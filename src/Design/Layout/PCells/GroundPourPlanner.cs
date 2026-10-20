@@ -18,10 +18,12 @@ namespace CircuitRF.Design.Layout.PCells;
 /// <param name="GroundVias">How many of Update Layout's own ground vias (<see cref="GroundArtwork"/>), and of the VIAGND
 /// components landing on this plane, the pour joins — known to be ground, so never cut and never counted in <paramref name="ViasJoined"/>.</param>
 /// <param name="BoundedByOutline">The pour fills the board outline rather than a margin round the artwork.</param>
+/// <param name="MarginHeights">The margin it was asked for, in substrate heights (R-dfr22-3-4).</param>
 public sealed record GroundPour(
     StackupLayer Ground, LayerKey DrawingLayer, IReadOnlyList<LayoutShape> Shapes,
     int Lines, int ViaClearances, int ViasJoined, long MarginDbu,
-    IReadOnlyList<LayoutShape>? Replaces = null, int GroundVias = 0, bool BoundedByOutline = false);
+    IReadOnlyList<LayoutShape>? Replaces = null, int GroundVias = 0, bool BoundedByOutline = false,
+    double MarginHeights = GroundPourPlanner.DefaultMarginHeights);
 
 /// <summary>A region a ground conductor has to cover besides the microstrip lines — a ground via and the part it
 /// grounds (<see cref="GroundArtwork"/>) — with the substrate height its margin is taken in.</summary>
@@ -61,9 +63,10 @@ public static class GroundPourPlanner
     /// technology states an antipad yet.</summary>
     public const double ViaClearanceMicrons = 250;
 
-    /// <summary>How far the pour reaches beyond the lines, in substrate heights: a microstrip's field is confined to
-    /// a few h either side of the strip, so five keeps the plane's edge out of it.</summary>
-    public const double MarginHeights = 5;
+    /// <summary>How far the pour reaches beyond the lines, in substrate heights, unless the workspace says otherwise
+    /// (R-dfr22-3-4, the <c>.cws</c>'s <c>GroundPourMarginHeights</c>): a microstrip's field is confined to a few h
+    /// either side of the strip, so five keeps the plane's edge out of it.</summary>
+    public const double DefaultMarginHeights = 5;
 
     /// <summary>How far a pour bounded by the board outline is pulled back from the board's edge, µm.</summary>
     public const double OutlinePullbackMicrons = 250;
@@ -75,8 +78,8 @@ public static class GroundPourPlanner
     /// is not the designer's, and is what a new pour replaces.
     /// </summary>
     public static IReadOnlyList<GroundPour> Plan(LayoutView view, Technology? technology, string layoutBaseDir,
-                                                 bool onlyUndrawn = true)
-        => Plan(view, technology, layoutBaseDir, view.Shapes, view.Instances, [], onlyUndrawn).Pours;
+                                                 bool onlyUndrawn = true, double marginHeights = DefaultMarginHeights)
+        => Plan(view, technology, layoutBaseDir, view.Shapes, view.Instances, [], onlyUndrawn, marginHeights).Pours;
 
     /// <summary>
     /// The pours for <paramref name="shapes"/> and <paramref name="instances"/> as they WILL be — Update Layout plans
@@ -84,13 +87,16 @@ public static class GroundPourPlanner
     /// feedback round 11). A ground conductor named only by an extra region, with no line returning through it, is
     /// poured too: a ground via has to land on something. When the technology names a board outline and the layout
     /// draws one, the pour fills it, <see cref="OutlinePullbackMicrons"/> in from the edge; otherwise it reaches
-    /// <see cref="MarginHeights"/> substrate heights beyond everything it covers.
+    /// <paramref name="marginHeights"/> substrate heights beyond everything it covers — a workspace's choice, passed
+    /// in, since a preference is an argument here.
     /// </summary>
     public static GroundPourOutcome Plan(LayoutView view, Technology? technology, string layoutBaseDir,
                                          IReadOnlyList<LayoutShape> shapes, IEnumerable<LayoutInstance> instances,
-                                         IEnumerable<GroundPourRegion> extra, bool onlyUndrawn = true)
+                                         IEnumerable<GroundPourRegion> extra, bool onlyUndrawn = true,
+                                         double marginHeights = DefaultMarginHeights)
     {
         if (technology is null) return new([], []);
+        if (!(marginHeights >= 0) || !double.IsFinite(marginHeights)) marginHeights = DefaultMarginHeights;
 
         var byGround = new Dictionary<string, (StackupLayer Ground, Bbox Region, double MaxH, int Lines)>(StringComparer.Ordinal);
         var order = new List<string>();
@@ -135,7 +141,7 @@ public static class GroundPourPlanner
                 continue;
             }
 
-            long margin = (long)Math.Ceiling(MarginHeights * maxH * 1e6 * view.DbuPerMicron);
+            long margin = (long)Math.Ceiling(marginHeights * maxH * 1e6 * view.DbuPerMicron);
             var outer = outline ?? new Bbox(region.MinX - margin, region.MinY - margin, region.MaxX + margin, region.MaxY + margin);
             var (clearances, joined, groundVias) = Clearances(view, shapes, instances, technology, ground, outer);
 
@@ -147,7 +153,7 @@ public static class GroundPourPlanner
             foreach (var shape in drawn) shape.Generated = GroundArtwork.PourTag;
             var replaces = shapes.Where(s => s.Generated == GroundArtwork.PourTag && ground.DrawingLayers.Contains(s.Layer)).ToList();
             pours.Add(new GroundPour(ground, layer, drawn, lines, clearances.Count, joined, outline is null ? margin : 0,
-                                     replaces, groundVias, outline is not null));
+                                     replaces, groundVias, outline is not null, marginHeights));
         }
         return new(pours, leftAlone);
     }

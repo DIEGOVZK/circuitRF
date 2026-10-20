@@ -228,6 +228,10 @@ descending, then *ascending area* — so a small shape sitting on a large one is
 case that actually matters. The status bar shows where you are: `Rect · M2 · 2 of 5`. Alt-click is the
 explicit "next candidate" for anyone who expects it.
 
+**A placed part is in the cycle too, and a part lying on a shape comes before that shape.** Press on a
+line sitting on a ground plane and the first press picks the line; a second press at the same point picks
+the plane. A part that is not inside the shape under the press comes after the shapes.
+
 With exactly one shape selected you get handles: square handles on vertices, round handles at polygon
 edge midpoints. Hit priority is strict — **vertex handle, then edge handle, then edge line, then shape
 interior** — because getting that order wrong makes vertex dragging feel broken.
@@ -314,8 +318,10 @@ layout:
 2. Components with no layout view at all — VAR, MEAS, Ground, and any un-laid-out cell — are **reported
    to Messages and skipped**, not silently omitted.
 3. Instances are placed in a packed, non-overlapping arrangement, roughly following schematic order.
-4. Net names are carried onto instance pins, and a **ratsnest** is drawn: thin straight lines on a
-   system layer between pins sharing a net. That is the guide that makes manual routing tractable.
+4. A **ratsnest** is shown: thin straight lines between pins that share a net and are not yet joined by
+   copper, each net drawn as the shortest set of lines that connects it. It follows a part as you drag
+   it, and a net's lines disappear once copper joins its pins. It is drawn over the layout, never into
+   it &mdash; nothing is selectable, saved or exported. **View ▸ Show Ratsnest** turns it on and off.
 
 <div class="callout warn">
 <span class="label">There is no auto-router, and there is not going to be one</span>
@@ -328,7 +334,8 @@ beside it, on the side away from the part, tied to the pad with a short trace an
 ground plane its layer returns through. On a two-layer board that is Bottom Copper. The ground plane
 itself is **poured**: on every ground layer the microstrip lines and those vias return through,
 inner or outer alike, five substrate heights beyond what it covers, or filling the board outline when
-one is drawn. Every via that passes *through* a poured plane gets a clearance; a ground via is joined
+one is drawn. **Design ▸ Ground Pour Margin…** sets how many substrate heights the pour reaches for the
+workspace; the next Update Layout or Draw Ground Pour redraws the pour with it. Every via that passes *through* a poured plane gets a clearance; a ground via is joined
 to it. One Update Layout on a two-layer board with an MLIN and two shunt parts leaves the parts'
 ground pads drilled to a poured Bottom Copper, and LVS reads them on the ground net.
 
@@ -470,6 +477,21 @@ Two consequences you will notice:
 
 Turning either toggle recomputes the marker at the **last known cursor position immediately** — you do
 not have to jiggle the mouse to see the mode change take effect.
+
+### Dragging a part by its body
+
+A drag started anywhere on a part or shape, not only on a snap marker, snaps what you are dragging
+to what it comes to rest against:
+
+- **A pin onto a pin.** When one of the dragged part's pins comes within the capture radius of
+  another part's pin or of a port, the drag lands the two exactly on each other. This is how a line is
+  dropped onto a tee with no gap.
+- **An edge onto an edge.** Otherwise, when an outline edge of the selection comes within the capture
+  radius of a parallel edge facing it on the same layer, the drag closes the gap (or removes the
+  overlap) across the edge. Along the edge, the position stays the pointer's, on the grid.
+
+The marker shows where the contact is. Turn geometry snap off with <kbd>S</kbd> or <kbd>F3</kbd> to
+place a part freely.
 
 ## The Ruler {#ruler}
 
@@ -1116,6 +1138,13 @@ Each trace is cut once per width along its length, and each cut is the quasi-sta
 [Trace impedance](#trace-impedance) describes: the reference is found from the copper, and every
 other conductor near the trace is held at ground.
 
+**Junctions are reviewed too.** Where traces meet, and where a placed tee or cross sits whose arms are
+too short to be traces, each arm is cut across where it leaves the junction and solved at its own width
+the same way. A junction is a **tee** (three arms), a **cross** (four) or **plain**, and each arm
+passes, warns or fails against the target as a trace does. The panel lists the junctions under the
+traces, the canvas marks each one with a square in its worst arm's Z0 colour, and the verdict line
+counts them: *PASS &mdash; 3 traces and 1 junction reviewed, …*.
+
 ### What it flags {#impedance-findings}
 
 Every trace is **PASS**, **WARN** or **FAIL**. Each finding is a warning or a fail, and a trace takes
@@ -1187,8 +1216,9 @@ not undone by **Undo**. [`circuitrf impedance`](cli.html#impedance) applies them
   ticks. A trace outside the scope is plain grey copper &mdash; no colour, no label, no marker.
 - **A table per layer**: each trace's start and end, what each end is, its length and width, its line
   **type**, Z0 min, max and average, the share of its length inside the band, its reference layers,
-  PASS, WARN or FAIL, and then the numbered findings in full, each with its severity &mdash; or
-  **ACCEPTED** and its reason.
+  PASS, WARN or FAIL; then the layer's **junctions**, one row per arm with its trace, width, Z0 and
+  result; and then the numbered findings in full, each with its severity &mdash; or **ACCEPTED** and its
+  reason.
 - **Accepted findings**, when there are any: each accepted finding with its trace, its text, the reason
   and the date, and any acceptance that matched nothing in this run. An accepted finding is also still
   on its layer's map, **grey with a check** where its number would be.

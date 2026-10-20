@@ -434,6 +434,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         NewTechnologyCommand.NotifyCanExecuteChanged();
         NewEmSetupCommand.NotifyCanExecuteChanged();
         ManagePdksCommand.NotifyCanExecuteChanged();
+        SetGroundPourMarginCommand.NotifyCanExecuteChanged();
 
         if (_factory.ProjectTreeTool is { } tree)
         {
@@ -16488,6 +16489,8 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         UpdateSchematicFromLayoutCommand.NotifyCanExecuteChanged();
         CreateSchematicFromArtworkCommand.NotifyCanExecuteChanged();
         DrawGroundPourCommand.NotifyCanExecuteChanged();
+        ToggleRatsnestCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(IsRatsnestShown));
         // Edit ▸ Paste Image as Schematic / Layout paste into the document in focus.
         PasteImageAsSchematicCommand.NotifyCanExecuteChanged();
         PasteImageAsLayoutCommand.NotifyCanExecuteChanged();
@@ -16791,6 +16794,8 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         UpdateSchematicFromLayoutCommand.NotifyCanExecuteChanged();
         CreateSchematicFromArtworkCommand.NotifyCanExecuteChanged();
         DrawGroundPourCommand.NotifyCanExecuteChanged();
+        ToggleRatsnestCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(IsRatsnestShown));
         // Edit ▸ Paste Image as Schematic / Layout paste into the document in focus.
         PasteImageAsSchematicCommand.NotifyCanExecuteChanged();
         PasteImageAsLayoutCommand.NotifyCanExecuteChanged();

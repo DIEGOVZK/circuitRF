@@ -225,6 +225,14 @@ public sealed record class LayoutOverlay
     /// never a <c>LayerKey</c>, never in <c>LayoutView.Shapes</c>, never reachable by an exporter.
     /// </summary>
     public IReadOnlyList<long[]> ArtworkProbe { get; init; } = [];
+
+    /// <summary>
+    /// brief-dfr22-3 R-dfr22-3-5: the ratsnest — a thin straight line between pins that share a net and are not yet
+    /// joined by copper (layout-view.md §9 step 4). The same system layer as <see cref="DrcMarkers"/>: never a
+    /// <c>LayerKey</c>, never in <c>LayoutView.Shapes</c>, never saved, never reachable by an exporter. Empty when
+    /// View ▸ Show Ratsnest is off.
+    /// </summary>
+    public IReadOnlyList<CircuitRF.Design.Layout.Extraction.RatsnestLine> Ratsnest { get; init; } = [];
 }
 
 /// <summary>The review's scope ready to draw — world DBU.</summary>
@@ -246,7 +254,14 @@ public sealed record ImpedanceOverlay(
     double TargetOhms,
     double TolerancePercent,
     IReadOnlyList<ImpedanceTraceMarker> Traces,
-    IReadOnlyList<ImpedanceFindingMarker> Findings);
+    IReadOnlyList<ImpedanceFindingMarker> Findings)
+{
+    /// <summary>Each reviewed junction (R-dfr22-3-6), coloured by its worst arm.</summary>
+    public IReadOnlyList<ImpedanceJunctionMarker> Junctions { get; init; } = [];
+}
+
+/// <summary>A reviewed junction at its centre, world DBU, with its worst arm's Z0 (null when none was solved).</summary>
+public readonly record struct ImpedanceJunctionMarker(long X, long Y, double? WorstZ0);
 
 /// <summary>One cut's stretch of centre line, world DBU, and its Z0 (null where it was not solved).</summary>
 public readonly record struct ImpedanceStretch(long X0, long Y0, long X1, long Y1, double? Z0);

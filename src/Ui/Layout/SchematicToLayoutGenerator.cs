@@ -156,7 +156,8 @@ public static class SchematicToLayoutGenerator
         string? techIdentity,
         ICellResolver? cellResolver,
         string? targetLayoutPath = null,
-        bool linkOrientation = true)
+        bool linkOrientation = true,
+        double pourMarginHeights = GroundPourPlanner.DefaultMarginHeights)
     {
         var extraction = NetExtractor.Extract(model, "tb", cellResolver);
 
@@ -458,7 +459,8 @@ public static class SchematicToLayoutGenerator
                                      .Concat(newInstances.Select(n => n.Instance)).ToList();
         var ground = GroundArtwork.Plan(target, technology, targetLayoutBaseDir, future,
                                         GroundedPins(physical, extraction, schematicDir),
-                                        new HashSet<string>(physical.Select(c => c.InstanceName), StringComparer.Ordinal));
+                                        new HashSet<string>(physical.Select(c => c.InstanceName), StringComparer.Ordinal),
+                                        pourMarginHeights);
         if (GroundArtworkCommand(target, ground) is { } groundCommand) chain = Chain(chain, groundCommand);
 
         return new GenerationResult(chain, lines, added, updated, unchanged, removed, overwritten,
@@ -529,7 +531,7 @@ public static class SchematicToLayoutGenerator
             string extent = p.BoundedByOutline
                 ? "filling the board outline"
                 : $"reaching {LayoutUnits.Format(p.MarginDbu, unit, view.DbuPerMicron)} {u} " +
-                  $"({GroundPourPlanner.MarginHeights:0} substrate heights) beyond what it covers";
+                  $"({p.MarginHeights:0.##} substrate heights) beyond what it covers";
             string what = (p.Lines, p.GroundVias) switch
             {
                 (> 0, > 0) => $"under {p.Lines} microstrip line(s) and {p.GroundVias} ground via(s)",

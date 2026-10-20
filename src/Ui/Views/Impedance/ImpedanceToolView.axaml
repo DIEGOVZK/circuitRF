@@ -439,6 +439,27 @@
 
             <!-- Accepting findings (brief-impedance-5): select finding rows, Accept…, give the reason. -->
             <StackPanel Grid.Row="7" Spacing="4" Margin="0,4,0,0" IsVisible="{Binding Panel.HasResults}">
+                <!-- R-dfr22-3-6: junctions under the traces — a tee's arms are too short to be traces. -->
+                <StackPanel Spacing="2" IsVisible="{Binding Panel.HasJunctionRows}">
+                    <TextBlock Classes="section" Text="Junctions"/>
+                    <ItemsControl ItemsSource="{Binding Panel.JunctionRows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="imp:ImpedanceJunctionRow">
+                                <StackPanel Spacing="1" Margin="18,1,0,1">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding VerdictText}" FontSize="11" FontWeight="SemiBold" Width="36"
+                                                   Classes.pass="{Binding IsPass}" Classes.warn="{Binding IsWarning}"
+                                                   Classes.fail="{Binding IsFail}"/>
+                                        <TextBlock Text="{Binding Id}" FontSize="12" FontWeight="SemiBold"/>
+                                        <TextBlock Text="{Binding KindText}" FontSize="11" Opacity="0.8"/>
+                                        <TextBlock Text="{Binding LayerName}" FontSize="11" Opacity="0.65"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding ArmsText}" FontSize="11" Margin="42,0,0,0" TextWrapping="Wrap" MaxWidth="560"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <Button Command="{Binding Panel.BeginAcceptCommand}" Padding="10,3" FontSize="12"
                             ToolTip.Tip="Accept the selected findings with a reason: they stay listed, marked ACCEPTED, and stop counting against their trace. Saved with the layout.">

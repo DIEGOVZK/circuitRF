@@ -209,6 +209,39 @@ public sealed record TraceJunctionArm(string TraceId, bool AtStart);
 /// </summary>
 public sealed record TraceJunction(string Id, LayerKey Layer, long X, long Y, IReadOnlyList<TraceJunctionArm> Arms);
 
+/// <summary>
+/// One arm of a reviewed junction (R-dfr22-3-6): its width where it leaves the junction and the Z0 solved at that
+/// width through the layer's own cross-section — the same solve a trace's cut makes. DBU.
+/// </summary>
+/// <param name="TraceId">The trace this arm is the end of, or null for an arm too short to be a trace (a placed
+/// tee's own stub).</param>
+/// <param name="X">Where the arm was cut.</param>
+public sealed record TraceJunctionArmReview(string? TraceId, double Width, double? Z0, TraceVerdict Verdict, long X, long Y);
+
+/// <summary>
+/// A junction reviewed through its copper (R-dfr22-3-6) — where traces meet, or a placed tee or cross whose arms are
+/// too short to be traces. <see cref="Kind"/> is "tee" for three arms, "cross" for four, "plain" otherwise.
+/// </summary>
+public sealed record TraceJunctionReview(string Id, LayerKey Layer, long X, long Y, string Kind,
+                                         IReadOnlyList<TraceJunctionArmReview> Arms)
+{
+    /// <summary>The worst arm's verdict: fail, then unsolved, then warning, then pass.</summary>
+    public TraceVerdict Verdict =>
+        Arms.Any(a => a.Verdict == TraceVerdict.Fail) ? TraceVerdict.Fail
+        : Arms.Any(a => a.Verdict == TraceVerdict.Unsolved) ? TraceVerdict.Unsolved
+        : Arms.Any(a => a.Verdict == TraceVerdict.Warning) ? TraceVerdict.Warning
+        : TraceVerdict.Pass;
+
+    /// <summary>The Z0 of the arm furthest from <paramref name="targetOhms"/> — what the canvas colours the junction
+    /// by — or null when no arm was solved.</summary>
+    public double? WorstZ0(double targetOhms) =>
+        Arms.Where(a => a.Z0 is not null).OrderByDescending(a => Math.Abs(a.Z0!.Value - targetOhms))
+            .Select(a => a.Z0).FirstOrDefault();
+
+    /// <summary>A junction's kind by its arm count.</summary>
+    public static string KindOf(int arms) => arms switch { 3 => "tee", 4 => "cross", _ => "plain" };
+}
+
 /// <summary>A trace's result. <see cref="Warning"/> is APPENDED rather than placed between Pass and
 /// Fail, so a number stored anywhere keeps its meaning.</summary>
 public enum TraceVerdict { Pass, Fail, Unsolved, Warning }
@@ -309,6 +342,10 @@ public sealed record TraceLayerResult
 
     /// <summary>Where three traces or more meet on this layer.</summary>
     public IReadOnlyList<TraceJunction> Junctions { get; init; } = [];
+
+    /// <summary>Every junction on this layer reviewed through its copper, arm by arm (R-dfr22-3-6) — including a
+    /// placed tee whose arms are too short to be traces.</summary>
+    public IReadOnlyList<TraceJunctionReview> JunctionReviews { get; init; } = [];
 
     /// <summary>The layer's unioned copper, as flat x,y rings in DBU — what the page draws under the
     /// map.</summary>
@@ -417,6 +454,8 @@ public sealed record TraceImpedanceReport
 
     public IEnumerable<TraceRun> AllTraces => Layers.SelectMany(l => l.Traces);
     public int TraceCount => Layers.Sum(l => l.Traces.Count);
+    public IEnumerable<TraceJunctionReview> AllJunctions => Layers.SelectMany(l => l.JunctionReviews);
+    public int JunctionCount => Layers.Sum(l => l.JunctionReviews.Count);
     public int PassCount => AllTraces.Count(t => t.Verdict == TraceVerdict.Pass);
     public int WarningCount => AllTraces.Count(t => t.Verdict == TraceVerdict.Warning);
     public int FailCount => AllTraces.Count(t => t.Verdict == TraceVerdict.Fail);
@@ -440,9 +479,15 @@ public sealed record TraceImpedanceReport
         {
             int unsolved = AllTraces.Count(t => t.Verdict == TraceVerdict.Unsolved);
             int passAccepted = AllTraces.Count(t => t.Verdict == TraceVerdict.Pass && t.AcceptedCount > 0);
-            string verdict = FailCount > 0 || unsolved > 0 ? "FAIL" : WarningCount > 0 ? "WARN" : "PASS";
+            // R-dfr22-3-6: a junction's worst arm counts toward the review's verdict as a trace would.
+            var junctions = AllJunctions.Select(j => j.Verdict).ToList();
+            bool junctionFails = junctions.Any(v => v is TraceVerdict.Fail or TraceVerdict.Unsolved);
+            string verdict = FailCount > 0 || unsolved > 0 || junctionFails ? "FAIL"
+                           : WarningCount > 0 || junctions.Contains(TraceVerdict.Warning) ? "WARN" : "PASS";
             static string N(int n, string one, string many) => $"{n} {(n == 1 ? one : many)}";
-            return $"{verdict} — {N(TraceCount, "trace", "traces")} reviewed, {PassCount} pass" +
+            string reviewed = N(TraceCount, "trace", "traces") +
+                              (JunctionCount > 0 ? $" and {N(JunctionCount, "junction", "junctions")}" : "");
+            return $"{verdict} — {reviewed} reviewed, {PassCount} pass" +
                    (passAccepted > 0 ? $" ({passAccepted} with an accepted finding)" : "") +
                    $", {N(WarningCount, "warning", "warnings")}, {N(FailCount, "failure", "failures")}" +
                    (unsolved > 0 ? $", {unsolved} unsolved" : "");
@@ -748,6 +793,7 @@ public static partial class TraceImpedanceAnalysis
                 control?.BeginStage($"{tag}: cutting");
                 var solves = new Dictionary<string, TraceCut>();
                 stationCount += Cut(lw, ctx, solves, dbuPerMicron, ct);
+                var armCuts = JunctionArmCuts(lw, ctx, solves, declaredPads, scope is null ? null : lw.Chains, dbuPerMicron);
 
                 var keys = solves.Keys.ToArray();
                 control?.BeginStage($"{tag}: solving", keys.Length, "cross-sections");
@@ -765,9 +811,11 @@ public static partial class TraceImpedanceAnalysis
                 var runs = new List<TraceRun>();
                 var junctionIds = new Dictionary<int, string>();
                 var arms = new Dictionary<int, List<TraceJunctionArm>>();
+                var runOf = new Dictionary<ChainWork, string>();
                 foreach (var chain in lw.Chains)
                 {
                     var run = Assemble(chain, lw, answers, options, dbuPerMicron, ref id);
+                    runOf[chain] = run.Id;
                     string? JunctionOf(int key, bool atStart)
                     {
                         if (key < 0) return null;
@@ -782,12 +830,28 @@ public static partial class TraceImpedanceAnalysis
                     var (jx, jy) = lw.JunctionCentres[kv.Key];
                     return new TraceJunction(kv.Value, lw.Key, (long)Math.Round(jx), (long)Math.Round(jy), arms[kv.Key]);
                 }).ToList();
+                var junctionReviews = new List<TraceJunctionReview>();
+                foreach (var (jKey, jArms) in armCuts)
+                {
+                    if (!junctionIds.TryGetValue(jKey, out var jName)) junctionIds[jKey] = jName = $"J{++jid}";
+                    var (jx, jy) = lw.JunctionCentres[jKey];
+                    junctionReviews.Add(new TraceJunctionReview(jName, lw.Key, (long)Math.Round(jx), (long)Math.Round(jy),
+                        TraceJunctionReview.KindOf(jArms.Count),
+                        [.. jArms.Select(a =>
+                        {
+                            double? z0 = a.Cut is { Refusal: null } c && answers.TryGetValue(c.Key, out var ans) && ans.Refusal is null
+                                ? TraceCrossSection.Z0(ans.C, ans.C0) : null;
+                            return new TraceJunctionArmReview(runOf.GetValueOrDefault(a.Chain), a.Width, z0,
+                                                              ArmVerdict(z0, options), (long)Math.Round(a.X), (long)Math.Round(a.Y));
+                        })]));
+                }
                 layers.Add(new TraceLayerResult
                 {
                     Layer = lw.Key,
                     Name = lw.Name,
                     Traces = runs,
                     Junctions = junctions,
+                    JunctionReviews = junctionReviews,
                     PoursSkipped = lw.Pours,
                     OutOfScope = outOfScope,
                     OutOfScopeTraceKeys = outOfScopeKeys,
@@ -1307,10 +1371,11 @@ public static partial class TraceImpedanceAnalysis
         foreach (var b in barrels.GetValueOrDefault(band.Index) ?? [])
             if (cu.Contains(b.X, b.Y)) transitionVias.Add(b);
 
-        var chains = Chain(pieces, cu, islandOfRing, out var junctionCentres);
+        var chains = Chain(pieces, cu, islandOfRing, out var junctionCentres, out var junctionArms);
         return new LayerWork(key, name, band, cu, chains, pours, maxW)
         {
             Vias = bandVias, TransitionVias = transitionVias, IslandOfRing = islandOfRing, JunctionCentres = junctionCentres,
+            JunctionArms = junctionArms,
         };
     }
 
@@ -1335,6 +1400,56 @@ public static partial class TraceImpedanceAnalysis
 
     /// <summary>The stations along every chain of one layer, their cuts, and the unique solves they
     /// need. Returns the station count.</summary>
+    /// <summary>
+    /// Every junction's arms, each cut once across its own end piece — R-dfr22-3-6. The cuts join
+    /// <paramref name="solves"/>, which is keyed by the cross-section itself, so an arm the same width as its
+    /// neighbours in the same surroundings costs no second solve. A junction needs two arms; with a scope, only one an
+    /// in-scope trace reaches is reviewed.
+    /// </summary>
+    private static List<(int Key, List<(ChainWork Chain, double Width, double X, double Y, TraceCut? Cut)> Arms)> JunctionArmCuts(
+        LayerWork lw, TraceStack ctx, Dictionary<string, TraceCut> solves, List<(Paths64 Paths, Rect64 Box)> declaredPads,
+        List<ChainWork>? inScope, int dbuPerMicron)
+    {
+        var result = new List<(int, List<(ChainWork, double, double, double, TraceCut?)>)>();
+        if (lw.Copper is null) return result;
+        foreach (var (key, ends) in lw.JunctionArms.OrderBy(kv => kv.Key))
+        {
+            var members = ends.Where(e => !InsideDeclaredPad(e.Chain, declaredPads)).ToList();
+            if (members.Count < 2 || !lw.JunctionCentres.ContainsKey(key)) continue;
+            if (inScope is not null && !members.Any(m => inScope.Contains(m.Chain))) continue;
+            var arms = new List<(ChainWork, double, double, double, TraceCut?)>();
+            foreach (var (chain, atStart) in members)
+            {
+                var piece = (atStart ? chain.Pieces[0] : chain.Pieces[^1]).Piece;
+                double len = piece.Length;
+                if (len <= 0) continue;
+                double dx = (piece.Bx - piece.Ax) / len, dy = (piece.By - piece.Ay) / len, ux = -dy, uy = dx;
+                double qx = 0.5 * (piece.Ax + piece.Bx), qy = 0.5 * (piece.Ay + piece.By), w = piece.Width;
+                TraceCut? cut = null;
+                if (lw.Copper.ChordAt(qx, qy, ux, uy, 2 * lw.MaxWidth) is { } q && q.E0 >= 0 && q.E1 >= 0)
+                {
+                    qx += 0.5 * (q.T0 + q.T1) * ux; qy += 0.5 * (q.T0 + q.T1) * uy;
+                    w = q.T1 - q.T0;
+                    cut = TraceCrossSection.Cut(ctx, lw.Band, qx, qy, ux, uy, -0.5 * w, 0.5 * w,
+                                                double.MaxValue, Math.Max(1.0 * dbuPerMicron, 0.015 * w));
+                    if (cut.Refusal is null) solves.TryAdd(cut.Key, cut);
+                }
+                arms.Add((chain, w, qx, qy, cut));
+            }
+            if (arms.Count >= 2) result.Add((key, arms));
+        }
+        return result;
+    }
+
+    /// <summary>An arm's verdict against the target, by the trace bands: pass inside the tolerance, warn inside the
+    /// warning band, fail outside it, unsolved with no Z0.</summary>
+    private static TraceVerdict ArmVerdict(double? z0, TraceImpedanceOptions o)
+    {
+        if (z0 is not { } z) return TraceVerdict.Unsolved;
+        double off = Math.Abs(z - o.TargetOhms) / o.TargetOhms * 100;
+        return off <= o.TolerancePercent ? TraceVerdict.Pass : off <= o.WarningPercent ? TraceVerdict.Warning : TraceVerdict.Fail;
+    }
+
     private static int Cut(LayerWork lw, TraceStack ctx, Dictionary<string, TraceCut> solves, int dbuPerMicron,
                            CancellationToken ct)
     {
@@ -1531,10 +1646,14 @@ public static partial class TraceImpedanceAnalysis
 
         /// <summary>Each junction's centre, by its key (<see cref="ChainWork.StartKey"/>).</summary>
         public Dictionary<int, (double X, double Y)> JunctionCentres { get; init; } = [];
+
+        /// <summary>Every chain end on each junction, by its key — the chains too short to be traces included.</summary>
+        public Dictionary<int, List<(ChainWork Chain, bool AtStart)>> JunctionArms { get; init; } = [];
     }
 
     private static List<ChainWork> Chain(List<Piece> pieces, TraceCopper cu, int[] islandOfRing,
-                                         out Dictionary<int, (double X, double Y)> junctionCentres)
+                                         out Dictionary<int, (double X, double Y)> junctionCentres,
+                                         out Dictionary<int, List<(ChainWork Chain, bool AtStart)>> junctionArms)
     {
         int m = pieces.Count;
         // Ends: 2i is piece i's A end, 2i+1 its B end.
@@ -1655,6 +1774,16 @@ public static partial class TraceImpedanceAnalysis
         {
             while (c.Pieces.Count > 1 && Land(c.Pieces[0], c.Pieces[1])) { c.Pieces.RemoveAt(0); c.StartJunction = false; c.StartKey = -1; }
             while (c.Pieces.Count > 1 && Land(c.Pieces[^1], c.Pieces[^2])) { c.Pieces.RemoveAt(c.Pieces.Count - 1); c.EndJunction = false; c.EndKey = -1; }
+        }
+
+        // Every chain end on a junction is an ARM of it, recorded before the length filter below drops a chain
+        // too short to be a trace: a placed tee's own stubs are exactly that, and its junction is reviewed through
+        // them (R-dfr22-3-6).
+        junctionArms = [];
+        foreach (var c in chains)
+        {
+            if (c.StartKey >= 0) (junctionArms.TryGetValue(c.StartKey, out var a) ? a : junctionArms[c.StartKey] = []).Add((c, true));
+            if (c.EndKey >= 0) (junctionArms.TryGetValue(c.EndKey, out var b) ? b : junctionArms[c.EndKey] = []).Add((c, false));
         }
 
         // A chain shorter than SelectedMinAspect widths is a pad; one piece shorter than a width is a

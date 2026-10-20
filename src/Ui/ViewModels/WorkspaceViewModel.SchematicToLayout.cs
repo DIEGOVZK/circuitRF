@@ -230,7 +230,8 @@ public partial class WorkspaceViewModel
             var result = SchematicToLayoutGenerator.Run(
                 doc.ViewModel.EditModel, layoutVm.Model, schematicDir, workspaceRoot, layoutDir,
                 layoutVm.Technology, layoutVm.ResolvedTechPath, this, targetLayoutPath: targetPath,
-                linkOrientation: CircuitRF.Ui.Theming.AppPreferencesIo.Load().LinkSchematicLayoutOrientation ?? true);
+                linkOrientation: CircuitRF.Ui.Theming.AppPreferencesIo.Load().LinkSchematicLayoutOrientation ?? true,
+                pourMarginHeights: ReadGroundPourMarginHeights(Path.Combine(workspaceRoot, ".cws")));
 
             if (result.Command is not null)
                 layoutVm.Execute(result.Command);
@@ -243,6 +244,10 @@ public partial class WorkspaceViewModel
                 deleted: result.DeletedCount);
 
             addedRegion = result.AddedRegion;
+
+            // R-dfr22-3-5: the guide to which part goes where — on after every run, from the schematic just used.
+            layoutVm.ShowRatsnestFrom(CircuitRF.Design.Layout.Pdn.PdnSchematicNets.Of(doc.ViewModel.EditModel, schematicPath));
+            OnPropertyChanged(nameof(IsRatsnestShown));
 
             // Designer feedback round 11: the ground vias and the pour, drawn by the run itself (inside its command).
             foreach (var line in SchematicToLayoutGenerator.GroundArtworkReport(result.GroundArtwork, layoutVm.Model,
@@ -378,6 +383,66 @@ public partial class WorkspaceViewModel
     /// copper where the lines are now (designer feedback round 10; <see cref="LayoutEditorViewModel.DrawGroundPour"/>).</summary>
     [RelayCommand(CanExecute = nameof(IsLayoutDocumentActive))]
     private void DrawGroundPour() => ActiveLayoutDocument?.ActiveViewModel.DrawGroundPour();
+
+    /// <summary>View ▸ Show Ratsnest (R-dfr22-3-5): the active layout's guide lines between pins that share a net and
+    /// are not yet joined by copper, on or off. An overlay — nothing is drawn into the layout.</summary>
+    [RelayCommand(CanExecute = nameof(IsLayoutDocumentActive))]
+    private void ToggleRatsnest()
+    {
+        if (ActiveLayoutDocument?.ActiveViewModel is not { } vm) return;
+        vm.ShowRatsnest = !vm.ShowRatsnest;
+        OnPropertyChanged(nameof(IsRatsnestShown));
+    }
+
+    /// <summary>Whether the active layout shows its ratsnest — the menu item's check.</summary>
+    public bool IsRatsnestShown => ActiveLayoutDocument?.ActiveViewModel.ShowRatsnest == true;
+
+    /// <summary>The ground pour's margin this workspace records (R-dfr22-3-4), or the planner's default.</summary>
+    internal double GroundPourMarginHeights => ReadGroundPourMarginHeights(CurrentWorkspacePath);
+
+    /// <summary>The <c>.cws</c>'s <c>GroundPourMarginHeights</c>, or the default where it states none or cannot be
+    /// read. Static so the layout editor's Draw Ground Pour reads the same file the same way.</summary>
+    internal static double ReadGroundPourMarginHeights(string? cwsPath)
+    {
+        try
+        {
+            if (cwsPath is { Length: > 0 } && File.Exists(cwsPath)
+                && WorkspacePersistence.LoadFromFile(cwsPath).GroundPourMarginHeights is { } h && h >= 0 && double.IsFinite(h))
+                return h;
+        }
+        catch { }   // a .cws we cannot read is the workspace's problem, not the pour's
+        return CircuitRF.Design.Layout.PCells.GroundPourPlanner.DefaultMarginHeights;
+    }
+
+    /// <summary>
+    /// Design ▸ Ground Pour Margin… (R-dfr22-3-4): sets how far the pour Update Layout and Draw Ground Pour draw reaches
+    /// beyond what it covers, in substrate heights, and records it in the <c>.cws</c> straight away — the next run
+    /// reads it, and re-running updates only the pour it drew last time.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(HasWorkspaceOpen))]
+    private async Task SetGroundPourMargin(Avalonia.Controls.Window? owner)
+    {
+        if (CurrentWorkspacePath is not { } cwsPath || ResolveOwner(owner) is not { } window) return;
+        double current = GroundPourMarginHeights;
+        if (await Views.Dialogs.GroundPourMarginDialog.AskAsync(window, current) is not { } chosen || chosen == current) return;
+        try
+        {
+            var cws = TryLoadCws(cwsPath);
+            cws.GroundPourMarginHeights =
+                chosen == CircuitRF.Design.Layout.PCells.GroundPourPlanner.DefaultMarginHeights ? null : chosen;
+            if (!WorkspacePersistence.SaveToFileAtomic(cwsPath, cws))
+            {
+                Messages.Info("This workspace is read-only on this machine, so the ground pour margin was not recorded.");
+                return;
+            }
+            Messages.Info($"Ground pour margin set to {chosen:0.##} substrate heights. Update Layout from Schematic and " +
+                          "Design ▸ Draw Ground Pour redraw the pour they drew with it.");
+        }
+        catch (Exception ex)
+        {
+            Messages.Warning($"The ground pour margin could not be recorded: {ex.Message}");
+        }
+    }
 
     [RelayCommand(CanExecute = nameof(IsLayoutDocumentActive))]
     private async Task UpdateSchematicFromLayout()
