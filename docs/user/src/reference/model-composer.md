@@ -75,7 +75,7 @@ the data and network it came from. When either changes, the step is marked stale
 | Current | Fits `Id` and `Ig`. |
 | Charge | Fits `Qg` and `Qd`, or, with no S data, writes them from typed capacitances. |
 | Thermal | Adds self-heating: Rth (typed, or extracted from pulsed I–V) and the thermal time constants. |
-| Traps | Chooses a trap model and fits the currents again with the trap states as inputs. |
+| Traps | Chooses a trap model and its coupling: fits the currents again with the trap states as inputs, or fits the strengths of a threshold shift from multi-bias S. |
 | Check | Checks that the charges conserve charge. |
 | Validate | Compares the model with every data set at the plane it was measured at. |
 | Export | Writes the `.cmodel`. |
@@ -138,10 +138,12 @@ layout is secondary.
 | A double pulse | Optional | The clearest trap data |
 | Pulsed I–V from one quiescent point | Optional | One trap level, with a warning |
 | Pulsed S | Optional | A trap-dependent `Qd` |
+| No pulsed data; DC I–V and multi-bias S | Optional | Threshold-shift traps: time constants typed, strengths typed or fitted from the multi-bias S |
 | Power sweeps, two-tone sweeps, loadpull | Optional | Validation only |
 
-Trap states are trained from pulsed I–V, so a model built without pulsed data has none. Its generic alternative is
-**DC/RF dispersion**, which needs only the DC I–V and the multi-bias S.
+Trained trap states need pulsed I–V. Without it a model can still have traps: the states shift the threshold of the
+trap-free current, with strengths fitted from the difference between the DC and RF conductances in the multi-bias S, or
+typed. **DC/RF dispersion** is the simpler alternative, with one linear time constant and no fast capture.
 
 ### Bias ranges and steps {#ranges}
 
@@ -317,15 +319,31 @@ switched on separately. A state is captured quickly when its voltage moves one w
 The defaults are 10 ns capture at a 1 V gap and 1 ms emission, and emission can be made thermally activated.
 **Custom** lets you write each state's dynamics and DC value yourself.
 
-A trap state is trained from the **trap-setting levels** in the pulsed data. The level of a set is its pre-pulse bias
-for a double pulse, and its quiescent bias otherwise.
+The **coupling** says how the states reach the drain current:
+
+| Coupling | The current | Needs |
+|---|---|---|
+| **Trained** (the default with pulsed I–V) | `Id` takes the enabled states as inputs and is fitted again with them | Pulsed I–V |
+| **Shift** | `Id` is the trap-free current fitted to the DC I–V, evaluated at a shifted gate voltage: `Id(vgs − ΔV, vds)`, with `ΔV = ShiftDrain·(φ2 − vds) + ShiftGate·(vgs − φ1)` | Nothing beyond DC I–V; multi-bias S to fit the strengths |
+
+Under **Shift** a drain-lag state held above `vds`, or a gate-lag state held below `vgs`, lowers the current. At any DC
+bias every state equals its DC value, so the shift is zero and the model's DC is exactly the trap-free current. At RF
+the states are frozen, which gives `gm_RF = (1 − ShiftGate)·gm` and `gds_RF = gds + ShiftDrain·gm`, where `gm` and
+`gds` are the trap-free current's. The step fits each strength from these relations over the active S biases. A
+strength can be typed and locked, and is then not fitted. The time constants are typed in both couplings. Shift is
+defined for CaptureEmission; the charges take no trap state under it. With self-heating modelled, `gm` and `gds` are
+read at each point's junction temperature, so heating is not counted as traps. Without self-heating, `ShiftDrain`
+includes any thermal part of the DC/RF difference.
+
+A trained trap state is fitted from the **trap-setting levels** in the pulsed data. The level of a set is its pre-pulse
+bias for a double pulse, and its quiescent bias otherwise.
 
 | Pulsed data | What it allows |
 |---|---|
 | Double pulse | The pre-pulse sets the state, and the measuring pulse reads it before emission moves it. This is the clearest data. |
 | Ordinary pulses from two or more quiescent points | Two or more levels: the state is fitted fully. |
 | One quiescent point | One level: the state is fitted with one warning, and the model records the level it came from. |
-| No pulsed data | No trap state. The model is built without traps. |
+| No pulsed data | Threshold-shift traps, time constants typed, strengths typed or fitted from multi-bias S. |
 
 A pulsed point **toward** its setting (pulsed no higher in `Vds` for drain lag, no lower in `Vgs` for gate lag) sits at
 the setting's state exactly, because only slow emission acted. A point **beyond** it was partly captured during the
@@ -333,7 +351,8 @@ pulse. The set's `TrapState` decides what happens to it: `auto` keeps it for val
 setting's state, and `extreme` takes the pulse's own voltage as the state.
 
 DC/RF dispersion is the simpler alternative to traps. It fits a second drain current, `IdRF`, to the RF transconductance
-and output conductance, and the model follows `Id` at DC and `IdRF` above the corner set by τ. The two are not combined.
+and output conductance, and the model follows `Id` at DC and `IdRF` above the corner set by τ. Dispersion and traps are
+not combined, in either coupling.
 
 ## Periphery scaling {#scaling}
 
@@ -550,14 +569,19 @@ and the words *one temperature* instead: the model it builds has no temperature 
 
 ## The Traps step {#traps}
 
-The trap model (None, CaptureEmission, Custom), a toggle per state, the time constants, and for Custom each state's
-dynamics and DC expressions with the result of the fixed-point check. A state the data cannot support shows why in
-place of its toggle; a state trained from one trap-setting level shows that level.
+The trap model (None, CaptureEmission, Custom), its coupling, a toggle per state, the time constants, and for Custom
+each state's dynamics and DC expressions with the result of the fixed-point check. A state the data cannot support shows
+why in place of its toggle; a state trained from one trap-setting level shows that level. Without pulsed I–V the
+coupling list holds Shift only, and one line under it says why. Under Shift, each enabled state's strength has a lock,
+its value and, after a fit, its ± standard error. Typing a value locks it. The step's report gives each strength and the
+RMS residual of both relations.
 
 | Plot tab | Shows |
 |---|---|
-| Pulsed I–V | Per trap-setting level, measured Id against the model at the cursor's Vgs; points pulsed beyond the trap-setting bias are hollow — validation only |
-| DC I–V | The DC data against the model, as validation |
+| Pulsed I–V | Trained: per trap-setting level, measured Id against the model at the cursor's Vgs; points pulsed beyond the trap-setting bias are hollow — validation only |
+| DC I–V | Trained: the DC data against the model, as validation |
+| Gm | Shift: Gm against Vgs at the cursor's Vds — RF from S (symbols), the shifted model with its states frozen (lines), the trap-free current (dashed) |
+| Gds | Shift: Gds against Vds at the cursor's Vgs, drawn the same way |
 
 ## The Check step {#check}
 

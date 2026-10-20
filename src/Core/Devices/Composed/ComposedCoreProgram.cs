@@ -36,6 +36,9 @@ public sealed class ComposedCoreProgram
     /// <summary>The trap states' dynamics (MC-10), or null for a model without traps.</summary>
     public TrapDynamics? Traps { get; }
 
+    /// <summary>The threshold-shift coupling (MC-19), or null when <c>Id</c> takes the states as inputs or there are none.</summary>
+    public TrapShift? Shift { get; }
+
     /// <summary>The lane of the first trap state: 2, or 3 with <c>T</c>.</summary>
     public int TrapLane => HasT ? 3 : 2;
 
@@ -55,13 +58,15 @@ public sealed class ComposedCoreProgram
     public DriftCharges? Drift { get; }
 
     private readonly string _label;
+    private readonly double _t0;   // the temperature a shift's DC states are read at when T is not a lane
 
-    private ComposedCoreProgram(IReadOnlyList<string> seeds, bool hasT, TrapDynamics? traps, string label, DrainSourceSymmetry symmetry,
+    private ComposedCoreProgram(IReadOnlyList<string> seeds, bool hasT, TrapDynamics? traps, TrapShift? shift, double t0, string label,
+                                DrainSourceSymmetry symmetry,
                                 ComposedFunction id, ComposedFunction igGs, ComposedFunction igGd,
                                 ComposedFunction qg, ComposedFunction qd, ComposedFunction? idRf, double? tau,
                                 DriftCharges? drift)
     {
-        Seeds = seeds; HasT = hasT; Traps = traps; _label = label; Symmetry = symmetry;
+        Seeds = seeds; HasT = hasT; Traps = traps; Shift = shift; _t0 = t0; _label = label; Symmetry = symmetry;
         Id = id; IgGs = igGs; IgGd = igGd; Qg = qg; Qd = qd; IdRF = idRf; DispersionTau = tau; Drift = drift;
     }
 
@@ -90,7 +95,8 @@ public sealed class ComposedCoreProgram
         }
 
         var k = model.Core;
-        return new ComposedCoreProgram(seeds, hasT, traps, label, k.Symmetry,
+        return new ComposedCoreProgram(seeds, hasT, traps, traps is null ? null : TrapShift.Build(model.Traps!, traps),
+            hasT ? double.NaN : model.Temperature.T0, label, k.Symmetry,
             One(k.Id, "Id", k.Id.PayloadKey, Branch(k.Id.Inputs, vgs: 0, vds: 1)),
             One(k.Ig, "Ig", "IgGs", Branch(k.Ig.Inputs, vgs: 1, vds: 0)),
             One(k.Ig, "Ig", "IgGd", Branch(k.Ig.Inputs, vgs: 1, vds: -1)),
@@ -120,7 +126,31 @@ public sealed class ComposedCoreProgram
     /// composer trains one against.
     /// </summary>
     public double Channel(ReadOnlySpan<double> seeds, Span<double> grad)
-        => IdRF is { } rf ? Eval(rf, "IdRF", seeds, grad) : Eval(Id, "Id", seeds, grad);
+        => IdRF is { } rf ? Eval(rf, "IdRF", seeds, grad) : Drain(seeds, grad);
+
+    /// <summary>
+    /// <c>Id</c> as the core conducts it: under a shift coupling (MC-19 R-mc19-1) <c>Id₀(vgs − ΔV, vds, T)</c>, its gradient
+    /// by the chain rule through <c>ΔV</c> — <c>∂Id/∂x = ∂Id₀/∂x − gm₀·∂ΔV/∂x</c> over every lane, the states' included;
+    /// otherwise <c>Id</c> itself.
+    /// </summary>
+    internal double Drain(ReadOnlySpan<double> seeds, Span<double> grad)
+    {
+        if (Shift is not { } shift) return Eval(Id, "Id", seeds, grad);
+        int n = Traps!.States.Count;
+        double t = HasT ? seeds[2] : _t0;
+        Span<double> dBias = stackalloc double[3], dPhi = stackalloc double[TrapDynamics.MaxStates];
+        double dv = shift.Delta(seeds.Slice(TrapLane, n), seeds[0], seeds[1], t, dBias, dPhi);
+        Span<double> x = stackalloc double[RuntimeEvaluator.MaxInputs];
+        seeds.CopyTo(x);
+        x[0] -= dv;
+        double id = Eval(Id, "Id", x[..Width], grad);
+        double gm = grad[0];
+        grad[0] -= gm * dBias[0];
+        grad[1] -= gm * dBias[1];
+        if (HasT) grad[2] -= gm * dBias[2];
+        for (int k = 0; k < n; k++) grad[TrapLane + k] -= gm * dPhi[k];
+        return id;
+    }
 
     /// <summary>
     /// Both charges and their gradients over the seed lanes at one operating point, unscaled and before any
@@ -130,10 +160,14 @@ public sealed class ComposedCoreProgram
     {
         if (Drift is not { } drift) return (Eval(Qg, "Qg", seeds, gQg), Eval(Qd, "Qd", seeds, gQd));
         Span<double> g = stackalloc double[RuntimeEvaluator.MaxInputs];
-        double id = Channel(seeds, g);
+        double id = DriftChannel(seeds, g);
         drift.Evaluate(seeds[0], seeds[1], id, g, Width, out double qg, gQg, out double qd, gQd);
         return (qg, qd);
     }
+
+    /// <summary>The current a drift charge reads: <see cref="Channel"/> without the shift, which no charge takes (R-mc19-1).</summary>
+    internal double DriftChannel(ReadOnlySpan<double> seeds, Span<double> grad)
+        => IdRF is { } rf ? Eval(rf, "IdRF", seeds, grad) : Eval(Id, "Id", seeds, grad);
 
     /// <summary>The <c>Extrapolation.Gx</c> key of a current payload: <c>Id</c>, <c>IgGs</c>, <c>IgGd</c>.</summary>
     internal static string GxKey(string constituent, string key) => constituent == "Ig" ? key : constituent;

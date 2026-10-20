@@ -12,7 +12,9 @@
 //   Thermal   the report's equivalent-temperature rise against dissipated power, and per DC set the measured current
 //             against the model with self-heating and the isothermal model at the ambient.
 //   Traps     per pulsed set, its trap-setting bias, the measured channel current against the model at each point's own
-//             trap states, and the points beyond the trap-setting bias (validation only, no model value).
+//             trap states, and the points beyond the trap-setting bias (validation only, no model value). Under a shift
+//             coupling (MC-19), per CW S set the RF gm and gds against the shifted model's frozen-trap conductances and the
+//             trap-free Id₀'s.
 //   Check     the conservation report: each row's curl and the two-path line-integral difference as maps, and the HB
 //             drives' gate-current spectra.
 //
@@ -21,6 +23,7 @@
 
 using System.Globalization;
 using CircuitRF.Core.Devices.Composed;
+using CircuitRF.Core.Devices.Composed.Traps;
 using CircuitRF.Engine;
 using CircuitRF.Engine.Modeling;
 using RfCore.Data;
@@ -341,7 +344,8 @@ public static class ModelStepPlots
     private static StepPlotData? Traps(string cmcPath, CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data,
                                        IntrinsicResult intrinsic, RunControl? rc)
     {
-        if (!TrapFit.Modelled(doc) || TrapFit.Record(doc) is null || CurrentFit.Load(cmcPath, doc) is not { } current) return null;
+        if (!TrapFit.Modelled(doc) || TrapFit.Record(doc) is not { } record || CurrentFit.Load(cmcPath, doc) is not { } current) return null;
+        if (TrapFit.Settings(doc).Shifted) return ShiftedTraps(doc, intrinsic, record, current, rc);
         var settings = CurrentFit.Settings(doc);
         var heating = ThermalFit.Heating(doc);
         var program = Program(current, dc: true, CurrentFit.Temperatures(CurrentFit.ChosenIv(doc, settings), data));
@@ -361,6 +365,33 @@ public static class ModelStepPlots
             }
             catch (ModelingException ex) { notes.Add($"{set.Name}: {ex.Message}"); }
         }
+        return new StepPlotData { Step = "Traps", Data = ds, Notes = notes, Sets = sets };
+    }
+
+    /// <summary>
+    /// The shift coupling's plots (R-mc19-6): per CW S set, at each point, the RF gm and gds, the frozen-trap conductances of
+    /// the shifted model — <c>(1 − a_g)·gm₀</c> and <c>gds₀ + a_d·gm₀</c>, R-mc19-3's relations — and the trap-free gm₀, gds₀.
+    /// </summary>
+    private static StepPlotData ShiftedTraps(CmcDocument doc, IntrinsicResult intrinsic, TrapFitRecord record, CurrentFitResult current,
+                                             RunControl? rc)
+    {
+        rc?.ThrowIfCancellationRequested();
+        double ad = record.Strengths.GetValueOrDefault(CaptureEmissionTraps.ShiftDrain)?.Value ?? 0;
+        double ag = record.Strengths.GetValueOrDefault(CaptureEmissionTraps.ShiftGate)?.Value ?? 0;
+        var ds = new DataSet();
+        var sets = new List<string>();
+        foreach (var g in TrapFit.ShiftPoints(doc, intrinsic, current).GroupBy(p => p.Set))
+        {
+            var pts = g.ToArray();
+            var axis = new Axis("point", [.. pts.Select(p => (double)p.Point)]);
+            void Add(string q, Func<ShiftPoint, double> f) => ds.Add($"{g.Key}.{q}", new DataCube([axis], [.. pts.Select(f)]));
+            Add("Vgs", p => p.Vgs); Add("Vds", p => p.Vds); Add("Vgsi", p => p.Vgsi); Add("Vdsi", p => p.Vdsi);
+            Add("Gm.rf", p => p.GmRf); Add("Gds.rf", p => p.GdsRf);
+            Add("Gm.shift", p => (1 - ag) * p.Gm0); Add("Gds.shift", p => p.Gds0 + ad * p.Gm0);
+            Add("Gm.free", p => p.Gm0); Add("Gds.free", p => p.Gds0);
+            sets.Add(g.Key);
+        }
+        IReadOnlyList<string> notes = sets.Count == 0 ? ["there are no CW S-parameters to compare the strengths with."] : [];
         return new StepPlotData { Step = "Traps", Data = ds, Notes = notes, Sets = sets };
     }
 

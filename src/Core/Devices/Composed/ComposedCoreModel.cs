@@ -37,7 +37,10 @@ namespace CircuitRF.Core.Devices.Composed;
 /// ports 2 … in the states' order, whose voltage is the state in volts. The trap model supplies each node's current and
 /// charge (<see cref="TrapDynamics"/>) from the intrinsic <c>vgs</c>, <c>vds</c> — never their drain–source image, which a
 /// model with traps does not have — and <c>T</c>; the states are inputs of <c>Id</c> and <c>Qd</c>, so their lanes'
-/// gradients land in those ports' columns. The nodes are unscaled, like the dispersion node.</para>
+/// gradients land in those ports' columns. Under a <c>Shift</c> coupling (MC-19) <c>Id</c> takes none itself and is
+/// evaluated at a gate voltage the states shift (<see cref="TrapShift"/>), its state columns from the chain rule; the
+/// charges, a drift charge's reading of the current included, take no shift. The nodes are unscaled, like the dispersion
+/// node.</para>
 ///
 /// <para><b>Self-heating</b> (MC-9 R-mc9-2, [P1] §6.6.2) adds a fourth net, the thermal node, as the last port
 /// <c>(t, 0)</c>: its voltage is the temperature rise ΔT and every constituent is evaluated at
@@ -226,14 +229,20 @@ public sealed class ComposedCoreModel : ComponentModel
         Span<double> gId = stackalloc double[W], gGs = stackalloc double[W], gGd = stackalloc double[W],
                      gQg = stackalloc double[W], gQd = stackalloc double[W], gRf = stackalloc double[W];
 
-        double id   = _p.Eval(_p.Id,   "Id",   s, gId);
+        double id   = _p.Drain(s, gId);
         double igGs = _p.Eval(_p.IgGs, "IgGs", s, gGs);
         double igGd = _p.Eval(_p.IgGd, "IgGd", s, gGd);
         double qg   = _p.Eval(_p.Qg,   "Qg",   s, gQg);
         double qd   = _p.Eval(_p.Qd,   "Qd",   s, gQd);
         double idRf = _dispersive ? _p.Eval(_p.IdRF!, "IdRF", s, gRf) : 0.0;
         if (_p.Drift is { } drift)
-            drift.Evaluate(s[0], s[1], _dispersive ? idRf : id, _dispersive ? gRf : gId, _p.Width, out qg, gQg, out qd, gQd);
+        {
+            // The drift charge reads the unshifted current: no charge takes a shift coupling (MC-19 R-mc19-1).
+            Span<double> gD = stackalloc double[W];
+            double idD = _dispersive || _p.Shift is not null ? _p.DriftChannel(s, gD) : id;
+            if (!_dispersive && _p.Shift is null) gId.CopyTo(gD);
+            drift.Evaluate(s[0], s[1], idD, gD, _p.Width, out qg, gQg, out qd, gQd);
+        }
 
         if (image)
         {

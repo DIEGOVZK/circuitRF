@@ -10,6 +10,7 @@
 
 using System.Globalization;
 using CircuitRF.Core.Devices.Composed;
+using CircuitRF.Core.Devices.Composed.Traps;
 using CircuitRF.Design.Modeling.Passive;
 using CircuitRF.Engine;
 using RfCore.Data;
@@ -276,9 +277,15 @@ public static partial class ModelCommands
                 return m is null && options.Seed is null ? doc : ChargeFit.WithSettings(doc, s);
             }
             case "traps":
+            {
                 // A trap step's "method" is its model: None, CaptureEmission, Custom or a registered one; the reader refuses
-                // a name it does not know when the document is written.
-                return m is null ? doc : TrapFit.WithSettings(doc, TrapFit.Settings(doc) with { Model = m });
+                // a name it does not know when the document is written. Without pulsed I–V the shift coupling is the only one,
+                // and it is written as the window writes it (R-mc19-2).
+                if (m is null) return doc;
+                var s = TrapFit.Settings(doc) with { Model = m };
+                if (!TrapFit.HasPulsedIv(doc) && m != ModelTraps.None) s = s with { Coupling = ModelTraps.Shift };
+                return TrapFit.WithSettings(doc, s);
+            }
             case "passive":
             {
                 if (m is not null) throw new ModelingException(step, "a passive fit has no method; it fits the topology the step names.");
@@ -323,7 +330,8 @@ public static partial class ModelCommands
                 throw new ModelingException(step, doc.Kind == CmcKind.Passive
                     ? "a Passive document has one step, passive."
                     : "an Active document has no passive step.");
-            if (step == "traps" && TrapFit.Unavailable(doc) is { } why && options.Method is not "None") throw new ModelingException(step, why);
+            if (step == "traps" && TrapFit.Unavailable(Configure(doc, step, options)) is { } why && options.Method is not "None")
+                throw new ModelingException(step, why);
             steps = [step];
         }
         if (options.Topology is not null && !steps.Contains("passive"))
@@ -387,7 +395,7 @@ public static partial class ModelCommands
                   : [t.Rth is { } rth ? $"thermal: Rth {G(rth)} K/W." : $"thermal: no self-heating; data at {string.Join(", ", t.Temperatures.Select(G))} °C."]
                 : [],
             "current" => CurrentFit.FitFile(cmcPath, rc).Record.Report,
-            "traps" => TrapFit.FitFile(cmcPath, rc) is var (traps, current) ? [.. traps.Record.Report, .. current.Record.Report] : [],
+            "traps" => TrapFit.FitFile(cmcPath, rc) is var (traps, current) ? [.. traps.Record.Report, .. current?.Record.Report ?? []] : [],
             "charge" => ChargeFit.FitFile(cmcPath, rc).Record.Report,
             "passive" => PassiveStep.FitFile(cmcPath, rc).Record.Report,
             _ => throw new ModelingException(step, "it is not a step."),
@@ -469,10 +477,16 @@ public static partial class ModelCommands
             }
             lines.AddRange(NetworkValues(cmcPath, doc));
             if (TrapFit.Record(doc) is { } traps)
+            {
+                foreach (var (name, a) in traps.Strengths)
+                    lines.Add(new ModelLine("traps", name, a.Error is { } se
+                        ? $"{name}: {G(a.Value)} ± {G(se)} V/V, fitted from multi-bias S."
+                        : $"{name}: {G(a.Value)} V/V, typed."));
                 foreach (var (state, levels) in traps.Levels)
                     lines.Add(new ModelLine("traps", state,
                         $"{state}: trained from setting levels {string.Join(", ", levels.Select(G))} V" +
                         (traps.Beyond.TryGetValue(state, out int beyond) && beyond > 0 ? $"; {beyond} point(s) beyond, validation only." : ".")));
+            }
         }
         return lines;
     }

@@ -53,6 +53,12 @@ public sealed class CaptureEmissionTraps : TrapModelDefinition
         new("Tref", "°C", DefaultTref, "the temperature at which TauEmit holds"),
     ];
 
+    /// <summary>The two shift strengths (R-mc19-1), V/V: <c>ΔV = ShiftDrain·(phi2 − vds) + ShiftGate·(vgs − phi1)</c>.</summary>
+    public const string ShiftDrain = "ShiftDrain", ShiftGate = "ShiftGate";
+
+    public override string? ShiftParameter(string state) =>
+        state == GateLag ? ShiftGate : state == DrainLag ? ShiftDrain : null;
+
     public override TrapDynamics Build(ModelTraps traps, string label)
     {
         double Positive(string name, string what)
@@ -139,6 +145,15 @@ public sealed class CaptureEmissionTraps : TrapModelDefinition
         }
 
         public override double DcValue(int state, double vgs, double vds, double t) => states[state].Gate ? vgs : vds;
+
+        public override double DcValue(int state, double vgs, double vds, double t, Span<double> grad)
+        {
+            bool gate = states[state].Gate;
+            grad[0] = gate ? 1 : 0;
+            grad[1] = gate ? 0 : 1;
+            grad[2] = 0;
+            return gate ? vgs : vds;
+        }
 
         public override int CaptureSign(int state) => states[state].Gate ? -1 : +1;
 

@@ -15,6 +15,10 @@
 //
 // The current and charge steps call Map for their own sets; this step records the levels and what was left out. Its
 // FitFile re-trains the currents with the trap states as inputs. Cancelled, nothing is written.
+//
+// Under the Shift coupling (brief-modelcomposer-19) none of that applies: Id is the trap-free current the current step fitted
+// from DC, the core shifts its gate voltage by the states, and this step fits the shift's strengths from the DC/RF
+// difference in gm and gds that multi-bias S shows (TrapFit.Shift.cs). No pulsed data is needed.
 
 using System.Globalization;
 using System.Text.Json.Nodes;
@@ -47,7 +51,7 @@ public sealed class TrapMapping
     public double[]? At(string set, int point) => Phi.TryGetValue(set, out var p) ? p[point] : null;
 }
 
-public static class TrapFit
+public static partial class TrapFit
 {
     public const string StepName = "Traps";
 
@@ -103,21 +107,35 @@ public static class TrapFit
     /// <summary>Whether the document models traps.</summary>
     public static bool Modelled(CmcDocument doc) => Settings(doc).Modelled;
 
-    /// <summary>Why the step cannot be chosen for this document, or null: traps are characterised by pulsed I–V ([P1]
-    /// §6.6.4).</summary>
+    /// <summary>Whether <paramref name="doc"/> holds pulsed I–V, which a <see cref="ModelTraps.Trained"/> coupling trains on.</summary>
+    public static bool HasPulsedIv(CmcDocument doc) => doc.DataSets.Any(s => s.Kind == DataSetKind.PulsedIv);
+
+    /// <summary>Why the step cannot run for this document, or null: a trained coupling is characterised by pulsed I–V ([P1]
+    /// §6.6.4); a shift coupling needs none (R-mc19-2).</summary>
     public static string? Unavailable(CmcDocument doc) =>
-        doc.DataSets.Any(s => s.Kind == DataSetKind.PulsedIv) ? null : NoPulsedData;
+        Settings(doc).Shifted || HasPulsedIv(doc) ? null : NoPulsedData;
+
+    /// <summary>The one line the step shows when there is no pulsed I–V, so only the shift coupling is offered (R-mc19-2).</summary>
+    public const string ShiftOnly = "Shift only: trained traps need pulsed I–V; without it the states shift the threshold, with strengths typed or fitted from multi-bias S.";
 
     /// <summary>
     /// Reads the <c>.cmc</c>, runs the step, then re-trains the currents with the trap states as inputs (R-mc10-5, R-mc10-6)
     /// and writes both — what the window and the <c>model</c> verb call. Cancelled, nothing is written and the previous
     /// result is kept (D13).
     /// </summary>
-    public static (TrapFitResult Traps, CurrentFitResult Current) FitFile(string cmcPath, RunControl? rc = null)
+    public static (TrapFitResult Traps, CurrentFitResult? Current) FitFile(string cmcPath, RunControl? rc = null)
     {
         var doc = CmcFile.Read(cmcPath);
         var data = new CmcCache(cmcPath).Open(doc, rc).Data;
         var intrinsic = new IntrinsicExtraction(cmcPath).Run(doc, data, rc: rc);
+        if (Settings(doc).Shifted)
+        {
+            // R-mc19-5: the strengths alone; Id₀ is the current step's, left as it is.
+            var shifted = Run(doc, data, intrinsic, Settings(doc), rc, CurrentFit.Load(cmcPath, doc));
+            rc?.ThrowIfCancellationRequested();
+            CmcFile.Write(cmcPath, CmcStamps.Stamp(Apply(doc, shifted), StepName, CmcStamps.DataDigest(cmcPath, doc)));
+            return (shifted, null);
+        }
         var traps = Run(doc, data, intrinsic, Settings(doc), rc);
         doc = Apply(doc, traps);
         var current = CurrentFit.Run(doc, data, intrinsic, CurrentFit.Settings(doc), rc);
@@ -142,20 +160,27 @@ public static class TrapFit
     /// so the step refuses exactly what a <c>ComposedFet</c> would. Every declared parameter of an enabled state is written
     /// with its value, so the model states what it was built with.
     /// </summary>
-    public static ModelTraps Block(TrapFitSettings s, IReadOnlyDictionary<string, IReadOnlyList<double>>? levels = null)
+    public static ModelTraps Block(TrapFitSettings s, IReadOnlyDictionary<string, IReadOnlyList<double>>? levels = null,
+                                   IReadOnlyDictionary<string, double>? strengths = null)
     {
         if (!s.Modelled) throw new ModelingException(StepName, "no trap model is chosen.");
         var model = TrapModels.Find(s.Model)!;
         var parameters = new List<KeyValuePair<string, double>>();
         var expressions = new List<KeyValuePair<string, string>>();
         IReadOnlyList<string> states;
+        // R-mc19-1: a strength is typed in the settings or fitted; one neither (a block checked before the fit) reads 0.
+        var shift = model.States.Select(model.ShiftParameter).OfType<string>().ToList();
         if (model is CaptureEmissionTraps)
         {
             states = s.States.Count > 0 ? s.States : [CaptureEmissionTraps.DrainLag];
             if (s.Expressions.Count > 0) throw new ModelingException(StepName, "only a Custom model is written as expressions.");
             bool thermal = s.Emission == TrapEmission.ThermallyActivated;
             foreach (var (name, _) in s.Parameters)
-                if (!model.Parameters.Any(p => p.Name == name))
+                if (shift.Contains(name))
+                {
+                    if (!s.Shifted) throw new ModelingException(StepName, $"{name} is a strength of the {ModelTraps.Shift} coupling; the coupling is {s.Coupling}.");
+                }
+                else if (!model.Parameters.Any(p => p.Name == name))
                     throw new ModelingException(StepName,
                         $"{name} is not a parameter of {model.Name}; they are {string.Join(", ", model.Parameters.Select(p => p.Name))}.");
                 else if (name.StartsWith("Ea", StringComparison.Ordinal) && !thermal)
@@ -175,6 +200,11 @@ public static class TrapFit
                 if (p.Name == "Tref" && !thermal) continue;
                 parameters.Add(new(p.Name, s.Parameters.TryGetValue(p.Name, out double v) ? v : p.Default!.Value));
             }
+            if (s.Shifted)
+                foreach (string state in states)
+                    if (model.ShiftParameter(state) is { } name)
+                        parameters.Add(new(name, strengths is not null && strengths.TryGetValue(name, out double fitted) ? fitted
+                                               : s.Parameters.TryGetValue(name, out double typed) ? typed : 0.0));
         }
         else
         {
@@ -191,7 +221,7 @@ public static class TrapFit
         }
         var block = new ModelTraps
         {
-            Model = s.Model, States = states, Parameters = parameters, Expressions = expressions,
+            Model = s.Model, Coupling = s.Coupling, States = states, Parameters = parameters, Expressions = expressions,
             Levels = levels is null ? [] : [.. states.Where(levels.ContainsKey).Select(st => new KeyValuePair<string, IReadOnlyList<double>>(st, levels[st]))],
         };
         try { TrapModels.Build(block, "trap step"); }
@@ -206,11 +236,12 @@ public static class TrapFit
     /// points left as validation, and the warnings. Throws <see cref="ModelingException"/> for a refusal.
     /// </summary>
     public static TrapFitResult Run(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data, IntrinsicResult intrinsic,
-                                    TrapFitSettings settings, RunControl? rc = null)
+                                    TrapFitSettings settings, RunControl? rc = null, CurrentFitResult? current = null)
     {
         rc?.ThrowIfCancellationRequested();
         if (!settings.Modelled) return new TrapFitResult(settings, new TrapFitRecord());
-        if (Unavailable(doc) is { } why) throw new ModelingException(StepName, $"traps are unavailable: {why}.");
+        if (settings.Shifted) return FitShift(doc, intrinsic, settings, current, rc);
+        if (!HasPulsedIv(doc)) throw new ModelingException(StepName, $"traps are unavailable: {NoPulsedData}.");
         var mapping = Map(doc, data, intrinsic, settings, CurrentFit.ChosenIv(doc, CurrentFit.Settings(doc)), "pulsed I–V");
         return new TrapFitResult(settings, new TrapFitRecord { Levels = mapping.Levels, Beyond = mapping.Beyond, Report = mapping.Report });
     }
@@ -224,6 +255,7 @@ public static class TrapFit
     public static TrapMapping Map(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data, IntrinsicResult intrinsic,
                                   TrapFitSettings settings, IReadOnlyList<CmcDataSet> sets, string kind, bool requireLevels = true)
     {
+        if (settings.Shifted) throw new ModelingException(StepName, $"a {ModelTraps.Shift} coupling maps no data to trap states.");
         var block = Block(settings);
         var dyn = TrapModels.Build(block, "trap step");
         var states = block.States;

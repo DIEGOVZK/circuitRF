@@ -318,6 +318,13 @@
                     <StackPanel IsVisible="{Binding IsTrapsStep}" Spacing="4">
                         <TextBlock Classes="panelhdr" Text="Traps"/>
                         <ComboBox ItemsSource="{Binding TrapModelNames}" SelectedItem="{Binding TrapModel}" HorizontalAlignment="Stretch"/>
+                        <Grid ColumnDefinitions="60,*" IsVisible="{Binding HasTrapModel}">
+                            <TextBlock Classes="lbl" Text="Coupling"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding TrapCouplings}" SelectedItem="{Binding TrapCoupling}" HorizontalAlignment="Stretch"
+                                      ToolTip.Tip="Trained: Id takes the trap states as inputs, from pulsed I–V. Shift: the states shift the gate voltage of the trap-free Id."/>
+                        </Grid>
+                        <TextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding TrapCouplingNote}"
+                                   IsVisible="{Binding TrapCouplingNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <ItemsControl ItemsSource="{Binding TrapStates}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="mc:TrapStateRow">
@@ -335,6 +342,18 @@
                                     <Grid ColumnDefinitions="*,90" ToolTip.Tip="{Binding Tip}">
                                         <TextBlock Classes="lbl" Text="{Binding Name}"/>
                                         <ctl:InlineEditText Grid.Column="1" Text="{Binding Value, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <ItemsControl ItemsSource="{Binding TrapStrengths}" IsVisible="{Binding IsShiftCoupling}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="mc:StrengthRow">
+                                    <Grid ColumnDefinitions="Auto,*,80,Auto" ToolTip.Tip="{Binding Tip}">
+                                        <CheckBox IsChecked="{Binding Lock}" ToolTip.Tip="Locked: typed, not fitted"/>
+                                        <TextBlock Grid.Column="1" Classes="lbl" Text="{Binding Name}"/>
+                                        <ctl:InlineEditText Grid.Column="2" Text="{Binding Value, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                                        <TextBlock Grid.Column="3" Classes="lbl" FontSize="11" Margin="4,0,0,0" Text="{Binding Error}"/>
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>

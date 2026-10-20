@@ -105,7 +105,10 @@ the model's order; `Parameters` the model's own (a declared one left out takes i
 trap-setting levels each state was trained at, volts — a model trained from one level says so. A `Custom` model adds
 `"Expressions": { "phi2": { "Dynamics": "…", "Dc": "vds" } }`. A block naming `None` reads as no traps and is never
 written, so a model without traps is byte-identical to one written before traps existed. The states are inputs of
-`Id` and `Qd` (`phi1` …), and their domain's `Box` holds each one's training interval.
+`Id` and `Qd` (`phi1` …), and their domain's `Box` holds each one's training interval. `"Coupling": "Shift"` (MC-19,
+§13.6) replaces those inputs on `Id` with a threshold shift whose strengths `ShiftDrain` and `ShiftGate` sit in
+`Parameters`; `Trained`, the default, is never written, so a block from before couplings existed is read and written
+byte for byte.
 
 **`Thermal` (MC-9)**, after `Temperature`, makes the model self-heat (§12.2): `{ "Rth": 60, "Cth": 1.7e-8 }` for one
 pole, or `{ "Ladder": [ { "Rth": …, "Cth": … }, … ] }` for a Foster ladder of up to five, in K/W and J/K at the base
@@ -190,7 +193,11 @@ Every refusal is a `CmodelFormatException` whose message begins with the field: 
   `Custom`: an expression that does not parse, names anything but its own state, `vgs`, `vds`, `T` and the parameters,
   a `Dc` that reads its own state, or a `Dc` that is not a fixed point of its `Dynamics`). Combined with `Core.Dispersion`/`IdRF` (the trap states carry
   the DC/RF difference instead) or with `Core.Symmetry: Exchange` (the states follow the forward device, which has no
-  image). A trap state named as an input of `Ig` or `Qg` — never, [X10] eq. 1.5 — or of a model without traps.
+  image). A trap state named as an input of `Ig` or `Qg` — never, [X10] eq. 1.5 — or of a model without traps. A
+  `Coupling` other than `Trained`/`Shift`; under `Shift`, an `Id` with a trap-state input
+  (`Core.Constituents.Id.Inputs`), a model that declares no shift strengths (`Traps.Coupling`; `CaptureEmission` only),
+  an enabled state's strength missing or not finite (`Traps.Parameters.ShiftDrain`/`ShiftGate`); a strength under
+  `Trained`.
   `Core.Dispersion`: missing with `IdRF`, present without it, or a `Tau` that is not a positive time.
 - `Drift`: on a current; on one charge and not the other; inputs other than `vgs, vds`; a missing or extra piece; a
   `QGD` or `Qdrift` naming a different network in `Qg` and `Qd`; a parameter other than `Qd`'s `Lambda`, or a
@@ -989,7 +996,8 @@ both voltages normalised by the data's spans, times its drain voltage, above 1 %
 per timing (`SampleDelay`, `PulseWidth`, `PrePulse.Gap`) above a tenth of `τ_emit`. The levels are the distinct settings
 (within 1 mV) of the sets that contribute a used point: two or more fit fully, one fits with one line ("drain-lag
 from one trap level, 10 V") and is recorded in the block's `Levels`, none refuses the state naming what it needs. The
-step is unavailable without pulsed I–V — "no pulsed I–V" is the only text.
+step is unavailable under the trained coupling without pulsed I–V — "no pulsed I–V" is the only text; the shift
+coupling (§13.6) needs none.
 
 ### 13.5 Fitting with traps (R-mc10-5, R-mc10-6)
 
@@ -1009,6 +1017,60 @@ refused alongside traps. The record carries the `Traps` block, levels included, 
 its adjoint problem gains a lane per state, the zero held along each at the anchor as for `T`. Otherwise one line says
 it is trap-independent. `Qg` never takes them. `TrapFit.FitFile` runs the step and re-trains the currents through one
 `RunControl`, writing nothing when cancelled (D13).
+
+### 13.6 The threshold-shift coupling (MC-19)
+
+A trained coupling needs pulsed I–V, because only pulsed data holds currents at trap states away from DC. Without it
+MC-10 built no traps, against D10's rule that less data gives a more limited model, never a refusal. The `Shift`
+coupling keeps `CaptureEmission`'s dynamics (typed time constants) and takes the states into the current through a
+threshold shift:
+
+`Id(vgs, vds, T, φ) = Id₀(vgs − ΔV, vds, T)`, `ΔV = Σₖ aₖ·sₖ·(φₖ − φₖ,DC(vgs, vds, T))`
+
+over the enabled states, `sₖ` the state's `CaptureSign` and `φₖ,DC` its `DcValue`; for `CaptureEmission`,
+`ΔV = a_d·(φ2 − vds) + a_g·(vgs − φ1)` with `a_d` = `ShiftDrain`, `a_g` = `ShiftGate`. It is [P1] eq. 6.70's trapped
+current — the drain current a function of the trap states as well as the voltages — specialised to the back-gating
+reading of §6.6.4 ([P21]): the trapped charge acts as a back gate whose effect on the channel is a shift of the
+effective gate voltage. It is also the first-order term of the saturating `vgs → vgs − a1·tanh((vgs − phi1)/c1) −
+a2·tanh((phi2 − vds)/c2)` that MC-10's equation templates gain (§13.5), with `aₖ = ak/ck`. At any DC point
+`φ = φ_DC`, so `ΔV = 0` and the DC is `Id₀`'s exactly — measured 1.25e-11 relative over a 63-point grid against the
+trap-free device, the residue of the DC engine's `gmin` on the state nodes.
+
+**In the core.** `ComposedCoreProgram.Drain` evaluates `Id₀` at `vgs − ΔV` and chains its gradient through `ΔV`:
+`∂Id/∂x = ∂Id₀/∂x − gm₀·∂ΔV/∂x` over every lane — `vgs`, `vds`, `T` and each state, with `∂ΔV/∂φₖ = aₖ·sₖ` and
+`∂ΔV/∂(vgs, vds, T) = −Σ aₖ·sₖ·∇φₖ,DC` from `TrapDynamics.DcValue`'s gradient overload. `Ig`, `Qg` and `Qd` take no
+shift, and a drift charge reads the unshifted `Id₀` (`DriftChannel`), so the charges stay trap-independent.
+`TrapShift` holds the compiled `aₖ·sₖ`; `Channel` returns the shifted current, so a caller holding the states at their
+DC values reads the frozen-trap conductances.
+
+**Fitting the strengths (R-mc19-3).** Every CW S frequency lies far above `1/τ_emit`, so the states are frozen at their
+DC values; holding `φ` fixed,
+
+- `gm_RF = ∂Id/∂vgs = gm₀·(1 − ∂ΔV/∂vgs) = (1 − a_g)·gm₀`
+- `gds_RF = ∂Id/∂vds = gds₀ − gm₀·∂ΔV/∂vds = gds₀ + a_d·gm₀`
+
+at each point's DC bias, where `ΔV = 0`. Each relation is linear in one strength through the origin, so each is one
+least-squares slope, `a = Σ gm₀·y / Σ gm₀²` with `y = gds_RF − gds₀` (`a_d`) or `gm₀ − gm_RF` (`a_g`), standard error
+`√(Σr²/(n − 1) / Σ gm₀²)`. `gm_RF` and `gds_RF` are `Re Y21` and `Re Y22` of the intrinsic S averaged over the flatness
+band, flagged frequencies left out — as the dispersion fit reads them (`TrapFit.ShiftPoints`). A point whose `gm₀` is
+below the current step's `IdFloor` of the largest is left out. With self-heating modelled and `Rth` known, `gm₀` and
+`gds₀` are the isothermal derivatives at `Tj = Tamb + Rth·P`, so the thermal part of the DC/RF difference is not read
+as traps; without self-heating the report says `ShiftDrain` holds it too. The record carries each strength with its
+error (none when typed) and the RMS residuals of both relations. On the gate's truth (`a_d` 0.05, `a_g` 0.1, simulated
+by circuitRF as DC I–V and 63-bias S) both came back within 0.002 %, the residuals 0.001 % of the RF conductances.
+
+**The flow (R-mc19-4, R-mc19-5).** `Coupling` is a setting written when it is `Shift`. The default stays `Trained` —
+MC-10's gate still holds that an unset coupling without pulsed I–V is unavailable — so the window, and `model fit`
+choosing a model, write `Shift` when the document has no pulsed I–V; the coupling list then offers `Shift` alone, with
+`TrapFit.ShiftOnly` as its line. Under `Shift` the current step fits a trap-free `Id₀`: it maps nothing, leaves out
+pulsed I–V beside DC (one line), and does not train on the RF conductances under self-heating, because those are what
+the strengths are fitted to. `AllSteps` keeps its order: the trap step's `FitFile` then fits the strengths and leaves
+the current as it is. A strength typed in `Settings.Parameters` is locked and not fitted; with no S points to fit an
+untyped strength, the step refuses naming both ways out (type it, or add multi-bias S). The charge step prints MC-10's
+trap-independent line. Under drive the states lower the current: on the gate's truth at class AB (`Vgs` −1 V, `Vds`
+10 V, 1 GHz into 150 Ω) the 3 dB compression point falls from 25.13 to 19.19 dBm, 5.95 dB lower. Not in this phase:
+fitting the time constants, bias-dependent strengths, `Shift` for `Custom`, and combining `Shift` with pulsed-data
+training.
 
 ## 14. Export, validation and the report (MC-11)
 
@@ -1030,7 +1092,7 @@ temporary file and a rename, so a refusal, failure or cancellation leaves no fil
   not `fixed`. No network: the 1 µΩ pass-through `ChargeFit` already uses.
 - **Constituents** from the recorded current and charge steps with their arrays from the cache; `Gx`, `Dispersion` and
   `Symmetry` from the current step; `Thermal` from the thermal record when self-heating is on; `Traps` from the current
-  record.
+  record, or under a shift coupling the trap step's settings with its strengths (`TrapFit.ShiftBlock`).
 - **Temperature**: `Single` at the current fit's data temperature unless a constituent reads `T`; then `Range` over the
   plan (or the constituents' own boxes at one temperature).
 - **Refusals**, each naming its field: a Passive document; no `N0`; a stale step (all of them, in one sentence); an
@@ -1250,7 +1312,7 @@ verb call; every long one takes a `RunControl` (vector fitting is cancellable be
 | `src/Core/Devices/Composed/` | MC-8: `DriftCharges` (with `BoxContinuation`); `ComposedCoreProgram.Channel` and `.Charges` |
 | `src/Core/Devices/Composed/` | MC-9: `ModelThermal`, `ThermalPole` (records); the thermal port in `ComposedCoreModel`; the thermal network in `ComposedNetworkTemplate.Synthesize` |
 | `src/Design/Modeling/` | MC-9: `ThermalFit` (with `TemperaturePlan`, `ThermalHeating`), `ThermalFitSettings` (with `ThermalFitRecord`); `T` through `CurrentFit`, `EquationFit` and `ChargeFit` |
-| `src/Core/Devices/Composed/Traps/` | MC-10: `TrapModel.cs` (`ModelTraps`, `TrapParameter`, `TrapModelDefinition`, `TrapDynamics`, `RateTrapDynamics`), `TrapModels` (the registry), `CaptureEmissionTraps`, `CustomTraps`; the trap ports in `ComposedCoreModel` and lanes in `ComposedCoreProgram` (`DcSeeds`) |
+| `src/Core/Devices/Composed/Traps/` | MC-10: `TrapModel.cs` (`ModelTraps`, `TrapParameter`, `TrapModelDefinition`, `TrapDynamics`, `RateTrapDynamics`), `TrapModels` (the registry), `CaptureEmissionTraps`, `CustomTraps`, `TrapShift` (MC-19's coupling); the trap ports in `ComposedCoreModel` and lanes in `ComposedCoreProgram` (`DcSeeds`) |
 | `src/Design/Modeling/` | MC-10: `TrapFit` (with `TrapMapping`), `TrapFitSettings` (with `TrapFitRecord`); the `Setting` cube in `IntrinsicExtraction`; the trap states through `CurrentFit` and `ChargeFit` |
 | `src/Design/Modeling/` | MC-11: `CmcStamps`, `CmodelExport` (with `ExportSettings`), `ModelSymbols`, `ComposedFetPlacement`, `ValidationBench`, `ModelValidation` (with `LoadSweep`), `ModelValidationReport` (with `ReportOptions`); `PinNetwork.DefineBlock`, `PadDeembedding.Embed`, `DataImport.CsvRows`, `LargeSignalConditions` in `CmcDocument` |
 | `src/Design/Modeling/` | MC-12: `BoxLeastSquares` (with `FitCoordinate`, `FitVariables`), shared with `NetworkFit` |
@@ -1473,6 +1535,7 @@ Each departure from the briefs, with its reason. The detail of each is in the `R
 | MC-14 | — | Free-standing net labels now travel on the schematic clipboard: the stock networks connect through them. |
 | MC-15 | A charge surface; ΔQ maps in the report's display | The charge surface is drawn as a contour (the surface renderer draws angle axes only); a `.cdd` contour is loadpull-only, so the ΔQ maps there are families. |
 | MC-16 | — | Three defects found by the acceptance run and fixed (below). Rth is typed in the example rather than extracted (below). |
+| MC-19 | No pulsed data offers `Shift` only; the charges take no shift | `Coupling` stays `Trained` unless written, since MC-10's gate holds that an unset coupling without pulsed I–V is unavailable; the window and `model fit` write `Shift` when there is no pulsed I–V. A drift charge reads the unshifted `Id₀`, so the charges stay trap-independent through it too. |
 
 **MC-16's fixes.**
 

@@ -294,6 +294,8 @@ public static class ChargeFit
         if (!trapSettings.Modelled) CurrentFit.TrapCondition(chosen, StepName);
         else if (!chosen.Any(s => s.Kind == DataSetKind.PulsedSParams))
             report.Add("Qd is trap-independent: there are no pulsed S-parameters.");
+        else if (trapSettings.Shifted)
+            report.Add("Qd is trap-independent: the shift coupling's states reach Id alone.");
         else
         {
             traps = TrapFit.Map(doc, data, intrinsic, trapSettings, chosen, "pulsed S-parameters", requireLevels: false);

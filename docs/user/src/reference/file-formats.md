@@ -139,7 +139,7 @@ model always writes the same bytes.
 | `BasePeriphery` | `Fingers` (N0) and `UnitWidth` (`"125 um"`) of the device the model was extracted from. |
 | `Temperature` | `{ "Mode": "Single", "T0": 25 }` — valid at one temperature, with no temperature input — or `{ "Mode": "Range", "Tmin": …, "Tmax": … }`, in °C. |
 | `Thermal` | Self-heating, on a `Range` model only: `{ "Rth": …, "Cth": … }` in K/W and J/K, or a `Ladder` of up to five such poles, at the base periphery; optionally `RthSlope` (K/W per K) and `Tref` (°C) for a thermal resistance that varies with the ambient. The device then has a thermal node `t` whose voltage is the temperature rise, into which it puts its dissipated power, with `Rth ∥ Cth` (or the ladder) from it to ground; every constituent is evaluated at the run's temperature plus that rise. A symbol's pin 4 is that node, so a heatsink network attached there is in parallel with the model's own. `Rth` scales by N0/N and `Cth` by N/N0. |
-| `Traps` | Trapping: `Model` (`CaptureEmission`, `Custom`, or another installed model), `States` (the enabled ones: `phi1` gate-lag, `phi2` drain-lag), the model's `Parameters` and the `Levels` each state was trained at, in volts. Each state is a node of the device whose voltage is the state; the states are inputs of `Id` and `Qd`, never of `Ig` or `Qg`. `CaptureEmission`'s parameters are `TauCapt1`/`TauCapt2` and `TauEmit1`/`TauEmit2` (s), `Xref` and `Vc` (V), and with thermally activated emission `Ea1`/`Ea2` (eV) and `Tref` (°C). A `Custom` model adds `Expressions`: per state its `Dynamics` (dphi/dt, in V/s) and `Dc` (its DC value) over the state, `vgs`, `vds`, `T` (°C) and its parameters — the `Dc` without the state itself; the `Dc` must be a fixed point of the `Dynamics`. Absent: no traps. Not combined with `Core.Dispersion` or `Core.Symmetry: Exchange`. |
+| `Traps` | Trapping: `Model` (`CaptureEmission`, `Custom`, or another installed model), `States` (the enabled ones: `phi1` gate-lag, `phi2` drain-lag), the model's `Parameters` and the `Levels` each state was trained at, in volts. Each state is a node of the device whose voltage is the state; the states are inputs of `Id` and `Qd`, never of `Ig` or `Qg`. `Coupling` is `Trained` (the default, never written) or `Shift`: under `Shift`, `Id` takes no state and is evaluated at a shifted gate voltage, `Id(vgs − ΔV, vds, T)` with `ΔV = ShiftDrain·(phi2 − vds) + ShiftGate·(vgs − phi1)` over the enabled states, so it equals the trap-free current at every DC bias; `ShiftDrain` and `ShiftGate` (V/V) are then in `Parameters`, one per enabled state. `Shift` is refused for a model other than `CaptureEmission`, with an `Id` that takes a trap state, and with a strength that is missing or not finite. `CaptureEmission`'s parameters are `TauCapt1`/`TauCapt2` and `TauEmit1`/`TauEmit2` (s), `Xref` and `Vc` (V), and with thermally activated emission `Ea1`/`Ea2` (eV) and `Tref` (°C). A `Custom` model adds `Expressions`: per state its `Dynamics` (dphi/dt, in V/s) and `Dc` (its DC value) over the state, `vgs`, `vds`, `T` (°C) and its parameters — the `Dc` without the state itself; the `Dc` must be a fixed point of the `Dynamics`. Absent: no traps. Not combined with `Core.Dispersion` or `Core.Symmetry: Exchange`. |
 | `Network` | `Netlist`: `.cnl` text holding one `define` block with exactly six pins — extrinsic gate, drain, source, then intrinsic gate, drain, source — and its element values as variables. `Scaling`: each variable's rule, `fixed` (the default), `perFinger` or `perFingerInverse`. |
 | `Core.Constituents` | `Id`, `Ig`, `Qg` and `Qd`, each `{ "Method", "Inputs", … }`, the method one of `Equation`, `Table` or `ANN`. An `Equation` carries `Expression` and `Parameters` (named constants). A `Table` names its arrays in `Table` — a grid of values and the coefficients of the smooth spline through them — and records its `Smoothing`. An `ANN` names its arrays in `Network` and its hidden layers' `Activation`, `Tanh` or `Sigmoid`. `Ig` carries two of whichever its method uses, `IgGs` and `IgGd`. Inputs are `vgs` and `vds` in volts, `T` in °C for a `Range` model, and the trap states in volts for a model with `Traps`. Currents are in A, charges in C. An optional `IdRF` is the drain current at RF, with `Core.Dispersion`. |
 | `Transform` (Table, ANN current) | `{ "Kind": "Asinh", "Scale": I0 }`: the arrays hold `u`, and the current is `I0·sinh(u)` — straight through zero within ±I0 and logarithmic beyond, so a current spanning many decades is held to the same ratio throughout. |
@@ -307,7 +307,8 @@ temperature the model is valid at that temperature only and self-heating is unav
 residual in K and relative to the temperature rise, the points used, those left out for low power and those
 unresolved, and the vgs, vds and power ranges of the points used), `TauFit` and the `Report` lines.
 
-`Steps.Traps` is trapping: `Settings` and the `Result` of the last run. It needs pulsed I–V. A pulsed set's trap state
+`Steps.Traps` is trapping: `Settings` and the `Result` of the last run. The `Trained` coupling needs pulsed I–V; the
+`Shift` coupling does not, and maps no data to trap states. A pulsed set's trap state
 is set by its `PrePulse` level when it has one, else its `Quiescent` bias. A point pulsed toward that bias — no lower
 in `vgs` for gate-lag, no higher in `vds` for drain-lag — is at that bias's trap state; one pulsed beyond it is placed
 by the set's `TrapState`: `auto` (the default) uses it to check the model only, `setting` puts it at the bias's trap
@@ -317,14 +318,18 @@ with a warning; one with none cannot be enabled. `Settings` holds:
 | Field | What it holds |
 |---|---|
 | `Model` | `None` (the default), `CaptureEmission` or `Custom`. |
+| `Coupling` | `Trained` (the default) or `Shift`. Under `Shift` the current step fits a trap-free `Id` to the DC I–V and this step fits the strengths. |
 | `States` | The enabled states. Absent: drain-lag (`phi2`) for `CaptureEmission`, every state with expressions for `Custom`. |
 | `Emission` | `Constant` (the default) or `ThermallyActivated`, which needs each enabled state's `Ea`. `CaptureEmission` only. |
-| `Parameters` | The model's parameters, as the `.cmodel` names them. Absent ones take their defaults: capture 10 ns, emission 1 ms, `Xref` 1 V, `Vc` 50 mV, `Tref` 25 °C. |
+| `Parameters` | The model's parameters, as the `.cmodel` names them. Absent ones take their defaults: capture 10 ns, emission 1 ms, `Xref` 1 V, `Vc` 50 mV, `Tref` 25 °C. Under `Shift`, a `ShiftDrain` or `ShiftGate` here is typed and is not fitted. |
 | `Expressions` | `Custom`: per state, `{ "Dynamics": …, "Dc": … }`. |
 | `DcIv` | `Target` (the default): the DC I–V trains the model. `Validation`: it is held out, and only checks it. |
 
 `Result` holds `Levels` (per state, the trap-setting levels in the data, V), `Beyond` (per state, the pulsed points
-beyond their bias used only to check the model) and the `Report` lines.
+beyond their bias used only to check the model) and the `Report` lines. Under `Shift` it holds `Coupling: "Shift"`,
+`Strengths` (per strength, `{ "Value", "Error" }` in V/V; a typed strength has no `Error`) and `Residual` (`Points`, the
+number of S biases fitted, and `Gm` and `Gds`, the RMS residuals in S of `gm_RF = (1 − ShiftGate)·gm` and
+`gds_RF = gds + ShiftDrain·gm`) instead of `Levels` and `Beyond`.
 
 `Steps.Passive` is a `Passive` document's model: `Settings` and the `Result` of the last fit. `Settings` holds:
 

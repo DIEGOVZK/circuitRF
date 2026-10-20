@@ -222,7 +222,11 @@ public static class CurrentFit
         double idMax = iv.Id.Max(Math.Abs);
         double[] idW = [.. iv.Id.Select(y => Weight(y, settings.IdFloor * idMax))];
         AnnDerivativeData? rf = null;
-        if (iv.SelfHeated || iv.Trapped)
+        if (iv.SelfHeated && TrapFit.Settings(doc) is { Modelled: true, Shifted: true })
+            // MC-19 R-mc19-3: under a shift coupling the RF/DC difference in gm and gds is what the trap step fits the strengths
+            // to; trained into Id₀ it would be read as neither.
+            report.Add("Id: trap-free under the shift coupling; the RF Gm and Gds fit the trap strengths, not Id.");
+        else if (iv.SelfHeated || iv.Trapped)
         {
             if (settings.Id.Method != CurrentMethod.Equation) rf = RfDerivatives(doc, data, intrinsic, settings, heating, iv, report);
             else report.Add($"Id: an Equation trains on I–V values only; the RF Gm and Gds are not used.");
@@ -386,6 +390,17 @@ public static class CurrentFit
         if (chosen.Count == 0)
             throw new ModelingException("Current", "there is no I–V data set (DcIv, PulsedIv or SimulatedTables) to fit the currents to.");
         var trapSettings = withTraps ? TrapFit.Settings(doc) : TrapFitSettings.Default;
+        if (trapSettings is { Modelled: true, Shifted: true })
+        {
+            // MC-19 R-mc19-5: under a shift coupling Id is the trap-free current at DC, so pulsed I–V beside DC trains nothing.
+            trapSettings = TrapFitSettings.Default;
+            var dc = chosen.Where(s => s.Kind is not (DataSetKind.PulsedIv or DataSetKind.PulsedSParams)).ToList();
+            if (dc.Count > 0 && dc.Count < chosen.Count)
+            {
+                report.Add($"Id is trap-free under the shift coupling: {string.Join(", ", chosen.Except(dc).Select(s => s.Name))} left out.");
+                chosen = dc;
+            }
+        }
         TrapMapping? traps = null;
         if (trapSettings.Modelled)
         {

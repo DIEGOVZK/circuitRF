@@ -52,8 +52,32 @@ public static class TrapModels
         if (!ordered.SequenceEqual(traps.States))
             throw new CmodelFormatException("Traps.States", $"the states are listed in the model's order ({string.Join(", ", ordered)}).");
 
+        if (!ModelTraps.Couplings.Contains(traps.Coupling))
+            throw new CmodelFormatException("Traps.Coupling",
+                $"'{traps.Coupling}' is not a coupling; the couplings are {string.Join(", ", ModelTraps.Couplings)}.");
+        // R-mc19-1: a shift coupling reads one strength per enabled state, under a name the model declares for it.
+        var shift = model.States.Select(model.ShiftParameter).OfType<string>().ToList();
+        if (traps.Shifted)
+        {
+            if (shift.Count == 0)
+                throw new CmodelFormatException("Traps.Coupling",
+                    $"a {ModelTraps.Shift} coupling is defined for {CaptureEmissionTraps.ModelName}; {model.Name} has no shift strengths.");
+            foreach (string s in traps.States)
+                if (model.ShiftParameter(s) is { } strength && traps.Parameter(strength) is null)
+                    throw new CmodelFormatException($"Traps.Parameters.{strength}",
+                        $"it is missing; a {ModelTraps.Shift} coupling needs {s}'s strength, in V/V.");
+        }
+
         foreach (var (name, value) in traps.Parameters)
         {
+            if (shift.Contains(name))
+            {
+                if (!traps.Shifted)
+                    throw new CmodelFormatException($"Traps.Parameters.{name}", $"it is a strength of the {ModelTraps.Shift} coupling; the coupling is {traps.Coupling}.");
+                if (!double.IsFinite(value))
+                    throw new CmodelFormatException($"Traps.Parameters.{name}", "it is not a finite strength.");
+                continue;
+            }
             if (model.DeclaresAllParameters && !model.Parameters.Any(p => p.Name == name))
                 throw new CmodelFormatException($"Traps.Parameters.{name}",
                     $"it is not a parameter of {model.Name}; they are {string.Join(", ", model.Parameters.Select(p => p.Name))}.");

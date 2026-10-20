@@ -34,7 +34,7 @@ public sealed partial class ModelComposerViewModel
         "Current" => [OutputTab, TransferTab, ErrorTab, GmTab, GdsTab, DomainTab],
         "Charge" => [CvGateTab, CvDrainTab, QgTab, QdTab, DQgTab, DQdTab],
         "Thermal" => [TjTab, DcIvTab],
-        "Traps" => [PulsedTab, DcIvTab],
+        "Traps" => TrapFit.Settings(Document) is { Modelled: true, Shifted: true } ? [GmTab, GdsTab] : [PulsedTab, DcIvTab],
         "Check" => [CurlGateTab, CurlDrainTab, PathsGateTab, PathsDrainTab, SpectrumTab],
         "Validate" => [STab, SmithTab, IvTab, PowerTab, LoadpullTab, ImTab],
         "Export" => [BiasPlaneTab],
@@ -312,6 +312,19 @@ public sealed partial class ModelComposerViewModel
     {
         if (StepPlots is not { Step: "Traps" } sp) return;
         var ds = sp.Data;
+        if (SelectedPlotTab is GmTab or GdsTab)
+        {
+            // R-mc19-6: RF from S (symbols) against the shifted model's frozen-trap conductances, the trap-free Id₀ dashed.
+            if (CursorSet(sp.Sets) is not { } sSet) return;
+            bool gm = SelectedPlotTab == GmTab;
+            string q = gm ? "Gm" : "Gds", fixedName = gm ? "Vds" : "Vgs", x = gm ? "Vgs" : "Vds";
+            double? at = gm ? SelectedVds?.Value : SelectedVgs?.Value;
+            plot.CustomTitle = $"{sSet} · {q} at {fixedName} {ModelValueFormat.G(at ?? 0)} V · RF, shifted model, trap-free (dashed)";
+            Overlay(plot, ds, sSet, fixedName, x, $"{q}.rf", [($"{q}.shift", "shifted", LineType.Solid), ($"{q}.free", "trap-free", LineType.Dashed)],
+                    1e3, fixedName, v => at is not { } a || Math.Abs(v - a) < 1e-6);
+            Labels(plot, $"{x} (V)", $"{q} (mS)");
+            return;
+        }
         var pulsed = sp.Sets.Where(s => ds.Contains($"{s}.Setting")).ToList();
         if (SelectedPlotTab == PulsedTab)
         {

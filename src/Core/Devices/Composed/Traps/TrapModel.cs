@@ -12,7 +12,19 @@ public sealed record ModelTraps
     /// <summary>The name that means no trap model; never written.</summary>
     public const string None = "None";
 
+    /// <summary>The couplings (brief-modelcomposer-19 R-mc19-1): <c>Trained</c>, where <c>Id</c> takes the enabled states as
+    /// inputs, and <c>Shift</c>, where it takes none and the core evaluates it at a shifted gate voltage.</summary>
+    public const string Trained = "Trained", Shift = "Shift";
+
+    public static readonly IReadOnlyList<string> Couplings = [Trained, Shift];
+
     public required string Model { get; init; }
+
+    /// <summary>How the states reach the current; <see cref="Trained"/> is never written, so a block without the field reads
+    /// and writes exactly as before couplings existed.</summary>
+    public string Coupling { get; init; } = Trained;
+
+    public bool Shifted => Coupling == Shift;
 
     /// <summary>The enabled states, in lane order (each a name the model declares).</summary>
     public IReadOnlyList<string> States { get; init; } = [];
@@ -64,6 +76,11 @@ public abstract class TrapModelDefinition
     /// user's own.</summary>
     public virtual bool DeclaresAllParameters => true;
 
+    /// <summary>The parameter a <see cref="ModelTraps.Shift"/> coupling reads a state's strength from, V/V, or null when the
+    /// model defines no shift coupling (R-mc19-1). It is not one of <see cref="Parameters"/>: a <c>Trained</c> block carries
+    /// none.</summary>
+    public virtual string? ShiftParameter(string state) => null;
+
     /// <summary>
     /// The block compiled: its own checks beyond the generic ones (<see cref="CmodelFile.Validate"/> has already checked
     /// the model name, the states and that every parameter is finite), each refused as a
@@ -101,6 +118,12 @@ public abstract class TrapDynamics(IReadOnlyList<string> states)
 
     /// <summary>The state's value at a DC operating point.</summary>
     public abstract double DcValue(int state, double vgs, double vds, double t);
+
+    /// <summary>The state's DC value and its derivatives by <c>(vgs, vds, T)</c> into <paramref name="grad"/> — what a
+    /// <see cref="ModelTraps.Shift"/> coupling differentiates through (R-mc19-1). A model that defines no shift coupling need
+    /// not supply it.</summary>
+    public virtual double DcValue(int state, double vgs, double vds, double t, Span<double> grad)
+        => throw new NotSupportedException($"trap state {States[state]} has no DC gradient; its model defines no shift coupling.");
 
     /// <summary>
     /// Which way capture moves the state: +1 upwards (drain-lag, captured while <c>vds</c> exceeds it), −1 downwards

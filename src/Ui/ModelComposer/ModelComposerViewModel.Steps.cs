@@ -410,6 +410,16 @@ public sealed partial class ModelComposerViewModel
     [ObservableProperty] private string _trapCheck = "";
     public bool IsCustomTraps => TrapModel == CustomTraps.ModelName;
 
+    /// <summary>The couplings the data allows (R-mc19-2): both with pulsed I–V, the shift alone without it.</summary>
+    public IReadOnlyList<string> TrapCouplings { get; private set; } = ModelTraps.Couplings;
+    [ObservableProperty] private string _trapCoupling = ModelTraps.Trained;
+    /// <summary>Why only the shift coupling is offered; empty when both are.</summary>
+    [ObservableProperty] private string _trapCouplingNote = "";
+    public bool IsShiftCoupling => TrapCoupling == ModelTraps.Shift && HasTrapModel;
+    public bool HasTrapModel => TrapModel is not null && TrapModel != ModelTraps.None;
+    /// <summary>The shift coupling's strengths (R-mc19-6): lock, value and, after a fit, ±.</summary>
+    public ObservableCollection<StrengthRow> TrapStrengths { get; } = [];
+
     private void RefreshTraps()
     {
         var s = TrapFit.Settings(Document);
@@ -418,7 +428,15 @@ public sealed partial class ModelComposerViewModel
         TrapStates.Clear();
         TrapParameters.Clear();
         TrapExpressions.Clear();
+        TrapStrengths.Clear();
         TrapCheck = "";
+        bool pulsed = TrapFit.HasPulsedIv(Document);
+        var couplings = pulsed ? ModelTraps.Couplings : [ModelTraps.Shift];
+        if (!couplings.SequenceEqual(TrapCouplings)) { TrapCouplings = couplings; OnPropertyChanged(nameof(TrapCouplings)); }
+        TrapCoupling = pulsed ? s.Coupling : ModelTraps.Shift;
+        TrapCouplingNote = pulsed ? "" : TrapFit.ShiftOnly;
+        OnPropertyChanged(nameof(IsShiftCoupling));
+        RebuildPlotTabs();
         if (!s.Modelled) return;
         ModelTraps? block = null;
         try { block = TrapFit.Block(s); }
@@ -442,6 +460,17 @@ public sealed partial class ModelComposerViewModel
             row.Load(s.Parameters.TryGetValue(p.Name, out double v) ? Num(v) : p.Default is { } d ? Num(d) : "");
             TrapParameters.Add(row);
         }
+        if (s.Shifted && def is not null)
+            foreach (string state in on)
+            {
+                if (def.ShiftParameter(state) is not { } name) continue;
+                var row = new StrengthRow(name, TrapFit.Label(s.Model, state), CommitStrength);
+                var fitted = record?.Strengths.GetValueOrDefault(name);
+                bool typed = s.Parameters.TryGetValue(name, out double t);
+                row.Load(typed ? Num(t) : fitted is { } f ? Num(f.Value) : "", typed,
+                         !typed && fitted?.Error is { } se ? $"± {ModelValueFormat.G(se)}" : "");
+                TrapStrengths.Add(row);
+            }
         foreach (var (state, (dynamics, dc)) in s.Expressions)
         {
             var d = new ParameterRow($"{state} dynamics", "", "d(state)/dt", CommitTrapExpression);
@@ -461,8 +490,45 @@ public sealed partial class ModelComposerViewModel
     partial void OnTrapModelChanged(string value)
     {
         OnPropertyChanged(nameof(IsCustomTraps));
+        OnPropertyChanged(nameof(IsShiftCoupling));
+        OnPropertyChanged(nameof(HasTrapModel));
         if (_loadingSteps || IsChoosingKind || value is null) return;
-        EditPart($"Traps: {value}", TrapFit.Settings, TrapFit.WithSettings, TrapFit.Settings(Document) with { Model = value, States = [] });
+        var s = TrapFit.Settings(Document) with { Model = value, States = [] };
+        // Without pulsed I–V the shift coupling is the only one (R-mc19-2), so choosing a model chooses it too.
+        if (!TrapFit.HasPulsedIv(Document) && value != ModelTraps.None) s = s with { Coupling = ModelTraps.Shift };
+        EditPart($"Traps: {value}", TrapFit.Settings, TrapFit.WithSettings, s);
+    }
+
+    partial void OnTrapCouplingChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsShiftCoupling));
+        if (_loadingSteps || IsChoosingKind || value is null) return;
+        var s = TrapFit.Settings(Document);
+        if (s.Coupling == value) return;
+        // A typed strength belongs to the shift coupling; leaving it, they go with it.
+        var p = s.Parameters.Where(kv => kv.Key is not (CaptureEmissionTraps.ShiftDrain or CaptureEmissionTraps.ShiftGate))
+                            .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
+        EditPart($"Traps: {value} coupling", TrapFit.Settings, TrapFit.WithSettings,
+                 s with { Coupling = value, Parameters = value == ModelTraps.Shift ? s.Parameters : p });
+    }
+
+    /// <summary>A strength typed (and so locked), its lock set — holding the shown value — or cleared to be fitted again.</summary>
+    private void CommitStrength(StrengthRow row, string field, string text)
+    {
+        if (_loadingSteps) return;
+        var s = TrapFit.Settings(Document);
+        var p = new Dictionary<string, double>(s.Parameters, StringComparer.Ordinal);
+        string what;
+        if (field == nameof(StrengthRow.Lock))
+        {
+            if (text != "true") { p.Remove(row.Name); what = "fitted"; }
+            else if (TryNum(row.Value, out double held)) { p[row.Name] = held; what = "locked"; }
+            else { Error($"Traps: {row.Name} has no value to lock; type one."); return; }
+        }
+        else if (text.Trim().Length == 0) { p.Remove(row.Name); what = "fitted"; }
+        else if (TryNum(text, out double v)) { p[row.Name] = v; what = text; }
+        else { Error($"Traps: '{text}' is not a value of {row.Name}."); return; }
+        EditPart($"Traps: {row.Name} {what}", TrapFit.Settings, TrapFit.WithSettings, s with { Parameters = p });
     }
 
     private void ToggleTrapState(TrapStateRow row, bool on)

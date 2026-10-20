@@ -122,7 +122,8 @@ public static class CmodelExport
             BasePeriphery = periphery,
             Temperature = temperature,
             Thermal = thermal,
-            Traps = r.Traps,
+            // Under a shift coupling the current step's record carries no block: Id₀ is trap-free, the strengths the trap step's.
+            Traps = r.Traps ?? TrapFit.ShiftBlock(doc),
             Network = Network(cmcDir, doc),
             Core = new CoreConstituents(r.Id, r.Ig, charge.Record.Qg, charge.Record.Qd, r.IdRF)
             {
@@ -236,7 +237,7 @@ public static class CmodelExport
         {
             $"{Path.GetFileName(outPath)}: N0 {periphery(model)} · {Temperature(model.Temperature)}" +
             (model.Thermal is { } th ? $" · Rth {th.Rth.ToString("G4", CultureInfo.InvariantCulture)} K/W" : "") +
-            (model.Traps is { } tr ? $" · traps {tr.Model} ({string.Join(", ", tr.States)})" : ""),
+            (model.Traps is { } tr ? $" · traps {tr.Model} ({string.Join(", ", tr.States)}){(tr.Shifted ? ", threshold shift" : "")}" : ""),
         };
         // R-mc18-2: a model whose charges are zero is legitimate, and said so.
         if (ChargeFit.Record(doc)?.Typed is { IsZero: true }) lines.Add(ChargeFit.ZeroLine);

@@ -280,7 +280,7 @@ public static class CmodelFile
         };
     }
 
-    private static readonly string[] TrapKeys = ["Model", "States", "Parameters", "Levels", "Expressions"];
+    private static readonly string[] TrapKeys = ["Model", "Coupling", "States", "Parameters", "Levels", "Expressions"];
 
     /// <summary><c>Traps</c> (MC-10): the model by name — refused by name when unknown — and its states, parameters, levels
     /// and expressions. A block naming <c>None</c> is no traps. The model's own rules are the validator's.</summary>
@@ -328,6 +328,7 @@ public static class CmodelFile
         return new ModelTraps
         {
             Model = model,
+            Coupling = t.TryGetProperty("Coupling", out _) ? Str(t, "Coupling", "Traps.Coupling") : ModelTraps.Trained,
             States = t.TryGetProperty("States", out _) ? Strings(t, "States", "Traps.States") : [],
             Parameters = parameters, Levels = levels, Expressions = expressions,
         };
@@ -497,7 +498,8 @@ public static class CmodelFile
         var trapped = new HashSet<string>(inputs, StringComparer.Ordinal);
         foreach (string state in m.Traps?.States ?? []) trapped.Add(state);
 
-        ValidateConstituent(m, m.Core.Id, "Id", trapped);
+        // R-mc19-1: under a Shift coupling the core shifts Id's gate voltage, so Id takes no state itself.
+        ValidateConstituent(m, m.Core.Id, "Id", m.Traps is { Shifted: true } ? inputs : trapped);
         ValidateConstituent(m, m.Core.Ig, "Ig", inputs);
         ValidateConstituent(m, m.Core.Qg, "Qg", inputs);
         ValidateConstituent(m, m.Core.Qd, "Qd", trapped);
@@ -532,6 +534,8 @@ public static class CmodelFile
             {
                 ComposedCoreProgram.T => "a single-temperature model has no temperature input",
                 _ when m.Traps is null && TrapState(input) => "trap states are inputs only of a model with traps",
+                _ when name == "Id" && m.Traps is { Shifted: true } sh && sh.States.Contains(input)
+                    => $"under a {ModelTraps.Shift} coupling Id takes no trap state; the core shifts its gate voltage by the states",
                 _ when m.Traps is { } own && own.States.Contains(input) => "the trap states are inputs of Id and Qd only, never of the gate current or charge",
                 _ when m.Traps is { } any && TrapState(input) => $"the model's trap states are {string.Join(", ", any.States)}",
                 _                     => $"the inputs are {string.Join(", ", allowed)}",
@@ -1011,6 +1015,7 @@ public static class CmodelFile
     {
         w.WriteStartObject("Traps");
         w.WriteString("Model", t.Model);
+        if (t.Coupling != ModelTraps.Trained) w.WriteString("Coupling", t.Coupling);
         w.WriteStartArray("States");
         foreach (string s in t.States) w.WriteStringValue(s);
         w.WriteEndArray();

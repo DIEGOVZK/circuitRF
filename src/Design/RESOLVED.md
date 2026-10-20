@@ -21047,3 +21047,26 @@ data's own frequencies, and the charge step averages each point's capacitances o
 with Y at a single low frequency, the case D6 names, held no sample in its band and was refused as "0 usable S
 point(s)" unless the user typed a band. With no frequency inside the default band, the band is now the data's whole
 span. Gate: `IntrinsicQuantitiesTests.DefaultBand_HoldsASingleFrequency`.
+
+## Model Composer MC-19: traps without pulsed data (2026-10-20)
+
+**The shift coupling, measured.** Gate `TrapShiftCouplingTests`, on `ComposedTestModels`' equation device with both
+`CaptureEmission` states coupled at `ShiftDrain` 0.05 and `ShiftGate` 0.1, simulated by circuitRF as the intrinsic core:
+
+- DC equals the trap-free device to 1.25e-11 relative at worst over the 63-point grid — the DC engine's `gmin` on the
+  state nodes, against the 1e-9 asked.
+- From its DC I–V and 63-bias S alone, both strengths came back within 0.002 % (standard errors 2e-7 and 1.5e-6 V/V),
+  the relations' residuals 0.001 % of the RF conductances; 18 points below the 10 % `gm₀` floor were left out.
+- Class AB (`Vgs` −1 V, `Vds` 10 V, 1 GHz into 150 Ω, Pin −10 … 20 dBm): the 3 dB compression point is 19.19 dBm with
+  the shift and 25.13 dBm without — **5.95 dB lower**, far clear of HB's tolerance. The small-signal Pout differs too
+  (−1.80 against 0.48 dBm): at RF the frozen states give `gm·(1 − a_g)` and `gds + a_d·gm`, which is the DC/RF dispersion
+  itself, so each model's compression is read against its own small-signal gain.
+
+**The coupling is written, not inferred.** Defaulting an unset coupling to `Shift` when there is no pulsed I–V would have
+changed MC-10's own gate (`TrappedModelFitTests.WithNoPulsedData_TheStepIsUnavailable_AndTheModelHasNoTraps`), which
+holds that such a document is unavailable to the trained step. `Trained` stays the default; the window and `model fit`
+write `Shift` when a model is chosen on a document with no pulsed I–V.
+
+**Under the shift the current step must not train on the RF conductances.** With self-heating modelled the current step
+trains `Id` on every S point's `Gm`/`Gds` (MC-9); the trap part of the DC/RF difference would then be absorbed into
+`Id₀` and the strengths would fit to near zero. Under `Shift` that training is skipped, with one line.

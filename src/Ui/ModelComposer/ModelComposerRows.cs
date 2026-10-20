@@ -244,6 +244,34 @@ public sealed partial class TrapStateRow(string state, string label, Action<Trap
     partial void OnIsOnChanged(bool value) { if (!_loading) toggle(this, value); }
 }
 
+/// <summary>
+/// One shift-coupling strength (brief-modelcomposer-19 R-mc19-6): its value, its lock — a locked strength is typed and not
+/// fitted — and the last fit's ± when it was fitted. Typing a value locks it; clearing it hands it back to the fit.
+/// </summary>
+public sealed partial class StrengthRow(string name, string state, Action<StrengthRow, string, string> commit) : ObservableObject
+{
+    public string Name { get; } = name;
+    /// <summary>The state it belongs to, in words.</summary>
+    public string State { get; } = state;
+    public string Tip => $"the {State} strength, V/V: the gate-voltage shift per volt of the state away from its DC value";
+    private bool _loading;
+
+    [ObservableProperty] private string _value = "";
+    [ObservableProperty] private bool _lock;
+    /// <summary>"± 0.0004" after a fit; empty for a typed strength or before a fit.</summary>
+    [ObservableProperty] private string _error = "";
+
+    public void Load(string value, bool locked, string error)
+    {
+        _loading = true;
+        try { Value = value; Lock = locked; Error = error; }
+        finally { _loading = false; }
+    }
+
+    partial void OnValueChanged(string value) { if (!_loading) commit(this, nameof(Value), value); }
+    partial void OnLockChanged(bool value) { if (!_loading) commit(this, nameof(Lock), value ? "true" : "false"); }
+}
+
 /// <summary>One named number the user types (a trap time constant, a validation tolerance, a report option).</summary>
 public sealed partial class ParameterRow(string name, string unit, string tip, Action<ParameterRow, string> commit) : ObservableObject
 {
