@@ -17,7 +17,7 @@ namespace CircuitRF.Ui.Diagnostics.Fixtures;
 /// <c>ModalErrorBoxTests</c> runs end to end — resolved through the same
 /// <see cref="EmSetupResolver"/> the Simulate button and the <c>em</c> verb use, so the curves on the
 /// page are the curves that file produces. <see cref="DocAntennaFixtures"/> states the rule and the
-/// walk up to <c>circuitrf.slnx</c>; this file follows it.</para>
+/// walk up to <c>circuitRF.slnx</c>; this file follows it.</para>
 ///
 /// <para><b>Both figures are <c>Static</c> in <see cref="FigureCatalog"/>.</b> A full-wave point is
 /// not free — the sweep below is 61 points and about a minute built Release, several times that in

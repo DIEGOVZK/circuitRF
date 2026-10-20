@@ -295,7 +295,7 @@ public sealed class Em3dPackageExampleTests(ITestOutputHelper output) : IDisposa
     private static string RepoRoot()
     {
         for (string? dir = AppContext.BaseDirectory; dir is not null; dir = Path.GetDirectoryName(dir))
-            if (File.Exists(Path.Combine(dir, "circuitrf.slnx"))) return dir;
+            if (File.Exists(Path.Combine(dir, "circuitRF.slnx"))) return dir;
         throw new InvalidOperationException("repo root not found");
     }
 

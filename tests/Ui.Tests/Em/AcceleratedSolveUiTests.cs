@@ -250,7 +250,7 @@ public class AcceleratedSolveUiTests
     private static string RepoRoot()
     {
         var d = new DirectoryInfo(AppContext.BaseDirectory);
-        while (d is not null && !File.Exists(Path.Combine(d.FullName, "circuitrf.slnx"))) d = d.Parent;
+        while (d is not null && !File.Exists(Path.Combine(d.FullName, "circuitRF.slnx"))) d = d.Parent;
         Assert.NotNull(d);
         return d!.FullName;
     }

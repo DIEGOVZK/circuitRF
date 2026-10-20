@@ -526,7 +526,7 @@ public sealed class ShadowsOcclusionExportTests : IDisposable
     private static string RepoRoot([CallerFilePath] string here = "")
     {
         var dir = Path.GetDirectoryName(here);
-        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitrf.slnx"))) dir = Path.GetDirectoryName(dir);
+        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitRF.slnx"))) dir = Path.GetDirectoryName(dir);
         return dir ?? throw new InvalidOperationException("repo root not found");
     }
 }

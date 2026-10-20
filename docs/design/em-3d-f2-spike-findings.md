@@ -7,7 +7,7 @@ D3D11 is compiled but has never run — **both panes await the owner's Windows a
 2026-09-25: route A primary, route B secondary** (§6) · **Date:** 2026-09-25 ·
 **Brief:** [`brief-em3d-27-3d-pane-spike.md`](../sonnet-briefs/brief-em3d-27-3d-pane-spike.md) ·
 **Design note:** [`em-3d.md`](em-3d.md) §8 · **Code:** [`tools/Viewer3dSpike/`](../../tools/Viewer3dSpike/README.md)
-(throwaway; not in `circuitrf.slnx`; the README has every command per OS)
+(throwaway; not in `circuitRF.slnx`; the README has every command per OS)
 
 Every number below comes from the spike's counter harness on the agent's machine unless it says
 otherwise: Apple M4 (10 cores), 16 GB, macOS 27.0, .NET 10, Avalonia 12.0.3, Dock 12.0.0.2,

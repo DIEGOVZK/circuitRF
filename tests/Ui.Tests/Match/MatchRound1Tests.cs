@@ -658,7 +658,7 @@ public sealed class MatchRound1Tests
     private static string RepoRoot()
     {
         var dir = new System.IO.DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !System.IO.File.Exists(System.IO.Path.Combine(dir.FullName, "circuitrf.slnx")))
+        while (dir is not null && !System.IO.File.Exists(System.IO.Path.Combine(dir.FullName, "circuitRF.slnx")))
             dir = dir.Parent;
         Assert.NotNull(dir);
         return dir!.FullName;

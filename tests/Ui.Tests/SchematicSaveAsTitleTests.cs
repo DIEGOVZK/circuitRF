@@ -176,7 +176,7 @@ public sealed class SchematicSaveAsTitleTests
     private static string ReadRepoFile(string relative)
     {
         var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitrf.slnx")))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitRF.slnx")))
             dir = dir.Parent;
         Assert.NotNull(dir);
         return File.ReadAllText(Path.Combine(dir!.FullName, relative));

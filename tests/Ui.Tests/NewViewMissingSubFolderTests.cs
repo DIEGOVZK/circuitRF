@@ -62,7 +62,7 @@ public sealed class NewViewMissingSubFolderTests : IDisposable
     private static string RepoRoot()
     {
         string dir = AppContext.BaseDirectory;
-        while (!File.Exists(Path.Combine(dir, "circuitrf.slnx")))
+        while (!File.Exists(Path.Combine(dir, "circuitRF.slnx")))
             dir = Path.GetDirectoryName(dir) ?? throw new InvalidOperationException("repo root not found");
         return dir;
     }

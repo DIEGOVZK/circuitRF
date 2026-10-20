@@ -268,7 +268,7 @@ public sealed class FaceImageTests : IDisposable
     public void Gate5And6_Removal_ThreeWays_OneFunction_AndReplace()
     {
         string repo = AppContext.BaseDirectory;
-        while (!File.Exists(Path.Combine(repo, "circuitrf.slnx"))) repo = Path.GetDirectoryName(repo)!;
+        while (!File.Exists(Path.Combine(repo, "circuitRF.slnx"))) repo = Path.GetDirectoryName(repo)!;
         string Code(string rel) => Regex.Replace(File.ReadAllText(Path.Combine(repo, rel)), @"//[^\n]*|/\*.*?\*/", "", RegexOptions.Singleline);
         string face = Code("src/Ui/ThreeD/C3dEditorViewModel.FaceImages.cs");
         string inspector = Code("src/Ui/ThreeD/C3dPropertiesViewModel.FaceImages.cs");
@@ -629,7 +629,7 @@ public sealed class FaceImageTests : IDisposable
     private static (int ExitCode, string StdOut, string StdErr) Cli(params string[] args)
     {
         string repo = AppContext.BaseDirectory;
-        while (!File.Exists(Path.Combine(repo, "circuitrf.slnx"))) repo = Path.GetDirectoryName(repo)!;
+        while (!File.Exists(Path.Combine(repo, "circuitRF.slnx"))) repo = Path.GetDirectoryName(repo)!;
         return CircuitRF.Ui.Tests.Em3d.CliProcess.Run(repo, [], args);
     }
 

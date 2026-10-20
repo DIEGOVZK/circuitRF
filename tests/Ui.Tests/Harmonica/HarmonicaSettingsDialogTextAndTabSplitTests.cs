@@ -25,7 +25,7 @@ public sealed class HarmonicaSettingsDialogTextAndTabSplitTests
     private static string RepoRoot()
     {
         string dir = AppContext.BaseDirectory;
-        while (dir is { Length: > 0 } && !File.Exists(Path.Combine(dir, "circuitrf.slnx")))
+        while (dir is { Length: > 0 } && !File.Exists(Path.Combine(dir, "circuitRF.slnx")))
             dir = Path.GetDirectoryName(dir) ?? "";
         Assert.True(dir.Length > 0, "could not locate the repository root");
         return dir;

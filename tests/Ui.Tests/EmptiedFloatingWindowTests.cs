@@ -202,7 +202,7 @@ public sealed class EmptiedFloatingWindowTests
     private static string ReadRepoFile(string relative)
     {
         var dir = System.AppContext.BaseDirectory;
-        while (dir is not null && !System.IO.File.Exists(System.IO.Path.Combine(dir, "circuitrf.slnx")))
+        while (dir is not null && !System.IO.File.Exists(System.IO.Path.Combine(dir, "circuitRF.slnx")))
             dir = System.IO.Path.GetDirectoryName(dir);
         Assert.NotNull(dir);
         return System.IO.File.ReadAllText(System.IO.Path.Combine(dir!, relative));

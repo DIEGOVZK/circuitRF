@@ -74,7 +74,7 @@ public static class DocWsProbeFixtures
 
     /// <summary>
     /// The repository root, found by walking up from this assembly's own location until
-    /// <c>circuitrf.slnx</c> appears.
+    /// <c>circuitRF.slnx</c> appears.
     ///
     /// <para>Both callers — <c>tools/DocGen</c> and <c>Ui.Tests</c> — run out of a
     /// <c>bin/</c> directory inside the tree, so the walk always terminates; the shipping
@@ -86,12 +86,12 @@ public static class DocWsProbeFixtures
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            if (File.Exists(Path.Combine(dir.FullName, "circuitrf.slnx"))) return dir.FullName;
+            if (File.Exists(Path.Combine(dir.FullName, "circuitRF.slnx"))) return dir.FullName;
             dir = dir.Parent;
         }
         throw new InvalidOperationException(
             "The WSProbe documentation fixtures read their example designs out of testdata/, and no "
-          + $"circuitrf.slnx was found above '{AppContext.BaseDirectory}'. The figures are generated "
+          + $"circuitRF.slnx was found above '{AppContext.BaseDirectory}'. The figures are generated "
           + "from inside the repository, so this is an error rather than a fallback.");
     });
 

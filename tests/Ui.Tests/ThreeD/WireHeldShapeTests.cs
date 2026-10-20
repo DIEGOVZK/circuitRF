@@ -227,7 +227,7 @@ public sealed class WireHeldShapeTests : IDisposable
         Write(w);
         string png = Path.Combine(_root, "partial.png");
         string repo = AppContext.BaseDirectory;
-        while (!File.Exists(Path.Combine(repo, "circuitrf.slnx"))) repo = Path.GetDirectoryName(repo)!;
+        while (!File.Exists(Path.Combine(repo, "circuitRF.slnx"))) repo = Path.GetDirectoryName(repo)!;
 
         var (exit, stdout, stderr) = CircuitRF.Ui.Tests.Em3d.CliProcess.Run(repo, [], ["render", _path, "-o", png, "--iso", "--size", "200x150"]);
         Assert.True(exit == 0, stderr + stdout);

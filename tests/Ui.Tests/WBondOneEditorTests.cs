@@ -44,7 +44,7 @@ public class WBondOneEditorTests
     private static string Read(params string[] parts)
     {
         var dir = AppContext.BaseDirectory;
-        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitrf.slnx")))
+        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitRF.slnx")))
             dir = Path.GetDirectoryName(dir);
         Assert.NotNull(dir);
         return File.ReadAllText(Path.Combine([dir!, .. parts]));
@@ -302,7 +302,7 @@ public class WBondOneEditorTests
     public void TheTranscribedLayoutToolbar_IsGone()
     {
         var dir = AppContext.BaseDirectory;
-        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitrf.slnx")))
+        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitRF.slnx")))
             dir = Path.GetDirectoryName(dir);
         Assert.NotNull(dir);
 

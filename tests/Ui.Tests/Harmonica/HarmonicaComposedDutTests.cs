@@ -22,7 +22,7 @@ public sealed class HarmonicaComposedDutTests
     private static string ExampleModel()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitrf.slnx"))) dir = dir.Parent;
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitRF.slnx"))) dir = dir.Parent;
         return Path.Combine(dir!.FullName, "examples", "Model Composer", "synthetic-gan", "gan_4x125.cmodel");
     }
 

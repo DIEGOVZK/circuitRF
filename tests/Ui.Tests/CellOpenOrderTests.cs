@@ -72,7 +72,7 @@ public class CellOpenOrderTests : IDisposable
     public void EditParameters_DoesNotBindTheDoubleClickCommand()
     {
         var dir = AppContext.BaseDirectory;
-        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitrf.slnx"))) dir = Path.GetDirectoryName(dir);
+        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitRF.slnx"))) dir = Path.GetDirectoryName(dir);
         var axaml = File.ReadAllText(Path.Combine(dir!, "src", "Ui", "Views", "ProjectTree", "ProjectTreeView.axaml"));
 
         int i = axaml.IndexOf("Header=\"Edit Parameters\"", StringComparison.Ordinal);

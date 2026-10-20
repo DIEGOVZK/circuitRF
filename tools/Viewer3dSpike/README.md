@@ -1,6 +1,6 @@
 # Viewer3dSpike — brief em3d-27 (the 3D pane spike, opens F2)
 
-**Throwaway.** Not in `circuitrf.slnx`, references no project in this repository, and nothing under
+**Throwaway.** Not in `circuitRF.slnx`, references no project in this repository, and nothing under
 `src/` may reference it. Brief 28 lifts `Spike.Scene/FrameCounters.cs` and the hosting pattern in
 `Spike.App/InteropPane.cs`, not the scene code. Findings: `docs/design/em-3d-f2-spike-findings.md`.
 

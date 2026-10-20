@@ -467,7 +467,7 @@ public sealed class SharedExtractionTests(ITestOutputHelper output) : IDisposabl
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitrf.slnx")))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitRF.slnx")))
             dir = dir.Parent;
         Assert.NotNull(dir);
         return dir!.FullName;

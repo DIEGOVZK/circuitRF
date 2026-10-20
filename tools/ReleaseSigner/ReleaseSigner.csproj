@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    NOT in circuitrf.slnx, deliberately, and it references no other project in this repository.
+    NOT in circuitRF.slnx, deliberately, and it references no other project in this repository.
 
     It is the release-signing half of docs/design/auto-update.md §15.5, and it runs on the machine
     that cuts a release rather than on any user's. Keeping it out of the solution keeps the private

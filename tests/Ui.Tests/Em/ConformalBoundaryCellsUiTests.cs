@@ -540,7 +540,7 @@ public class ConformalBoundaryCellsUiTests
     private static string RepoFile(string relative)
     {
         var d = new DirectoryInfo(AppContext.BaseDirectory);
-        while (d is not null && !File.Exists(Path.Combine(d.FullName, "circuitrf.slnx"))) d = d.Parent;
+        while (d is not null && !File.Exists(Path.Combine(d.FullName, "circuitRF.slnx"))) d = d.Parent;
         Assert.NotNull(d);
         return Path.Combine(d!.FullName, relative);
     }

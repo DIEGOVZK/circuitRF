@@ -12,7 +12,7 @@ public sealed class ColorViewSizeTests
     public void NoColorViewIsGivenASize()
     {
         var root = new DirectoryInfo(AppContext.BaseDirectory);
-        while (root is not null && !File.Exists(Path.Combine(root.FullName, "circuitrf.slnx"))) root = root.Parent;
+        while (root is not null && !File.Exists(Path.Combine(root.FullName, "circuitRF.slnx"))) root = root.Parent;
         Assert.NotNull(root);
         var offenders = new List<string>();
         int seen = 0;

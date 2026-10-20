@@ -104,13 +104,13 @@ public static class Program
     }
 
     /// <summary>The repository root: the nearest folder above the working directory, or above this program, holding
-    /// <c>circuitrf.slnx</c>.</summary>
+    /// <c>circuitRF.slnx</c>.</summary>
     public static string? RepoRoot()
     {
         foreach (string start in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
         {
             for (var dir = new DirectoryInfo(start); dir is not null; dir = dir.Parent)
-                if (File.Exists(Path.Combine(dir.FullName, "circuitrf.slnx"))) return dir.FullName;
+                if (File.Exists(Path.Combine(dir.FullName, "circuitRF.slnx"))) return dir.FullName;
         }
         return null;
     }

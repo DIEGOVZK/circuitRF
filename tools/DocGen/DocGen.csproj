@@ -12,7 +12,7 @@
     (XML comments cannot contain a double hyphen, hence the bracket notation above; the real
     commands are printed by the tool itself and written in every generated file's banner.)
 
-    NOT in circuitrf.slnx, exactly like tools/IconGen, so a plain `dotnet build` at the root neither
+    NOT in circuitRF.slnx, exactly like tools/IconGen, so a plain `dotnet build` at the root neither
     builds this nor restores Avalonia.Headless. It is a BUILD TOOL, not one of the deliberately
     independent programs under tools/ that exist to be tested against, so referencing CircuitRF.Ui
     is correct here and is in fact the whole point: the figures come from the shipping controls.

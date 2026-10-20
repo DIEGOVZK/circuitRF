@@ -26,7 +26,7 @@ namespace CircuitRF.Ui.Diagnostics.Fixtures;
 /// workspace the page is written about and which <c>AntennaExampleTests</c> runs end to end through the
 /// CLI. A second copy under <c>src/Ui</c> would agree with the first on the day it was written and drift
 /// silently afterwards — <see cref="DocWsProbeFixtures"/> states the rule and the reason, and this file
-/// follows it, including the walk up to <c>circuitrf.slnx</c> and the hard failure if it is not found.
+/// follows it, including the walk up to <c>circuitRF.slnx</c> and the hard failure if it is not found.
 /// What a reader sees is therefore the artwork that produced the numbers beside it.</para>
 /// </summary>
 public static class DocAntennaFixtures
@@ -39,12 +39,12 @@ public static class DocAntennaFixtures
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null)
         {
-            if (File.Exists(Path.Combine(dir.FullName, "circuitrf.slnx"))) return dir.FullName;
+            if (File.Exists(Path.Combine(dir.FullName, "circuitRF.slnx"))) return dir.FullName;
             dir = dir.Parent;
         }
         throw new InvalidOperationException(
             "The documentation figures that read a committed design out of testdata/ need the "
-          + $"repository root, and no circuitrf.slnx was found above '{AppContext.BaseDirectory}'.");
+          + $"repository root, and no circuitRF.slnx was found above '{AppContext.BaseDirectory}'.");
     });
 
     /// <summary>The repository root, for the other fixtures that read a committed <c>testdata/</c>

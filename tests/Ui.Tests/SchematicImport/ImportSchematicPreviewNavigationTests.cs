@@ -62,7 +62,7 @@ public sealed class ImportSchematicPreviewNavigationTests
     public void ThePreview_IsTheSchematicCanvas()
     {
         var dir = AppContext.BaseDirectory;
-        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitrf.slnx"))) dir = Path.GetDirectoryName(dir);
+        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitRF.slnx"))) dir = Path.GetDirectoryName(dir);
         string xaml = File.ReadAllText(Path.Combine(dir!, "src/Ui/Views/Dialogs/ImportSchematicDialog.axaml"));
         Assert.Contains("<ctrl:SchematicCanvas x:Name=\"PreviewCanvas\"", xaml);
         Assert.DoesNotContain("<Image x:Name=\"PreviewImage\"", xaml);

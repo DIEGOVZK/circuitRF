@@ -124,7 +124,7 @@ public sealed class EditorToolbarKeysTests
     private static string ReadPath(string file)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitrf.slnx"))) dir = dir.Parent;
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitRF.slnx"))) dir = dir.Parent;
         string root = dir?.FullName ?? throw new InvalidOperationException("repo root not found");
         return Path.Combine(root, "src", "Ui", "Views", "ThreeD", file);
     }

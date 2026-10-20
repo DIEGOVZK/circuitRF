@@ -343,7 +343,7 @@ public sealed class GdstkOasisTests : IDisposable
     private static string FixtureDir(string sub)
     {
         var d = new DirectoryInfo(AppContext.BaseDirectory);
-        while (d is not null && !File.Exists(Path.Combine(d.FullName, "circuitrf.slnx"))) d = d.Parent;
+        while (d is not null && !File.Exists(Path.Combine(d.FullName, "circuitRF.slnx"))) d = d.Parent;
         Assert.NotNull(d);
         return Path.Combine(d!.FullName, "testdata", "interchange", "gdstk", sub);
     }

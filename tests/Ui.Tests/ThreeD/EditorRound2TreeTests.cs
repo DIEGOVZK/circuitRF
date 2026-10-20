@@ -172,7 +172,7 @@ public sealed class EditorRound2TreeTests : IDisposable
         // Construction order is the name's tooltip, not a "#n" in front of it.
         Assert.StartsWith("Construction order 3:", trace.OrderTip);
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (!File.Exists(Path.Combine(dir!.FullName, "circuitrf.slnx"))) dir = dir.Parent;
+        while (!File.Exists(Path.Combine(dir!.FullName, "circuitRF.slnx"))) dir = dir.Parent;
         Assert.DoesNotContain("OrderText", File.ReadAllText(Path.Combine(dir.FullName, "src/Ui/Views/ThreeD/C3dEditorView.axaml")));
     }
 

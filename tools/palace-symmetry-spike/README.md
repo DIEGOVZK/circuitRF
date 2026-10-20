@@ -2,7 +2,7 @@
 
 The scripts behind `testdata/em3d/terminal/palace-symmetry/`, `testdata/em3d/terminal/palace-modal/` and
 `src/Design/RESOLVED.md` § "Palace terminal ports by symmetry — brief-em3d-119" and § "Palace modal transform on a
-shared face — brief-em3d-124". **Not part of the application:** Python, not in `circuitrf.slnx`, and like the rest of
+shared face — brief-em3d-124". **Not part of the application:** Python, not in `circuitRF.slnx`, and like the rest of
 `tools/` it references no project in this repository. It is kept so a re-run (a new Palace version, or brief 115's gates)
 starts from the measured setup instead of a rebuild. 113-a's harness was lost with its session, and this one had to be
 re-derived from 113-a's README.

@@ -69,7 +69,7 @@ public sealed class OptimizationExampleTests
     private static string Root()
     {
         for (string? dir = AppContext.BaseDirectory; dir is not null; dir = Path.GetDirectoryName(dir))
-            if (File.Exists(Path.Combine(dir, "circuitrf.slnx"))) return Path.Combine(dir, "examples", "Optimization");
+            if (File.Exists(Path.Combine(dir, "circuitRF.slnx"))) return Path.Combine(dir, "examples", "Optimization");
         throw new InvalidOperationException("repo root not found");
     }
 }

@@ -594,7 +594,7 @@ public sealed class TechMaterialsTests(ITestOutputHelper output) : IDisposable
     private static string RepoRoot()
     {
         string? dir = AppContext.BaseDirectory;
-        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitrf.slnx")))
+        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitRF.slnx")))
             dir = Path.GetDirectoryName(dir);
         return dir ?? throw new InvalidOperationException("repo root not found");
     }

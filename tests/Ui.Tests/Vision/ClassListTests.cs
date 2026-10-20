@@ -18,7 +18,7 @@ public sealed class ClassListTests
     internal static string KitDir()
     {
         var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitrf.slnx")))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitRF.slnx")))
             dir = dir.Parent;
         Assert.NotNull(dir);
         return Path.Combine(dir!.FullName, "tools", "schematic-ml");

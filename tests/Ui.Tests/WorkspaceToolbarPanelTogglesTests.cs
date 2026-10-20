@@ -24,7 +24,7 @@ public class WorkspaceToolbarPanelTogglesTests
     private static string RepoRoot()
     {
         var dir = AppContext.BaseDirectory;
-        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitrf.slnx")))
+        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitRF.slnx")))
             dir = Path.GetDirectoryName(dir);
         Assert.NotNull(dir);
         return dir!;

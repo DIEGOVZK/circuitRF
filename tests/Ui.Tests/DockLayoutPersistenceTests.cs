@@ -1132,7 +1132,7 @@ public sealed class DockLayoutPersistenceTests
     private static string ReadRepoFile(string relativePath)
     {
         var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitrf.slnx")))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitRF.slnx")))
             dir = dir.Parent;
         Assert.NotNull(dir);
         var full = Path.Combine(dir!.FullName, relativePath);

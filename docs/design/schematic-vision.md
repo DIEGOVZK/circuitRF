@@ -197,7 +197,7 @@ choice. `via` → `ViaGnd`, because a via on a schematic is almost always a via 
 
 ## 4. Generated pictures of circuitRF's own schematics (IML-2)
 
-`tools/SchematicSynth` (C#, in `circuitrf.slnx`, so an API change breaks its build rather than its next run):
+`tools/SchematicSynth` (C#, in `circuitRF.slnx`, so an API change breaks its build rather than its next run):
 
 ```bash
 dotnet run --project tools/SchematicSynth -- crf --count 30000 --seed 1 --out $CRF_ML_DATA/synth/crf/batch-001 --preview 24

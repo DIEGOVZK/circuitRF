@@ -84,7 +84,7 @@ public sealed class ImageSourceReplaceTests : IDisposable
     public void NoReadOut_IsAPlainTextBlock()
     {
         var dir = new DirectoryInfo(Directory.GetCurrentDirectory());
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitrf.slnx"))) dir = dir.Parent;
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitRF.slnx"))) dir = dir.Parent;
         Assert.NotNull(dir);
         var found = new List<string>();
         foreach (string file in Directory.GetFiles(Path.Combine(dir!.FullName, "src", "Ui", "Recognition"), "*.axaml"))

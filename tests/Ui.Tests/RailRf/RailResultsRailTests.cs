@@ -219,7 +219,7 @@ public sealed class RailResultsRailTests
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(System.AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitrf.slnx"))) dir = dir.Parent;
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitRF.slnx"))) dir = dir.Parent;
         return dir?.FullName ?? throw new DirectoryNotFoundException("repo root");
     }
 }

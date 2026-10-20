@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- Brief em3d-27 (F2 spike): the headless counter harness (§3). THROWAWAY; not in circuitrf.slnx. -->
+  <!-- Brief em3d-27 (F2 spike): the headless counter harness (§3). THROWAWAY; not in circuitRF.slnx. -->
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>

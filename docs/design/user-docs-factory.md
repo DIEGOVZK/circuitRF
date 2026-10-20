@@ -223,7 +223,7 @@ that has kept the symbol generator alive.
 **A figure whose fixture needs a real result runs one.** `DocRunData` runs the shipped schematic
 templates through `SchematicRunService.Prepare`/`Execute` — the two calls the Run button makes — and
 `DocWsProbeFixtures` (added by WSP-7) does the same for the committed `testdata/` netlists the
-WSProbe briefs' own gates run, located by walking up to `circuitrf.slnx`. **Neither copies a design
+WSProbe briefs' own gates run, located by walking up to `circuitRF.slnx`. **Neither copies a design
 into `src/Ui`**: a second copy agrees with the first on the day it is written and drifts afterwards,
 and the whole point of a generated figure is that it is the picture the program actually produces.
 `DocWsProbeFixtures.Designs` names, per row, the page section AND the brief gate its design serves,
@@ -362,7 +362,7 @@ Recommended split:
 - `src/Ui/Diagnostics/UiArtworkGenerator.cs` — the catalog, the fixtures and the render call (no
   headless reference; it takes an already-initialised app).
 - `tools/DocGen/` — the headless bootstrap, the Markdown pipeline and the emit backends; references
-  `CircuitRF.Ui` and `Avalonia.Headless`; **not** in `circuitrf.slnx`, exactly like `tools/IconGen`, so
+  `CircuitRF.Ui` and `Avalonia.Headless`; **not** in `circuitRF.slnx`, exactly like `tools/IconGen`, so
   a plain `dotnet build` neither builds it nor restores its dependencies.
 
 Note this is a *build tool*, like `IconGen` — not one of the deliberately-independent programs in

@@ -405,7 +405,7 @@ public class StackupCopyTests
     private static string RepoFile(string relativePath)
     {
         string dir = AppContext.BaseDirectory;
-        while (dir is { Length: > 0 } && !File.Exists(Path.Combine(dir, "circuitrf.slnx")))
+        while (dir is { Length: > 0 } && !File.Exists(Path.Combine(dir, "circuitRF.slnx")))
             dir = Path.GetDirectoryName(dir) ?? "";
         return File.ReadAllText(Path.Combine(dir, relativePath));
     }

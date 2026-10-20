@@ -1509,7 +1509,7 @@ public class GitSubstrateTests
         while (dir is not null)
         {
             string candidate = Path.Combine(dir, leaf);
-            if (Directory.Exists(candidate) && File.Exists(Path.Combine(dir, "circuitrf.slnx"))) return candidate;
+            if (Directory.Exists(candidate) && File.Exists(Path.Combine(dir, "circuitRF.slnx"))) return candidate;
             dir = Path.GetDirectoryName(dir);
         }
         throw new DirectoryNotFoundException($"'{leaf}' not found walking up from {AppContext.BaseDirectory}");

@@ -34,7 +34,7 @@ class DataHomeError(Exception):
 def repo_root() -> Path | None:
     """The circuitRF working tree this kit sits in, or None when the kit was copied out of one."""
     for d in [KIT_DIR, *KIT_DIR.parents]:
-        if (d / "circuitrf.slnx").is_file():
+        if (d / "circuitRF.slnx").is_file():
             return d
     return None
 

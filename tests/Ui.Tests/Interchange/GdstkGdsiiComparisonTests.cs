@@ -120,7 +120,7 @@ public sealed class GdstkGdsiiComparisonTests : IDisposable
     private static string CorpusDir()
     {
         var d = new DirectoryInfo(AppContext.BaseDirectory);
-        while (d is not null && !File.Exists(Path.Combine(d.FullName, "circuitrf.slnx"))) d = d.Parent;
+        while (d is not null && !File.Exists(Path.Combine(d.FullName, "circuitRF.slnx"))) d = d.Parent;
         Assert.NotNull(d);
         return Path.Combine(d!.FullName, "testdata", "interchange", "gdstk", "8a");
     }

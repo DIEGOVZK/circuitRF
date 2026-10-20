@@ -32,7 +32,7 @@ public sealed class EmSetupLayoutRowTests
     private static string RepoFile(string relative)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitrf.slnx")))
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "circuitRF.slnx")))
             dir = dir.Parent;
         Assert.NotNull(dir);
         return Path.Combine(dir!.FullName, relative);

@@ -3,7 +3,7 @@
   <!--
     Brief em3d-27 (F2 spike): the Avalonia pane, hosted three ways (routes A, B, C), inside a real
     window with a text box beside it and inside a Dock panel that can be floated and re-docked.
-    THROWAWAY; not in circuitrf.slnx; nothing under src/ may reference it. Package versions match
+    THROWAWAY; not in circuitRF.slnx; nothing under src/ may reference it. Package versions match
     src/Ui exactly so the spike measures the Avalonia/Dock circuitRF actually ships.
   -->
 

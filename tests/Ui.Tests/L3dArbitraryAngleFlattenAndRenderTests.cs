@@ -451,7 +451,7 @@ public sealed class L3dArbitraryAngleFlattenAndRenderTests : IDisposable
     public void NothingOutsideTheModelReadsRotOrRotDegDirectly()
     {
         var srcRoot = new DirectoryInfo(AppContext.BaseDirectory);
-        while (srcRoot is not null && !File.Exists(Path.Combine(srcRoot.FullName, "circuitrf.slnx")))
+        while (srcRoot is not null && !File.Exists(Path.Combine(srcRoot.FullName, "circuitRF.slnx")))
             srcRoot = srcRoot.Parent;
         Assert.NotNull(srcRoot);
 

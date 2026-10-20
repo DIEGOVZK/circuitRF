@@ -19,7 +19,7 @@ public sealed class ToolChromeMenuTests
     private static string AppAxaml()
     {
         var dir = AppContext.BaseDirectory;
-        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitrf.slnx")))
+        while (dir is not null && !File.Exists(Path.Combine(dir, "circuitRF.slnx")))
             dir = Path.GetDirectoryName(dir);
         Assert.NotNull(dir);
         // The application-scope STYLES moved out of App.axaml into Styles/CircuitRfStyles.axaml at

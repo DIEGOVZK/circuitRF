@@ -130,7 +130,7 @@ public sealed class ReferenceImageTests : IDisposable
 
         // the one function
         string repo = AppContext.BaseDirectory;
-        while (!File.Exists(Path.Combine(repo, "circuitrf.slnx"))) repo = Path.GetDirectoryName(repo)!;
+        while (!File.Exists(Path.Combine(repo, "circuitRF.slnx"))) repo = Path.GetDirectoryName(repo)!;
         var hits = new List<string>();
         foreach (string f in Directory.EnumerateFiles(Path.Combine(repo, "src"), "*.cs", SearchOption.AllDirectories))
         {
@@ -673,7 +673,7 @@ public sealed class ReferenceImageTests : IDisposable
     private static (int ExitCode, string StdOut, string StdErr) Cli(params string[] args)
     {
         string repo = AppContext.BaseDirectory;
-        while (!File.Exists(Path.Combine(repo, "circuitrf.slnx"))) repo = Path.GetDirectoryName(repo)!;
+        while (!File.Exists(Path.Combine(repo, "circuitRF.slnx"))) repo = Path.GetDirectoryName(repo)!;
         return CircuitRF.Ui.Tests.Em3d.CliProcess.Run(repo, [], args);
     }
 

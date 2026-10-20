@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Brief em3d-27 (F2 spike). THROWAWAY. Not in circuitrf.slnx, references no project in this repo,
+    Brief em3d-27 (F2 spike). THROWAWAY. Not in circuitRF.slnx, references no project in this repo,
     and nothing under src/ may reference it. What brief 28 lifts from here is FrameCounters and the
     hosting pattern, not this scene code.
   -->
