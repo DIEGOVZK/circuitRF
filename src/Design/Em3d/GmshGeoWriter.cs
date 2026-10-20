@@ -280,7 +280,15 @@ public static partial class GmshGeoWriter
         L($"bx = newv; Box(bx) = {{{Um(box.Min.X)}, {Um(box.Min.Y)}, {Um(box.Min.Z)}, " +
           $"{Um(box.Max.X - box.Min.X)}, {Um(box.Max.Y - box.Min.Y)}, {Um(box.Max.Z - box.Min.Z)}}};");
         string allSolids = string.Join(", ", Enumerable.Range(0, problem.Solids.Count).Select(i => $"s{i}[]"));
-        L($"bg[] = BooleanDifference{{ Volume{{bx}}; Delete; }}{{ Volume{{{allSolids}}}; }};");
+        // One tool per difference, not one difference with every tool in it. OCC's multi-tool Difference
+        // self-intersects on a stack of overlapping slabs and lands a wrong region. Chained, each step is 
+        // a plain two-solid cut and the same model builds clean. The line count is one per solid, and each 
+        // step's shape is the one the un-chained form would have produced.
+        L($"bg[] = {{bx}};");
+        for (int i = 0; i < problem.Solids.Count; i++)
+            L($"bg[] = BooleanDifference{{ Volume{{bg[]}}; Delete; }}{{ Volume{{s{i}[]}}; }};");
+        if (problem.Solids.Count == 0)
+            L($"bg[] = BooleanDifference{{ Volume{{bx}}; Delete; }}{{ Volume{{{allSolids}}}; }};");
         var conductors = Enumerable.Range(0, problem.Solids.Count)
                                    .Where(i => problem.Solids[i].Role == Em3dRole.Conductor).ToList();
         if (conductors.Count > 0)
@@ -1096,6 +1104,17 @@ public static partial class GmshGeoWriter
         string hi = marginM > 0 ? $" + e + {Num(Round(marginM * 1e6))}" : " + e";
         return $"Surface In BoundingBox{{{Um(b.X0)}{lo}, {Um(b.Y0)}{lo}, {Um(b.Z0)}{lo}, " +
                $"{Um(b.X1)}{hi}, {Um(b.Y1)}{hi}, {Um(b.Z1)}{hi}}}";
+    }
+
+    /// <summary>
+    /// How much room a sheet's world bound takes, for claiming the smallest first. A sheet is flat, so its
+    /// box has no volume: the measure is the largest product of two of its sides, which is the area of the
+    /// plane it lies in. Zero for a degenerate box, which sorts first and claims nothing.
+    /// </summary>
+    private static double SheetSpan((double X0, double Y0, double Z0, double X1, double Y1, double Z1) b)
+    {
+        double dx = b.X1 - b.X0, dy = b.Y1 - b.Y0, dz = b.Z1 - b.Z0;
+        return Math.Max(dx * dy, Math.Max(dy * dz, dz * dx));
     }
 
     /// <summary>

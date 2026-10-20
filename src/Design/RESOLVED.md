@@ -1,5 +1,28 @@
 # src/Design — resolved findings (detail, off the CLAUDE.md growth path)
 
+## The background was cut with one multi-tool difference, and OCC landed a wrong region (2026-10-20)
+
+Reported against a stack of overlapping dielectric slabs and conductor pieces: the mesh stage refused the run
+because a solid's volume had lost its tag in the fragment (`'<solid>' lost 1 volume(s) in the fragment`), and
+the background did not match the solids it was meant to exclude.
+
+### The rule the fix encodes
+
+The background is what no solid claims inside the air box, so it is built from the box minus every solid. It
+was written as ONE `BooleanDifference` carrying every solid as a tool. On a stack of overlapping slabs OCC's
+multi-tool Difference self-intersects and can land a wrong region; the volume the wrong region swallowed then
+had no tag. The script now starts the background as `{bx}` and subtracts one solid per step, in construction
+order, so every step is a plain two-solid cut. The resulting shape is the one the un-chained form was meant to
+produce; only the operation is decomposed. The line count is one per solid.
+
+**Not changed:** the order of the cuts (metal over dielectric, then construction order, §6.3a), and the
+conductors' own void deletion.
+
+Gate: `PalaceBackendTests.TheBackgroundIsCutOneSolidAtATime` (the script's chained cuts, no Gmsh), and the
+writer goldens regenerated deliberately: `PalaceBackendTests.Gate1_TheWritersOutput_IsByteForByteTheCommittedGolden`
+(microstrip, via) and `PalaceStaticTests.Gate1_TheTwoTerminalConfig_IsTheCommittedGolden_AndValidatesAgainstTheSchema`
+(static-es, static-ms).
+
 ## A lumped port a hair inside its lines was excited by nothing; voxelized phantoms (2026-10-18, brief-sar-8)
 
 - **openEMS tests an excitation box against its grid lines with no tolerance** (`CSPrimBox::IsInside`, `CoordInRange`), and

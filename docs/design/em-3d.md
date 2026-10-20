@@ -517,7 +517,10 @@ voids and dielectrics made disjoint before the fragment, so every volume keeps i
 (`Geometry.OCCBooleanPreserveNumbering`, verified), and every surface recovered by a bounding-box
 query against what circuitRF knows of it, counted against what it expected. It works, with caveats
 that belong to the writer (`em-3d-f0-findings.md` Q5) — above all that OCCT's own boxes are loose on
-curved faces, so the queries need `Geometry.OCCBoundsUseStl`.
+curved faces, so the queries need `Geometry.OCCBoundsUseStl`. The background is cut one solid at a
+time (the box, then one two-solid `BooleanDifference` per solid), never one multi-tool difference:
+OCC's multi-tool `BooleanDifference` self-intersects on a stack of overlapping tools and can land a
+wrong region, which is how a solid's volume loses its tag.
 
 The limitation is that Route A is **batch**: each edit re-runs `gmsh`. That is fine at mesh time and
 for a read-only preview of generated geometry, and too slow and too coarse-grained for an interactive

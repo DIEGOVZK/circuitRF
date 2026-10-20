@@ -174,6 +174,62 @@ public sealed class PalaceBackendTests(ITestOutputHelper output) : IDisposable
         Assert.True(new FileInfo(Path.Combine(dir, GmshGeoWriter.MeshFile)).Length > 0);
     }
 
+    // ── 4b. Background cut order ────────────────────────────────────────────────────────────────
+
+    /// <summary>Two slabs meeting at z = 0.25 mm, and two coplanar sheets on that shared plane: the
+    /// smaller wholly inside the larger's world bound, and listed AFTER it. The larger's bounding-box
+    /// query would otherwise take both sheets' faces.</summary>
+    private static (Em3dProblem Problem, PalaceSettings Settings) NestedSheets()
+    {
+        const double mm = 1e-3;
+        static IReadOnlyList<Point2> Rect(double x0, double y0, double x1, double y1)
+            => [new(x0, y0), new(x1, y0), new(x1, y1), new(x0, y1)];
+
+        var materials = new[]
+        {
+            new Em3dMaterial("Sub", 4.4, null, 0, 1, 0),
+            new Em3dMaterial("Cu", 1, null, 0, 1, 5.8e7),
+        };
+        var solids = new List<Em3dSolid>
+        {
+            new("lower", "Sub", Em3dRole.Dielectric,
+                new Em3dBox(new(-1 * mm, -1 * mm, 0), new(1 * mm, 1 * mm, 0.25 * mm)), 1),
+            new("upper", "Sub", Em3dRole.Dielectric,
+                new Em3dBox(new(-1 * mm, -1 * mm, 0.25 * mm), new(1 * mm, 1 * mm, 0.5 * mm)), 2),
+        };
+        var sheets = new List<Em3dSheet>
+        {
+            new("outer", "Cu", Rect(-0.8 * mm, -0.8 * mm, 0.8 * mm, 0.8 * mm), [], 0.25 * mm, 1e-6, 1),
+            new("inner", "Cu", Rect(-0.2 * mm, -0.2 * mm, 0.2 * mm, 0.2 * mm), [], 0.25 * mm, 1e-6, 2),
+        };
+        var faces = new Em3dFaces(Em3dBoundaryKind.Pec, Em3dBoundaryKind.Pec, Em3dBoundaryKind.Pec,
+                                  Em3dBoundaryKind.Pec, Em3dBoundaryKind.Pec, Em3dBoundaryKind.Pec);
+        var problem = new Em3dProblem(
+            solids, sheets, materials, [],
+            new Em3dAirBox(new(-1.2 * mm, -1.2 * mm, 0), new(1.2 * mm, 1.2 * mm, 1.2 * mm), faces),
+            new Em3dFrequency(1e9, 10e9, 10, Em3dSweepKind.Linear), 20)
+        {
+            Type = Em3dProblemType.Electrostatic,
+            Terminals = [new Em3dTerminal("A", ["inner"])],
+        };
+        return (problem, PalaceSettings.Resolve(new CemPalace()));
+    }
+
+    [Fact]
+    public void TheBackgroundIsCutOneSolidAtATime()
+    {
+        var (problem, settings) = NestedSheets();
+        var low = GmshGeoWriter.Write(problem, settings);
+        Assert.True(low.Ok, low.Refusal);
+
+        var lines = low.Geo!.Split('\n');
+        Assert.Contains("bg[] = {bx};", lines);
+        Assert.Equal(problem.Solids.Count,
+                     lines.Count(l => l.StartsWith("bg[] = BooleanDifference{ Volume{bg[]}; Delete; }",
+                                                   StringComparison.Ordinal)));
+        Assert.DoesNotContain(lines, l => l.Contains("Volume{s0[], s1[]}", StringComparison.Ordinal));
+    }
+
     // ── 5. Mesh reuse ───────────────────────────────────────────────────────────────────────────
 
     [GmshFact]
