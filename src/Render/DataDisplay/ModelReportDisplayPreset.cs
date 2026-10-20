@@ -253,11 +253,11 @@ public static class ModelReportDisplayPreset
             double[] vgs = ds[$"{set}.Vgs"].RealValues, vds = ds[$"{set}.Vds"].RealValues;
             foreach (int k in picked)
             {
-                string bias = $"Vgs {vgs[k]:G3} V, Vds {vds[k]:G3} V";
+                string bias = FormattableString.Invariant($"Vgs {vgs[k]:G3} V, Vds {vds[k]:G3} V");
                 AxisSlice[] At(int i, int j) =>
                 [
                     new AxisSlice("point", AxisRole.PinToIndex, k), new AxisSlice("freq", AxisRole.KeepAsX, 0),
-                    new AxisSlice("port", AxisRole.PinToIndex, i), new AxisSlice("port", AxisRole.PinToIndex, j),
+                    new AxisSlice("i", AxisRole.PinToIndex, i), new AxisSlice("j", AxisRole.PinToIndex, j),
                 ];
                 plots.Add(Rect($"S21 {set} · {bias}", null, "dB",
                     Trace(src, $"{g}.{set}.S.meas", At(1, 0), transform: CubeTransform.dB20, colour: 0, marker: MarkerType.Circle),

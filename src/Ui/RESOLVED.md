@@ -39996,3 +39996,12 @@ as a family over the shorter axis; the PA classes keep real loadpull contours.
 
 **Byte identity of the report PDF does not depend on the file name** because `ModelReportDisplayPreset.Pdf` always writes
 the multi-page form, which carries no metadata Title (the single-page form takes its Title from the output path).
+
+**Two axes of one cube must not share a NAME.** A Data Display slice binds to an axis by name, first match
+(`TraceResolve`), so the validation's S cubes — `[point, freq, port, port]` — pinned BOTH port axes to the first
+`port` entry: the report's "S21" plot drew S22, with nothing wrong anywhere to see. The S cubes are `[point, freq, i, j]`
+now, the spelling every other S cube in the repo uses, and the preset slices `i` and `j`.
+
+**The fit summary line (R-mc15-1) comes from the record, not the report.** `CurrentFit.Summary` / `ChargeFit.Summary`
+build "Id: ANN 2×8 · held-out 0.8 % · domain 412 pts" from the step's `Errors` and settings; the run's own last report
+line is whatever the fit happened to say last and was what the status strip showed before.

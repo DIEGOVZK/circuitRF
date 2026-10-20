@@ -85,9 +85,6 @@ public sealed partial class ModelComposerViewModel
     public ObservableCollection<MethodPickerRow> CurrentPickers { get; } = [];
     public ObservableCollection<MethodPickerRow> ChargePickers { get; } = [];
 
-    /// <summary>The last fit of the selected step, in one line: "Id: ANN 2×8 · held-out 0.8 % · domain 412 pts".</summary>
-    [ObservableProperty] private string _fitSummary = "";
-
     private static string Layers(IReadOnlyList<int> hidden) => string.Join("×", hidden);
 
     private static IReadOnlyList<int>? ParseLayers(string text)
@@ -455,8 +452,9 @@ public sealed partial class ModelComposerViewModel
     private Task CheckCharge() => CheckChargeAsync();
 
     /// <summary>
-    /// Check Charge Conservation (R-mc15-6, MC-8 R-mc8-5): <see cref="ConservationCheck.RunFile"/> off the UI thread, at the
-    /// cursor's bias when it has one, then the maps of its result. Read-only: the document is written first, nothing after.
+    /// Check Charge Conservation (R-mc15-6, MC-8 R-mc8-5): <see cref="ConservationCheck.RunFile"/> off the UI thread at the
+    /// middle of the data — <c>model check-charge</c> without <c>--bias</c> — then the maps of its result. Read-only: the
+    /// document is written first, nothing after.
     /// </summary>
     public async Task<bool> CheckChargeAsync()
     {

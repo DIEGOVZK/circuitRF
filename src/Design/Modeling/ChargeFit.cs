@@ -118,6 +118,23 @@ public static class ChargeFit
     public static ChargeFitRecord? Record(CmcDocument doc) =>
         Step(doc)?["Result"] is { } r ? ChargeFitRecord.Parse(r, $"Steps.{StepName}.Result") : null;
 
+    /// <summary>
+    /// The last fit in one line (MC-15 R-mc15-1): <c>Qg: ANN 2×8 · Qd: Table · C error 1.2 %</c> — each charge's method and the
+    /// largest of the capacitance errors, % of each capacitance's range. Null before a fit.
+    /// </summary>
+    public static string? Summary(CmcDocument doc)
+    {
+        if (Record(doc) is not { } r) return null;
+        var s = Settings(doc);
+        var parts = new List<string>
+        {
+            $"Qg: {CurrentFit.MethodText(r.Qg.Method, s.Qg.Hidden)}",
+            $"Qd: {CurrentFit.MethodText(r.Qd.Method, s.Qd.Hidden)}",
+        };
+        if (r.Errors.Count > 0) parts.Add($"C error {G(100 * r.Errors.Values.Max(e => e.Relative))} %");
+        return string.Join(" · ", parts);
+    }
+
     /// <summary>The block's keys checked and parsed — <see cref="CmcFile.Validate"/>'s call.</summary>
     public static void Validate(CmcDocument doc)
     {

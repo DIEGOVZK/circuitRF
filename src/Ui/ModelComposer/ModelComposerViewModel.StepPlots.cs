@@ -326,7 +326,7 @@ public sealed partial class ModelComposerViewModel
                 var pts = Enumerable.Range(0, f.Length).Where(k => vgs is not { } a || Math.Abs(f[k] - a) < 1e-6).OrderBy(k => x[k]).ToArray();
                 plot.Traces.Add(Xy(tag, [.. pts.Select(k => x[k])], [.. pts.Select(k => m[k] * 1e3)], "Vds", "V", c, line: false, marker: MarkerType.Circle));
                 plot.Traces.Add(Xy($"{tag} model", [.. pts.Select(k => x[k])], [.. pts.Select(k => mo[k] * 1e3)], "Vds", "V", c, line: true, marker: null));
-                // Beyond the trap-setting bias: validation only, drawn hollow (an open marker of the same colour).
+                // Beyond the trap-setting bias: validation only, drawn hollow (an unfilled, outlined marker).
                 double[] bg = R(ds, $"{set}.Beyond.Vgs"), bx = R(ds, $"{set}.Beyond.Vds"), bi = R(ds, $"{set}.Beyond.Id");
                 var beyond = Enumerable.Range(0, bg.Length).Where(k => vgs is not { } a || Math.Abs(bg[k] - a) < 1e-6).ToArray();
                 if (beyond.Length > 0)
@@ -415,7 +415,8 @@ public sealed partial class ModelComposerViewModel
             }
             case IvTab:
             {
-                if (items.FirstOrDefault(i => i.Kind is ValidationKind.DcIv or ValidationKind.PulsedIv) is not { } item) return;
+                bool Iv(ValidationItem i) => i.Kind is ValidationKind.DcIv or ValidationKind.PulsedIv;
+                if ((items.FirstOrDefault(i => Iv(i) && i.Set == SelectedDataSet?.Name) ?? items.FirstOrDefault(Iv)) is not { } item) return;
                 var ds = new DataSet();
                 foreach (var (name, cube) in item.Data.Cubes) ds.Add($"{item.Set}.{name}", cube);
                 bool dc = ds.Contains($"{item.Set}.Vds");

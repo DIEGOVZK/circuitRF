@@ -57,6 +57,29 @@ public static class CurrentFit
     public static CurrentFitRecord? Record(CmcDocument doc) =>
         Step(doc)?["Result"] is { } r ? CurrentFitRecord.Parse(r, $"Steps.{StepName}.Result") : null;
 
+    /// <summary>
+    /// The last fit in one line (MC-15 R-mc15-1): <c>Id: ANN 2×8 · held-out 0.8 % · domain 412 pts</c> — the drain current's
+    /// method, its held-out error (the training error when nothing was held out) and the points it saw. Null before a fit.
+    /// </summary>
+    public static string? Summary(CmcDocument doc)
+    {
+        if (Record(doc) is not { } r) return null;
+        var parts = new List<string> { $"Id: {MethodText(r.Id.Method, Settings(doc).Id.Hidden)}" };
+        if (r.Errors.TryGetValue("Id", out var e))
+        {
+            parts.Add(e.HeldOutCount > 0 ? $"held-out {G(100 * e.HeldOutRelative)} %" : $"training {G(100 * e.TrainRelative)} %");
+            parts.Add($"domain {e.TrainCount + e.HeldOutCount} pts");
+        }
+        return string.Join(" · ", parts);
+    }
+
+    /// <summary>A fitted constituent's method as the summary line names it: an ANN with its layers (<c>ANN 2×8</c>, or each
+    /// layer's width when they differ), anything else by name.</summary>
+    internal static string MethodText(string method, IReadOnlyList<int> hidden) =>
+        method != Constituent.AnnMethod || hidden.Count == 0 ? method
+        : hidden.All(h => h == hidden[0]) ? $"ANN {hidden.Count}×{hidden[0]}"
+        : $"ANN {string.Join("-", hidden)}";
+
     /// <summary>The block's keys checked and parsed — <see cref="CmcFile.Validate"/>'s call.</summary>
     public static void Validate(CmcDocument doc)
     {

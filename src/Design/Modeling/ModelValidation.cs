@@ -335,11 +335,12 @@ public static class ModelValidation
         bool pass = median <= ctx.Tol.SMedian && p95 <= ctx.Tol.S95;
 
         var point = PointAxis(nd);
-        var ports = new Axis("port", [1, 2]);
+        // i and j, not two axes called "port": a Data Display slice binds to an axis by NAME, so two of one name pin together.
+        Axis Port(string name) => new(name, [1, 2], "port");
         var freq = new Axis("freq", f, "Hz");
         var ds = new DataSet();
-        ds.Add("S.meas", new DataCube([point, freq, ports, ports], nd.S));
-        ds.Add("S.model", new DataCube([point, freq, ports, ports], modelData.S!));
+        ds.Add("S.meas", new DataCube([point, freq, Port("i"), Port("j")], nd.S));
+        ds.Add("S.model", new DataCube([point, freq, Port("i"), Port("j")], modelData.S!));
         ds.Add("dS", new DataCube([point], perBias));
         ds.Add("Vgs", new DataCube([point], [.. nd.Points.Select(p => p.Vgs)]));
         ds.Add("Vds", new DataCube([point], [.. nd.Points.Select(p => p.Vds)]));

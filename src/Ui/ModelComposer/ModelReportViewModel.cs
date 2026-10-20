@@ -78,7 +78,7 @@ public sealed partial class ModelReportViewModel : ObservableObject
                 FrequencyHz = Opt(FrequencyGHz, "frequency") is { } f ? f * 1e9 : null,
                 Vgs = Opt(Vgs, "Vgs"), Vds = Opt(Vds, "Vds"), RoptOhms = Opt(Ropt, "R_opt"),
                 SourceZ = Complex(SourceZ, "source Z"), Source2f0 = Complex(Source2f0, "source 2f0"),
-                GammaRadius = Req(GammaRadius, "disc radius"), Rings = (int)Req(Rings, "rings"), Spokes = (int)Req(Spokes, "spokes"),
+                GammaRadius = Req(GammaRadius, "disc radius"), Rings = Int(Rings, "rings"), Spokes = Int(Spokes, "spokes"),
                 PinStart = Req(PinStart, "drive start"), PinStep = Req(PinStep, "drive step"), PinMax = Req(PinMax, "drive maximum"),
                 Compression = Req(Compression, "compression"),
             };
@@ -95,6 +95,9 @@ public sealed partial class ModelReportViewModel : ObservableObject
             ? v : throw new FormatException($"'{text}' is not a number for the {what}.");
 
     private static double Req(string text, string what) => Num(text, what);
+    private static int Int(string text, string what) =>
+        int.TryParse(text.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out int v)
+            ? v : throw new FormatException($"'{text}' is not a whole number for the {what}.");
     private static double? Opt(string text, string what) => text.Trim().Length == 0 ? null : Num(text, what);
     private static double[] List(string text, string what) =>
         [.. text.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(t => Num(t, what))];

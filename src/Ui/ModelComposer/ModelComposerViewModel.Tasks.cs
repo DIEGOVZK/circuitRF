@@ -358,6 +358,17 @@ public sealed partial class ModelComposerViewModel
     }
 
     /// <summary>Fits <paramref name="step"/> through <see cref="ModelCommands.Fit"/>, the function <c>model fit</c> calls.</summary>
-    public Task<bool> FitAsync(string step) =>
-        RunOnFile($"Fitting {step}", (path, rc) => ModelCommands.Fit(path, step, null, rc));
+    public async Task<bool> FitAsync(string step)
+    {
+        bool ok = await RunOnFile($"Fitting {step}", (path, rc) => ModelCommands.Fit(path, step, null, rc));
+        // R-mc15-1: a current or charge fit ends on its one-line summary, unless the data has a warning to show.
+        if (!ok || Loaded.Warnings.Count > 0) return ok;
+        try
+        {
+            if ((step == "current" ? CurrentFit.Summary(Document) : step == "charge" ? ChargeFit.Summary(Document) : null) is { } summary)
+                Info(summary);
+        }
+        catch (CmcFormatException) { }
+        return ok;
+    }
 }
