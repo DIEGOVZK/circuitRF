@@ -703,8 +703,9 @@ stated point, moved to the nearest data point when it lies outside the hull.
   conservative between them, and the integrals carry that across the domain — C11 fitted to 15.6 % of its range
   through an RBF, 0.34 % through a network.
 - **Equation**: `Depletion` ([P1] eq. 6.11 for a gate–source and a gate–drain junction, `min`/`max` so neither branch
-  is evaluated outside its range, `Fc` locked at 0.8) or `Angelov` (each junction a constant plus a `tanh` step in
-  its own voltage, switched by `tanh` in `vds`, integrated through `ln cosh`), or the user's own; fitted by
+  is evaluated outside its range, `Fc` locked at 0.8) or `Angelov` (each junction Angelov's `Cp + C0·(1 + tanh ψ1)·(1 ± tanh ψ2)` —
+  a constant plus a step from 0 to `2·C0` in its own voltage, switched by `tanh` in `vds` — integrated along that
+  voltage as `Cp·v + C0·(v + ln(cosh ψ1)/P1)·(1 ± tanh ψ2)`), or the user's own; fitted by
   `EquationFit` with **derivative terms** (the expression's gradient lanes are the targets), then shifted by a
   parameter `Qanchor` so it is zero at the anchor.
 
@@ -742,7 +743,11 @@ part returns a number and, where it has one, a map; `RunFile`/`Run` do all three
   — a network per capacitance by default — normalised by the RMS over the points of `√((t1² + t2²)/2)`, as a map
   and an RMS; and the two-path difference over the grid sites inside the hull, as a fraction of the charge's range.
   An RBF interpolant read 33 % curl on exactly conservative synthetic data (its errors at the hull's edges, divided
-  by terms that are small); the networks read 0.33 % and 1.5 %.
+  by terms that are small); the networks read 0.33 % and 1.5 %. **The curl is read only away from the hull's edge**
+  (`EdgeMargin`, 2 % of each axis' span): a value interpolant's derivative across its edge is constrained from one
+  side only, and on conservative depletion data over a rectilinear grid the network read 0.43 % inside and 54 % on
+  the edge — a third of a grid's points, and an RMS of 32 % that reported a defect the data does not have. Edge
+  points are NaN in the map; a hull with no interior point is read everywhere.
 - **(b) The model** (`Model`): the same curl on a capacitance matrix over a grid (step 0.05 V), differenced a tenth of
   the step apart. On a device in a `.cnl` (`DeviceCapacitance`): the instance's one nonlinear component, ports 1 and
   2 gate–source and drain–source sharing a source, any further ports its own state nodes — solved at DC, eliminated
@@ -844,11 +849,15 @@ MC-8: `tests/Engine.Tests/Modeling/ChargeLineIntegralTests` (both paths equal a 
 constant curl κ they differ by `−κ·Δvgs·Δvds` at every site); `tests/Ui.Tests/ModelComposer/` — `ChargeFitAdjointTests`
 (90 S points of the SDD truth through the GaN network, one start: held-out capacitances within 0.49 % of the row's
 largest, charges within 0.06 % of their range up to the anchor), `ConservationCheckDataTests` (closed-form
-capacitances at a jittered grid: 3.0 % and 0.23 %; a Gaussian planted in `C12` peaks 2.37 inside it, 0.21 at most
-beyond three widths, the drain row untouched), `ConservationCheckLargeSignalTests` (the truth as a charge SDD: 7e-23
+capacitances at a jittered grid: 2.5 % and 0.17 % away from the edge; a Gaussian planted in `C12` peaks 2.93 inside
+it, 0.12 at most beyond three widths, the drain row untouched), `ConservationCheckLargeSignalTests` (the truth as a charge SDD: 7e-23
 of the fundamental; with its gate current as capacitances times dV/dt through two auxiliary ports, the f→2f and
 2f→3f steps agree to 5e-6 and the spurious DC is 0.41 % of the fundamental), `TranscapacitanceReportTests` (the
 synthetic `.cmodel` through a `ComposedFet`: curl 6e-6, `Cm` 39 fF RMS reported), `DriftChargeTests` (an [I11]
 truth as an SDD at its intrinsic plane, `Id` the truth's: QGS, QGD and QDS within 0.34 %, `Qdrift` at `Id = 0`
-0.27 % of its size, held-out capacitances within 0.29 %). `SyntheticFetData.BiasedS` simulates multi-bias S through
+0.27 % of its size, held-out capacitances within 0.29 %), `ChargeMethodsTests` (the Depletion template recovers a
+depletion truth's capacitances to 1e-15 of their range through `EquationFit`'s derivative terms, and the composer's
+whole `Run` on it reads 1.5 % in (a) on a rectilinear grid, ~1e-13 in (b) and 0 in (c); the Angelov template, by
+Levenberg–Marquardt from its own start, recovers all thirteen parameters of capacitances written by hand from
+Angelov's published form; a drift fit with no currents is refused). `SyntheticFetData.BiasedS` simulates multi-bias S through
 ideal bias tees; `SDocument` de-embeds it through the stock network or not at all.

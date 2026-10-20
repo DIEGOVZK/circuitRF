@@ -43,7 +43,7 @@ public sealed class ConservationCheckDataTests(ITestOutputHelper output)
     [Fact]
     public void ConservativeData_ReadsNearZero()
     {
-        // Measured: 3.0 % and 0.23 %, the paths 0.02 % — what a network interpolant's own error leaves.
+        // Measured: 2.5 % and 0.17 % away from the hull's edge, the paths 0.02 % — what a network interpolant's own error leaves.
         var r = ConservationCheck.Data(Data(planted: false));
         output.WriteLine($"curl RMS Qg {r.GateRms:P3}, Qd {r.DrainRms:P3}; paths {r.GatePaths:P4}, {r.DrainPaths:P4}");
         Assert.True(r.GateRms < 0.05 && r.DrainRms < 0.05, $"{r.GateRms:P3} {r.DrainRms:P3}");
@@ -53,7 +53,7 @@ public sealed class ConservationCheckDataTests(ITestOutputHelper output)
     [Fact]
     public void PlantedCurl_IsLocalisedToTheGateRowWhereItWasPlanted()
     {
-        // Measured: the peak 2.37 at (−1.09, 4.50); 0.21 at most beyond three widths; the drain row 0.23 %.
+        // Measured: the peak 2.93 at (−1.09, 4.50); 0.12 at most beyond three widths; the drain row 0.17 %.
         var data = Data(planted: true);
         var r = ConservationCheck.Data(data);
         output.WriteLine($"curl RMS Qg {r.GateRms:P3}, Qd {r.DrainRms:P3}; paths {r.GatePaths:P4}, {r.DrainPaths:P4}");

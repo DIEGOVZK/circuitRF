@@ -19,13 +19,16 @@ public static class LineIntegral
     private const int MaxDepth = 40;
 
     /// <summary><c>∫ f</c> from <paramref name="a"/> to <paramref name="b"/> to an absolute
-    /// <paramref name="tolerance"/>, by adaptive Simpson quadrature.</summary>
+    /// <paramref name="tolerance"/>, by adaptive Simpson quadrature. The tolerance is floored a little above rounding
+    /// of the leg's own size: a zero tolerance (all-zero capacitance data) would otherwise only stop at
+    /// <see cref="MaxDepth"/>, 2⁴⁰ evaluations later.</summary>
     public static double Integrate(Func<double, double> f, double a, double b, double tolerance)
     {
         if (a == b) return 0;
         double fa = f(a), fb = f(b), m = 0.5 * (a + b), fm = f(m);
         double whole = (b - a) / 6 * (fa + 4 * fm + fb);
-        return Step(f, a, b, fa, fm, fb, whole, Math.Max(tolerance, 0), MaxDepth);
+        double floor = 1e-13 * Math.Abs(b - a) * (Math.Abs(fa) + Math.Abs(fm) + Math.Abs(fb));
+        return Step(f, a, b, fa, fm, fb, whole, Math.Max(tolerance, floor), MaxDepth);
     }
 
     private static double Step(Func<double, double> f, double a, double b, double fa, double fm, double fb,

@@ -20813,3 +20813,36 @@ the condition under which [I11] reads the depletion charges at `Vds = 0` — so 
 **An auxiliary SDD node carrying dv/dt must be scaled to milliamps.** `I[3,0]=s*_v3 I[3,1]=-_v1` makes `v3 = dv1/dt/s`,
 but KCL at that node balances a 1 F charge's current, ~1e9 A at GHz, and HB's residual floored at 1e-6 A whatever
 `s`. Writing the charge as 1 pF (`I[3,1]=-1e-12*_v1`, `I[3,0]=1e-2*_v3`) puts the node's currents at milliamps.
+
+### MC-8 review fixes (2026-10-19)
+
+**Check (a)'s RMS was dominated by the hull's edge.** A network fitted to values pins its derivative across the
+data's boundary from one side only. On exactly conservative depletion capacitances over an 11 × 9 rectilinear grid
+the curl read 0.43 % at interior points and 54 % on the edge — 36 of the 99 points — for a headline RMS of 32 % (Qg)
+and 12.5 % (Qd). `ConservationCheck.Data` now reads the curl only beyond `EdgeMargin` (2 % of each axis' span) and
+maps edge points to NaN; the same data reads 1.5 % and 0.4 %. The jittered data of `ConservationCheckDataTests`
+went 3.0 % → 2.5 % and its planted peak got sharper against the background (0.21 → 0.12 beyond three widths).
+
+**A drift charge checked without its currents read Id = 0 everywhere.** `ChargeFit.Model` puts zero currents in when
+none are given, and `CurrentFit.Load` returns null when the current step's cache is gone, so `RunFile` would have
+checked a different model in silence. `ConservationCheck.Run` refuses a Drift record with no current result.
+
+**Adaptive Simpson with a zero tolerance only stops at its depth limit** — 2⁴⁰ evaluations — and the table method and
+check (a) set the tolerance from the capacitances' RMS, zero on all-zero data. `LineIntegral.Integrate` floors the
+tolerance at 1e-13 of the leg's own size.
+
+**The charge templates' starts added the off-diagonal instead of subtracting it.** `Cgs = C11 + C12` with
+`C12 = −Cgd`, but the start was `|C11| + |C12| = Cgs + 2·Cgd`; `Cds = C22 + C21` started as `|C22| = Cgd + Cds`. Both
+now start at the diagonal less the off-diagonal (floored at a tenth of the diagonal). `ChargeMethodsTests` is the
+first gate on the Equation method: the Depletion template recovers a depletion truth's capacitances to 1e-15 of
+their range.
+
+**The Angelov charge template was not Angelov's.** Its junction charge was `Cp·v + C0/P1·ln(cosh ψ1)·(1 ± tanh ψ2)`,
+whose capacitance is `Cp + C0·tanh ψ1·(1 ± tanh ψ2)` — a step from −C0 to +C0 where Angelov's runs from 0 to 2·C0.
+The two are not reparametrisations of each other: the missing `C0·(1 ± tanh ψ2)` depends on vds, which the constant
+`Cp` cannot absorb, so below pinch-off the template's floor moved with vds and could go negative (it did at the
+template's own start). The charge is now `Cp·v + C0·(v + ln(cosh ψ1)/P1)·(1 ± tanh ψ2)`, the exact integral of
+Angelov's capacitance along its voltage, still conservative by construction. A `.cmc` fitted before keeps the
+expression it recorded; a refit takes the new one. `ChargeMethodsTests` fits capacitances written by hand from the
+published form and recovers all thirteen parameters — by Levenberg–Marquardt alone in 0.7 s; with CMA-ES first it
+takes 5.5 s.

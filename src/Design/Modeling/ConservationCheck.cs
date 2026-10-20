@@ -51,7 +51,8 @@ public sealed record LargeSignalSettings
 }
 
 /// <summary>Check (a): each row's normalised curl at each data point and its RMS, and the two-path difference as a fraction
-/// of the charge's range.</summary>
+/// of the charge's range. A point within <see cref="ConservationCheck.EdgeMargin"/> of the data's hull has no reading:
+/// NaN in the maps, and outside the RMS.</summary>
 public sealed record DataConservation(IReadOnlyList<(double Vgs, double Vds)> Points, double[] GateMap, double[] DrainMap,
                                       double GateRms, double DrainRms, double GatePaths, double DrainPaths);
 
@@ -89,6 +90,14 @@ public static class ConservationCheck
         double hg = 1e-3 * (gHi - gLo), hd = 1e-3 * (dHi - dLo);
         var at = anchor ?? ChargeFit.Anchor(data, ChargeFitSettings.Default, []);
 
+        // The curl is read only away from the hull's edge. A value interpolant's derivative ACROSS its edge is
+        // constrained from one side only: on exactly conservative depletion data over a rectilinear grid the network read
+        // 0.43 % at interior points and 54 % on the edge — a third of a grid's points — which made the RMS a false
+        // failure. Edge points map to NaN (no reading); a hull with no interior point is read everywhere.
+        var interior = Enumerable.Range(0, data.X.Count).Where(k => !NearEdge(poly, data.X[k], gHi - gLo, dHi - dLo)).ToList();
+        if (interior.Count == 0) interior = [.. Enumerable.Range(0, data.X.Count)];
+        var sites = interior.Select(k => data.X[k]).ToList();
+
         (double[] Map, double Rms, double Paths) Row(bool gate)
         {
             rc?.BeginStage(gate ? "Checking Qg's data" : "Checking Qd's data");
@@ -96,7 +105,10 @@ public static class ConservationCheck
             var ann = new AnnTrainingSettings { MaxIterations = ChargeConstituentSettings.DefaultMaxIterations, Restarts = 1, HeldOutFraction = 0 };
             var f1 = ChargeFit.Interpolant(c1, interpolant, data, ann, rc);
             var f2 = ChargeFit.Interpolant(c2, interpolant, data, ann, rc);
-            var curl = CurlMetric.Of((g, d) => (f1(g, d), f2(g, d)), data.X, hg, hd);
+            var read = CurlMetric.Of((g, d) => (f1(g, d), f2(g, d)), sites, hg, hd);
+            var map = Enumerable.Repeat(double.NaN, data.X.Count).ToArray();
+            for (int i = 0; i < interior.Count; i++) map[interior[i]] = read.Map[i];
+            var curl = (Map: map, read.Rms);
 
             double[] vgs = Regrid.Axis(gLo, gHi, ChargeConstituentSettings.DefaultGridStep);
             double[] vds = Regrid.Axis(dLo, dHi, ChargeConstituentSettings.DefaultGridStep);
@@ -106,7 +118,8 @@ public static class ConservationCheck
             for (int i = 0; i < vgs.Length; i++)
                 for (int j = 0; j < vds.Length; j++)
                     if (ChargeFit.Inside(poly, (vgs[i], vds[j]))) inside.Add(i * vds.Length + j);
-            double range = inside.Max(k => 0.5 * (a[k] + b[k])) - inside.Min(k => 0.5 * (a[k] + b[k]));
+            // A hull narrower than the grid's step can hold no site; then there is no two-path number to give.
+            double range = inside.Count > 0 ? inside.Max(k => 0.5 * (a[k] + b[k])) - inside.Min(k => 0.5 * (a[k] + b[k])) : 0;
             double paths = range > 0 ? Math.Sqrt(inside.Average(k => (a[k] - b[k]) * (a[k] - b[k]))) / range : 0;
             return (curl.Map, curl.Rms, paths);
         }
@@ -115,6 +128,24 @@ public static class ConservationCheck
         var d = Row(false);
         return new DataConservation(data.X, g.Map, d.Map, g.Rms, d.Rms, g.Paths, d.Paths);
     }
+
+    /// <summary>Within <see cref="EdgeMargin"/> of the hull's boundary, distances measured in each axis' span.</summary>
+    private static bool NearEdge(IReadOnlyList<(double Vgs, double Vds)> poly, (double Vgs, double Vds) p, double gSpan, double dSpan)
+    {
+        double sg = gSpan > 0 ? gSpan : 1, sd = dSpan > 0 ? dSpan : 1;
+        for (int k = 0; k < poly.Count; k++)
+        {
+            var a = poly[k]; var b = poly[(k + 1) % poly.Count];
+            double ax = a.Vgs / sg, ay = a.Vds / sd, ex = b.Vgs / sg - ax, ey = b.Vds / sd - ay;
+            double px = p.Vgs / sg - ax, py = p.Vds / sd - ay, len = ex * ex + ey * ey;
+            double t = len > 0 ? Math.Clamp((px * ex + py * ey) / len, 0, 1) : 0;
+            if (Math.Sqrt(Math.Pow(px - t * ex, 2) + Math.Pow(py - t * ey, 2)) < EdgeMargin) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Check (a)'s edge band, as a fraction of each axis' span.</summary>
+    public const double EdgeMargin = 0.02;
 
     // ── (b) the model ─────────────────────────────────────────────────────────
 
@@ -235,6 +266,9 @@ public static class ConservationCheck
     public static ConservationReport Run(ChargeData data, ChargeFitResult charges, CurrentFitResult? current,
                                          LargeSignalSettings settings, RunControl? rc = null)
     {
+        // Without the currents a drift charge reads Id = 0 everywhere and checks a model it is not.
+        if (charges.Record.Qg.Method == Constituent.DriftMethod && current is null)
+            throw new ModelingException("Check", "the drift charge reads the fitted Id, and the currents are not fitted (or their cache is gone); fit the currents first.");
         var lines = new List<string>();
         var a = Data(data, charges.Record.Anchor, rc: rc);
         lines.Add($"data: curl {Pct(a.GateRms)} (Qg), {Pct(a.DrainRms)} (Qd); paths differ {Pct(a.GatePaths)}, {Pct(a.DrainPaths)}");
