@@ -126,6 +126,7 @@
                                                 </MultiBinding>
                                             </TextBlock.Text>
                                         </TextBlock>
+                                        <TextBlock Classes="lbl" FontSize="11" Text="{Binding Capacitances}" IsVisible="{Binding HasCapacitances}"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>

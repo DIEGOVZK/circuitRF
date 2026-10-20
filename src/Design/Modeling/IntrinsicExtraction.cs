@@ -9,6 +9,10 @@
 //      [P1] eq. 6.12 for any network.
 //   4. The quantities and their flatness (R-mc4-5).
 //
+// A capacitance table (MC-20) is the core's own: with no S or Y beside it, it gives the charge step the C11 … C22 it would
+// read from S, at one quasi-static frequency (0 Hz) and perfectly flat, and no admittance. Beside S or Y, the admittance
+// feeds the charges and the table is cross-checked against Im Y/ω.
+//
 // The result is one DataSet per data set (R-mc4-6). Later steps and the plots read only it — nothing recomputes it
 // privately — and it is cached beside the import cache, keyed by everything it depends on (the data, its conditions,
 // the pads, the network file and the values its variables take), so an unchanged network reopens without a solve.
@@ -134,7 +138,11 @@ public sealed class IntrinsicExtraction
         ds.Add("Excluded", new DataCube([point], [.. data.Points.Select(p => p.Excluded ? 1.0 : 0.0)]));
         if (Setting(set, padDrop, transfer, padNeedsCurrents) is { } setting) ds.Add(SettingCube, setting);
 
-        if (data.S is null) return ds;
+        if (data.S is null)
+        {
+            if (data.C is not null) AddCapacitanceTable(set, data, ds, point, notes);
+            return ds;
+        }
         if (data.Ports != 2) throw new ModelingException(set.Name, $"it is a {data.Ports}-port; a FET's data is a 2-port.");
 
         // Pads, then the network (R-mc4-1, R-mc4-3).
@@ -204,8 +212,74 @@ public sealed class IntrinsicExtraction
         var quantity = new Axis("quantity", [.. Enumerable.Range(0, q.Length).Select(i => (double)i)], labels: [.. IntrinsicQuantities.Names]);
         ds.Add("Flatness", new DataCube([point, quantity], flat));
         ds.Add("Band", new DataCube([new Axis("edge", [0, 1])], [b.Lo, b.Hi]));
+        if (data.C is { } table) notes.Add(CapacitanceCrossCheck(set.Name, table, q, f, flagged));
         return ds;
     }
+
+    private static readonly int IndexC11 = IntrinsicQuantities.Names.ToList().IndexOf("C11");
+
+    /// <summary>
+    /// R-mc20-3: a capacitance table as the charge step reads S — <c>C11 … C22</c> and the circuit set per point at one
+    /// quasi-static frequency, 0 Hz, every point perfectly flat (weight 1). It carries no admittance, so there is no Y, Gm,
+    /// Gds or Tau, and every step that needs them treats the set as having none.
+    /// </summary>
+    private static void AddCapacitanceTable(CmcDataSet set, NormalisedData data, DataSet ds, Axis point, List<string> notes)
+    {
+        int np = data.Count, nq = IntrinsicQuantities.Names.Count;
+        if (data.C!.Length != np * 4) throw new ModelingException(set.Name, $"its capacitance table holds {data.C.Length} values for {np} points × 2 × 2.");
+        var freq = new Axis("freq", [0.0], "Hz");
+        var c = new Dictionary<string, double[]>(StringComparer.Ordinal);
+        foreach (string name in (string[])["C11", "C12", "C21", "C22", "Cgs", "Cgd", "Cds", "Cm"]) c[name] = new double[np];
+        for (int p = 0; p < np; p++)
+        {
+            double c11 = data.C[4 * p], c12 = data.C[4 * p + 1], c21 = data.C[4 * p + 2], c22 = data.C[4 * p + 3];
+            (c["C11"][p], c["C12"][p], c["C21"][p], c["C22"][p]) = (c11, c12, c21, c22);
+            (c["Cgs"][p], c["Cgd"][p], c["Cds"][p], c["Cm"][p]) = (c11 + c12, -c12, c22 + c12, c21 - c12);
+        }
+        foreach (var (name, values) in c) ds.Add(name, new DataCube([point, freq], values));
+        ds.Add("Flagged", new DataCube([point, freq], new double[np]));
+        var flat = new double[np * nq];
+        for (int p = 0; p < np; p++)
+            for (int i = 0; i < nq; i++)
+                flat[p * nq + i] = c.ContainsKey(IntrinsicQuantities.Names[i]) ? 0 : double.NaN;
+        var quantity = new Axis("quantity", [.. Enumerable.Range(0, nq).Select(i => (double)i)], labels: [.. IntrinsicQuantities.Names]);
+        ds.Add("Flatness", new DataCube([point, quantity], flat));
+        ds.Add("Band", new DataCube([new Axis("edge", [0, 1])], [0.0, 0.0]));
+
+        string spelling = DataImport.CapacitanceTable(set) ?? "table";
+        notes.Add($"{set.Name}: the charges read its capacitance {spelling}; it carries no admittance, so Gm, Gds and τ are not read from it.");
+        if (spelling == "circuit set" && set.Import.Arrays?.ContainsKey("cm") != true)
+            notes.Add($"{set.Name}: its circuit set has no cm; the model has no transcapacitance.");
+    }
+
+    /// <summary>
+    /// R-mc20-2: the largest difference between a set's capacitance table and its <c>Im Y/ω</c>, relative to the point's
+    /// largest table entry, over every point and unflagged frequency — in the form of D6's voltage cross-check.
+    /// </summary>
+    private static string CapacitanceCrossCheck(string name, double[] table, double[][] q, double[] f, double[] flagged)
+    {
+        int nf = f.Length, np = table.Length / 4;
+        double worst = 0;
+        for (int p = 0; p < np; p++)
+        {
+            double scale = 0;
+            for (int i = 0; i < 4; i++) scale = Math.Max(scale, Math.Abs(table[4 * p + i]));
+            if (scale == 0) continue;
+            for (int k = 0; k < nf; k++)
+            {
+                if (flagged[p * nf + k] != 0) continue;
+                for (int i = 0; i < 4; i++)
+                    worst = Math.Max(worst, Math.Abs(q[IndexC11 + i][p * nf + k] - table[4 * p + i]) / scale);
+            }
+        }
+        return $"{name}: max |ΔC| {(100 * worst).ToString("G3", CultureInfo.InvariantCulture)} % between its capacitance table and Im Y/ω.";
+    }
+
+    /// <summary>What a step that reads a set's admittance says of a set that has none: a capacitance table carries none.</summary>
+    public static string NoAdmittance(DataSet? ds) =>
+        ds is not null && ds.Contains("C11") && !ds.Contains("Y")
+            ? "it has no intrinsic S or Y data; its capacitance table carries no admittance."
+            : "it has no intrinsic S data.";
 
     /// <summary>The cube of a pulsed set's trap-setting biases (MC-10 R-mc10-4).</summary>
     public const string SettingCube = "Setting";
@@ -293,8 +367,8 @@ public sealed class IntrinsicExtraction
 
     // ── The cache ─────────────────────────────────────────────────────────────
 
-    /// <summary>Bumped when what an entry holds changes: mc10-1 added the trap-setting biases.</summary>
-    private const string KeyVersion = "mc10-1";
+    /// <summary>Bumped when what an entry holds changes: mc10-1 added the trap-setting biases, mc20-1 the capacitance tables.</summary>
+    private const string KeyVersion = "mc20-1";
 
     private static string SharedKey(string dir, PadsSettings pads, string? netPath, IReadOnlyDictionary<string, double>? values,
                                      (double Lo, double Hi)? band)

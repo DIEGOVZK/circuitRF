@@ -31,9 +31,13 @@ public sealed partial class ModelStepItem(string name, MaterialIconKind icon) : 
     partial void OnReasonChanged(string value) => OnPropertyChanged(nameof(Tip));
 }
 
-/// <summary>One data set in the list (R-mc14-6). Read-only: a set's conditions are stated when it is imported.</summary>
-public sealed record DataSetRow(string Name, string Kind, string Ambient, string Plane, string Quiescent, string PrePulse, string Points)
+/// <summary>One data set in the list (R-mc14-6). Read-only: a set's conditions are stated when it is imported.
+/// <see cref="Capacitances"/> says where the charges read the set's capacitances (R-mc20-5), empty when it has none.</summary>
+public sealed record DataSetRow(string Name, string Kind, string Ambient, string Plane, string Quiescent, string PrePulse, string Points,
+                                string Capacitances = "")
 {
+    public bool HasCapacitances => Capacitances.Length > 0;
+
     public static DataSetRow From(CmcDataSet set, NormalisedData? data)
     {
         var c = set.Conditions;
@@ -44,7 +48,8 @@ public sealed record DataSetRow(string Name, string Kind, string Ambient, string
             c.ReferencePlane?.ToString().ToLowerInvariant() ?? "—",
             c.Quiescent is { } q ? $"{ModelValueFormat.G(q.Vgs)}, {ModelValueFormat.G(q.Vds)} V" : "—",
             c.PrePulse is { } p ? $"{ModelValueFormat.G(p.Vgs)}, {ModelValueFormat.G(p.Vds)} V" : "",
-            data is null ? "—" : data.Count.ToString(CultureInfo.InvariantCulture));
+            data is null ? "—" : data.Count.ToString(CultureInfo.InvariantCulture),
+            DataImport.CapacitanceSource(set) is { } source ? $"capacitances: {source}" : "");
     }
 }
 

@@ -196,9 +196,12 @@ A data set's `Kind` is `DcIv`, `PulsedIv`, `SParams` (CW multi-bias), `PulsedSPa
   to `vgs`, `vds`, `ig`, `id`, `T`, `vgsi` or `vdsi`, with the `Unit` its numbers are in. A cell that
   carries its own unit (`12 mA`) uses it.
 - `npy`, `mat` — named arrays in circuitRF's `.npy` or a MATLAB `.mat` (version 5 or 7.3). `Arrays` maps
-  the quantities above, `freq`, and a 2-port table `S`, `Y` or `C` to array names; a struct's field is
+  the quantities above, `freq`, a 2-port table `S` or `Y`, and the capacitances to array names; a struct's field is
   `s.field`. The bias arrays are one value per point, or the two axes of a grid. A Y table is converted
   to S at `Z0` (default 50 Ω); `FrequencyHz` gives a table with no frequency array its frequency.
+  A `SimulatedTables` set's capacitances, in farads, are either the matrix `C` shaped `[point, 2, 2]`, with
+  `Cij = ∂Qi/∂vj` (gate 1, drain 2, so `C12 = −Cgd`), or the circuit set `cgs`, `cgd` and `cds` together, and
+  optionally `cm`, one value per point; not both. Either is read at the `intrinsic` reference plane only.
 
 `Exclusions` lists the points left out of every fit — `Point`, a point's id, and the `Reason`. A
 Touchstone point's id is its file; a CSV row's is `<file>:<line>`; an array point's is `<file>#<index>`.

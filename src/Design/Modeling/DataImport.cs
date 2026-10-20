@@ -8,7 +8,8 @@
 //   npy / mat   named arrays — circuitRF's own .npy through NpyReader (DataSetImporter), a .mat through
 //               MatReader. Bias arrays are either one value per point, or the two axes of a grid whose
 //               current and table arrays are shaped [vgs, vds] (or [vds, vgs]). A Y table converts to S at
-//               the import's Z0, which is exact and invertible. Point id: "<source>#<k>".
+//               the import's Z0, which is exact and invertible. Capacitances (MC-20) are the matrix C[point, 2, 2]
+//               or the circuit set cgs, cgd, cds (and cm), which lands as the matrix. Point id: "<source>#<k>".
 //
 // An importer REFUSES with the source it is about and why — never a guessed bias, never a skipped row.
 // Each returns one summary line: points, bias range, frequency range.
@@ -238,7 +239,8 @@ public static class DataImport
             var table = A("S") ?? A("Y");
             bool isY = !map.ContainsKey("S") && map.ContainsKey("Y");
             var cArr = A("C");
-            var currentLike = A("id") ?? A("ig") ?? table ?? cArr;
+            var cgsArr = A("cgs");
+            var currentLike = A("id") ?? A("ig") ?? table ?? cArr ?? cgsArr;
 
             // One value per point, or a grid of vgs × vds.
             int n; bool grid = false, vdsSlow = false;
@@ -287,6 +289,17 @@ public static class DataImport
                 if (cArr.Count != n * 4) throw new DataImportException(src, $"'{map["C"]}' holds {cArr.Count} values for {n} points × 2 × 2.");
                 cTable.AddRange(cArr.Re);
             }
+            else if (cgsArr is not null)
+            {
+                // The circuit set as the matrix, IntrinsicQuantities' relations inverted (R-mc20-1); an absent cm is 0.
+                double[] cgs = PerPoint("cgs"), cgd = PerPoint("cgd"), cds = PerPoint("cds");
+                double[] cm = map.ContainsKey("cm") ? PerPoint("cm") : new double[n];
+                for (int k = 0; k < n; k++)
+                {
+                    cTable.Add(cgs[k] + cgd[k]); cTable.Add(-cgd[k]);
+                    cTable.Add(cm[k] - cgd[k]);  cTable.Add(cds[k] + cgd[k]);
+                }
+            }
             for (int k = 0; k < n; k++)
                 points.Add(new BiasPoint($"{src}#{k}", Bias(vgs, true, k), Bias(vds, false, k), ig[k], id[k])
                 {
@@ -302,6 +315,23 @@ public static class DataImport
             Z0 = z0,
             C = cTable.Count > 0 ? [.. cTable] : null,
         };
+    }
+
+    /// <summary>The spelling of a set's capacitance table: <c>table</c> for the matrix <c>C</c>, <c>circuit set</c> for
+    /// <c>cgs</c>, <c>cgd</c>, <c>cds</c>; null when it has none.</summary>
+    public static string? CapacitanceTable(CmcDataSet set) =>
+        set.Import.Arrays is not { } map ? null : map.ContainsKey("C") ? "table" : map.ContainsKey("cgs") ? "circuit set" : null;
+
+    /// <summary>
+    /// Where a set's charges read their capacitances (R-mc20-5): <c>Y</c> when it holds S or Y (its table, if it has one, is
+    /// cross-checked against <c>Im Y/ω</c>), else its <see cref="CapacitanceTable"/>; null for a set with neither.
+    /// </summary>
+    public static string? CapacitanceSource(CmcDataSet set)
+    {
+        if (set.Kind is DataSetKind.PassiveSParams or DataSetKind.LargeSignal) return null;
+        bool admittance = set.Import.Format == ImportSettings.Touchstone
+                       || set.Import.Arrays is { } map && (map.ContainsKey("S") || map.ContainsKey("Y"));
+        return admittance ? "Y" : CapacitanceTable(set);
     }
 
     /// <summary>True when <paramref name="a"/> holds <paramref name="n"/> points — its whole count, or its leading dimensions' product.</summary>

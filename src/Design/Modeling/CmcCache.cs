@@ -182,7 +182,8 @@ public sealed class CmcCache
         var probe = new CmcDocument
         {
             Kind = set.Kind == DataSetKind.PassiveSParams ? CmcKind.Passive : CmcKind.Active,
-            DataSets = [set with { Name = "_", Conditions = DataConditions.None, Exclusions = [] }],
+            // The plane stays: a capacitance table is valid at the intrinsic plane only (R-mc20-2). The key reads no condition.
+            DataSets = [set with { Name = "_", Conditions = DataConditions.None with { ReferencePlane = set.Conditions.ReferencePlane }, Exclusions = [] }],
         };
         using var doc = JsonDocument.Parse(CmcFile.ToBytes(probe));
         var e = doc.RootElement.GetProperty("DataSets")[0];

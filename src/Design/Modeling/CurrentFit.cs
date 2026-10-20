@@ -1085,7 +1085,7 @@ public static class CurrentFit
         foreach (var set in sets)
         {
             if (!intrinsic.Sets.TryGetValue(set.Name, out var ds) || !ds.Contains("Gm"))
-                throw new ModelingException(set.Name, "the dispersion reads its RF Gm and Gds, and it has no intrinsic S data.");
+                throw new ModelingException(set.Name, $"the dispersion reads its RF Gm and Gds, and {IntrinsicExtraction.NoAdmittance(ds)}");
             double[] f = ds["Gm"].Axes[1].Values, band = ds["Band"].RealValues;
             double[] gm = ds["Gm"].RealValues, gds = ds["Gds"].RealValues, flagged = ds["Flagged"].RealValues;
             double[] vgs = ds["Vgsi"].RealValues, vds = ds["Vdsi"].RealValues, ex = ds["Excluded"].RealValues;

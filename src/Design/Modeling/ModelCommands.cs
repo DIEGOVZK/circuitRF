@@ -156,6 +156,8 @@ public static partial class ModelCommands
             // The open's own line for the new set says what the line above already does; what it says of the others stays.
             lines.AddRange(open.Status.Where(s => !s.StartsWith(set.Name + ":", StringComparison.Ordinal)).Concat(open.Warnings)
                                       .Select(s => new ModelLine("note", set.Name, s)));
+            lines.AddRange(DataHygiene.SetWarnings(DataHygiene.Check([(set, open.Data[set.Name])]))
+                                      .Select(s => new ModelLine("note", set.Name, s)));
         }
         else
             lines.Add(new ModelLine("dataSet", set.Name, $"{set.Name}: {set.Kind}, {set.Sources.Count} source(s), validation only."));
@@ -446,6 +448,7 @@ public static partial class ModelCommands
             if (c.Quiescent is { } q) parts.Add($"quiescent {G(q.Vgs)}, {G(q.Vds)} V");
             if (c.PrePulse is { } pp) parts.Add($"pre-pulse {G(pp.Vgs)}, {G(pp.Vds)} V");
             if (set.Exclusions.Count > 0) parts.Add($"{set.Exclusions.Count} excluded");
+            if (DataImport.CapacitanceSource(set) is { } cs) parts.Add($"capacitances: {cs}");
             string summary = data is not null && data.TryGetValue(set.Name, out var nd) ? " " + DataImport.Summary(nd) : "";
             lines.Add(new ModelLine("dataSet", set.Name, $"{set.Name}: {string.Join(", ", parts)}.{summary}"));
         }

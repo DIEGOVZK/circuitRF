@@ -399,7 +399,7 @@ cannot rebuild. `NormalisedData.WithExclusions` applies them; nothing excludes a
 ### 5.2 The normalised form and the importers (R-mc3-3)
 
 `NormalisedData`: per point a `BiasPoint` (`PointId`, `Vgs`, `Vds`, `Ig`, `Id`, ambient, intrinsic
-voltages), and for S kinds `S[point, freq, i, j]` with one `Z0`, or a capacitance table `C[point, i, j]`.
+voltages), and for S kinds `S[point, freq, i, j]` with one `Z0`, and a capacitance table `C[point, i, j]` (§10.1).
 **A quantity a source does not carry is NaN, never zero** — a zero gate current is a measurement.
 
 `DataImport` — each importer refuses with its source and why, never a guessed bias or a skipped row:
@@ -746,6 +746,28 @@ input of an ANN charge (§12.1). At each point,
 flatness (`C11` or `C22` — the diagonals never cross zero, so theirs is always defined) exceeds `FlatnessLimit`
 (0.1) weighs `(limit/flatness)²`, and the report counts them. Both charges are zero at the anchor: `(0, 0)` or the
 stated point, moved to the nearest data point when it lies outside the hull.
+
+**Capacitance tables (MC-20).** A `SimulatedTables` set may carry the capacitances themselves: the matrix
+`C[point, 2, 2]` (`Cij = ∂Qi/∂vj`, the `Y = jωC` convention, so `C12 = −Cgd`) or the circuit set `cgs`, `cgd`, `cds`
+and optionally `cm`, which `DataImport` turns into the matrix with `IntrinsicQuantities`' relations inverted
+(`C11 = Cgs + Cgd`, `C12 = −Cgd`, `C21 = Cm − Cgd`, `C22 = Cds + Cgd`); an absent `cm` is 0, and the extraction says the
+model then has no transcapacitance. `CmcFile.Validate` refuses both spellings in one set, a partial circuit set, a
+table on another kind, and a table away from `ReferencePlane=intrinsic` — capacitances cannot be de-embedded through
+the network without their frequency response. (The import cache's settings probe keeps the plane for that reason;
+its key reads no condition.)
+- **Alone**, `IntrinsicExtraction` writes `C11 … C22` and the circuit set on a one-point frequency axis at 0 Hz, with
+  `Flagged` 0, `Band` [0, 0] and flatness 0 for the capacitances (NaN for `Gm`, `Gds`, `Tau`), so `Gather` reads it
+  exactly as it reads S, each point weighing 1, and only adds a report line naming the spelling. There is no `Y`,
+  `Gm`, `Gds` or `Tau` cube: the network fit (which reads `NormalisedData.S`), the RF current terms, dispersion, the
+  shift coupling and τth all find no admittance; a step that names such a set says it has none
+  (`IntrinsicExtraction.NoAdmittance`). The MC-17 minimums apply as for S points.
+- **Beside Y or S**, Y feeds the charges and the table is cross-checked: the largest `|Cij(table) − Im Yij/ω|` over
+  every point and unflagged frequency, relative to the point's largest table entry, as one note in D6's form —
+  `max |ΔC| 0.02 % between its capacitance table and Im Y/ω`.
+- `DataImport.CapacitanceSource` (`Y`, `table`, `circuit set`) is what `model explain` and the Data step's set list
+  show. `DataHygiene` adds one set-level `CapacitanceSign` flag (empty point id) when a matrix-spelled table has
+  `C12 > 0` at most of its points; `DataHygiene.SetWarnings` turns it into the warning `model import` and the window
+  print. The intrinsic cache key moved to `mc20-1`.
 
 ### 10.2 Methods (R-mc8-2)
 

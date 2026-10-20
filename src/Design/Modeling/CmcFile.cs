@@ -37,8 +37,17 @@ public static class CmcFile
     /// <summary>The quantities a data set's rows carry (R-mc3-2), as an importer's map names them.</summary>
     public static readonly IReadOnlyList<string> PointQuantities = ["vgs", "vds", "ig", "id", "T", "vgsi", "vdsi"];
 
-    /// <summary>The quantities only an array import maps: a frequency axis and the 2-port tables.</summary>
-    public static readonly IReadOnlyList<string> TableQuantities = ["freq", "S", "Y", "C"];
+    /// <summary>The quantities only an array import maps: a frequency axis, the 2-port tables, and the capacitances as the
+    /// circuit set (MC-20) — per point <c>cgs</c>, <c>cgd</c>, <c>cds</c> and optionally <c>cm</c>, in farads.</summary>
+    public static readonly IReadOnlyList<string> TableQuantities = ["freq", "S", "Y", "C", "cgs", "cgd", "cds", "cm"];
+
+    /// <summary>The circuit set's quantities, the first three of which come together (R-mc20-1).</summary>
+    public static readonly IReadOnlyList<string> CircuitSetQuantities = ["cgs", "cgd", "cds", "cm"];
+
+    /// <summary>Why a capacitance table is refused away from the intrinsic plane (R-mc20-2).</summary>
+    public const string CapacitancePlaneSentence =
+        "a capacitance table is the core's own and is read at the intrinsic plane only: capacitances cannot be de-embedded " +
+        "through an extrinsic network without their frequency response, so export the core's capacitances, or Y.";
 
     /// <summary>The fields a Touchstone bias pattern may name.</summary>
     /// <summary>The fields a bias pattern may name; <c>{geometry}</c> is a passive block's geometry value (MC-12).</summary>
@@ -358,6 +367,7 @@ public static class CmcFile
             }
             ValidateConditions(s, $"{f}.Conditions");
             ValidateImport(s, $"{f}.Import");
+            ValidateCapacitances(s, f);
             var seen = new HashSet<string>(StringComparer.Ordinal);
             for (int k = 0; k < s.Exclusions.Count; k++)
             {
@@ -421,6 +431,27 @@ public static class CmcFile
             Positive(l.Gate, $"{f}.Compliance.Gate");
             Positive(l.Drain, $"{f}.Compliance.Drain");
         }
+    }
+
+    /// <summary>
+    /// A set's capacitances (R-mc20-1, R-mc20-2): the matrix <c>C</c> or the circuit set, never both; <c>cgs</c>, <c>cgd</c> and
+    /// <c>cds</c> together; a SimulatedTables set's; and at the intrinsic plane only.
+    /// </summary>
+    private static void ValidateCapacitances(CmcDataSet s, string f)
+    {
+        if (s.Import.Arrays is not { } map) return;
+        bool matrix = map.ContainsKey("C");
+        var circuit = CircuitSetQuantities.Where(map.ContainsKey).ToList();
+        if (!matrix && circuit.Count == 0) return;
+        if (matrix && circuit.Count > 0)
+            throw new CmcFormatException($"{f}.Import.Arrays", "map the capacitance matrix C or the circuit set (cgs, cgd, cds), not both.");
+        var missing = CircuitSetQuantities.Take(3).Where(q => !map.ContainsKey(q)).ToList();
+        if (circuit.Count > 0 && missing.Count > 0)
+            throw new CmcFormatException($"{f}.Import.Arrays", $"cgs, cgd and cds come together; {string.Join(", ", missing)} {(missing.Count == 1 ? "is" : "are")} not mapped.");
+        if (s.Kind != DataSetKind.SimulatedTables)
+            throw new CmcFormatException($"{f}.Import.Arrays", $"capacitances belong to a SimulatedTables data set, and this one is {s.Kind}.");
+        if (s.Conditions.ReferencePlane != ReferencePlane.Intrinsic)
+            throw new CmcFormatException($"{f}.Conditions.ReferencePlane", CapacitancePlaneSentence);
     }
 
     /// <summary>The quantities a large-signal CSV maps (MC-11): powers in dBm, gain in dB, efficiencies in %, currents in A.</summary>

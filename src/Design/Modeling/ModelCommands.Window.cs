@@ -81,6 +81,7 @@ public static partial class ModelCommands
         }
 
         var flags = DataHygiene.Check([.. doc.DataSets.Where(s => open.Data.ContainsKey(s.Name)).Select(s => (s, open.Data[s.Name]))]);
+        warnings.AddRange(DataHygiene.SetWarnings(flags));
         IReadOnlyList<string> stale = [];
         try { stale = CmcStamps.StaleSteps(cmcPath, doc); }
         catch (Exception ex) when (ex is ModelingException or CmcFormatException) { }

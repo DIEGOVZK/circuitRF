@@ -351,7 +351,7 @@ public static class ThermalFit
         foreach (var set in sets)
         {
             if (!intrinsic.Sets.TryGetValue(set.Name, out var ds) || !ds.Contains("Y"))
-                throw new ModelingException(set.Name, "the τth fit reads its intrinsic Y22, and it has no intrinsic S data.");
+                throw new ModelingException(set.Name, $"the τth fit reads its intrinsic Y22, and {IntrinsicExtraction.NoAdmittance(ds)}");
             var y = ds["Y"];
             double[] f = y.Axes[1].Values, ex = ds["Excluded"].RealValues;
             var values = y.ComplexValues;

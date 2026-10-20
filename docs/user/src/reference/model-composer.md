@@ -93,7 +93,7 @@ of the network step alone still refuses.
 | `PulsedIv` | The same, sampled during a pulse from a stated quiescent point | CSV, `.npy`, `.mat` |
 | `SParams` | Two-port S at each bias, and the bias currents when the files state them | A folder of Touchstone files |
 | `PulsedSParams` | S sampled during a pulse | A folder of Touchstone files |
-| `SimulatedTables` | Currents, an admittance or S table, and optionally intrinsic voltages and a capacitance table | `.npy`, `.mat` |
+| `SimulatedTables` | Currents, and an admittance or S table, a capacitance table, or both; optionally intrinsic voltages | `.npy`, `.mat` |
 | `LargeSignal` | A power sweep, a two-tone sweep or a loadpull file; used for validation only | CSV, `.spl`, `.lpcwave` |
 | `PassiveSParams` | An N-port block, or a family of blocks over a geometry value | Touchstone files |
 
@@ -127,7 +127,7 @@ layout is secondary.
 | Data | Needed | What it gives the model |
 |---|---|---|
 | I–V: DC, or a simulator's DC currents; 4 points or more, varying both Vgs and Vds | **Required** | `Id` and `Ig`. With no gate current in the data, `Ig` is zero |
-| S or Y | Optional | `Qg` and `Qd`. None: the charges are constant capacitances you type, or zero. One bias or more: fitted linear charges — constant capacitances, exact at a single bias — with the `Linear` equation; four biases or more allow ANN or Table charges. Across the I–V plane: nonlinear charges |
+| S, Y or a capacitance table | Optional | `Qg` and `Qd`. None: the charges are constant capacitances you type, or zero. One bias or more: fitted linear charges — constant capacitances, exact at a single bias — with the `Linear` equation; four biases or more allow ANN or Table charges. Across the I–V plane: nonlinear charges |
 | S at Vds = 0 V, pinched off and with the gate forward-biased | Optional | The cold-FET network fit |
 | Open and short pad dummies | When measured at the probe tips | Removal of the pads |
 | Any set at two or more temperatures | Optional | `T` as an input: the model follows the run's `temp`, and self-heating becomes available |
@@ -165,7 +165,7 @@ reports when its data is thin for its network.
 | Data | Analysis to run | What to save |
 |---|---|---|
 | I–V | DC, with Vgs swept inside a Vds sweep | The terminal voltages and the gate and drain currents; optionally the internal intrinsic voltages (`vgsi`, `vdsi`), which the composer checks against its own |
-| S or Y | S-parameter (small-signal) analysis at every bias of the DC sweep | Y or S of the two-port: gate port 1, drain port 2, source grounded; the DC currents at each bias |
+| S or Y | S-parameter (small-signal) analysis at every bias of the DC sweep | Y or S of the two-port: gate port 1, drain port 2, source grounded; the DC currents at each bias. Or, for the charges alone, the core's operating-point capacitances at each bias |
 | Temperature | Both of the above at two or more `temp` values | One set per temperature, or a `T` array |
 | Pulsed I–V | Transient: hold the quiescent bias until the trap and thermal states settle, step to the pulse bias, and sample the currents at the sample delay | One set per quiescent point, stating `Quiescent`, `PulseWidth` and `SampleDelay` |
 | Large signal | Harmonic balance: power sweep, two-tone or loadpull | Validation only |
@@ -195,6 +195,12 @@ Python (`scipy.io.savemat`, h5py). Name the arrays as you like and map them: `vg
 the two axes of a grid), `id`, `ig`, `T`, `vgsi`, `vdsi`, `freq`, and `Y` or `S` shaped `[point, freq, 2, 2]`
 (`[vgs, vds, freq, 2, 2]` on a grid). Currents are positive into the terminal.
 
+Capacitances are either the matrix `C` shaped `[point, 2, 2]`, with `Cij = ∂Qi/∂vj` (gate 1, drain 2, so `C12 = −Cgd`),
+or the circuit set `cgs`, `cgd`, `cds` and optionally `cm`, one value per point. A capacitance table is the core's own,
+so it is read at `ReferencePlane=intrinsic` only. On its own it feeds the charges at every point, with nothing to fit
+the network, `Gm`, `Gds`, dispersion or τth to. Beside Y or S, Y feeds the charges and the table is checked against it:
+`max |ΔC| 0.02 % between its capacitance table and Im Y/ω`.
+
 ```python
 import scipy.io as sio
 # vgs (nG,), vds (nD,) in V; id, ig (nG, nD) in A; freq (nF,) in Hz; Y (nG, nD, nF, 2, 2) in S
@@ -215,7 +221,7 @@ what tools actually write.
 ### Checklist {#checklist}
 
 - The I–V covers the circuit's whole Vgs and Vds swing, gate forward conduction included.
-- S or Y, if there is any, is at one bias or more for fitted linear charges, 4 or more for ANN or Table charges, and a
+- S, Y or capacitances, if there are any, are at one bias or more for fitted linear charges, 4 or more for ANN or Table charges, and a
   hundred or more for nonlinear ones. Without it, the capacitances are typed (a datasheet's will do) or left at zero.
 - Currents are positive into the terminal, and every column has its unit.
 - Every set states its reference plane and ambient temperature.
@@ -457,7 +463,10 @@ The right side previews the first lines of the first file and the first points a
 bottom is what the import will read, or why it cannot.
 
 The **data-set list** shows each set's name, kind, ambient, reference plane, quiescent point (and pre-pulse) and point
-count. Selecting a set points the plots and the cursor's lists at it.
+count, and where its charges read their capacitances: `Y`, its capacitance `table` or its `circuit set`.
+`circuitrf model explain` says the same. A capacitance table spelled as the matrix whose `C12` is positive at most of its
+points is warned about, since the matrix convention has `C12 = −Cgd`: the circuit set was probably meant. Selecting a set
+points the plots and the cursor's lists at it.
 
 | Plot tab | Shows |
 |---|---|
@@ -542,7 +551,7 @@ the biases, with the circuit set `Cgs = C11 + C12`, `Cgd = −C12`, `Cds = C22 +
 plots are flat lines through the measured points. The exported model's provenance and `circuitrf model explain` say
 `Qg, Qd: Linear from 1 bias point(s)`. A linear charge has no training domain, so no extrapolation applies to it.
 
-**With no S data**, the step shows four capacitances in place of the pickers — `Cgs`, `Cgd`, `Cds` and `Cm`, each in
+**With no S, Y or capacitance data**, the step shows four capacitances in place of the pickers — `Cgs`, `Cgd`, `Cds` and `Cm`, each in
 farads and 0 unless you type a value — and Run writes them as `Linear` charges. A datasheet gives them as
 `Cgd = Crss`, `Cgs = Ciss − Crss` and `Cds = Coss − Crss`; `Cm` is a transcapacitance and may be negative. Export,
 the provenance and `circuitrf model explain` say `Qg, Qd: typed` with the four values. With all four at zero the step,

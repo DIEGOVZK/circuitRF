@@ -2,8 +2,9 @@
 // overview D4, D7, D13).
 //
 //   1. The training data are C11, C12 (Qg's row) and C21, C22 (Qd's) at each intrinsic S point, averaged over MC-4's
-//      flatness band with flagged frequencies left out; a point whose diagonal flatness is poor weighs less. One trap
-//      state, as for the currents. With S data at two or more temperatures an ANN charge takes T as an input (MC-9
+//      flatness band with flagged frequencies left out; a point whose diagonal flatness is poor weighs less. A capacitance
+//      table (MC-20) arrives through the same intrinsic cubes, at one frequency and flat, so each of its points weighs one.
+//      One trap state, as for the currents. With S data at two or more temperatures an ANN charge takes T as an input (MC-9
 //      R-mc9-1, [X10] eqs. 1.1 and 1.5), each point at its ambient — its junction temperature with self-heating.
 //   2. Both charges are zero at the anchor — the arbitrary constant of [P1] §6.3.4.
 //   3. Each charge is an ANN trained on its two partial derivatives by the adjoint method (the default, [P1] §6.3.6), a
@@ -287,7 +288,7 @@ public static class ChargeFit
     {
         var chosen = Chosen(doc, intrinsic, settings);
         if (chosen.Count == 0)
-            throw new ModelingException(StepName, "there is no S-parameter data set to take the capacitances from.");
+            throw new ModelingException(StepName, "there is no S, Y or capacitance data set to take the capacitances from.");
         // MC-10 R-mc10-5: with traps, Qd takes the trap states when pulsed S-parameters give every enabled state a level.
         var trapSettings = TrapFit.Settings(doc);
         TrapMapping? traps = null;
@@ -327,7 +328,9 @@ public static class ChargeFit
         foreach (var set in chosen)
         {
             if (!intrinsic.Sets.TryGetValue(set.Name, out var ds) || !ds.Contains("C11"))
-                throw new ModelingException(set.Name, "the charges read its intrinsic capacitances, and it has no intrinsic S data.");
+                throw new ModelingException(set.Name, "the charges read its intrinsic capacitances, and it has no intrinsic S, Y or capacitance data.");
+            if (DataImport.CapacitanceSource(set) is ("table" or "circuit set") and var spelling)
+                report.Add($"{set.Name}: the capacitances are its {spelling}.");
             double[] f = ds["C11"].Axes[1].Values, band = ds["Band"].RealValues, flagged = ds["Flagged"].RealValues;
             double[] vgs = ds["Vgsi"].RealValues, vds = ds["Vdsi"].RealValues, ex = ds["Excluded"].RealValues;
             double[] flat = ds["Flatness"].RealValues;

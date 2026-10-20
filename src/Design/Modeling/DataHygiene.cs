@@ -8,6 +8,8 @@
 //   Drift        a bias point measured twice (within one set, or across sets of the same kind measured under
 //                the same conditions) whose current or S differ by more than the tolerance — [P1]'s warning
 //                that a stressed device degrades, checked by measuring a reference bias at the start and end.
+//   Sign         a capacitance table spelled as the matrix whose C12 is positive at most of its points (MC-20 R-mc20-4):
+//                the matrix convention has C12 = −Cgd, so the circuit set was probably meant. One flag for the set.
 //   Coverage     the convex hull of the data's (Vgs, Vds), for the plots and for extrapolation (MC-2).
 
 using System.Globalization;
@@ -15,9 +17,10 @@ using System.Numerics;
 
 namespace CircuitRF.Design.Modeling;
 
-public enum HygieneKind { Oscillation, Compliance, Drift }
+public enum HygieneKind { Oscillation, Compliance, Drift, CapacitanceSign }
 
-/// <summary>One flagged point: its data set, its id, what was found, and a one-line detail.</summary>
+/// <summary>One flagged point: its data set, its id, what was found, and a one-line detail. A flag about the whole set
+/// (<see cref="HygieneKind.CapacitanceSign"/>) has an empty <see cref="Point"/>.</summary>
 public sealed record HygieneFlag(string DataSet, string Point, HygieneKind Kind, string Detail);
 
 /// <summary>The tolerances hygiene judges by. Every default is stated here, and nowhere else.</summary>
@@ -55,6 +58,7 @@ public static class DataHygiene
         {
             Oscillation(set, data, settings, flags);
             Compliance(set, data, settings, flags);
+            CapacitanceSign(set, data, flags);
         }
         Drift(sets, settings, flags);
         return flags;
@@ -76,6 +80,19 @@ public static class DataHygiene
                 flags.Add(new HygieneFlag(set.Name, d.Points[p].PointId, HygieneKind.Oscillation, $"{why} at {G(d.FrequenciesHz[f] / 1e9)} GHz."));
                 break;
             }
+    }
+
+    /// <summary>The flags about whole sets, each as the one line a warning list shows: <c>set: detail</c>.</summary>
+    public static IEnumerable<string> SetWarnings(IEnumerable<HygieneFlag> flags) =>
+        flags.Where(f => f.Point.Length == 0).Select(f => $"{f.DataSet}: {f.Detail}");
+
+    private static void CapacitanceSign(CmcDataSet set, NormalisedData d, List<HygieneFlag> flags)
+    {
+        if (d.C is not { } c || DataImport.CapacitanceTable(set) != "table") return;
+        int m = c.Length / 4, n = Enumerable.Range(0, m).Count(p => c[4 * p + 1] > 0);
+        if (2 * n > m)
+            flags.Add(new HygieneFlag(set.Name, "", HygieneKind.CapacitanceSign,
+                $"C12 > 0 at {n} of {m} points; the matrix convention has C12 = −Cgd — was the circuit set (cgd) meant?"));
     }
 
     private static void Compliance(CmcDataSet set, NormalisedData d, HygieneSettings s, List<HygieneFlag> flags)
