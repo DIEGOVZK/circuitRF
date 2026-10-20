@@ -92,7 +92,7 @@ public sealed class AnnTrainingResult
     public int Iterations { get; init; }
     public LbfgsStop Stop { get; init; }
     public int ParameterCount { get; init; }
-    /// <summary>One per value, one per derivative component, the anchor included.</summary>
+    /// <summary>One per value, one per measured derivative component (weight not 0), the anchor included.</summary>
     public int TargetCount { get; init; }
     public IReadOnlyList<string> Warnings { get; init; } = [];
 
@@ -142,8 +142,11 @@ public static class AnnTrainer
         double derivNorm = 1.0;
         if (derivs is not null)
         {
+            // Over the measured components only: a weight of 0 marks a placeholder, and its target says nothing.
             double ss = 0.0; int count = 0;
-            foreach (var t in derivs.Targets) foreach (double v in t) { ss += v * v; count++; }
+            for (int k = 0; k < derivs.X.Count; k++)
+                for (int j = 0; j < derivs.Directions.Count; j++)
+                    if (Measured(derivs, k, j)) { ss += derivs.Targets[k][j] * derivs.Targets[k][j]; count++; }
             derivNorm = Math.Sqrt(ss / Math.Max(count, 1));
         }
         // Values that are all one number say nothing about the output's size; with derivatives present (a charge
@@ -161,9 +164,10 @@ public static class AnnTrainer
             for (int j = 0; j < derivs!.Directions.Count; j++)
             {
                 int dir = derivs.Directions[j];
-                double ss = 0.0;
-                foreach (var t in derivs.Targets) ss += t[j] * t[j];
-                outScale = Math.Max(outScale, Math.Sqrt(ss / derivs.Targets.Count) / inScale[dir]);
+                double ss = 0.0; int count = 0;
+                for (int k = 0; k < derivs.X.Count; k++)
+                    if (Measured(derivs, k, j)) { ss += derivs.Targets[k][j] * derivs.Targets[k][j]; count++; }
+                outScale = Math.Max(outScale, Math.Sqrt(ss / Math.Max(count, 1)) / inScale[dir]);
             }
             if (!(outScale > 0)) outScale = 1.0;
         }
@@ -272,8 +276,11 @@ public static class AnnTrainer
         var (weights, biases) = objective.Unpack(best!);
         var network = objective.ToEvaluator(best!, inOffset, inScale, outOffset, outScale);
 
-        int targets = (values?.X.Count ?? 0) + (derivs?.X.Count ?? 0) * (derivs?.Directions.Count ?? 0)
-                    + (problem.Anchor is null ? 0 : 1);
+        int targets = (values?.X.Count ?? 0) + (problem.Anchor is null ? 0 : 1);
+        if (derivs is not null)
+            for (int k = 0; k < derivs.X.Count; k++)
+                for (int j = 0; j < derivs.Directions.Count; j++)
+                    if (Measured(derivs, k, j)) targets++;
         var warnings = new List<string>();
         if (objective.ParameterCount * 10 > targets)
             warnings.Add($"the network has {objective.ParameterCount} weights for {targets} targets; " +
@@ -315,7 +322,7 @@ public static class AnnTrainer
             net.Evaluate(data.X[k], grad);
             for (int j = 0; j < data.Directions.Count; j++)
             {
-                if ((data.Weights?[k][j] ?? 1.0) == 0.0) continue;
+                if (!Measured(data, k, j)) continue;
                 double t = data.Targets[k][j];
                 lo = Math.Min(lo, t); hi = Math.Max(hi, t);
                 (held[k] ? hold : train).Add(grad[data.Directions[j]] - t);
@@ -323,6 +330,8 @@ public static class AnnTrainer
         }
         return Error(train, hold, hi - lo);
     }
+
+    private static bool Measured(AnnDerivativeData data, int k, int j) => (data.Weights?[k][j] ?? 1.0) != 0.0;
 
     private static AnnFitError Error(List<double> train, List<double> hold, double range)
     {

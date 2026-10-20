@@ -3028,6 +3028,17 @@ Design note: `docs/design/model-composer.md` §8. Findings worth keeping:
   and for non-conservative targets that moves the least-squares compromise. The derivative term divides by the
   RMS of all its targets instead.
 
+**Review (2026-10-20), three fixes:**
+- **A rejected curvature pair corrupted L-BFGS's oldest pair once the memory was full.** The step pair was written
+  straight into `S[head]`/`Y[head]` and only then tested; with `stored == m`, `head` is the OLDEST pair still in
+  use, so a rejected pair left that slot holding new `s, y` with the old `ρ`. It is now built in its own buffers and
+  swapped in only when kept.
+- **A line search still descending after its last doubling gave up**, though every step it tried met the
+  sufficient decrease; it now takes the longest one.
+- **Unmeasured derivative components (weight 0) counted as data.** Their placeholder targets entered the
+  derivative term's RMS normaliser and the output scale, and they counted toward the one-in-ten rule's targets,
+  which could hide its warning. All three now count only measured components, as the reported error already did.
+
 ## Model Composer MC-8: a constant value target says nothing about the output's size (2026-10-19)
 
 `AnnTrainer` scaled the output by the value targets' range, falling back to `max(|offset|, 1)` when they were all one

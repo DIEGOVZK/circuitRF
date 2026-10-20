@@ -50,6 +50,8 @@ public static class Lbfgs
         var d = new double[n];
         var trial = new double[n];
         var gTrial = new double[n];
+        var sNew = new double[n];
+        var yNew = new double[n];
         var S = new double[m][];
         var Y = new double[m][];
         var rho = new double[m];
@@ -107,9 +109,9 @@ public static class Lbfgs
             }
             resetOnce = false;
 
-            // The pair (s, y) of this step; kept only when its curvature is safely positive.
-            var sNew = S[head];
-            var yNew = Y[head];
+            // The pair (s, y) of this step; kept only when its curvature is safely positive. It is built
+            // apart from the memory and swapped in, because with the memory full S[head] is the OLDEST pair
+            // still in use, and a rejected pair written over it would leave that slot with a stale ρ.
             for (int i = 0; i < n; i++)
             {
                 sNew[i] = trial[i] - p[i];
@@ -118,6 +120,8 @@ public static class Lbfgs
             double sy = Dot(sNew, yNew);
             if (sy > 1e-12 * Math.Sqrt(Dot(sNew, sNew) * Dot(yNew, yNew)))
             {
+                (S[head], sNew) = (sNew, S[head]);
+                (Y[head], yNew) = (yNew, Y[head]);
                 rho[head] = 1.0 / sy;
                 head = (head + 1) % m;
                 stored = Math.Min(stored + 1, m);
@@ -156,6 +160,13 @@ public static class Lbfgs
                 return Zoom(f, p, f0, slope0, d, step, fs, gs, prevStep, prevLoss, prevSlope, trial, gTrial, evals);
             prevStep = step; prevLoss = fs; prevSlope = gs;
             step *= 2.0;
+        }
+
+        // Still descending at the last doubling: the longest step tried met the sufficient decrease, so take it.
+        if (prevStep > 0)
+        {
+            double fs = Probe(f, p, d, prevStep, trial, gTrial); evals++;
+            return (true, prevStep, fs, evals);
         }
         return (false, 0, f0, evals);
     }

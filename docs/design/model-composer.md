@@ -615,8 +615,8 @@ combined training (eq. 8), each over its own point set.
 - **The adjoint network** (`AnnObjective`). The input derivatives are carried forward with the value (the derivative
   network of MC-2); the loss is back-propagated through both networks at once — [X03] eq. 17's three paths:
   `z̄ = ā ⊙ σ′ + Σⱼ ūⱼ ⊙ σ″ ⊙ vⱼ`, `v̄ⱼ = ūⱼ ⊙ σ′`, `∂L/∂W += z̄ aᵀ + Σⱼ v̄ⱼ uⱼᵀ`. Never a finite difference.
-- **Size.** Default 2 × 8 `tanh`. When the parameters exceed a tenth of the targets (one per value, one per
-  derivative component, the anchor) the result carries one warning ([L26]).
+- **Size.** Default 2 × 8 `tanh`. When the parameters exceed a tenth of the targets (one per value, one per measured
+  derivative component — weight not 0 — and the anchor) the result carries one warning ([L26]).
 
 ### 8.2 The optimiser (R-mc6-4)
 
