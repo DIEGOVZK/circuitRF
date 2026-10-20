@@ -1,5 +1,56 @@
 # src/Design — resolved findings (detail, off the CLAUDE.md growth path)
 
+## The background was cut with one multi-tool difference, and OCC landed a wrong region (2026-10-20)
+
+Reported against a stack of overlapping dielectric slabs and conductor pieces: the mesh stage refused the run
+because a solid's volume had lost its tag in the fragment (`'<solid>' lost 1 volume(s) in the fragment`), and
+the background did not match the solids it was meant to exclude.
+
+### The rule the fix encodes
+
+The background is what no solid claims inside the air box, so it is built from the box minus every solid. It
+was written as ONE `BooleanDifference` carrying every solid as a tool. On a stack of overlapping slabs OCC's
+multi-tool Difference self-intersects and can land a wrong region; the volume the wrong region swallowed then
+had no tag. The script now starts the background as `{bx}` and subtracts one solid per step, in construction
+order, so every step is a plain two-solid cut. The resulting shape is the one the un-chained form was meant to
+produce; only the operation is decomposed. The line count is one per solid.
+
+**Not changed:** the order of the cuts (metal over dielectric, then construction order, §6.3a), and the
+conductors' own void deletion.
+
+Gate: `PalaceBackendTests.TheBackgroundIsCutOneSolidAtATime` (the script's chained cuts, no Gmsh), and the
+writer goldens regenerated deliberately: `PalaceBackendTests.Gate1_TheWritersOutput_IsByteForByteTheCommittedGolden`
+(microstrip, via) and `PalaceStaticTests.Gate1_TheTwoTerminalConfig_IsTheCommittedGolden_AndValidatesAgainstTheSchema`
+(static-es, static-ms).
+
+## A sheet took the faces of a smaller coplanar sheet inside its bounding box (2026-10-20)
+
+Reported against a static (electrostatic) solve of a planar winding: the entity table refused the mesh with
+`'<sheet>' (a sheet) selected nothing in the mesh`, while the sheet's outline was a simple closed loop inside
+the problem. The same refusal named a second, smaller sheet, and the larger sheet on the same plane selected
+far more surfaces than its own. Across the sheet groups the counts were `3 3 3 11 0 1 1 0`: the two zeros were
+the sheets whose plan box lay wholly inside another sheet's.
+
+### The rule the fix encodes
+
+A named sheet is recovered from the mesh by a bounding-box query, `Surface In BoundingBox{...}` at the
+sheet's own world bound, and every claim subtracts what an earlier claim already took (`claimed[]`). Claims
+ran in document order, so a sheet whose bound enclosed another coplanar sheet's bound took both sheets' faces;
+the enclosed sheet then selected nothing. **Order decided, not geometry.**
+
+The sheets are now claimed in ascending `SheetSpan` (a flat box has no volume, so the measure is the largest
+product of two sides: the sheet's plan area), with document order as the tie-break so the script stays
+byte-deterministic. This is the rule the conductors below already used ("smallest bounding box first"), and it
+is what stops a pad inside a plane's box from losing its faces.
+
+**Not changed:** a zero-thickness sheet in a static Palace solve is an interior face and cannot carry
+`Boundaries.Terminal`; Palace aborts in `mfem::STable3D` when it does. That is a separate limitation of using
+a static sheet as a terminal, not of this recovery order, and it is recorded as its own issue.
+
+Gate: `PalaceBackendTests.ASheetWhoseBoxLiesInsideAnothers_IsClaimedBeforeIt` (the script's claim order, no
+Gmsh) and `PalaceBackendTests.NestedSheets_EachSelectsItsOwnFaces` (Gmsh: every sheet group at least one
+surface, no unclassified single-sided face).
+
 ## A lumped port a hair inside its lines was excited by nothing; voxelized phantoms (2026-10-18, brief-sar-8)
 
 - **openEMS tests an excitation box against its grid lines with no tolerance** (`CSPrimBox::IsInside`, `CoordInRange`), and

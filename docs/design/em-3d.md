@@ -517,7 +517,10 @@ voids and dielectrics made disjoint before the fragment, so every volume keeps i
 (`Geometry.OCCBooleanPreserveNumbering`, verified), and every surface recovered by a bounding-box
 query against what circuitRF knows of it, counted against what it expected. It works, with caveats
 that belong to the writer (`em-3d-f0-findings.md` Q5) — above all that OCCT's own boxes are loose on
-curved faces, so the queries need `Geometry.OCCBoundsUseStl`.
+curved faces, so the queries need `Geometry.OCCBoundsUseStl`. The background is cut one solid at a
+time (the box, then one two-solid `BooleanDifference` per solid), never one multi-tool difference:
+OCC's multi-tool `BooleanDifference` self-intersects on a stack of overlapping tools and can land a
+wrong region, which is how a solid's volume loses its tag.
 
 The limitation is that Route A is **batch**: each edit re-runs `gmsh`. That is fine at mesh time and
 for a read-only preview of generated geometry, and too slow and too coarse-grained for an interactive
@@ -629,7 +632,9 @@ entities is rebuilt on every run: to mesh groups from what circuitRF knows of ea
 bounding-box queries counted against expectation, §6.2 — not a fragment map, which `.geo` does not
 expose; OCCT's `Modified`/`Generated`/`IsDeleted` history in Route B), and to CSXCAD properties by
 name, since each named object becomes one or more named CSXCAD primitives. A named object that no
-longer yields any face is a refusal naming the object, never a guess.
+longer yields any face is a refusal naming the object, never a guess. A sheet is recovered from the
+surfaces inside its own world bound; where one sheet's bound contains another's on the same plane, the
+smaller is claimed first, so a claim never takes a face another sheet needed.
 
 **An object that names no material is not in the problem** (3D editor round 2, 2026-09-26): the solver
 ignores it, the run and `check` say so as a **warning**, and it neither sizes the air box nor gives a port
