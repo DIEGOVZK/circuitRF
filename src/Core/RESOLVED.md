@@ -3717,4 +3717,5 @@ line from the bias point (`docs/design/model-composer.md` §24). Things worth kn
   fitted model takes 100 iterations and 596 backtracks and fails. `DrainLag=false` converges in 16 iterations,
   `SelfHeating=false` in 23, and both off in 14. The device Jacobian matches finite differences everywhere except the
   continuation's known kinks. So the stall is in the HB solve of the two coupled slow state nodes, not a wrong derivative.
-  Not fixed here; the MC-22 sweep gate stops at 13 dBm and says why.
+  Not fixed here; the MC-22 sweep gate stops at 13 dBm and says why. Fixed by MC-25 (the HB line search's norm), and
+  the gate is back at 22 dBm: `src/Engine/RESOLVED.md`.

@@ -386,7 +386,10 @@ public static class CircuitEvaluation
                 if (ds is not null)
                 {
                     results.Add(new AnalysisResult(pa.ResultName, ds));
-                    convergence.Add(new AnalysisConvergence(pa.ResultName, converged));
+                    string? detail = null;
+                    if (pa.Typed is ParametricSweepAnalysis) converged = SweepConverged(ds, out detail);
+                    if (detail is not null) nl.AddWarning($"'{pa.ResultName}': {detail}");
+                    convergence.Add(new AnalysisConvergence(pa.ResultName, converged, detail));
                 }
                 if (!pa.SelfTicks) control?.Tick(pa.WorkUnits);
                 breadcrumb?.Invoke($"run: end '{pa.ResultName}'");
@@ -548,6 +551,41 @@ public static class CircuitEvaluation
             PassiveParams  = pars,
             PassiveNetlist = () => NdfPassivation.BuildPassiveNetlist(lib, tb, baseDirectory, vars, pars),
         };
+    }
+
+    /// <summary>
+    /// A sweep's verdict, from the per-point <c>Converged</c> cube it stacks (MC-25 R-mc25-4): false when any point did not
+    /// converge, with <paramref name="detail"/> naming those points by their sweep values; true when every point did; null
+    /// when the inner analysis carries no such cube (an S-parameter sweep has nothing to converge). Before this a sweep
+    /// always reported null, which every reader took as converged — the Model Composer example's power sweep failed six
+    /// rungs with nothing saying so.
+    /// </summary>
+    internal static bool? SweepConverged(DataSet ds, out string? detail)
+    {
+        detail = null;
+        if (!ds.Contains("Converged") || ds["Converged"] is not { DataKind: DataKind.Real } cube) return null;
+        var values = cube.RealValues;
+        var failed = new List<string>();
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (values[i] != 0.0) continue;
+            // Row-major over the sweep axes, the innermost last.
+            var parts = new string[cube.Rank];
+            for (int d = cube.Rank - 1, rest = i; d >= 0; d--)
+            {
+                var axis = cube.Axes[d];
+                int at = rest % axis.Length;
+                rest /= axis.Length;
+                string v = axis.Labels?[at] ?? axis.Values[at].ToString("G6", CultureInfo.InvariantCulture);
+                parts[d] = $"{axis.Name} = {v}{(string.IsNullOrEmpty(axis.Unit) || axis.Labels is not null ? "" : " " + axis.Unit)}";
+            }
+            failed.Add(string.Join(", ", parts));
+        }
+        if (failed.Count == 0) return true;
+        const int Named = 8;
+        detail = $"did not converge at {failed.Count} of {values.Length} sweep point(s): " +
+                 string.Join("; ", failed.Take(Named)) + (failed.Count > Named ? $"; and {failed.Count - Named} more" : "") + ".";
+        return false;
     }
 
     private static DataSet? RunTypedAnalysis(

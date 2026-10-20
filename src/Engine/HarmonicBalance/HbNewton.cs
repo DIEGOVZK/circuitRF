@@ -267,6 +267,7 @@ public static class HbNewton
 
         // Scratch the line search steps FROM — the accepted iterate every trial restarts at.
         var V0 = new Complex[N, K + 1];
+        bool stateRows = HasStateRow(netlist, interfaceNodes);
 
         // ── 0. One evaluation before the loop ─────────────────────────────────
         // From here the loop's ENTRY state is always the last accepted trial's evaluation, so
@@ -320,8 +321,13 @@ public static class HbNewton
 
             // ── 4. Update V[k=0..K] += λ·ΔV, λ from the backtracking line search ──
             double fEntry = fN;
+            int worst = WorstNode(F, N, K, out double worstShare);
             Array.Copy(V, V0, V.Length);
-            var step = Backtrack(fEntry, lambda, lam =>
+            // The line search judges a self-admittance-scaled norm when a row is not a KCL in amperes
+            // (MC-25); the convergence test above stays on ‖F‖ in amperes either way.
+            double[]? w = stateRows ? LineSearchWeights(J, unknowns) : null;
+            double fJudged = WeightedL2(F, w);
+            var step = Backtrack(fJudged, lambda, lam =>
             {
                 Array.Copy(V0, V, V.Length);
                 ApplyUpdate(V, dV, N, K, lam);
@@ -329,17 +335,22 @@ public static class HbNewton
                     EvaluateNonlinear(V, N, K, gridN, netlist, interfaceNodes, cc, iNlLast, out ctrlJac,
                                       portITime);
                 F = BuildF(V, yNN, iSrc, iNl, qNl, N, K, omega0, higherBuckets);
-                return L2(F);
+                return WeightedL2(F, w);
             });
+            if (w is not null) step = step with { Residual = L2(F) };
             iNlLast = iNl;
             fN      = step.Residual;
+            int moved = LargestStep(dV, N, K, step.Lambda, out double stepSize);
             trace.Add(new HbConvergenceTrace.IterRecord(
-                iter, fEntry, step.Lambda, step.Backtracks, step.Stalled));
+                iter, fEntry, step.Lambda, step.Backtracks, step.Stalled,
+                worst, worstShare, moved, stepSize));
         }
 
         // Max iterations. ‖F‖ at the final iterate is already known — the last accepted trial
         // computed it — so the tail costs no evaluation of its own.
-        trace.Add(new HbConvergenceTrace.IterRecord(settings.HbMaxIter, fN));
+        int last = WorstNode(F, N, K, out double lastShare);
+        trace.Add(new HbConvergenceTrace.IterRecord(settings.HbMaxIter, fN,
+            WorstNode: last, WorstShare: lastShare));
         return new SolveResult(false, settings.HbMaxIter, trace,
             TotalInjection(iNl, qNl, higherBuckets, N, K, omega0), portITime,
             G, C, higherBuckets);
@@ -408,6 +419,76 @@ public static class HbNewton
                 return new LineSearchStep(fT, lam, rejected, true);
             lam *= 0.5;
         }
+    }
+
+    // ── The norm the line search judges (MC-25) ──────────────────────────────
+
+    [ThreadStatic] private static bool _unscaled;
+
+    /// <summary>
+    /// Test-only: judge every line search by ‖F‖₂ in amperes, as before MC-25, on this thread. The scaled norm's claim
+    /// is that it changes no answer that converged without it, which can only be gated by running both on the same
+    /// input. Thread-affine for the reason <c>NonlinearEvalDiagnostics</c> is. The application never sets it.
+    /// </summary>
+    public static bool UnscaledLineSearch { get => _unscaled; set => _unscaled = value; }
+
+    /// <summary>
+    /// Whether any interface node is a device's STATE node (<see cref="ComponentModel.StatePorts"/>): a trap state in
+    /// volts on a 1 mF node, a temperature rise whose row is in watts, a dispersion current. Decided by what the model
+    /// declares a port to be, never by a node's name.
+    ///
+    /// <para><b>Why it matters to the line search.</b> Every other row of F is a KCL in amperes, so ‖F‖₂ weighs like
+    /// with like. A state row is not, and one such row can carry the whole norm: on the Model Composer example's GaN
+    /// stage at 18 dBm the drain-lag trap row held 100 % of ‖F‖ (1.2e5) at the entry, the search accepted a full step
+    /// that fixed that one row and drove the gate from 0.27 V to 4.3 V of swing, and the thermal row (P̄ ≈ 1000 W of
+    /// an overdriven waveform, against the 0.17 W of the answer) then held ~90 % of ‖F‖ for the 98 iterations left.
+    /// <c>src/Engine/RESOLVED.md</c> has the record.</para>
+    /// </summary>
+    public static bool HasStateRow(ElaboratedNetlist netlist, int[] interfaceNodes)
+    {
+        if (_unscaled) return false;
+        foreach (int nlIdx in netlist.NonlinearComponents)
+        {
+            var ec = netlist.Components[nlIdx];
+            foreach (int p in ec.Model.StatePorts)
+                if (2 * p < ec.Nodes.Length && Array.IndexOf(interfaceNodes, ec.Nodes[2 * p]) >= 0)
+                    return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// One weight per (node, harmonic): <c>1/|Y_self|</c>, the magnitude of that row pair's own 2×2 diagonal block
+    /// <c>[[G, −B], [B, G]]</c>, shared by its real and imaginary rows. Each residual then reads as the voltage that would
+    /// clear it along its own unknown alone — volts at a circuit node, kelvin at the thermal node, volts of trap state —
+    /// so no row outweighs the others by its unit. The block and not the diagonal entry alone, because a state node's
+    /// harmonic rows are mostly susceptance: the trap node's 1 mF is <c>kω·C</c> ≈ 1.3e7 S at 2 GHz, all of it off the
+    /// diagonal. A pair with no self-admittance keeps weight 1.
+    ///
+    /// <para>Built from the iteration's entry Jacobian and held for its whole line search, which keeps the Newton step a
+    /// descent direction of the weighted norm (<c>d/dλ ‖W·F‖² = −2‖W·F‖²</c> at λ = 0 for any fixed diagonal W) — what
+    /// Armijo needs. Scaling changes which trial is ACCEPTED, never the step, the fixed point or the convergence test.
+    /// Every HB loop lays its unknowns out as interleaved (Re, Im) pairs, which is all this reads.</para>
+    /// </summary>
+    public static double[] LineSearchWeights(double[] J, int unknowns)
+    {
+        var w = new double[unknowns];
+        for (int r = 0; r + 1 < unknowns; r += 2)
+        {
+            double re = J[r * unknowns + r], im = J[r * unknowns + r + 1];
+            double d = Math.Sqrt(re * re + im * im);
+            w[r] = w[r + 1] = d > 0 && double.IsFinite(d) ? 1 / d : 1;
+        }
+        return w;
+    }
+
+    /// <summary>‖W·F‖₂, or ‖F‖₂ when <paramref name="w"/> is null.</summary>
+    public static double WeightedL2(double[] F, double[]? w)
+    {
+        if (w is null) return L2(F);
+        double s = 0;
+        for (int r = 0; r < F.Length; r++) { double x = F[r] * w[r]; s += x * x; }
+        return Math.Sqrt(s);
     }
 
     /// <summary>
@@ -1422,6 +1503,43 @@ public static class HbNewton
         if (i == 0) sb.Append(" [DC-col]");
         if (k == 0 && i == 0) sb.Append(" [DC-diag]");
         return sb.ToString();
+    }
+
+    // ── Convergence-trace diagnostics (MC-25 R-mc25-1) ────────────────────────
+
+    /// <summary>The interface node whose rows of <paramref name="F"/>, every harmonic together, carry the largest share
+    /// of ‖F‖², and that share; −1 when F is zero.</summary>
+    internal static int WorstNode(double[] F, int N, int K, out double share)
+    {
+        double total = 0, best = 0;
+        int at = -1;
+        for (int n = 0; n < N; n++)
+        {
+            double s = 0;
+            for (int r = 2 * n * (K + 1); r < 2 * (n + 1) * (K + 1) && r < F.Length; r++) s += F[r] * F[r];
+            total += s;
+            if (s > best) { best = s; at = n; }
+        }
+        share = total > 0 ? best / total : 0;
+        return at;
+    }
+
+    /// <summary>The interface node an accepted step <c>λ·ΔV</c> moved furthest, and by how much: the largest
+    /// |λ·ΔV[n, k]| over its harmonics, in that node's own unit.</summary>
+    internal static int LargestStep(double[] dV, int N, int K, double lambda, out double size)
+    {
+        size = 0;
+        int at = -1;
+        for (int n = 0; n < N; n++)
+            for (int k = 0; k <= K; k++)
+            {
+                int r = Idx(n, k, false, N, K);
+                if (r < 0 || r >= dV.Length) continue;
+                double re = dV[r], im = k > 0 && r + 1 < dV.Length ? dV[r + 1] : 0;
+                double m = lambda * Math.Sqrt(re * re + im * im);
+                if (m > size) { size = m; at = n; }
+            }
+        return at;
     }
 
     // ── Index helpers ─────────────────────────────────────────────────────────

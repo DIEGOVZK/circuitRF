@@ -169,10 +169,8 @@ public sealed class BranchLinearChargesGanTests(ITestOutputHelper output)
     }
 
     /// <summary>
-    /// One power sweep per single-branch switch on the example's GanPowerSweep bench: every rung converges. The bench's sweep
-    /// stops at 13 dBm here, not 22: the model as fitted does not converge at Pin 14, 16 to 21 dBm on it (measured), and each
-    /// rung is warm-started from the last, so above that a switch's result says more about the rung before it than about
-    /// the switch. The AM–PM and H2 differences against the model are printed, not asserted. Minutes: opt-in.
+    /// One power sweep per single-branch switch on the example's GanPowerSweep bench: every rung converges. The AM–PM and H2
+    /// differences against the model are printed, not asserted. ~16 s (Debug, five sweeps of 27 rungs): opt-in.
     /// </summary>
     [Fact]
     [Trait("Category", "Benchmark")]
@@ -199,8 +197,7 @@ public sealed class BranchLinearChargesGanTests(ITestOutputHelper output)
     {
         string cnl = ModelComposerExampleAuthoring.PowerSweepNetlist
             .Replace($"File=\"{ModelComposerExampleAuthoring.GanModel}\"", $"File=\"{ModelPath}\"", StringComparison.Ordinal)
-            .Replace("N=8", $"N=8 {switches}", StringComparison.Ordinal)
-            .Replace("Stop=22", "Stop=13", StringComparison.Ordinal);
+            .Replace("N=8", $"N=8 {switches}", StringComparison.Ordinal);
         var r = CircuitEvaluation.Evaluate(PreparedCircuit.FromText(cnl, dir, dir), new CircuitEvaluationRequest { Measurements = false });
         Assert.True(r.Status == RunStatus.Success, $"{switches}: {r.Status} {r.StatusMessage}");
         var ds = r.Results.First(x => x.Data.Contains("V")).Data;

@@ -362,6 +362,15 @@ public abstract class ComponentModel
     public virtual IReadOnlyList<(int P, int Q)> ControlledConductances => [];
 
     /// <summary>
+    /// The ports whose voltage is a STATE in a unit of its own rather than a circuit voltage — a temperature rise, a
+    /// trap state, a dispersion current — each referenced to ground. Their KCL rows are not in amperes (a thermal row is
+    /// in watts), which harmonic balance's line search has to know to weigh them against the circuit's rows: it judges
+    /// a norm scaled by each row's self-admittance when any interface node is one (MC-25). Empty for every model whose
+    /// ports are all circuit voltages.
+    /// </summary>
+    public virtual IReadOnlyList<int> StatePorts => [];
+
+    /// <summary>
     /// Whether <see cref="PassivateBlock"/> should also remove the ANTISYMMETRIC part of the charge
     /// Jacobian <c>∂Q_p/∂V_q</c> — the transcapacitance.
     ///

@@ -514,7 +514,7 @@ public sealed class HbEngine
             iSrc[k]       = s;
         }
 
-        var trace = new HbConvergenceTrace();
+        var trace = new HbConvergenceTrace { NodeNames = nodeNames };
 
         // C2: Per-branch current accumulator: "instancePath:terminalName" → spectra.
         var portCurrentsByBranch = new Dictionary<string, List<Complex[]>>(StringComparer.Ordinal);
@@ -655,10 +655,13 @@ public sealed class HbEngine
         }
         else if (!solveResult.Converged)
         {
-            double res = solveResult.IterTrace.LastOrDefault()?.ResidualNorm ?? 0.0;
+            var last = solveResult.IterTrace.LastOrDefault();
+            double res = last?.ResidualNorm ?? 0.0;
+            // Where, not only how much (MC-25): the node whose rows carry most of ‖F‖ at the last iterate.
             _netlist.AddWarning(
-                $"HB did not converge (‖F‖={res:E3} after {solveResult.Iterations} iterations); " +
-                $"stored best-available result.");
+                $"HB did not converge (‖F‖={res:E3} after {solveResult.Iterations} iterations" +
+                (last is { WorstNode: >= 0 } ? $"; {trace.NameOf(last.WorstNode)} carries {last.WorstShare * 100:F0} % of it" : "") +
+                "); stored best-available result.");
             Console.Error.WriteLine(
                 $"[HB] Non-convergence: ‖F‖={res:E3} after {solveResult.Iterations} iterations.");
         }

@@ -3076,3 +3076,70 @@ problem always did, and the offset from that one value. Problems whose values va
   `LinearC=true` instance. Loadpull calls `RunSinglePoint` per termination and drive step, so such a design pays one DC
   solve per point there; nothing caches it, because a bias changed in place (harmonicaRF's `VdcOverride`) is exactly
   what must re-freeze and only a fresh DC solve can see it.
+
+## Model Composer MC-25: harmonic balance with a trap node and a thermal node (2026-10-20)
+
+The example's GanPowerSweep bench (8-finger SyntheticGan, 2 GHz, Pin −4 to 22 dBm) failed seven rungs (14, 16 to 21 dBm)
+with no switch set, and took 13 s on each. `HbConvergenceTrace.IterRecord` now records, per iteration, the interface node
+whose rows carry the largest share of ‖F‖² (`WorstNode`, `WorstShare`) and the node the accepted step moved furthest
+(`StepNode`, `StepSize`). The single-tone non-convergence warning names that node.
+
+**The record, one cold point at 18 dBm, the ampere norm.** Interface: `gi di si`, `t` (ΔT in K, its row in W, `Rth` 12.5
+K/W, `Cth` 0.8 µF), `x0` (the drain-lag state `phi2` in V, on the trap model's 1 mF node).
+- Entry: `x0` holds 100 % of ‖F‖ = 1.3e5. That is the cold seed, not physics: every harmonic of every interface node
+  starts at 1e-3 + 1e-3j, and on the trap node that is `kω·1 mF × 1.4 mV` ≈ 1.8e4 A per harmonic.
+- Iteration 1 accepts a full step (λ = 1), because it clears that one row: ‖F‖ 1.24e5 → 1.06e3. The same step takes the
+  gate from 0.27 V to 4.3 V of swing (the answer has 3.3 V) and the gate row from 0.09 A to 206 A; `phi2` moves 7.6 V.
+- From iteration 2 the thermal row holds 84 to 94 % of ‖F‖ for the 98 iterations left. The overdriven waveform
+  dissipates ~1000 W against the 0.17 W of the answer. Newton asks for ΔT steps of 10² to 10³ K, the search accepts 1/256
+  of them, and ΔT wanders between −7 and +41 K. The `phi2` row barely moves; the norm being judged is the thermal row's.
+
+**The hypotheses.** (1) Row scaling: confirmed, and it is the cause. One row in units of its own carried the whole norm
+twice, first the trap row (whose clearing let a ruinous circuit step through) and then the thermal row (in watts, where
+an ordinary node error is ~0.1 A). (2) Stiffness: real but secondary. The capture exponential makes the trap row the
+largest entry by orders of magnitude, but `phi2` and `t` did not need limiting once the norm weighed rows fairly.
+(3) Warm start: contributing under the ampere norm, not the cause. A cold start failed too. In the sweep, rungs 12 and 13
+failed their warm-started solve and converged only through the drive ramp, though cold they converge in 16 and 19
+iterations. Under the scaled norm a warm-started rung takes 4 to 7 iterations against ~7 cold.
+
+**The fix: the line search judges `‖W·F‖`, W = 1/|Y_self| per (node, harmonic)** (`HbNewton.LineSearchWeights`),
+whenever a device's state node is on the interface (`HbNewton.HasStateRow`, from `ComponentModel.StatePorts`, which
+`ComposedCoreModel` answers with its dispersion/trap nodes and its thermal node). The weight is the magnitude of the
+row pair's own 2×2 block, not the diagonal entry alone: a state node's harmonic rows are almost all susceptance, the
+trap node's 1 mF is ~1.3e7 S at 2 GHz, and all of it sits off the diagonal. W is held for the whole line search, so the
+Newton step stays a descent direction and only the accepted λ changes. Convergence is still `‖F‖ < tol` in amperes.
+All three Newton loops take it (single-tone, 2D, lattice N-tone).
+- Cold, every rung −4 to 22 dBm converges in at most 24 iterations (Pin 18: 16 iterations, 0.06 s, from 100 iterations
+  and 12.7 s). The sweep through `CircuitEvaluation` converges at all 27 rungs in 0.55 s, from 102.8 s with 7 failed.
+  Two tones at 14, 16 and 18 dBm total: 22 to 26 iterations, where the ampere norm stopped at 100.
+- **Measured and not chosen.** Per-row infinity-norm scaling converged the fitted model but broke `DrainLag=false`,
+  which had converged. Diagonal-entry scaling converged everything but missed the capacitive part. Accepting a trial only
+  when both the ampere and the scaled test pass gave the same paths as scaling alone. Seeding the state nodes' harmonics
+  at zero (a state cannot follow RF) made the ampere norm fail at EVERY rung, from −4 dBm up: without the seed artefact,
+  each circuit step that widens the drain swing grows the stiff capture row, and the search crawled at λ ≤ 1/128.
+- **No converged answer moves.** A netlist with no state node never builds W, so its solve is unchanged bit for bit;
+  every hero gate is such a netlist. With one, a point that converged under the ampere norm lands on the same spectrum.
+  Driven to the round-off floor under both norms, they agree to ≤ 5e-12 relative to the spectrum's largest entry. At the
+  default tol = 1e-6 the two paths stop at different points inside the tolerance ball, up to 3e-8 relative apart
+  (`DrainLag=false` at 18 dBm, whose old answer stopped at ‖F‖ = 2.2e-7). The ball is wider than 1e-9 there: the
+  thermal row's 1e-6 W of tolerance is 1.25e-5 K of ΔT. Gate: `TrapThermalHbConvergenceTests`, with
+  `HbNewton.UnscaledLineSearch` (thread-affine, test-only) as the old norm.
+- The floor itself is between 1e-9 and 1e-8 A on this bench: voltage round-off on the trap node's 1.3e7 S of harmonic
+  susceptance. Tol 1e-8 is not reachable there.
+
+**A sweep's convergence is visible** (R-mc25-4). `CircuitEvaluation` derives a parametric sweep's
+`AnalysisConvergence` from the stacked `Converged` cube: false when any point failed, with `Detail` (and a run warning)
+naming the points by their sweep values; true when all converged; null only when the inner analysis carries no such cube.
+It was always null, and all three readers (`OptimizationRun`, the CLI's `Fields`, the example gate) take null as
+converged. An optimizer evaluation over a sweep with a failed rung is now refused as `EvaluationFailed`, as a single
+non-converged HB already was. The CLI run verbs were already right: they read the cube and exit 2.
+
+**Where a sweep rung's time goes** (R-mc25-5, Release, the 18-rung −4 to 13 dBm sweep MC-22's gate ran). Elaboration
+costs 0.2 ms per rung (85 ms for the first, the model load) and `BiasFreeze` 0.3 ms with a `Linear*` switch (0 without).
+The rest is the HB solve. Before: rungs −4 to 11 took 11 to 22 warm iterations (23 to 63 ms), and rungs 12 and 13
+failed warm and walked the drive ramp (35 to 42 steps, 1,350 to 1,820 iterations), which was 96 % of the 14 s. With a
+`Linear*` switch the same iterations cost ~6× each, so the sweep was 130 s. After: 4 to 7 iterations per rung, 0.13 s
+(0.58 s with a switch); MC-22's five-sweep gate at −4 to 22 dBm runs in 16 s in Debug, where it took 9 min to 13 dBm. Not
+fixed: a `Linear*` instance's evaluation costs ~6 ms per iteration against ~1 ms. That is `BranchLinearisation`
+integrating along the line from the bias point at every sample. Measurements were not in the timed path (the gate runs
+without them).

@@ -54,7 +54,7 @@ public sealed class ExampleWorkspaceLoadsTests(ITestOutputHelper output) : IDisp
         Assert.NotNull(ChargeFit.Load(gan, doc));
     }
 
-    /// <summary>The spiral filter runs as Simulate runs it; the two GaN benches check clean. Running those is minutes (27
+    /// <summary>The spiral filter runs as Simulate runs it; the two GaN benches check clean. Running those is ~13 s (27
     /// harmonic-balance points of the trapped, self-heating model, and 49 loadpull loads), so it is opt-in below.</summary>
     [Fact]
     public void TheSpiralFilterRuns_AndTheGanBenchesCheckClean()
@@ -77,11 +77,38 @@ public sealed class ExampleWorkspaceLoadsTests(ITestOutputHelper output) : IDisp
         Run("GanLoadpull");
     }
 
+    /// <summary>
+    /// brief-modelcomposer-25 R-mc25-4: <see cref="TheGanBenches_Run"/> fails on a rung that does not converge. Until MC-25 it
+    /// could not — a sweep reported its convergence as null, which reads as converged, and the power sweep failed seven rungs
+    /// unseen. The failure is injected by the bench's own netlist with one Newton iteration and no drive ramp.
+    /// </summary>
+    [Fact]
+    public void TheGanBenchesGate_FailsOnARungThatDidNotConverge()
+    {
+        string cnl = ModelComposerExampleAuthoring.PowerSweepNetlist
+            .Replace("MaxHarm=5", "MaxHarm=5 MaxIter=1 DriveStepping=Never", StringComparison.Ordinal)
+            .Replace("Stop=22", "Stop=-3", StringComparison.Ordinal);
+        var r = CircuitEvaluation.Evaluate(PreparedCircuit.FromText(cnl, _ws, _ws), new CircuitEvaluationRequest { Measurements = false });
+
+        var refused = Assert.ThrowsAny<Xunit.Sdk.XunitException>(() => AssertRan("GanPowerSweep", r));
+        output.WriteLine(refused.Message);
+        var c = Assert.Single(r.Convergence);
+        Assert.False(c.Converged);
+        Assert.Contains("Pin = -4", c.Detail);
+        Assert.Contains(r.Warnings, w => w.Contains("did not converge at 2 of 2 sweep point(s)", StringComparison.Ordinal));
+    }
+
     private void Run(string cell)
     {
         var r = CircuitEvaluation.Evaluate(PreparedCircuit.FromSchematic(Path.Combine(_ws, cell, "schematic", cell + ".csch")),
                                            new CircuitEvaluationRequest());
         foreach (string w in r.Warnings) output.WriteLine($"{cell}: {w}");
+        AssertRan(cell, r);
+    }
+
+    /// <summary>The run succeeded and no analysis says it failed to converge — a sweep says so for every point (R-mc25-4).</summary>
+    private static void AssertRan(string cell, RunResult r)
+    {
         Assert.True(r.Status == RunStatus.Success, $"{cell}: {r.Status} {r.StatusMessage}");
         Assert.All(r.Convergence, c => Assert.True(c.Converged != false, $"{cell}: {c}"));
     }

@@ -150,6 +150,10 @@ public sealed class ComposedCoreModel : ComponentModel, IBiasFrozen
     /// <summary>The thermal node's port, or −1.</summary>
     public int ThermalPort => _thermal ? 2 + InternalStateNodeCount : -1;
 
+    /// <summary>The dispersion or trap nodes, then the thermal node: none of them is a circuit voltage.</summary>
+    public override IReadOnlyList<int> StatePorts =>
+        [.. Enumerable.Range(2, InternalStateNodeCount), .. (_thermal ? (int[])[ThermalPort] : [])];
+
     public override string[] TerminalNames =>
         [ "gi", "si", "di", "si", .. (_dispersive ? (string[])["x", "0"] : []),
           .. _kept.SelectMany(k => (string[])[_traps!.States[k], "0"]), .. (_thermal ? (string[])["t", "0"] : []) ];

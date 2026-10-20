@@ -124,6 +124,7 @@ public static class HbNewtonNd
         // identical transcription of HbNewton.Solve's structure (HB-P3 M1); see HbNewton.Backtrack
         // for why the three loops need it and why a converging solve is unchanged by it.
         var V0 = new Complex[N, M];
+        bool stateRows = HbNewton.HasStateRow(netlist, interfaceNodes);   // MC-25: see HbNewton.HasStateRow
 
         var (iNl, qNl, dg, dc) = EvaluateNonlinearNd(V, apft, N, netlist, interfaceNodes, portITime);
         iNlLast   = iNl;
@@ -154,14 +155,16 @@ public static class HbNewtonNd
 
             double fEntry = fN;
             Array.Copy(V, V0, V.Length);
-            var step = HbNewton.Backtrack(fEntry, lambda, lam =>
+            double[]? w = stateRows ? HbNewton.LineSearchWeights(J, unknowns) : null;
+            var step = HbNewton.Backtrack(HbNewton.WeightedL2(F, w), lambda, lam =>
             {
                 Array.Copy(V0, V, V.Length);
                 ApplyUpdateNd(V, dV, N, M, lam);
                 (iNl, qNl, dg, dc) = EvaluateNonlinearNd(V, apft, N, netlist, interfaceNodes, portITime);
                 F = BuildFNd(V, yNN, iSrc, iNl, qNl, lattice, N, toneFreqsHz);
-                return HbNewton.L2(F);
+                return HbNewton.WeightedL2(F, w);
             });
+            if (w is not null) step = step with { Residual = HbNewton.L2(F) };
             iNlLast = iNl;
             fN      = step.Residual;
             trace.Add(new HbConvergenceTrace.IterRecord(
