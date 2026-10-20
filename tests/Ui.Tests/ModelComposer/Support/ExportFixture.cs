@@ -22,12 +22,13 @@ public static class ExportFixture
     private static readonly string[] Inputs = [ComposedCoreProgram.Vgs, ComposedCoreProgram.Vds];
 
     /// <summary>The <c>.cmc</c>'s path in a fresh folder. <paramref name="periphery"/> false leaves N0 unset;
-    /// <paramref name="charge"/> false leaves the charge step unfitted.</summary>
-    public static string Document(bool periphery = true, bool charge = true)
+    /// <paramref name="charge"/> false leaves the charge step unfitted; <paramref name="vgs"/> and <paramref name="vds"/>
+    /// replace the bias grid.</summary>
+    public static string Document(bool periphery = true, bool charge = true, double[]? vgs = null, double[]? vds = null)
     {
         string dir = Directory.CreateTempSubdirectory("crf-mc11-").FullName;
         string cmc = Path.Combine(dir, "fet.cmc");
-        var s = SyntheticFetData.BiasedS(SyntheticFetData.NetworkDevice, Vgs, Vds, Freqs);
+        var s = SyntheticFetData.BiasedS(SyntheticFetData.NetworkDevice, vgs ?? Vgs, vds ?? Vds, Freqs);
         var sources = new List<string>();
         for (int p = 0; p < s.Count; p++)
         {

@@ -9,7 +9,7 @@
 //     "Result":   { "Constituents": { "Qg": { …as model.json writes it… }, "Qd": { … } }, "Arrays": "<key>",
 //                   "Anchor": [vgs, vds],
 //                   "Errors": { "C11": [rms, relative], "C12": …, "C21": …, "C22": … },
-//                   "PathDifference": { "Qg": …, "Qd": … }, "CdsSpread": …, "Report": [ "…" ] } }
+//                   "PathDifference": { "Qg": …, "Qd": … }, "CdsSpread": …, "Points": n, "Report": [ "…" ] } }
 //
 // Every Settings key is optional and written only when it differs from its default. As in Steps.Current, the
 // constituents are recorded exactly as the .cmodel will carry them; their arrays live in
@@ -273,9 +273,11 @@ public sealed record ChargeFitRecord
     /// <summary>The trap block <c>Qd</c> takes its trap inputs under (MC-10), as the <c>.cmodel</c> carries it; null when the
     /// charges are trap-independent.</summary>
     public ModelTraps? Traps { get; init; }
+    /// <summary>The number of S points the charges were fitted to (MC-17); 0 in a record written before it was kept.</summary>
+    public int Points { get; init; }
     public IReadOnlyList<string> Report { get; init; } = [];
 
-    private static readonly string[] Keys = ["Constituents", "Arrays", "Anchor", "Errors", "PathDifference", "CdsSpread", "Traps", "Report"];
+    private static readonly string[] Keys = ["Constituents", "Arrays", "Anchor", "Errors", "PathDifference", "CdsSpread", "Traps", "Points", "Report"];
 
     public static ChargeFitRecord Parse(JsonNode node, string f)
     {
@@ -318,7 +320,8 @@ public sealed record ChargeFitRecord
             Qg = One("Qg"), Qd = One("Qd"), Arrays = Str(o, "Arrays", $"{f}.Arrays", required: false) ?? "",
             Anchor = o["Anchor"] is { } an ? CurrentFitSettings.Pair(an, $"{f}.Anchor") : (0, 0),
             Errors = errors, PathDifference = paths, CdsSpread = Num(o, "CdsSpread", $"{f}.CdsSpread"),
-            Traps = o["Traps"] is { } tn ? CurrentFitRecord.TrapsOf(tn, $"{f}.Traps") : null, Report = report,
+            Traps = o["Traps"] is { } tn ? CurrentFitRecord.TrapsOf(tn, $"{f}.Traps") : null,
+            Points = (int)(Num(o, "Points", $"{f}.Points") ?? 0), Report = report,
         };
     }
 
@@ -349,6 +352,7 @@ public sealed record ChargeFitRecord
         }
         if (CdsSpread is { } spread) o["CdsSpread"] = spread;
         if (Traps is { } traps) o["Traps"] = JsonNode.Parse(CmodelFile.TrapsJson(traps));
+        if (Points > 0) o["Points"] = Points;
         if (Report.Count > 0) o["Report"] = new JsonArray([.. Report.Select(l => (JsonNode)l!)]);
         return o;
     }

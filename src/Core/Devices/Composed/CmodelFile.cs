@@ -217,6 +217,7 @@ public static class CmodelFile
                 CircuitRfVersion = OptStr(pv, "CircuitRfVersion"),
                 Sources          = sources,
                 SettingsDigest   = OptStr(pv, "SettingsDigest"),
+                Charges          = OptStr(pv, "Charges"),
             };
         }
 
@@ -973,6 +974,7 @@ public static class CmodelFile
             }
             w.WriteEndArray();
             w.WriteString("SettingsDigest", m.Provenance.SettingsDigest);
+            if (m.Provenance.Charges.Length > 0) w.WriteString("Charges", m.Provenance.Charges);
             w.WriteEndObject();
 
             w.WriteEndObject();

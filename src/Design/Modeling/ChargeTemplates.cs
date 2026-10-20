@@ -9,6 +9,9 @@
 //               step from 0 to 2·C0 in its own voltage, switched by tanh in vds — integrated in closed form along that
 //               voltage as Cp·v + C0·(v + ln(cosh ψ1)/P1)·(1 ± tanh ψ2). The step's "1 +" is what floors the
 //               capacitance at Cp below pinch-off at every vds; without it the floor moves with vds and can go negative.
+//   Linear    — constant capacitances in matrix form (brief-modelcomposer-17 R-mc17-1): Qg = C11·vgs + C12·vds and
+//               Qd = C21·vgs + C22·vds, so each charge's two parameters are its own two targets and one S point fits it.
+//               Exact at the measured bias; with more points, the least-squares constant matrix.
 
 namespace CircuitRF.Design.Modeling;
 
@@ -27,7 +30,7 @@ public sealed record ChargeTemplate(string Name, string Qg, string Qd,
 
 public static class ChargeTemplates
 {
-    public const string Depletion = "Depletion", Angelov = "Angelov";
+    public const string Depletion = "Depletion", Angelov = "Angelov", Linear = "Linear";
 
     private static string Junction(string v, string c0) =>
         $"(-{c0}*Phi/(Eta+1)*(1-min({v},Fc*Phi)/Phi)^(Eta+1)+{c0}*(1-Fc)^Eta*max({v}-Fc*Phi,0))";
@@ -52,7 +55,13 @@ public static class ChargeTemplates
             "-(" + GateDrain + ")+Cds*vds",
             d => [.. Steps("gs", Less(d.C1, d.C2), d.Vgs), .. Steps("gd", Typical(d.C2), d.Vgs)],
             d => [.. Steps("gd", Typical(d.C1), d.Vgs), Cap("Cds", Less(d.C2, d.C1))]),
+        new(Linear, "C11*vgs+C12*vds", "C21*vgs+C22*vds",
+            d => [Signed("C11", d.C1, d.C2), Signed("C12", d.C2, d.C1)],
+            d => [Signed("C21", d.C1, d.C2), Signed("C22", d.C2, d.C1)]),
     ];
+
+    /// <summary>Whether <paramref name="template"/> names the linear template — the one a single S point fits.</summary>
+    public static bool IsLinear(string? template) => template == Linear;
 
     public static ChargeTemplate? Find(string name) => All.FirstOrDefault(t => t.Name == name);
 
@@ -63,6 +72,14 @@ public static class ChargeTemplates
     {
         double c = Math.Max(typical, 1e-18);
         return new TemplateParameter(name, c, 0, 100 * c);
+    }
+
+    /// <summary>A capacitance of either sign, starting at its data's mean, bounded at 100× the row's larger typical size.</summary>
+    private static TemplateParameter Signed(string name, double[] own, double[] other)
+    {
+        double mean = own.Length == 0 ? 0 : own.Average();
+        double bound = 100 * Math.Max(Math.Max(Typical(own), Typical(other)), 1e-18);
+        return new TemplateParameter(name, mean, -bound, bound);
     }
 
     /// <summary>Angelov's parameters of one junction (<paramref name="j"/> = gs or gd): a constant part and a step that each

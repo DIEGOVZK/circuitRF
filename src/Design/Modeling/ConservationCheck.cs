@@ -333,18 +333,33 @@ public static class ConservationCheck
         if (charges.Record.Qg.Method == Constituent.DriftMethod && current is null)
             throw new ModelingException("Check", "the drift charge reads the fitted Id, and the currents are not fitted (or their cache is gone); fit the currents first.");
         var lines = new List<string>();
-        var a = Data(data, charges.Record.Anchor, rc: rc);
-        lines.Add($"data: curl {Pct(a.GateRms)} (Qg), {Pct(a.DrainRms)} (Qd); paths differ {Pct(a.GatePaths)}, {Pct(a.DrainPaths)}");
+        // (a) reads a curl across the bias plane, which a handful of points — or points along a line — do not span (R-mc17-4):
+        // not run, and not a failure.
+        DataConservation? a = null;
+        bool surface = data.X.Count >= ChargeFit.SurfaceMinimum && data.SpansArea;
+        if (surface)
+        {
+            a = Data(data, charges.Record.Anchor, rc: rc);
+            lines.Add($"data: curl {Pct(a.GateRms)} (Qg), {Pct(a.DrainRms)} (Qd); paths differ {Pct(a.GatePaths)}, {Pct(a.DrainPaths)}");
+        }
+        else
+        {
+            lines.Add($"data: not run — {data.X.Count} bias point(s); the data's curl needs at least {ChargeFit.SurfaceMinimum} across the bias plane.");
+        }
 
         var model = ChargeFit.Model(charges, current, data.TemperatureC);
         var program = ComposedCoreProgram.Compile(model, "check");
         var poly = data.Domain.Polygon;
         // Read away from the hull's edge, as (a) is: beyond it each charge is a linear continuation, and a curl read across
-        // the boundary measures the continuation rather than the fit.
-        double gSpan = poly.Max(p => p.Vgs) - poly.Min(p => p.Vgs), dSpan = poly.Max(p => p.Vds) - poly.Min(p => p.Vds);
-        var b = Model((g, d) => ChargeFit.Capacitances(program, g, d, data.TemperatureC),
-                      (poly.Min(p => p.Vgs), poly.Max(p => p.Vgs), poly.Min(p => p.Vds), poly.Max(p => p.Vds)),
-                      DefaultStep, (g, d) => ChargeFit.Inside(poly, (g, d)) && !NearEdge(poly, (g, d), gSpan, dSpan), rc);
+        // the boundary measures the continuation rather than the fit. Fewer points carry only equations, defined
+        // everywhere, so the model is read over a volt either side of them.
+        double gLo = poly.Min(p => p.Vgs), gHi = poly.Max(p => p.Vgs), dLo = poly.Min(p => p.Vds), dHi = poly.Max(p => p.Vds);
+        double gSpan = gHi - gLo, dSpan = dHi - dLo;
+        var b = surface
+            ? Model((g, d) => ChargeFit.Capacitances(program, g, d, data.TemperatureC), (gLo, gHi, dLo, dHi),
+                    DefaultStep, (g, d) => ChargeFit.Inside(poly, (g, d)) && !NearEdge(poly, (g, d), gSpan, dSpan), rc)
+            : Model((g, d) => ChargeFit.Capacitances(program, g, d, data.TemperatureC), (gLo - 1, gHi + 1, dLo - 1, dHi + 1),
+                    DefaultStep, null, rc);
         lines.Add($"model: curl {Pct(b.GateRms)} (Qg), {Pct(b.DrainRms)} (Qd)");
         lines.Add($"transcapacitance Cm {Si(b.Transcapacitance, "F")} RMS ({Pct(b.TranscapacitanceRelative)} of C11)");
 

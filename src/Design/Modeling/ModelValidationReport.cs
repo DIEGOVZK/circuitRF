@@ -223,7 +223,7 @@ public static class ModelValidationReport
             catch (ModelingException ex) { sections.Add(Note("Charge", $"Charge: not reported — {ex.Message}")); }
             if (charges is not null)
             {
-                if (options.Charge)
+                if (options.Charge && charges.SpansArea)
                 {
                     ctx.Rc?.BeginStage("Report: charge surfaces");
                     var poly = charges.Domain.Polygon;
@@ -461,7 +461,7 @@ public static class ModelValidationReport
             var swept = data.X.Select(p => sweepGate ? p.Vgs : p.Vds).ToArray();
             var fixedOf = data.X.Select(p => sweepGate ? p.Vds : p.Vgs).ToArray();
             var family = (sweepGate ? o.FixedVds : o.FixedVgs) is { Count: > 0 } given ? given.ToArray() : Spread(fixedOf, 5);
-            double lo = swept.Min(), hi = swept.Max();
+            var (lo, hi) = ChargeFit.SliceSpan(swept);
             const int n = 101;
             var x = Enumerable.Range(0, n).Select(k => lo + (hi - lo) * k / (n - 1)).ToArray();
             string sweptName = sweepGate ? "vgs" : "vds", fixedName = sweepGate ? "vds" : "vgs";

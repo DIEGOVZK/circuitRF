@@ -149,7 +149,7 @@ model always writes the same bytes.
 | `Core.Symmetry` | `Exchange`: the constituents describe `vds ≥ 0`, and a negative `vds` is the same device with drain and source exchanged. Absent for an asymmetric device. |
 | `Extrapolation` | `Gx`: for each table or ANN current (`Id`, `IgGs`, `IgGd`, `IdRF`), the conductance in S that current gains outside its domain. |
 | `Symbol` | A library symbol's name, or a `.csym` path relative to the `.cmodel`. |
-| `Provenance` | `Created`, `CircuitRfVersion`, `Sources` (`Path`, `Sha256`) and `SettingsDigest`. |
+| `Provenance` | `Created`, `CircuitRfVersion`, `Sources` (`Path`, `Sha256`) and `SettingsDigest`; with linear charges, `Charges` (`Qg, Qd: Linear from 1 bias point(s)`). |
 
 `circuitrf check` reads a `.cmodel` and names the field of anything it refuses.
 
@@ -273,7 +273,7 @@ intrinsic capacitances of the S-parameter sets, averaged over the `FlatnessBand`
 | Field | What it holds |
 |---|---|
 | `DataSets` | The S-parameter sets to fit to. Absent: every set with S data. One trap state, as for the currents, unless `Traps` models trapping: then an `ANN` `Qd` takes the trap states when pulsed S-parameters give each a level, and `Qg` never does. At two or more temperatures an `ANN` charge takes `T` as an input; any other method is fitted temperature-independent. |
-| `Qg`, `Qd` | Each `Method` (`ANN`, the default, `Table` or `Equation`) and that method's settings: `Hidden` (`[8, 8]`), `Activation` and `MaxIterations` (3000) for a network, trained on the charge's two capacitances; `GridStep` (0.1 V), `Interpolant` (`ANN`, or `RBF` through the points themselves), `Path` (`A`, `B` or `Mean`, the default) and `Smoothing` for a table integrated from the capacitances; `Template` (`Depletion` or `Angelov`) or the user's own `Expression`, with `Parameters` and `Algorithm`, for an equation. |
+| `Qg`, `Qd` | Each `Method` (`ANN`, the default, `Table` or `Equation`) and that method's settings: `Hidden` (`[8, 8]`), `Activation` and `MaxIterations` (3000) for a network, trained on the charge's two capacitances; `GridStep` (0.1 V), `Interpolant` (`ANN`, or `RBF` through the points themselves), `Path` (`A`, `B` or `Mean`, the default) and `Smoothing` for a table integrated from the capacitances; `Template` (`Depletion`, `Angelov` or `Linear`) or the user's own `Expression`, with `Parameters` and `Algorithm`, for an equation. |
 | `Anchor` | `[vgs, vds]` where both charges are zero. Absent: `[0, 0]`, or the data point nearest it when it lies outside the data. |
 | `FlatnessLimit` | 0.1: a point whose `C11` or `C22` varies across the band by more than this fraction of its mean counts for less. |
 | `Seed`, `Restarts`, `HeldOutFraction` | 1, 3 and 0.1, as for the currents. |
@@ -283,7 +283,8 @@ intrinsic capacitances of the S-parameter sets, averaged over the `FlatnessBand`
 capacitance `C11`, `C12`, `C21`, `C22`: the RMS error of the fitted charge's derivative, and that as a fraction of
 the capacitance's range), `PathDifference` (a table's two integration paths' RMS difference as a fraction of the
 charge's range), `CdsSpread` (with `Drift`: how much `Cds` varies across `vgs` at a fixed `vds`, which `QDS` cannot
-follow), with a trapped `Qd` the `Traps` block, and the `Report` lines.
+follow), with a trapped `Qd` the `Traps` block, `Points` (the number of S biases the charges were fitted to), and the
+`Report` lines.
 
 `Steps.Thermal` is temperature and self-heating: `Settings` and the `Result` of the last run. With the data at one
 temperature the model is valid at that temperature only and self-heating is unavailable. `Settings` holds:

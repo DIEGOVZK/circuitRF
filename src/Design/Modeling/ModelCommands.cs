@@ -450,6 +450,9 @@ public static partial class ModelCommands
         lines.AddRange(StepStates(cmcPath, doc));
         if (doc.Kind == CmcKind.Active)
         {
+            // R-mc17-5: constant capacitances are said so, never left to be read as nonlinear charges.
+            if (ChargeFit.Record(doc) is { } charge && ChargeFit.LinearProvenance(ChargeFit.Settings(doc), charge) is { } linear)
+                lines.Add(new ModelLine("charge", ChargeFit.StepName, $"{linear}."));
             lines.AddRange(NetworkValues(cmcPath, doc));
             if (TrapFit.Record(doc) is { } traps)
                 foreach (var (state, levels) in traps.Levels)

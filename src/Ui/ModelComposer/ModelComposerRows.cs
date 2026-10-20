@@ -124,6 +124,7 @@ public sealed partial class MethodPickerRow : ObservableObject
     {
         Name = name;
         Methods = methods;
+        Choices = [.. methods.Select(m => new MethodChoice(m))];
         Templates = ["", .. templates];
         IsCharge = charge;
         _commit = commit;
@@ -131,6 +132,8 @@ public sealed partial class MethodPickerRow : ObservableObject
 
     public string Name { get; }
     public IReadOnlyList<string> Methods { get; }
+    /// <summary>The methods as the picker lists them, each with the reason it cannot be fitted as its tooltip (R-mc17-6).</summary>
+    public IReadOnlyList<MethodChoice> Choices { get; }
     public IReadOnlyList<string> Templates { get; }
     public IReadOnlyList<string> Activations { get; } = Enum.GetNames<CircuitRF.Core.Devices.Composed.AnnActivation>();
     public IReadOnlyList<string> Paths { get; } = Enum.GetNames<IntegrationPath>();
@@ -172,7 +175,24 @@ public sealed partial class MethodPickerRow : ObservableObject
         finally { _loading = false; }
     }
 
-    partial void OnMethodChanged(string value) => Commit(nameof(Method), value);
+    /// <summary>The picker's selection: <see cref="Method"/>'s choice.</summary>
+    public MethodChoice? SelectedChoice
+    {
+        get => Choices.FirstOrDefault(c => c.Name == Method);
+        set { if (value is not null) Method = value.Name; }
+    }
+
+    /// <summary>Sets each method's tooltip: <paramref name="refusal"/>'s reason, or none.</summary>
+    public void SetTips(Func<string, string?> refusal)
+    {
+        foreach (var c in Choices) c.Tip = refusal(c.Name);
+    }
+
+    partial void OnMethodChanged(string value)
+    {
+        OnPropertyChanged(nameof(SelectedChoice));
+        Commit(nameof(Method), value);
+    }
     partial void OnHiddenChanged(string value) => Commit(nameof(Hidden), value);
     partial void OnActivationChanged(string value) => Commit(nameof(Activation), value);
     partial void OnIterationsChanged(string value) => Commit(nameof(Iterations), value);
@@ -187,6 +207,13 @@ public sealed partial class MethodPickerRow : ObservableObject
     {
         if (!_loading && text is not null) _commit(this, field, text);
     }
+}
+
+/// <summary>One method in a picker: its name and, when the data cannot support it, the refusal a fit would give.</summary>
+public sealed partial class MethodChoice(string name) : ObservableObject
+{
+    public string Name { get; } = name;
+    [ObservableProperty] private string? _tip;
 }
 
 /// <summary>One trap state's row (R-mc15-5): its toggle — or, when the data cannot support it, the one-line reason in its

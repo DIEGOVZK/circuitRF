@@ -84,7 +84,8 @@ line can carry.
     }
   },
   "Symbol": "symbols/gan.csym",
-  "Provenance": { "Created": "…", "CircuitRfVersion": "…", "Sources": [ { "Path": "…", "Sha256": "…" } ], "SettingsDigest": "…" }
+  "Provenance": { "Created": "…", "CircuitRfVersion": "…", "Sources": [ { "Path": "…", "Sha256": "…" } ], "SettingsDigest": "…",
+                  "Charges": "…" }                       // only with linear charges (MC-17)
 }
 ```
 
@@ -756,6 +757,22 @@ stated point, moved to the nearest data point when it lies outside the hull.
   voltage as `Cp·v + C0·(v + ln(cosh ψ1)/P1)·(1 ± tanh ψ2)`), or the user's own; fitted by
   `EquationFit` with **derivative terms** (the expression's gradient lanes are the targets), then shifted by a
   parameter `Qanchor` so it is zero at the anchor.
+- **`Linear`** (MC-17): `Qg = C11·vgs + C12·vds`, `Qd = C21·vgs + C22·vds` — matrix form, so each charge's two
+  parameters are its own two targets. Each starts at its data's mean, bounded at ±100× the row's larger typical size
+  (unbounded in sign); one point is fitted exactly, two or three to the least-squares constant matrix, and the report
+  gives each value's RMS spread about it and the circuit set (`Cgs = C11 + C12`, `Cgd = −C12`, `Cds = C22 + C12`,
+  `Cm = C21 − C12`). A charge function like the others, so conserving by construction; an equation, so no domain and
+  no extrapolation. `ChargeFit.LinearProvenance` is the line the `.cmodel`'s `Provenance.Charges` and `model explain`
+  carry — `Qg, Qd: Linear from N bias point(s)`, N from the record's `Points` — so it is never read as nonlinear.
+
+**The minimum is the method's** (MC-17 R-mc17-2, `ChargeFit.Require`, run by every fit; `Gather` applies none). An ANN
+or Table charge, and the drift decomposition, need `SurfaceMinimum` (4) points spanning an area of the bias plane, and
+the refusal (`ChargeFit.Refusal`, also the window's tooltip on the method) names the way out: `3 usable S point(s); an
+ANN charge needs at least 4 — the Linear equation fits from one.` An equation needs as many targets (two per point) as
+free parameters, checked in its fit. A default ANN with too few points is refused, never switched to `Linear`. Points
+that span no area give `ChargeData` a degenerate domain — the points' extremes, so `SpansArea` is false — and the
+anchor stays where it was stated, since only an equation, defined everywhere, is fitted to them. The plots skip the
+charge surfaces then, and a C–V slice over one level sweeps a volt either side of it (`ChargeFit.SliceSpan`).
 
 ### 10.3 The drift decomposition (R-mc8-3)
 
@@ -785,7 +802,10 @@ Per capacitance, the RMS of the model's `∂Q/∂v` against it over every point,
 ## 11. Check Charge Conservation (MC-8)
 
 `ConservationCheck` (`src/Design/Modeling/`), numerics `CurlMetric` and `LineIntegral` (`src/Engine/Modeling/`). Each
-part returns a number and, where it has one, a map; `RunFile`/`Run` do all three for a `.cmc`, read-only.
+part returns a number and, where it has one, a map; `RunFile`/`Run` do all three for a `.cmc`, read-only. With fewer
+than 4 points across the bias plane (MC-17), (a) is not run — one line naming the point count, `Data` null, not a
+failure — and (b) reads the model over a box a volt either side of the points, where a linear charge's curl is
+exactly zero; (c) is unchanged.
 
 - **(a) The data** (`Data`): per row the curl `∂Ci1/∂vds − ∂Ci2/∂vgs` by central differences of a smooth interpolant
   — a network per capacitance by default — normalised by the RMS over the points of `√((t1² + t2²)/2)`, as a map

@@ -130,7 +130,10 @@ public static class CmodelExport
             },
             Extrapolation = r.Gx.Count > 0 ? new ModelExtrapolation(r.Gx) : null,
             Symbol = SymbolFor(symbol ?? Settings(doc).Symbol, cmcDir, outDir, thermal is not null),
-            Provenance = Provenance(cmcPath, doc, created),
+            Provenance = Provenance(cmcPath, doc, created) with
+            {
+                Charges = ChargeFit.LinearProvenance(charge.Settings, charge.Record) ?? "",
+            },
             Arrays = arrays,
         };
         try { CmodelFile.Validate(model); }

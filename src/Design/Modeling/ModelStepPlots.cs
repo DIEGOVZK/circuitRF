@@ -52,7 +52,8 @@ public sealed class StepPlotData
         if (Program is not { } program || Charges is not { } data) return null;
         var swept = data.X.Select(p => sweepGate ? p.Vgs : p.Vds).ToArray();
         var fixedOf = data.X.Select(p => sweepGate ? p.Vds : p.Vgs).ToArray();
-        var model = ChargeFit.Slice(program, sweepGate, fixedValue, swept.Min(), swept.Max());
+        var (lo, hi) = ChargeFit.SliceSpan(swept);
+        var model = ChargeFit.Slice(program, sweepGate, fixedValue, lo, hi);
         var ds = new DataSet();
         foreach (var (name, cube) in model.Cubes) ds.Add($"{name}.model", cube);
         var m = ChargeFitRecord.Capacitances.Select(c => model[c].RealValues).ToArray();
@@ -72,11 +73,13 @@ public sealed class StepPlotData
     }
 
     /// <summary>The spacing of a measured voltage's levels: the smallest gap between values that differ by more than 2 % of
-    /// their span — intrinsic voltages scatter about each measured level by the extrinsic drops.</summary>
+    /// their span — intrinsic voltages scatter about each measured level by the extrinsic drops. One level is the only
+    /// family there is, whatever the cursor says.</summary>
     private static double Spacing(double[] values)
     {
         var sorted = values.Order().ToArray();
         double span = sorted.Length > 0 ? sorted[^1] - sorted[0] : 0;
+        if (!(span > 0)) return double.PositiveInfinity;
         double gap = double.PositiveInfinity;
         for (int k = 1; k < sorted.Length; k++)
             if (sorted[k] - sorted[k - 1] > 0.02 * span) gap = Math.Min(gap, sorted[k] - sorted[k - 1]);
@@ -278,14 +281,20 @@ public static class ModelStepPlots
         if (ChargeFit.Load(cmcPath, doc) is not { } charges) return null;
         var cd = ChargeFit.Gather(doc, data, intrinsic, charges.Settings, []);
         var program = ComposedCoreProgram.Compile(ChargeFit.Model(charges, CurrentFit.Load(cmcPath, doc), cd.TemperatureC), "plots");
-        var (vgs, vds) = Axes(cd.Domain.Polygon);
-        var surfaces = ModelValidationReport.ChargeSurface(program, cd, charges.Record.Anchor, vgs, vds, rc);
         var ds = new DataSet();
-        foreach (var (name, cube) in surfaces.Data.Cubes) ds.Add(name, cube);
+        IReadOnlyList<string> notes = [];
+        // Points that span no area have no surface to draw: their charges are equations, and the C–V slices show them.
+        if (cd.SpansArea)
+        {
+            var (vgs, vds) = Axes(cd.Domain.Polygon);
+            var surfaces = ModelValidationReport.ChargeSurface(program, cd, charges.Record.Anchor, vgs, vds, rc);
+            foreach (var (name, cube) in surfaces.Data.Cubes) ds.Add(name, cube);
+            notes = surfaces.Lines;
+        }
         var axis = new Axis("point", [.. Enumerable.Range(0, cd.X.Count).Select(i => (double)i)]);
         ds.Add("Vgsi", new DataCube([axis], [.. cd.X.Select(p => p.Vgs)]));
         ds.Add("Vdsi", new DataCube([axis], [.. cd.X.Select(p => p.Vds)]));
-        return new StepPlotData { Step = "Charge", Data = ds, Notes = surfaces.Lines, Program = program, Charges = cd };
+        return new StepPlotData { Step = "Charge", Data = ds, Notes = notes, Program = program, Charges = cd };
     }
 
     // ── Thermal (R-mc15-4) ────────────────────────────────────────────────────
@@ -392,9 +401,9 @@ public static class ModelStepPlots
                 ds.Add($"Curl.{row}", Map(Regrid.Rbf([.. keep.Select(k => a.Points[k])], [.. keep.Select(k => 100 * map[k])]), hull));
             }
         }
-        if (ChargeFit.Load(cmcPath, doc) is { } charges)
+        if (ChargeFit.Load(cmcPath, doc) is { } charges
+            && ChargeFit.Gather(doc, loaded.Data, new IntrinsicResult(loaded.Intrinsic, []), charges.Settings, []) is { SpansArea: true } cd)
         {
-            var cd = ChargeFit.Gather(doc, loaded.Data, new IntrinsicResult(loaded.Intrinsic, []), charges.Settings, []);
             var poly = cd.Domain.Polygon;
             var (vgs, vds) = Axes(poly);
             foreach (bool gate in (bool[])[true, false])

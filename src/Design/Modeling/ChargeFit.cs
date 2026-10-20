@@ -48,6 +48,11 @@ public sealed class ChargeData
 
     public bool HasT => T is not null;
 
+    /// <summary>Whether the points enclose an area of the bias plane. Fewer than three non-collinear points do not: the
+    /// domain's polygon is then the points' extremes (one point, or a segment's two ends), which only an equation charge,
+    /// global by construction, can be fitted over (MC-17).</summary>
+    public bool SpansArea => Domain.Polygon.Count >= 3;
+
     /// <summary>MC-10: each point's trap states for <c>Qd</c> — null for a pulsed point beyond its trap-setting bias — when
     /// pulsed S-parameters give <c>Qd</c> its trap inputs; null when the charges are trap-independent.</summary>
     public double[]?[]? Phi { get; init; }
@@ -78,8 +83,20 @@ public sealed class ChargeData
                                 double[] c22, double[]? weight = null, double temperatureC = 25) => new()
     {
         X = x, C11 = c11, C12 = c12, C21 = c21, C22 = c22, Weight = weight ?? [.. x.Select(_ => 1.0)],
-        Domain = CurrentFit.Hull([.. x.Select(p => new[] { p.Vgs, p.Vds })]), TemperatureC = temperatureC,
+        Domain = DomainOf(x), TemperatureC = temperatureC,
     };
+
+    /// <summary>The points' hull; for points that span no area, their extremes (see <see cref="SpansArea"/>).</summary>
+    private static TrainingDomain DomainOf(IReadOnlyList<(double Vgs, double Vds)> x)
+    {
+        try { return CurrentFit.Hull([.. x.Select(p => new[] { p.Vgs, p.Vds })]); }
+        catch (ModelingException)
+        {
+            // Collinear (or coincident) points: their lexicographic first and last are the segment's two ends.
+            var ordered = x.Distinct().OrderBy(p => p.Vgs).ThenBy(p => p.Vds).ToList();
+            return new TrainingDomain(ordered.Count <= 1 ? ordered : [ordered[0], ordered[^1]], []);
+        }
+    }
 
     /// <summary>A charge's row: <c>(C11, C12)</c> for <c>Qg</c>, <c>(C21, C22)</c> for <c>Qd</c>.</summary>
     public (double[] C1, double[] C2) Row(bool gate) => gate ? (C11, C12) : (C21, C22);
@@ -201,11 +218,62 @@ public static class ChargeFit
 
     // ── Training data (R-mc8-1) ───────────────────────────────────────────────
 
-    /// <summary>The capacitances of the chosen sets at their intrinsic points, with each point's flatness weight.</summary>
+    /// <summary>
+    /// Refuses <paramref name="data"/> when it holds fewer points than the chosen methods need (R-mc17-2): an ANN or Table
+    /// charge, or the drift decomposition, needs <see cref="SurfaceMinimum"/> over an area of the bias plane; an equation
+    /// needs as many targets as free parameters, which its fit checks once it knows them. Never a switch of method (R-mc17-3).
+    /// </summary>
+    internal static void Require(ChargeData data, ChargeFitSettings settings)
+    {
+        if (settings.Drift is not null)
+        {
+            if (data.X.Count < SurfaceMinimum || !data.SpansArea)
+                throw new ModelingException(StepName, $"{data.X.Count} usable S point(s); the drift charge needs at least {SurfaceMinimum} across the bias plane — the Linear equation fits from one.");
+            return;
+        }
+        foreach (var m in new[] { settings.Qg.Method, settings.Qd.Method }.Distinct())
+            if (Refusal(m, data.X.Count, data.SpansArea) is { } why) throw new ModelingException(StepName, why);
+        if (data.Phi is not null && settings.Qd.Method == ChargeMethod.ANN && data.Phi.Count(r => r is not null) is var used and < SurfaceMinimum)
+            throw new ModelingException(StepName, $"{used} S point(s) with a trap state; Qd needs at least {SurfaceMinimum}.");
+    }
+
+    /// <summary>What an ANN or Table charge (and the drift decomposition) needs: this many points over an area of the bias
+    /// plane. An equation needs as many targets as free parameters instead — two per point (R-mc17-2).</summary>
+    public const int SurfaceMinimum = 4;
+
+    /// <summary>
+    /// Why <paramref name="method"/> cannot be fitted to <paramref name="points"/> usable S points, or null when it can
+    /// (R-mc17-2) — the refusal a fit gives and the window's tooltip on the method. An equation is checked against its own
+    /// parameter count when it is fitted.
+    /// </summary>
+    public static string? Refusal(ChargeMethod method, int points, bool spansArea = true)
+    {
+        if (method == ChargeMethod.Equation) return null;
+        string a = method == ChargeMethod.ANN ? "an" : "a";
+        if (points < SurfaceMinimum)
+            return $"{points} usable S point(s); {a} {method} charge needs at least {SurfaceMinimum} — the Linear equation fits from one.";
+        return spansArea ? null
+            : $"{points} usable S points span no area of the bias plane; {a} {method} charge needs both voltages to vary — the Linear equation fits from one.";
+    }
+
+    /// <summary>The usable S points of the document's charge data and whether they span an area, or null when there are
+    /// none to count — what the window's method tooltips read (R-mc17-6).</summary>
+    public static (int Points, bool SpansArea)? Usable(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data,
+                                                       IntrinsicResult intrinsic)
+    {
+        try
+        {
+            var cd = Gather(doc, data, intrinsic, Settings(doc), []);
+            return (cd.X.Count, cd.SpansArea);
+        }
+        catch (ModelingException) { return null; }
+    }
+
+    /// <summary>The capacitances of the chosen sets at their intrinsic points, with each point's flatness weight. Whether
+    /// there are enough for the chosen methods is the fit's question (<see cref="Require"/>).</summary>
     public static ChargeData Gather(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data, IntrinsicResult intrinsic,
                                     ChargeFitSettings settings, List<string> report)
-    {
-        var chosen = settings.DataSets.Count > 0
+    {        var chosen = settings.DataSets.Count > 0
             ? [.. settings.DataSets.Select(n => doc.DataSets.FirstOrDefault(s => s.Name == n)
                                                ?? throw new ModelingException(n, "the charge step names it, and the document has no such data set."))]
             : doc.DataSets.Where(s => intrinsic.Sets.TryGetValue(s.Name, out var d) && d.Contains("C11")).ToList();
@@ -283,7 +351,7 @@ public static class ChargeFit
             }
         }
         if (poor > 0) report.Add($"{poor} point(s) with flatness above {G(100 * settings.FlatnessLimit)} % down-weighted by (limit/flatness)².");
-        if (x.Count < 4) throw new ModelingException(StepName, $"{x.Count} usable S point(s); a charge fit needs at least 4.");
+        if (x.Count == 0) throw new ModelingException(StepName, "0 usable S point(s): every one is excluded, or flagged across its flatness band.");
         var cd = ChargeData.Of(x, [.. c[0]], [.. c[1]], [.. c[2]], [.. c[3]], [.. w], t);
         if (hasT)
             cd = new ChargeData
@@ -292,8 +360,6 @@ public static class ChargeFit
                 Domain = cd.Domain with { Box = [new(ComposedCoreProgram.T, (tk.Min(), tk.Max()))] },
             };
         if (traps is null) return cd;
-        int used = phi.Count(r => r is not null);
-        if (used < 4) throw new ModelingException(StepName, $"{used} S point(s) with a trap state; Qd needs at least 4.");
         return new ChargeData
         {
             X = cd.X, C11 = cd.C11, C12 = cd.C12, C21 = cd.C21, C22 = cd.C22, Weight = cd.Weight, TemperatureC = t, T = cd.T,
@@ -304,11 +370,13 @@ public static class ChargeFit
         static double Finite(double v) => double.IsFinite(v) ? v : 0;
     }
 
-    /// <summary>The anchor: the stated one, or (0, 0); a point outside the data's hull moves to the data point nearest it.</summary>
+    /// <summary>The anchor: the stated one, or (0, 0); a point outside the data's hull moves to the data point nearest it.
+    /// Points that span no area have no hull to be outside of, and only an equation — defined everywhere — is fitted to
+    /// them, so the anchor stays where it was stated.</summary>
     internal static (double Vgs, double Vds) Anchor(ChargeData data, ChargeFitSettings settings, List<string> report)
     {
         var want = settings.Anchor ?? (0, 0);
-        if (Inside(data.Domain.Polygon, want)) return want;
+        if (!data.SpansArea || Inside(data.Domain.Polygon, want)) return want;
         var near = data.X.MinBy(p => Math.Pow(p.Vgs - want.Vgs, 2) + Math.Pow(p.Vds - want.Vds, 2));
         report.Add($"anchor ({G(want.Vgs)}, {G(want.Vds)}) V is outside the data; charges are zero at ({G(near.Vgs)}, {G(near.Vds)}) V.");
         return near;
@@ -352,6 +420,7 @@ public static class ChargeFit
                                        List<string> report, RunControl? rc)
     {
         rc?.ThrowIfCancellationRequested();
+        Require(data, settings);
         // The model carries the currents' trap block, so a Qd mapped under other trap settings would read the wrong lanes.
         if (data.Traps is { } mapped && current?.Record.Traps is { } fitted
             && (fitted.Model != mapped.Block.Model || !fitted.States.SequenceEqual(mapped.States)))
@@ -387,13 +456,16 @@ public static class ChargeFit
 
         var traps = qd.Inputs.Any(i => i.StartsWith("phi", StringComparison.Ordinal)) ? data.Traps!.Block : null;
         var program = ComposedCoreProgram.Compile(Model(qg, qd, arrays, current, data.TemperatureC, traps), "charge fit");
+        if (settings.Drift is null && ChargeTemplates.IsLinear(settings.Qg.Template) && ChargeTemplates.IsLinear(settings.Qd.Template)
+            && settings.Qg.Method == ChargeMethod.Equation && settings.Qd.Method == ChargeMethod.Equation)
+            report.Add(CircuitSet(qg, qd));
         var errors = Errors(program, data);
         foreach (var (k, e) in errors) report.Add($"{k}: RMS error {G(100 * e.Relative)} % of its range.");
         string key = arrays.Count > 0 ? CurrentFit.ArraysKey(arrays, out _) : "";
         var record = new ChargeFitRecord
         {
             Qg = qg, Qd = qd, Arrays = key, Anchor = anchor, Errors = errors, PathDifference = paths, CdsSpread = cdsSpread,
-            Traps = traps, Report = report,
+            Traps = traps, Points = data.X.Count, Report = report,
         };
         return new ChargeFitResult(settings, record, arrays);
     }
@@ -426,7 +498,7 @@ public static class ChargeFit
             case ChargeMethod.Table:
                 return FitTable(name, s, c1, c2, data, settings, anchor, arrays, paths, report, rc);
             default:
-                return FitEquation(name, gate, s, c1, c2, data, settings, anchor, rc);
+                return FitEquation(name, gate, s, c1, c2, data, settings, anchor, report, rc);
         }
     }
 
@@ -553,7 +625,7 @@ public static class ChargeFit
     /// shifted by a constant <c>Qanchor</c> so it is zero at the anchor.</summary>
     private static Constituent FitEquation(string name, bool gate, ChargeConstituentSettings s, double[] c1, double[] c2,
                                            ChargeData data, ChargeFitSettings settings, (double Vgs, double Vds) anchor,
-                                           RunControl? rc)
+                                           List<string> report, RunControl? rc)
     {
         string expression;
         IReadOnlyList<TemplateParameter> parameters;
@@ -570,14 +642,57 @@ public static class ChargeFit
             parameters = [];
         }
         parameters = CurrentFit.Overrides(name, parameters, s.Parameters);
+        // R-mc17-2: each point gives the charge two targets, its two capacitances.
+        int free = parameters.Count(p => !p.Lock), targets = 2 * data.X.Count;
+        if (targets < free)
+            throw new ModelingException(name,
+                $"{data.X.Count} usable S point(s) give {name} {targets} target(s), and its equation has {free} free parameter(s) — the Linear equation fits from one.");
 
         var x = data.Points;
         rc?.BeginStage($"Fitting {name}", 0, "evaluation(s)");
         var fit = EquationFit.Fit([new EquationTerm(expression, x, c1, data.Weight, 0), new EquationTerm(expression, x, c2, data.Weight, 1)],
                                   parameters, s.Algorithm, settings.Seed, name, rc);
         double q0 = EquationFit.Function(expression, fit.Values, name)(anchor.Vgs, anchor.Vds).F;
+        if (ChargeTemplates.IsLinear(s.Template)) report.Add(LinearLine(name, fit.Values, c1, c2));
         return Constituent.Equation($"({expression})-Qanchor", Inputs,
                                     [.. fit.Values.Select(kv => (kv.Key, kv.Value)), ("Qanchor", q0)]);
+    }
+
+    /// <summary>A linear charge's report line (R-mc17-2): <c>Qg: Linear from 2 bias point(s) — C11 120 fF ± 3 fF, C12 −20 fF ± 0.5 fF</c>,
+    /// each value with the RMS of the points about it — what a constant matrix cannot follow — once there is more than one.</summary>
+    private static string LinearLine(string name, IReadOnlyList<KeyValuePair<string, double>> values, double[] c1, double[] c2)
+    {
+        string Value(int k, double[] measured)
+        {
+            var (key, v) = (values[k].Key, values[k].Value);
+            string text = $"{key} {ConservationCheck.Si(v, "F")}";
+            return measured.Length < 2 ? text : $"{text} ± {ConservationCheck.Si(Math.Sqrt(measured.Average(m => (m - v) * (m - v))), "F")}";
+        }
+        return $"{name}: Linear from {c1.Length} bias point(s) — {Value(0, c1)}, {Value(1, c2)}.";
+    }
+
+    /// <summary>The circuit set of two linear charges (R-mc17-1), in <see cref="IntrinsicQuantities"/>' convention:
+    /// <c>Cgs = C11 + C12</c>, <c>Cgd = −C12</c>, <c>Cds = C22 + C12</c>, <c>Cm = C21 − C12</c>.</summary>
+    private static string CircuitSet(Constituent qg, Constituent qd)
+    {
+        double P(Constituent c, string key) => c.Parameters.First(kv => kv.Key == key).Value;
+        double c11 = P(qg, "C11"), c12 = P(qg, "C12"), c21 = P(qd, "C21"), c22 = P(qd, "C22");
+        return $"Cgs {ConservationCheck.Si(c11 + c12, "F")}, Cgd {ConservationCheck.Si(-c12, "F")}, " +
+               $"Cds {ConservationCheck.Si(c22 + c12, "F")}, Cm {ConservationCheck.Si(c21 - c12, "F")}.";
+    }
+
+    /// <summary>
+    /// What the <c>.cmodel</c>'s provenance and <c>model explain</c> say of linear charges (R-mc17-5):
+    /// <c>Qg, Qd: Linear from 1 bias point(s)</c> — or the one charge that is — so such a model is never mistaken for a
+    /// nonlinear one. Null when neither charge is linear.
+    /// </summary>
+    public static string? LinearProvenance(ChargeFitSettings settings, ChargeFitRecord record)
+    {
+        if (settings.Drift is not null) return null;
+        var linear = new[] { ("Qg", settings.Qg), ("Qd", settings.Qd) }
+            .Where(c => c.Item2.Method == ChargeMethod.Equation && ChargeTemplates.IsLinear(c.Item2.Template))
+            .Select(c => c.Item1).ToList();
+        return linear.Count == 0 ? null : $"{string.Join(", ", linear)}: Linear from {record.Points} bias point(s)";
     }
 
     // ── The drift decomposition (R-mc8-3) ─────────────────────────────────────
@@ -798,6 +913,14 @@ public static class ChargeFit
             errors[ChargeFitRecord.Capacitances[i]] = new CapacitanceErrorRecord(rms, range > 0 ? rms / range : 0);
         }
         return errors;
+    }
+
+    /// <summary>The span a C–V slice sweeps over the measured <paramref name="values"/>: theirs, or a volt either side of a
+    /// single level — the flat lines of linear charges through their one bias (R-mc17-6).</summary>
+    public static (double Lo, double Hi) SliceSpan(IReadOnlyList<double> values)
+    {
+        double lo = values.Min(), hi = values.Max();
+        return hi > lo ? (lo, hi) : (lo - 1, hi + 1);
     }
 
     /// <summary>

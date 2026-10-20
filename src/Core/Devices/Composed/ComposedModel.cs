@@ -286,6 +286,10 @@ public sealed record ModelProvenance
     public string CircuitRfVersion { get; init; } = "";
     public IReadOnlyList<ModelSource> Sources { get; init; } = [];
     public string SettingsDigest   { get; init; } = "";
+    /// <summary>What the charges were built from when a model's constituents do not show it — <c>Qg, Qd: Linear from 1
+    /// bias point(s)</c> (brief-modelcomposer-17) — so a model whose charges are constant capacitances is never taken for a
+    /// nonlinear one. Empty, and not written, otherwise.</summary>
+    public string Charges          { get; init; } = "";
 }
 
 public sealed record ModelSource(string Path, string Sha256);

@@ -15,7 +15,13 @@
                 <StackPanel Spacing="3">
                     <Grid ColumnDefinitions="40,*">
                         <TextBlock Classes="panelhdr" Text="{Binding Name}" VerticalAlignment="Center" Margin="0"/>
-                        <ComboBox Grid.Column="1" ItemsSource="{Binding Methods}" SelectedItem="{Binding Method}" HorizontalAlignment="Stretch"/>
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding Choices}" SelectedItem="{Binding SelectedChoice}" HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="mc:MethodChoice">
+                                    <TextBlock Text="{Binding Name}" ToolTip.Tip="{Binding Tip}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </Grid>
                     <StackPanel Spacing="3" IsVisible="{Binding IsAnn}">
                         <Grid ColumnDefinitions="*,90">

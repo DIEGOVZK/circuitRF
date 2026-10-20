@@ -125,7 +125,7 @@ layout is secondary.
 | Data | Needed | What it gives the model |
 |---|---|---|
 | I–V: DC, or a simulator's DC currents; 4 points or more, varying both Vgs and Vds | **Required** | `Id` and `Ig`. With no gate current in the data, `Ig` is zero |
-| S or Y at 4 biases or more | **Required** | `Qg` and `Qd`. A few biases around one operating point, fitted with an equation charge, give near-constant capacitances: a linear charge model. Biases across the I–V plane give nonlinear charges |
+| S or Y at one bias or more | **Required** | `Qg` and `Qd`. A single bias gives linear charges — constant capacitances, exact at that bias — with the `Linear` equation. Four biases or more allow ANN or Table charges, and biases across the I–V plane give nonlinear ones |
 | S at Vds = 0 V, pinched off and with the gate forward-biased | Optional | The cold-FET network fit |
 | Open and short pad dummies | When measured at the probe tips | Removal of the pads |
 | Any set at two or more temperatures | Optional | `T` as an input: the model follows the run's `temp`, and self-heating becomes available |
@@ -211,7 +211,8 @@ what tools actually write.
 ### Checklist {#checklist}
 
 - The I–V covers the circuit's whole Vgs and Vds swing, gate forward conduction included.
-- S or Y is at 4 biases or more, and at a hundred or more for nonlinear charges.
+- S or Y is at one bias or more for linear charges, 4 or more for ANN or Table charges, and a hundred or more for
+  nonlinear ones.
 - Currents are positive into the terminal, and every column has its unit.
 - Every set states its reference plane and ambient temperature.
 - Measured: the compliance limits are stated, so points at the limit are flagged.
@@ -280,6 +281,9 @@ of one charge each, and no DC is ever made by displacement current. **Check Char
 | (a) The data | The curl of the measured capacitance matrix, row by row, and the difference between the two line-integral paths | A few percent: the data's own noise and the network's error |
 | (b) The model | The same curl on the fitted model's capacitances | Near zero |
 | (c) Large signal | A harmonic-balance drive at *f* and at 2*f*; the change in DC gate current is DC made by displacement current | Below 0.1 % of the fundamental gate current |
+
+Check (a) needs S at 4 biases or more across the bias plane; with fewer it reports *not run* and the number of biases,
+which is not a failure. A linear charge's (b) reads zero.
 
 A non-reciprocal capacitance matrix (a transcapacitance, `C21 ≠ C12`) is reported for information. It is physical, and
 it is not an error. Checks (b) and (c) also run on any nonlinear device in a netlist:
@@ -483,9 +487,12 @@ The Current and Charge steps pick a method for each constituent with the same co
 
 | Method | Settings |
 |---|---|
-| ANN | Hidden layers (1 to 4, neurons each, default `8, 8`), activation, iterations |
-| Table | Grid step and smoothing; a charge table also takes its line-integral path — A, B or their mean |
-| Equation | A template, or your own expression in `vgs`, `vds` and named parameters; after a fit, each parameter's value |
+| ANN | Hidden layers (1 to 4, neurons each, default `8, 8`), activation, iterations. A charge needs S at 4 biases or more |
+| Table | Grid step and smoothing; a charge table also takes its line-integral path — A, B or their mean. A charge needs S at 4 biases or more |
+| Equation | A template, or your own expression in `vgs`, `vds` and named parameters; after a fit, each parameter's value. A charge needs at least as many capacitances as free parameters, two per bias, so `Linear` fits from one |
+
+With fewer S biases than a method needs, its entry in the picker gives the reason when you hover over it, and a fit
+with it is refused rather than run with another method.
 
 Restarts, the seed and the held-out percentage belong to the step. After a fit the status strip reads, for example,
 `Id: ANN 2×8 · held-out 0.8 % · domain 412 pts`.
@@ -505,7 +512,13 @@ simpler alternative to self-heating and traps.
 ## The Charge step {#charge}
 
 Pickers for `Qg` and `Qd` (an adjoint-trained ANN by default, a table integrated along a path, or an equation), and
-**Drift charge in Qg**.
+**Drift charge in Qg**. The charge templates are `Depletion`, `Angelov` and `Linear`.
+
+`Linear` is `Qg = C11·vgs + C12·vds` and `Qd = C21·vgs + C22·vds`: constant capacitances, exact at a single measured
+bias. From two or three biases it is the least-squares constant matrix, and the report gives each value's spread across
+the biases, with the circuit set `Cgs = C11 + C12`, `Cgd = −C12`, `Cds = C22 + C12` and `Cm = C21 − C12`. Its C–V
+plots are flat lines through the measured points. The exported model's provenance and `circuitrf model explain` say
+`Qg, Qd: Linear from 1 bias point(s)`. A linear charge has no training domain, so no extrapolation applies to it.
 
 | Plot tab | Shows |
 |---|---|

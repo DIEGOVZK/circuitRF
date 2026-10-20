@@ -219,6 +219,10 @@ public sealed partial class ModelComposerViewModel
         foreach (var (row, c, rec) in new[] { (ChargePickers[0], s.Qg, r?.Qg), (ChargePickers[1], s.Qd, r?.Qd) })
             row.Load(c.Method.ToString(), Layers(c.Hidden), c.Activation.ToString(), c.MaxIterations.ToString(CultureInfo.InvariantCulture),
                      Num(c.GridStep), Num(c.Smoothing), c.Path.ToString(), c.Template ?? "", c.Expression ?? "", "", Fitted(rec));
+        // R-mc17-6: a method the usable S points cannot support says why on hover — the sentence a fit would refuse with.
+        var usable = ChargeFit.Usable(Document, Loaded.Data, new IntrinsicResult(Loaded.Intrinsic, []));
+        foreach (var row in ChargePickers)
+            row.SetTips(m => usable is { } u && Enum.TryParse<ChargeMethod>(m, out var method) ? ChargeFit.Refusal(method, u.Points, u.SpansArea) : null);
         ChargeSeed = s.Seed.ToString(CultureInfo.InvariantCulture);
         DriftCharge = s.Drift is not null;
     }
