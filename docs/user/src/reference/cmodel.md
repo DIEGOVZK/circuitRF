@@ -146,7 +146,8 @@ modification time changes, so a script can rewrite it between runs.
 2. **`model.json`** is parsed as JSON. Each required field is read by name, and a missing or mistyped one is refused
    with a sentence that starts with the field's path: `Core.Constituents.Id.Method: 'Spline' is not a known method; the
    known methods are Equation, Table, ANN, Drift.`
-3. **The arrays.** Every `arrays/<name>.npy` entry is read as one named array. A folder entry is skipped.
+3. **The arrays.** Every `arrays/<name>.npy` entry is read as one named array, plain or in circuitRF's own layout. A
+   folder entry is skipped.
 4. **Validation.** Every rule on this page is checked: each constituent's inputs and payload, each equation's names,
    each table's grid against its coefficients, each ANN's layer sizes, the training domains, the extrinsic
    network and its scaling rules. The first rule broken is the one refused.
@@ -169,6 +170,8 @@ by name, and inside a constituent an unknown field is read as a payload key and 
 fet.cmodel                      a ZIP archive
 ├── model.json                  the model, UTF-8 JSON
 └── arrays/                     only for Table and ANN constituents
+    ├── Id.vgs.npy
+    ├── Id.vds.npy
     ├── Id.values.npy
     ├── Id.coefficients.npy
     └── …
@@ -285,21 +288,25 @@ end extrinsic
 
 ## Arrays: the .npy entries {#npy}
 
-`Table` and `ANN` constituents keep their numbers in `arrays/<name>.npy`. Each entry is a NumPy `.npy` file in the
-layout circuitRF writes its [results](npy-export.html) in: a structured array of one record, with one field holding the
-array and a `__meta__` field holding JSON that describes it. A plain `np.save(array)` file is refused.
+`Table` and `ANN` constituents keep their numbers in `arrays/<name>.npy`, one array per entry, where `<name>` is the name
+the constituent gives it. Each entry is a NumPy `.npy` file in either of two layouts.
+
+**A plain array** — what `np.save` writes, and what a MATLAB `.npy` writer writes:
+
+| Rule | |
+|---|---|
+| Type | `float64` or `float32`, little-endian (`<f8`, `<f4`). Write `float64`: spline coefficients lose accuracy in `float32` |
+| Order | Either. A file that says `fortran_order: True` (column-major, as MATLAB holds arrays) is read in that order |
+| Shape | The array's. A list may be any shape with one dimension longer than 1 (`(n,)`, `(1, n)`, `(n, 1)`), and a single number may be 0-d |
+| Axes | None are stored, so a table names its sites in arrays of their own ([Table constituents](#table)) |
+
+**circuitRF's own layout** — what the Model Composer writes, the layout of its [result files](npy-export.html): a
+structured array of one record, with one field holding the array and a `__meta__` field holding JSON that names its
+axes and their values:
 
 ```text
 {'descr': [('Id.W1', '<f8', (8, 2)), ('__meta__', '|S180')], 'fortran_order': False, 'shape': (1,), }
 ```
-
-| Part | Rule |
-|---|---|
-| The data field | Named as the entry is (`Id.W1` in `arrays/Id.W1.npy`); little-endian float64, `<f8`; its shape is the array's |
-| Element order | **Row-major** (C order): the last axis varies fastest |
-| `__meta__` | UTF-8 JSON, as a byte string of its own length (NumPy type `S<n>`) |
-
-The JSON:
 
 ```json
 {"format_version": 2, "groups": [""],
@@ -308,67 +315,39 @@ The JSON:
                     {"name": "input",  "unit": "", "values": [0, 1]}]}}
 ```
 
-`format_version` is `2`. The key naming the field, and its `cube`, are the array's name. `axes` has one entry per
-dimension, in order: `name`, `unit` (may be empty) and `values`, whose length is that dimension's length. `values` is a
-JSON list even for a dimension of one. What an axis's name and values must be depends on the constituent, and is
-given with each below.
+The data field and the `cube` are named as the entry is, its data is row-major `<f8`, and `axes` has one entry per
+dimension with `values` as long as that dimension. There is no reason to write this layout by hand; a plain array says
+the same with less.
 
-**In Python** with NumPy:
+**In Python**, `np.save` into the archive:
 
 ```python
-import io, json, numpy as np
+import io
+import numpy as np
 
-def cube_npy(name, data, axes):
-    """The bytes of arrays/<name>.npy: one real array, axes = [(axis_name, values), ...]."""
-    data = np.ascontiguousarray(data, dtype="<f8")
-    assert data.shape == tuple(len(v) for _, v in axes)
-    meta = json.dumps({"format_version": 2, "groups": [""],
-                       name: {"group": "", "cube": name, "kind": "Real",
-                              "axes": [{"name": n, "unit": "", "values": [float(x) for x in v]}
-                                       for n, v in axes]}}).encode()
-    rec = np.zeros(1, dtype=[(name, "<f8", data.shape), ("__meta__", f"S{len(meta)}")])
-    rec[name][0] = data
-    rec["__meta__"][0] = meta
+def npy(a):
+    """The bytes of a plain .npy holding a, as float64."""
     buf = io.BytesIO()
-    np.save(buf, rec, allow_pickle=False)
+    np.save(buf, np.asarray(a, dtype=float))
     return buf.getvalue()
-
-def vector_npy(name, v):
-    v = np.atleast_1d(np.asarray(v, dtype=float))
-    return cube_npy(name, v, [("index", range(len(v)))])
 ```
 
-**In MATLAB** (R2019b or later) or GNU Octave, save this as `crf_cube_npy.m`. MATLAB stores arrays column-major, so the
-function permutes the data into row-major order before writing it.
+**In MATLAB** (R2016b or later) or GNU Octave, save this as `crf_npy.m`. It writes the array as MATLAB holds it,
+column-major, and says so in the header:
 
 ```matlab
-function crf_cube_npy(file, name, data, axes)
-% Write one real array as a circuitRF .npy.
-%   file  the .npy to write
-%   name  the array's name: the entry's file name without .npy ('Id.values')
-%   data  the array, one dimension per axis (a vector is one axis)
-%   axes  {'vgs', vgsSites; 'vds', vdsSites}: one row per dimension, in order
-if isvector(data) && size(axes, 1) == 1, data = data(:); end
-shape = cellfun(@numel, axes(:, 2))';
-assert(isequal(size(data, 1:numel(shape)), shape), 'data does not match the axes');
-ax = cell(1, size(axes, 1));
-for k = 1:size(axes, 1)
-  ax{k} = struct('name', axes{k, 1}, 'unit', '', 'values', {num2cell(double(axes{k, 2}(:)'))});
-end
-cube = struct('group', '', 'cube', name, 'kind', 'Real', 'axes', {ax});
-meta = ['{"format_version":2,"groups":[""],"' name '":' jsonencode(cube) '}'];
-if numel(shape) == 1, shp = sprintf('(%d,)', shape);
-else, shp = ['(' strjoin(arrayfun(@num2str, shape, 'UniformOutput', false), ', ') ')']; end
-header = sprintf('{''descr'': [(''%s'', ''<f8'', %s), (''__meta__'', ''|S%d'')], ''fortran_order'': False, ''shape'': (1,), }', ...
-                 name, shp, numel(meta));
-pad = 64 - mod(10 + numel(header) + 1, 64);
-header = [header repmat(' ', 1, mod(pad, 64)) newline];
+function crf_npy(file, a)
+% Write a real array as a plain .npy: float64, in MATLAB's own column-major order.
+a = double(a);
+if isvector(a), shp = sprintf('(%d,)', numel(a));
+else, shp = ['(' strjoin(arrayfun(@num2str, size(a), 'UniformOutput', false), ', ') ')']; end
+header = sprintf('{''descr'': ''<f8'', ''fortran_order'': True, ''shape'': %s, }', shp);
+header = [header repmat(' ', 1, mod(-(10 + numel(header) + 1), 64)) newline];
 f = fopen(file, 'w', 'ieee-le');
 fwrite(f, [uint8(147) uint8('NUMPY') uint8([1 0])], 'uint8');
 fwrite(f, numel(header), 'uint16');
 fwrite(f, header, 'char');
-fwrite(f, permute(double(data), ndims(data):-1:1), 'double');   % row-major order
-fwrite(f, meta, 'char');
+fwrite(f, a, 'double');
 fclose(f);
 end
 ```
@@ -385,15 +364,15 @@ end
 }
 ```
 
-`"Table": "Id"` names two arrays, `arrays/Id.values.npy` and `arrays/Id.coefficients.npy`. (`Ig` names two tables, one
-in `IgGs` and one in `IgGd`.)
+`"Table": "Id"` names the arrays `Id.values`, `Id.coefficients`, and one list of sites per input, `Id.vgs` and
+`Id.vds`. (`Ig` names two tables, one in `IgGs` and one in `IgGd`.)
 
-- **`<name>.values`** is the grid: one dimension per input, in `Inputs` order, and each axis named after its input,
-  with the grid's sites as its values. The sites must be strictly increasing, with at least two per axis, and every
+- **`<name>.<input>`** is that input's grid sites: strictly increasing, at least two. A table in circuitRF's own layout
+  may leave these out and carry the sites as the values of `<name>.values`' axes, each axis named after its input.
+- **`<name>.values`** is the grid: one dimension per input, in `Inputs` order, as long as that input's sites, every
   value finite. Evaluation uses the sites; the values are a record of what the spline passes through.
 - **`<name>.coefficients`** is what is evaluated: the coefficients of a tensor-product cubic B-spline, one per site
-  along each axis. Its axes are conventionally the Greville abscissae `(t[i+1] + t[i+2] + t[i+3]) / 3`; only their
-  lengths are checked.
+  along each axis, in the same order.
 - **The knots are not stored.** circuitRF derives them from the sites `x[0] … x[n−1]`: four copies of `x[0]`, the
   interior sites `x[2] … x[n−3]`, then four copies of `x[n−1]`. This is the **not-a-knot** cubic spline, and with
   `Smoothing` 0 its coefficients are the ones that interpolate the values. Use at least four sites per axis; with two
@@ -404,10 +383,9 @@ in `IgGs` and one in `IgGd`.)
   [Training domain](#domain)).
 
 **In Python**, SciPy's `make_interp_spline` uses the same knots. This replaces the example's equation drain current with
-a table of it and writes `fet_table.cmodel`, continuing the script above with `cube_npy` defined:
+a table of it and writes `fet_table.cmodel`, continuing the script above with `npy` defined:
 
 ```python
-import numpy as np
 from scipy.interpolate import make_interp_spline
 
 def Id(vgs, vds):
@@ -420,10 +398,6 @@ V = Id(vgs[:, None], vds[None, :])           # V[i, j] = Id(vgs[i], vds[j]): axe
 # Interpolate along vgs, then along vds. make_interp_spline puts the interpolated axis first.
 C = make_interp_spline(vds, make_interp_spline(vgs, V, k=3).c.T, k=3).c.T
 
-def greville(x):
-    t = np.r_[[x[0]] * 4, x[2:-2], [x[-1]] * 4]
-    return (t[1:-3] + t[2:-2] + t[3:-1]) / 3
-
 model["Core"]["Constituents"]["Id"] = {
     "Method": "Table", "Inputs": ["vgs", "vds"], "Table": "Id", "Smoothing": 0,
     "Domain": {"Polygon": [[-4, 0], [1, 0], [1, 12], [-4, 12]]},
@@ -432,9 +406,10 @@ model["Extrapolation"] = {"Gx": {"Id": 1e-3}}
 
 with zipfile.ZipFile("fet_table.cmodel", "w", zipfile.ZIP_DEFLATED) as z:
     z.writestr("model.json", json.dumps(model, indent=2))
-    z.writestr("arrays/Id.values.npy", cube_npy("Id.values", V, [("vgs", vgs), ("vds", vds)]))
-    z.writestr("arrays/Id.coefficients.npy",
-               cube_npy("Id.coefficients", C, [("vgs", greville(vgs)), ("vds", greville(vds))]))
+    z.writestr("arrays/Id.vgs.npy", npy(vgs))
+    z.writestr("arrays/Id.vds.npy", npy(vds))
+    z.writestr("arrays/Id.values.npy", npy(V))
+    z.writestr("arrays/Id.coefficients.npy", npy(C))
 ```
 
 Between the grid lines the table agrees with the equation it was sampled from to about 5×10⁻⁵ of the current on this
@@ -477,12 +452,12 @@ vgs = -4:0.1:1;  vds = 0:0.25:12;
 V = Id(vgs', vds);                        % V(i,j) = Id(vgs(i), vds(j)): axes in Inputs order
 C = crf_spline_coefs(vgs, V);             % along vgs ...
 C = crf_spline_coefs(vds, C')';           % ... then along vds
-greville = @(x) conv([x(1) x(1) x(1) x(3:end-2) x(end) x(end) x(end)], [1 1 1]/3, 'valid');
 
 out = tempname; mkdir(out); mkdir(fullfile(out, 'arrays'));
-crf_cube_npy(fullfile(out, 'arrays', 'Id.values.npy'), 'Id.values', V, {'vgs', vgs; 'vds', vds});
-crf_cube_npy(fullfile(out, 'arrays', 'Id.coefficients.npy'), 'Id.coefficients', C, ...
-             {'vgs', greville(vgs); 'vds', greville(vds)});
+crf_npy(fullfile(out, 'arrays', 'Id.vgs.npy'), vgs);
+crf_npy(fullfile(out, 'arrays', 'Id.vds.npy'), vds);
+crf_npy(fullfile(out, 'arrays', 'Id.values.npy'), V);
+crf_npy(fullfile(out, 'arrays', 'Id.coefficients.npy'), C);
 
 m.FormatVersion = 1;
 m.Kind = 'Fet';
@@ -545,20 +520,17 @@ lists; a one-element list needs the same, or it is written as a bare value.
 - `σ` is `Activation`, `Tanh` or `Sigmoid`, on every hidden layer.
 - There are 1 to 4 hidden layers, so 2 to 5 weight matrices, numbered from 1 without gaps; each hidden layer has at most
   64 neurons, and there are at most 7 inputs.
-- A weight matrix's axes are `output` and `input`, and a vector's axis is `index`, each with the values 0, 1, 2, ….
-  Only the lengths are checked.
 - A network trained in another framework transfers directly. Frameworks differ in how they store a dense layer's
   weights: one stored `inputs × outputs` is transposed before it is written. Fold any input or output normalisation the
   training used into the offsets and scales.
 
 ```python
 for k, (W, b) in enumerate(layers, 1):          # layers = [(W1, b1), (W2, b2), (W3, b3)]
-    z.writestr(f"arrays/Id.W{k}.npy",
-               cube_npy(f"Id.W{k}", W, [("output", range(W.shape[0])), ("input", range(W.shape[1]))]))
-    z.writestr(f"arrays/Id.b{k}.npy", vector_npy(f"Id.b{k}", b))
+    z.writestr(f"arrays/Id.W{k}.npy", npy(W))
+    z.writestr(f"arrays/Id.b{k}.npy", npy(b))
 for name, v in {"inputOffset": in_off, "inputScale": in_scale,
-                "outputOffset": [out_off], "outputScale": [out_scale]}.items():
-    z.writestr(f"arrays/Id.{name}.npy", vector_npy(f"Id.{name}", v))
+                "outputOffset": out_off, "outputScale": out_scale}.items():
+    z.writestr(f"arrays/Id.{name}.npy", npy(v))
 ```
 
 ## Training domain and extrapolation {#domain}
@@ -640,10 +612,11 @@ To build a model from measured data instead, use the `model` tool, whose steps w
 - **`model.json` at the archive's root**, and each array under `arrays/` with the name the constituent gives it.
   Zipping a folder rather than its contents moves `model.json` down a level.
 - **MATLAB's `zip` adds `.zip`** to an archive name that does not end in it; write `fet.zip` and rename it.
-- **Row-major arrays.** A MATLAB array written with a plain `fwrite` is column-major, which transposes every matrix
-  silently. `crf_cube_npy` permutes it.
-- **Table axes follow `Inputs`.** `values` and `coefficients` have their dimensions in the order `Inputs` lists, each
-  axis named after its input.
+- **Say the order you wrote.** A `.npy` header's `fortran_order` must match the bytes: MATLAB's are column-major, and a
+  header that claims row-major transposes every matrix silently. `crf_npy` writes `True`.
+- **Write float64.** A `float32` array is read, but a table's coefficients lose the accuracy that makes it smooth.
+- **Table axes follow `Inputs`.** `values` and `coefficients` have their dimensions in the order `Inputs` lists, and a
+  plain table needs its sites as `<name>.<input>` lists.
 - **Use the not-a-knot knots.** Coefficients from another spline (natural, clamped, or a smoothing spline with its own
   knots) have the right count and the wrong values. Interpolate with the knots in [Table constituents](#table).
 - **Keep the domain wider than the drive.** Outside the domain a Table or ANN current is a straight line plus `Gx`, not

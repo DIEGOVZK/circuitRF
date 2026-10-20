@@ -93,6 +93,11 @@ public static class CmodelFile
                 using var es = e.Open();
                 using var buffer = new MemoryStream();
                 es.CopyTo(buffer);
+                if (PlainNpy.TryRead(buffer.ToArray(), e.FullName) is { } plain)
+                {
+                    arrays[name] = plain;
+                    continue;
+                }
                 buffer.Position = 0;
                 DataSet ds;
                 try { ds = DataSetImporter.ImportNpy(buffer); }

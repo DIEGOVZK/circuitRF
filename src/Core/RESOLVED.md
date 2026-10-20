@@ -3726,3 +3726,12 @@ line from the bias point (`docs/design/model-composer.md` §24). Things worth kn
 is one. circuitRF's own writer never emits it, but MATLAB's `zip`, `zip -r` and an operating system's "compress" all do,
 so every hand-built model with a Table or ANN was refused as `arrays/: an entry under arrays/ is not a .npy.` The reader
 now skips an entry whose name ends in `/`. Gate: `CmodelFormatTests.AFolderEntryUnderArrays_IsSkipped`.
+
+## A `.cmodel` array may be a plain `.npy` (2026-10-20)
+
+`arrays/*.npy` entries were read only in circuitRF's own structured result layout (`__meta__` JSON, row-major), which a
+script writing a model of its own had to reproduce by hand — the hardest step of writing one. `PlainNpy` now reads a
+plain `np.save`-style array (`<f8` or `<f4`, either `fortran_order`, any shape, 0-d as a list of one) before falling back
+to the structured reader. A plain array has no axis names or values, so a table may give each axis's sites as a list
+`<name>.<input>`; without one the values axis must still be named after its input. ANN vectors accept a `1 × n` or
+`n × 1` shape, since a MATLAB vector is two-dimensional. Gate: `PlainNpyTests`.

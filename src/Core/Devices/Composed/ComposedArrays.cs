@@ -10,6 +10,9 @@ namespace CircuitRF.Core.Devices.Composed;
 /// input carrying its sites; and <c>name.coefficients</c>, the spline's coefficients, one axis per
 /// input at its Greville abscissae — so a plot of either array shows something meaningful.</para>
 ///
+/// <para>A table written outside circuitRF may instead give each axis's sites as a list <c>name.&lt;input&gt;</c>, which a
+/// plain <c>.npy</c> needs, having no axis values of its own (<see cref="PlainNpy"/>).</para>
+///
 /// <para><b>An ANN <c>name</c></b> is <c>name.inputOffset</c> and <c>name.inputScale</c> (one value
 /// per input, <c>x̂ = (x − offset)·scale</c>), <c>name.W1 … name.WL</c> and <c>name.b1 … name.bL</c>
 /// (layer <c>k</c> as a <c>outputs × inputs</c> matrix and its bias; the last layer is the output),
@@ -88,23 +91,36 @@ internal static class RuntimePayload
         if (values.Rank != d)
             throw new CmodelFormatException(field, $"'{name}.values' has {values.Rank} axes; the inputs are {d}.");
 
+        // An axis's sites are the array <name>.<input> when there is one — a plain .npy carries no axis values — and
+        // otherwise the values axis, which then must be named after its input.
         var sites = new double[d][];
         for (int k = 0; k < d; k++)
         {
             var axis = values.Axes[k];
-            if (axis.Name != c.Inputs[k])
+            string input = c.Inputs[k];
+            double[] s;
+            if (model.Arrays.TryGetValue($"{name}.{input}", out var siteCube))
+            {
+                s = Finite(siteCube, $"{name}.{input}", field);
+                if (!IsList(siteCube) || s.Length != axis.Length)
+                    throw new CmodelFormatException(field,
+                        $"'{name}.{input}' is not a list of the {axis.Length} sites of axis {k + 1} of '{name}.values'.");
+            }
+            else if (axis.Name != input)
                 throw new CmodelFormatException(field,
-                    $"axis {k + 1} of '{name}.values' is '{axis.Name}'; the inputs are {string.Join(", ", c.Inputs)}, in that order.");
-            if (axis.Length < 2)
-                throw new CmodelFormatException(field, $"the '{axis.Name}' axis of '{name}.values' has fewer than two sites.");
-            for (int i = 0; i < axis.Length; i++)
-                if (!double.IsFinite(axis.Values[i]) || (i > 0 && axis.Values[i] <= axis.Values[i - 1]))
-                    throw new CmodelFormatException(field, $"the '{axis.Name}' sites of '{name}.values' are not strictly increasing.");
-            sites[k] = axis.Values;
-            int m = CubicBSpline.BasisCount(axis.Length);
+                    $"axis {k + 1} of '{name}.values' is '{axis.Name}'; the inputs are {string.Join(", ", c.Inputs)}, in that " +
+                    $"order. Name the axis '{input}', or give its sites as the array '{name}.{input}'.");
+            else s = axis.Values;
+            if (s.Length < 2)
+                throw new CmodelFormatException(field, $"the '{input}' axis of '{name}.values' has fewer than two sites.");
+            for (int i = 0; i < s.Length; i++)
+                if (!double.IsFinite(s[i]) || (i > 0 && s[i] <= s[i - 1]))
+                    throw new CmodelFormatException(field, $"the '{input}' sites of '{name}' are not strictly increasing.");
+            sites[k] = s;
+            int m = CubicBSpline.BasisCount(s.Length);
             if (coefs.Rank != d || coefs.Axes[k].Length != m)
                 throw new CmodelFormatException(field,
-                    $"'{name}.coefficients' does not match the grid: the '{axis.Name}' axis needs {m} coefficients.");
+                    $"'{name}.coefficients' does not match the grid: the '{input}' axis needs {m} coefficients.");
         }
         Finite(values, $"{name}.values", field);
         var coefficients = Finite(coefs, $"{name}.coefficients", field);
@@ -139,7 +155,7 @@ internal static class RuntimePayload
         {
             var cube = Array(model, $"{name}.{suffix}", field);
             var v = Finite(cube, $"{name}.{suffix}", field);
-            if (cube.Rank != 1 || v.Length != length)
+            if (!IsList(cube) || v.Length != length)
                 throw new CmodelFormatException(field, $"'{name}.{suffix}' is not a list of {length}.");
             return v;
         }
@@ -192,6 +208,9 @@ internal static class RuntimePayload
             throw new CmodelFormatException(field, $"'{array}' holds a value that is not finite.");
         return v;
     }
+
+    /// <summary>A list: one axis, or several of which at most one is longer than one — a MATLAB vector is 1 × n.</summary>
+    private static bool IsList(DataCube cube) => cube.Axes.Count(a => a.Length > 1) <= 1;
 
     private static bool Within(double x, double[] sites)
     {
