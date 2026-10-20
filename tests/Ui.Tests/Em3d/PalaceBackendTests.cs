@@ -230,6 +230,47 @@ public sealed class PalaceBackendTests(ITestOutputHelper output) : IDisposable
         Assert.DoesNotContain(lines, l => l.Contains("Volume{s0[], s1[]}", StringComparison.Ordinal));
     }
 
+    // ── 4c. Sheet claim order ───────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ASheetWhoseBoxLiesInsideAnothers_IsClaimedBeforeIt()
+    {
+        var (problem, settings) = NestedSheets();
+        var low = GmshGeoWriter.Write(problem, settings);
+        Assert.True(low.Ok, low.Refusal);
+
+        // The claim block's comment is the one immediately above its w{k}[] query; the sheet's
+        // declaration earlier in the script carries the same name in a different comment.
+        int inner = low.Geo!.IndexOf("// sheet inner\nw", StringComparison.Ordinal);
+        int outer = low.Geo.IndexOf("// sheet outer\nw", StringComparison.Ordinal);
+        Assert.True(inner >= 0 && outer >= 0, "both sheets must be claimed");
+        Assert.True(inner < outer,
+                    "the smaller sheet must be claimed first, or the larger box takes its faces");
+    }
+
+    [GmshFact]
+    public void NestedSheets_EachSelectsItsOwnFaces()
+    {
+        var (problem, settings) = NestedSheets();
+        // Counts are geometry, not mesh density: a coarse starting mesh keeps this in the routine tier.
+        settings = settings with { MaxElementWavelengths = 0.05, EdgeRefinement = 1 };
+        var low = GmshGeoWriter.Write(problem, settings);
+        Assert.True(low.Ok, low.Refusal);
+
+        string dir = Dir("nested-sheets");
+        var step = PalaceRun.Mesh(dir, low, Gmsh(), null, default);
+        Assert.True(step.Ok, step.Message);
+
+        var table = GmshGeoWriter.ReadEntities(File.ReadAllText(Path.Combine(dir, GmshGeoWriter.EntitiesFile)))!;
+        Assert.Equal(0, table.UnclassifiedSingleSided);
+        Assert.Equal(table.AllVolumes, table.ClassifiedVolumes);
+        foreach (var g in low.Groups.Where(g => g.Kind == Em3dGroupKind.Sheet))
+        {
+            output.WriteLine($"{g.Attribute,3} {g.Name,-8} {table.Groups[g.Attribute].Count}");
+            Assert.True(table.Groups[g.Attribute].Count >= 1, $"'{g.Name}' selected nothing in the mesh");
+        }
+    }
+
     // ── 5. Mesh reuse ───────────────────────────────────────────────────────────────────────────
 
     [GmshFact]

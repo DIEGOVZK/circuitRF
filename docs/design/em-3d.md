@@ -632,7 +632,9 @@ entities is rebuilt on every run: to mesh groups from what circuitRF knows of ea
 bounding-box queries counted against expectation, §6.2 — not a fragment map, which `.geo` does not
 expose; OCCT's `Modified`/`Generated`/`IsDeleted` history in Route B), and to CSXCAD properties by
 name, since each named object becomes one or more named CSXCAD primitives. A named object that no
-longer yields any face is a refusal naming the object, never a guess.
+longer yields any face is a refusal naming the object, never a guess. A sheet is recovered from the
+surfaces inside its own world bound; where one sheet's bound contains another's on the same plane, the
+smaller is claimed first, so a claim never takes a face another sheet needed.
 
 **An object that names no material is not in the problem** (3D editor round 2, 2026-09-26): the solver
 ignores it, the run and `check` say so as a **warning**, and it neither sizes the air box nor gives a port

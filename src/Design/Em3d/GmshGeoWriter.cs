@@ -385,7 +385,16 @@ public static partial class GmshGeoWriter
             Claim(g, $"f{k}", [Query(faceQuery[k], 0)], []);
         }
         if (!problem.IsStatic) ClaimPorts(wave: false);
-        for (int k = 0; k < problem.Sheets.Count; k++)
+        // Sheets: smallest bounding box first, for the same reason the conductors below are ordered that
+        // way. A sheet is recovered by the surfaces inside its WORLD bound, and one sheet's box can sit
+        // entirely inside another's on the same plane (a piece of a winding inside the box of the whole
+        // winding). Claimed in document order, the big box takes the small sheet's faces and that sheet
+        // selects nothing; claimed smallest first, every sheet gets its own and the big one gets the rest.
+        var sheetOrder = Enumerable.Range(0, problem.Sheets.Count)
+            .OrderBy(k => SheetSpan(WorldBounds(problem.Sheets[k], problem.Sheets[k].Outline)))
+            .ThenBy(k => k)
+            .ToList();
+        foreach (int k in sheetOrder)
         {
             var sh = problem.Sheets[k];
             // brief-em3d-42 — a sheet in any plane is recovered by its WORLD bound; a horizontal one's is
