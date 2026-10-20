@@ -16,6 +16,12 @@ namespace CircuitRF.Harmonica;
 /// indices — or reports that it could not, which is what makes the panels draw EMPTY rather than
 /// with a plausible-looking wrong answer.</para>
 ///
+/// <para><b>A composed DUT is located by construction</b> (brief-modelcomposer-23): its core sits on <c>gi di si</c> with
+/// port 0 = (gi, si) and port 1 = (di, si), already pair-referenced, so it is <see cref="TwoPort"/> like a native FET.
+/// The core has more ports than two — its dispersion or trap state nodes and its thermal node — and every intrinsic
+/// reader reads ports 0 and 1 only; the others are internal HB unknowns. The lifted-source refusal below does not apply:
+/// the gate port is gate-to-SOURCE.</para>
+///
 /// <para><b>The load side and the source side fail independently, deliberately.</b> §4.5.1's ratio at
 /// the drain needs only the drain port. §4.5.3's <c>J′</c> route needs the GATE PORT'S OWN INCIDENCE
 /// VECTOR, and an external model's gate port is gate-to-ground, not gate-to-source — so it is exact

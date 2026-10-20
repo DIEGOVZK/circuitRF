@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using CircuitRF.Harmonica;
@@ -716,6 +717,18 @@ public sealed partial class HarmonicaViewModel : ObservableObject
         RequestScheduledFrame(dragging: false);
         return true;
     }
+
+    /// <summary>
+    /// brief-modelcomposer-23 R-mc23-9 — the DUT a dropped <c>.cmodel</c> sets: that model at its own <c>N0</c>, every switch
+    /// at its default, the document's multiplier kept.
+    /// </summary>
+    public static DutSpec ComposedDutFor(string cmodelPath, DutSpec current) => new()
+    {
+        Kind         = DutKind.Composed,
+        TypeName     = "ComposedFet",
+        ModelFile    = System.IO.Path.GetFullPath(cmodelPath),
+        Multiplicity = current.Multiplicity,
+    };
 
     /// <summary>
     /// R-h8-1 — writes a whole new DUT. <b>A sibling of <see cref="ApplyInput"/>'s structural path,
@@ -1836,11 +1849,9 @@ public sealed partial class HarmonicaViewModel : ObservableObject
         }
     }
 
-    // ── M2 — the inverse solve, kept per R8C §5.1 ("keep the code"), unreferenced from the drag ────
-    // path (which now runs IntrinsicAbcd's closed form instead). RequestInverseFrame below is
-    // consequently unreachable from this class too — nothing here still calls it — and stays only so
-    // the inverse solve can be re-wired later without rewriting it. Explicit `= null` initializers so
-    // the compiler does not read "no assignment anywhere" as a mistake.
+    // ── M2 — the inverse solve, kept per R8C §5.1 ("keep the code"). The drag runs IntrinsicAbcd's closed form for every
+    // DUT it applies to; a composed DUT (brief-modelcomposer-23 R-mc23-10), whose network couples its two sides, drags
+    // through this solve instead — BeginIntrinsicDrag builds it, DragIntrinsicGlyph submits RequestInverseFrame.
 
     private InverseSolver?  _inverse = null;
     private HarmonicaMarker? _inverseMarker = null;
@@ -1892,6 +1903,22 @@ public sealed partial class HarmonicaViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(marker);
         InverseMessage = null;
+        if (!CircuitModel.InverseDragOffered(Model)) return;
+
+        // brief-modelcomposer-23 R-mc23-10 — a composed DUT's network couples its two sides, so no per-side ABCD exists and
+        // the glyph is moved by §6.6's inverse solve: every marked band is an unknown, every other glyph held where it is.
+        _inverseBands = [.. Markers.Select(m => new InverseBand(
+            m.Side == TerminationSideKind.Source ? TerminationSide.Source : TerminationSide.Load,
+            m.Band))];
+        if (_inverseBands.Length == 0) { _inverse = null; return; }
+
+        var start = _inverseBands
+            .Select(b => HarmonicaDataSet.GammaOf(Terminations.Z(b.Side, b.Band), Model.Settings.Z0))
+            .ToArray();
+        _inverseTargets = [.. Markers.Select(m => m.GammaIntrinsic)];
+        _inverseMarker  = marker;
+        _inverse        = new InverseSolver(Terminations, _inverseBands, start,
+                                            new InverseSolveOptions { PavlDbm = OperatingPointDbm, Z0 = Model.Settings.Z0 });
     }
 
     /// <summary>R8C §5.3 — the pole-proximity refusal bound, ohms. See <see cref="DragIntrinsicGlyph"/>'s
@@ -1908,6 +1935,14 @@ public sealed partial class HarmonicaViewModel : ObservableObject
     public long DragIntrinsicGlyph(HarmonicaMarker marker, Complex targetIntrinsicGamma, bool dragging)
     {
         ArgumentNullException.ThrowIfNull(marker);
+
+        // brief-modelcomposer-23 — the inverse solve on a worker; a failed solve moves nothing (R-h6-9).
+        if (_inverse is not null)
+        {
+            int idx = Markers.IndexOf(marker);
+            if (idx >= 0 && idx < _inverseTargets.Length) _inverseTargets[idx] = targetIntrinsicGamma;
+            return RequestInverseFrame(dragging, forceSkipContours: !dragging && IsSweptBand(marker.Side, marker.Band));
+        }
 
         var side = marker.Side == TerminationSideKind.Source ? TerminationSide.Source : TerminationSide.Load;
         var zIntr = HarmonicaDataSet.ImpedanceOf(targetIntrinsicGamma, Model.Settings.Z0);
@@ -1934,10 +1969,13 @@ public sealed partial class HarmonicaViewModel : ObservableObject
         return RequestFrameOnMarkerRelease(marker.Side, marker.Band, dragging);
     }
 
-    /// <summary>R8C §5.1 — no-op; clears the status message a refused drag may have left.</summary>
+    /// <summary>R8C §5.1 — clears the status message a refused drag may have left. A composed DUT's inverse solve is dropped
+    /// with its Jacobian: the next drag starts from a fresh FD build, because the point it was measured at is gone.</summary>
     public void EndIntrinsicDrag()
     {
-        InverseMessage = null;
+        if (_inverse is null) InverseMessage = null;
+        _inverse       = null;
+        _inverseMarker = null;
     }
 
     /// <summary>
@@ -2144,6 +2182,8 @@ public sealed partial class HarmonicaViewModel : ObservableObject
         var loadMarkers = Markers.Where(m => m.Side == TerminationSideKind.Load).ToArray();
         if (loadMarkers.Length == 0) { InverseMessage = null; return; }
 
+        if (Model.Dut.Kind == DutKind.Composed) { ApplyComposedPaClassPreset(paClass, loadMarkers); return; }
+
         double z0   = Model.Settings.Z0;
         var    caps = Model.Dut.Capacitances;
 
@@ -2211,6 +2251,35 @@ public sealed partial class HarmonicaViewModel : ObservableObject
         RequestScheduledFrame(dragging: false);
     }
 
+    /// <summary>
+    /// brief-modelcomposer-23 R-mc23-10 — a class preset on a composed DUT: <see cref="ComposedClassLoads"/>, the transform
+    /// the Model Composer's report uses — the intrinsic class load with the linearised <c>C22</c> taken off, through the
+    /// model's network with both gates AC-shorted. Never a solver. The readout says once that <c>C22</c> was linearised at
+    /// the bias point.
+    /// </summary>
+    private void ApplyComposedPaClassPreset(PaClass paClass, HarmonicaMarker[] loadMarkers)
+    {
+        var ctx   = EnsureContext();
+        var notes = new List<string>();
+        int maxBand = loadMarkers.Max(m => m.Band);
+        Complex[]? loads;
+        double c22;
+        try { loads = ComposedClassLoads.For(ctx, paClass, maxBand, notes, out c22); }
+        catch (Exception ex) { InverseMessage = $"The preset could not be carried through the model's network: {ex.Message}"; return; }
+        if (loads is null)
+        {
+            InverseMessage = "The preset needs the DC operating point, which did not converge; nothing was changed.";
+            return;
+        }
+
+        foreach (var marker in loadMarkers)
+            SetMarkerImpedance(marker, loads[marker.Band - 1]);
+
+        notes.Insert(0, $"C22 = {(c22 * 1e15).ToString("0.###", CultureInfo.InvariantCulture)} fF, linearised at the bias point.");
+        InverseMessage = string.Join(" ", notes);
+        RequestScheduledFrame(dragging: false);
+    }
+
     /// <summary>R9D §3.4 — the strip's own "linearized, or fall back to C(V=0)" pattern
     /// (<see cref="Inputs"/>), reused verbatim for the transform. A linear/absent capacitor passes
     /// through untouched.</summary>
@@ -2227,14 +2296,16 @@ public sealed partial class HarmonicaViewModel : ObservableObject
 
     // ── persistence ──────────────────────────────────────────────────────────
 
-    public string ToCharmJson()
+    /// <param name="baseDirectory">The folder the document is written into, so a composed DUT's <c>.cmodel</c> under it
+    /// is stored relative to it (brief-modelcomposer-23 R-mc23-9).</param>
+    public string ToCharmJson(string? baseDirectory = null)
         => CharmIo.Write(Model, Terminations, Appearance, Layout,
                          [.. PickedTraces.Select(t => new CharmIo.CharmTrace(t.Spec, t.PanelId, t.Label))],
                          [.. Markers.Where(m => m.VswrEnabled)
                                     .Select(m => new CharmIo.CharmMarkerVswr(
                                         m.Side == TerminationSideKind.Source ? TerminationSide.Source : TerminationSide.Load,
                                         m.Band, m.VswrValue))],
-                         [.. AddedGridPoints]);
+                         [.. AddedGridPoints], baseDirectory);
 
     /// <summary>Loads a <c>.charm</c>. Unresolved references come back so the caller can offer to
     /// re-point them rather than losing the document.</summary>

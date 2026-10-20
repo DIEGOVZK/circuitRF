@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
@@ -520,7 +521,7 @@ public sealed class HarmonicaSolver
         if (at is not null && ctx.IntrinsicPorts.LoadAvailable)
         {
             var (v, i) = IntrinsicPlane.Loadline(
-                ctx.DutComponent, at.Point.V, ctx.Interface.DeviceNodes,
+                ctx.DutDevice, at.Point.V, ctx.Interface.DeviceNodes,
                 ctx.Model.Settings.HarmonicCount,
                 ctx.Model.Settings.LoadlineSamples,
                 ctx.IntrinsicPorts.DrainPort, ctx.IntrinsicPorts.SourcePort);
@@ -807,6 +808,24 @@ public sealed class HarmonicaSolver
         // located plane adds no row at all: a permanent "intrinsic plane: fine" is noise.
         if (ctx.IntrinsicPorts.Reason is { Length: > 0 } why)
             Add("intrinsic", "not located", why);
+
+        // brief-modelcomposer-23 R-mc23-7 — a composed DUT's title line: the model, and whatever of it is switched off. A
+        // screen showing a model with its charge off says so. R-mc23-6 — the intrinsic DC bias beside the applied one:
+        // the model's own Rg/Rd/Rs put it somewhere else.
+        if (ctx.Model.Dut.Kind == DutKind.Composed)
+        {
+            var dut = ctx.Model.Dut;
+            string file = dut.ModelFile is { Length: > 0 } f ? System.IO.Path.GetFileName(f) : "";
+            string off  = dut.Switches.Describe();
+            Add("DUT", off.Length > 0 ? $"{file} · {off}" : file,
+                off.Length > 0 ? $"{file}: {dut.Switches.Sentence()}." : $"{file}, as fitted.");
+
+            var (vgsi, vdsi) = ctx.IntrinsicDcBias;
+            Add("Vgs,i", double.IsFinite(vgsi) ? vgsi.ToString("0.000", CultureInfo.InvariantCulture) + " V" : "—",
+                "Quiescent gate–source voltage at the intrinsic plane, inside the model's network.");
+            Add("Vds,i", double.IsFinite(vdsi) ? vdsi.ToString("0.000", CultureInfo.InvariantCulture) + " V" : "—",
+                "Quiescent drain–source voltage at the intrinsic plane, inside the model's network.");
+        }
 
         // ── Source / Load — R-h9c-6's editable termination columns ─────────────
         // Left to right: Source · Load · MXP · MXE — the editable termination columns land nearest

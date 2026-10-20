@@ -1,5 +1,6 @@
 using System.Linq;
 using System.Numerics;
+using CircuitRF.Core.Devices.Composed;
 
 namespace CircuitRF.Harmonica;
 
@@ -17,6 +18,12 @@ public enum DutKind
     External,
     /// <summary>A two-terminal built-in, for teaching and for the degenerate cases.</summary>
     Diode,
+    /// <summary>
+    /// A Model Composer <c>.cmodel</c>, placed as a <c>ComposedFet</c> (brief-modelcomposer-23). It elaborates as a cell —
+    /// its extrinsic network around a nonlinear core on <c>gi di si</c> — so its intrinsic plane is located by construction:
+    /// the core's own ports, with no naming step.
+    /// </summary>
+    Composed,
 }
 
 /// <summary>
@@ -90,6 +97,29 @@ public sealed record DutSpec
     /// every existing document is unchanged.
     /// </summary>
     public DutCapacitances Capacitances { get; init; } = DutCapacitances.None;
+
+    /// <summary>For <see cref="DutKind.Composed"/>: the <c>.cmodel</c>, as an absolute path in memory. <c>.charm</c> stores it
+    /// relative to itself when it can (<c>CharmIo</c>). Null for every other kind.</summary>
+    public string? ModelFile { get; init; }
+
+    /// <summary>For <see cref="DutKind.Composed"/>: the finger count <c>N</c>; null takes the model's own <c>N0</c>.</summary>
+    public int? Fingers { get; init; }
+
+    /// <summary>For <see cref="DutKind.Composed"/>: which parts of the model this instance evaluates (brief-modelcomposer-21).
+    /// A toggle is a structural change, because the switches are part of the netlist line.</summary>
+    public ComposedSwitches Switches { get; init; } = ComposedSwitches.Default;
+
+    /// <summary>
+    /// The part of <see cref="CircuitModel.StructuralKey"/> a composed DUT adds: the file, its last-write stamp (a model
+    /// re-exported in place is a different device), <c>N</c> and the switches. Empty for every other kind.
+    /// </summary>
+    public string ComposedKeyPart()
+    {
+        if (Kind != DutKind.Composed) return "";
+        long stamp = ModelFile is { Length: > 0 } f && File.Exists(f) ? File.GetLastWriteTimeUtc(f).Ticks : 0;
+        string switches = string.Join(",", Switches.Write().Select(p => $"{p.Key}={p.Value}"));
+        return $"cmodel={ModelFile}@{stamp};N={Fingers?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "N0"};{switches}";
+    }
 }
 
 /// <summary>
@@ -300,6 +330,19 @@ public sealed record HarmonicaSettings
     public double FrequencyHz   { get; init; } = 2e9;
     public int    FftOverSample { get; init; } = 1;
     public double Tol           { get; init; } = 1e-8;
+
+    /// <summary>
+    /// brief-modelcomposer-23 — the HB tolerance, amperes, for a DUT whose interface carries a STATE node (a composed
+    /// model's trap, dispersion or thermal node: <c>ComponentModel.StatePorts</c>). On such a node ‖F‖ has a round-off
+    /// floor between 1e-9 and 1e-8 A (voltage round-off on a trap node's ~1e7 S of harmonic susceptance;
+    /// <c>src/Engine/RESOLVED.md</c>, MC-25), so <see cref="Tol"/>'s 1e-8 is not reachable and every solve would run to
+    /// <see cref="MaxIter"/> and report non-convergence. The solve takes the larger of the two; the default is the HB
+    /// engine's own, which the Model Composer's benches converge at. Every other DUT is unaffected.
+    /// </summary>
+    public double StateNodeTol  { get; init; } = DefaultStateNodeTol;
+
+    public const double DefaultStateNodeTol = 1e-6;
+
     public int    MaxIter       { get; init; } = 100;
     public int    GuardHarmonic { get; init; }
     public double Lambda        { get; init; } = 1.0;
@@ -590,7 +633,9 @@ public sealed record CircuitModel
         // R8C §3.1 — a netlist element (HarmonicaNetlist's own RGS resistor), same rule as the
         // capacitances above: leaving it out would mean editing rgs changes nothing until some
         // unrelated structural edit happens to rebuild.
-        "Rgs=" + HarmonicaNetlist.Num(Dut.Capacitances.RgsOhms));
+        "Rgs=" + HarmonicaNetlist.Num(Dut.Capacitances.RgsOhms),
+        // brief-modelcomposer-23 R-mc23-1 — the .cmodel, its stamp, N and the switches: a toggle rebuilds.
+        Dut.ComposedKeyPart());
 
     /// <summary>R8C §5.2 — whether an intrinsic glyph may be dragged. True only when the intrinsic
     /// plane is separated from each terminal by a LINEAR, UNILATERAL two-port, which is exactly the
@@ -599,6 +644,13 @@ public sealed record CircuitModel
     public static bool IntrinsicDragAllowed(CircuitModel m, out string reason)
     {
         ArgumentNullException.ThrowIfNull(m);
+
+        if (m.Dut.Kind == DutKind.Composed)
+        {
+            reason = "This model's extrinsic network couples its input and output, so no per-side ABCD exists; the " +
+                     "glyph is moved by solving for the terminations instead.";
+            return false;
+        }
 
         if (m.Dut.Kind != DutKind.Sdd)
         {
@@ -648,5 +700,16 @@ public sealed record CircuitModel
 
         reason = "";
         return true;
+    }
+
+    /// <summary>
+    /// Whether an intrinsic glyph is dragged through §6.6's inverse solve rather than <see cref="IntrinsicAbcd"/>'s closed
+    /// form (brief-modelcomposer-23 R-mc23-10): a composed DUT only, whose network couples the two sides so that no
+    /// per-side ABCD exists. A failed solve moves nothing (R-h6-9).
+    /// </summary>
+    public static bool InverseDragOffered(CircuitModel m)
+    {
+        ArgumentNullException.ThrowIfNull(m);
+        return m.Dut.Kind == DutKind.Composed;
     }
 }

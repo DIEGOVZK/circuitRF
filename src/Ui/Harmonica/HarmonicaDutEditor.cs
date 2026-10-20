@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Devices.External;
 using CircuitRF.Harmonica;
 
@@ -36,6 +37,9 @@ public sealed class HarmonicaDutEditor
         DrainNode    = current.IntrinsicMapping?.DrainNode;
         SourcePin    = current.IntrinsicMapping?.SourcePin;
         foreach (var (k, v) in current.Parameters) _parameters[k] = v;
+        ModelFile    = current.ModelFile;
+        Fingers      = current.Fingers;
+        Switches     = current.Switches;
 
         // R7B §3.4 — a document opens on WHATEVER it carries: its own authored text, or (a pre-R7B
         // .charm, or a CircuitModel built directly in code) something reconstructed from Parameters so
@@ -54,6 +58,12 @@ public sealed class HarmonicaDutEditor
     /// <see cref="DutKind.Sdd"/>; carried regardless so re-selecting SDD after a detour through
     /// another kind remembers the user's last choice.</summary>
     public int SddPortCount { get; set; } = 2;
+
+    /// <summary>brief-modelcomposer-23 — a composed DUT's <c>.cmodel</c>, finger count (null: the model's own) and
+    /// switches. Carried across a detour through another kind, like <see cref="SddPortCount"/>.</summary>
+    public string?          ModelFile { get; set; }
+    public int?             Fingers   { get; set; }
+    public ComposedSwitches Switches  { get; set; } = ComposedSwitches.Default;
 
     public string? GateNode  { get; set; }
     public string? DrainNode { get; set; }
@@ -113,6 +123,27 @@ public sealed class HarmonicaDutEditor
                 Provider = null;
                 _parameters.Clear();
                 break;
+
+            case DutKind.Composed:
+                // A .cmodel declares no parameters of its own here: its file, N and switches are the whole of it.
+                TypeName = "ComposedFet";
+                Provider = null;
+                _parameters.Clear();
+                break;
+        }
+    }
+
+    /// <summary>The model a <c>.cmodel</c> path holds, or null with the reason — what the dialog reads for <c>N0</c>
+    /// and for which switches the model can honour.</summary>
+    public static LoadedComposedModel? TryLoad(string? path, out string? error)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(path)) return null;
+        try { return ComposedModelCache.Load(path); }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or CmodelFormatException)
+        {
+            error = ex.Message;
+            return null;
         }
     }
 
@@ -171,6 +202,15 @@ public sealed class HarmonicaDutEditor
     {
         if (Multiplicity <= 0) return "The device multiplier must be greater than zero.";
 
+        if (Kind == DutKind.Composed)
+        {
+            if (string.IsNullOrWhiteSpace(ModelFile)) return "Choose a .cmodel file before setting the DUT.";
+            if (!System.IO.File.Exists(ModelFile)) return $"'{ModelFile}' was not found.";
+            if (TryLoad(ModelFile, out string? why) is null) return why;
+            if (Fingers is < 1) return "N must be a whole number of fingers, 1 or more.";
+            return null;
+        }
+
         if (Kind == DutKind.External)
         {
             if (string.IsNullOrWhiteSpace(Provider))
@@ -219,6 +259,9 @@ public sealed class HarmonicaDutEditor
             ? HarmonicaSddText.ToParameters(HarmonicaSddText.Parse(SddText ?? "", SddPortCount))
             : new Dictionary<string, string>(_parameters, StringComparer.Ordinal),
         SddText      = Kind == DutKind.Sdd ? SddText : null,
+        ModelFile    = Kind == DutKind.Composed ? ModelFile : null,
+        Fingers      = Kind == DutKind.Composed ? Fingers : null,
+        Switches     = Kind == DutKind.Composed ? Switches : ComposedSwitches.Default,
         IntrinsicMapping =
             Kind == DutKind.External
             && GateNode  is { Length: > 0 } g

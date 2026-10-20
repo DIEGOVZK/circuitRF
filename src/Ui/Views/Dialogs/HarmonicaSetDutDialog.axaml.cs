@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Platform.Storage;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Devices.External;
 using CircuitRF.Harmonica;
 using CircuitRF.Ui.Harmonica;
@@ -25,8 +26,8 @@ public partial class HarmonicaSetDutDialog : Window
     /// already carries one gets a fourth, legacy-only item appended in the constructor instead of a
     /// fifth permanent entry nobody would otherwise choose ("we don't loadpull diodes").
     /// </summary>
-    private static readonly DutKind[] KindOrder = [DutKind.Sdd, DutKind.NativeFet, DutKind.External];
-    private static readonly string[] KindLabels = ["SDD equations", "Native FET", "External model"];
+    private static readonly DutKind[] KindOrder = [DutKind.Sdd, DutKind.NativeFet, DutKind.External, DutKind.Composed];
+    private static readonly string[] KindLabels = ["SDD equations", "Native FET", "External model", "Model Composer (.cmodel)"];
 
     private HarmonicaDutEditor _editor = new(new DutSpec { Kind = DutKind.Sdd, TypeName = "SDD" });
     private ExternalDeviceDescriptor? _descriptor;
@@ -69,6 +70,10 @@ public partial class HarmonicaSetDutDialog : Window
         if (file is null && current.Provider is { Length: > 0 })
             KitCombo.SelectedItem = current.Provider;
 
+        CmodelFileBox.Text = current.ModelFile ?? "";
+        FingersBox.Text    = current.Fingers?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "";
+        BuildSwitchRows();
+
         _loading = false;
 
         ApplyKindVisibility();
@@ -105,14 +110,17 @@ public partial class HarmonicaSetDutDialog : Window
         bool fet = _editor.Kind == DutKind.NativeFet;
         bool ext = _editor.Kind == DutKind.External;
         bool sdd = _editor.Kind == DutKind.Sdd;
+        bool cm  = _editor.Kind == DutKind.Composed;
 
+        ComposedChooser.IsVisible = cm;
+        ParamHeader.IsVisible     = !cm;
         LawLabel.IsVisible        = fet;
         LawCombo.IsVisible        = fet;
         SddChooser.IsVisible      = sdd;
         ExternalChooser.IsVisible = ext;
         MappingPanel.IsVisible    = ext;
 
-        ParamBorder.IsVisible    = !sdd;
+        ParamBorder.IsVisible    = !sdd && !cm;
         SddEditorPanel.IsVisible = sdd;
 
         FileRow.IsVisible = ext && SourceFile.IsChecked == true;
@@ -254,6 +262,74 @@ public partial class HarmonicaSetDutDialog : Window
         RefreshStatus();
     }
 
+    // ── brief-modelcomposer-23 — a Model Composer .cmodel ─────────────────────
+
+    private async void OnBrowseCmodelClick(object? sender, RoutedEventArgs e)
+    {
+        var picked = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Choose a Model Composer model",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("Model Composer model") { Patterns = ["*.cmodel"] }],
+        });
+        if (picked.Count == 0) return;
+
+        CmodelFileBox.Text = picked[0].Path.LocalPath;
+        OnCmodelFileCommitted(sender, e);
+    }
+
+    private void OnCmodelFileCommitted(object? sender, RoutedEventArgs e)
+    {
+        if (_loading || _editor.Kind != DutKind.Composed) return;
+        string path = CmodelFileBox.Text?.Trim().Trim('"') ?? "";
+        _editor.ModelFile = path.Length == 0 ? null : System.IO.Path.GetFullPath(path);
+        BuildSwitchRows();
+        RefreshStatus();
+    }
+
+    private void OnFingersCommitted(object? sender, RoutedEventArgs e)
+    {
+        if (_loading || _editor.Kind != DutKind.Composed) return;
+        string text = FingersBox.Text?.Trim() ?? "";
+        _editor.Fingers = text.Length == 0 ? null
+            : int.TryParse(text, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int n)
+                ? n : 0;
+        RefreshStatus();
+    }
+
+    /// <summary>
+    /// R-mc23-7 — one checkbox per switch, from the editor's staged switches. A switch the chosen model cannot honour is
+    /// disabled, with MC-21's own note as its tooltip; <c>N</c> shows the model's own <c>N0</c> while it is blank.
+    /// </summary>
+    private void BuildSwitchRows()
+    {
+        SwitchHost.Children.Clear();
+        var loaded = HarmonicaDutEditor.TryLoad(_editor.ModelFile, out _);
+        FingersBox.PlaceholderText = loaded is null ? "" : $"{loaded.N0}";
+        string name = _editor.ModelFile is { Length: > 0 } f ? System.IO.Path.GetFileName(f) : "";
+
+        foreach (string sw in ComposedSwitches.Names)
+        {
+            string? missing = loaded is null ? null : ComposedSwitches.MissingPart(sw, loaded);
+            var check = new CheckBox
+            {
+                Content   = sw,
+                IsChecked = _editor.Switches[sw],
+                IsEnabled = missing is null,
+            };
+            ToolTip.SetTip(check, missing is null
+                ? ComponentTypeRegistry.ParameterDescription(SymbolKind.ComposedFet, sw)
+                : $"'{name}' {missing}; {sw}=false changes nothing.");
+            check.IsCheckedChanged += (_, _) =>
+            {
+                if (_loading) return;
+                _editor.Switches = _editor.Switches.With(sw, check.IsChecked == true);
+                RefreshStatus();
+            };
+            SwitchHost.Children.Add(check);
+        }
+    }
+
     // ── parameters (R-h8-2 — read from the model, never a table) ──────────────
 
     private void RebuildParameterRows()
@@ -266,6 +342,13 @@ public partial class HarmonicaSetDutDialog : Window
         {
             ParamHeader.Text = "SDD equations and variables";
             RefreshSddEditor();
+            return;
+        }
+
+        // brief-modelcomposer-23 — a .cmodel's file, N and switches are its own rows above; it has no others.
+        if (_editor.Kind == DutKind.Composed)
+        {
+            ParamHost.Children.Clear();
             return;
         }
 
@@ -410,6 +493,10 @@ public partial class HarmonicaSetDutDialog : Window
         if (problem is null && _editor.Kind == DutKind.Diode)
             problem = "Diode is kept for documents that already use it and is no longer offered for " +
                       "a new device — switch to another kind to move off it.";
+
+        // R-mc23-7 — a model with a part switched off says so before it is set.
+        if (problem is null && _editor.Kind == DutKind.Composed && !_editor.Switches.IsDefault)
+            problem = _editor.Switches.Describe();
 
         StatusLabel.Text = problem ?? "";
         ApplyButton.IsEnabled = _typeError is null && _editor.Validate() is null;

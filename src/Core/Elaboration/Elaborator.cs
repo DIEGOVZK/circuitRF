@@ -2162,15 +2162,10 @@ public sealed class Elaborator
         netlist.AddNoteOnce($"composed-switches:{path}", $"{path}: {s.Sentence()}.");
 
         string name = Path.GetFileName(loaded.Path);
-        var traps = loaded.Program.Traps;
-        bool HasLag(int sign) => traps is not null && Enumerable.Range(0, traps.States.Count).Any(k => Math.Sign(traps.CaptureSign(k)) == sign);
-        void Inert(string key, string what) =>
-            netlist.AddNoteOnce($"composed-switch-inert:{path}:{key}", $"{path}: '{name}' {what}; {key}=false changes nothing.");
-
-        if (!s.GateLag && !HasLag(-1))                 Inert(ComposedSwitches.GateLagName, "has no gate-lag trap state");
-        if (!s.DrainLag && !HasLag(+1))                Inert(ComposedSwitches.DrainLagName, "has no drain-lag trap state");
-        if (!s.SelfHeating && loaded.Model.Thermal is null) Inert(ComposedSwitches.SelfHeatingName, "does not self-heat");
-        if (!s.Dispersion && loaded.Program.IdRF is null)   Inert(ComposedSwitches.DispersionName, "has no DC/RF dispersion");
+        foreach (string key in (string[])[ComposedSwitches.GateLagName, ComposedSwitches.DrainLagName,
+                                          ComposedSwitches.SelfHeatingName, ComposedSwitches.DispersionName])
+            if (!s[key] && ComposedSwitches.MissingPart(key, loaded) is { } what)
+                netlist.AddNoteOnce($"composed-switch-inert:{path}:{key}", $"{path}: '{name}' {what}; {key}=false changes nothing.");
     }
 
     /// <summary>

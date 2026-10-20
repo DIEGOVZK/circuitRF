@@ -3,7 +3,9 @@ using System.Linq;
 using System.Numerics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Devices.External;
+using CircuitRF.Core.Expressions;
 
 namespace CircuitRF.Harmonica;
 
@@ -82,11 +84,13 @@ public static class CharmIo
     /// </summary>
     public readonly record struct CharmMarkerVswr(TerminationSide Side, int Band, double Value);
 
-    public static string Write(CircuitModel model)
-        => JsonSerializer.Serialize(ToDocument(model), Options);
+    /// <param name="baseDirectory">The folder the <c>.charm</c> is written into: a composed DUT's <c>.cmodel</c> under it is
+    /// stored relative to it (brief-modelcomposer-23 R-mc23-9). Null stores the path as it is.</param>
+    public static string Write(CircuitModel model, string? baseDirectory = null)
+        => JsonSerializer.Serialize(ToDocument(model, baseDirectory), Options);
 
     public static void WriteFile(string path, CircuitModel model)
-        => File.WriteAllText(path, Write(model));
+        => File.WriteAllText(path, Write(model, Path.GetDirectoryName(Path.GetFullPath(path))));
 
     /// <summary>
     /// Reads a <c>.charm</c>. <paramref name="unresolved"/> lists every referenced artifact that is
@@ -100,7 +104,7 @@ public static class CharmIo
         var doc = JsonSerializer.Deserialize<CharmDocument>(json, Options)
                   ?? throw new InvalidDataException("the .charm file is empty");
 
-        var model = FromDocument(doc);
+        var model = FromDocument(doc, baseDirectory);
         unresolved = FindUnresolved(model, doc, baseDirectory);
         return model;
     }
@@ -146,12 +150,39 @@ public static class CharmIo
                     "will not substitute a different model."));
         }
 
+        // brief-modelcomposer-23 R-mc23-9 — a .cmodel is a file this document does not own, so it is a reference too, and a
+        // missing one takes the same "model" re-point offer as a compiled model.
+        if (model.Dut.Kind == DutKind.Composed && doc.Dut?.ModelFile is { Length: > 0 } cmodel)
+        {
+            string full = ResolveRelative(cmodel, baseDirectory);
+            if (!File.Exists(full))
+                missing.Add(new UnresolvedReference("model", cmodel,
+                    $"The Model Composer model this .charm was built around, '{cmodel}', was not found " +
+                    $"(looked for '{full}'). Re-point it in File ▸ Set DUT… to open the document; harmonicaRF " +
+                    "will not substitute a different model."));
+        }
+
         return missing;
+    }
+
+    /// <summary>
+    /// brief-modelcomposer-23 R-mc23-9 — how a <c>.cmodel</c> is written: relative to the <c>.charm</c> when it lies in the
+    /// <c>.charm</c>'s own folder or below it, so the two move together; absolute otherwise, because a path climbing out of
+    /// the folder is a guess about a layout the reader may not share.
+    /// </summary>
+    public static string ModelReference(string modelFile, string? baseDirectory)
+    {
+        if (baseDirectory is null || !Path.IsPathRooted(modelFile)) return modelFile;
+        string rel = Path.GetRelativePath(baseDirectory, modelFile);
+        bool under = !Path.IsPathRooted(rel) && rel != ".." &&
+                     !rel.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) &&
+                     !rel.StartsWith("../", StringComparison.Ordinal);
+        return under ? rel.Replace('\\', '/') : modelFile;
     }
 
     // ── the document ──────────────────────────────────────────────────────────
 
-    private static CharmDocument ToDocument(CircuitModel m) => new()
+    private static CharmDocument ToDocument(CircuitModel m, string? baseDirectory = null) => new()
     {
         FormatVersion = CurrentFormatVersion,
         Dut = new CharmDut
@@ -179,6 +210,14 @@ public static class CharmIo
             // file, and its absence is what the resolver reports when the document is solved.
             ModelFile    = m.Dut.Kind == DutKind.External && m.Dut.Provider is { Length: > 0 } p
                 ? VerilogAFileResolver.ModelFileIn(p)
+                : m.Dut.Kind == DutKind.Composed && m.Dut.ModelFile is { Length: > 0 } cm
+                    ? ModelReference(cm, baseDirectory)
+                    : null,
+            // brief-modelcomposer-23 R-mc23-9 — N and the non-default switches; absent for every other kind and for a
+            // composed DUT at its defaults, so nothing older changes shape.
+            Fingers  = m.Dut.Kind == DutKind.Composed ? m.Dut.Fingers : null,
+            Switches = m.Dut.Kind == DutKind.Composed && !m.Dut.Switches.IsDefault
+                ? m.Dut.Switches.Write().ToDictionary(p => p.Key, p => p.Value == "true", StringComparer.Ordinal)
                 : null,
             IntrinsicGate   = m.Dut.IntrinsicMapping?.GateNode,
             IntrinsicDrain  = m.Dut.IntrinsicMapping?.DrainNode,
@@ -217,6 +256,8 @@ public static class CharmIo
             FrequencyHz   = m.Settings.FrequencyHz,
             FftOverSample = m.Settings.FftOverSample,
             Tol           = m.Settings.Tol,
+            // brief-modelcomposer-23 — written only when moved off its default, so nothing older changes shape.
+            StateNodeTol  = m.Settings.StateNodeTol == HarmonicaSettings.DefaultStateNodeTol ? null : m.Settings.StateNodeTol,
             MaxIter       = m.Settings.MaxIter,
             GuardHarmonic = m.Settings.GuardHarmonic,
             Lambda        = m.Settings.Lambda,
@@ -258,7 +299,7 @@ public static class CharmIo
         PavlDbm = m.PavlDbm,
     };
 
-    private static CircuitModel FromDocument(CharmDocument d)
+    private static CircuitModel FromDocument(CharmDocument d, string? baseDirectory)
     {
         var defaults = new HarmonicaSettings();
         var s = d.Settings;
@@ -293,6 +334,15 @@ public static class CharmIo
                     Cds = FromCharmCapacitance(dut?.Cds),
                     RgsOhms = dut?.Rgs ?? 0.0,
                 },
+                // brief-modelcomposer-23 R-mc23-9 — resolved against the .charm's folder, so the netlist sees an absolute
+                // path whichever form was stored. A missing file still loads; FindUnresolved names it.
+                ModelFile = kind == DutKind.Composed && dut?.ModelFile is { Length: > 0 } mf
+                    ? Path.GetFullPath(ResolveRelative(mf, baseDirectory))
+                    : null,
+                Fingers  = kind == DutKind.Composed ? dut?.Fingers : null,
+                Switches = kind == DutKind.Composed && dut?.Switches is { Count: > 0 } sw
+                    ? ComposedSwitches.Read(sw.ToDictionary(p => p.Key, p => new Value(p.Value), StringComparer.Ordinal))
+                    : ComposedSwitches.Default,
             },
             Embedding = new EmbeddingStack
             {
@@ -320,6 +370,7 @@ public static class CharmIo
                 FrequencyHz   = s?.FrequencyHz   ?? defaults.FrequencyHz,
                 FftOverSample = s?.FftOverSample ?? defaults.FftOverSample,
                 Tol           = s?.Tol           ?? defaults.Tol,
+                StateNodeTol  = s?.StateNodeTol  ?? defaults.StateNodeTol,
                 MaxIter       = s?.MaxIter       ?? defaults.MaxIter,
                 GuardHarmonic = s?.GuardHarmonic ?? defaults.GuardHarmonic,
                 Lambda        = s?.Lambda        ?? defaults.Lambda,
@@ -438,6 +489,10 @@ public static class CharmIo
         public int?    SddPortCount { get; set; }
         public Dictionary<string, string>? Parameters { get; set; }
         public string? ModelFile { get; set; }
+        /// <summary>brief-modelcomposer-23 — a composed DUT's finger count; absent takes the model's own.</summary>
+        public int? Fingers { get; set; }
+        /// <summary>brief-modelcomposer-23 — a composed DUT's non-default switches, by name.</summary>
+        public Dictionary<string, bool>? Switches { get; set; }
         public string? IntrinsicGate { get; set; }
         public string? IntrinsicDrain { get; set; }
         public string? IntrinsicSource { get; set; }
@@ -494,6 +549,8 @@ public static class CharmIo
         public double? FrequencyHz { get; set; }
         public int?    FftOverSample { get; set; }
         public double? Tol { get; set; }
+        /// <summary>brief-modelcomposer-23 — absent at its default.</summary>
+        public double? StateNodeTol { get; set; }
         public int?    MaxIter { get; set; }
         public int?    GuardHarmonic { get; set; }
         public double? Lambda { get; set; }
@@ -639,9 +696,10 @@ public static class CharmIo
                                CharmAppearance? appearance = null, CharmLayout? layout = null,
                                IReadOnlyList<CharmTrace>? traces = null,
                                IReadOnlyList<CharmMarkerVswr>? vswr = null,
-                               IReadOnlyList<Complex>? addedGridPoints = null)
+                               IReadOnlyList<Complex>? addedGridPoints = null,
+                               string? baseDirectory = null)
     {
-        var doc = ToDocument(model);
+        var doc = ToDocument(model, baseDirectory);
         doc.Terminations = TerminationsToJson(terminations);
         doc.Appearance   = AppearanceToJson(appearance);
         doc.Layout       = LayoutToJson(layout);
@@ -746,7 +804,7 @@ public static class CharmIo
         var doc = JsonSerializer.Deserialize<CharmDocument>(json, Options)
                   ?? throw new InvalidDataException("the .charm file is empty");
 
-        var model = FromDocument(doc);
+        var model = FromDocument(doc, baseDirectory);
         return new CharmContents(
             model,
             TerminationsFromJson(doc.Terminations, model.Settings.HarmonicCount),

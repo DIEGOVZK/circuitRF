@@ -1009,6 +1009,9 @@ public partial class ReadoutStripView : UserControl
                 var check = new CheckBox
                 {
                     IsChecked         = input.Text is "1" or "true" or "True",
+                    // brief-modelcomposer-23 R-mc23-7 — a composed switch the model cannot honour is shown, disabled,
+                    // with the reason as the row's tooltip.
+                    IsEnabled         = !input.Locked,
                     Foreground        = foreground,
                     MinWidth          = 0,
                     Padding           = new Thickness(0),
@@ -1080,9 +1083,7 @@ public partial class ReadoutStripView : UserControl
                     VerticalAlignment = VerticalAlignment.Center,
                 });
 
-            ToolTip.SetTip(pair, input.Structural
-                ? input.Tooltip + "  (structural — changing it rebuilds the context and resets the frame ladder)"
-                : input.Tooltip);
+            ToolTip.SetTip(pair, TipFor(input));
 
             Inputs.Children.Add(pair);
         }
@@ -1465,9 +1466,16 @@ public partial class ReadoutStripView : UserControl
     /// <para>Skipping the focused one is the whole point: a solve that lands while the user is
     /// halfway through typing "2.4" must not replace it with "2".</para>
     /// </summary>
+    private static string TipFor(CircuitRF.Ui.Harmonica.HarmonicaInput input)
+        => input.Structural
+            ? input.Tooltip + "  (structural — changing it rebuilds the context and resets the frame ladder)"
+            : input.Tooltip;
+
     private static void UpdateInPlace(StackPanel row, CircuitRF.Ui.Harmonica.HarmonicaInput input,
                                       IBrush foreground, double fontSize)
     {
+        // A row keeps its shape across a change of model; its tooltip (a switch's reason, say) follows the model.
+        ToolTip.SetTip(row, TipFor(input));
         foreach (var child in row.Children)
         {
             switch (child)
@@ -1491,6 +1499,7 @@ public partial class ReadoutStripView : UserControl
                         finally { cs.Suppress = false; }
                         cs.Pristine = input.Text;
                     }
+                    check.IsEnabled = !input.Locked;
                     check.FontSize = fontSize;
                     break;
 

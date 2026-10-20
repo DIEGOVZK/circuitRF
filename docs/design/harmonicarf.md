@@ -293,9 +293,23 @@ the same model object.
   - an **SDD** with user-entered drain-current (and gate-current) equations, authored inside
     harmonicaRF using the standard expression language;
   - `NonlinearC`, `Diode` (for teaching and for the degenerate cases);
-  - any **external device** — a compiled Verilog-A `.osdi`, or a vendor-kit part via `senior-worker`.
-- **Load routes:** the File menu (*Set DUT…*), and drag-and-drop from the circuitRF Library palette
-  when a workspace is open.
+  - any **external device** — a compiled Verilog-A `.osdi`, or a vendor-kit part via `senior-worker`;
+  - a **Model Composer `.cmodel`** (`DutKind.Composed`), placed as `ComposedFet:DUT g d s File=… N=… m=…`
+    plus its non-default switches (brief-modelcomposer-23). It elaborates as a cell — the model's extrinsic
+    network around a nonlinear core on `gi di si` — so the netlist has no component called `DUT`:
+    `HarmonicaContext.DutDevice` is the core (`DUT.core`), and every intrinsic reader evaluates that.
+    `DutComponent` refuses by name for this kind. Three nets, so a self-heating model closes on its own
+    `Rth ∥ Cth`. `N` and every switch are structural: the netlist line carries them, and
+    `StructuralKey` adds the file's path, its last-write stamp, `N` and the switches. MC-21's bias freeze
+    runs wherever the context builds or re-biases its netlist (`SetBias`, which the Idq search ends
+    in) at the context's own cached DC point. A solve re-freezes only when an Idq search has moved the
+    supplies since, so no solve-pool thread ever freezes mid-solve.
+  - A DUT whose interface carries a **state node** (a composed model's trap, dispersion or thermal node)
+    solves to `HarmonicaSettings.StateNodeTol` (1e-6 A, `HbEngine`'s default) when that is the larger.
+    The HB residual has a round-off floor of 1e-9 to 1e-8 A on such a node (MC-25), so 1e-8 cannot be
+    reached and every solve would otherwise run to `MaxIter` and report non-convergence.
+- **Load routes:** the File menu (*Set DUT…*), drag-and-drop from the circuitRF Library palette
+  when a workspace is open, and a `.cmodel` file dropped on the window.
 
 ### 4.4 Bias — ideal (v1)
 
@@ -497,6 +511,24 @@ conjugate-match target `Zin*` inherits the same load dependence (`loadpull.md` �
 
 For a native FET or an SDD, "intrinsic" is the i/q split and needs no user input — there is no node
 between the caps and the generator.
+
+A **Model Composer `.cmodel`** is located **by construction**: its core sits on `gi di si` inside the
+extrinsic network the composer fitted, with port 0 = (gi, si) and port 1 = (di, si), already
+pair-referenced, so `IntrinsicPortMap.TwoPort` applies. §4.5.1's ratio reads ports 0 and 1 only. The
+core's further ports are its dispersion or trap state nodes and its thermal node. They stay in §4.5.3's
+`J′` as the ordinary HB unknowns they are; only the gate port's self block is removed. Both claims are
+gated against independent routes (`ComposedDutTests`): a full `HbEngine` solve read at the core's ports,
+and a finite-difference `J′`. The DCIV family (§7.3) evaluates each DC point at its own state:
+`x = IdDC − IdRF`, traps at their DC values, `ΔT = Rth,DC · P` by a small Newton on the core's own
+currents (`ComposedDcPoint`). It is gated against the DC engine on a bench of the core alone. The
+external-model mapping below is not asked for.
+
+Such a DUT's network couples its input and output, so `IntrinsicDragAllowed` is false: no per-side ABCD
+exists. An intrinsic drag on this kind alone runs §6.6's inverse solve, under R-h6-9's rule that a
+failed solve moves nothing. Class presets use `ComposedClassLoads`, which the Model Composer's report
+uses too. That is the intrinsic class load with `C22` (the device's `∂Qd/∂vds` at the intrinsic
+quiescent point) taken off, carried through the model's network scaled to the instance's `N` and `m`,
+with both gates AC-shorted. It is never a solver.
 
 For a **Verilog-A or vendor model**, the intrinsic plane is a set of real internal nodes (which our
 elaborator already makes first-class HB unknowns — `ExternalDeviceModel` remarks: internal nodes are
@@ -1096,6 +1128,10 @@ Owner-confirmed split:
   name), because the artifact is a compiled binary or a licensed kit. Opening a `.charm` whose
   reference cannot be resolved reports which file is missing and offers to re-point it — it does not
   fail silently or substitute a different model.
+- **Model Composer `.cmodel`** → **reference only**, as a file the document does not own. The path is
+  relative to the `.charm` when the model lies in the `.charm`'s folder or below it, and absolute
+  otherwise. `N` and the non-default switches are stored beside it. A missing model takes the same
+  "model" re-point report as a compiled one.
 
 ### 8.2 Preferences
 

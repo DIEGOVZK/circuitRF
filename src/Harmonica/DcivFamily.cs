@@ -1,4 +1,5 @@
 using CircuitRF.Core;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Elaboration;
 
 namespace CircuitRF.Harmonica;
@@ -30,7 +31,8 @@ public static class DcivFamily
     /// families — that equality IS tier C's cache rule, so it lives with the computation rather than
     /// being re-derived by whoever caches it.
     /// </summary>
-    /// <param name="StructuralKey">The model's own structural identity — DUT, parameters, embedding.</param>
+    /// <param name="StructuralKey">The model's own structural identity — DUT, parameters, embedding, and for a composed DUT
+    /// its file, <c>N</c> and its switches (brief-modelcomposer-23 R-mc23-5), so a toggle redraws the family.</param>
     public readonly record struct Key(
         string StructuralKey, double VgsMin, double VgsMax, int VgsSteps,
         double VdsMin, double VdsMax, int VdsSteps, int DrainPort);
@@ -99,7 +101,8 @@ public static class DcivFamily
     /// </summary>
     public static IReadOnlyList<DcivCurve> Compute(HarmonicaContext ctx, Key key)
     {
-        var dut = ctx.DutComponent;
+        var dut = ctx.DutDevice;
+        if (dut.Model is ComposedCoreModel core) return ComputeComposed(ctx, dut, core, key);
         int ports = dut.Model.PortCount;
         int drain = Math.Clamp(key.DrainPort, 0, Math.Max(0, ports - 1));
 
@@ -132,6 +135,40 @@ public static class DcivFamily
             curves.Add(new DcivCurve(vgs, vds, ids));
         }
 
+        return curves;
+    }
+
+    /// <summary>
+    /// brief-modelcomposer-23 R-mc23-5 — the intrinsic DC I–V of a composed core: each point at its own DC state
+    /// (<see cref="ComposedDcPoint"/> — dispersion at <c>IdDC − IdRF</c>, traps at their DC values, the junction at its
+    /// self-heated temperature), so the family is the DC surface the loadline is drawn against rather than the device
+    /// with its states at zero. Reads no charge, so a linearised core needs no bias point here.
+    /// </summary>
+    private static IReadOnlyList<DcivCurve> ComputeComposed(HarmonicaContext ctx, ElaboratedComponent dut,
+                                                           ComposedCoreModel core, Key key)
+    {
+        double rth = ComposedDcPoint.ThermalResistance(core, ctx.Netlist.AmbientC);
+
+        var vds = new double[key.VdsSteps];
+        for (int i = 0; i < key.VdsSteps; i++)
+            vds[i] = key.VdsMin + (key.VdsMax - key.VdsMin) * i / (key.VdsSteps - 1);
+
+        var curves = new List<DcivCurve>(key.VgsSteps);
+        using (ChargeReading.NotRead())
+        {
+            for (int g = 0; g < key.VgsSteps; g++)
+            {
+                double vgs = key.VgsMin + (key.VgsMax - key.VgsMin) * g / (key.VgsSteps - 1);
+                var ids = new double[key.VdsSteps];
+                for (int i = 0; i < key.VdsSteps; i++)
+                {
+                    var pv = ComposedDcPoint.Solve(core, vgs, vds[i], rth);
+                    // Through the component, so the device multiplier applies as it does to every other kind's family.
+                    ids[i] = dut.Evaluate(new PortVoltages(pv)).I[1];
+                }
+                curves.Add(new DcivCurve(vgs, vds, ids));
+            }
+        }
         return curves;
     }
 }

@@ -37,6 +37,46 @@ public partial class HarmonicaView : UserControl
         // reads the same placement); Refresh() re-places AND re-fonts in one call, through the
         // in-place update path so a resize mid-typing does not eat the caret.
         PanelHost.SizeChanged += (_, _) => Refresh();
+
+        // brief-modelcomposer-23 R-mc23-9 — a .cmodel dropped on the window sets the DUT.
+        Avalonia.Input.DragDrop.SetAllowDrop(this, true);
+        AddHandler(Avalonia.Input.DragDrop.DragOverEvent, OnCmodelDragOver);
+        AddHandler(Avalonia.Input.DragDrop.DropEvent,     OnCmodelDrop);
+    }
+
+    /// <summary>The first existing <c>.cmodel</c> a drag carries — a file from the desktop, or a path dragged as text.</summary>
+    private static string? DroppedCmodel(Avalonia.Input.DragEventArgs e)
+    {
+        foreach (var item in e.DataTransfer.Items)
+        {
+            object? raw = item.TryGetRaw(Avalonia.Input.DataFormat.File) ?? item.TryGetRaw(Avalonia.Input.DataFormat.Text);
+            IEnumerable<string?> paths = raw switch
+            {
+                IStorageItem single             => [single.Path?.LocalPath],
+                IEnumerable<IStorageItem> files => files.Select(f => f.Path?.LocalPath),
+                string text                     => [text.Trim().Trim('"')],
+                _                               => [],
+            };
+            foreach (string? p in paths)
+                if (p is not null && p.EndsWith(".cmodel", StringComparison.OrdinalIgnoreCase) && System.IO.File.Exists(p))
+                    return p;
+        }
+        return null;
+    }
+
+    private void OnCmodelDragOver(object? sender, Avalonia.Input.DragEventArgs e)
+    {
+        if (DroppedCmodel(e) is null) return;
+        e.DragEffects = Avalonia.Input.DragDropEffects.Copy;
+        e.Handled     = true;
+    }
+
+    private void OnCmodelDrop(object? sender, Avalonia.Input.DragEventArgs e)
+    {
+        if (Vm is not { } h || DroppedCmodel(e) is not { } path) return;
+        e.Handled = true;
+        h.ApplyDut(HarmonicaViewModel.ComposedDutFor(path, h.Model.Dut));
+        Refresh();
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)

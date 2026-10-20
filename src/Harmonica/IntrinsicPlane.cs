@@ -280,7 +280,9 @@ public static class IntrinsicPlane
     public static Complex[,] SourceImpedance(
         HarmonicaContext ctx, OperatingPoint point, int gatePort = 0)
     {
-        var dut   = ctx.DutComponent;
+        // brief-modelcomposer-23 — the DEVICE, so a composed DUT's core: its state and thermal ports stay in J′ as the
+        // ordinary HB unknowns they are, and only the gate port's self block (port 0) comes out.
+        var dut   = ctx.DutDevice;
         int k     = ctx.Model.Settings.HarmonicCount;
         int n     = ctx.Interface.InterfaceCount;
         int gridN = HbFft.GridSize(k, ctx.Model.Settings.FftOverSample);

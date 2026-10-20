@@ -10,7 +10,9 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Devices.External;
 using CircuitRF.Harmonica;
 using CircuitRF.Ui.Schematic;
@@ -115,6 +117,12 @@ public static class HarmonicaInputs
     /// <summary>R8C §3.4 — series resistance in the Cgs branch. SDD only, same rule as the
     /// capacitances above.</summary>
     public const string KeyRgs = "dut.rgs";
+
+    /// <summary>brief-modelcomposer-23 R-mc23-7 — a composed DUT's <c>.cmodel</c> and finger count; each switch is keyed
+    /// <see cref="SwitchPrefix"/> + its name.</summary>
+    public const string KeyComposedFile    = "dut.cmodel";
+    public const string KeyComposedFingers = "dut.fingers";
+    public const string SwitchPrefix       = "switch:";
 
     /// <summary>
     /// The whole §7.5 input list for a model, in strip order: bias, drive, then the model's own.
@@ -227,8 +235,43 @@ public static class HarmonicaInputs
             list.Add(CapacitanceRow(KeyCds, "Cds", caps.Cds, linearizedCdsFarads));
         }
 
+        if (model.Dut.Kind == DutKind.Composed) list.AddRange(ComposedRows(model));
+
         list.AddRange(DeclaredModelParameters(model));
         return list;
+    }
+
+    /// <summary>
+    /// brief-modelcomposer-23 R-mc23-7 — a composed DUT's own rows: the model's file and <c>N</c>, then MC-21/22's switches
+    /// as checkboxes, each a structural change. A switch naming a part the model does not have is LOCKED, with MC-21's
+    /// note (R-mc21-2) as its tooltip — the same words a run says.
+    /// </summary>
+    private static IEnumerable<HarmonicaInput> ComposedRows(CircuitModel model)
+    {
+        var dut = model.Dut;
+        LoadedComposedModel? loaded = null;
+        if (dut.ModelFile is { Length: > 0 } file)
+        {
+            try { loaded = ComposedModelCache.Load(file); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or CmodelFormatException) { }
+        }
+
+        yield return Make(model, KeyComposedFile, "cmodel", dut.ModelFile ?? "", "",
+            ComponentTypeRegistry.ParameterDescription(SymbolKind.ComposedFet, "File"), HarmonicaInputEntry.Text);
+        yield return Make(model, KeyComposedFingers, "N",
+            dut.Fingers?.ToString(CultureInfo.InvariantCulture) ?? loaded?.N0.ToString(CultureInfo.InvariantCulture) ?? "", "",
+            ComponentTypeRegistry.ParameterDescription(SymbolKind.ComposedFet, "N"), HarmonicaInputEntry.Integer);
+
+        string name = dut.ModelFile is { Length: > 0 } f ? System.IO.Path.GetFileName(f) : "";
+        foreach (string sw in ComposedSwitches.Names)
+        {
+            string? missing = loaded is null ? null : ComposedSwitches.MissingPart(sw, loaded);
+            string tip = missing is null
+                ? ComponentTypeRegistry.ParameterDescription(SymbolKind.ComposedFet, sw)
+                : $"'{name}' {missing}; {sw}=false changes nothing.";
+            yield return new HarmonicaInput(SwitchPrefix + sw, sw, dut.Switches[sw] ? "1" : "0", "", tip,
+                                            HarmonicaInputEntry.Boolean, Structural: true, Locked: missing is not null);
+        }
     }
 
     /// <summary>
@@ -438,6 +481,11 @@ public static class HarmonicaInputs
             KeyCdg           => Num(model.Dut.Capacitances.Cdg.Farads * 1e12 + 1.0),
             KeyCds           => Num(model.Dut.Capacitances.Cds.Farads * 1e12 + 1.0),
             KeyRgs           => Num(model.Dut.Capacitances.RgsOhms + 1.0),
+            KeyComposedFile    => (model.Dut.ModelFile ?? "") + "_",
+            KeyComposedFingers => Num((model.Dut.Fingers ?? 1) + 1),
+            _ when key.StartsWith(SwitchPrefix, StringComparison.Ordinal)
+                             => ComposedSwitches.IsSwitch(key[SwitchPrefix.Length..])
+                                    && model.Dut.Switches[key[SwitchPrefix.Length..]] ? "0" : "1",
             _                => "",
         };
     }
@@ -466,8 +514,25 @@ public static class HarmonicaInputs
             return model with { Dut = model.Dut with { Parameters = map } };
         }
 
+        if (key.StartsWith(SwitchPrefix, StringComparison.Ordinal))
+        {
+            string sw = key[SwitchPrefix.Length..];
+            if (!ComposedSwitches.IsSwitch(sw)) { error = $"'{sw}' is not a model switch."; return null; }
+            return model with { Dut = model.Dut with { Switches = model.Dut.Switches.With(sw, ParseBool(text)) } };
+        }
+
         switch (key)
         {
+            case KeyComposedFile:
+                if (text.Length == 0) { error = "Name a .cmodel file."; return null; }
+                return model with { Dut = model.Dut with { ModelFile = System.IO.Path.GetFullPath(text.Trim('"')) } };
+
+            case KeyComposedFingers:
+                if (text.Length == 0) return model with { Dut = model.Dut with { Fingers = null } };
+                if (!TryInt(text, out int fingers) || fingers < 1)
+                { error = "N must be a whole number of fingers, 1 or more."; return null; }
+                return model with { Dut = model.Dut with { Fingers = fingers } };
+
             case KeyVgs:
                 if (text.Length == 0)
                     return model with { Bias = model.Bias with { Vgs = null } };

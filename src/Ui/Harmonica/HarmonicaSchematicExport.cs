@@ -150,6 +150,11 @@ public static class HarmonicaSchematicExport
                 "(an S2p/S4p block) as a schematic component. Use Export Testbench (.cnl) instead, " +
                 "which does.");
 
+        if (model.Dut.Kind == DutKind.Composed)
+            throw new NotSupportedException(
+                "Export Testbench (.csch) cannot yet place a Model Composer DUT. Use Export Testbench (.cnl) " +
+                "instead, which does.");
+
         if (model.Dut.Kind == DutKind.External)
             throw new NotSupportedException(
                 $"Export Testbench (.csch) cannot yet express an External DUT ('{model.Dut.TypeName}') " +

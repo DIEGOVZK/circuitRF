@@ -1193,7 +1193,10 @@ cut one step past it as the engine's drive-up stops.
   the device's drain self-capacitance `C22` linearized at the intrinsic DC bias (R9D §3.4's linearized output
   capacitance) is taken off the target, and the model's own network, as the drain-side two-port with both gates
   AC-shorted (IntrinsicAbcd's no-feedback condition), is inverted bilinearly. A band at the map's pole takes its intrinsic
-  value; a band needing a negative resistance keeps its reactance at the chart's edge, and both are named. The source's
+  value; a band needing a negative resistance keeps its reactance at the chart's edge, and both are named. The transform
+  is `ComposedClassLoads` in `src/Harmonica`, which harmonicaRF's own presets call for a composed DUT
+  (brief-modelcomposer-23); its drain two-port is the network as `ComposedNetworkTemplate.Synthesize` scales it for an
+  instance, at the model's own `N0` and `m = 1` here, bit-identical to the raw network. The source's
   2f0 is the user's, at the extrinsic plane. The fundamental is load-pulled (§14.5) over a disc about the class's own
   fundamental load (the disc's Möbius automorphism, so every point stays on the chart): performance at that load, at MXP
   and MXE at the stated compression through `LoadpullSurface`, and the share of the disc that converged to that

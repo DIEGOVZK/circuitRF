@@ -97,7 +97,8 @@ public sealed record ComposedSwitches
         _ => throw new ArgumentException($"'{name}' is not a ComposedFet switch.", nameof(name)),
     };
 
-    private ComposedSwitches With(string name, bool value) => name switch
+    /// <summary>These switches with one of them set — what an editor writes back on a toggle. An unknown name changes nothing.</summary>
+    public ComposedSwitches With(string name, bool value) => name switch
     {
         ChargeName      => this with { Charge = value },
         LinearCName     => this with { LinearC = value },
@@ -111,6 +112,25 @@ public sealed record ComposedSwitches
         DispersionName  => this with { Dispersion = value },
         _ => this,
     };
+
+    /// <summary>
+    /// What a model lacks that a switch names (brief-modelcomposer-21 R-mc21-2), as the phrase the run note uses —
+    /// <c>has no gate-lag trap state</c> — or null when the model has that part (or the switch is not a part's). Turning
+    /// such a switch off changes nothing; the elaborator says so in a note, and an editor disables it with the same words.
+    /// </summary>
+    public static string? MissingPart(string name, LoadedComposedModel loaded)
+    {
+        var traps = loaded.Program.Traps;
+        bool HasLag(int sign) => traps is not null && Enumerable.Range(0, traps.States.Count).Any(k => Math.Sign(traps.CaptureSign(k)) == sign);
+        return name switch
+        {
+            GateLagName     when !HasLag(-1)                  => "has no gate-lag trap state",
+            DrainLagName    when !HasLag(+1)                  => "has no drain-lag trap state",
+            SelfHeatingName when loaded.Model.Thermal is null => "does not self-heat",
+            DispersionName  when loaded.Program.IdRF is null  => "has no DC/RF dispersion",
+            _ => null,
+        };
+    }
 
     /// <summary>
     /// The switches an instance line states. <paramref name="evaluate"/> evaluates an override that is not a bare

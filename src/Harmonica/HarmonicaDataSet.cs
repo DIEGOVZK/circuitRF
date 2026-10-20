@@ -96,7 +96,7 @@ public static class HarmonicaDataSet
     {
         int k     = ctx.Model.Settings.HarmonicCount;
         int gridN = HbFft.GridSize(k, ctx.Model.Settings.FftOverSample);
-        var spectra = IntrinsicPlane.Evaluate(ctx.DutComponent, point.V, ctx.Interface.DeviceNodes,
+        var spectra = IntrinsicPlane.Evaluate(ctx.DutDevice, point.V, ctx.Interface.DeviceNodes,
                                               k, gridN, ctx.Model.Settings.FrequencyHz,
                                               ctx.IntrinsicPorts.SourcePort);
         return Intrinsic(ctx, point, spectra, includeSource);
@@ -134,7 +134,7 @@ public static class HarmonicaDataSet
         ds.Add("INl", Cube2(point.INl, node, harmonic));
 
         // ── the intrinsic plane (§4.5) ────────────────────────────────────────
-        var dut = ctx.DutComponent;
+        var dut = ctx.DutDevice;
         var map = ctx.IntrinsicPorts;
         var spectra = IntrinsicPlane.Evaluate(dut, point.V, ctx.Interface.DeviceNodes, k, gridN, f0,
                                               map.SourcePort);
@@ -205,6 +205,12 @@ public static class HarmonicaDataSet
         ds.Add("V_ext",  Cube2(planeV, side, harmonic));
         ds.Add("Iin",    Cube2(planeI, side, harmonic));
         ds.Add("Zin",    Cube2(zin,    side, harmonic));
+
+        // brief-modelcomposer-23 R-mc23-6 — the quiescent bias at the intrinsic plane, beside the applied one: a composed
+        // DUT's extrinsic Rg/Rd/Rs move it off the package-plane Vgs/Vdd.
+        var (vgsi, vdsi) = ctx.IntrinsicDcBias;
+        ds.Add("Vgs_intr_dc", DataCube.Scalar(vgsi));
+        ds.Add("Vds_intr_dc", DataCube.Scalar(vdsi));
 
         ds.Add("Converged", DataCube.Scalar(point.Converged ? 1.0 : 0.0));
         ds.Add("Residual",  DataCube.Scalar(point.Residual));

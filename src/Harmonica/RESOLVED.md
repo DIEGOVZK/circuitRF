@@ -769,3 +769,37 @@ Gate: `tests/Harmonica.Tests/DutCapacitanceTests.cs` (13 tests — the netlist g
 the `.charm` round trip) and `tests/Ui.Tests/Harmonica/HarmonicaR7dCapacitanceStripTests.cs` (13 tests
 — row shape/text/Locked by DUT kind and capacitor state, `Apply`'s refusals, `LinearizedCapacitanceFarads`
 against the Horner directly, and one end-to-end `HarmonicaViewModel.Inputs` check after a real solve).
+
+## brief-modelcomposer-23 — a `.cmodel` as the DUT (2026-10-20)
+
+**A trap node makes harmonicaRF's default tolerance unreachable, and nothing said so.** The example's
+`synthetic-gan` model (one drain-lag trap node, a thermal node) stalled at ‖F‖ = 1.2e-8 … 2.4e-8 A on every
+solve and ran to `MaxIter` = 100: with `DrainLag=false` the same circuit converged in 4–6 iterations to
+1e-10 or better. It is MC-25's floor (`src/Engine/RESOLVED.md`: voltage round-off on the trap node's ~1e7 S of
+harmonic susceptance, 1e-9 to 1e-8 A), met here by harmonicaRF's own `Tol = 1e-8`, ten times tighter than
+the HB engine's default. Every Pin rung would have been reported unconverged. `HarmonicaSettings.StateNodeTol`
+(1e-6 A, the engine's default) applies when a `StatePorts` node is on the interface
+(`HarmonicaContext.EffectiveTol`). The default model then converges in 3–9 iterations at −20, 0 and 10 dBm.
+
+**Comparing two routes on such a DUT needs both driven to the floor, not to a tolerance.** At 1e-6 two
+solves stop at different points in the tolerance ball (MC-25 measured up to 3e-8 apart). The gates run a
+fixed 40 iterations with an unreachable tolerance. harmonicaRF and a full `HbEngine` solve of the stamped
+netlist then agree to 2.7e-11 on V_d, I_d and Z_L,intr.
+
+**gmin cannot be switched off for a comparison here**, unlike SchurReterminationTests' fixture: a trap node
+touches only the core, so the linear (open-port) extraction has a zero row there. Both routes run with gmin on
+every node. The oracle's two extra nodes (the far side of each DC block) carry 1e-12 S each, about 5e-11 of a
+termination.
+
+**`J′` needed no change for the state ports**, which is what the gate establishes rather than assumes: the
+conversion matrix already carries them as interface unknowns, and only the gate port's self block comes out.
+Against `Y + ∂(i + jωq)/∂V` built by central differences, with the gate port's own dependence removed by
+evaluating its current and charge at the pinned converged gate waveform, `Z_S,intr` agrees to ~1e-10 at every
+harmonic.
+
+**The freeze takes the context's cached DC point** (`FreezePoint`), not a second DC solve. The intrinsic bias
+readout, a preset's C22 and the frozen charge therefore describe one point. `BiasFreeze.Ensure` solved DC under
+the context's settings and the seed solved it under the defaults; the two differ in the last digits.
+
+**Not built: dragging a placed ComposedFet from a schematic onto the window.** The schematic canvas has no
+drag-out gesture for a placed instance. A `.cmodel` file dropped on the window does set the DUT.

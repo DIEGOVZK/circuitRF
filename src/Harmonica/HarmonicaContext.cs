@@ -2,6 +2,7 @@ using System.Numerics;
 using CircuitRF.Core;
 using CircuitRF.Core.Design;
 using CircuitRF.Core.Devices;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Elaboration;
 using CircuitRF.Core.Netlist;
 using CircuitRF.Engine;
@@ -179,6 +180,36 @@ public sealed class HarmonicaContext
         // §3.3 item 1 (brief-harmonicarf-r3b) — the DC seed is a function of (structure, bias); a
         // bias move invalidates it exactly like ReExtract, not one moment later.
         _dcSeedVoltages = null;
+
+        // brief-modelcomposer-23 R-mc23-8 — a linearised composed charge is frozen at the quiescent point, so a bias moved in
+        // place re-freezes HERE, on the thread that owns this context and before any solve reads charge, rather than
+        // inside a solve. Free for a netlist with nothing to freeze.
+        FreezeBias();
+    }
+
+    /// <summary>Whether the bias point the composed core's linearised charge reads is current. Cleared by anything that
+    /// moves the supplies; <see cref="Solve"/> re-freezes when it is not.</summary>
+    private bool _biasFrozen;
+
+    /// <summary>
+    /// brief-modelcomposer-23 R-mc23-8 — MC-21's bias freeze, at the supplies as they stand. Called wherever this context
+    /// builds or re-biases its netlist, so every solve after it — on whichever pool worker owns this context — reads a
+    /// core frozen at the current quiescent point and never one being frozen mid-solve.
+    /// </summary>
+    private void FreezeBias()
+    {
+        CircuitRF.Engine.BiasFreeze.Apply(_netlist, FreezePoint(), _dcSeedVoltages is { Length: > 0 } last ? last : null);
+        _biasFrozen = true;
+    }
+
+    /// <summary>The quiescent point a freeze takes: this context's own cached DC solve — the one the cold seed, the
+    /// intrinsic bias readout and a preset's C22 read — so all of them describe one point. Null when it did not converge,
+    /// which <c>BiasFreeze</c> reports once. Nothing is solved for a netlist with nothing to freeze.</summary>
+    private double[]? FreezePoint()
+    {
+        if (!CircuitRF.Engine.BiasFreeze.IsNeeded(_netlist)) return null;
+        var dcV = _dcSeedVoltages ??= ComputeDcSeed();
+        return _dcSeedConverged && dcV.Length > 0 ? dcV : null;
     }
 
     private void Rebuild()
@@ -192,8 +223,9 @@ public sealed class HarmonicaContext
         _gateSupply  = FindSupply(HarmonicaNetlist.GateSupply);
         _drainSupply = FindSupply(HarmonicaNetlist.DrainSupply);
 
+        _dutDevice = null;
         IntrinsicPorts = IntrinsicPortMap.For(
-            _model.Dut, DutComponent.Model, _model.Embedding.Package);
+            _model.Dut, DutDevice.Model, _model.Embedding.Package);
 
         RebuildCount++;
         ReExtract();
@@ -234,9 +266,34 @@ public sealed class HarmonicaContext
     /// alongside the SDD in <c>_netlist.NonlinearComponents</c> once it is C(V), so a topology can now
     /// legitimately hold more than one nonlinear device. Identity by name is what still picks out the
     /// DUT unambiguously.</para>
+    ///
+    /// <para>A composed DUT (brief-modelcomposer-23) elaborates as a CELL, so no one component is the DUT and this
+    /// refuses by name: what reads the device reads <see cref="DutDevice"/>, and what reads the DUT's terminals reads the
+    /// package-plane nets.</para>
     /// </summary>
     public ElaboratedComponent DutComponent
-        => _netlist.Components.First(c => c.InstancePath == HarmonicaNetlist.Dut);
+        => _netlist.Components.FirstOrDefault(c => c.InstancePath == HarmonicaNetlist.Dut)
+           ?? throw new InvalidOperationException(
+               $"The DUT '{HarmonicaNetlist.Dut}' elaborates as a cell, not one component; its nonlinear device is " +
+               $"'{CoreInstancePath}'.");
+
+    /// <summary>The instance path of a composed DUT's nonlinear core inside its cell.</summary>
+    public static string CoreInstancePath => $"{HarmonicaNetlist.Dut}.{ComposedNetworkTemplate.CoreInstanceName}";
+
+    private ElaboratedComponent? _dutDevice;
+
+    /// <summary>
+    /// brief-modelcomposer-23 R-mc23-3 — the NONLINEAR DEVICE every intrinsic reader evaluates: the core on
+    /// <c>gi di si</c> for a composed DUT, the DUT itself for every other kind. The intrinsic plane, the DCIV family, the
+    /// Idq solve, the glyphs, the inverse solve and the reachable region all read this.
+    /// </summary>
+    public ElaboratedComponent DutDevice
+        => _dutDevice ??= _model.Dut.Kind == DutKind.Composed
+            ? _netlist.Components.First(c => c.InstancePath == CoreInstancePath)
+            : DutComponent;
+
+    /// <summary>The composed core, or null for every other kind.</summary>
+    public ComposedCoreModel? ComposedCore => _model.Dut.Kind == DutKind.Composed ? DutDevice.Model as ComposedCoreModel : null;
 
     /// <summary>
     /// Which ports §4.5's intrinsic quantities are read at, resolved once per REBUILD (the DUT and the
@@ -247,6 +304,15 @@ public sealed class HarmonicaContext
     public IntrinsicPortMap IntrinsicPorts { get; private set; } = IntrinsicPortMap.TwoPort;
 
     // ── solving ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The tolerance a solve converges to: <see cref="HarmonicaSettings.Tol"/>, or <see cref="HarmonicaSettings.StateNodeTol"/>
+    /// when larger and a device state node sits on the interface, where ‖F‖ cannot get below ~1e-8 A (brief-modelcomposer-23).
+    /// </summary>
+    public double EffectiveTol
+        => HbNewton.HasStateRow(_netlist, _interface.DeviceNodes)
+            ? Math.Max(_model.Settings.Tol, _model.Settings.StateNodeTol)
+            : _model.Settings.Tol;
 
     /// <summary>
     /// The Thévenin drive amplitude for an available power, against the fundamental source
@@ -298,12 +364,17 @@ public sealed class HarmonicaContext
         else
             SeedFromRealDc(v, N);
 
-        // A linearised composed-FET charge needs its bias point before the solve reads charge (brief-modelcomposer-21);
-        // re-solved each call, so a bias changed in place re-freezes. Free for a design with none.
-        CircuitRF.Engine.BiasFreeze.Ensure(_netlist, _settings);
+        // A linearised composed-FET charge needs its bias point before the solve reads charge (brief-modelcomposer-21).
+        // SetBias freezes on every bias move; this catches a context whose supplies an Idq search left moved. Free for a
+        // design with none.
+        if (!_biasFrozen)
+        {
+            CircuitRF.Engine.BiasFreeze.Apply(_netlist, FreezePoint(), _dcSeedVoltages is { Length: > 0 } last ? last : null);
+            _biasFrozen = true;
+        }
         var result = HbNewton.Solve(v, yNN, iSrc, _model.Settings.FrequencyHz, K, N,
                                     _netlist, _interface.DeviceNodes, gridN, _settings,
-                                    _model.Settings.Tol, _model.Settings.Lambda,
+                                    EffectiveTol, _model.Settings.Lambda,
                                     _model.Settings.GuardHarmonic);
 
         var (iNl, qNl, _, _, buckets) = HbNewton.EvaluateNonlinear(
@@ -339,6 +410,7 @@ public sealed class HarmonicaContext
     /// never needs a cold seed (every solve is warm-started) never pays for one.
     /// </summary>
     private double[]? _dcSeedVoltages;
+    private bool      _dcSeedConverged;
 
     /// <summary>How many times the true nonlinear DC operating point has actually been solved.
     /// The cache's own gate — a counter, not a clock.</summary>
@@ -376,10 +448,12 @@ public sealed class HarmonicaContext
         try
         {
             var result = CircuitRF.Engine.NonlinearDcEngine.Run(_netlist);
+            _dcSeedConverged = result.Converged;
             return result.NodeVoltages;
         }
         catch (Exception)
         {
+            _dcSeedConverged = false;
             // A DC solve that cannot converge even under continuation stepping (NonlinearDcEngine's
             // own last resort) leaves the seed at zero — never worse than the old linear-network
             // seed's own failure mode (InterfaceNetwork.SolveDense throwing on a singular Y(0)), and
@@ -496,6 +570,7 @@ public sealed class HarmonicaContext
     {
         _gateSupply?.SetVdc(vgs);
         _drainSupply?.SetVdc(vds);
+        _biasFrozen = false;
         try
         {
             var result = CircuitRF.Engine.NonlinearDcEngine.Run(_netlist);
@@ -524,19 +599,68 @@ public sealed class HarmonicaContext
         int drainPort = IntrinsicPorts.DrainPort;
         if (drainPort < 0 || dcV.Length == 0) return double.NaN;
 
-        var dut = DutComponent;
-        int p = dut.Model.PortCount;
+        var dut = DutDevice;
+        var pv = PortVoltagesAt(dut, dcV);
+        if (drainPort >= pv.Length) return double.NaN;
+        // A DC reading reads no charge, so a linearised composed core is not asked for a bias point it may not have yet
+        // (the Idq search evaluates between freezes).
+        using (ChargeReading.NotRead())
+            return dut.Model.Evaluate(new PortVoltages(pv)).I[drainPort];
+    }
+
+    /// <summary>A component's port voltages at a DC node-voltage vector (1-based nodes, 0 = ground).</summary>
+    private static double[] PortVoltagesAt(ElaboratedComponent c, double[] dcV)
+    {
+        int p = c.Model.PortCount;
         var pv = new double[p];
         for (int q = 0; q < p; q++)
         {
-            int np = dut.Nodes.Length > 2 * q     ? dut.Nodes[2 * q]     : 0;
-            int nm = dut.Nodes.Length > 2 * q + 1 ? dut.Nodes[2 * q + 1] : 0;
+            int np = c.Nodes.Length > 2 * q     ? c.Nodes[2 * q]     : 0;
+            int nm = c.Nodes.Length > 2 * q + 1 ? c.Nodes[2 * q + 1] : 0;
             double vp = np >= 1 && np <= dcV.Length ? dcV[np - 1] : 0.0;
             double vm = nm >= 1 && nm <= dcV.Length ? dcV[nm - 1] : 0.0;
             pv[q] = vp - vm;
         }
+        return pv;
+    }
 
-        if (drainPort >= p) return double.NaN;
-        return dut.Model.Evaluate(new PortVoltages(pv)).I[drainPort];
+    // ── brief-modelcomposer-23 R-mc23-6 — the bias at two planes ──────────────
+
+    /// <summary>
+    /// The intrinsic quiescent bias <c>(Vgs,i, Vds,i)</c>: the device's own port voltages at the circuit's DC operating
+    /// point, read from the same cached DC solve the cold seed uses. harmonicaRF applies Vgs/Vdd at the package plane, and
+    /// a composed DUT's extrinsic Rg/Rd/Rs move the intrinsic bias off it; for every other kind the two planes coincide
+    /// unless the package states a series resistance. NaN when the DC solve produced nothing.
+    /// </summary>
+    public (double Vgs, double Vds) IntrinsicDcBias
+    {
+        get
+        {
+            var dcV = _dcSeedVoltages ??= ComputeDcSeed();
+            if (dcV.Length == 0) return (double.NaN, double.NaN);
+            var pv = PortVoltagesAt(DutDevice, dcV);
+            var map = IntrinsicPorts;
+            if (map.GatePort < 0 || map.DrainPort < 0) return (double.NaN, double.NaN);
+            double vs = map.SourcePort >= 0 ? pv[map.SourcePort] : 0.0;
+            return (pv[map.GatePort] - vs, pv[map.DrainPort] - vs);
+        }
+    }
+
+    /// <summary>The device's whole port vector at the quiescent DC point — the bias C22 is linearised at for a class preset
+    /// (R-mc23-10). Empty when the DC solve produced nothing.</summary>
+    public double[] DcDevicePortVoltages
+    {
+        get
+        {
+            var dcV = _dcSeedVoltages ??= ComputeDcSeed();
+            return dcV.Length == 0 ? [] : PortVoltagesAt(DutDevice, dcV);
+        }
+    }
+
+    /// <summary>Freezes the bias point now if it is stale — for a caller about to evaluate the device's charge outside a
+    /// solve (a class preset's C22).</summary>
+    public void EnsureBiasFrozen()
+    {
+        if (!_biasFrozen) FreezeBias();
     }
 }

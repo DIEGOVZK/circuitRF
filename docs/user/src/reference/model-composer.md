@@ -705,6 +705,13 @@ In the schematic they are the **Model switches** group of the instance's paramet
 carries one line under it naming what is off — `linear C · no gate lag · isothermal`, or `linear Cgs, Cds` — and every run that uses it adds
 one note to Messages. `circuitrf explain` reports each instance's switches.
 
+### In harmonicaRF {#switches-harmonicarf}
+
+A `.cmodel` can be [harmonicaRF](harmonicarf.html#dut)'s device. There the switches are checkboxes on the readout
+strip, and each toggle re-solves the loadline, the contours and the power sweep while you watch. The strip's `DUT` line
+names whatever is switched off. The loadline and its DCIV family are read at the intrinsic device, inside the network,
+with each DC curve at its own trap state and self-heated temperature.
+
 ## Plots {#plots}
 
 Every plot is a Data Display plot, with its own copy and inspector. Measured traces are symbols and model traces lines.

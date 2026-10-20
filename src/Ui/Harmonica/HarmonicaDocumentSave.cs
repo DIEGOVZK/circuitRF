@@ -48,7 +48,7 @@ internal static class HarmonicaDocumentSave
 
         try
         {
-            await File.WriteAllTextAsync(path, doc.ViewModel.Harmonica.ToCharmJson());
+            await File.WriteAllTextAsync(path, doc.ViewModel.Harmonica.ToCharmJson(Path.GetDirectoryName(Path.GetFullPath(path))));
             doc.OnSavedToPath(path);
 
             // A .charm saved into an open workspace appears in the tree with no reload. Null

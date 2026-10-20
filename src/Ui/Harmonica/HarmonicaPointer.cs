@@ -408,7 +408,9 @@ public sealed class HarmonicaGesture(HarmonicaViewModel viewModel)
             return true;
         }
 
-        bool intrinsicDragAllowed = CircuitModel.IntrinsicDragAllowed(_vm.Model, out string intrinsicDragReason);
+        // brief-modelcomposer-23 R-mc23-10 — a composed DUT has no closed form, and its glyph is dragged by the inverse solve.
+        bool intrinsicDragAllowed = CircuitModel.IntrinsicDragAllowed(_vm.Model, out string intrinsicDragReason)
+                                 || CircuitModel.InverseDragOffered(_vm.Model);
         var grab = HarmonicaHitTest.Resolve(_vm.Layout, _vm.Markers, x, y, w, h,
                                             renderScaling, GrabRadiusDevicePixels,
                                             GridPointsOf(_vm), _vm.ShowGridPoints, _vm.TopmostMarker,

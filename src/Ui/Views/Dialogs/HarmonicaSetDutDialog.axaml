@@ -77,6 +77,22 @@
           <ComboBox x:Name="TypeCombo" MinWidth="240" SelectionChanged="OnTypeChanged"/>
         </StackPanel>
       </StackPanel>
+      <!-- brief-modelcomposer-23 R-mc23-9 — a Model Composer .cmodel: its file, N, and the switches (R-mc23-7). Its
+           intrinsic plane is the core's own ports, so nothing is asked about it. -->
+      <StackPanel Grid.Column="1" x:Name="ComposedChooser" Spacing="6">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBox x:Name="CmodelFileBox" Width="440" LostFocus="OnCmodelFileCommitted"
+                   PlaceholderText="Path to a .cmodel file"/>
+          <Button Content="Browse…" Width="90" HorizontalContentAlignment="Center"
+                  Click="OnBrowseCmodelClick"/>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="N" VerticalAlignment="Center" Opacity="0.7"/>
+          <TextBox x:Name="FingersBox" Width="80" LostFocus="OnFingersCommitted"/>
+        </StackPanel>
+        <TextBlock Text="Model switches" Opacity="0.7"/>
+        <WrapPanel x:Name="SwitchHost" Orientation="Horizontal" ItemSpacing="14" LineSpacing="4"/>
+      </StackPanel>
     </Grid>
 
     <!-- ── parameters, READ from the model (R-h8-2); an SDD gets its own text editor (R7B §3.9) ── -->

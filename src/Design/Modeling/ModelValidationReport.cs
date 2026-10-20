@@ -14,8 +14,8 @@
 //   PA modes   for Class B, J, F and F⁻¹ (any of harmonicaRF's classes) — harmonicaRF's own method: each class's
 //              INTRINSIC terminations to the fifth harmonic from PaClassPresets (Z0 = R_opt), carried to the extrinsic
 //              plane in closed form through the model's own extrinsic network with the device's output capacitance
-//              linearized at the intrinsic DC bias (IntrinsicAbcd's bilinear map, generalised to a six-pin network: the
-//              drain-side two-port with both gates AC-shorted, as IntrinsicAbcd requires no input/output coupling); the
+//              linearized at the intrinsic DC bias (ComposedClassLoads in src/Harmonica — the transform harmonicaRF's own
+//              presets use for a composed DUT: the drain-side two-port with both gates AC-shorted); the
 //              source's 2f0 as the user states. Then a loadpull of the fundamental over a disc about the class's own
 //              fundamental load: the performance at that load, at the maximum-power and maximum-efficiency loads (MXP,
 //              MXE) at the stated compression through RfCore's loadpull surface — the Data Display's performance summary —
@@ -245,7 +245,9 @@ public static class ModelValidationReport
         if (options.PaModes)
         {
             var bias = PaBias(ctx, program, options);
-            var drain = DrainTwoPort(ctx.Model, bias.FrequencyHz, options.MaxHarmonic);
+            int n0 = ctx.Model.BasePeriphery.Fingers;
+            var drain = ComposedClassLoads.DrainTwoPort(ComposedNetworkTemplate.Build(ctx.Model.Network), n0, n0, 1.0,
+                                                        bias.FrequencyHz, options.MaxHarmonic);
             foreach (var mode in options.Modes)
             {
                 rc?.ThrowIfCancellationRequested();
@@ -564,24 +566,6 @@ public static class ModelValidationReport
     }
 
     /// <summary>
-    /// The model's extrinsic network as the drain-side two-port at each harmonic of <paramref name="f0"/>: port 1 the
-    /// extrinsic drain, port 2 the intrinsic drain against the intrinsic source, both gates AC-shorted to their sources.
-    /// <c>Y[k−1] = (Y11, Y12, Y21, Y22)</c>.
-    /// </summary>
-    internal static C2[] DrainTwoPort(ComposedModel model, double f0, int maxHarmonic)
-    {
-        string net = model.Network.Netlist;
-        string name = System.Text.RegularExpressions.Regex.Match(net, @"define\s+(\S+)").Groups[1].Value;
-        string cnl = net + $"\n{name}:XN 0 ed 0 is id is\nPort:P1 ed 0 Num=1 Z=50 Ohm\nPort:P2 id is Num=2 Z=50 Ohm\n";
-        var (lib, tb) = new Core.Netlist.CnlReader().Read(cnl);
-        using var nl = new Core.Elaboration.Elaborator(lib).Elaborate(tb);
-        double[] f = [.. Enumerable.Range(1, maxHarmonic).Select(k => k * f0)];
-        var s = SParameterEngine.Run(nl, f)["S"];
-        return [.. Enumerable.Range(0, f.Length).Select(k =>
-            NetworkAlgebra.SToY(new C2((Complex)s[k, 0, 0], (Complex)s[k, 0, 1], (Complex)s[k, 1, 0], (Complex)s[k, 1, 1]), 50))];
-    }
-
-    /// <summary>
     /// The model's drain self-capacitance C22 = ∂Qd/∂vds at the intrinsic DC bias of (<paramref name="b"/>'s) vgs and vds —
     /// harmonicaRF's linearized output capacitance (R9D §3.4: a nonlinear capacitor at its DC operating point).
     /// </summary>
@@ -596,40 +580,6 @@ public static class ModelValidationReport
         double vgsi = V("X1.gi") - V("X1.si"), vdsi = V("X1.di") - V("X1.si");
         double tj = t + (ctx.Model.Thermal is null ? 0 : V("X1.t"));
         return (ChargeFit.Capacitances(program, vgsi, vdsi, tj).C22, vgsi, vdsi);
-    }
-
-    /// <summary>
-    /// A class's load at the extrinsic plane, band by band (1 = f0): harmonicaRF's intrinsic preset
-    /// (<see cref="PaClassPresets.IntrinsicLoad"/>, Z0 = R_opt) with the linearized output capacitance taken off it, then
-    /// the drain two-port's bilinear inverse — the termination at the extrinsic drain under which the network presents the
-    /// rest at the intrinsic drain. A band at the map's pole is written at its intrinsic value and named, harmonicaRF's
-    /// best-effort fallback; a band that would need a negative resistance keeps its reactance at the chart's edge, named.
-    /// </summary>
-    internal static Complex[] ExtrinsicLoads(PaClass cls, double ropt, double f0, double c22, C2[] drain, List<string> notes)
-    {
-        var z = new Complex[drain.Length];
-        for (int k = 1; k <= drain.Length; k++)
-        {
-            Complex zi = PaClassPresets.IntrinsicLoad(cls, k, ropt);
-            Complex yd = 1 / zi - new Complex(0, 2 * Math.PI * f0 * k * c22);
-            var y = drain[k - 1];
-            Complex zExt = 1 / (y.B * y.C / (y.D - yd) - y.A);
-            if (!double.IsFinite(zExt.Real) || !double.IsFinite(zExt.Imaginary))
-            {
-                notes.Add($"band {k} could not be carried to the extrinsic plane; its intrinsic value is used there.");
-                zExt = zi;
-            }
-            else if (zExt.Real < 0)
-            {
-                // The extrinsic network's own loss puts the target out of a passive termination's reach. harmonicaRF
-                // flags such a marker and keeps it; an HB loadpull with a negative-resistance load would be driving an
-                // active termination, so the reactance is kept on the chart's edge instead, and named.
-                notes.Add($"band {k} needs {Zs(zExt)} Ω at the extrinsic plane, outside the Smith chart; its reactance is used.");
-                zExt = new Complex(ValidationBench.Short, zExt.Imaginary);
-            }
-            z[k - 1] = zExt;
-        }
-        return z;
     }
 
     /// <summary>The loadpull disc about <paramref name="centre"/>: its centre, then <c>rings × spokes</c> points out to
@@ -650,7 +600,7 @@ public static class ModelValidationReport
     {
         string label = Label(cls), stem = Group(label);
         var notes = new List<string>();
-        var loads = ExtrinsicLoads(cls, b.Ropt, b.FrequencyHz, b.C22, drain, notes);
+        var loads = ComposedClassLoads.ExtrinsicLoads(cls, b.Ropt, b.FrequencyHz, b.C22, drain, notes);
         Complex g1 = (loads[0] - 50) / (loads[0] + 50);
         var grid = Disc(g1, o.GammaRadius, o.Rings, o.Spokes);
         int steps = (int)Math.Floor((o.PinMax - o.PinStart) / o.PinStep + 1e-9) + 1;

@@ -113,10 +113,11 @@ intrinsic impedance.)
 | **Native FET** | Any of the five large-signal models — [Angelov, Curtice, Curtice cubic, Materka, Statz](components.html#fets). Choose the law, then edit the model's own parameters in the strip. |
 | **SDD** | Drain-current (and gate-current) equations you type, in the standard [expression language](expressions.html). Two-port (`_v1` = Vgs, `_v2` = Vds) or three-port, which adds the source terminal against ground as `_v3`. Optional `Cgs`, `Cdg`, `Cds` across the device's own terminals, each either linear or a polynomial C(V). |
 | **External model** | A compiled Verilog-A `.osdi`, or a part from a vendor kit through the device worker — see [PDK integration](pdk-integration.html). You must name which internal node is the intrinsic gate and drain and which pin is the source: nothing can guess that, so until it is answered the intrinsic glyphs and the loadline stay **empty** rather than plausibly wrong. |
+| **Model Composer model** | A `.cmodel` exported by the [Model Composer](model-composer.html), at a finger count `N` you choose (blank is the model's own). Its intrinsic plane needs **no naming**: the model knows where its extrinsic network ends, so the glyphs and the loadline are read at the intrinsic device inside it. Its [switches](model-composer.html#switches) are on the strip as checkboxes. |
 | **Diode** | A two-terminal built-in, for teaching and for the degenerate cases. |
 
-Load one with **File ▸ Set DUT…**, or drag a part in from the circuitRF Library palette when a workspace
-is open. **Refresh DUT** re-reads a model that changed on disk.
+Load one with **File ▸ Set DUT…**, drag a part in from the circuitRF Library palette when a workspace
+is open, or drop a `.cmodel` file on the window. **Refresh DUT** re-reads a model that changed on disk.
 
 The DUT is embedded in the same `s2p`/`s4p`/`s6p`/lumped stack described above, so a bare die and a
 packaged part are the same document with a different embedding.
@@ -156,6 +157,13 @@ tooltip, and **all of it is selectable text**, so any readout can be copied stra
 - **Left**: the settings — bias (`Vgs`, or `Idq`, which solves `Vgs` for you), `Vds`, frequency, HB
   order, the compression level, `Z0`, and **every parameter the loaded model declares**, so periphery or
   finger count appears exactly when the model actually has it.
+- **A Model Composer model** adds its file, `N` and one checkbox per
+  [switch](model-composer.html#switches). Toggling one re-solves everything — loadline, contours and power
+  sweep — so you can watch what, say, the drain lag costs. A switch the model has no part for is greyed,
+  and its tooltip says why. A `DUT` line names the model and anything switched off, such as
+  `gan_4x125.cmodel · no intrinsic charge`. `Vgs,i` and `Vds,i` give the quiescent bias at the intrinsic
+  device. The bias you set is applied outside the model's network, and the network's resistances move
+  it.
 - **Middle**: the operating point at the cursor — Pout, gain, DE, PAE, Pdc, `Zin`, AM/PM — and the
   **MXP** and **MXE** summaries from the grid, each carrying **its own `Zin`**, because `Zin` moves with
   the load on a non-unilateral device and one number for both would be a lie.
@@ -186,6 +194,8 @@ More precisely:
   only when the inversion is exact — an SDD DUT, linear capacitances, no `Cdg` feedback, and a package
   that does not couple the input and output loops. When it is not available the tool says which of those
   conditions failed instead of silently approximating.
+  A **Model Composer model**'s network couples its input and output, so its glyph is moved by solving
+  for the terminations directly. A target no termination can reach leaves the markers where they were.
 - **Right-click a marker** for its context menu: set it as an impedance (R + jX) or as a gamma (polar or
   rectangular), toggle normalisation, snap it to MXP or MXE, copy Γ, copy Z, or remove it.
 - **Double-click** in the readout strip edits a setting in place — bias, Vds, frequency, HB order,
@@ -217,6 +227,10 @@ Three things a user needs to know about them:
 3. **A preset writes only the bands you have markers for.** Add `L2` and `L3` first if you want a
    Class-F arrangement to have anywhere to put its harmonics. Bands with no marker stay at the
    unmarked near-short.
+
+On a **Model Composer model** the preset is carried through the model's own network, the same way its
+[Model Validation Report](model-composer.html#report) places class loads. The device's output capacitance `C22`
+is taken off at the intrinsic bias point, and the readout gives the `C22` used.
 
 When to reach for which: **B** is the reference case and the sanity check. **J / J\*** buy you Class-B
 efficiency over a wider bandwidth by trading fundamental reactance against a reactive second harmonic —
@@ -250,7 +264,9 @@ simulating. On macOS these appear in the system menu bar; elsewhere they are in 
 A harmonicaRF document saves as **[`.charm`](file-formats.html)** — the DUT, the embedding, the bias, the
 terminations and markers, the grid, the settings, and your panel layout. A DUT can be **embedded** in the
 document or **referenced**, so a `.charm` is either self-contained or tracks a model that keeps changing,
-whichever you need.
+whichever you need. A Model Composer model is always referenced, with its `N` and its switches. The path is stored
+relative to the `.charm` when the model sits in the same folder or below it. A missing model is named when the
+document opens, so you can point Set DUT at it again.
 
 Three ways out:
 
