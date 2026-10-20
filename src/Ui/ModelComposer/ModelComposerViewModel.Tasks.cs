@@ -293,7 +293,11 @@ public sealed partial class ModelComposerViewModel
         "Data" => [new("Import…", "import"), new("Reload", "reload")],
         "Pads" => [new("De-embed", "deembed")],
         "Network" => [new("Fit", "fit"), new("De-embed", "deembed")],
-        "Current" or "Charge" or "Thermal" or "Traps" or "Fit" => [new("Fit", "fit")],
+        "Current" or "Charge" or "Traps" or "Fit" => [new("Fit", "fit")],
+        "Thermal" => [new("Extract", "fit")],
+        "Check" => [new("Check charge conservation", "check")],
+        "Validate" => [new("Validate all", "validate"), new("Show testbench", "testbench")],
+        "Export" => [new("Export", "export"), new("Run stale", "stale")],
         "Topology" => [new("Propose", "propose"), new("Analyse", "analyse")],
         _ => [],
     };
@@ -311,9 +315,20 @@ public sealed partial class ModelComposerViewModel
         "deembed" => Reload(),
         "fit" => FitAsync(FitStepOf(StepName)),
         "propose" => ProposeAsync(),
+        "check" => CheckChargeAsync(),
+        "validate" => ValidateAsync(null),
+        "testbench" => Run(ShowTestbench),
+        "export" => ExportAsync(),
+        "stale" => RunStaleAsync(),
         "analyse" => AnalyseAsync(),
         _ => Task.FromResult(false),
     };
+
+    private static Task<bool> Run(Action action)
+    {
+        action();
+        return Task.FromResult(true);
+    }
 
     private static string FitStepOf(string step) => step switch
     {

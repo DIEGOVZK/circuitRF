@@ -182,6 +182,15 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
+                    <Button Classes="tool" Command="{Binding CheckChargeCommand}" IsVisible="{Binding IsActive}"
+                            ToolTip.Tip="Check Charge Conservation">
+                        <mi:MaterialIcon Kind="CheckDecagramOutline" Width="16" Height="16"/>
+                    </Button>
+                    <Button Classes="tool" Command="{Binding OpenReportCommand}" IsVisible="{Binding IsActive}"
+                            ToolTip.Tip="Model Validation Report…">
+                        <mi:MaterialIcon Kind="FileChartOutline" Width="16" Height="16"/>
+                    </Button>
+                    <Border Classes="rule" IsVisible="{Binding IsActive}"/>
                     <Button Name="RunButton" Classes="tool" Command="{Binding RunCommand}" ToolTip.Tip="Run the step">
                         <mi:MaterialIcon Kind="Play" Width="16" Height="16"/>
                     </Button>

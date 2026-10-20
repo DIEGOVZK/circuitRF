@@ -39975,3 +39975,24 @@ the whole operation.
 
 **A rail built for a reopened document selects its first step before the stored step is read**, which overwrote the
 `View.Step` the document carried. The stored view is captured before the rail is built and restored after.
+
+## The Model Composer's model steps and plots (brief-modelcomposer-15, 2026-10-20)
+
+**A contour map on a rectangular plot must be SQUARE.** `ContourExtractor.Extract` indexes `SurfaceGrid.Values` as
+`yi * res + xi` with `res = XSpace.Length`, and `ContourRenderer.DrawTopoMapFill` returns without drawing when
+`YSpace.Length != res`. A map on the report's own grid (fixed voltage step, so a different count on each axis) drew no
+fill and wrong iso-lines with no error anywhere; every map the window draws is `ModelStepPlots.MapPoints` square.
+
+**A hollow marker is `MarkerOpacity = 0`**, not a fill colour: the marker renderer fills at the marker opacity and then
+strokes a dark outline, so a transparent fill is an open glyph of the trace's own shape. Used for pulsed points beyond the
+trap-setting bias (validation only).
+
+**The surface renderer is not a general surface plot** — it draws a cube with two free ANGLE axes (antenna patterns).
+The Charge step's charge surface is therefore drawn through the contour renderer, as the ΔQ maps are.
+
+**A `.cdd` cannot hold an arbitrary contour.** A contour trace in a Data Display document stores a metric and a level
+scheme and re-derives its curves from a LOADPULL source every time, so the report's ΔQ maps are written into its display
+as a family over the shorter axis; the PA classes keep real loadpull contours.
+
+**Byte identity of the report PDF does not depend on the file name** because `ModelReportDisplayPreset.Pdf` always writes
+the multi-page form, which carries no metadata Title (the single-page form takes its Title from the output path).

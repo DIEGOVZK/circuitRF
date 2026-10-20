@@ -16,6 +16,16 @@ keywords: model extraction, device modeling, FET model, GaN HEMT, extrinsic netw
 <li><a href="#data">The Data step</a></li>
 <li><a href="#pads">The Pads step</a></li>
 <li><a href="#network">The Network step</a></li>
+<li><a href="#method">The method picker</a></li>
+<li><a href="#current">The Current step</a></li>
+<li><a href="#charge">The Charge step</a></li>
+<li><a href="#thermal">The Thermal step</a></li>
+<li><a href="#traps">The Traps step</a></li>
+<li><a href="#check">The Check step</a></li>
+<li><a href="#validate">The Validate step</a></li>
+<li><a href="#report">The Model Validation Report</a></li>
+<li><a href="#export">The Export step</a></li>
+<li><a href="#plots">Plots</a></li>
 <li><a href="#passive">Passive documents: Data and Topology</a></li>
 <li><a href="#undo">Undo</a></li>
 <li><a href="#headless">Headless</a></li>
@@ -38,7 +48,7 @@ the same step, and the same bias cursor.
 
 | Part | What it holds |
 |---|---|
-| Toolbar | Open, Save, Save As · Undo, Redo · the four panel lamps · the bias cursor (Vgs, Vds, T, Q) · Run ▾, Cancel · Help |
+| Toolbar | Open, Save, Save As · Undo, Redo · the four panel lamps · the bias cursor (Vgs, Vds, T, Q) · Check Charge Conservation, Model Validation Report · Run ▾, Cancel · Help |
 | **Steps** (left) | The step rail, and under it the selected step's settings |
 | **Plots** (centre) | A tab strip and a Data Display plot |
 | **Network** (right, top) | The extrinsic network, drawn by the schematic canvas |
@@ -129,6 +139,119 @@ click or lasso adds points to that set or takes them out.
 
 A right network leaves C and G flat in frequency.
 
+## The method picker {#method}
+
+The Current and Charge steps pick a method for each constituent with the same control:
+
+| Method | Settings |
+|---|---|
+| ANN | Hidden layers (1 to 4, neurons each, default `8, 8`), activation, iterations |
+| Table | Grid step and smoothing; a charge table also takes its line-integral path — A, B or their mean |
+| Equation | A template, or your own expression in `vgs`, `vds` and named parameters; after a fit, each parameter's value |
+
+Restarts, the seed and the held-out percentage belong to the step. After a fit the status strip reads, for example,
+`Id: ANN 2×8 · held-out 0.8 % · domain 412 pts`.
+
+## The Current step {#current}
+
+Pickers for `Id` and `Ig` — an equation `Ig` is two expressions, `IgGs` and `IgGd` — and **DC/RF dispersion**, the
+simpler alternative to self-heating and traps.
+
+| Plot tab | Shows |
+|---|---|
+| Output, Transfer | Measured Id (symbols) and the model (lines), one member per measured Vgs or Vds, at the cursor's temperature and quiescent point |
+| Error | Model minus data over the bias plane, in % of the current's range |
+| Gm, Gds | The data's own derivative (symbols) against the model, at the cursor's Vds or Vgs; with dispersion, RF Gm and Gds from the S data as well |
+| Domain | The training points and the outline of the domain beyond which the model extrapolates |
+
+## The Charge step {#charge}
+
+Pickers for `Qg` and `Qd` (an adjoint-trained ANN by default, a table integrated along a path, or an equation), and
+**Drift charge in Qg**.
+
+| Plot tab | Shows |
+|---|---|
+| C–V (vgs), C–V (vds) | The model's capacitances along one voltage with the other at the cursor's value, measured points as symbols. The selector beside the tabs picks one `Cij` or the circuit set Cgs, Cgd, Cds, Cm |
+| Qg, Qd | The model's charge over (vds, vgs) |
+| ΔQg, ΔQd | The model's charge against the line integral of the measured capacitances, in % of the charge's range |
+
+## The Thermal step {#thermal}
+
+Self-heating, `Rth` (blank extracts it), `Cth` or a ladder of `fraction:τ` pairs; **Extract** (Run) runs the extraction
+and the line under the settings gives its Rth and residual. A document whose data is at one temperature shows its `T0`
+and the words *one temperature* instead: the model it builds has no temperature dependence.
+
+| Plot tab | Shows |
+|---|---|
+| Tj | Each DC point's junction-temperature rise against its dissipated power, and the model's Rth line |
+| DC I–V | Measured Id, the model with self-heating (solid) and the isothermal model (dashed) |
+
+## The Traps step {#traps}
+
+The trap model (None, CaptureEmission, Custom), a toggle per state, the time constants, and for Custom each state's
+dynamics and DC expressions with the result of the fixed-point check. A state the data cannot support shows why in
+place of its toggle; a state trained from one trap-setting level shows that level.
+
+| Plot tab | Shows |
+|---|---|
+| Pulsed I–V | Per trap-setting level, measured Id against the model at the cursor's Vgs; points pulsed beyond the trap-setting bias are hollow — validation only |
+| DC I–V | The DC data against the model, as validation |
+
+## The Check step {#check}
+
+**Check Charge Conservation** — also on the toolbar — checks the data, the fitted model and a large-signal drive. The
+result is one line, e.g. `Data gate 0.4 % · drain 3.8 % · Model 0 % · HB 0.2 µA`, and the transcapacitance as
+information.
+
+| Plot tab | Shows |
+|---|---|
+| Curl Qg, Curl Qd | Each charge row's curl over the bias plane, % |
+| Paths Qg, Paths Qd | The two line-integral paths' difference, % of the charge's range |
+| Spectrum | The gate current's spectrum with the drive at f and at 2f; a change in its DC is DC made by a non-conservative charge |
+
+## The Validate step {#validate}
+
+One row per data set with its tolerance and, after a run, its result line. **Run all**, or ▶ on one row. The
+tolerances are edited below the rows. **Show testbench** writes each item's generated `.cnl` beside the `.cmc` and shows
+it in the file manager.
+
+| Plot tab | Shows |
+|---|---|
+| S, Smith | S at the measurement plane at the cursor's bias, measured (symbols) against model (lines) |
+| I–V | The I–V family |
+| Power, IM | Pout, gain, PAE and Id, or IM3 and IM5, against input power |
+| Loadpull | Measured and modelled Pout contours |
+
+## The Model Validation Report {#report}
+
+**Model Validation Report…** (toolbar, or the Validate step) opens a dialog with every option of the report: the
+sections, the S biases, the fixed voltages of the C–V families, the PA classes, the frequency, bias, R_opt and the
+source's fundamental and 2f0 terminations, the load disc (radius, rings, spokes), the drive ladder and the compression.
+Each opens on the value stored in the document or its default; **Apply** stores them.
+
+**Generate** writes the report into `<name>-report/` beside the `.cmc`, and its Data Display document,
+`<name>-report.cdd`, beside that folder: one tab per section — I–V families, the ΔQ maps, the C–V families with the fixed
+voltage as the legend, S at the chosen biases, the Rth plot, and per PA class its loadpull contours, its performance
+table and the region where the drive-up converged. **Export PDF…** writes every tab as one page each. `model report
+--pdf` writes the same file.
+
+## The Export step {#export}
+
+`N0` and `W0`, the scaling rule of each network value, the symbol — only symbols with gate, drain and source pins (and a
+fourth for the thermal node of a self-heating model) are offered — and the `.cmodel`'s path. **Export** writes it;
+**Copy instance** puts an instance of it on the clipboard, ready to paste into a schematic.
+
+A step whose result predates the data or the network blocks Export with one line naming it; **Run stale** re-runs the
+stale steps in order.
+
+A passive document exports as a cell: its name, the library or workspace folder it goes in, and the fitted values as
+its parameters.
+
+## Plots {#plots}
+
+Every plot is a Data Display plot, with its own copy and inspector. Measured traces are symbols and model traces lines.
+The button at the right of the tab strip, **Open in Data Display**, sends the plot's data to a new display.
+
 ## Passive documents: Data and Topology {#passive}
 
 The Data step lists the block, or the family's blocks with their geometry values, and the analysis lines. The S and
@@ -144,5 +267,6 @@ Every edit — a value, a lock, a bound, a tie, an exclusion, a step setting, a 
 
 ## Headless {#headless}
 
-Every run of this window is a [`model`](cli.html#model) verb noun — `model import`, `model deembed`, `model fit` — calling the
-same function, so a document built in the window runs the same way from a script or an agent.
+Every run of this window is a [`model`](cli.html#model) verb noun — `model import`, `model deembed`, `model fit`,
+`model check-charge`, `model validate`, `model export`, `model report` — calling the same function, so a document built in
+the window runs the same way from a script or an agent.

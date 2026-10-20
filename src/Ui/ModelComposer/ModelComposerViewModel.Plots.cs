@@ -75,7 +75,7 @@ public sealed partial class ModelComposerViewModel
 
     private void RebuildPlotTabs()
     {
-        IReadOnlyList<string> tabs = IsPassive ? [STab, SmithTab] : StepName switch
+        IReadOnlyList<string> tabs = IsPassive ? [STab, SmithTab] : ModelStepTabs() ?? StepName switch
         {
             "Data" => [OutputTab, TransferTab, BiasPlaneTab, STab, SmithTab],
             "Pads" => [STab, SmithTab],
@@ -123,6 +123,7 @@ public sealed partial class ModelComposerViewModel
         _biasPlanePoints = [];
         try
         {
+            if (!ModelStepPlot(plot))
             switch (SelectedPlotTab)
             {
                 case OutputTab: IvFamily(plot, byVgs: true); break;

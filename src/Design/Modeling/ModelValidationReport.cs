@@ -214,7 +214,8 @@ public static class ModelValidationReport
         var sections = new List<ReportSection>();
         if (options.Dc && validation.Items.Any(i => i.Kind is ValidationKind.DcIv or ValidationKind.PulsedIv))
             sections.Add(FromItems("DC", validation.Items.Where(i => i.Kind is ValidationKind.DcIv or ValidationKind.PulsedIv)));
-        if (options.Thermal && ctx.Model.Thermal is not null && Thermal(ctx, program) is { } thermal) sections.Add(thermal);
+        if (options.Thermal && ctx.Model.Thermal is { } th && Thermal(ctx.Doc, ctx.Data, ctx.Intrinsic, program, th) is { } thermal)
+            sections.Add(thermal);
         if (options.Charge || options.CapacitanceSlices)
         {
             ChargeData? charges = null;
@@ -222,7 +223,15 @@ public static class ModelValidationReport
             catch (ModelingException ex) { sections.Add(Note("Charge", $"Charge: not reported — {ex.Message}")); }
             if (charges is not null)
             {
-                if (options.Charge) sections.Add(ChargeSurface(ctx, program, charges));
+                if (options.Charge)
+                {
+                    ctx.Rc?.BeginStage("Report: charge surfaces");
+                    var poly = charges.Domain.Polygon;
+                    double[] vgs = Regrid.Axis(poly.Min(p => p.Vgs), poly.Max(p => p.Vgs), ChargeConstituentSettings.DefaultGridStep);
+                    double[] vds = Regrid.Axis(poly.Min(p => p.Vds), poly.Max(p => p.Vds), ChargeConstituentSettings.DefaultGridStep);
+                    var anchor = ChargeFit.Record(ctx.Doc)?.Anchor ?? ChargeFit.Anchor(charges, ChargeFitSettings.Default, []);
+                    sections.Add(ChargeSurface(program, charges, anchor, vgs, vds, ctx.Rc));
+                }
                 if (options.CapacitanceSlices) sections.Add(Slices(program, charges, options));
             }
         }
@@ -333,18 +342,18 @@ public static class ModelValidationReport
     /// model carries the measured channel current; its rise over the ambient against the dissipated power is a line whose
     /// slope is the data's Rth at that ambient. Each ambient's slope is set against the model's <c>RthAt</c>.
     /// </summary>
-    private static ReportSection? Thermal(ModelValidation.Context ctx, ComposedCoreProgram program)
+    internal static ReportSection? Thermal(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data, IntrinsicResult intrinsic,
+                                           ComposedCoreProgram program, ModelThermal thermal)
     {
-        var dcSets = ctx.Doc.DataSets.Where(s => s.Kind == DataSetKind.DcIv).ToList();
+        var dcSets = doc.DataSets.Where(s => s.Kind == DataSetKind.DcIv).ToList();
         if (dcSets.Count == 0 || !program.HasT) return null;
-        var thermal = ctx.Model.Thermal!;
         var lines = new List<string>();
         var ds = new DataSet();
         var allP = new List<double>(); var allRise = new List<double>(); var allT = new List<double>();
         foreach (var set in dcSets)
         {
             CurrentFit.IvPoints ip;
-            try { ip = CurrentFit.Gather(ctx.Doc, ctx.Data, ctx.Intrinsic, CurrentFit.Settings(ctx.Doc) with { DataSets = [set.Name] }, [], ThermalHeating.None, withTraps: false); }
+            try { ip = CurrentFit.Gather(doc, data, intrinsic, CurrentFit.Settings(doc) with { DataSets = [set.Name] }, [], ThermalHeating.None, withTraps: false); }
             catch (ModelingException) { continue; }
             var iso = Isothermal(program);
             for (int k = 0; k < ip.X.Length; k++)
@@ -384,14 +393,13 @@ public static class ModelValidationReport
 
     // ── Charge surface difference ─────────────────────────────────────────────
 
-    private static ReportSection ChargeSurface(ModelValidation.Context ctx, ComposedCoreProgram program, ChargeData data)
+    /// <summary>The model's Qg and Qd over the grid (<paramref name="vgs"/>, <paramref name="vds"/>) against the line integral of the
+    /// measured capacitances from <paramref name="anchor"/>, and their difference in % of each charge's range inside the data's
+    /// hull — the report's Charge section and the Charge step's maps (MC-15).</summary>
+    internal static ReportSection ChargeSurface(ComposedCoreProgram program, ChargeData data, (double Vgs, double Vds) anchor,
+                                                double[] vgs, double[] vds, RunControl? rc)
     {
-        ctx.Rc?.BeginStage("Report: charge surfaces");
         var poly = data.Domain.Polygon;
-        double gLo = poly.Min(p => p.Vgs), gHi = poly.Max(p => p.Vgs), dLo = poly.Min(p => p.Vds), dHi = poly.Max(p => p.Vds);
-        double[] vgs = Regrid.Axis(gLo, gHi, ChargeConstituentSettings.DefaultGridStep);
-        double[] vds = Regrid.Axis(dLo, dHi, ChargeConstituentSettings.DefaultGridStep);
-        var anchor = ChargeFit.Record(ctx.Doc)?.Anchor ?? ChargeFit.Anchor(data, ChargeFitSettings.Default, []);
         var axes = new[] { new Axis("vgs", vgs, "V"), new Axis("vds", vds, "V") };
         var ds = new DataSet();
         var lines = new List<string>();
@@ -400,7 +408,7 @@ public static class ModelValidationReport
             var (c1, c2) = data.Row(gate);
             var f1 = Regrid.Rbf(data.X, c1); var f2 = Regrid.Rbf(data.X, c2);
             double typical = Math.Sqrt(c1.Concat(c2).Average(v => v * v));
-            var (a, b) = LineIntegral.OntoGrid(f1, f2, anchor, vgs, vds, 1e-7 * typical * ChargeConstituentSettings.DefaultGridStep, ctx.Rc);
+            var (a, b) = LineIntegral.OntoGrid(f1, f2, anchor, vgs, vds, 1e-7 * typical * ChargeConstituentSettings.DefaultGridStep, rc);
             var measured = new double[a.Length]; var model = new double[a.Length]; var diff = new double[a.Length];
             double q0 = Charge(program, anchor.Vgs, anchor.Vds, gate);
             var inside = new HashSet<int>();
@@ -438,7 +446,7 @@ public static class ModelValidationReport
 
     /// <summary>The circuit capacitances from the matrix: Cgs = C11 + C12, Cgd = −C12, Cds = C22 + C12, written as [P1] does,
     /// with the transcapacitance Cm = C21 − C12.</summary>
-    private static readonly (string Name, Func<double, double, double, double, double> Of)[] Circuit =
+    internal static readonly (string Name, Func<double, double, double, double, double> Of)[] Circuit =
     [
         ("Cgs", (c11, c12, _, _) => c11 + c12), ("Cgd", (_, c12, _, _) => -c12),
         ("Cds", (_, c12, _, c22) => c22 + c12), ("Cm", (_, c12, c21, _) => c21 - c12),
@@ -657,6 +665,9 @@ public static class ModelValidationReport
         foreach (var (name, cube) in lp.Cubes) if (!name.StartsWith("__", StringComparison.Ordinal)) ds.Add(name, cube);
         var gridAxis = lp["StopCode"].Axes[0];
         ds.Add("Converged", new DataCube([gridAxis], converged));
+        var nan = new Complex(double.NaN, double.NaN);
+        ds.Add("GammaLoad.converged", new DataCube([gridAxis], [.. gamma.Select((g, k) => converged[k] == 1 ? g : nan)]));
+        ds.Add("GammaLoad.failed", new DataCube([gridAxis], [.. gamma.Select((g, k) => converged[k] == 1 ? nan : g)]));
         var band = new Axis("harmonic", [.. Enumerable.Range(1, loads.Length).Select(k => (double)k)]);
         ds.Add("ZLoad.extrinsic", new DataCube([band], loads));
         ds.Add("ZLoad.intrinsic", new DataCube([band], [.. Enumerable.Range(1, loads.Length).Select(k => PaClassPresets.IntrinsicLoad(cls, k, b.Ropt))]));

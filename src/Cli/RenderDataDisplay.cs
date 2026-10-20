@@ -337,55 +337,7 @@ internal static class RenderDataDisplay
         Plot plot, double left, double top, double width, double height, FreqUnit freqUnit,
         bool hasMultipleSources, Func<Trace, string?>? aliasFor,
         Action<SKCanvas, TransformSet, RenderTheme>? overlay = null)
-    {
-        double stripW = PlotCanvasGeometry.StripLogicalWidth(height);
-        double topX   = PlotCanvasGeometry.TopLabelExtraLogical(plot, width);
-        double botX   = PlotCanvasGeometry.BottomLabelExtraLogical(plot, width);
-
-        // Which traces get a strip is PlotLabelStrips' rule, the same one the window's own
-        // container follows (RND-4 R-rnd4-7: the strips are content and come out in an export).
-        var (leftStrips, rightStrips) = PlotLabelStrips.For(plot, hasMultipleSources);
-
-        var boxes = new List<PlacedMarkerBox>();
-        foreach (var t in plot.Traces)
-        foreach (var m in t.Markers)
-        {
-            if (!m.ShowInfoBox) continue;
-
-            // A marker whose box was never dragged has no stored position — the window places one
-            // 15/10 px from the glyph the first time it builds the box, and PERSISTS it. A `.cdd`
-            // written by the application therefore always carries a finite position; this is the
-            // same rule for one that does not (a hand-written file, or a marker added by a client),
-            // through the same function, so the two agree.
-            var pos = double.IsNaN(m.InfoBoxPos.X) || double.IsNaN(m.InfoBoxPos.Y)
-                ? PlotCanvasGeometry.DefaultInfoBoxPosition(
-                      m, t, plot, width, height + topX + botX, left, top, zoom: 1.0)
-                : m.InfoBoxPos;
-            double bx = pos.X;
-            double by = pos.Y;
-            var (w, h) = MarkerRenderer.MeasureInfoBox(m, t, freqUnit,
-                                                       hasMultipleSources, plot.Traces);
-            boxes.Add(new PlacedMarkerBox(m, t, freqUnit, bx, by, w, h, plot.Traces));
-        }
-
-        return new PlacedPlot
-        {
-            Plot                = plot,
-            ViewLeft            = left,
-            ViewTop             = top - topX,
-            ViewWidth           = width,
-            ViewHeight          = height + topX + botX,
-            LogicalWidth        = width,
-            LabelStripViewWidth = stripW,
-            LeftLabelStrips     = leftStrips,
-            RightLabelStrips    = rightStrips,
-            MarkerBoxes         = boxes,
-            ShowFilePrefix      = hasMultipleSources,
-            AlwaysShowSource    = hasMultipleSources,
-            AliasFor            = aliasFor,
-            Overlay             = overlay,
-        };
-    }
+        => PlotPlacement.Place(plot, left, top, width, height, freqUnit, hasMultipleSources, aliasFor, overlay);
 
     // ── tabs ─────────────────────────────────────────────────────────────────
 

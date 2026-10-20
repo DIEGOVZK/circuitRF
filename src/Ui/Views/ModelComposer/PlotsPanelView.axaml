@@ -1,4 +1,5 @@
-<!-- The plots panel (brief-modelcomposer-14 R-mc14-2, R-mc14-6 … R-mc14-9): a tab strip, a Data Display PlotControl
+<!-- The plots panel (brief-modelcomposer-14 R-mc14-2, R-mc14-6 … R-mc14-9; MC-15 R-mc15-9): a tab strip, Open in Data
+     Display, a Data Display PlotControl
      — rectangular, or a Smith chart for the reflection tabs — and on the bias plane its three lamps: extrinsic ○,
      intrinsic ● and the × that arms click-and-lasso exclusion, with the reason chosen from a short list. -->
 <UserControl xmlns="https://github.com/avaloniaui"
@@ -10,6 +11,7 @@
              x:DataType="mc:ModelComposerViewModel">
     <Border Classes="pane">
         <Grid RowDefinitions="Auto,*,Auto">
+            <Grid ColumnDefinitions="*,Auto,Auto">
             <ItemsControl Name="TabStrip" ItemsSource="{Binding PlotTabs}">
                 <ItemsControl.ItemsPanel>
                     <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="2"/></ItemsPanelTemplate>
@@ -20,6 +22,12 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+            <ComboBox Grid.Column="1" ItemsSource="{Binding CvQuantities}" SelectedItem="{Binding CvQuantity}" IsVisible="{Binding IsChargeStep}"
+                      MinWidth="100" Margin="4,0" ToolTip.Tip="Which capacitance the C–V plots show"/>
+            <Button Grid.Column="2" Classes="tool" Command="{Binding OpenInDataDisplayCommand}" ToolTip.Tip="Open in Data Display">
+                <mi:MaterialIcon Kind="OpenInNew" Width="14" Height="14"/>
+            </Button>
+            </Grid>
 
             <Panel Grid.Row="1" Margin="0,4,0,0">
                 <ddc:PlotControl Name="RectPlotControl" Plot="{Binding RectPlot}" Library="{Binding PlotHost.Library}"

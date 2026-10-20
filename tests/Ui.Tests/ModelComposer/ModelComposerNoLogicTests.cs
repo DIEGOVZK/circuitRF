@@ -15,7 +15,11 @@ public sealed class ModelComposerNoLogicTests
     /// <summary>What the window must call rather than hold: the save, the data, the import, the fits, the network.</summary>
     private static readonly string[] SharedCalls =
         ["ModelCommands.Save(", "ModelCommands.Load(", "ModelCommands.Import(", "ModelCommands.Fit(", "ModelCommands.InstallNetwork(",
-         "ModelCommands.ChooseNetwork(", "ModelCommands.Preview("];
+         "ModelCommands.ChooseNetwork(", "ModelCommands.Preview(",
+         // MC-15: the model steps' plots, the check, the validation, the export and the report — each the verb's own call.
+         "ModelStepPlots.Build(", "ConservationCheck.RunFile(", "ModelValidation.RunFile(", "CmodelExport.Export(",
+         "ModelCommands.ExportCell(", "ModelValidationReport.Generate(", "ModelReportDisplayPreset.WriteDocument(",
+         "ModelReportDisplayPreset.WritePdf("];
 
     [Fact]
     public void TheWindowsFolders_HoldNoFlow_AndCallTheSharedFunctions()

@@ -63,7 +63,12 @@ public sealed record ModelConservation(double[] Vgs, double[] Vds, double[] Gate
 
 /// <summary>One drive of check (c): the DC gate current, the gate current's fundamental amplitude, the DC drain current.
 /// Into the device, amps.</summary>
-public sealed record DriveCurrents(double GateDc, double GateFundamental, double DrainDc);
+public sealed record DriveCurrents(double GateDc, double GateFundamental, double DrainDc)
+{
+    /// <summary>The gate current's magnitude at DC and each harmonic, amps — the spectrum the Check step draws ([P1] Fig.
+    /// 6.21's picture, MC-15).</summary>
+    public IReadOnlyList<double> GateSpectrum { get; init; } = [];
+}
 
 /// <summary>Check (c): the drives at f and 2f; <see cref="Spurious"/> = <c>Igate,dc(2f) − Igate,dc(f)</c> — the DC a
 /// non-conservative capacitance makes at f — and that relative to the fundamental gate current at f.</summary>
@@ -240,7 +245,11 @@ public static class ConservationCheck
         int Branch(string name) => Array.FindIndex(labels, l => l == name || l.EndsWith("." + name, StringComparison.Ordinal)) is var k and >= 0
             ? k : throw new ModelingException("Check", $"the drive's probe {name} is not in the result.");
         int ig = Branch("IGCHK"), id = Branch("IDCHK");
-        return new DriveCurrents(((Complex)cube[ig, 0]).Real, ((Complex)cube[ig, 1]).Magnitude, ((Complex)cube[id, 0]).Real);
+        var spectrum = Enumerable.Range(0, cube.Axes[1].Length).Select(h => ((Complex)cube[ig, h]).Magnitude).ToArray();
+        return new DriveCurrents(((Complex)cube[ig, 0]).Real, ((Complex)cube[ig, 1]).Magnitude, ((Complex)cube[id, 0]).Real)
+        {
+            GateSpectrum = spectrum,
+        };
     }
 
     // ── The composer's model ──────────────────────────────────────────────────
@@ -289,6 +298,19 @@ public static class ConservationCheck
     /// exit 3). A charge-based device reads ~1e-20; a gate current written as capacitances times dV/dt with a planted
     /// curl reads 0.4 % (ConservationCheckLargeSignalTests).</summary>
     public const double DefaultThreshold = 1e-3;
+
+    /// <summary>
+    /// The report in one line, each part's number (MC-15 R-mc15-6): <c>Data gate 0.4 % · drain 3.8 % · Model 0.0 % · HB 0.2 µA</c>
+    /// — the data's and the model's curl RMS and the large-signal check's spurious DC gate current. A part not run is left out.
+    /// </summary>
+    public static string Summary(ConservationReport report)
+    {
+        var parts = new List<string>();
+        if (report.Data is { } a) parts.Add($"Data gate {Pct(a.GateRms)} · drain {Pct(a.DrainRms)}");
+        if (report.Model is { } b) parts.Add($"Model {Pct(Math.Max(b.GateRms, b.DrainRms))}");
+        if (report.LargeSignal is { } c) parts.Add($"HB {Si(Math.Abs(c.Spurious), "A")}");
+        return string.Join(" · ", parts);
+    }
 
     /// <summary>Whether <paramref name="report"/>'s large-signal check is above <paramref name="threshold"/> — D16's failed check.</summary>
     public static bool Exceeds(ConservationReport report, double threshold = DefaultThreshold) =>

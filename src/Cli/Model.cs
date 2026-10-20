@@ -6,6 +6,7 @@ using CircuitRF.Design.Modeling.Passive;
 using CircuitRF.Design.Optimization;
 using CircuitRF.Diagnostics;
 using CircuitRF.Engine;
+using CircuitRF.Render.DataDisplay;
 using RfCore.Export;
 
 namespace CircuitRF.Cli;
@@ -371,10 +372,6 @@ internal static class Model
 
     private static int ReportNoun(string path, Args a, RunControl rc)
     {
-        // The PDF is drawn from the report's Data Display document, which arrives with the window's report export (MC-15);
-        // until then the folder is the report.
-        if (a["--pdf"] is not null)
-            return JsonRun.Fail(CliDiagnostics.ModelRefused("report", "--pdf draws the report's Data Display document, which this build does not have yet; the folder (-o) holds the report."));
         var options = ModelValidationReport.Options(CmcFile.Read(path));
         var json = options.ToJson().AsObject();
         bool changed = false;
@@ -402,7 +399,11 @@ internal static class Model
         string folder = a["-o"] is { } o ? Path.GetFullPath(o) : ModelValidationReport.DefaultFolder(path);
         var report = ModelValidationReport.Generate(path, model, options, rc);
         rc.ThrowIfCancellationRequested();
-        var written = ModelValidationReport.Write(report, folder);
+        var written = ModelValidationReport.Write(report, folder).ToList();
+        // The report's Data Display document beside the folder, and its PDF — the same two functions the window calls.
+        string cdd = ModelReportDisplayPreset.WriteDocument(report, folder);
+        written.Add(cdd);
+        if (a["--pdf"] is { } pdf) written.Add(ModelReportDisplayPreset.WritePdf(cdd, Path.GetFullPath(pdf)));
         var items = report.Sections.SelectMany(s => s.Lines.Select(l => new ModelLine("section", s.Name, l))).ToList();
         return Report("report", path, items, written: [.. written]);
     }

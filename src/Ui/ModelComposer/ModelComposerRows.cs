@@ -1,9 +1,11 @@
 // The rows the Model Composer window lists (brief-modelcomposer-14 R-mc14-2, R-mc14-6, R-mc14-8, R-mc14-9): the step
-// rail, the data sets, the network values and the passive proposals. Each is a projection of the document the view model
+// rail, the data sets, the network values and the passive proposals; and MC-15's method pickers, trap states, typed numbers,
+// validation items and export symbols. Each is a projection of the document the view model
 // rebuilds after an edit or a run; a settable cell hands its text back to the view model, which makes the edit — one undo
 // step — so a row never holds a second copy of what the document says.
 
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using CircuitRF.Design.Modeling;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -106,3 +108,148 @@ public sealed partial class NetworkValueRow : ObservableObject
 
 /// <summary>One passive topology proposal (R-mc14-9): its rank, title, score and the fitted values, for its thumbnail.</summary>
 public sealed record ProposalRow(int Rank, string Topology, string Title, string Score, SchematicModel? Drawing);
+
+/// <summary>
+/// One constituent's method picker (brief-modelcomposer-15 R-mc15-1) — the same control for every constituent: the
+/// method, an ANN's layers, activation and iterations, a table's grid and smoothing (and a charge table's path), an
+/// equation's template or expression and its fitted parameters. Edits go back through the view model, one undo step each.
+/// </summary>
+public sealed partial class MethodPickerRow : ObservableObject
+{
+    private readonly Action<MethodPickerRow, string, string> _commit;
+    private bool _loading;
+
+    public MethodPickerRow(string name, IReadOnlyList<string> methods, IReadOnlyList<string> templates, bool charge,
+                           Action<MethodPickerRow, string, string> commit)
+    {
+        Name = name;
+        Methods = methods;
+        Templates = ["", .. templates];
+        IsCharge = charge;
+        _commit = commit;
+    }
+
+    public string Name { get; }
+    public IReadOnlyList<string> Methods { get; }
+    public IReadOnlyList<string> Templates { get; }
+    public IReadOnlyList<string> Activations { get; } = Enum.GetNames<CircuitRF.Core.Devices.Composed.AnnActivation>();
+    public IReadOnlyList<string> Paths { get; } = Enum.GetNames<IntegrationPath>();
+    public bool IsCharge { get; }
+    /// <summary>The gate current: its equation is two branch expressions, IgGs and IgGd.</summary>
+    public bool IsGate => Name == "Ig";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAnn), nameof(IsTable), nameof(IsEquation), nameof(ShowsPath))]
+    private string _method = "";
+    [ObservableProperty] private string _hidden = "";
+    [ObservableProperty] private string _activation = "";
+    [ObservableProperty] private string _iterations = "";
+    [ObservableProperty] private string _gridStep = "";
+    [ObservableProperty] private string _smoothing = "";
+    [ObservableProperty] private string _path = "";
+    [ObservableProperty] private string _template = "";
+    [ObservableProperty] private string _expression = "";
+    [ObservableProperty] private string _expressionGd = "";
+    /// <summary>The last fit's equation parameters, one "name = value" line each; empty before a fit.</summary>
+    [ObservableProperty] private IReadOnlyList<string> _fitted = [];
+
+    public bool IsAnn => Method == "ANN";
+    public bool IsTable => Method == "Table";
+    public bool IsEquation => Method == "Equation";
+    /// <summary>A charge table is the line integral of the capacitances, along path A, B or their mean.</summary>
+    public bool ShowsPath => IsCharge && IsTable;
+
+    /// <summary>Sets every field from the document without committing anything back.</summary>
+    public void Load(string method, string hidden, string activation, string iterations, string grid, string smoothing, string path,
+                     string template, string expression, string expressionGd, IReadOnlyList<string> fitted)
+    {
+        _loading = true;
+        try
+        {
+            Method = method; Hidden = hidden; Activation = activation; Iterations = iterations; GridStep = grid; Smoothing = smoothing;
+            Path = path; Template = template; Expression = expression; ExpressionGd = expressionGd; Fitted = fitted;
+        }
+        finally { _loading = false; }
+    }
+
+    partial void OnMethodChanged(string value) => Commit(nameof(Method), value);
+    partial void OnHiddenChanged(string value) => Commit(nameof(Hidden), value);
+    partial void OnActivationChanged(string value) => Commit(nameof(Activation), value);
+    partial void OnIterationsChanged(string value) => Commit(nameof(Iterations), value);
+    partial void OnGridStepChanged(string value) => Commit(nameof(GridStep), value);
+    partial void OnSmoothingChanged(string value) => Commit(nameof(Smoothing), value);
+    partial void OnPathChanged(string value) => Commit(nameof(Path), value);
+    partial void OnTemplateChanged(string value) => Commit(nameof(Template), value);
+    partial void OnExpressionChanged(string value) => Commit(nameof(Expression), value);
+    partial void OnExpressionGdChanged(string value) => Commit(nameof(ExpressionGd), value);
+
+    private void Commit(string field, string text)
+    {
+        if (!_loading && text is not null) _commit(this, field, text);
+    }
+}
+
+/// <summary>One trap state's row (R-mc15-5): its toggle — or, when the data cannot support it, the one-line reason in its
+/// place — and the trap-setting level it was trained from when there was only one.</summary>
+public sealed partial class TrapStateRow(string state, string label, Action<TrapStateRow, bool> toggle) : ObservableObject
+{
+    public string State { get; } = state;
+    public string Label { get; } = label;
+
+    [ObservableProperty] private bool _isOn;
+    /// <summary>Why the data cannot support the state; empty when it can.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Supported))]
+    private string _reason = "";
+    /// <summary>"from 3 V" when one trap-setting level trained it; empty otherwise.</summary>
+    [ObservableProperty] private string _level = "";
+
+    public bool Supported => Reason.Length == 0;
+    private bool _loading;
+
+    public void Load(bool on, string reason, string level)
+    {
+        _loading = true;
+        try { IsOn = on; Reason = reason; Level = level; }
+        finally { _loading = false; }
+    }
+
+    partial void OnIsOnChanged(bool value) { if (!_loading) toggle(this, value); }
+}
+
+/// <summary>One named number the user types (a trap time constant, a validation tolerance, a report option).</summary>
+public sealed partial class ParameterRow(string name, string unit, string tip, Action<ParameterRow, string> commit) : ObservableObject
+{
+    public string Name { get; } = name;
+    public string Unit { get; } = unit;
+    public string Tip { get; } = tip;
+    private bool _loading;
+
+    [ObservableProperty] private string _value = "";
+
+    public void Load(string value)
+    {
+        _loading = true;
+        try { Value = value; }
+        finally { _loading = false; }
+    }
+
+    partial void OnValueChanged(string value) { if (!_loading) commit(this, value); }
+}
+
+/// <summary>One validation item (R-mc15-7): the data set, what kind of comparison it is, its tolerance and its result line.</summary>
+public sealed partial class ValidationRow(string set, string kind, string tolerance) : ObservableObject
+{
+    public string Set { get; } = set;
+    public string Kind { get; } = kind;
+    public string Tolerance { get; } = tolerance;
+
+    [ObservableProperty] private string _result = "";
+    [ObservableProperty] private bool? _passed;
+}
+
+/// <summary>One symbol a model can be exported with (R-mc15-8): its value, label, pin count and thumbnail.</summary>
+public sealed record SymbolRow(string Value, string Label, int Pins, SchematicModel? Drawing)
+{
+    public string PinsText => $"{Pins} pins";
+}

@@ -1417,8 +1417,9 @@ internal static class ToolCatalog
                         new("disc",        "--disc",        OptKind.Str,     "The loadpull disc: radius,rings,spokes."),
                         new("pin",         "--pin",         OptKind.Str,     "The drive: start,step,max in dBm."),
                         new("compression", "--compression", OptKind.Number,  "The compression, dB."),
+                        new("pdf",         "--pdf",         OptKind.Path,    "Also write the report's display as a PDF, one page per section."),
                     ],
-                    "Write the Model Validation Report folder."),
+                    "Write the Model Validation Report folder and its Data Display document."),
             ]),
 
         // The seventh, and the only one that names no file. It is also reachable as MCP RESOURCES,

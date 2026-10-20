@@ -8,6 +8,68 @@
              xmlns:mi="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              x:Class="CircuitRF.Ui.Views.ModelComposer.StepsPanelView"
              x:DataType="mc:ModelComposerViewModel">
+    <UserControl.Resources>
+        <!-- The method picker (brief-modelcomposer-15 R-mc15-1): the same control for every constituent. -->
+        <DataTemplate x:Key="MethodPicker" x:DataType="mc:MethodPickerRow">
+            <Border Classes="card">
+                <StackPanel Spacing="3">
+                    <Grid ColumnDefinitions="40,*">
+                        <TextBlock Classes="panelhdr" Text="{Binding Name}" VerticalAlignment="Center" Margin="0"/>
+                        <ComboBox Grid.Column="1" ItemsSource="{Binding Methods}" SelectedItem="{Binding Method}" HorizontalAlignment="Stretch"/>
+                    </Grid>
+                    <StackPanel Spacing="3" IsVisible="{Binding IsAnn}">
+                        <Grid ColumnDefinitions="*,90">
+                            <TextBlock Classes="lbl" Text="Hidden layers"/>
+                            <ctl:InlineEditText Grid.Column="1" Text="{Binding Hidden, Mode=TwoWay}" HorizontalContentAlignment="Right"
+                                                ToolTip.Tip="1 to 4 layers, neurons each, e.g. 8, 8"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="*,90">
+                            <TextBlock Classes="lbl" Text="Activation"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding Activations}" SelectedItem="{Binding Activation}" HorizontalAlignment="Stretch"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="*,90">
+                            <TextBlock Classes="lbl" Text="Iterations"/>
+                            <ctl:InlineEditText Grid.Column="1" Text="{Binding Iterations, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel Spacing="3" IsVisible="{Binding IsTable}">
+                        <Grid ColumnDefinitions="*,90">
+                            <TextBlock Classes="lbl" Text="Grid step (V)"/>
+                            <ctl:InlineEditText Grid.Column="1" Text="{Binding GridStep, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="*,90">
+                            <TextBlock Classes="lbl" Text="Smoothing"/>
+                            <ctl:InlineEditText Grid.Column="1" Text="{Binding Smoothing, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="*,90" IsVisible="{Binding ShowsPath}">
+                            <TextBlock Classes="lbl" Text="Path"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding Paths}" SelectedItem="{Binding Path}" HorizontalAlignment="Stretch"
+                                      ToolTip.Tip="The line integral's path: A, B, or their mean"/>
+                        </Grid>
+                    </StackPanel>
+                    <StackPanel Spacing="3" IsVisible="{Binding IsEquation}">
+                        <Grid ColumnDefinitions="*,140">
+                            <TextBlock Classes="lbl" Text="Template"/>
+                            <ComboBox Grid.Column="1" ItemsSource="{Binding Templates}" SelectedItem="{Binding Template}" HorizontalAlignment="Stretch"
+                                      ToolTip.Tip="Blank for your own expression"/>
+                        </Grid>
+                        <TextBox Text="{Binding Expression}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" FontFamily="monospace" FontSize="11"
+                                 Watermark="expression in vgs, vds and parameters"/>
+                        <TextBox Text="{Binding ExpressionGd}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" FontFamily="monospace" FontSize="11"
+                                 IsVisible="{Binding IsGate}" Watermark="IgGd"/>
+                        <ItemsControl ItemsSource="{Binding Fitted}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock FontSize="11" FontFamily="monospace" Text="{Binding}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
     <Border Classes="pane">
         <Grid RowDefinitions="Auto,4,*">
             <!-- The rail. -->
@@ -164,6 +226,241 @@
                                 </Grid>
                             </StackPanel>
                         </Border>
+                    </StackPanel>
+
+                    <!-- ── Current (R-mc15-2) ──────────────────────────────── -->
+                    <StackPanel IsVisible="{Binding IsCurrentStep}" Spacing="4">
+                        <TextBlock Classes="panelhdr" Text="Currents"/>
+                        <ItemsControl ItemsSource="{Binding CurrentPickers}" ItemTemplate="{StaticResource MethodPicker}"/>
+                        <Grid ColumnDefinitions="*,90">
+                            <TextBlock Classes="lbl" Text="Restarts"/>
+                            <ctl:InlineEditText Grid.Column="1" Text="{Binding CurrentRestarts, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="*,90">
+                            <TextBlock Classes="lbl" Text="Seed"/>
+                            <ctl:InlineEditText Grid.Column="1" Text="{Binding CurrentSeed, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="*,90">
+                            <TextBlock Classes="lbl" Text="Held out (%)"/>
+                            <ctl:InlineEditText Grid.Column="1" Text="{Binding CurrentHeldOut, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                        </Grid>
+                        <CheckBox Content="DC/RF dispersion" IsChecked="{Binding Dispersion}" ToolTip.Tip="{x:Static mc:ModelComposerViewModel.DispersionTip}"/>
+                    </StackPanel>
+
+                    <!-- ── Charge (R-mc15-3) ───────────────────────────────── -->
+                    <StackPanel IsVisible="{Binding IsChargeStep}" Spacing="4">
+                        <TextBlock Classes="panelhdr" Text="Charges"/>
+                        <ItemsControl ItemsSource="{Binding ChargePickers}" ItemTemplate="{StaticResource MethodPicker}"/>
+                        <CheckBox Content="Drift charge in Qg" IsChecked="{Binding DriftCharge}" ToolTip.Tip="Qg carries a drift charge of vgd and Id"/>
+                        <Grid ColumnDefinitions="*,90">
+                            <TextBlock Classes="lbl" Text="Seed"/>
+                            <ctl:InlineEditText Grid.Column="1" Text="{Binding ChargeSeed, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- ── Thermal (R-mc15-4) ──────────────────────────────── -->
+                    <StackPanel IsVisible="{Binding IsThermalStep}" Spacing="4">
+                        <TextBlock Classes="panelhdr" Text="Thermal"/>
+                        <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding OneTemperature}">
+                            <TextBlock Text="{Binding T0Text}"/>
+                            <TextBlock Classes="lbl" Text="one temperature"/>
+                        </StackPanel>
+                        <StackPanel Spacing="3" IsVisible="{Binding !OneTemperature}">
+                            <CheckBox Content="Self-heating" IsChecked="{Binding SelfHeating}"/>
+                            <Grid ColumnDefinitions="*,110">
+                                <TextBlock Classes="lbl" Text="Rth (K/W)"/>
+                                <ctl:InlineEditText Grid.Column="1" Text="{Binding Rth, Mode=TwoWay}" HorizontalContentAlignment="Right"
+                                                    ToolTip.Tip="Blank to extract it from the data"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,110">
+                                <TextBlock Classes="lbl" Text="Cth"/>
+                                <ctl:InlineEditText Grid.Column="1" Text="{Binding Cth, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="60,*">
+                                <TextBlock Classes="lbl" Text="Ladder"/>
+                                <ctl:InlineEditText Grid.Column="1" Text="{Binding Ladder, Mode=TwoWay}" HorizontalContentAlignment="Right"
+                                                    ToolTip.Tip="fraction:τ pairs, e.g. 0.6:1 µs, 0.4:100 µs"/>
+                            </Grid>
+                            <TextBlock FontSize="11" Text="{Binding ThermalResidual}"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- ── Traps (R-mc15-5) ────────────────────────────────── -->
+                    <StackPanel IsVisible="{Binding IsTrapsStep}" Spacing="4">
+                        <TextBlock Classes="panelhdr" Text="Traps"/>
+                        <ComboBox ItemsSource="{Binding TrapModelNames}" SelectedItem="{Binding TrapModel}" HorizontalAlignment="Stretch"/>
+                        <ItemsControl ItemsSource="{Binding TrapStates}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="mc:TrapStateRow">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <CheckBox Content="{Binding Label}" IsChecked="{Binding IsOn}" IsVisible="{Binding Supported}"/>
+                                        <TextBlock Classes="warn" FontSize="11" Text="{Binding Reason}" IsVisible="{Binding !Supported}"/>
+                                        <TextBlock Grid.Column="1" Classes="lbl" FontSize="11" Text="{Binding Level}"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <ItemsControl ItemsSource="{Binding TrapParameters}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="mc:ParameterRow">
+                                    <Grid ColumnDefinitions="*,90" ToolTip.Tip="{Binding Tip}">
+                                        <TextBlock Classes="lbl" Text="{Binding Name}"/>
+                                        <ctl:InlineEditText Grid.Column="1" Text="{Binding Value, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <ItemsControl ItemsSource="{Binding TrapExpressions}" IsVisible="{Binding IsCustomTraps}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="mc:ParameterRow">
+                                    <StackPanel Spacing="1" ToolTip.Tip="{Binding Tip}">
+                                        <TextBlock Classes="lbl" FontSize="11" Text="{Binding Name}"/>
+                                        <TextBox Text="{Binding Value}" FontFamily="monospace" FontSize="11"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding TrapCheck}"/>
+                    </StackPanel>
+
+                    <!-- ── Check (R-mc15-6) ────────────────────────────────── -->
+                    <StackPanel IsVisible="{Binding IsCheckStep}" Spacing="4">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Classes="panelhdr" Text="Charge conservation"/>
+                            <Button Grid.Column="1" Classes="tool" Command="{Binding CheckChargeCommand}" ToolTip.Tip="Check Charge Conservation">
+                                <mi:MaterialIcon Kind="CheckDecagramOutline" Width="16" Height="16"/>
+                            </Button>
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding CheckLines}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="x:String">
+                                    <TextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- ── Validate (R-mc15-7) ─────────────────────────────── -->
+                    <StackPanel IsVisible="{Binding IsValidateStep}" Spacing="4">
+                        <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                            <TextBlock Classes="panelhdr" Text="Validation"/>
+                            <Button Grid.Column="1" Classes="tool" Command="{Binding ValidateAllCommand}" ToolTip.Tip="Run all">
+                                <mi:MaterialIcon Kind="PlayBoxMultipleOutline" Width="16" Height="16"/>
+                            </Button>
+                            <Button Grid.Column="2" Classes="tool" Command="{Binding ShowTestbenchCommand}" ToolTip.Tip="Show testbench">
+                                <mi:MaterialIcon Kind="FileDocumentOutline" Width="16" Height="16"/>
+                            </Button>
+                            <Button Grid.Column="3" Classes="tool" Command="{Binding OpenReportCommand}" ToolTip.Tip="Model Validation Report…">
+                                <mi:MaterialIcon Kind="FileChartOutline" Width="16" Height="16"/>
+                            </Button>
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding ValidationRows}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="mc:ValidationRow">
+                                    <Border Classes="card">
+                                        <StackPanel Spacing="1">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <TextBlock Text="{Binding Set}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                                <Button Grid.Column="1" Classes="tool" Padding="3,1" ToolTip.Tip="Run this one"
+                                                        Command="{Binding $parent[UserControl].((mc:ModelComposerViewModel)DataContext).ValidateOneCommand}"
+                                                        CommandParameter="{Binding Set}">
+                                                    <mi:MaterialIcon Kind="Play" Width="12" Height="12"/>
+                                                </Button>
+                                            </Grid>
+                                            <TextBlock Classes="lbl" FontSize="11" Text="{Binding Kind}"/>
+                                            <TextBlock Classes="lbl" FontSize="11" Text="{Binding Tolerance}"/>
+                                            <TextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding Result}"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Border Classes="card">
+                            <StackPanel Spacing="3">
+                                <TextBlock Classes="panelhdr" Text="Tolerances"/>
+                                <ItemsControl ItemsSource="{Binding Tolerances}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="mc:ParameterRow">
+                                            <Grid ColumnDefinitions="*,70,30" ToolTip.Tip="{Binding Tip}">
+                                                <TextBlock Classes="lbl" Text="{Binding Name}"/>
+                                                <ctl:InlineEditText Grid.Column="1" Text="{Binding Value, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                                                <TextBlock Grid.Column="2" Classes="lbl" Text="{Binding Unit}" Margin="4,0,0,0"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- ── Export (R-mc15-8) ───────────────────────────────── -->
+                    <StackPanel IsVisible="{Binding IsExportStep}" Spacing="4">
+                        <TextBlock Classes="panelhdr" Text="Export"/>
+                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !CanExport}">
+                            <TextBlock Classes="warn" FontSize="11" Text="{Binding ExportBlocked}"/>
+                            <Button Grid.Column="1" Content="Run stale" Command="{Binding RunStaleCommand}"/>
+                        </Grid>
+                        <StackPanel Spacing="4" IsVisible="{Binding IsActive}">
+                            <TextBlock Text="{Binding PeripheryText}"/>
+                            <Border Classes="card">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Classes="panelhdr" Text="Scaling"/>
+                                    <ItemsControl ItemsSource="{Binding NetworkValues}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="mc:NetworkValueRow">
+                                                <Grid ColumnDefinitions="*,Auto">
+                                                    <TextBlock Text="{Binding Name}"/>
+                                                    <TextBlock Grid.Column="1" Classes="lbl" Text="{Binding Scaling}"/>
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                            <TextBlock Classes="panelhdr" Text="Symbol"/>
+                            <ListBox Classes="rows" ItemsSource="{Binding Symbols}" SelectedItem="{Binding SelectedSymbol}" MaxHeight="260">
+                                <ListBox.ItemsPanel>
+                                    <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                </ListBox.ItemsPanel>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="mc:SymbolRow">
+                                        <StackPanel Width="76" Spacing="1" ToolTip.Tip="{Binding PinsText}">
+                                            <ctl:SchematicCanvas Model="{Binding Drawing}" ShowGrid="False" Height="56"
+                                                                 IsHitTestVisible="False" DragDrop.AllowDrop="False"/>
+                                            <TextBlock FontSize="10" Text="{Binding Label}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBox Text="{Binding ExportPath}" FontSize="11" ToolTip.Tip="The .cmodel's path"/>
+                                <Button Grid.Column="1" Classes="tool" Command="{Binding PickExportPathCommand}" ToolTip.Tip="Choose">
+                                    <mi:MaterialIcon Kind="FolderOpenOutline" Width="14" Height="14"/>
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+                        <StackPanel Spacing="3" IsVisible="{Binding IsPassive}">
+                            <Grid ColumnDefinitions="70,*">
+                                <TextBlock Classes="lbl" Text="Cell"/>
+                                <TextBox Grid.Column="1" Text="{Binding CellName}"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="70,*">
+                                <TextBlock Classes="lbl" Text="Library"/>
+                                <TextBox Grid.Column="1" Text="{Binding CellLibrary}" ToolTip.Tip="The workspace or library folder"/>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding CellParameters}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="x:String">
+                                        <TextBlock FontSize="11" Text="{Binding}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+                            <Button Content="Copy instance" Command="{Binding CopyInstanceCommand}" IsVisible="{Binding IsActive}"
+                                    ToolTip.Tip="An instance of the exported model, to paste into a schematic"/>
+                            <Button Content="Export" Command="{Binding ExportCommand}"/>
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- ── Topology (passive) ───────────────────────────────── -->

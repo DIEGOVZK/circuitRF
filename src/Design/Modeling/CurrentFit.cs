@@ -315,6 +315,9 @@ public static class CurrentFit
         public double[] Ambient { get; init; } = [];
         /// <summary>Whether the DC points sit at their junction temperatures (self-heating modelled).</summary>
         public bool SelfHeated { get; init; }
+        /// <summary>Each row of <see cref="X"/>'s data set and point index there — what the window's plots group the measured
+        /// families by (MC-15). Empty for the gate's own points.</summary>
+        public (string Set, int Point)[] Origin { get; init; } = [];
 
         /// <summary>Whether T is an input.</summary>
         public bool HasT { get; init; }
@@ -382,6 +385,7 @@ public static class CurrentFit
         var phi = new List<double[]?>();     // a point's trap states; null when it does not train Id
         var dcX = new List<double[]>();
         var dcAt = new List<int>();          // where each DC point sits among the gathered points
+        var origin = new List<(string Set, int Point)>();
         int noId = 0, reverse = 0;
         foreach (var set in chosen)
         {
@@ -410,6 +414,7 @@ public static class CurrentFit
                     tk = tAmb + heating.RthAt(tAmb) * pq.Value;
                 double[] xk = hasT ? [vgs[k], vds[k], tk] : [vgs[k], vds[k]];
                 x.Add(xk);
+                origin.Add((set.Name, k));
                 ambient.Add(tAmb);
                 id.Add(ids[k]);
                 ig.Add(double.IsNaN(igs[k]) ? null : igs[k]);
@@ -455,6 +460,7 @@ public static class CurrentFit
             {
                 X = [.. x], Id = channel, Ig = gate.Ig, IgGs = gate.IgGs, IgGd = gate.IgGd, ForGate = gate,
                 Domain = domain, TemperatureC = t, Inputs = inputs, HasT = hasT, Ambient = [.. ambient], SelfHeated = selfHeating,
+                Origin = [.. origin],
             };
 
         // With traps the drain current trains on the points that have a trap state, each with the states appended; the DC
@@ -476,6 +482,7 @@ public static class CurrentFit
             X = xTrap, Id = [.. train.Select(k => channel[k])], Ig = gate.Ig, IgGs = gate.IgGs, IgGd = gate.IgGd, ForGate = gate,
             Domain = Hull(xTrap) with { Box = box }, TemperatureC = t, Inputs = [.. inputs, .. traps.States], HasT = hasT,
             Ambient = [.. train.Select(k => ambient[k])], SelfHeated = selfHeating, Traps = traps, DcX = [.. dcX], DcId = [.. dcAt.Select(k => channel[k])],
+            Origin = [.. train.Select(k => origin[k])],
         };
     }
 

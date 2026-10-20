@@ -4139,8 +4139,10 @@ but a check failed — `check-charge`'s spurious gate DC above `--threshold` (`C
 `fit --step all` commits each step as it finishes, as the window's step rail does: a cancellation keeps the steps
 before it.
 
-`export --created` sets the provenance timestamp, so a build can reproduce a `.cmodel` byte for byte. `report --pdf`
-is refused until the report's Data Display document exists (MC-15); the folder is the report.
+`export --created` sets the provenance timestamp, so a build can reproduce a `.cmodel` byte for byte. `report` also
+writes the report's Data Display document, `<folder>.cdd` beside the folder (one tab per section that holds data), and
+`report --pdf out.pdf` draws every tab of it as one page each — `ModelReportDisplayPreset.WriteDocument` and `.WritePdf`,
+the functions the window's Model Validation Report dialog calls, so the two PDFs are the same bytes.
 
 ### 31.4 `check`, `explain` and the protocol
 

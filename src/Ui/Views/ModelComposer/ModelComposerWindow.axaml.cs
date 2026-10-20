@@ -4,8 +4,10 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Design.Modeling;
 using CircuitRF.Design.Schematic;
 using CircuitRF.Ui.Clipboard;
@@ -136,6 +138,20 @@ public partial class ModelComposerWindow : Window, ICrfDocumentWindow
 
     // ── the seams ────────────────────────────────────────────────────────────
 
+    private async Task<string?> PickSave(ModelComposerViewModel vm, string title, string name, string kind, string pattern)
+    {
+        IStorageFolder? start = vm.DocumentFolder is { } folder ? await StorageProvider.TryGetFolderFromPathAsync(folder) : null;
+        var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = title,
+            SuggestedStartLocation = start,
+            SuggestedFileName = name,
+            DefaultExtension = pattern.TrimStart('*', '.'),
+            FileTypeChoices = [new FilePickerFileType(kind) { Patterns = [pattern] }],
+        });
+        return file?.Path.LocalPath;
+    }
+
     private void Install(ModelComposerViewModel vm)
     {
         vm.PostToUi = a => Dispatcher.UIThread.Post(a);
@@ -187,6 +203,16 @@ public partial class ModelComposerWindow : Window, ICrfDocumentWindow
             var payload = await SchematicClipboard.PasteAsync(clipboard, offsetX: 0, offsetY: 0);
             return payload is { } p ? (p.Comps, (IReadOnlyList<EditableWire>)p.Wires, (IReadOnlyList<EditableNetLabel>)p.NetLabels) : null;
         };
+
+        // MC-15: Show testbench, Copy instance, the export and PDF pickers, and the report dialog.
+        vm.RevealFile = path => FileReveal.Reveal(path);
+        vm.CopyInstanceSink = async payload =>
+        {
+            if (Clipboard is { } clipboard) await clipboard.SetTextAsync(payload);
+        };
+        vm.PickModelPath = name => PickSave(vm, "Export the model", name, "Composed model", "*" + CmodelFile.Extension);
+        vm.PickPdfPath = name => PickSave(vm, "Export the report as PDF", name, "PDF", "*.pdf");
+        vm.ShowReportDialog = report => new ModelReportDialog(report).ShowDialog(this);
 
         vm.PropertyChanged += (_, e) =>
         {

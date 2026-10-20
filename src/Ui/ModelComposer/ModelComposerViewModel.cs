@@ -10,7 +10,8 @@
 // clipboard, which is what lets the gate drive it with no application host — railRF's and the Smith Chart's own split.
 //
 // Split by concern: .Tasks (the background runner and its progress), .Cursor (the bias cursor), .Data (the Data step and
-// import), .Extrinsic (pads, network, values, clipboard), .Plots, .Passive.
+// import), .Extrinsic (pads, network, values, clipboard), .Plots, .Passive; MC-15's .Steps (the model steps' settings and
+// runs), .StepPlots (their plots) and .Report (the Model Validation Report dialog).
 
 using System;
 using System.Collections.Generic;
@@ -137,7 +138,9 @@ public sealed partial class ModelComposerViewModel : ObservableObject, IDisposab
         RefreshExtrinsic();
         RefreshPassive();
         UpdateStepStates();
+        RefreshModelSteps();
         RefreshCursorChoices();
+        RequestStepPlots();
         RebuildPlots();
     }
 
@@ -171,8 +174,10 @@ public sealed partial class ModelComposerViewModel : ObservableObject, IDisposab
             OnPropertyChanged(nameof(StepName));
             OnPropertyChanged(nameof(RunItems));
             NotifyStepPanels();
+            NotifyModelSteps();
             if (value is not null) SetView(Document.View with { Step = value.Name });
             RebuildPlotTabs();
+            RequestStepPlots();
             RebuildPlots();
             RunCommand.NotifyCanExecuteChanged();
         }
@@ -184,8 +189,6 @@ public sealed partial class ModelComposerViewModel : ObservableObject, IDisposab
     public bool IsPadsStep => StepName == "Pads";
     public bool IsNetworkStep => StepName == "Network";
     public bool IsTopologyStep => StepName == "Topology";
-    /// <summary>A step whose panel is MC-15's: the rail opens it, its Run fits it, and its settings are still to come.</summary>
-    public bool IsLaterStep => !(IsDataStep || IsPadsStep || IsNetworkStep || IsTopologyStep);
 
     private void NotifyStepPanels()
     {
@@ -193,7 +196,6 @@ public sealed partial class ModelComposerViewModel : ObservableObject, IDisposab
         OnPropertyChanged(nameof(IsPadsStep));
         OnPropertyChanged(nameof(IsNetworkStep));
         OnPropertyChanged(nameof(IsTopologyStep));
-        OnPropertyChanged(nameof(IsLaterStep));
     }
 
     private static MaterialIconKind IconOf(string step) => step switch
@@ -242,8 +244,9 @@ public sealed partial class ModelComposerViewModel : ObservableObject, IDisposab
                 "Charge" => sData ? "" : "Needs an S-parameter data set.",
                 "Current" or "Thermal" => ivData ? "" : "Needs an I–V data set.",
                 "Traps" => pulsed ? "" : "Needs a pulsed data set.",
-                "Check" or "Validate" or "Export" when IsActive =>
-                    ivData && sData ? "" : "Needs I–V and S-parameter data.",
+                "Check" when IsActive => sData ? "" : "Needs an S-parameter data set.",
+                "Validate" or "Export" when IsActive =>
+                    sData && (ivData || CurrentFit.Record(Document) is not null) ? "" : "Needs I–V and S-parameter data.",
                 "Topology" => passiveData ? "" : "Needs a passive S-parameter data set.",
                 "Fit" => passiveData ? "" : "Needs a passive S-parameter data set.",
                 "Export" => topology ? "" : "Needs a topology.",

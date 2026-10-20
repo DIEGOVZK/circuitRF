@@ -1386,3 +1386,39 @@ selection format now carries when its copier passes them.
 Gates: `ModelComposerLifecycleTests`, `ModelComposerPanelsTests`, `ModelComposerBackgroundTaskTests`,
 `ModelComposerNetworkPanelTests`, `ModelComposerNoLogicTests` — view-model driven with no application host, the
 lamp-to-panel wiring read from the AXAML, as railRF's window gate does.
+
+## 19. The model steps and every comparison plot (MC-15)
+
+**Each step is a thin view over its phase.** Settings are edits through the step's own `WithSettings` (one undo step);
+runs are the functions the `model` verb calls — `ModelCommands.Fit` (Current, Charge, Thermal, Traps, Run stale),
+`ConservationCheck.RunFile` (Check), `ModelValidation.RunFile` (Validate), `CmodelExport.Export` /
+`ModelCommands.ExportCell` (Export), `ModelValidationReport.Generate` + `Write` (the report).
+
+**The plots' numbers are computed in `src/Design`, never in the window.** `ModelStepPlots.Build(cmcPath, doc, loaded,
+step)` returns a `StepPlotData` — a `DataSet` of `<set>.<quantity>` cubes: the fit's own training points (gathered by
+`CurrentFit.Gather`, which now records each point's `Origin` so the window can group the measured families), the model
+evaluated at each point's own inputs (DC sets through `DcSeeds`, pulsed sets at their own trap states), the data's own
+gm/gds along each measured family, the error as a map, the domain outline; the charge surfaces and ΔQ maps through the
+report's own `ChargeSurface`; the report's own `Thermal` section; and per pulsed set its points beyond the trap-setting
+bias. The window computes it off the UI thread when the step's results or the data change, keyed on every step's
+`Result`. The 1-D C–V slice is `StepPlotData.Slice` on the compiled model — a hundred evaluations, so it follows the
+cursor synchronously. `ModelStepPlots.Check` turns a conservation report into the curl and two-path maps and the HB
+spectrum (`DriveCurrents.GateSpectrum`, new: the gate current at DC and each harmonic).
+
+**A map is a square grid.** The contour renderer and `ContourExtractor` index a `SurfaceGrid` as `res × res` and draw
+nothing when `XSpace` and `YSpace` differ in length, so every map here is `MapPoints` (41) square over the data's hull,
+NaN outside it. The surface renderer draws angle-axis patterns only, so the charge surface is drawn through the contour
+renderer as well.
+
+**The report's display is a preset** (`ModelReportDisplayPreset`, in `src/Render/DataDisplay`, the `DoeDisplayPreset`
+pattern): one tab per section that holds data, over the report's own `report.npy`. A `.cdd` contour trace is
+loadpull-only — it re-derives its curves from a loadpull source — so the ΔQ maps there are a family over the shorter
+axis; the PA classes use real loadpull contours and the performance summary table, and the region of convergence is
+two cubes the report now writes (`GammaLoad.converged`, `GammaLoad.failed`). `WritePdf` draws every tab through
+`PlotComposer` as a multi-page PDF with no title in its metadata, so the window's PDF and `model report --pdf`'s are the
+same bytes whatever they are called; the placement `render` used was moved below the firewall (`PlotPlacement`) so both
+compose through one function.
+
+Gates: `ModelComposerCurrentStepTests`, `ModelComposerChargeStepTests`, `ModelComposerCheckStepTests`,
+`ModelComposerExportStepTests` (byte identity against the CLI process), `ModelComposerSingleTemperatureTests`,
+`ModelReportDialogTests` (byte identity of the PDF against the CLI process).
