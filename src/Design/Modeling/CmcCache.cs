@@ -273,10 +273,12 @@ public sealed class CmcCache
             string? retired = null;
             if (Directory.Exists(Folder))
             {
-                // MC-4's intrinsic results live in a subfolder, keyed by the data they came from; carried across, they
-                // stay valid where the data did not change and are simply never read where it did.
-                string intrinsic = Path.Combine(Folder, IntrinsicExtraction.CacheFolder);
-                if (Directory.Exists(intrinsic)) Directory.Move(intrinsic, Path.Combine(tmp, IntrinsicExtraction.CacheFolder));
+                // Every subfolder is carried across: the intrinsic results (keyed by the data they came from, so they stay
+                // valid where it did not change and are never read where it did), and the fitted arrays of the current
+                // and charge steps, which nothing can rebuild but a fit. A source whose timestamp moved with its bytes
+                // unchanged — a copy, a checkout — rewrites the index, and that once deleted every fit.
+                foreach (string sub in Directory.GetDirectories(Folder))
+                    Directory.Move(sub, Path.Combine(tmp, Path.GetFileName(sub)));
                 retired = Folder + ".old-" + Guid.NewGuid().ToString("N")[..8];
                 Directory.Move(Folder, retired);
             }

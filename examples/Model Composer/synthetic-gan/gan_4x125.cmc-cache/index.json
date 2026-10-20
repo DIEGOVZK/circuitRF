@@ -1,0 +1,685 @@
+{
+  "FormatVersion": 1,
+  "DataSets": [
+    {
+      "Name": "dc_25C",
+      "File": "0.npy",
+      "Settings": "DcIv [\u0022dc/dc_25C.csv\u0022] {\u0022Format\u0022: \u0022csv\u0022,\u0022Columns\u0022: [{\u0022Column\u0022: \u0022Vgs\u0022,\u0022Quantity\u0022: \u0022vgs\u0022,\u0022Unit\u0022: \u0022V\u0022},{\u0022Column\u0022: \u0022Vds\u0022,\u0022Quantity\u0022: \u0022vds\u0022,\u0022Unit\u0022: \u0022V\u0022},{\u0022Column\u0022: \u0022Ig\u0022,\u0022Quantity\u0022: \u0022ig\u0022,\u0022Unit\u0022: \u0022A\u0022},{\u0022Column\u0022: \u0022Id\u0022,\u0022Quantity\u0022: \u0022id\u0022,\u0022Unit\u0022: \u0022A\u0022}]}",
+      "Sources": [
+        {
+          "Path": "dc/dc_25C.csv",
+          "Size": 5627,
+          "ModifiedTicks": 639281012197513000,
+          "Sha256": "7bcc9fda57a1180409e0d3cd2a780c4444d0494189a23de9a7fc3edb2f591080"
+        }
+      ]
+    },
+    {
+      "Name": "pulsed_q0_25C",
+      "File": "1.npy",
+      "Settings": "PulsedIv [\u0022pulsed/pulsed_q0_25C.csv\u0022] {\u0022Format\u0022: \u0022csv\u0022,\u0022Columns\u0022: [{\u0022Column\u0022: \u0022Vgs\u0022,\u0022Quantity\u0022: \u0022vgs\u0022,\u0022Unit\u0022: \u0022V\u0022},{\u0022Column\u0022: \u0022Vds\u0022,\u0022Quantity\u0022: \u0022vds\u0022,\u0022Unit\u0022: \u0022V\u0022},{\u0022Column\u0022: \u0022Ig\u0022,\u0022Quantity\u0022: \u0022ig\u0022,\u0022Unit\u0022: \u0022A\u0022},{\u0022Column\u0022: \u0022Id\u0022,\u0022Quantity\u0022: \u0022id\u0022,\u0022Unit\u0022: \u0022A\u0022}]}",
+      "Sources": [
+        {
+          "Path": "pulsed/pulsed_q0_25C.csv",
+          "Size": 4376,
+          "ModifiedTicks": 639281012205901733,
+          "Sha256": "5821b312b4b18f2b9c39d8643f3311518e6cb073a070eb801876ae6c76a875a6"
+        }
+      ]
+    },
+    {
+      "Name": "pulsed_q0_125C",
+      "File": "2.npy",
+      "Settings": "PulsedIv [\u0022pulsed/pulsed_q0_125C.csv\u0022] {\u0022Format\u0022: \u0022csv\u0022,\u0022Columns\u0022: [{\u0022Column\u0022: \u0022Vgs\u0022,\u0022Quantity\u0022: \u0022vgs\u0022,\u0022Unit\u0022: \u0022V\u0022},{\u0022Column\u0022: \u0022Vds\u0022,\u0022Quantity\u0022: \u0022vds\u0022,\u0022Unit\u0022: \u0022V\u0022},{\u0022Column\u0022: \u0022Ig\u0022,\u0022Quantity\u0022: \u0022ig\u0022,\u0022Unit\u0022: \u0022A\u0022},{\u0022Column\u0022: \u0022Id\u0022,\u0022Quantity\u0022: \u0022id\u0022,\u0022Unit\u0022: \u0022A\u0022}]}",
+      "Sources": [
+        {
+          "Path": "pulsed/pulsed_q0_125C.csv",
+          "Size": 4384,
+          "ModifiedTicks": 639281012214248523,
+          "Sha256": "bac54ea86a2414994294b779873e7fe88c4ec9cbfda141fe1bf5f928e97cc971"
+        }
+      ]
+    },
+    {
+      "Name": "pulsed_q10_25C",
+      "File": "3.npy",
+      "Settings": "PulsedIv [\u0022pulsed/pulsed_q10_25C.csv\u0022] {\u0022Format\u0022: \u0022csv\u0022,\u0022Columns\u0022: [{\u0022Column\u0022: \u0022Vgs\u0022,\u0022Quantity\u0022: \u0022vgs\u0022,\u0022Unit\u0022: \u0022V\u0022},{\u0022Column\u0022: \u0022Vds\u0022,\u0022Quantity\u0022: \u0022vds\u0022,\u0022Unit\u0022: \u0022V\u0022},{\u0022Column\u0022: \u0022Ig\u0022,\u0022Quantity\u0022: \u0022ig\u0022,\u0022Unit\u0022: \u0022A\u0022},{\u0022Column\u0022: \u0022Id\u0022,\u0022Quantity\u0022: \u0022id\u0022,\u0022Unit\u0022: \u0022A\u0022}]}",
+      "Sources": [
+        {
+          "Path": "pulsed/pulsed_q10_25C.csv",
+          "Size": 4378,
+          "ModifiedTicks": 639281012220211951,
+          "Sha256": "89289d3ea7d2912638583b39768fd3a6295d869260bb830fb77aea534955c531"
+        }
+      ]
+    },
+    {
+      "Name": "pulsed_q20_25C",
+      "File": "4.npy",
+      "Settings": "PulsedIv [\u0022pulsed/pulsed_q20_25C.csv\u0022] {\u0022Format\u0022: \u0022csv\u0022,\u0022Columns\u0022: [{\u0022Column\u0022: \u0022Vgs\u0022,\u0022Quantity\u0022: \u0022vgs\u0022,\u0022Unit\u0022: \u0022V\u0022},{\u0022Column\u0022: \u0022Vds\u0022,\u0022Quantity\u0022: \u0022vds\u0022,\u0022Unit\u0022: \u0022V\u0022},{\u0022Column\u0022: \u0022Ig\u0022,\u0022Quantity\u0022: \u0022ig\u0022,\u0022Unit\u0022: \u0022A\u0022},{\u0022Column\u0022: \u0022Id\u0022,\u0022Quantity\u0022: \u0022id\u0022,\u0022Unit\u0022: \u0022A\u0022}]}",
+      "Sources": [
+        {
+          "Path": "pulsed/pulsed_q20_25C.csv",
+          "Size": 4385,
+          "ModifiedTicks": 639281012225003244,
+          "Sha256": "ebacfbd023d6c7e99deafa645c4dadf8679dcb123f60a11860d456a967a14b88"
+        }
+      ]
+    },
+    {
+      "Name": "pulsed_dp20_25C",
+      "File": "5.npy",
+      "Settings": "PulsedIv [\u0022pulsed/pulsed_dp20_25C.csv\u0022] {\u0022Format\u0022: \u0022csv\u0022,\u0022Columns\u0022: [{\u0022Column\u0022: \u0022Vgs\u0022,\u0022Quantity\u0022: \u0022vgs\u0022,\u0022Unit\u0022: \u0022V\u0022},{\u0022Column\u0022: \u0022Vds\u0022,\u0022Quantity\u0022: \u0022vds\u0022,\u0022Unit\u0022: \u0022V\u0022},{\u0022Column\u0022: \u0022Ig\u0022,\u0022Quantity\u0022: \u0022ig\u0022,\u0022Unit\u0022: \u0022A\u0022},{\u0022Column\u0022: \u0022Id\u0022,\u0022Quantity\u0022: \u0022id\u0022,\u0022Unit\u0022: \u0022A\u0022}]}",
+      "Sources": [
+        {
+          "Path": "pulsed/pulsed_dp20_25C.csv",
+          "Size": 4389,
+          "ModifiedTicks": 639281012240613656,
+          "Sha256": "43899dab93003fc7ca79da9deb28f756ddfac782d236ba860fd99fc3853390e0"
+        }
+      ]
+    },
+    {
+      "Name": "s_25C",
+      "File": "6.npy",
+      "Settings": "SParams [\u0022s_25C/Vgs-0.4_Vds0.5_Id12.969913.s2p\u0022,\u0022s_25C/Vgs-0.4_Vds10_Id21.844400.s2p\u0022,\u0022s_25C/Vgs-0.4_Vds15_Id23.340489.s2p\u0022,\u0022s_25C/Vgs-0.4_Vds1_Id17.993038.s2p\u0022,\u0022s_25C/Vgs-0.4_Vds2_Id19.113004.s2p\u0022,\u0022s_25C/Vgs-0.4_Vds4_Id19.841504.s2p\u0022,\u0022s_25C/Vgs-0.4_Vds7_Id20.872878.s2p\u0022,\u0022s_25C/Vgs-0.8_Vds0.5_Id4.648155.s2p\u0022,\u0022s_25C/Vgs-0.8_Vds10_Id6.960280.s2p\u0022,\u0022s_25C/Vgs-0.8_Vds15_Id7.574679.s2p\u0022,\u0022s_25C/Vgs-0.8_Vds1_Id5.667405.s2p\u0022,\u0022s_25C/Vgs-0.8_Vds2_Id5.906279.s2p\u0022,\u0022s_25C/Vgs-0.8_Vds4_Id6.178775.s2p\u0022,\u0022s_25C/Vgs-0.8_Vds7_Id6.575749.s2p\u0022,\u0022s_25C/Vgs-1.2_Vds0.5_Id0.361994.s2p\u0022,\u0022s_25C/Vgs-1.2_Vds10_Id0.542645.s2p\u0022,\u0022s_25C/Vgs-1.2_Vds15_Id0.602724.s2p\u0022,\u0022s_25C/Vgs-1.2_Vds1_Id0.427237.s2p\u0022,\u0022s_25C/Vgs-1.2_Vds2_Id0.445227.s2p\u0022,\u0022s_25C/Vgs-1.2_Vds4_Id0.469671.s2p\u0022,\u0022s_25C/Vgs-1.2_Vds7_Id0.506344.s2p\u0022,\u0022s_25C/Vgs-1.6_Vds0.5_Id0.003496.s2p\u0022,\u0022s_25C/Vgs-1.6_Vds10_Id0.005277.s2p\u0022,\u0022s_25C/Vgs-1.6_Vds15_Id0.005886.s2p\u0022,\u0022s_25C/Vgs-1.6_Vds1_Id0.004126.s2p\u0022,\u0022s_25C/Vgs-1.6_Vds2_Id0.004303.s2p\u0022,\u0022s_25C/Vgs-1.6_Vds4_Id0.004547.s2p\u0022,\u0022s_25C/Vgs-1.6_Vds7_Id0.004912.s2p\u0022,\u0022s_25C/Vgs-2_Vds0.5_Id0.000006.s2p\u0022,\u0022s_25C/Vgs-2_Vds10_Id0.000000.s2p\u0022,\u0022s_25C/Vgs-2_Vds15_Id0.000000.s2p\u0022,\u0022s_25C/Vgs-2_Vds1_Id0.000002.s2p\u0022,\u0022s_25C/Vgs-2_Vds2_Id0.000000.s2p\u0022,\u0022s_25C/Vgs-2_Vds4_Id0.000000.s2p\u0022,\u0022s_25C/Vgs-2_Vds7_Id0.000000.s2p\u0022,\u0022s_25C/Vgs0.3_Vds0.5_Id23.261337.s2p\u0022,\u0022s_25C/Vgs0.3_Vds10_Id59.231074.s2p\u0022,\u0022s_25C/Vgs0.3_Vds15_Id61.863547.s2p\u0022,\u0022s_25C/Vgs0.3_Vds1_Id41.782560.s2p\u0022,\u0022s_25C/Vgs0.3_Vds2_Id53.663314.s2p\u0022,\u0022s_25C/Vgs0.3_Vds4_Id55.357665.s2p\u0022,\u0022s_25C/Vgs0.3_Vds7_Id57.399739.s2p\u0022,\u0022s_25C/Vgs0_Vds0.5_Id19.900364.s2p\u0022,\u0022s_25C/Vgs0_Vds10_Id41.952879.s2p\u0022,\u0022s_25C/Vgs0_Vds15_Id44.205986.s2p\u0022,\u0022s_25C/Vgs0_Vds1_Id32.767339.s2p\u0022,\u0022s_25C/Vgs0_Vds2_Id37.550219.s2p\u0022,\u0022s_25C/Vgs0_Vds4_Id38.779274.s2p\u0022,\u0022s_25C/Vgs0_Vds7_Id40.434856.s2p\u0022] {\u0022Format\u0022: \u0022touchstone\u0022,\u0022Pattern\u0022: \u0022Vgs{vgs}_Vds{vds}_Id{id:mA}\u0022,\u0022PatternSource\u0022: \u0022name\u0022}",
+      "Sources": [
+        {
+          "Path": "s_25C/Vgs-0.4_Vds0.5_Id12.969913.s2p",
+          "Size": 1664,
+          "ModifiedTicks": 639281012241360020,
+          "Sha256": "507439228d2519c5cb720b07c99d39146ee7343ae43a7dfe5e2d309c263b06db"
+        },
+        {
+          "Path": "s_25C/Vgs-0.4_Vds10_Id21.844400.s2p",
+          "Size": 1631,
+          "ModifiedTicks": 639281012241364702,
+          "Sha256": "faa35aa5175dcbc3cccc3c52d7a3d6f585b14a35a31d77789ced639ed0f77415"
+        },
+        {
+          "Path": "s_25C/Vgs-0.4_Vds15_Id23.340489.s2p",
+          "Size": 1630,
+          "ModifiedTicks": 639281012241366250,
+          "Sha256": "1e27b9cc0c47e384fd52c333c13a2b1abd18dc12fe69c4b498d77b969e1a5a04"
+        },
+        {
+          "Path": "s_25C/Vgs-0.4_Vds1_Id17.993038.s2p",
+          "Size": 1643,
+          "ModifiedTicks": 639281012241360675,
+          "Sha256": "8d9e9b7ce4fa9e7b9b70eea020bbcf9613df90d6b296f9cd6a29a2175b8d2904"
+        },
+        {
+          "Path": "s_25C/Vgs-0.4_Vds2_Id19.113004.s2p",
+          "Size": 1633,
+          "ModifiedTicks": 639281012241361269,
+          "Sha256": "108851382506df1ee7f2c79e8407d7e194e507449a3352b420c3d38085e4624d"
+        },
+        {
+          "Path": "s_25C/Vgs-0.4_Vds4_Id19.841504.s2p",
+          "Size": 1635,
+          "ModifiedTicks": 639281012241362806,
+          "Sha256": "11666912d114c852f948b3367d6491f2ce71bebc171e1d640a901fcd17bdb9a4"
+        },
+        {
+          "Path": "s_25C/Vgs-0.4_Vds7_Id20.872878.s2p",
+          "Size": 1633,
+          "ModifiedTicks": 639281012241364190,
+          "Sha256": "27fab4f7ff6d4d7294238ad695ff169061174a3ca70830942de9346d26a28286"
+        },
+        {
+          "Path": "s_25C/Vgs-0.8_Vds0.5_Id4.648155.s2p",
+          "Size": 1644,
+          "ModifiedTicks": 639281012241353524,
+          "Sha256": "ef1ed4d160bb1010a5a50cf7835df1888e04976ee5ab830410bd9e7d6e374734"
+        },
+        {
+          "Path": "s_25C/Vgs-0.8_Vds10_Id6.960280.s2p",
+          "Size": 1634,
+          "ModifiedTicks": 639281012241358840,
+          "Sha256": "a448a9c7fefb0c6299eeef39d6f61281164ab02a3f60d6b11b7dd9135aa5c9c1"
+        },
+        {
+          "Path": "s_25C/Vgs-0.8_Vds15_Id7.574679.s2p",
+          "Size": 1639,
+          "ModifiedTicks": 639281012241359427,
+          "Sha256": "844e2f5e97f29566c602db1b1594833a9f6e8d1585517ac31bd1c395b364810a"
+        },
+        {
+          "Path": "s_25C/Vgs-0.8_Vds1_Id5.667405.s2p",
+          "Size": 1642,
+          "ModifiedTicks": 639281012241355224,
+          "Sha256": "74275c3e39f30221ceb199e94c67a0f9563227bb55cf9b6b344dd4c936128b2b"
+        },
+        {
+          "Path": "s_25C/Vgs-0.8_Vds2_Id5.906279.s2p",
+          "Size": 1634,
+          "ModifiedTicks": 639281012241355843,
+          "Sha256": "312feb16ba36b5d1f0236ac14a7a904efcd8e7253ad05c047a6f83b506937594"
+        },
+        {
+          "Path": "s_25C/Vgs-0.8_Vds4_Id6.178775.s2p",
+          "Size": 1635,
+          "ModifiedTicks": 639281012241356510,
+          "Sha256": "8f565830e45b83721759329ed790966aa65d12b53eff329da250f1859bb23cb6"
+        },
+        {
+          "Path": "s_25C/Vgs-0.8_Vds7_Id6.575749.s2p",
+          "Size": 1639,
+          "ModifiedTicks": 639281012241357145,
+          "Sha256": "747180f99e6b3ebd7015c15920edd2ae79ef66d04b091952bc10dfc8af62e697"
+        },
+        {
+          "Path": "s_25C/Vgs-1.2_Vds0.5_Id0.361994.s2p",
+          "Size": 1651,
+          "ModifiedTicks": 639281012241347167,
+          "Sha256": "d5e032447479454c4cc9e35c4d3904576c834f1f54407c7a6886f3ac119e5a2f"
+        },
+        {
+          "Path": "s_25C/Vgs-1.2_Vds10_Id0.542645.s2p",
+          "Size": 1656,
+          "ModifiedTicks": 639281012241352162,
+          "Sha256": "b82616f8db3ab19043231db81d1711397a5f33c248136a7ba39b22b984d4f4b0"
+        },
+        {
+          "Path": "s_25C/Vgs-1.2_Vds15_Id0.602724.s2p",
+          "Size": 1644,
+          "ModifiedTicks": 639281012241352839,
+          "Sha256": "31b514af94378e8d0e0080716525e843b6ce40c8426b8b14176d01509e5b5d68"
+        },
+        {
+          "Path": "s_25C/Vgs-1.2_Vds1_Id0.427237.s2p",
+          "Size": 1646,
+          "ModifiedTicks": 639281012241348860,
+          "Sha256": "09a02be216f6af6a09deccbef5b7e2cd19c46eefe6a1efb980eb3156d9107a99"
+        },
+        {
+          "Path": "s_25C/Vgs-1.2_Vds2_Id0.445227.s2p",
+          "Size": 1648,
+          "ModifiedTicks": 639281012241349434,
+          "Sha256": "87b1999834106c89c29e864a9d71c2aca82964efb38b4a731e8dc452ad5de1ab"
+        },
+        {
+          "Path": "s_25C/Vgs-1.2_Vds4_Id0.469671.s2p",
+          "Size": 1645,
+          "ModifiedTicks": 639281012241350925,
+          "Sha256": "15dfc3c588bea97bcc7cf343c1aabe1134ce3bf11ffbd4b794f78a74bb83b083"
+        },
+        {
+          "Path": "s_25C/Vgs-1.2_Vds7_Id0.506344.s2p",
+          "Size": 1646,
+          "ModifiedTicks": 639281012241351522,
+          "Sha256": "503f124559afd749f3d1670b2fb132bd5a1c14474c0f1dd53d5220cd5cdbaee4"
+        },
+        {
+          "Path": "s_25C/Vgs-1.6_Vds0.5_Id0.003496.s2p",
+          "Size": 1655,
+          "ModifiedTicks": 639281012241341355,
+          "Sha256": "94144f455d07b30b0be1e0d9aaef836a8bbc78646480aeb79f5763f7161df5d1"
+        },
+        {
+          "Path": "s_25C/Vgs-1.6_Vds10_Id0.005277.s2p",
+          "Size": 1674,
+          "ModifiedTicks": 639281012241345889,
+          "Sha256": "da80d7be4bb52bf2d361942726b01a82c17ad9c797a6131c9f5dc47b7c63448b"
+        },
+        {
+          "Path": "s_25C/Vgs-1.6_Vds15_Id0.005886.s2p",
+          "Size": 1672,
+          "ModifiedTicks": 639281012241346514,
+          "Sha256": "b5adc55f1cbb86338a93da75001a6b929e465f38eab3c0fba51a69419c47cedd"
+        },
+        {
+          "Path": "s_25C/Vgs-1.6_Vds1_Id0.004126.s2p",
+          "Size": 1662,
+          "ModifiedTicks": 639281012241342007,
+          "Sha256": "c1fed5533c6c359f387f09721970cea87618fc1db5cd0d2c265ff70aeb58e472"
+        },
+        {
+          "Path": "s_25C/Vgs-1.6_Vds2_Id0.004303.s2p",
+          "Size": 1672,
+          "ModifiedTicks": 639281012241342693,
+          "Sha256": "01a79daab3becaeaec5f76f8e2bfe53df2e3da32ee1c5340ffab7d7606a67002"
+        },
+        {
+          "Path": "s_25C/Vgs-1.6_Vds4_Id0.004547.s2p",
+          "Size": 1679,
+          "ModifiedTicks": 639281012241343324,
+          "Sha256": "70a56d48df5f473242f0ccd7435e87fd1de0ffadf5d1cff9bda2b16558d179fc"
+        },
+        {
+          "Path": "s_25C/Vgs-1.6_Vds7_Id0.004912.s2p",
+          "Size": 1675,
+          "ModifiedTicks": 639281012241345213,
+          "Sha256": "8bc10645386e61ff42b905a84a12eea6fc62dd246100a78259a1dff77bc2b16a"
+        },
+        {
+          "Path": "s_25C/Vgs-2_Vds0.5_Id0.000006.s2p",
+          "Size": 1659,
+          "ModifiedTicks": 639281012241336400,
+          "Sha256": "f8ca3d08c57ea69c6b41dd4998b16e82d2cb480b567604de54bb51d4e457a06e"
+        },
+        {
+          "Path": "s_25C/Vgs-2_Vds10_Id0.000000.s2p",
+          "Size": 1676,
+          "ModifiedTicks": 639281012241340140,
+          "Sha256": "cea39b1c66726c4562b0a3c7745e8c9914fb2bf100c5475b80c40d9c6905f147"
+        },
+        {
+          "Path": "s_25C/Vgs-2_Vds15_Id0.000000.s2p",
+          "Size": 1669,
+          "ModifiedTicks": 639281012241340721,
+          "Sha256": "1ee1b824f49eb1f43b267a0266fefa73f3d9315c6156af7edd8779eb3756d163"
+        },
+        {
+          "Path": "s_25C/Vgs-2_Vds1_Id0.000002.s2p",
+          "Size": 1665,
+          "ModifiedTicks": 639281012241337521,
+          "Sha256": "637ce41c076000a0856aa877c34825213b24bc57b1f29d9293aaba4b2aa0efd9"
+        },
+        {
+          "Path": "s_25C/Vgs-2_Vds2_Id0.000000.s2p",
+          "Size": 1659,
+          "ModifiedTicks": 639281012241338215,
+          "Sha256": "ada5081ee2fa19a02aa9ff73443f2513853f335565f3c71da9a85d60d128af42"
+        },
+        {
+          "Path": "s_25C/Vgs-2_Vds4_Id0.000000.s2p",
+          "Size": 1664,
+          "ModifiedTicks": 639281012241338872,
+          "Sha256": "9704a800c24a443562aa54a4fa76b953bbc179edf8544ee44ddcfb91fdb20ea5"
+        },
+        {
+          "Path": "s_25C/Vgs-2_Vds7_Id0.000000.s2p",
+          "Size": 1670,
+          "ModifiedTicks": 639281012241339525,
+          "Sha256": "412ec47ed948f956db5721ba8e5714148433a385e7e926a35105da1995f642d2"
+        },
+        {
+          "Path": "s_25C/Vgs0.3_Vds0.5_Id23.261337.s2p",
+          "Size": 1665,
+          "ModifiedTicks": 639281012241373758,
+          "Sha256": "c558a0f4462cb32cb4dc4964556910d4688f8ca1d76bb7af3e6fdc8ac4ea726f"
+        },
+        {
+          "Path": "s_25C/Vgs0.3_Vds10_Id59.231074.s2p",
+          "Size": 1636,
+          "ModifiedTicks": 639281012241377009,
+          "Sha256": "12ba74c594dd5f8d7f55ae6b8e6e9466a0b066f29fd97afa55b167cb13a97d01"
+        },
+        {
+          "Path": "s_25C/Vgs0.3_Vds15_Id61.863547.s2p",
+          "Size": 1636,
+          "ModifiedTicks": 639281012241377609,
+          "Sha256": "926af2136f416bb5d74548360b48a65df3c084fdb3ce84534cd1a2ba3f7dcf84"
+        },
+        {
+          "Path": "s_25C/Vgs0.3_Vds1_Id41.782560.s2p",
+          "Size": 1670,
+          "ModifiedTicks": 639281012241374517,
+          "Sha256": "1acef649eb4e81bd80fc8c2a72fddef4edfb6db5ac0b8968594bbeb53e4a5c2a"
+        },
+        {
+          "Path": "s_25C/Vgs0.3_Vds2_Id53.663314.s2p",
+          "Size": 1638,
+          "ModifiedTicks": 639281012241375214,
+          "Sha256": "b5533c8443a053b392f5af765d475cca46489a2c780c4cd397803ee11dca3e1b"
+        },
+        {
+          "Path": "s_25C/Vgs0.3_Vds4_Id55.357665.s2p",
+          "Size": 1636,
+          "ModifiedTicks": 639281012241375840,
+          "Sha256": "d5c09734bf61e43bc2086bce3820664289d74987fa9714705ae487a7f9d559df"
+        },
+        {
+          "Path": "s_25C/Vgs0.3_Vds7_Id57.399739.s2p",
+          "Size": 1630,
+          "ModifiedTicks": 639281012241376404,
+          "Sha256": "2d1340c903b7154d3e126073d1d675037520c5a58f4ae08b9232c34c7f2c69bc"
+        },
+        {
+          "Path": "s_25C/Vgs0_Vds0.5_Id19.900364.s2p",
+          "Size": 1672,
+          "ModifiedTicks": 639281012241366831,
+          "Sha256": "9dc67d6c00411800b6eda019f7eaeaec158a3a460726a921b26e1d3aa3bce10f"
+        },
+        {
+          "Path": "s_25C/Vgs0_Vds10_Id41.952879.s2p",
+          "Size": 1639,
+          "ModifiedTicks": 639281012241372296,
+          "Sha256": "eca894b12ca34770fc3afbc0b6979125797b99e99440ee50bac5be7341ff70a9"
+        },
+        {
+          "Path": "s_25C/Vgs0_Vds15_Id44.205986.s2p",
+          "Size": 1626,
+          "ModifiedTicks": 639281012241373045,
+          "Sha256": "cab8ef6af68445347cbbbb56b756d2f2a8b09ca31e7017b205ca23970360de9c"
+        },
+        {
+          "Path": "s_25C/Vgs0_Vds1_Id32.767339.s2p",
+          "Size": 1655,
+          "ModifiedTicks": 639281012241368253,
+          "Sha256": "00e8dd1c41270bebba582a30949980fd7c8f0b7d454d089aff2816785ed5a6c5"
+        },
+        {
+          "Path": "s_25C/Vgs0_Vds2_Id37.550219.s2p",
+          "Size": 1632,
+          "ModifiedTicks": 639281012241368793,
+          "Sha256": "b94a3ebc34693a0599d6e9b5efd95fb5c1412ff34a718d933e411ce0a5dd5216"
+        },
+        {
+          "Path": "s_25C/Vgs0_Vds4_Id38.779274.s2p",
+          "Size": 1638,
+          "ModifiedTicks": 639281012241370056,
+          "Sha256": "12f77dd95beb87c840f7485033737a071b15076c6a6c573c6c8d1136f9c98d79"
+        },
+        {
+          "Path": "s_25C/Vgs0_Vds7_Id40.434856.s2p",
+          "Size": 1639,
+          "ModifiedTicks": 639281012241371549,
+          "Sha256": "10ae6a28a9a4c92ca84b3303418d3d52bb1f4945da7b99db64abf0181c631c59"
+        }
+      ]
+    },
+    {
+      "Name": "s_85C",
+      "File": "7.npy",
+      "Settings": "SParams [\u0022s_85C/Vgs-0.4_Vds0.5_Id10.970954.s2p\u0022,\u0022s_85C/Vgs-0.4_Vds10_Id17.914140.s2p\u0022,\u0022s_85C/Vgs-0.4_Vds15_Id19.210169.s2p\u0022,\u0022s_85C/Vgs-0.4_Vds1_Id14.742995.s2p\u0022,\u0022s_85C/Vgs-0.4_Vds2_Id15.561733.s2p\u0022,\u0022s_85C/Vgs-0.4_Vds4_Id16.186314.s2p\u0022,\u0022s_85C/Vgs-0.4_Vds7_Id17.074810.s2p\u0022,\u0022s_85C/Vgs-0.8_Vds0.5_Id3.704482.s2p\u0022,\u0022s_85C/Vgs-0.8_Vds10_Id5.540723.s2p\u0022,\u0022s_85C/Vgs-0.8_Vds15_Id6.050785.s2p\u0022,\u0022s_85C/Vgs-0.8_Vds1_Id4.484380.s2p\u0022,\u0022s_85C/Vgs-0.8_Vds2_Id4.672649.s2p\u0022,\u0022s_85C/Vgs-0.8_Vds4_Id4.896166.s2p\u0022,\u0022s_85C/Vgs-0.8_Vds7_Id5.222964.s2p\u0022,\u0022s_85C/Vgs-1.2_Vds0.5_Id0.276949.s2p\u0022,\u0022s_85C/Vgs-1.2_Vds10_Id0.415778.s2p\u0022,\u0022s_85C/Vgs-1.2_Vds15_Id0.462213.s2p\u0022,\u0022s_85C/Vgs-1.2_Vds1_Id0.326871.s2p\u0022,\u0022s_85C/Vgs-1.2_Vds2_Id0.340700.s2p\u0022,\u0022s_85C/Vgs-1.2_Vds4_Id0.359540.s2p\u0022,\u0022s_85C/Vgs-1.2_Vds7_Id0.387655.s2p\u0022,\u0022s_85C/Vgs-1.6_Vds0.5_Id0.002657.s2p\u0022,\u0022s_85C/Vgs-1.6_Vds10_Id0.004011.s2p\u0022,\u0022s_85C/Vgs-1.6_Vds15_Id0.004474.s2p\u0022,\u0022s_85C/Vgs-1.6_Vds1_Id0.003136.s2p\u0022,\u0022s_85C/Vgs-1.6_Vds2_Id0.003271.s2p\u0022,\u0022s_85C/Vgs-1.6_Vds4_Id0.003456.s2p\u0022,\u0022s_85C/Vgs-1.6_Vds7_Id0.003734.s2p\u0022,\u0022s_85C/Vgs-2_Vds0.5_Id0.000005.s2p\u0022,\u0022s_85C/Vgs-2_Vds10_Id0.000000.s2p\u0022,\u0022s_85C/Vgs-2_Vds15_Id0.000000.s2p\u0022,\u0022s_85C/Vgs-2_Vds1_Id0.000002.s2p\u0022,\u0022s_85C/Vgs-2_Vds2_Id0.000000.s2p\u0022,\u0022s_85C/Vgs-2_Vds4_Id0.000000.s2p\u0022,\u0022s_85C/Vgs-2_Vds7_Id0.000000.s2p\u0022,\u0022s_85C/Vgs0.3_Vds0.5_Id21.478681.s2p\u0022,\u0022s_85C/Vgs0.3_Vds10_Id49.938847.s2p\u0022,\u0022s_85C/Vgs0.3_Vds15_Id52.213027.s2p\u0022,\u0022s_85C/Vgs0.3_Vds1_Id37.301357.s2p\u0022,\u0022s_85C/Vgs0.3_Vds2_Id45.135592.s2p\u0022,\u0022s_85C/Vgs0.3_Vds4_Id46.543826.s2p\u0022,\u0022s_85C/Vgs0.3_Vds7_Id48.338696.s2p\u0022,\u0022s_85C/Vgs0_Vds0.5_Id17.825628.s2p\u0022,\u0022s_85C/Vgs0_Vds10_Id35.037422.s2p\u0022,\u0022s_85C/Vgs0_Vds15_Id37.006437.s2p\u0022,\u0022s_85C/Vgs0_Vds1_Id28.068526.s2p\u0022,\u0022s_85C/Vgs0_Vds2_Id31.188988.s2p\u0022,\u0022s_85C/Vgs0_Vds4_Id32.253160.s2p\u0022,\u0022s_85C/Vgs0_Vds7_Id33.706332.s2p\u0022] {\u0022Format\u0022: \u0022touchstone\u0022,\u0022Pattern\u0022: \u0022Vgs{vgs}_Vds{vds}_Id{id:mA}\u0022,\u0022PatternSource\u0022: \u0022name\u0022}",
+      "Sources": [
+        {
+          "Path": "s_85C/Vgs-0.4_Vds0.5_Id10.970954.s2p",
+          "Size": 1655,
+          "ModifiedTicks": 639281012242085983,
+          "Sha256": "5d391ca08375e503131b0690046c97cf4543023661d0d9bfcd6a719f2a3de079"
+        },
+        {
+          "Path": "s_85C/Vgs-0.4_Vds10_Id17.914140.s2p",
+          "Size": 1634,
+          "ModifiedTicks": 639281012242089650,
+          "Sha256": "8cd27c76be2545ec12032212e4440bbf7f5ebb1f12e0107a098daa7e209d5d16"
+        },
+        {
+          "Path": "s_85C/Vgs-0.4_Vds15_Id19.210169.s2p",
+          "Size": 1639,
+          "ModifiedTicks": 639281012242090216,
+          "Sha256": "269d166d13bab963581d5e89186a125a6c6f70218551f51ab575a6bd4d936b2a"
+        },
+        {
+          "Path": "s_85C/Vgs-0.4_Vds1_Id14.742995.s2p",
+          "Size": 1635,
+          "ModifiedTicks": 639281012242086553,
+          "Sha256": "96b240a2933ab550c1d5ce298c0ebd81fcacf3b58710edf03fde2594e249c13d"
+        },
+        {
+          "Path": "s_85C/Vgs-0.4_Vds2_Id15.561733.s2p",
+          "Size": 1638,
+          "ModifiedTicks": 639281012242087135,
+          "Sha256": "5679ec0c139c9ff80b9973e546d47e0e552683029ead9c9eb089a101127d83a1"
+        },
+        {
+          "Path": "s_85C/Vgs-0.4_Vds4_Id16.186314.s2p",
+          "Size": 1627,
+          "ModifiedTicks": 639281012242088587,
+          "Sha256": "8e4a411c528d98ab41d86b5d7d19b6b0eabd8958a34296b0140c3edf1af8d07b"
+        },
+        {
+          "Path": "s_85C/Vgs-0.4_Vds7_Id17.074810.s2p",
+          "Size": 1636,
+          "ModifiedTicks": 639281012242089100,
+          "Sha256": "977b9b963b4cb61bc5aaf510eac8dacbd21c5efb74faf0a40d7e182a2f528fd6"
+        },
+        {
+          "Path": "s_85C/Vgs-0.8_Vds0.5_Id3.704482.s2p",
+          "Size": 1646,
+          "ModifiedTicks": 639281012242081903,
+          "Sha256": "e3d7b15b606dafb4c63e25a54b2401bdc856ed3aeca06b1aa8e6674d681df556"
+        },
+        {
+          "Path": "s_85C/Vgs-0.8_Vds10_Id5.540723.s2p",
+          "Size": 1637,
+          "ModifiedTicks": 639281012242084787,
+          "Sha256": "799a80c57d6f33dd78fec903be97bf9d7d650300175073995a1931bc192c6bb7"
+        },
+        {
+          "Path": "s_85C/Vgs-0.8_Vds15_Id6.050785.s2p",
+          "Size": 1632,
+          "ModifiedTicks": 639281012242085335,
+          "Sha256": "ae49e334c7d3dd1668a5e39def6928eab00a6f3fad262bb903c5148948bb3429"
+        },
+        {
+          "Path": "s_85C/Vgs-0.8_Vds1_Id4.484380.s2p",
+          "Size": 1642,
+          "ModifiedTicks": 639281012242082463,
+          "Sha256": "e4e5a3dc6f868ac3f773977f1087b0250281062b93dd8c10832611d9d0bf4f1c"
+        },
+        {
+          "Path": "s_85C/Vgs-0.8_Vds2_Id4.672649.s2p",
+          "Size": 1641,
+          "ModifiedTicks": 639281012242083029,
+          "Sha256": "6e0a6be0b1a091dd340a7d5230476a7b64a81d800ed49c2eff47236e24ca6c66"
+        },
+        {
+          "Path": "s_85C/Vgs-0.8_Vds4_Id4.896166.s2p",
+          "Size": 1637,
+          "ModifiedTicks": 639281012242083606,
+          "Sha256": "fe328e08e31e460ccc59d7c498724e9cce8aa7c1472a207dadae4cfc83254574"
+        },
+        {
+          "Path": "s_85C/Vgs-0.8_Vds7_Id5.222964.s2p",
+          "Size": 1636,
+          "ModifiedTicks": 639281012242084203,
+          "Sha256": "ba1c423663be108100f806de8a7e46d31d16a4a3b835ec5bd8c6646010d480ec"
+        },
+        {
+          "Path": "s_85C/Vgs-1.2_Vds0.5_Id0.276949.s2p",
+          "Size": 1647,
+          "ModifiedTicks": 639281012242076674,
+          "Sha256": "dc5d7bc10b81e7fc2e203582b98d2e2eec56c5ab082dbeeb9aa4907ad4b5cff4"
+        },
+        {
+          "Path": "s_85C/Vgs-1.2_Vds10_Id0.415778.s2p",
+          "Size": 1653,
+          "ModifiedTicks": 639281012242080697,
+          "Sha256": "194f496024790366b77e45e00282b333bb1333596c8c6b8d533f0f05abb80c89"
+        },
+        {
+          "Path": "s_85C/Vgs-1.2_Vds15_Id0.462213.s2p",
+          "Size": 1655,
+          "ModifiedTicks": 639281012242081298,
+          "Sha256": "4a48b554348cff9336ce9cab97edea3ecb1e9aba9354181aa2785bd823a80e4d"
+        },
+        {
+          "Path": "s_85C/Vgs-1.2_Vds1_Id0.326871.s2p",
+          "Size": 1653,
+          "ModifiedTicks": 639281012242077336,
+          "Sha256": "a13b493781fec6e59653815adc42109e659123d6b76449c73e68d64db0d326fd"
+        },
+        {
+          "Path": "s_85C/Vgs-1.2_Vds2_Id0.340700.s2p",
+          "Size": 1648,
+          "ModifiedTicks": 639281012242077992,
+          "Sha256": "7e199da406c0ec2305fe2495ceb7938de2a67f9a1c28c0e1ed90b173d022cb83"
+        },
+        {
+          "Path": "s_85C/Vgs-1.2_Vds4_Id0.359540.s2p",
+          "Size": 1655,
+          "ModifiedTicks": 639281012242078604,
+          "Sha256": "3f2c611c3466417232b7dac1ece080a7aee3bcd9d00ae10559cf7b428d21e300"
+        },
+        {
+          "Path": "s_85C/Vgs-1.2_Vds7_Id0.387655.s2p",
+          "Size": 1646,
+          "ModifiedTicks": 639281012242079174,
+          "Sha256": "c0a1cd1467ca96aceb944fecfa31f6ee3b3b64e6a4f757f23b7bc26acf4dbadd"
+        },
+        {
+          "Path": "s_85C/Vgs-1.6_Vds0.5_Id0.002657.s2p",
+          "Size": 1663,
+          "ModifiedTicks": 639281012242071958,
+          "Sha256": "acf6287191b964c192aa4a466d60a1a689ce4e66dacb150282548cf313efc6ce"
+        },
+        {
+          "Path": "s_85C/Vgs-1.6_Vds10_Id0.004011.s2p",
+          "Size": 1674,
+          "ModifiedTicks": 639281012242075480,
+          "Sha256": "84e28ccb38e27f1e67bfef8168975fd567ffeebefbd45eca778354a693687a31"
+        },
+        {
+          "Path": "s_85C/Vgs-1.6_Vds15_Id0.004474.s2p",
+          "Size": 1665,
+          "ModifiedTicks": 639281012242076067,
+          "Sha256": "6eafa9de5c8348f1261dd7f038c10971e596c7985807c0da6a4a20d9b10a8adf"
+        },
+        {
+          "Path": "s_85C/Vgs-1.6_Vds1_Id0.003136.s2p",
+          "Size": 1667,
+          "ModifiedTicks": 639281012242072724,
+          "Sha256": "e88799127ff7e74ac8e304c1f70582e3d98f4b8fc622c5a93b9bc13f0af3e08c"
+        },
+        {
+          "Path": "s_85C/Vgs-1.6_Vds2_Id0.003271.s2p",
+          "Size": 1679,
+          "ModifiedTicks": 639281012242073465,
+          "Sha256": "a2f0778ddcd0798b9d6611011594a8f61eb22b255774c561f83f53fc9cf8f356"
+        },
+        {
+          "Path": "s_85C/Vgs-1.6_Vds4_Id0.003456.s2p",
+          "Size": 1675,
+          "ModifiedTicks": 639281012242074179,
+          "Sha256": "a8461c93571de7e5b2538b312737f3a03670062751cff02d9eb07905d31e69e5"
+        },
+        {
+          "Path": "s_85C/Vgs-1.6_Vds7_Id0.003734.s2p",
+          "Size": 1676,
+          "ModifiedTicks": 639281012242074852,
+          "Sha256": "5c22202d4593f0b70e9a897cda3a80e689b0980c5114b4893d7da1feb85a59cf"
+        },
+        {
+          "Path": "s_85C/Vgs-2_Vds0.5_Id0.000005.s2p",
+          "Size": 1662,
+          "ModifiedTicks": 639281012242064380,
+          "Sha256": "53af657073a31a8ec16ae644659a15ec5867eff456526d288a36c56920a68fe3"
+        },
+        {
+          "Path": "s_85C/Vgs-2_Vds10_Id0.000000.s2p",
+          "Size": 1670,
+          "ModifiedTicks": 639281012242067956,
+          "Sha256": "60687a57a3d174dc4f455c24e2875ea6bf46250cbcbfc410f1599241fa1c3d2f"
+        },
+        {
+          "Path": "s_85C/Vgs-2_Vds15_Id0.000000.s2p",
+          "Size": 1674,
+          "ModifiedTicks": 639281012242070809,
+          "Sha256": "d3eafe8e80a8aaa239d2ca2fc4358c8969e6364ec40412f0ba51050bbd8c7f3a"
+        },
+        {
+          "Path": "s_85C/Vgs-2_Vds1_Id0.000002.s2p",
+          "Size": 1667,
+          "ModifiedTicks": 639281012242065303,
+          "Sha256": "95ffa8c19774a517bb0232168b833cbdc685dbd27484721381c435332116c3cd"
+        },
+        {
+          "Path": "s_85C/Vgs-2_Vds2_Id0.000000.s2p",
+          "Size": 1672,
+          "ModifiedTicks": 639281012242065933,
+          "Sha256": "7847c1e13e099bf6bd2db9006937604fcb0bb4d4084c310c0d93b3b3eb9d255f"
+        },
+        {
+          "Path": "s_85C/Vgs-2_Vds4_Id0.000000.s2p",
+          "Size": 1672,
+          "ModifiedTicks": 639281012242066550,
+          "Sha256": "9f98ff622e34aa48afd6fa965c32fe2fe49d971e56170f1322e29b125ed930f1"
+        },
+        {
+          "Path": "s_85C/Vgs-2_Vds7_Id0.000000.s2p",
+          "Size": 1678,
+          "ModifiedTicks": 639281012242067262,
+          "Sha256": "f4fd39777d3bcb36e45fad9833158ad51752f56562a0f3ff7b4616b1265ceb2e"
+        },
+        {
+          "Path": "s_85C/Vgs0.3_Vds0.5_Id21.478681.s2p",
+          "Size": 1674,
+          "ModifiedTicks": 639281012242096064,
+          "Sha256": "3ffbb8f6b73788c3b01998364c7b92e06f08d70790759db71610e0cbcae87a69"
+        },
+        {
+          "Path": "s_85C/Vgs0.3_Vds10_Id49.938847.s2p",
+          "Size": 1636,
+          "ModifiedTicks": 639281012242101936,
+          "Sha256": "a470bc5bedbf900b6501f0e49ade47c1c48c514aa711beffe944fbf9faba237d"
+        },
+        {
+          "Path": "s_85C/Vgs0.3_Vds15_Id52.213027.s2p",
+          "Size": 1628,
+          "ModifiedTicks": 639281012242102509,
+          "Sha256": "9d9b5c9c107248c4309b987f3bde22fc905c6ce1ff395d6664414a4bad4f9bd6"
+        },
+        {
+          "Path": "s_85C/Vgs0.3_Vds1_Id37.301357.s2p",
+          "Size": 1666,
+          "ModifiedTicks": 639281012242096638,
+          "Sha256": "20e798426b1805f30b18a5fc0bc0bf2015432a8e6854c8f5e2929d1a740efeaf"
+        },
+        {
+          "Path": "s_85C/Vgs0.3_Vds2_Id45.135592.s2p",
+          "Size": 1630,
+          "ModifiedTicks": 639281012242097197,
+          "Sha256": "a21969e89225b751f4c462f4acd5a26369ebcc6acbcd19923e1f199bd439ceb1"
+        },
+        {
+          "Path": "s_85C/Vgs0.3_Vds4_Id46.543826.s2p",
+          "Size": 1635,
+          "ModifiedTicks": 639281012242097739,
+          "Sha256": "6686c82a89d209f8f1be8537e6e8b138e13569ec9cb1cfc16bad1c31a4e39a85"
+        },
+        {
+          "Path": "s_85C/Vgs0.3_Vds7_Id48.338696.s2p",
+          "Size": 1636,
+          "ModifiedTicks": 639281012242098263,
+          "Sha256": "d1c9707fe5b0a5bf65104bb0e1fe360514992f9a5948feb3eb22c98834802e42"
+        },
+        {
+          "Path": "s_85C/Vgs0_Vds0.5_Id17.825628.s2p",
+          "Size": 1664,
+          "ModifiedTicks": 639281012242090807,
+          "Sha256": "1e9b4ec68725f7be122e51d42ff3fdadc1a43ac78d5d9a8b9ecd922e3856b6c7"
+        },
+        {
+          "Path": "s_85C/Vgs0_Vds10_Id35.037422.s2p",
+          "Size": 1636,
+          "ModifiedTicks": 639281012242094931,
+          "Sha256": "e61aa78cb1d82d9e25cab017f0e5840413f44c26bd4990b95d02337fb514a521"
+        },
+        {
+          "Path": "s_85C/Vgs0_Vds15_Id37.006437.s2p",
+          "Size": 1641,
+          "ModifiedTicks": 639281012242095471,
+          "Sha256": "e129dccdab6ba16482103127876c4e644e2c8f7df2a934d8403d872de5104aad"
+        },
+        {
+          "Path": "s_85C/Vgs0_Vds1_Id28.068526.s2p",
+          "Size": 1651,
+          "ModifiedTicks": 639281012242091361,
+          "Sha256": "1827b5dba289062ea00b0f1d0e48236e821f37c7c92d3d251be62b3b4b3e3f7d"
+        },
+        {
+          "Path": "s_85C/Vgs0_Vds2_Id31.188988.s2p",
+          "Size": 1632,
+          "ModifiedTicks": 639281012242091924,
+          "Sha256": "f27fcfa48d32f7fa858d2b7ab66663dbdb88b03ba4bcf3bb6378417b89cc023f"
+        },
+        {
+          "Path": "s_85C/Vgs0_Vds4_Id32.253160.s2p",
+          "Size": 1634,
+          "ModifiedTicks": 639281012242092502,
+          "Sha256": "87de24b0cae6961b9f701c92b7b99258b2a0fbac2190186c20512f383c62dfe0"
+        },
+        {
+          "Path": "s_85C/Vgs0_Vds7_Id33.706332.s2p",
+          "Size": 1630,
+          "ModifiedTicks": 639281012242094396,
+          "Sha256": "ac11144a69a176504c026f92df3e393e2215efb02aea268136e87ddebceb97fa"
+        }
+      ]
+    }
+  ]
+}

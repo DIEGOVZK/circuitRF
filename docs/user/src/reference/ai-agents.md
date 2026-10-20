@@ -15,6 +15,7 @@ keywords: AI agent, assistant, MCP, Model Context Protocol, serve, print-config,
 <li><a href="#brief">What to tell it</a></li>
 <li><a href="#topics">The reference topics it should read</a></li>
 <li><a href="#flow">The design flow that works</a></li>
+<li><a href="#model">Building a device model from data</a></li>
 <li><a href="#em">EM runs: check the cost first</a></li>
 <li><a href="#traps">Where agents go wrong</a></li>
 <li><a href="#safety">Keeping its work reversible</a></li>
@@ -193,6 +194,37 @@ The rest of the workflow is reachable the same way:
     model's best point with a simulation.
 
 The *Yield, Corners and Centering* example is a working copy of each of these steps.
+
+## Building a device model from data {#model}
+
+The `model` tool is the [Model Composer](model-composer.html) without the window. Each `noun` is one of the window's
+runs and calls the same function, so a document an agent builds opens in the window exactly as it left it.
+
+1. `reference` with topic `cmc` gives the document's format, including every step's settings. Read it first.
+2. `model` with `noun=new`, `kind=active`, a stock `network` (`gan-two-shell`) or a six-pin `.csch`, and `fingers` and
+   `unitWidth` for the measured device's periphery, creates the `.cmc`.
+3. `model` with `noun=import` adds one data set per call. Give the kind with `as`, the bias pattern of a Touchstone
+   folder with `pattern`, and what each CSV column holds with `map` (`Vgs=vgs:V`). State every condition the data was
+   measured under with `condition`: `ReferencePlane`, `AmbientC`, and for a pulsed set its `Quiescent` (and `PrePulse`)
+   bias and timing. A condition left out is a guess a later step makes for you, or a refusal.
+4. `model` with `noun=deembed` removes the pads and the network and reports each set's intrinsic range. Data that does
+   not reach the voltages the circuit will see should be noted here.
+5. Write the settings the fit needs into the `.cmc` with your own file tools: which network values are free, self-heating
+   and Rth, the trap model. Then run `check` on the `.cmc`, which refuses a misspelt key by name.
+6. `model` with `noun=fit` and `step=all` fits every step in order. It writes its results into the `.cmc`. The report
+   lines give each constituent's held-out error and every warning.
+7. `model` with `noun=check-charge` checks charge conservation (exit 3 above the threshold). `noun=validate` compares
+   the model with every data set at the plane it was measured at (exit 3 when a tolerance is missed).
+8. `model` with `noun=export` and `output` writes the `.cmodel`. Place it in a netlist as
+   `ComposedFet:X1 g d 0 File=fet.cmodel N=8` and `run` it like any other device.
+
+`model` with `noun=explain` says, at any point, what the document holds: each data set and its plane, each step as fresh,
+stale or absent, each network value with its error, and the trap levels each state was trained from. It fits nothing.
+
+**Where agents go wrong here.** They guess a condition rather than ask for it: the reference plane and the pulse's
+quiescent point change the answer, and neither can be read from the numbers. They take a model whose data stops at the
+bias point to large signal: outside the data a model is extrapolated, and a gate swinging past the last measured `Vgs`
+is not the device. They also report the fit's training error as accuracy. `validate` is the comparison to quote.
 
 ## EM runs: check the cost first {#em}
 

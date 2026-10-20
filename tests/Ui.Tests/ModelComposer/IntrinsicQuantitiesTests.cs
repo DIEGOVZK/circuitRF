@@ -49,4 +49,12 @@ public sealed class IntrinsicQuantitiesTests(ITestOutputHelper output)
         Assert.True(right < 1e-8, $"right Lg: {right:E3}");
         Assert.True(wrong > 1e-3, $"wrong Lg: {wrong:E3}");
     }
+
+    /// <summary>A table at one frequency is its own band; a swept set keeps the 1/10 … 1/2 band (MC-16).</summary>
+    [Fact]
+    public void DefaultBand_HoldsASingleFrequency()
+    {
+        Assert.Equal((1e9, 1e9), IntrinsicQuantities.DefaultBand([1e9]));
+        Assert.Equal((2e9, 10e9), IntrinsicQuantities.DefaultBand([0.5e9, 1e9, 5e9, 20e9]));
+    }
 }

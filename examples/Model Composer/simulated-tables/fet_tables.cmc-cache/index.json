@@ -1,0 +1,18 @@
+{
+  "FormatVersion": 1,
+  "DataSets": [
+    {
+      "Name": "tables",
+      "File": "0.npy",
+      "Settings": "SimulatedTables [\u0022tables.npy\u0022] {\u0022Format\u0022: \u0022npy\u0022,\u0022Arrays\u0022: {\u0022Y\u0022: \u0022Y\u0022,\u0022freq\u0022: \u0022freq\u0022,\u0022id\u0022: \u0022id\u0022,\u0022ig\u0022: \u0022ig\u0022,\u0022vds\u0022: \u0022vds\u0022,\u0022vdsi\u0022: \u0022vdsi\u0022,\u0022vgs\u0022: \u0022vgs\u0022,\u0022vgsi\u0022: \u0022vgsi\u0022}}",
+      "Sources": [
+        {
+          "Path": "tables.npy",
+          "Size": 8619,
+          "ModifiedTicks": 639281014914019906,
+          "Sha256": "4b6cd2ade119d0bbeb813029a29a7a6d38cfc4b47beb417bf493bd1bc474d464"
+        }
+      ]
+    }
+  ]
+}

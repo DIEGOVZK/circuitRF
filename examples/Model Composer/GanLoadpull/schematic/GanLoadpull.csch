@@ -1,0 +1,338 @@
+{
+  "FormatVersion": 2,
+  "CellName": "GanLoadpull",
+  "GridSize": 100,
+  "GridSnap": true,
+  "AuthorGridDivisor": 20,
+  "Components": [
+    {
+      "InstanceName": "SourceTuner1",
+      "Symbol": "Tuner",
+      "X": 0,
+      "Y": 600,
+      "Rotation": "R90",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "TunerName",
+          "Expression": "\u0022SourceTuner1\u0022",
+          "Unit": "",
+          "ShowOnSchematic": false,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Zdefault",
+          "Expression": "1e-6",
+          "Unit": "",
+          "ShowOnSchematic": false,
+          "Dimension": "Resistance"
+        },
+        {
+          "Name": "Z0",
+          "Expression": "50",
+          "Unit": "",
+          "ShowOnSchematic": false,
+          "Dimension": "Resistance"
+        },
+        {
+          "Name": "BiasTee",
+          "Expression": "\u0022on\u0022",
+          "Unit": "",
+          "ShowOnSchematic": false,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Vbias",
+          "Expression": "VGS",
+          "Unit": "",
+          "ShowOnSchematic": false,
+          "Dimension": "Voltage"
+        },
+        {
+          "Name": "Z[1]",
+          "Expression": "50",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "Resistance"
+        },
+        {
+          "Name": "Z[2]",
+          "Expression": "1e-6",
+          "Unit": "",
+          "ShowOnSchematic": false,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Z[3]",
+          "Expression": "1e-6",
+          "Unit": "",
+          "ShowOnSchematic": false,
+          "Dimension": "None"
+        }
+      ],
+      "LabelOffsets": [
+        [
+          330,
+          -413
+        ]
+      ]
+    },
+    {
+      "InstanceName": "X1",
+      "Symbol": "ComposedFet",
+      "X": 600,
+      "Y": -0,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "File",
+          "Expression": "synthetic-gan/gan_4x125.cmodel",
+          "Unit": "",
+          "ShowOnSchematic": false,
+          "Dimension": "None"
+        },
+        {
+          "Name": "N",
+          "Expression": "8",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        }
+      ],
+      "LabelOffsets": [
+        [
+          230,
+          -325
+        ]
+      ]
+    },
+    {
+      "InstanceName": "LoadTuner1",
+      "Symbol": "Tuner",
+      "X": 1000,
+      "Y": 600,
+      "Rotation": "R90",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "TunerName",
+          "Expression": "\u0022LoadTuner1\u0022",
+          "Unit": "",
+          "ShowOnSchematic": false,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Zdefault",
+          "Expression": "1e-6",
+          "Unit": "",
+          "ShowOnSchematic": false,
+          "Dimension": "Resistance"
+        },
+        {
+          "Name": "Z0",
+          "Expression": "50",
+          "Unit": "",
+          "ShowOnSchematic": false,
+          "Dimension": "Resistance"
+        },
+        {
+          "Name": "BiasTee",
+          "Expression": "\u0022on\u0022",
+          "Unit": "",
+          "ShowOnSchematic": false,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Vbias",
+          "Expression": "VDS",
+          "Unit": "",
+          "ShowOnSchematic": false,
+          "Dimension": "Voltage"
+        },
+        {
+          "Name": "Z[1]",
+          "Expression": "50",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "Resistance"
+        },
+        {
+          "Name": "Z[2]",
+          "Expression": "1e-6",
+          "Unit": "",
+          "ShowOnSchematic": false,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Z[3]",
+          "Expression": "1e-6",
+          "Unit": "",
+          "ShowOnSchematic": false,
+          "Dimension": "None"
+        }
+      ],
+      "LabelOffsets": [
+        [
+          330,
+          -413
+        ]
+      ]
+    },
+    {
+      "InstanceName": "GND1",
+      "Symbol": "Ground",
+      "X": 600,
+      "Y": 200,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [],
+      "ShowTypeLabel": false,
+      "ShowInstanceName": false
+    },
+    {
+      "InstanceName": "VAR1",
+      "Symbol": "Var",
+      "X": 0,
+      "Y": -1300,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "RFfreq",
+          "Expression": "2",
+          "Unit": "GHz",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "VGS",
+          "Expression": "-0.8",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "VDS",
+          "Expression": "8",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "temp",
+          "Expression": "25",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        }
+      ]
+    }
+  ],
+  "Wires": [
+    {
+      "Points": [
+        [
+          400,
+          0
+        ],
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          300
+        ]
+      ]
+    },
+    {
+      "Points": [
+        [
+          600,
+          -200
+        ],
+        [
+          600,
+          -400
+        ],
+        [
+          1200,
+          -400
+        ],
+        [
+          1200,
+          100
+        ],
+        [
+          1000,
+          100
+        ],
+        [
+          1000,
+          300
+        ]
+      ]
+    }
+  ],
+  "NetLabels": [
+    {
+      "X": 200,
+      "Y": 0,
+      "Name": "Vin",
+      "OwnerWireIndex": 0,
+      "SegmentIndex": 0,
+      "AlongT": 0.5,
+      "OffsetX": 0,
+      "OffsetY": 0
+    },
+    {
+      "X": 900,
+      "Y": -400,
+      "Name": "Vout",
+      "OwnerWireIndex": 1,
+      "SegmentIndex": 1,
+      "AlongT": 0.5,
+      "OffsetX": 0,
+      "OffsetY": 0
+    }
+  ],
+  "Dots": [],
+  "CanvasObjects": [],
+  "View": {
+    "PanX": 0,
+    "PanY": 0,
+    "Zoom": 1
+  },
+  "Analyses": [
+    {
+      "Type": "lp",
+      "Name": "LP1",
+      "Enabled": true,
+      "LpLoadTunerName": "LoadTuner1",
+      "LpSourceTunerName": "SourceTuner1",
+      "LpGridPath": "GanLoadpull/schematic/load_grid.gam",
+      "LpToneExpr": "RFfreq",
+      "LpToneUnit": "GHz",
+      "LpPinStartExpr": "-4",
+      "LpPinMaxExpr": "26",
+      "LpPinStepExpr": "1",
+      "LpMaxHarmonicExpr": "5",
+      "LpSweepExpr": "Load",
+      "LpTuneHarmExpr": "1",
+      "LpCompressionExpr": "3",
+      "LpGainTypeExpr": "Gt",
+      "LpTickleExpr": "-50",
+      "LpMaxIterExpr": "100",
+      "LpFftOverSampleExpr": "1",
+      "LpTolExpr": "1e-6",
+      "LpDriveSteppingExpr": "IfNecessary",
+      "LpGuardHarmonicExpr": "0"
+    }
+  ]
+}

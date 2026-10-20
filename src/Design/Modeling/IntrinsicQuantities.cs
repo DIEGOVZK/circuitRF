@@ -28,11 +28,15 @@ public static class IntrinsicQuantities
         return [gm, gds, c11, c12, c21, c22, c11 + c12, -c12, c22 + c12, cm, -cm / gm];
     }
 
-    /// <summary>The default flatness band: above 1/10 of the data's top frequency and below 1/2 of it (R-mc4-5).</summary>
+    /// <summary>
+    /// The default flatness band: above 1/10 of the data's top frequency and below 1/2 of it (R-mc4-5) — or, when no
+    /// frequency of the data lies there, the data's whole span. A simulator's table at one low frequency holds no sample in
+    /// <c>(f/10, f/2)</c>, and the charges, which average over the band, would read nothing from it.
+    /// </summary>
     public static (double Lo, double Hi) DefaultBand(IReadOnlyList<double> freqsHz)
     {
         double top = freqsHz.Max();
-        return (top / 10, top / 2);
+        return freqsHz.Any(f => f >= top / 10 && f <= top / 2) ? (top / 10, top / 2) : (freqsHz.Min(), top);
     }
 
     /// <summary>

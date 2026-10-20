@@ -3677,3 +3677,18 @@ Design note: `docs/design/model-composer.md` §3.1, §3.2 and §13. Findings wor
   buffers and `MaxPorts` follow it; every caller outside the core that evaluates a constituent seeds through
   `ComposedCoreProgram.DcSeeds` (the trap states at their DC values), never a fixed `[vgs, vds, T]` span — which,
   sliced to a width-3 trapped program, silently feeds `T` in as `phi2`.
+
+## A Tuner shorted both carriers of a two-tone run (brief-modelcomposer-16, 2026-10-20)
+
+`TunerModel.GetZ` matched a frequency to a harmonic with `round(ω/ω₀)` and then took anything more than 1 rad/s off that
+harmonic as its catch-all `Zdefault`. `HbEngine` hands a Tuner the two-tone band ruler `f_c = (f1 + f2)/2`, so under two
+tones each carrier, 0.25 % off `f_c`, fell to the catch-all: a load declaring `Z[1] = 50 Ω` and `Zdefault = 1e-6`
+presented 1 µΩ at both carriers, and the drain developed 1.6e-8 V for 15.7 mA. The run converged and its IM3 looked like
+an IM3. Found through the Model Composer's two-tone validation, whose bench loads the device with a Tuner; every user
+two-tone bench with a Tuner load had it too.
+
+The Tuner now takes P1Tone's and PnTone's band rule, `n = roundHalfUp(|f|/f_c)`, with band 0 (DC and baseband) on the
+catch-all. On a single-tone grid every frequency is an exact harmonic and the band is that harmonic, so single-tone HB,
+loadpull and pursuit are unchanged (the Tuner, PnTone, two-tone and Hero 5 gates pass as before). Gate:
+`TunerPerHarmonicZInPlainHbTests.UnderTwoTones_TheCarriersSeeZ1_NotTheCatchAll` — the carrier voltage at the load is
+2.5× the gate's (0.05 S into 50 Ω) to 1e-6.

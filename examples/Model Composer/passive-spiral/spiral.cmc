@@ -1,0 +1,168 @@
+{
+  "FormatVersion": 1,
+  "Kind": "Passive",
+  "DataSets": [
+    {
+      "Name": "spirals",
+      "Kind": "PassiveSParams",
+      "Sources": [
+        "s/spiral_1.5t.s2p",
+        "s/spiral_2.5t.s2p",
+        "s/spiral_3.5t.s2p",
+        "s/spiral_4.5t.s2p",
+        "s/spiral_5.5t.s2p",
+        "s/spiral_6.5t.s2p"
+      ],
+      "Conditions": {
+        "Note": "Synthetic: six spiral inductors simulated by circuitRF from known element values, not measured."
+      },
+      "Import": {
+        "Format": "touchstone",
+        "Pattern": "spiral_{geometry}t",
+        "PatternSource": "name"
+      }
+    }
+  ],
+  "Steps": {
+    "Passive": {
+      "Settings": {
+        "Topology": "spiral",
+        "Variables": {
+          "Cox2": {
+            "Tie": {
+              "To": "Cox1",
+              "Factor": 1
+            }
+          },
+          "Csub2": {
+            "Tie": {
+              "To": "Csub1",
+              "Factor": 1
+            }
+          },
+          "Rsub2": {
+            "Tie": {
+              "To": "Rsub1",
+              "Factor": 1
+            }
+          }
+        },
+        "Family": {
+          "Geometry": "turns"
+        },
+        "Export": {
+          "Cell": "SpiralFamily",
+          "Library": ".."
+        }
+      },
+      "Result": {
+        "Topology": "spiral",
+        "Cost": 0,
+        "RmsDeltaS": 4.37584245362968E-05,
+        "Aic": 0,
+        "Family": {
+          "Geometry": "turns",
+          "Lo": 1.5,
+          "Hi": 6.5,
+          "HeldOut": 3.5,
+          "HeldOutRms": 0.00021562829876281328,
+          "HeldOutMax": 0.0003457482569202902,
+          "Laws": {
+            "Rs": {
+              "Form": "Linear",
+              "Coefficients": [
+                3.8999992661135217,
+                2.249998487374704
+              ],
+              "Mid": 4,
+              "Half": 2.5,
+              "LeaveOneOut": 1.5709931162363E-12
+            },
+            "Ls": {
+              "Form": "Cubic",
+              "Coefficients": [
+                6.665930526103439E-09,
+                7.508775274350354E-09,
+                1.8943344083235307E-09,
+                -8.961370522789025E-11
+              ],
+              "Mid": 4,
+              "Half": 2.5,
+              "LeaveOneOut": 0.0008898596752285838
+            },
+            "Cs": {
+              "Form": "Linear",
+              "Coefficients": [
+                3.199998989956362E-14,
+                2.0000123798798142E-14
+              ],
+              "Mid": 4,
+              "Half": 2.5,
+              "LeaveOneOut": 1.2798455681659165E-12
+            },
+            "Cox1": {
+              "Form": "Quadratic",
+              "Coefficients": [
+                1.9999511956897673E-13,
+                1.7500245058330648E-13,
+                3.125795452759602E-14
+              ],
+              "Mid": 4,
+              "Half": 2.5,
+              "LeaveOneOut": 2.33025286352309E-13
+            },
+            "Rsub1": {
+              "Form": "Rational",
+              "Coefficients": [
+                374.9992909619216,
+                -0.0005462548436980796,
+                0.6249911726492119
+              ],
+              "Mid": 4,
+              "Half": 2.5,
+              "LeaveOneOut": 7.376395970133094E-13
+            },
+            "Csub1": {
+              "Form": "Linear",
+              "Coefficients": [
+                2.399996393216823E-14,
+                1.5000071998328775E-14
+              ],
+              "Mid": 4,
+              "Half": 2.5,
+              "LeaveOneOut": 1.7295149321665694E-13
+            }
+          },
+          "Locked": {},
+          "Ties": {
+            "Cox2": {
+              "To": "Cox1",
+              "Factor": 1
+            },
+            "Csub2": {
+              "To": "Csub1",
+              "Factor": 1
+            },
+            "Rsub2": {
+              "To": "Rsub1",
+              "Factor": 1
+            }
+          }
+        },
+        "Report": [
+          "Family over turns = 1.5 to 6.5: 5 geometries trained, turns = 3.5 held out",
+          "Rs: linear, leave-one-out error 0 %",
+          "Ls: cubic, leave-one-out error 0.089 %",
+          "Cs: linear, leave-one-out error 0 %",
+          "Cox1: quadratic, leave-one-out error 0 %",
+          "Rsub1: rational (a0 \u002B a1\u00B7x)/(1 \u002B b1\u00B7x), leave-one-out error 0 %",
+          "Csub1: linear, leave-one-out error 0 %",
+          "Held-out turns = 3.5: rms |\u0394S| 2.2E-4, max 3.5E-4",
+          "Training geometries: rms |\u0394S| 4.4E-5 through the laws, 5.9E-13 fitted one by one"
+        ]
+      },
+      "Network": "01ba4719c80b6fe9",
+      "Data": "2a1a289b081bfb82"
+    }
+  }
+}

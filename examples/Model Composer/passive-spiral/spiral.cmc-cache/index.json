@@ -1,0 +1,48 @@
+{
+  "FormatVersion": 1,
+  "DataSets": [
+    {
+      "Name": "spirals",
+      "File": "0.npy",
+      "Settings": "PassiveSParams [\u0022s/spiral_1.5t.s2p\u0022,\u0022s/spiral_2.5t.s2p\u0022,\u0022s/spiral_3.5t.s2p\u0022,\u0022s/spiral_4.5t.s2p\u0022,\u0022s/spiral_5.5t.s2p\u0022,\u0022s/spiral_6.5t.s2p\u0022] {\u0022Format\u0022: \u0022touchstone\u0022,\u0022Pattern\u0022: \u0022spiral_{geometry}t\u0022,\u0022PatternSource\u0022: \u0022name\u0022}",
+      "Sources": [
+        {
+          "Path": "s/spiral_1.5t.s2p",
+          "Size": 7128,
+          "ModifiedTicks": 639281015016969677,
+          "Sha256": "21c04839c0ed2489886d260814f33419b69bd45e6148d2549f2b323a37d66ec0"
+        },
+        {
+          "Path": "s/spiral_2.5t.s2p",
+          "Size": 7128,
+          "ModifiedTicks": 639281015016981732,
+          "Sha256": "d56116fa44003e402ff0edfc64f399e542cb377625aba20ae0f578c12701e549"
+        },
+        {
+          "Path": "s/spiral_3.5t.s2p",
+          "Size": 7128,
+          "ModifiedTicks": 639281015016989166,
+          "Sha256": "479b4570bca341c6690daefaa1fd52a063747e41dc96db5e4f9dc1b112a7340d"
+        },
+        {
+          "Path": "s/spiral_4.5t.s2p",
+          "Size": 7128,
+          "ModifiedTicks": 639281015016995910,
+          "Sha256": "3a7f4c553c593be319bedeedb9e7193bd3113f7daa2caf91c09e8bb5fcd944df"
+        },
+        {
+          "Path": "s/spiral_5.5t.s2p",
+          "Size": 7128,
+          "ModifiedTicks": 639281015017002611,
+          "Sha256": "89f1b912d742dbf468fa6d1b833c621eeb7de96f58edebb0b6c8dc9e4290635c"
+        },
+        {
+          "Path": "s/spiral_6.5t.s2p",
+          "Size": 7128,
+          "ModifiedTicks": 639281015017009327,
+          "Sha256": "d7f3211a7bd0cdce6903d3fd58381c0e1d404d59b32f4c3ea5f0fff337d5580d"
+        }
+      ]
+    }
+  ]
+}

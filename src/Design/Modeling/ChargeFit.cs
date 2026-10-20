@@ -539,7 +539,8 @@ public static class ChargeFit
     {
         if (source == RegridSource.RBF) return Regrid.Rbf(data.X, c);
         var trained = AnnTrainer.Train(new AnnTrainingProblem(2) { Values = new AnnValueData(data.Points, c, data.Weight) }, ann, rc);
-        var linear = new GuidedExtrapolation(trained.Network, data.Domain, Inputs, 0.0, null);
+        // Two inputs, so the domain's polygon alone: data at two or more temperatures carries a T box the network has no input for.
+        var linear = new GuidedExtrapolation(trained.Network, data.Domain with { Box = [] }, Inputs, 0.0, null);
         return (vgs, vds) =>
         {
             Span<double> p = [vgs, vds];

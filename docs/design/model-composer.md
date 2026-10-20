@@ -1,16 +1,12 @@
 # circuitRF — Model Composer and the composed FET
 
-**Status:** MC-1 built (the `.cmodel` format and the `ComposedFet` device, equation constituents);
-MC-2 built (table and ANN constituents, guided extrapolation, drain–source symmetry, grid evaluation);
-MC-3 built (the `.cmc` document, data sets, importers, the cache, data hygiene);
-MC-4 built (pads, the six-pin network, de-embedding, intrinsic re-referencing and quantities);
-MC-5 built (the extrinsic fit); MC-6 built (the ANN trainer); MC-7 built (the current constituents and the
-DC/RF dispersion); MC-8 built (the charge constituents and Check Charge Conservation); MC-9 built (temperature
-as an input, the thermal node, Rth extraction, the single-temperature model); MC-10 built (the trap contract and
-registry, `CaptureEmission` and `Custom`, trap-state training data, `Id` and `Qd` re-trained with the trap states); MC-11
-built (export to `.cmodel`, the symbol choice, the placement payload, staleness by data as well as network, validation
-against S, I–V and large-signal data, and the Model Validation Report's headless half); MC-12 built (passive models:
-analysis, vector fitting, the topology library, ranked proposals, the fit, geometry families, export as a cell) ·
+**Status:** built, MC-1 … MC-16 — the `.cmodel` format and the `ComposedFet` device (MC-1); table and ANN constituents
+with guided extrapolation (MC-2); the `.cmc` document, its data and cache (MC-3); pads, the six-pin network and the
+intrinsic data (MC-4); the extrinsic fit (MC-5); the ANN trainer (MC-6); the currents and DC/RF dispersion (MC-7); the
+charges and Check Charge Conservation (MC-8); temperature and self-heating (MC-9); traps (MC-10); export, validation and
+the Model Validation Report (MC-11); passive models (MC-12); the `model` verb and its MCP tool (MC-13); the window
+(MC-14); the steps and their plots (MC-15); the example, the user pages and the series acceptance (MC-16). §20 records
+every deviation from the series as built, §21 the open items and §22 the example and the acceptance ·
 **Source:** `docs/sonnet-briefs/brief-modelcomposer-0-overview.md` (decisions D1–D16) and the phase briefs
 `brief-modelcomposer-1` … `-16` · **Primary reference:** [P1] J. C. Pedro, D. E. Root, J. Xu, L. C. Nunes,
 *Nonlinear Circuit Simulation and Modeling*, Cambridge University Press, 2018.
@@ -1425,3 +1421,93 @@ compose through one function.
 Gates: `ModelComposerCurrentStepTests`, `ModelComposerChargeStepTests`, `ModelComposerCheckStepTests`,
 `ModelComposerExportStepTests` (byte identity against the CLI process), `ModelComposerSingleTemperatureTests`,
 `ModelReportDialogTests` (byte identity of the PDF against the CLI process).
+
+## 20. Deviations from the series, as built
+
+Each departure from the briefs, with its reason. The detail of each is in the `RESOLVED.md` named.
+
+| Phase | The brief said | As built, and why |
+|---|---|---|
+| MC-4 | — | A network override keeps its variable's unit (as its base unit): stripping it let an editor field's own `pF` scale a fitted value again (`src/Design/RESOLVED.md`). |
+| MC-5 | Cold-FET by alternating fits | Alternation, then a joint polish of both cold terms: alternation alone stalls on the moderate core's `R1`/`Rg` valley. Mutual couplings are solved at `|k| ≤ 0.999` with the excess as a penalty, so the engine never prints a non-physical coupling per trial. |
+| MC-6 | — | The trainer uses its own `exp` and `tanh`: the platform's are not bit-identical across operating systems, and "same seed, same weights" is a promise across them. |
+| MC-7 | `Ig` weighted by `1/max(|Ig|, I0)²` | A table or ANN `Ig` is fitted in `asinh(Ig/I0)`, unweighted, and the `.cmodel` carries the transform: weighting cannot fit ten decades with a linear output. `IdFloor` 0.1 and 6000 iterations by measurement. Eq. 6.49's residual is the share of the RF conductances `IdRF` does not reproduce; differencing conductances called conservative data 86 % non-conservative. |
+| MC-8 | Check (c) with the drain held at DC | The drain is driven in quadrature: with `vds` constant every loop integral is zero and the check could never fail. The interpolant for tables and check (a) is a network, not an RBF (33 % curl on conservative data). [I11] eq. 4's `CGD,drift` is used in its exact form (the printed one drops `τ(gm − gds)/2`). Check (a) reads no curl within 2 % of the hull's edge. |
+| MC-9 | Pin 4 "exposes ΔT" with an external network in series | Pin 4 is the junction node and what attaches there is in parallel with the model's Rth (owner, following the references and compact-model practice). |
+| MC-10 | — | The trap node's normalising capacitance is 1 mF, where both the DC `gmin` floor and HB's charge round-off clear. Drain–source exchange with traps is refused; `Custom` odd states are gate-like and even drain-like; beyond points still train `Ig`. |
+| MC-11 | Loadpull of a composed FET by per-load HB sweeps | `LoadpullEngine` accepts a tuner on a net no nonlinear device touches (the extrinsic terminal), so `lp` and `lpp` run a `ComposedFet` (owner); the report's PA classes follow harmonicaRF's intrinsic-load method (owner). |
+| MC-12 | — | A new expression built-in, `validrange(x, lo, hi)`, carries a family cell's out-of-range warning; library bounds run 0 … 1000× the seed; a family needs three training geometries and one held out. |
+| MC-14 | — | Free-standing net labels now travel on the schematic clipboard: the stock networks connect through them. |
+| MC-15 | A charge surface; ΔQ maps in the report's display | The charge surface is drawn as a contour (the surface renderer draws angle axes only); a `.cdd` contour is loadpull-only, so the ΔQ maps there are families. |
+| MC-16 | — | Three defects found by the acceptance run and fixed (below). Rth is typed in the example rather than extracted (below). |
+
+**MC-16's fixes.**
+
+- **A Tuner shorted both carriers of a two-tone run.** `TunerModel.GetZ` took any frequency off the exact harmonic grid
+  as its catch-all `Zdefault`, and under two tones the carriers sit 0.25 % either side of `f_c`. A Tuner load declaring
+  `Z[1] = 50 Ω` presented 1 µΩ to both, so the Validate step's two-tone comparison (whose bench loads the device with a
+  Tuner) measured a shorted output. The Tuner now takes the sources' band rule, `n = roundHalfUp(|f|/f_c)`, which is
+  the same answer on every single-tone grid (`src/Core/RESOLVED.md`).
+- **A cache rewrite deleted every fit.** A source whose bytes are unchanged but whose timestamp moved (a copy, a
+  checkout) rewrites the cache index, and the rewrite carried only `intrinsic/` across. `current/` and `charge/` hold the
+  fitted arrays, which only a fit can rebuild. Every subfolder is carried now (`src/Design/RESOLVED.md`).
+- **Check Charge Conservation could not run on a model with traps.** Check (c) asks HB for 1e-12 A, and a trap or
+  dispersion node's residual floor is ~1e-8 A by design (MC-10's 1 mF). Such a model is driven at 1e-7 A, a resolution of
+  2e-4 of the default drive's fundamental gate current. Check (a) also crashed on data at two or more temperatures: its
+  2-D interpolant was handed the domain's `T` box. And check (b) read its curl across the hull's edge, where the charges
+  are their linear continuation: 0.6 % on a model that conserves charge by construction, 7e-6 with (a)'s edge margin.
+
+## 21. Open items
+
+- **Power-law and unit-width scaling.** Periphery scaling is by finger count only. The power law of [P1] eq. 5.9,
+  unit-width scaling ([T20]), and the affine rules of [L26] eqs. 21–30 (fixed parts plus parts proportional to `N`,
+  `1/N`, `W·N`, `W/N`, `1/(W·N)` and a source-via term) need data from two or three device sizes, which no step reads.
+  Rule names are a refusal-checked list, so they can be added without a format change.
+- **Multi-time-constant traps.** `CaptureEmission` has one capture and one emission time per state; a measured
+  recovery spanning decades needs a ladder of states per mechanism.
+- **Trap estimation from transient data.** The time constants are typed. A step that fits them to a drain-current
+  transient (or to the low-frequency `Y22` dispersion, which today only τth reads) does not exist.
+- **Large-signal waveforms as a training source** ([P1] §6.7). Large-signal sets validate; nothing trains on them.
+- **Noise.** No constituent models noise sources.
+- **Rth extraction with drain lag.** Extraction compares pulsed and DC currents at the same bias as if both sat at one
+  trap state. A pulse from a 0 V drain leaves the CaptureEmission state ~0.5 V short of `vds` (capture slows as the gap
+  closes), and the shortfall reads as heating: 62 K/W against a 40 K/W truth. Made to capture fully within the
+  pulse (a 0.1 V reference gap), the same truth read 15.5 K/W against 25 — low instead of high, with every DC junction
+  temperature inside the chuck range, so a second effect is in play that has not been isolated. With drain lag modelled,
+  Rth is typed. An extraction through the trapped current, each pulsed point at its own trap state, would remove the
+  first limit; the second needs a gate of its own.
+- **The extrapolation conductance near a data edge.** `G_x` is ten times the largest own-branch conductance anywhere in
+  the data; for a gate current that is the forward diode's, so a millivolt past the lowest measured `Vgs` the gate already
+  conducts tens of millisiemens. The example's data therefore spans the swing its benches reach. A `G_x` scaled to the
+  local conductance at the edge would make data a few volts short of the swing far less punishing.
+- **`ValidationBench` on a self-heating model at the intrinsic plane** writes a `ComposedCore` with three nets, which a
+  thermal core refuses (it takes four). Only intrinsic-plane data sets of self-heating models reach it.
+
+- **`netlist --to-schematic` on a composed-FET bench** keeps a quoted `File="…"` as quoted text, and a loadpull
+  analysis's grid as the absolute path the netlist reader resolved; a schematic stores both unquoted and relative to its
+  workspace root. The example's authoring rewrites the two; the drawer does not yet.
+
+## 22. The example and the series acceptance (MC-16)
+
+**`examples/Model Composer`** holds three documents built by `ModelComposerExampleAuthoring` through `ModelCommands`, and
+the benches that use them. `synthetic-gan` is `SyntheticGan`'s truth (an SDD: `ComposedTestModels`' currents and charges,
+`Id` falling 0.4 %/K with the junction temperature through a 25 K/W, 10 µs thermal node, and a drain-lag node in the
+CaptureEmission form at its defaults) inside the GaN network with `Lg`, `Ld`, `Ls` away from stock, behind open/short
+pads: DC at 25 °C, pulsed from 0 V at 25 and 125 °C (`extreme`), from 10 and 20 V, and a double pulse to 20 V, and S at
+25 and 85 °C. The document fits the three inductances, types Rth and τth, fits a 2 × 16 ANN `Id` and an ANN `Ig`
+(`IgFloor` 1e-7) with `T` and `phi2` as inputs, CaptureEmission drain lag from levels 0, 10 and 20 V, and adjoint ANN
+charges; the `.cmodel` is placed at `N = 8` in a class-AB power sweep and a loadpull. `passive-spiral` is a six-spiral
+family fitted as one topology with its substrate sides tied, exported as a cell and placed at 3 turns; `simulated-tables`
+imports a simulator's `.npy` tables and shows the intrinsic-voltage cross-check. Each document ships its cache, which
+holds its fitted arrays. The example's `.gitignore` lets the cache and the tables through.
+
+**`ModelComposerAcceptanceTests`** runs that flow in a temporary folder from the raw files and holds the exported model
+to the truth: the network's inductances within 2 %, DC RMS ≤ 1 % of range, S |ΔS| 95th percentile ≤ 0.02 per set, check
+(b) < 0.1 % and (c) below its threshold, the power sweep up to 3 dB compression at `N0` and `2·N0` (Pout 0.5 dB, PAE
+3 pp; measured 0.39 dB and 2.6 pp) and IM3 at three drives (1.5 dB; measured 0.2–1.0) — thresholds changed once from
+the brief's, with the measurements, in
+`src/Design/RESOLVED.md`. It is `Category=Benchmark` (12½ minutes: the fit and the truth's two-tone);
+`TheSyntheticData_IsSmallLabelled_AndAsksForEveryStep` is its routine wiring. `ModelComposerRealDataTests` runs the same
+flow on a local device folder when present and reports, asserting only that it completes. `ExampleWorkspaceLoadsTests`
+copies the example (new timestamps, as File ▸ New ▸ Examples gives) and checks every document, every step fresh, and
+the benches.

@@ -10,6 +10,18 @@ keywords: model extraction, device modeling, FET model, GaN HEMT, extrinsic netw
 <nav class="toc">
 <h2>On this page</h2>
 <ol>
+<li><a href="#what">What it does</a></li>
+<li><a href="#steps">The steps</a></li>
+<li><a href="#kinds">Data kinds and their conditions</a></li>
+<li><a href="#planes">Reference planes</a></li>
+<li><a href="#six-pin">The six-pin network</a></li>
+<li><a href="#defaults">Methods and their defaults</a></li>
+<li><a href="#conservation">Charge conservation</a></li>
+<li><a href="#temperature">Temperature</a></li>
+<li><a href="#trap-data">Traps, and what pulsed data allows</a></li>
+<li><a href="#scaling">Periphery scaling</a></li>
+<li><a href="#passive-models">Passive models</a></li>
+<li><a href="#example">The example</a></li>
 <li><a href="#open">Opening a document</a></li>
 <li><a href="#window">The window</a></li>
 <li><a href="#tasks">Running, progress and Cancel</a></li>
@@ -31,6 +43,227 @@ keywords: model extraction, device modeling, FET model, GaN HEMT, extrinsic netw
 <li><a href="#headless">Headless</a></li>
 </ol>
 </nav>
+
+## What it does {#what}
+
+Model Composer builds a model from data. For a transistor it builds a **nonlinear FET model**, a `.cmodel` that a
+schematic places as a [`ComposedFet`](components.html#composedfet) and that DC, S-parameters, harmonic balance and
+loadpull all use. For an N-port it builds a **passive model**, an ordinary cell of R, L, C and mutuals with the fitted
+values as its parameters.
+
+The data can be measured (DC and pulsed I–V, multi-bias S-parameters, pulsed S-parameters, large-signal sweeps and
+loadpull) or simulated (tables of currents, admittances and intrinsic voltages written by another simulator). The work
+is kept in a `.cmc` document. It names the data where it lies, records the conditions it was measured under, and holds
+every setting and every result, so a model can be rebuilt, checked and changed later.
+
+A transistor model has four parts, called **constituents**: the drain current `Id`, the gate current `Ig` (a gate–source
+and a gate–drain branch), and the gate and drain charges `Qg` and `Qd`. Each one is an ANN, a table or an equation. They
+sit inside an extrinsic network of pads, inductances and resistances. A model can add self-heating, trap states, or a
+simpler DC/RF dispersion.
+
+## The steps {#steps}
+
+An active document runs through the steps below, in order. Each step's result is stored in the `.cmc` and stamped with
+the data and network it came from. When either changes, the step is marked stale.
+
+| Step | What it does |
+|---|---|
+| Data | Imports each data set and states its conditions. The data stays in its files and is cached beside the document. |
+| Pads | Removes the probe pads: open and short dummies, a Touchstone two-port per side, or a two-pin schematic per side. |
+| Network | Chooses the extrinsic network and fits its values. Every data set is then re-referenced to the intrinsic plane. |
+| Current | Fits `Id` and `Ig`. |
+| Charge | Fits `Qg` and `Qd`. |
+| Thermal | Adds self-heating: Rth (typed, or extracted from pulsed I–V) and the thermal time constants. |
+| Traps | Chooses a trap model and fits the currents again with the trap states as inputs. |
+| Check | Checks that the charges conserve charge. |
+| Validate | Compares the model with every data set at the plane it was measured at. |
+| Export | Writes the `.cmodel`. |
+
+**Fit all** (`model fit --step all`) runs every step the document needs, in this order: the network if any value is
+free, then thermal, current, traps when a trap model is chosen, and charge.
+
+## Data kinds and their conditions {#kinds}
+
+| Kind | Holds | Read from |
+|---|---|---|
+| `DcIv` | Terminal voltages and currents at DC | CSV, `.npy`, `.mat` |
+| `PulsedIv` | The same, sampled during a pulse from a stated quiescent point | CSV, `.npy`, `.mat` |
+| `SParams` | Two-port S at each bias, and the bias currents when the files state them | A folder of Touchstone files |
+| `PulsedSParams` | S sampled during a pulse | A folder of Touchstone files |
+| `SimulatedTables` | Currents, an admittance or S table, and optionally intrinsic voltages and a capacitance table | `.npy`, `.mat` |
+| `LargeSignal` | A power sweep, a two-tone sweep or a loadpull file; used for validation only | CSV, `.spl`, `.lpcwave` |
+| `PassiveSParams` | An N-port block, or a family of blocks over a geometry value | Touchstone files |
+
+A Touchstone set takes its bias from each file's name or comment lines through a pattern such as
+`Vgs{vgs}_Vds{vds}_Id{id:mA}`. The fields are `{vgs}`, `{vds}`, `{T}`, `{id}`, `{ig}` and, for a passive family,
+`{geometry}`.
+
+Each data set states the conditions it was measured under. Every condition is optional when the set is imported, and the
+step that needs one names it when it is missing.
+
+| Condition | Meaning |
+|---|---|
+| `AmbientC` | The chuck temperature, °C |
+| `ReferencePlane` | Where the bias voltages were measured: `instrument`, `probe`, `device` or `intrinsic` ([below](#planes)) |
+| `BiasPathOhms` | For `instrument`: the bias-path resistance at the gate, drain and source |
+| `Quiescent` | A pulsed set's quiescent bias (`Vgs`, `Vds`, and `Id` when it conducts) |
+| `PrePulse` | A double pulse's trap-setting pulse: its `Vgs`, `Vds`, width and gap before the measuring pulse |
+| `PulseWidth`, `Period`, `SampleDelay` | The pulse timing, seconds; the sample delay is from the pulse's start to the sample |
+| `TrapState` | How pulsed points beyond the trap-setting bias are used: `auto`, `setting` or `extreme` ([below](#trap-data)) |
+| `SoakTime`, `Compliance` | How long the bias was held, and the instrument's current limits |
+| `LargeSignal` | For a large-signal set: what it measured, the frequency, the bias and the terminations |
+| `Note` | Free text, kept with the set |
+
+## Reference planes {#planes}
+
+The composer always models in **intrinsic** voltages, between the core's own gate, drain and source. Each data set states
+the plane its voltages were measured at:
+
+| Plane | Means |
+|---|---|
+| `instrument` | At the source-measure unit; the bias-path resistances are subtracted |
+| `probe` | At the probe tips; the pads are removed, then the network |
+| `device` | Pads already removed; the network is removed |
+| `intrinsic` | Already intrinsic, as a simulator's tables can be |
+
+The intrinsic voltages come from a DC solve of the extrinsic network carrying the measured currents. Intrinsic points
+therefore do not lie on a grid, even when the measured ones do. ANNs train on them directly, and tables re-grid them.
+
+A simulated table that also carries intrinsic voltages gets the computed ones checked against them. `model deembed`
+reports the largest difference, for example `max |ΔV| 3.1e-10 V between its intrinsic voltages and the computed ones`.
+
+## The six-pin network {#six-pin}
+
+The extrinsic network is an ordinary schematic with **six numbered pins**: 1, 2 and 3 are the extrinsic gate, drain and
+source, and 4, 5 and 6 are the intrinsic gate, drain and source. Pin 3 is the ground the data is referenced to. Each
+pin is numbered once. A network that breaks this rule is refused, and nothing is written.
+
+The network's values are its variables. Each one can be locked, bounded, tied to another (`rd × 1.2`) and fitted. Three
+stock networks are provided: **GaN two-shell** (outer pad capacitances, inductances with a gate–drain mutual, inner
+capacitances, then the series resistances), **classic single shell**, and **series only**. The network is fitted
+cold-FET (a pinched-off and a forward-gate point), multi-bias (the intrinsic capacitances made flat in frequency at
+every chosen bias), or both. After a fit, each value has a standard error, and a value the data barely determines is
+marked with the partner it is correlated with.
+
+## Methods and their defaults {#defaults}
+
+| Setting | Default |
+|---|---|
+| Method, every constituent | ANN |
+| ANN | Two hidden layers of 8, `tanh`; 6000 iterations for a current, 3000 for a charge; 3 restarts; 10 % held out |
+| Drain-current weighting | Relative, with a floor at 10 % of the largest current (`IdFloor` 0.1) |
+| Gate current | Fitted as `asinh(Ig/I0)` with `I0` at 1e-4 of the largest gate current (`IgFloor`); an equation `Ig` is fitted directly |
+| Table | Grid step 0.1 V; a charge table integrates along the mean of paths A and B |
+| Charges | An ANN trained on the capacitances alone (the adjoint method), anchored to zero charge at a stated bias |
+| DC/RF dispersion | Off; τ 1 µs when on |
+| Self-heating | Off |
+| Traps | None |
+| Network fit | Multi-bias |
+
+A model never extrapolates freely. Outside its training domain each constituent is continued linearly from the domain's
+edge. A current also gains a conductance on its own branch, which grows with distance from the edge. Keep the data wider
+than the voltages the circuit will reach: a gate swinging past the last measured `Vgs` meets that conductance, and its
+current is not the device's.
+
+## Charge conservation {#conservation}
+
+The charges are charge functions, so a model is charge-conserving by construction. Its capacitances are derivatives
+of one charge each, and no DC is ever made by displacement current. **Check Charge Conservation** checks three things:
+
+| Check | Reads | A good result |
+|---|---|---|
+| (a) The data | The curl of the measured capacitance matrix, row by row, and the difference between the two line-integral paths | A few percent: the data's own noise and the network's error |
+| (b) The model | The same curl on the fitted model's capacitances | Near zero |
+| (c) Large signal | A harmonic-balance drive at *f* and at 2*f*; the change in DC gate current is DC made by displacement current | Below 0.1 % of the fundamental gate current |
+
+A non-reciprocal capacitance matrix (a transcapacitance, `C21 ≠ C12`) is reported for information. It is physical, and
+it is not an error. Checks (b) and (c) also run on any nonlinear device in a netlist:
+`model check-charge design.cnl --device X1 --bias vgs,vds`.
+
+## Temperature {#temperature}
+
+**Data at two or more temperatures** makes `T` an input of every constituent. The model then follows the run's ambient
+`temp`, clamped to the data's range with one warning, and self-heating is available.
+
+**Data at one temperature** makes a model valid at that temperature, `T0`, with no temperature dependence. Self-heating
+is unavailable. A run at another `temp` prints one warning naming both temperatures and uses the model as it is.
+
+Self-heating needs an Rth. Type it, or extract it from pulsed I–V at two or more chuck temperatures, pulsed from a
+quiescent point that dissipates nothing, together with DC I–V at the same biases. Extraction trains an isothermal current
+on the pulses, finds the junction temperature at which it gives each DC point's current, and fits the rise against the
+dissipated power. The thermal dynamics are a typed Cth, a typed τth, a Foster ladder, or τth fitted to the low-frequency
+roll-off of `Re Y22`. That fit is not offered while traps are modelled, because the roll-off holds trap time constants
+too.
+
+When drain lag is modelled, type Rth (from a thermal simulation, for example) rather than extract it. A pulse from a
+0 V drain leaves the trap state short of its DC value, and extraction reads that shortfall as heating.
+
+## Traps, and what pulsed data allows {#trap-data}
+
+Traps are a setting. **None** is the default. **CaptureEmission** has a gate-lag state and a drain-lag state, each
+switched on separately. A state is captured quickly when its voltage moves one way and emits slowly when it moves back.
+The defaults are 10 ns capture at a 1 V gap and 1 ms emission, and emission can be made thermally activated.
+**Custom** lets you write each state's dynamics and DC value yourself.
+
+A trap state is trained from the **trap-setting levels** in the pulsed data. The level of a set is its pre-pulse bias
+for a double pulse, and its quiescent bias otherwise.
+
+| Pulsed data | What it allows |
+|---|---|
+| Double pulse | The pre-pulse sets the state, and the measuring pulse reads it before emission moves it. This is the clearest data. |
+| Ordinary pulses from two or more quiescent points | Two or more levels: the state is fitted fully. |
+| One quiescent point | One level: the state is fitted with one warning, and the model records the level it came from. |
+| No pulsed data | No trap state. The model is built without traps. |
+
+A pulsed point **toward** its setting (pulsed no higher in `Vds` for drain lag, no lower in `Vgs` for gate lag) sits at
+the setting's state exactly, because only slow emission acted. A point **beyond** it was partly captured during the
+pulse. The set's `TrapState` decides what happens to it: `auto` keeps it for validation only, `setting` takes the
+setting's state, and `extreme` takes the pulse's own voltage as the state.
+
+DC/RF dispersion is the simpler alternative to traps. It fits a second drain current, `IdRF`, to the RF transconductance
+and output conductance, and the model follows `Id` at DC and `IdRF` above the corner set by τ. The two are not combined.
+
+## Periphery scaling {#scaling}
+
+A model records the measured device's finger count `N0` and unit gate width `W0`. Export needs both. An instance's `N`
+scales the model:
+
+| What | Scales by |
+|---|---|
+| The core (`Id`, `Ig`, `Qg`, `Qd`) | `N/N0` |
+| A network value, by its rule | `fixed`, `perFinger` (`N/N0`) or `perFingerInverse` (`N0/N`) |
+| `Rth`, `Cth` | `N0/N`, `N/N0` |
+| Trap time constants | Not scaled |
+
+For the GaN two-shell network the series resistances are `perFingerInverse`, the inner capacitances `perFinger`, and the
+pad capacitances, inductances and mutual `fixed`. Every rule can be changed per value. `m` places whole devices in
+parallel, so `m=2 N=8` is two 8-finger devices.
+
+## Passive models {#passive-models}
+
+A passive document holds one N-port block, or a **family** of blocks over a geometry value such as the turns of a
+spiral. **Analyse** reports the block's reciprocity, passivity, symmetry, low-frequency asymptotes and self-resonances, and fits a rational model. **Propose** ranks a library of
+twelve topologies (series and parallel RLC, an inductor with skin effect, capacitor and resistor parasitics, π, T, bond
+wire, via, spiral, MIM and a line with pads) against the data, or fits a topology you draw. **Fit** gives each value
+with its error.
+
+A family is fitted as one law per value, a polynomial or a rational function of the geometry. The middle geometry is
+held out and predicted, and the result reports its error. Export writes a cell whose parameters are the geometry and the
+fitted values. A family cell takes the geometry as its parameter, and warns once when it is placed outside the fitted
+range.
+
+## The example {#example}
+
+**File ▸ New ▸ Examples ▸ Model Composer** opens a workspace with three documents built this way:
+
+- `synthetic-gan`: a GaN FET built from synthetic DC, pulsed and multi-bias S data, with a fitted network, ANN
+  currents, adjoint-ANN charges, self-heating and drain lag. Its 8-finger model drives a class-AB power sweep and a
+  loadpull.
+- `passive-spiral`: a family of spiral inductors over turns, fitted and placed in a filter at a turn count between two
+  measured ones.
+- `simulated-tables`: a model built from a simulator's tables, showing the intrinsic-voltage cross-check.
+
+Its README lists every setting it uses, and the value a real job would use where it differs.
 
 ## Opening a document {#open}
 

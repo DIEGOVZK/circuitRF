@@ -48,6 +48,10 @@ public sealed record LargeSignalSettings
     public int Order { get; init; } = 7;
     /// <summary>The gate bias resistor the consequence line is stated through, Ω.</summary>
     public double GateResistance { get; init; } = 10e3;
+    /// <summary>The harmonic-balance tolerance, A. A charge-based device converges to 1e-12, which resolves a spurious DC
+    /// far below the threshold; a model with trap or dispersion state nodes stops near 1e-8 (their 1 mF nodes, TrapModel),
+    /// so the composer's check drives such a model at <see cref="ConservationCheck.StateNodeTolerance"/>.</summary>
+    public double Tolerance { get; init; } = 1e-12;
 }
 
 /// <summary>Check (a): each row's normalised curl at each data point and its RMS, and the two-path difference as a fraction
@@ -232,7 +236,7 @@ public static class ConservationCheck
         string sources =
             $"V_1Tone:VGCHK chk_vg 0 Vdc={R(bias.Vgs)} Freq={f} V={R(s.Amplitude)}\nIProbe:IGCHK chk_vg chk_ga\nR:RGCHK chk_ga g R=1e-3\n" +
             $"V_1Tone:VDCHK chk_vd 0 Vdc={R(bias.Vds)} Freq={f} V={R(s.DrainAmplitude)} Phase=-90\nIProbe:IDCHK chk_vd chk_da\nR:RDCHK chk_da d R=1e-3\n" +
-            $"analysis HBCHK type=hb Tone={f} MaxHarm={s.Order} Tol=1e-12\n";
+            $"analysis HBCHK type=hb Tone={f} MaxHarm={s.Order} Tol={R(s.Tolerance)}\n";
         var (lib, tb, dir) = Bench(cnlPath, instance, sources);
         using var nl = new Elaborator(lib) { BaseDirectory = dir }.Elaborate(tb);
         var hba = tb.Analyses.OfType<HarmonicBalanceAnalysis>().Single();
@@ -299,6 +303,11 @@ public static class ConservationCheck
     /// curl reads 0.4 % (ConservationCheckLargeSignalTests).</summary>
     public const double DefaultThreshold = 1e-3;
 
+    /// <summary>Check (c)'s tolerance for a model with trap or dispersion state nodes, A: above their residual floor, and
+    /// against the default drive's fundamental gate current (~0.5 mA on a 0.4 pF gate at 1 GHz) a resolution of 2e-4,
+    /// below <see cref="DefaultThreshold"/>.</summary>
+    public const double StateNodeTolerance = 1e-7;
+
     /// <summary>
     /// The report in one line, each part's number (MC-15 R-mc15-6): <c>Data gate 0.4 % · drain 3.8 % · Model 0.0 % · HB 0.2 µA</c>
     /// — the data's and the model's curl RMS and the large-signal check's spurious DC gate current. A part not run is left out.
@@ -330,9 +339,12 @@ public static class ConservationCheck
         var model = ChargeFit.Model(charges, current, data.TemperatureC);
         var program = ComposedCoreProgram.Compile(model, "check");
         var poly = data.Domain.Polygon;
+        // Read away from the hull's edge, as (a) is: beyond it each charge is a linear continuation, and a curl read across
+        // the boundary measures the continuation rather than the fit.
+        double gSpan = poly.Max(p => p.Vgs) - poly.Min(p => p.Vgs), dSpan = poly.Max(p => p.Vds) - poly.Min(p => p.Vds);
         var b = Model((g, d) => ChargeFit.Capacitances(program, g, d, data.TemperatureC),
                       (poly.Min(p => p.Vgs), poly.Max(p => p.Vgs), poly.Min(p => p.Vds), poly.Max(p => p.Vds)),
-                      DefaultStep, (g, d) => ChargeFit.Inside(poly, (g, d)), rc);
+                      DefaultStep, (g, d) => ChargeFit.Inside(poly, (g, d)) && !NearEdge(poly, (g, d), gSpan, dSpan), rc);
         lines.Add($"model: curl {Pct(b.GateRms)} (Qg), {Pct(b.DrainRms)} (Qd)");
         lines.Add($"transcapacitance Cm {Si(b.Transcapacitance, "F")} RMS ({Pct(b.TranscapacitanceRelative)} of C11)");
 
@@ -342,7 +354,12 @@ public static class ConservationCheck
             CmodelFile.Write(model, Path.Combine(dir, "model.cmodel"));
             string cnl = Path.Combine(dir, "check.cnl");
             File.WriteAllText(cnl, "ComposedFet:X1 g d s File=model.cmodel\n");
-            var s = settings with { Bias = settings.Bias ?? CurrentFit.Middle([.. data.X.Select(p => new[] { p.Vgs, p.Vds })]) };
+            var s = settings with
+            {
+                Bias = settings.Bias ?? CurrentFit.Middle([.. data.X.Select(p => new[] { p.Vgs, p.Vds })]),
+                Tolerance = model.Traps is not null || model.Core.Dispersion is not null
+                    ? Math.Max(settings.Tolerance, StateNodeTolerance) : settings.Tolerance,
+            };
             var c = LargeSignal(cnl, "X1", s, rc);
             lines.Add($"large signal: {c.Line} ({Pct(c.Relative)} of the fundamental)");
             return new ConservationReport(a, b, c, lines);

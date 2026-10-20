@@ -54,6 +54,24 @@ public sealed class CmcCacheTests
         Assert.True(reopened.Data["DC"].Points[1].Excluded);         // the user's exclusion, from the .cmc
     }
 
+    /// <summary>A source copied or checked out keeps its bytes and takes a new timestamp, which rewrites the index — and the
+    /// rewrite once carried only the intrinsic folder across, deleting the fitted arrays (MC-16).</summary>
+    [Fact]
+    public void ATouchedSource_KeepsEveryStepsFolder()
+    {
+        var (cmc, doc) = Fixture();
+        var cache = new CmcCache(cmc);
+        cache.Open(doc);
+        string arrays = Path.Combine(cache.Folder, CurrentFit.CacheFolder, "fit.npy");
+        Directory.CreateDirectory(Path.GetDirectoryName(arrays)!);
+        File.WriteAllText(arrays, "weights");
+        File.SetLastWriteTimeUtc(Path.Combine(Path.GetDirectoryName(cmc)!, "iv.csv"), DateTime.UtcNow.AddHours(1));
+
+        new CmcCache(cmc).Open(doc);
+
+        Assert.Equal("weights", File.ReadAllText(arrays));
+    }
+
     [Fact]
     public void AChangedSource_IsReimported()
     {

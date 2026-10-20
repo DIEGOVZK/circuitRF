@@ -125,6 +125,11 @@
       "Folder": "Schematic from Image",
       "Title": "Schematic from Image",
       "Summary": "A picture of a schematic and a picture of its board, each made into a cell by Create Schematic from Image: the parts read from the pictures, drawn over them, and the values no picture states arriving as variables to tune."
+    },
+    {
+      "Folder": "Model Composer",
+      "Title": "Model Composer",
+      "Summary": "Device models built from data: a GaN FET from synthetic DC, pulsed and two-temperature S data, with a fitted network, ANN currents and charges, self-heating and drain lag, placed as an 8-finger device in a power sweep and a loadpull; a spiral-inductor family placed between two measured turn counts; and a model from a simulator's tables."
     }
   ]
 }

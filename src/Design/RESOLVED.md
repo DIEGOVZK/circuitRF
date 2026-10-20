@@ -20992,3 +20992,55 @@ for the currents to be fitted again. `AdjointExtra` also rebuilt `PointsWithT` (
   the drawn topology refuse every time. `PassiveFit.Propose` takes `drawnVariables` for the drawn networks.
 - The joint refinement weighted every block's residual by the first block's frequency axis; each block now takes its
   own.
+
+## Model Composer MC-16: the example and the series acceptance (2026-10-20)
+
+**A cache rewrite deleted every fit.** `CmcCache.Open` rewrites the index whenever a source's timestamp moved, even with
+its bytes unchanged — a copy, a checkout, File ▸ New ▸ Examples. The rewrite builds a fresh folder and swapped it in
+carrying only `intrinsic/` across, so `current/` and `charge/` — the fitted arrays, which only a fit can rebuild — were
+deleted, and the document's steps still read as fitted. MC-11 met the same thing as `validate/` vanishing and worked
+around it. Every subfolder is carried across now. Gate: `CmcCacheTests.ATouchedSource_KeepsEveryStepsFolder`.
+
+**Check Charge Conservation could not run on a model with traps.** Check (c) asks harmonic balance for 1e-12 A, which
+resolves a spurious DC far below the threshold on a charge-based device; a trap or dispersion node's 1 mF capacitance
+floors the residual near 1e-8 A by design (`src/Core/RESOLVED.md`, MC-10), so the check never converged and was refused
+as "lower the drive". A model with state nodes is now driven at `ConservationCheck.StateNodeTolerance`, 1e-7 A: a
+resolution of 2e-4 of the default drive's fundamental gate current, below the 0.1 % threshold.
+
+**Check (a) crashed on data at two or more temperatures.** `ChargeFit.Interpolant` is two-dimensional (vgs, vds), and was
+given the charge data's domain with its `T` box, which the domain geometry looks up among the network's two inputs. It
+takes the polygon alone now — the same reduction a table charge already made through `ChargeData.Isothermal`.
+
+**Check (b) read 0.6 % on a model that conserves charge by construction.** It sampled the fitted capacitances right up to
+the hull, and a curl read across the boundary measures the charges' linear continuation outside the data rather than the
+fit. With check (a)'s 2 % edge margin applied to (b) as well, the same model reads 7e-6.
+
+**The acceptance thresholds, changed once (R-mc16-4).** The brief proposed Pout within 0.1 dB and PAE within 1 pp up to
+3 dB compression, IM3 within 1 dB, and (b) ≈ 0. Measured on the truth with a 2 × 16 `Id` (2 × 8 left the small-signal
+gain 0.1–0.3 dB off and IM3 1.1–1.3 dB off): Pout within 0.15 dB through the class-AB region at N0 and 2·N0, rising to
+0.39 dB and PAE to 2.6 pp past 1 dB compression, where the gate conducts forward at the top of the data and the drain-lag
+state climbs past its trap-setting levels; IM3 within 0.2–1.0 dB at −16, −12 and +4 dBm per tone (0.98 at +4), and at
+the sweet-spot null itself a dB comparison says only where the null falls. The gate asks Pout 0.5 dB and PAE 3 pp — the
+Validate step's own defaults — IM3 1.5 dB at drives away from the null (0.98 is too close to 1 dB to hold across
+platforms), and (b) below 0.1 %; the run takes 12½ minutes, so it is `Category=Benchmark`. DC (RMS 0.26 % of range, 1 %
+asked) and S (95th percentile 0.016 and 0.012, 0.02 asked) meet the brief as written.
+
+**What the synthetic acceptance needed from the data, not the code** (each found by a run that failed against the truth):
+
+- *I–V must reach the voltages the circuit will.* Outside its data a constituent is continued linearly with a
+  conductance `G_x` that grows from the edge, ten times the largest own-branch conductance anywhere — for `Ig` that is
+  the forward diode's, 1.75 S. S-parameters at the lowest measured `Vgs` sat 0.7 mV outside it (the model's own pinch-off
+  leakage through `rs`) and read the gate as 56 Ω (`|ΔS|` 0.3); in the power sweep the model fell away from the truth the
+  moment the gate swing passed the last measured `Vgs` into forward conduction. The data spans −5 … +1.4 V.
+- *The gate current's resolution.* It is fitted as `asinh(Ig/I0)`, `I0 = IgFloor·max|Ig|`; the example uses 1e-7.
+- *Rth is typed when drain lag is modelled.* A pulse from a 0 V drain leaves the CaptureEmission state ~0.5 V short of
+  `vds`, which the extraction reads as heating (62 K/W against a 40 K/W truth); the model note's open items hold the rest.
+- *Pulsed sets carry the temperature dependence.* With Rth typed and the pulses at one chuck temperature only, the
+  current lost its `T` input: S at 85 °C and DC at high power were far off. Pulses from 0 V at 25 and 125 °C, mapped
+  `extreme`, restore it.
+
+**A simulator's table at one frequency gave the charges nothing.** The default flatness band is `(top/10, top/2)` of the
+data's own frequencies, and the charge step averages each point's capacitances over it — so a `SimulatedTables` set
+with Y at a single low frequency, the case D6 names, held no sample in its band and was refused as "0 usable S
+point(s)" unless the user typed a band. With no frequency inside the default band, the band is now the data's whole
+span. Gate: `IntrinsicQuantitiesTests.DefaultBand_HoldsASingleFrequency`.

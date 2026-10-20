@@ -109,4 +109,38 @@ analysis HB1 type=hb Tone=RFfreq MaxHarm=3 Tol=1e-10 MaxIter=200
         output.WriteLine($"|V(n_out)| at f0: {a.Magnitude:E6} vs {b.Magnitude:E6}");
         Assert.Equal(a.Magnitude, b.Magnitude, precision: 9);
     }
+
+    /// <summary>
+    /// Under two tones a carrier is not an exact harmonic of the band ruler f_c = (f1 + f2)/2, and the Tuner took any
+    /// frequency off the harmonic grid as its catch-all: a load declaring Z[1] = 50 Ω shorted both carriers through
+    /// Zdefault. It takes the sources' band rule now. The device's drain current is 0.05·v1 at the carriers (its square
+    /// term makes none there), so the carrier voltage at the load is 2.5 times the gate's — and ~1e-7 of it with the bug.
+    /// </summary>
+    [Fact]
+    public void UnderTwoTones_TheCarriersSeeZ1_NotTheCatchAll()
+    {
+        const string netlist = @"
+f1 = 1.995e9
+f2 = 2.005e9
+PnTone:PIN  n_in 0   Freq[1]=f1  Pavl[1]=0  Freq[2]=f2  Pavl[2]=0  Z=50
+SDD:DUT     n_in 0  n_out 0   NumPorts=2   I[1,0]=_v1/50   I[2,0]=0.05*_v1+0.02*_v1^2
+Tuner:LOAD  n_out 0   Z[1]=50   Z[2]=1e-6   Zdefault=1e-6   BiasTee=on   Vbias=0
+analysis HB1 type=hb NumFreqs=2 Tone[1]=f1 Tone[2]=f2 MaxHarm=3 MaxMixOrder=3 Tol=1e-10 MaxIter=200
+";
+        var (lib, tb) = new CnlReader().Read(netlist);
+        var nl  = new Elaborator(lib).Elaborate(tb);
+        var hba = tb.Analyses.OfType<Core.Design.HarmonicBalanceAnalysis>().Single();
+        var ds  = new HbEngine(nl, tb).Run(HbEngine.Resolve(hba, nl.ResolvedGlobals, nl.GlobalsWithExplicitUnit));
+        Assert.Equal(1.0, ds["Converged"].RealValues[0]);
+
+        var v = ds["V"];
+        int inNode = Array.IndexOf(v.Axes[0].Labels!.ToArray(), "n_in"), outNode = Array.IndexOf(v.Axes[0].Labels!.ToArray(), "n_out");
+        foreach (string tone in new[] { "(1,0)", "(0,1)" })
+        {
+            int m = Array.IndexOf(v.Axes[1].Labels!.ToArray(), tone);
+            double gain = ((Complex)v[outNode, m]).Magnitude / ((Complex)v[inNode, m]).Magnitude;
+            output.WriteLine($"{tone}: |V(n_out)|/|V(n_in)| = {gain:F6}");
+            Assert.True(Math.Abs(gain - 2.5) < 1e-6, $"{tone}: the carrier sees {gain / 0.05:G4} Ω, not Z[1] = 50 Ω");
+        }
+    }
 }

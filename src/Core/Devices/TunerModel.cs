@@ -290,8 +290,8 @@ public sealed class TunerModel : ComponentModel
     /// <summary>
     /// Returns the impedance to present at angular frequency omega.
     ///
-    /// HB mode (ToneFreqHz > 0): maps omega to harmonic k = round(omega/omega0).
-    ///   DC (k=0): returns Zdefault (near-short for DC bias path through cap-blocked port).
+    /// HB mode (ToneFreqHz > 0): maps omega to band k = roundHalfUp(|f|/f_c) — under two tones f_c is the tones' centre.
+    ///   DC and baseband (k=0): returns Zdefault (near-short for DC bias path through cap-blocked port).
     ///   k ≥ 1: checks override first, then declared Z[k], then Zdefault.
     ///
     /// S-param mode (ToneFreqHz = 0): returns Z[1] for all omega ≠ 0; Zdefault at DC.
@@ -305,12 +305,13 @@ public sealed class TunerModel : ComponentModel
         if (_toneFreqHz <= 0)
             return GetDeclaredZ(1);   // S-param mode: flat Z[1]
 
-        // HB mode: identify the harmonic.
-        double omega0 = 2.0 * Math.PI * _toneFreqHz;
-        double ratio  = omega / omega0;
-        int    k      = (int)Math.Round(ratio);
-        if (k < 1 || Math.Abs(ratio - k) * omega0 > OmegaTolRad)
-            return _zDefault;   // off-grid → catch-all
+        // HB mode: the band the frequency falls in, n = roundHalfUp(|f|/f_c) — P1Tone's and PnTone's rule, so under two
+        // tones a carrier 0.25 % off f_c is band 1 like the sources' own. On a single-tone grid every frequency is an exact
+        // harmonic and the band is that harmonic. Band 0, a baseband product, takes the catch-all.
+        double ratio = Math.Abs(omega) / (2.0 * Math.PI * _toneFreqHz);
+        int    k     = (int)Math.Floor(ratio + 0.5);
+        if (k < 1)
+            return _zDefault;
 
         // Loadpull override (set per grid point) takes precedence.
         if (_overrideHarmonic.HasValue && _overrideHarmonic.Value == k)

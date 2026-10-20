@@ -1,0 +1,445 @@
+{
+  "FormatVersion": 1,
+  "Kind": "Active",
+  "BasePeriphery": {
+    "Fingers": 4,
+    "UnitWidth": "125 um"
+  },
+  "DataSets": [
+    {
+      "Name": "tables",
+      "Kind": "SimulatedTables",
+      "Sources": [
+        "tables.npy"
+      ],
+      "Conditions": {
+        "AmbientC": 25,
+        "ReferencePlane": "device",
+        "Note": "Synthetic: tables simulated by circuitRF from a known device inside the GaN two-shell network, as another simulator would write them."
+      },
+      "Import": {
+        "Format": "npy",
+        "Arrays": {
+          "Y": "Y",
+          "freq": "freq",
+          "id": "id",
+          "ig": "ig",
+          "vds": "vds",
+          "vdsi": "vdsi",
+          "vgs": "vgs",
+          "vgsi": "vgsi"
+        }
+      }
+    }
+  ],
+  "Network": {
+    "Schematic": "../GaNTwoShell/schematic/GaNTwoShell.csch",
+    "Variables": {
+      "Cpda": {
+        "Min": 0,
+        "Max": 7E-13,
+        "Lock": true,
+        "Scaling": "fixed"
+      },
+      "Cpdga": {
+        "Min": 0,
+        "Max": 5E-14,
+        "Lock": true,
+        "Scaling": "fixed"
+      },
+      "Cpdgi": {
+        "Min": 0,
+        "Max": 1E-13,
+        "Lock": true,
+        "Scaling": "perFinger"
+      },
+      "Cpdi": {
+        "Min": 0,
+        "Max": 2.1000000000000003E-12,
+        "Lock": true,
+        "Scaling": "perFinger"
+      },
+      "Cpga": {
+        "Min": 0,
+        "Max": 7E-13,
+        "Lock": true,
+        "Scaling": "fixed"
+      },
+      "Cpgi": {
+        "Min": 0,
+        "Max": 4.9E-13,
+        "Lock": true,
+        "Scaling": "perFinger"
+      },
+      "Ld": {
+        "Min": 0,
+        "Max": 4.64E-09,
+        "Lock": true,
+        "Scaling": "fixed"
+      },
+      "Lg": {
+        "Min": 0,
+        "Max": 3.95E-09,
+        "Lock": true,
+        "Scaling": "fixed"
+      },
+      "Ls": {
+        "Min": 0,
+        "Max": 5.249999999999999E-10,
+        "Lock": true,
+        "Scaling": "fixed"
+      },
+      "M_feedback": {
+        "Min": 0,
+        "Max": 1E-10,
+        "Lock": true,
+        "Scaling": "fixed"
+      },
+      "rd": {
+        "Min": 0,
+        "Max": 919.9999999999999,
+        "Lock": true,
+        "Scaling": "perFingerInverse"
+      },
+      "rg": {
+        "Min": 0,
+        "Max": 520,
+        "Lock": true,
+        "Scaling": "perFingerInverse"
+      },
+      "rs": {
+        "Min": 0,
+        "Max": 660,
+        "Lock": true,
+        "Scaling": "perFingerInverse"
+      }
+    }
+  },
+  "Steps": {
+    "Thermal": {
+      "Settings": {},
+      "Result": {
+        "Temperatures": [
+          25
+        ]
+      },
+      "Network": "358205921ea78d2b",
+      "Data": "72a65e71cab7957b"
+    },
+    "Current": {
+      "Network": "358205921ea78d2b",
+      "Settings": {},
+      "Result": {
+        "Constituents": {
+          "Id": {
+            "Method": "ANN",
+            "Inputs": [
+              "vgs",
+              "vds"
+            ],
+            "Network": "Id",
+            "Activation": "Tanh",
+            "Domain": {
+              "Polygon": [
+                [
+                  -2.000000036498326,
+                  0.4999999123792363
+                ],
+                [
+                  -1.9999999988806576,
+                  7.440093000449932E-12
+                ],
+                [
+                  0.39999999977613154,
+                  -1.4880369187698917E-12
+                ],
+                [
+                  -0.04590905290540814,
+                  8.932520752047305
+                ],
+                [
+                  -0.28378737992386416,
+                  9.320630211563154
+                ],
+                [
+                  -0.5463157218075002,
+                  9.649729029437964
+                ],
+                [
+                  -0.8461962456538508,
+                  9.88940898746278
+                ],
+                [
+                  -1.2035815239939398,
+                  9.991426048366431
+                ],
+                [
+                  -1.6000348306254122,
+                  9.999916617299945
+                ],
+                [
+                  -2.0000000001422,
+                  9.9999999993262
+                ]
+              ]
+            }
+          },
+          "Ig": {
+            "Method": "ANN",
+            "Inputs": [
+              "vgs",
+              "vds"
+            ],
+            "IgGs": "IgGs",
+            "IgGd": "IgGd",
+            "Activation": "Tanh",
+            "Transform": {
+              "Kind": "Asinh",
+              "Scale": 1.0071760828165049E-13
+            },
+            "Domain": {
+              "Polygon": [
+                [
+                  -2.000000036498326,
+                  0.4999999123792363
+                ],
+                [
+                  -1.9999999988806576,
+                  7.440093000449932E-12
+                ],
+                [
+                  0.39999999977613154,
+                  -1.4880369187698917E-12
+                ],
+                [
+                  -0.04590905290540814,
+                  8.932520752047305
+                ],
+                [
+                  -0.28378737992386416,
+                  9.320630211563154
+                ],
+                [
+                  -0.5463157218075002,
+                  9.649729029437964
+                ],
+                [
+                  -0.8461962456538508,
+                  9.88940898746278
+                ],
+                [
+                  -1.2035815239939398,
+                  9.991426048366431
+                ],
+                [
+                  -1.6000348306254122,
+                  9.999916617299945
+                ],
+                [
+                  -2.0000000001422,
+                  9.9999999993262
+                ]
+              ]
+            }
+          }
+        },
+        "Gx": {
+          "Id": 2.3986425140563084,
+          "IgGs": 3.651518291530687E-05,
+          "IgGd": 3.454759700668114E-08
+        },
+        "Arrays": "2807ce26eca07a389f88b98565305a43",
+        "Errors": {
+          "Id": {
+            "TrainCount": 50,
+            "Train": 7.054242682294856E-05,
+            "TrainRelative": 0.0010441142952858815,
+            "HeldOutCount": 6,
+            "HeldOut": 0.0010876243674448095,
+            "HeldOutRelative": 0.016098172420415797
+          },
+          "IgGs": {
+            "TrainCount": 50,
+            "Train": 1.3514820490043527E-19,
+            "TrainRelative": 1.341852802168433E-10,
+            "HeldOutCount": 6,
+            "HeldOut": 8.293623444563115E-13,
+            "HeldOutRelative": 0.0008234531762678991
+          },
+          "IgGd": {
+            "TrainCount": 50,
+            "Train": 2.0012667708507708E-14,
+            "TrainRelative": 0.00013637915790461904,
+            "HeldOutCount": 6,
+            "HeldOut": 8.079740007487252E-13,
+            "HeldOutRelative": 0.00550605323767472
+          }
+        },
+        "Conductance": {
+          "Gm": [
+            0.012449573893455971,
+            0.2746892627227807
+          ],
+          "Gds": [
+            0.02832218446294171,
+            1.1534330360287905
+          ]
+        },
+        "Report": [
+          "Id: the network has 105 weights for 50 targets; one weight per ten targets suggests at most 5.",
+          "IgGs: the network has 105 weights for 50 targets; one weight per ten targets suggests at most 5.",
+          "IgGd: the network has 105 weights for 50 targets; one weight per ten targets suggests at most 5."
+        ]
+      },
+      "Data": "72a65e71cab7957b"
+    },
+    "Charge": {
+      "Network": "358205921ea78d2b",
+      "Settings": {},
+      "Result": {
+        "Constituents": {
+          "Qg": {
+            "Method": "ANN",
+            "Inputs": [
+              "vgs",
+              "vds"
+            ],
+            "Network": "Qg",
+            "Activation": "Tanh",
+            "Domain": {
+              "Polygon": [
+                [
+                  -2.000000036498326,
+                  0.4999999123792363
+                ],
+                [
+                  -1.9999999988806576,
+                  7.440093000449932E-12
+                ],
+                [
+                  0.39999999977613154,
+                  -1.4880369187698917E-12
+                ],
+                [
+                  -0.04590905290540814,
+                  8.932520752047305
+                ],
+                [
+                  -0.28378737992386416,
+                  9.320630211563154
+                ],
+                [
+                  -0.5463157218075002,
+                  9.649729029437964
+                ],
+                [
+                  -0.8461962456538508,
+                  9.88940898746278
+                ],
+                [
+                  -1.2035815239939398,
+                  9.991426048366431
+                ],
+                [
+                  -1.6000348306254122,
+                  9.999916617299945
+                ],
+                [
+                  -2.0000000001422,
+                  9.9999999993262
+                ]
+              ]
+            }
+          },
+          "Qd": {
+            "Method": "ANN",
+            "Inputs": [
+              "vgs",
+              "vds"
+            ],
+            "Network": "Qd",
+            "Activation": "Tanh",
+            "Domain": {
+              "Polygon": [
+                [
+                  -2.000000036498326,
+                  0.4999999123792363
+                ],
+                [
+                  -1.9999999988806576,
+                  7.440093000449932E-12
+                ],
+                [
+                  0.39999999977613154,
+                  -1.4880369187698917E-12
+                ],
+                [
+                  -0.04590905290540814,
+                  8.932520752047305
+                ],
+                [
+                  -0.28378737992386416,
+                  9.320630211563154
+                ],
+                [
+                  -0.5463157218075002,
+                  9.649729029437964
+                ],
+                [
+                  -0.8461962456538508,
+                  9.88940898746278
+                ],
+                [
+                  -1.2035815239939398,
+                  9.991426048366431
+                ],
+                [
+                  -1.6000348306254122,
+                  9.999916617299945
+                ],
+                [
+                  -2.0000000001422,
+                  9.9999999993262
+                ]
+              ]
+            }
+          }
+        },
+        "Arrays": "d6debf38c2bd6b8effa60e5c617042fd",
+        "Anchor": [
+          0,
+          0
+        ],
+        "Errors": {
+          "C11": [
+            3.124263738104127E-16,
+            0.015621302195028882
+          ],
+          "C12": [
+            6.804131759092529E-16,
+            0.014206571202313589
+          ],
+          "C21": [
+            1.036224502975739E-16,
+            0.0025837272041771995
+          ],
+          "C22": [
+            1.0775707873001762E-16,
+            0.001142833864224633
+          ]
+        },
+        "Report": [
+          "Qg: the network has 105 weights for 113 targets; one weight per ten targets suggests at most 11.",
+          "Qg: held-out \u2202Q/\u2202v error 0.14 % over 12 point(s).",
+          "Qd: the network has 105 weights for 113 targets; one weight per ten targets suggests at most 11.",
+          "Qd: held-out \u2202Q/\u2202v error 0.0583 % over 12 point(s).",
+          "C11: RMS error 1.56 % of its range.",
+          "C12: RMS error 1.42 % of its range.",
+          "C21: RMS error 0.258 % of its range.",
+          "C22: RMS error 0.114 % of its range."
+        ]
+      },
+      "Data": "72a65e71cab7957b"
+    }
+  }
+}

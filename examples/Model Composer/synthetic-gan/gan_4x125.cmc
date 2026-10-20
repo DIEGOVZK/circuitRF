@@ -1,0 +1,1110 @@
+{
+  "FormatVersion": 1,
+  "Kind": "Active",
+  "BasePeriphery": {
+    "Fingers": 4,
+    "UnitWidth": "125 um"
+  },
+  "DataSets": [
+    {
+      "Name": "dc_25C",
+      "Kind": "DcIv",
+      "Sources": [
+        "dc/dc_25C.csv"
+      ],
+      "Conditions": {
+        "AmbientC": 25,
+        "ReferencePlane": "probe",
+        "Note": "Synthetic: simulated by circuitRF from a known device (an SDD with self-heating and drain lag), not measured."
+      },
+      "Import": {
+        "Format": "csv",
+        "Columns": [
+          {
+            "Column": "Vgs",
+            "Quantity": "vgs",
+            "Unit": "V"
+          },
+          {
+            "Column": "Vds",
+            "Quantity": "vds",
+            "Unit": "V"
+          },
+          {
+            "Column": "Ig",
+            "Quantity": "ig",
+            "Unit": "A"
+          },
+          {
+            "Column": "Id",
+            "Quantity": "id",
+            "Unit": "A"
+          }
+        ]
+      }
+    },
+    {
+      "Name": "pulsed_q0_25C",
+      "Kind": "PulsedIv",
+      "Sources": [
+        "pulsed/pulsed_q0_25C.csv"
+      ],
+      "Conditions": {
+        "AmbientC": 25,
+        "ReferencePlane": "probe",
+        "PulseWidth": 5E-07,
+        "Period": 0.001,
+        "Quiescent": {
+          "Vgs": -6,
+          "Vds": 0,
+          "Ig": 0,
+          "Id": 0
+        },
+        "SampleDelay": 4E-07,
+        "TrapState": "extreme",
+        "Note": "Synthetic: simulated by circuitRF from a known device (an SDD with self-heating and drain lag), not measured."
+      },
+      "Import": {
+        "Format": "csv",
+        "Columns": [
+          {
+            "Column": "Vgs",
+            "Quantity": "vgs",
+            "Unit": "V"
+          },
+          {
+            "Column": "Vds",
+            "Quantity": "vds",
+            "Unit": "V"
+          },
+          {
+            "Column": "Ig",
+            "Quantity": "ig",
+            "Unit": "A"
+          },
+          {
+            "Column": "Id",
+            "Quantity": "id",
+            "Unit": "A"
+          }
+        ]
+      }
+    },
+    {
+      "Name": "pulsed_q0_125C",
+      "Kind": "PulsedIv",
+      "Sources": [
+        "pulsed/pulsed_q0_125C.csv"
+      ],
+      "Conditions": {
+        "AmbientC": 125,
+        "ReferencePlane": "probe",
+        "PulseWidth": 5E-07,
+        "Period": 0.001,
+        "Quiescent": {
+          "Vgs": -6,
+          "Vds": 0,
+          "Ig": 0,
+          "Id": 0
+        },
+        "SampleDelay": 4E-07,
+        "TrapState": "extreme",
+        "Note": "Synthetic: simulated by circuitRF from a known device (an SDD with self-heating and drain lag), not measured."
+      },
+      "Import": {
+        "Format": "csv",
+        "Columns": [
+          {
+            "Column": "Vgs",
+            "Quantity": "vgs",
+            "Unit": "V"
+          },
+          {
+            "Column": "Vds",
+            "Quantity": "vds",
+            "Unit": "V"
+          },
+          {
+            "Column": "Ig",
+            "Quantity": "ig",
+            "Unit": "A"
+          },
+          {
+            "Column": "Id",
+            "Quantity": "id",
+            "Unit": "A"
+          }
+        ]
+      }
+    },
+    {
+      "Name": "pulsed_q10_25C",
+      "Kind": "PulsedIv",
+      "Sources": [
+        "pulsed/pulsed_q10_25C.csv"
+      ],
+      "Conditions": {
+        "AmbientC": 25,
+        "ReferencePlane": "probe",
+        "PulseWidth": 5E-07,
+        "Period": 0.001,
+        "Quiescent": {
+          "Vgs": -6,
+          "Vds": 10,
+          "Ig": 0,
+          "Id": 0
+        },
+        "SampleDelay": 4E-07,
+        "Note": "Synthetic: simulated by circuitRF from a known device (an SDD with self-heating and drain lag), not measured."
+      },
+      "Import": {
+        "Format": "csv",
+        "Columns": [
+          {
+            "Column": "Vgs",
+            "Quantity": "vgs",
+            "Unit": "V"
+          },
+          {
+            "Column": "Vds",
+            "Quantity": "vds",
+            "Unit": "V"
+          },
+          {
+            "Column": "Ig",
+            "Quantity": "ig",
+            "Unit": "A"
+          },
+          {
+            "Column": "Id",
+            "Quantity": "id",
+            "Unit": "A"
+          }
+        ]
+      }
+    },
+    {
+      "Name": "pulsed_q20_25C",
+      "Kind": "PulsedIv",
+      "Sources": [
+        "pulsed/pulsed_q20_25C.csv"
+      ],
+      "Conditions": {
+        "AmbientC": 25,
+        "ReferencePlane": "probe",
+        "PulseWidth": 5E-07,
+        "Period": 0.001,
+        "Quiescent": {
+          "Vgs": -6,
+          "Vds": 20,
+          "Ig": 0,
+          "Id": 0
+        },
+        "SampleDelay": 4E-07,
+        "Note": "Synthetic: simulated by circuitRF from a known device (an SDD with self-heating and drain lag), not measured."
+      },
+      "Import": {
+        "Format": "csv",
+        "Columns": [
+          {
+            "Column": "Vgs",
+            "Quantity": "vgs",
+            "Unit": "V"
+          },
+          {
+            "Column": "Vds",
+            "Quantity": "vds",
+            "Unit": "V"
+          },
+          {
+            "Column": "Ig",
+            "Quantity": "ig",
+            "Unit": "A"
+          },
+          {
+            "Column": "Id",
+            "Quantity": "id",
+            "Unit": "A"
+          }
+        ]
+      }
+    },
+    {
+      "Name": "pulsed_dp20_25C",
+      "Kind": "PulsedIv",
+      "Sources": [
+        "pulsed/pulsed_dp20_25C.csv"
+      ],
+      "Conditions": {
+        "AmbientC": 25,
+        "ReferencePlane": "probe",
+        "PulseWidth": 5E-07,
+        "Period": 0.001,
+        "Quiescent": {
+          "Vgs": -6,
+          "Vds": 0,
+          "Ig": 0,
+          "Id": 0
+        },
+        "SampleDelay": 4E-07,
+        "PrePulse": {
+          "Vgs": -6,
+          "Vds": 20,
+          "Width": 5E-05,
+          "Gap": 1E-06,
+          "Id": 0
+        },
+        "Note": "Synthetic: simulated by circuitRF from a known device (an SDD with self-heating and drain lag), not measured."
+      },
+      "Import": {
+        "Format": "csv",
+        "Columns": [
+          {
+            "Column": "Vgs",
+            "Quantity": "vgs",
+            "Unit": "V"
+          },
+          {
+            "Column": "Vds",
+            "Quantity": "vds",
+            "Unit": "V"
+          },
+          {
+            "Column": "Ig",
+            "Quantity": "ig",
+            "Unit": "A"
+          },
+          {
+            "Column": "Id",
+            "Quantity": "id",
+            "Unit": "A"
+          }
+        ]
+      }
+    },
+    {
+      "Name": "s_25C",
+      "Kind": "SParams",
+      "Sources": [
+        "s_25C/Vgs-0.4_Vds0.5_Id12.969913.s2p",
+        "s_25C/Vgs-0.4_Vds10_Id21.844400.s2p",
+        "s_25C/Vgs-0.4_Vds15_Id23.340489.s2p",
+        "s_25C/Vgs-0.4_Vds1_Id17.993038.s2p",
+        "s_25C/Vgs-0.4_Vds2_Id19.113004.s2p",
+        "s_25C/Vgs-0.4_Vds4_Id19.841504.s2p",
+        "s_25C/Vgs-0.4_Vds7_Id20.872878.s2p",
+        "s_25C/Vgs-0.8_Vds0.5_Id4.648155.s2p",
+        "s_25C/Vgs-0.8_Vds10_Id6.960280.s2p",
+        "s_25C/Vgs-0.8_Vds15_Id7.574679.s2p",
+        "s_25C/Vgs-0.8_Vds1_Id5.667405.s2p",
+        "s_25C/Vgs-0.8_Vds2_Id5.906279.s2p",
+        "s_25C/Vgs-0.8_Vds4_Id6.178775.s2p",
+        "s_25C/Vgs-0.8_Vds7_Id6.575749.s2p",
+        "s_25C/Vgs-1.2_Vds0.5_Id0.361994.s2p",
+        "s_25C/Vgs-1.2_Vds10_Id0.542645.s2p",
+        "s_25C/Vgs-1.2_Vds15_Id0.602724.s2p",
+        "s_25C/Vgs-1.2_Vds1_Id0.427237.s2p",
+        "s_25C/Vgs-1.2_Vds2_Id0.445227.s2p",
+        "s_25C/Vgs-1.2_Vds4_Id0.469671.s2p",
+        "s_25C/Vgs-1.2_Vds7_Id0.506344.s2p",
+        "s_25C/Vgs-1.6_Vds0.5_Id0.003496.s2p",
+        "s_25C/Vgs-1.6_Vds10_Id0.005277.s2p",
+        "s_25C/Vgs-1.6_Vds15_Id0.005886.s2p",
+        "s_25C/Vgs-1.6_Vds1_Id0.004126.s2p",
+        "s_25C/Vgs-1.6_Vds2_Id0.004303.s2p",
+        "s_25C/Vgs-1.6_Vds4_Id0.004547.s2p",
+        "s_25C/Vgs-1.6_Vds7_Id0.004912.s2p",
+        "s_25C/Vgs-2_Vds0.5_Id0.000006.s2p",
+        "s_25C/Vgs-2_Vds10_Id0.000000.s2p",
+        "s_25C/Vgs-2_Vds15_Id0.000000.s2p",
+        "s_25C/Vgs-2_Vds1_Id0.000002.s2p",
+        "s_25C/Vgs-2_Vds2_Id0.000000.s2p",
+        "s_25C/Vgs-2_Vds4_Id0.000000.s2p",
+        "s_25C/Vgs-2_Vds7_Id0.000000.s2p",
+        "s_25C/Vgs0.3_Vds0.5_Id23.261337.s2p",
+        "s_25C/Vgs0.3_Vds10_Id59.231074.s2p",
+        "s_25C/Vgs0.3_Vds15_Id61.863547.s2p",
+        "s_25C/Vgs0.3_Vds1_Id41.782560.s2p",
+        "s_25C/Vgs0.3_Vds2_Id53.663314.s2p",
+        "s_25C/Vgs0.3_Vds4_Id55.357665.s2p",
+        "s_25C/Vgs0.3_Vds7_Id57.399739.s2p",
+        "s_25C/Vgs0_Vds0.5_Id19.900364.s2p",
+        "s_25C/Vgs0_Vds10_Id41.952879.s2p",
+        "s_25C/Vgs0_Vds15_Id44.205986.s2p",
+        "s_25C/Vgs0_Vds1_Id32.767339.s2p",
+        "s_25C/Vgs0_Vds2_Id37.550219.s2p",
+        "s_25C/Vgs0_Vds4_Id38.779274.s2p",
+        "s_25C/Vgs0_Vds7_Id40.434856.s2p"
+      ],
+      "Conditions": {
+        "AmbientC": 25,
+        "ReferencePlane": "probe",
+        "Note": "Synthetic: simulated by circuitRF from a known device (an SDD with self-heating and drain lag), not measured."
+      },
+      "Import": {
+        "Format": "touchstone",
+        "Pattern": "Vgs{vgs}_Vds{vds}_Id{id:mA}",
+        "PatternSource": "name"
+      }
+    },
+    {
+      "Name": "s_85C",
+      "Kind": "SParams",
+      "Sources": [
+        "s_85C/Vgs-0.4_Vds0.5_Id10.970954.s2p",
+        "s_85C/Vgs-0.4_Vds10_Id17.914140.s2p",
+        "s_85C/Vgs-0.4_Vds15_Id19.210169.s2p",
+        "s_85C/Vgs-0.4_Vds1_Id14.742995.s2p",
+        "s_85C/Vgs-0.4_Vds2_Id15.561733.s2p",
+        "s_85C/Vgs-0.4_Vds4_Id16.186314.s2p",
+        "s_85C/Vgs-0.4_Vds7_Id17.074810.s2p",
+        "s_85C/Vgs-0.8_Vds0.5_Id3.704482.s2p",
+        "s_85C/Vgs-0.8_Vds10_Id5.540723.s2p",
+        "s_85C/Vgs-0.8_Vds15_Id6.050785.s2p",
+        "s_85C/Vgs-0.8_Vds1_Id4.484380.s2p",
+        "s_85C/Vgs-0.8_Vds2_Id4.672649.s2p",
+        "s_85C/Vgs-0.8_Vds4_Id4.896166.s2p",
+        "s_85C/Vgs-0.8_Vds7_Id5.222964.s2p",
+        "s_85C/Vgs-1.2_Vds0.5_Id0.276949.s2p",
+        "s_85C/Vgs-1.2_Vds10_Id0.415778.s2p",
+        "s_85C/Vgs-1.2_Vds15_Id0.462213.s2p",
+        "s_85C/Vgs-1.2_Vds1_Id0.326871.s2p",
+        "s_85C/Vgs-1.2_Vds2_Id0.340700.s2p",
+        "s_85C/Vgs-1.2_Vds4_Id0.359540.s2p",
+        "s_85C/Vgs-1.2_Vds7_Id0.387655.s2p",
+        "s_85C/Vgs-1.6_Vds0.5_Id0.002657.s2p",
+        "s_85C/Vgs-1.6_Vds10_Id0.004011.s2p",
+        "s_85C/Vgs-1.6_Vds15_Id0.004474.s2p",
+        "s_85C/Vgs-1.6_Vds1_Id0.003136.s2p",
+        "s_85C/Vgs-1.6_Vds2_Id0.003271.s2p",
+        "s_85C/Vgs-1.6_Vds4_Id0.003456.s2p",
+        "s_85C/Vgs-1.6_Vds7_Id0.003734.s2p",
+        "s_85C/Vgs-2_Vds0.5_Id0.000005.s2p",
+        "s_85C/Vgs-2_Vds10_Id0.000000.s2p",
+        "s_85C/Vgs-2_Vds15_Id0.000000.s2p",
+        "s_85C/Vgs-2_Vds1_Id0.000002.s2p",
+        "s_85C/Vgs-2_Vds2_Id0.000000.s2p",
+        "s_85C/Vgs-2_Vds4_Id0.000000.s2p",
+        "s_85C/Vgs-2_Vds7_Id0.000000.s2p",
+        "s_85C/Vgs0.3_Vds0.5_Id21.478681.s2p",
+        "s_85C/Vgs0.3_Vds10_Id49.938847.s2p",
+        "s_85C/Vgs0.3_Vds15_Id52.213027.s2p",
+        "s_85C/Vgs0.3_Vds1_Id37.301357.s2p",
+        "s_85C/Vgs0.3_Vds2_Id45.135592.s2p",
+        "s_85C/Vgs0.3_Vds4_Id46.543826.s2p",
+        "s_85C/Vgs0.3_Vds7_Id48.338696.s2p",
+        "s_85C/Vgs0_Vds0.5_Id17.825628.s2p",
+        "s_85C/Vgs0_Vds10_Id35.037422.s2p",
+        "s_85C/Vgs0_Vds15_Id37.006437.s2p",
+        "s_85C/Vgs0_Vds1_Id28.068526.s2p",
+        "s_85C/Vgs0_Vds2_Id31.188988.s2p",
+        "s_85C/Vgs0_Vds4_Id32.253160.s2p",
+        "s_85C/Vgs0_Vds7_Id33.706332.s2p"
+      ],
+      "Conditions": {
+        "AmbientC": 85,
+        "ReferencePlane": "probe",
+        "Note": "Synthetic: simulated by circuitRF from a known device (an SDD with self-heating and drain lag), not measured."
+      },
+      "Import": {
+        "Format": "touchstone",
+        "Pattern": "Vgs{vgs}_Vds{vds}_Id{id:mA}",
+        "PatternSource": "name"
+      }
+    }
+  ],
+  "Pads": {
+    "Kind": "OpenShort",
+    "Open": "pads/open.s2p",
+    "Short": "pads/short.s2p"
+  },
+  "Network": {
+    "Schematic": "../GaNTwoShell/schematic/GaNTwoShell.csch",
+    "Variables": {
+      "Cpda": {
+        "Min": 0,
+        "Max": 7E-13,
+        "Lock": true,
+        "Scaling": "fixed"
+      },
+      "Cpdga": {
+        "Min": 0,
+        "Max": 5E-14,
+        "Lock": true,
+        "Scaling": "fixed"
+      },
+      "Cpdgi": {
+        "Min": 0,
+        "Max": 1E-13,
+        "Lock": true,
+        "Scaling": "perFinger"
+      },
+      "Cpdi": {
+        "Min": 0,
+        "Max": 2.1000000000000003E-12,
+        "Lock": true,
+        "Scaling": "perFinger"
+      },
+      "Cpga": {
+        "Min": 0,
+        "Max": 7E-13,
+        "Lock": true,
+        "Scaling": "fixed"
+      },
+      "Cpgi": {
+        "Min": 0,
+        "Max": 4.9E-13,
+        "Lock": true,
+        "Scaling": "perFinger"
+      },
+      "Ld": {
+        "Min": 0,
+        "Max": 4.64E-09,
+        "Scaling": "fixed",
+        "Value": 5.199394684027272E-11
+      },
+      "Lg": {
+        "Min": 0,
+        "Max": 3.95E-09,
+        "Scaling": "fixed",
+        "Value": 4.499606686534066E-11
+      },
+      "Ls": {
+        "Min": 0,
+        "Max": 5.249999999999999E-10,
+        "Scaling": "fixed",
+        "Value": 6.4952364348079525E-12
+      },
+      "M_feedback": {
+        "Min": 0,
+        "Max": 1E-10,
+        "Lock": true,
+        "Scaling": "fixed"
+      },
+      "rd": {
+        "Min": 0,
+        "Max": 919.9999999999999,
+        "Lock": true,
+        "Scaling": "perFingerInverse"
+      },
+      "rg": {
+        "Min": 0,
+        "Max": 520,
+        "Lock": true,
+        "Scaling": "perFingerInverse"
+      },
+      "rs": {
+        "Min": 0,
+        "Max": 660,
+        "Lock": true,
+        "Scaling": "perFingerInverse"
+      }
+    },
+    "Fit": {
+      "Active": [
+        {
+          "Set": "s_25C",
+          "Point": "s_25C/Vgs-2_Vds15_Id0.000000.s2p"
+        },
+        {
+          "Set": "s_25C",
+          "Point": "s_25C/Vgs0.3_Vds0.5_Id23.261337.s2p"
+        },
+        {
+          "Set": "s_25C",
+          "Point": "s_25C/Vgs0.3_Vds2_Id53.663314.s2p"
+        },
+        {
+          "Set": "s_85C",
+          "Point": "s_85C/Vgs0.3_Vds15_Id52.213027.s2p"
+        }
+      ]
+    },
+    "Result": {
+      "Method": "MultiBias",
+      "Cost": 1.6928973318850233E-07,
+      "Digest": "89106ccf150fea44",
+      "Variables": {
+        "Ld": {
+          "StdError": 8.110478272232516E-14,
+          "Spread": 1.1675261165963395E-11
+        },
+        "Lg": {
+          "StdError": 1.1856562775646417E-13,
+          "Spread": 5.857628510361391E-12
+        },
+        "Ls": {
+          "StdError": 5.560338885971011E-14,
+          "Spread": 2.660045807997399E-12
+        }
+      },
+      "Data": "276a6d943b94ed98"
+    }
+  },
+  "Steps": {
+    "Thermal": {
+      "Settings": {
+        "SelfHeating": true,
+        "Rth": 25,
+        "TauTh": 1E-05
+      },
+      "Result": {
+        "Temperatures": [
+          25,
+          85,
+          125
+        ],
+        "Rth": 25,
+        "Tref": 25,
+        "RthSource": "Typed",
+        "Poles": [
+          {
+            "Rth": 25,
+            "Cth": 4.0000000000000003E-07
+          }
+        ],
+        "TauTh": 1E-05
+      },
+      "Network": "89106ccf150fea44",
+      "Data": "276a6d943b94ed98"
+    },
+    "Traps": {
+      "Settings": {
+        "Model": "CaptureEmission",
+        "States": [
+          "phi2"
+        ]
+      },
+      "Result": {
+        "Levels": {
+          "phi2": [
+            0,
+            9.999999999907999,
+            19.999999999815998
+          ]
+        },
+        "Beyond": {
+          "phi2": 26
+        },
+        "Report": [
+          "drain-lag: 26 points beyond the trap-setting bias, validation only"
+        ]
+      },
+      "Network": "89106ccf150fea44",
+      "Data": "276a6d943b94ed98"
+    },
+    "Current": {
+      "Network": "89106ccf150fea44",
+      "Settings": {
+        "Id": {
+          "Hidden": [
+            16,
+            16
+          ]
+        },
+        "IgFloor": 1E-07
+      },
+      "Result": {
+        "Constituents": {
+          "Id": {
+            "Method": "ANN",
+            "Inputs": [
+              "vgs",
+              "vds",
+              "T",
+              "phi2"
+            ],
+            "Network": "Id",
+            "Activation": "Tanh",
+            "Domain": {
+              "Polygon": [
+                [
+                  -5.0000000001760005,
+                  19.999999998964395
+                ],
+                [
+                  -5.000000000096801,
+                  15.999999999190795
+                ],
+                [
+                  -4.9999999998988,
+                  5.999999999756797
+                ],
+                [
+                  -4.999999999799799,
+                  1.0000000000397997
+                ],
+                [
+                  -4.999999999789899,
+                  0.5000000000680999
+                ],
+                [
+                  -4.999999997278872,
+                  -5.803630909652463E-11
+                ],
+                [
+                  0.39999999978085155,
+                  1.1519629877502754E-12
+                ],
+                [
+                  0.5995080811522148,
+                  1.1658948531356435E-05
+                ],
+                [
+                  0.7566219210572911,
+                  0.0008276056219449698
+                ],
+                [
+                  0.8093481316395038,
+                  0.0028216136265651615
+                ],
+                [
+                  0.8477540952699181,
+                  0.0054846901253427505
+                ],
+                [
+                  0.847760423857918,
+                  0.005498499041342697
+                ],
+                [
+                  0.8480948179439158,
+                  0.006232137171336749
+                ],
+                [
+                  0.8481078633519157,
+                  0.006260918427336448
+                ],
+                [
+                  0.8481079105099159,
+                  0.006261022661336546
+                ],
+                [
+                  0.8483110056759144,
+                  0.0067106801353328804
+                ],
+                [
+                  0.5859003208053567,
+                  18.051497907814177
+                ],
+                [
+                  0.3655020966168706,
+                  18.48105121612619
+                ],
+                [
+                  0.250787451869651,
+                  18.685218473230805
+                ],
+                [
+                  0.01063958969793799,
+                  19.067894775171897
+                ],
+                [
+                  -0.2470805501747794,
+                  19.408504137233994
+                ],
+                [
+                  -0.5280933429413146,
+                  19.693352299973608
+                ],
+                [
+                  -0.8420906431646422,
+                  19.899237550922855
+                ],
+                [
+                  -1.2038346204859942,
+                  19.99082015063761
+                ],
+                [
+                  -1.6000428521302448,
+                  19.999897414246163
+                ],
+                [
+                  -2.0000000002977996,
+                  19.999999998904997
+                ],
+                [
+                  -5.000000000175997,
+                  19.9999999989644
+                ]
+              ],
+              "Box": {
+                "T": [
+                  25,
+                  125
+                ],
+                "phi2": [
+                  -1.4399401416878588E-11,
+                  19.999999999815998
+                ]
+              }
+            }
+          },
+          "Ig": {
+            "Method": "ANN",
+            "Inputs": [
+              "vgs",
+              "vds",
+              "T"
+            ],
+            "IgGs": "IgGs",
+            "IgGd": "IgGd",
+            "Activation": "Tanh",
+            "Transform": {
+              "Kind": "Asinh",
+              "Scale": 6.132197822999999E-09
+            },
+            "Domain": {
+              "Polygon": [
+                [
+                  -5.0000000001760005,
+                  19.999999998964395
+                ],
+                [
+                  -5.000000000096801,
+                  15.999999999190795
+                ],
+                [
+                  -4.9999999998988,
+                  5.999999999756797
+                ],
+                [
+                  -4.999999999799799,
+                  1.0000000000397997
+                ],
+                [
+                  -4.999999999789899,
+                  0.5000000000680999
+                ],
+                [
+                  -4.999999997278872,
+                  -5.803630909652463E-11
+                ],
+                [
+                  0.39999999978085155,
+                  1.1519629877502754E-12
+                ],
+                [
+                  0.5995080811522148,
+                  1.1658948531356435E-05
+                ],
+                [
+                  0.7566219210572911,
+                  0.0008276056219449698
+                ],
+                [
+                  0.8093481316395038,
+                  0.0028216136265651615
+                ],
+                [
+                  0.8477540952699181,
+                  0.0054846901253427505
+                ],
+                [
+                  0.847760423857918,
+                  0.005498499041342697
+                ],
+                [
+                  0.8480948179439158,
+                  0.006232137171336749
+                ],
+                [
+                  0.8481078633519157,
+                  0.006260918427336448
+                ],
+                [
+                  0.8481079105099159,
+                  0.006261022661336546
+                ],
+                [
+                  0.8483110056759144,
+                  0.0067106801353328804
+                ],
+                [
+                  0.5859003208053567,
+                  18.051497907814177
+                ],
+                [
+                  0.3655020966168706,
+                  18.48105121612619
+                ],
+                [
+                  0.250787451869651,
+                  18.685218473230805
+                ],
+                [
+                  0.01063958969793799,
+                  19.067894775171897
+                ],
+                [
+                  -0.2470805501747794,
+                  19.408504137233994
+                ],
+                [
+                  -0.5280933429413146,
+                  19.693352299973608
+                ],
+                [
+                  -0.8420906431646422,
+                  19.899237550922855
+                ],
+                [
+                  -1.2038346204859942,
+                  19.99082015063761
+                ],
+                [
+                  -1.6000428521302448,
+                  19.999897414246163
+                ],
+                [
+                  -2.0000000002977996,
+                  19.999999998904997
+                ],
+                [
+                  -5.000000000175997,
+                  19.9999999989644
+                ]
+              ],
+              "Box": {
+                "T": [
+                  25,
+                  125
+                ]
+              }
+            }
+          }
+        },
+        "Gx": {
+          "Id": 5.152940819955758,
+          "IgGs": 16.536007846158178,
+          "IgGd": 2.020491003112437E-09
+        },
+        "Arrays": "2d177e92cdf9174fc9e0eeefe112a479",
+        "Errors": {
+          "Id": {
+            "TrainCount": 638,
+            "Train": 0.0018066449696780497,
+            "TrainRelative": 0.009872153669776442,
+            "HeldOutCount": 71,
+            "HeldOut": 0.002087927468032027,
+            "HeldOutRelative": 0.01140918174943503
+          },
+          "IgGs": {
+            "TrainCount": 661,
+            "Train": 0.00022120965789471737,
+            "TrainRelative": 0.0036073470425276653,
+            "HeldOutCount": 74,
+            "HeldOut": 0.00023730069225981037,
+            "HeldOutRelative": 0.003869749442949783
+          },
+          "IgGd": {
+            "TrainCount": 661,
+            "Train": 6.827962682034127E-14,
+            "TrainRelative": 0.004016422210795117,
+            "HeldOutCount": 74,
+            "HeldOut": 6.818737281057658E-14,
+            "HeldOutRelative": 0.004010995540042672
+          }
+        },
+        "Traps": {
+          "Model": "CaptureEmission",
+          "States": [
+            "phi2"
+          ],
+          "Parameters": {
+            "TauCapt2": 1E-08,
+            "TauEmit2": 0.001,
+            "Xref": 1,
+            "Vc": 0.05
+          },
+          "Levels": {
+            "phi2": [
+              0,
+              9.999999999907999,
+              19.999999999815998
+            ]
+          }
+        },
+        "DcIv": {
+          "Count": 150,
+          "Rms": 0.001664575684405548,
+          "Relative": 0.010309997639150395
+        },
+        "Report": [
+          "drain-lag: 26 points beyond the trap-setting bias, validation only",
+          "Id: trained on the I\u2013V values and on the RF Gm/Gds of 98 S point(s) at their junction temperatures and DC trap states.",
+          "Id: the network has 369 weights for 834 targets; one weight per ten targets suggests at most 83.",
+          "Id: RF Gm/Gds at the frozen junction temperature and trap states, RMS error 0.0939 % of their range.",
+          "IgGs: the network has 113 weights for 661 targets; one weight per ten targets suggests at most 66.",
+          "IgGd: the network has 113 weights for 661 targets; one weight per ten targets suggests at most 66.",
+          "Id: Gm and Gds are not compared with the DC data\u0027s own slopes, which include the trap states\u0027 response.",
+          "Id: DC I\u2013V error 1.03 % of its range over 150 point(s) (trained on)."
+        ]
+      },
+      "Data": "276a6d943b94ed98"
+    },
+    "Charge": {
+      "Network": "89106ccf150fea44",
+      "Settings": {},
+      "Result": {
+        "Constituents": {
+          "Qg": {
+            "Method": "ANN",
+            "Inputs": [
+              "vgs",
+              "vds",
+              "T"
+            ],
+            "Network": "Qg",
+            "Activation": "Tanh",
+            "Domain": {
+              "Polygon": [
+                [
+                  -2.0000000395896,
+                  0.49999990519539994
+                ],
+                [
+                  0.14647517579945324,
+                  0.1324708753983821
+                ],
+                [
+                  0.15824070539937554,
+                  0.1606368401981535
+                ],
+                [
+                  -0.04460597819928558,
+                  14.175034173268692
+                ],
+                [
+                  -0.24424248419838795,
+                  14.415298295266743
+                ],
+                [
+                  -0.5267871153970832,
+                  14.696479329664461
+                ],
+                [
+                  -0.8399351809955765,
+                  14.904397596862774
+                ],
+                [
+                  -1.2030506057937398,
+                  14.992697034462058
+                ],
+                [
+                  -1.60002952839168,
+                  14.999929310661999
+                ],
+                [
+                  -1.9999999999895999,
+                  14.999999999861998
+                ]
+              ],
+              "Box": {
+                "T": [
+                  25,
+                  103.50303605037001
+                ]
+              }
+            }
+          },
+          "Qd": {
+            "Method": "ANN",
+            "Inputs": [
+              "vgs",
+              "vds",
+              "T"
+            ],
+            "Network": "Qd",
+            "Activation": "Tanh",
+            "Domain": {
+              "Polygon": [
+                [
+                  -2.0000000395896,
+                  0.49999990519539994
+                ],
+                [
+                  0.14647517579945324,
+                  0.1324708753983821
+                ],
+                [
+                  0.15824070539937554,
+                  0.1606368401981535
+                ],
+                [
+                  -0.04460597819928558,
+                  14.175034173268692
+                ],
+                [
+                  -0.24424248419838795,
+                  14.415298295266743
+                ],
+                [
+                  -0.5267871153970832,
+                  14.696479329664461
+                ],
+                [
+                  -0.8399351809955765,
+                  14.904397596862774
+                ],
+                [
+                  -1.2030506057937398,
+                  14.992697034462058
+                ],
+                [
+                  -1.60002952839168,
+                  14.999929310661999
+                ],
+                [
+                  -1.9999999999895999,
+                  14.999999999861998
+                ]
+              ],
+              "Box": {
+                "T": [
+                  25,
+                  103.50303605037001
+                ]
+              }
+            }
+          }
+        },
+        "Arrays": "9f6133dbb21bb636c02f5488bc030d3e",
+        "Anchor": [
+          0.14647517579945324,
+          0.1324708753983821
+        ],
+        "Errors": {
+          "C11": [
+            3.402683882964289E-16,
+            0.01958867630891699
+          ],
+          "C12": [
+            2.530080505471627E-16,
+            0.0073230054957802845
+          ],
+          "C21": [
+            1.7337010293193004E-16,
+            0.004986290258257382
+          ],
+          "C22": [
+            2.2871132389346587E-16,
+            0.003315392420733106
+          ]
+        },
+        "Report": [
+          "Qd is trap-independent: there are no pulsed S-parameters.",
+          "anchor (0, 0) V is outside the data; charges are zero at (0.146, 0.132) V.",
+          "Qg: the network has 113 weights for 206 targets; one weight per ten targets suggests at most 20.",
+          "Qg: held-out \u2202Q/\u2202v error 0.086 % over 22 point(s).",
+          "Qd: the network has 113 weights for 206 targets; one weight per ten targets suggests at most 20.",
+          "Qd: held-out \u2202Q/\u2202v error 0.0849 % over 22 point(s).",
+          "C11: RMS error 1.96 % of its range.",
+          "C12: RMS error 0.732 % of its range.",
+          "C21: RMS error 0.499 % of its range.",
+          "C22: RMS error 0.332 % of its range."
+        ]
+      },
+      "Data": "276a6d943b94ed98"
+    }
+  }
+}
