@@ -5,7 +5,7 @@
 //   · the schematic view is the topology itself, its VAR block removed: what the VAR held becomes the cell's parameter
 //     interface, so an instance binds the values and the drawing keeps reading them by name;
 //   · the parameters, in the .ccell, default to the fitted values — or, for a family, the geometry parameter first
-//     (defaulting to the held-out geometry, the one the family was checked against) and every element value an
+//     (defaulting to the held-out geometry, the one the family was checked against, inside the range) and every element value an
 //     expression of it, wrapped in validrange(…) so a geometry outside the training range warns at elaboration;
 //   · the symbol is the auto-generated N-pin box (AutoSymbolGenerator, odd pins left, even right), or a .csym the user
 //     chooses, whose pin count must match.
@@ -56,7 +56,8 @@ public static class PassiveCellExport
         string g = $"validrange({geo},{R(family.Lo)},{R(family.Hi)})";
         var parameters = new List<CcellParameter>
         {
-            new() { Name = geo, DefaultExpression = R(family.HeldOutGeometry), ShowOnSchematic = true },
+            // A held-out geometry the user put at an end lies outside the range; the default never warns.
+            new() { Name = geo, DefaultExpression = R(Math.Clamp(family.HeldOutGeometry, family.Lo, family.Hi)), ShowOnSchematic = true },
         };
         foreach (var v in network.Variables)
         {

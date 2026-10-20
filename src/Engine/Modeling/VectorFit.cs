@@ -80,6 +80,8 @@ public static class VectorFit
         int nf = frequenciesHz.Length, nr = responses.Count;
         if (order < 1) throw new ArgumentOutOfRangeException(nameof(order), "The order is at least 1.");
         if (nf < 2 || nr < 1) throw new ArgumentException("A fit needs at least two samples of one response.");
+        if (order > MaxOrder(nf, settings))
+            throw new ArgumentOutOfRangeException(nameof(order), $"{nf} samples determine an order of at most {MaxOrder(nf, settings)}.");
         foreach (var r in responses)
             if (r.Length != nf) throw new ArgumentException("Every response has one value per frequency.");
         double fMax = frequenciesHz.Max(), fMin = frequenciesHz.Min();
@@ -130,19 +132,27 @@ public static class VectorFit
                                              RunControl? rc = null)
     {
         VectorFitResult? best = null;
-        rc?.BeginStage("Vector fit", maxOrder, "order(s)");
+        maxOrder = Math.Min(maxOrder, MaxOrder(frequenciesHz.Length, settings ?? VectorFitSettings.Default));
+        rc?.BeginStage("Vector fit", Math.Max(maxOrder, 0), "order(s)");
         for (int n = 1; n <= maxOrder; n++)
         {
             rc?.ThrowIfCancellationRequested();
             VectorFitResult r;
             try { r = Fit(frequenciesHz, responses, n, settings, weights); }
-            catch (ArithmeticException) { continue; }
+            catch (ArithmeticException) { rc?.TickStage(); continue; }
             rc?.TickStage();
             if (best is null || r.RelativeError < best.RelativeError) best = r;
             if (r.RelativeError <= tolerance) return r;
         }
         return best ?? throw new ArithmeticException("No order could be fitted.");
     }
+
+    /// <summary>
+    /// The highest order <paramref name="samples"/> frequencies determine: a relocation's least squares for one response
+    /// has two real rows per sample and 2n + (constant) + (proportional) unknowns, and must not be under-determined.
+    /// </summary>
+    public static int MaxOrder(int samples, VectorFitSettings settings) =>
+        (2 * samples - (settings.Constant ? 1 : 0) - (settings.Proportional ? 1 : 0)) / 2;
 
     // ── Poles ─────────────────────────────────────────────────────────────────
 

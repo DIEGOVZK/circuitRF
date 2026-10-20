@@ -3058,3 +3058,8 @@ problem always did, and the offset from that one value. Problems whose values va
   (responses × poles)²; triangularising each response's rows alone and stacking only σ's rows of R is the same solution.
   Measured on a non-rational 2-port that climbs to order 12 for both Y and Z: 8.9 s → 0.7 s. Iterations default to 15:
   exact data converges in a handful, and data that is not rational never meets the pole tolerance at all.
+- **An order the samples do not determine crashed `FitByError`** (review, 2026-10-20). A relocation's least squares
+  for one response has `2·nf` real rows and `2n + c` unknowns (`c` the constant and proportional terms), and an
+  under-determined one read past the end of R — an `IndexOutOfRangeException`, which the order loop's
+  `ArithmeticException` catch does not take. Noisy data never meets the 1e-3 tolerance and walks to order 12, so an
+  11-point block ended its analysis there. `VectorFit.MaxOrder(nf)` caps the search and `Fit` refuses beyond it.

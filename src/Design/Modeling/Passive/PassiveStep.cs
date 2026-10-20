@@ -304,7 +304,8 @@ public static class PassiveStep
         var block = s.Family is null ? Single(blocks, s) : blocks.OrderBy(b => b.Geometry).ElementAt((blocks.Count - 1) / 2);
         var drawn = s.Topology is { } t && t.EndsWith(".csch", StringComparison.OrdinalIgnoreCase)
             ? new[] { PassiveNetwork.Load(Resolve(cmcPath, t)) } : [];
-        return PassiveFit.Propose(block, PassiveAnalysis.Run(block, rc), s.Fit, drawn, notes, rc);
+        // The step's variable settings are the drawn topology's (FitFile fits it with them), not the library's.
+        return PassiveFit.Propose(block, PassiveAnalysis.Run(block, rc), s.Fit, drawn, notes, rc, s.Variables);
     }
 
     /// <summary>

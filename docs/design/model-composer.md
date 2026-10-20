@@ -1171,15 +1171,18 @@ of the normalised geometry `x = (g − mid)/half` over the training range: a pol
 form within 2 % of the best winning; a law that leaves the variable's bounds anywhere in the range is inadmissible, as
 is a non-monotone one when `Monotone` is set. (3) Every law's coefficients are refined together by LM against every
 training block. (4) The held-out geometry — the middle one, `sorted[(n−1)/2]`, unless named — is predicted and
-compared; it never trains. A family needs three training geometries besides it. Locked variables stay constant; a tie
-holds exactly through the laws.
+compared; it never trains. A named one at an end of the range is an extrapolation and is predicted as one — the laws
+as they are, without the bounds the fit holds them to. A family needs three training geometries besides it. Locked
+variables stay constant — one locked with no value is held, at every geometry, where the first geometry's fit put it;
+a tie holds exactly through the laws.
 
 ### 15.7 Export as a cell (`PassiveCellExport`, R-mc12-7)
 
 Through `CellCreate.Create` (schematic view) and `CellCreate.WriteSymbolView`, which now takes the symbol to write —
 the auto-generated N-pin box, or a chosen `.csym` whose pin count matches. The schematic is the topology with its VAR
 block removed; the variables become `.ccell` parameters in base SI with the base unit (Ω, H, F), defaulting to the
-fitted values. A family's cell has the geometry parameter first, defaulting to the held-out geometry, and every
+fitted values. A family's cell has the geometry parameter first, defaulting to the held-out geometry (the nearer end
+of the range when the held-out one lies outside it), and every
 element an expression of it through **`validrange(g, lo, hi)`** — a new built-in that returns its value unchanged and,
 outside the range, posts one elaboration warning naming the instance, the parameter, its value and the range
 (`Evaluator.Warn`, pointed by the elaborator at the netlist's warnings). It is not a clamp: outside the range the

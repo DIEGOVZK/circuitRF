@@ -20975,3 +20975,20 @@ for the currents to be fitted again. `AdjointExtra` also rebuilt `PointsWithT` (
   `Evaluator.Warn`, which `Elaborator.Elaborate` points at the netlist's warnings, deduplicated by message.
 - **`NetworkFitProblem`'s search, polish and identifiability report moved to `BoxLeastSquares`** unchanged, so the passive
   fit is MC-5's machinery rather than a copy of it; the MC-5 gates pass unchanged.
+
+### MC-12 review (2026-10-20)
+
+- **A held-out geometry the user puts at an end of the range is an extrapolation.** `FamilyFit` evaluated it through
+  the same bounded `At` the joint refinement uses, which throws `ArithmeticException` when a law leaves a variable's
+  fit bounds — so naming the last geometry could end the run with an unhandled arithmetic error instead of a held-out
+  |ΔS|. The held-out prediction now takes the laws unbounded, and a network that does not solve there is a refusal
+  naming the range. The exported family cell defaulted its geometry to the held-out value, so such a cell warned
+  "outside the range" at every placement; the default is now clamped into `[Lo, Hi]`.
+- **A variable locked with no value is locked at its START, and a family's starts differ per geometry.** Each geometry
+  after the first could also start from its own analytic seed, so the "locked" value moved between geometries while
+  the family cell carried the first's. After the first fit such variables are pinned (`Value`) to it.
+- **`ProposeFile` fitted a user-drawn topology without the step's `Variables`**, though `FitFile` fits it with them:
+  its bounds, locks and ties were ignored, and a drawn variable no R, L or C carries (which has no default `Min`) made
+  the drawn topology refuse every time. `PassiveFit.Propose` takes `drawnVariables` for the drawn networks.
+- The joint refinement weighted every block's residual by the first block's frequency axis; each block now takes its
+  own.

@@ -188,13 +188,14 @@ public static class PassiveFit
     /// <summary>
     /// Ranked proposals for <paramref name="block"/> (R-mc12-4): every library topology with its port count, each with
     /// analytic starting values and a short seeded fit, plus each of <paramref name="drawn"/> (user topologies, from their
-    /// own values), ranked by <see cref="Aic"/>. A candidate that cannot be fitted is left out with a note in
-    /// <paramref name="notes"/>.
+    /// own values and <paramref name="drawnVariables"/>' bounds, locks and ties), ranked by <see cref="Aic"/>. A candidate
+    /// that cannot be fitted is left out with a note in <paramref name="notes"/>.
     /// </summary>
     public static IReadOnlyList<PassiveProposal> Propose(PassiveBlock block, PassiveAnalysisResult analysis,
                                                          PassiveFitSettings? settings = null,
                                                          IEnumerable<PassiveNetwork>? drawn = null,
-                                                         List<string>? notes = null, RunControl? rc = null)
+                                                         List<string>? notes = null, RunControl? rc = null,
+                                                         IReadOnlyDictionary<string, NetworkVariableSettings>? drawnVariables = null)
     {
         settings ??= PassiveFitSettings.Default;
         var fits = new List<(string Title, PassiveFitResult Fit)>();
@@ -215,7 +216,7 @@ public static class PassiveFit
             string name = Path.GetFileName(d.SchematicPath);
             rc?.BeginStage($"Proposal: {name}", 0, "evaluation(s)");
             if (d.Ports != block.Ports) { notes?.Add($"{name}: it has {d.Ports} pins and the block {block.Ports} ports."); continue; }
-            try { fits.Add((name, Fit(block, d, settings, quick: true, rc: rc))); }
+            try { fits.Add((name, Fit(block, d, settings, drawnVariables, quick: true, rc: rc))); }
             catch (ModelingException ex) { notes?.Add($"{name}: {ex.Message}"); }
         }
         return [.. fits.OrderBy(x => x.Fit.Aic).Select((x, i) => new PassiveProposal(i + 1, x.Title, x.Fit, i < Offered))];

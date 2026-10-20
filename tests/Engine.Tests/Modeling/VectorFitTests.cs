@@ -61,4 +61,17 @@ public sealed class VectorFitTests
         var byError = VectorFit.FitByError(f, data, 1e-6, 10);
         Assert.Equal(Poles.Length, byError.Order);
     }
+
+    [Fact]
+    public void FewSamples_OrderCappedAtWhatTheyDetermine()
+    {
+        var (f, data) = Samples();
+        double[] few = [.. f.Where((_, k) => k % 50 == 0)];          // 5 samples: order 4 at most
+        var sub = data.Select(d => d.Where((_, k) => k % 50 == 0).ToArray()).ToArray();
+
+        var fit = VectorFit.FitByError(few, sub, 1e-12, 12);
+
+        Assert.True(fit.Order <= VectorFit.MaxOrder(few.Length, VectorFitSettings.Default));
+        Assert.Throws<ArgumentOutOfRangeException>(() => VectorFit.Fit(few, sub, 5));
+    }
 }

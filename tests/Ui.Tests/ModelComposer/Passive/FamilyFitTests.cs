@@ -48,4 +48,25 @@ public sealed class FamilyFitTests(ITestOutputHelper output)
         var at = family.ValuesAt(3.5);
         Assert.Equal(at["Cox1"], at["Cox2"]);
     }
+
+    [Fact]
+    public void HeldOutAtTheEnd_PredictedAsAnExtrapolation_ExportDefaultsInsideTheRange()
+    {
+        double[] turns = [1, 2, 3, 4, 5];
+        Dictionary<string, double> Truth(double t) => new() { ["Rs"] = 0.5 + 0.4 * t, ["Ls"] = 0.3e-9 * t * t, ["Cp1"] = 0.05e-12 * t, ["Cp2"] = 0.07e-12 * t };
+        var blocks = turns.Select(t => SyntheticPassiveData.FromTopology("pi", Truth(t), F, $"pi_{t}", t)).ToList();
+
+        var family = FamilyFit.Run(blocks, PassiveTopologies.Find("pi"), new FamilySettings { Geometry = "turns", HeldOut = 5 });
+
+        Assert.Equal((1.0, 4.0, 5.0), (family.Lo, family.Hi, family.HeldOutGeometry));
+        Assert.True(double.IsFinite(family.HeldOutMax));
+        string lib = Path.Combine(Path.GetTempPath(), "mc12-family-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(lib);
+        try
+        {
+            var export = PassiveCellExport.ExportFamily(lib, "PiEnd", "pi", family);
+            Assert.Equal("4", export.Parameters[0].DefaultExpression);
+        }
+        finally { Directory.Delete(lib, true); }
+    }
 }

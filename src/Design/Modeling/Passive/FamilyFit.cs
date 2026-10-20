@@ -14,6 +14,7 @@
 // says so at elaboration when a schematic asks for a value outside it.
 
 using System.Globalization;
+using System.Numerics;
 using System.Text.Json.Nodes;
 using CircuitRF.Engine;
 using CircuitRF.Engine.Modeling;
@@ -179,11 +180,16 @@ public static class FamilyFit
         foreach (var b in train)
         {
             rc?.ThrowIfCancellationRequested();
+            var own = seed?.Invoke(PassiveAnalysis.Run(b, rc));   // its vector fit has a stage of its own; this one follows
             rc?.BeginStage($"{geo} = {G(b.Geometry)}", 0, "evaluation(s)");
-            var own = seed?.Invoke(PassiveAnalysis.Run(b, rc));
             PassiveFitResult best;
             if (prev is null)
+            {
                 best = PassiveFit.Fit(b, network, settings, variables, own, positive, PassiveFit.Depth.Quick, topology, rc);
+                // A variable locked with no value is locked at its start, and a geometry's own analytic start differs from
+                // the first's: every geometry holds it where the first did, the value the family's cell carries.
+                variables = PinLocked(variables, best.Values);
+            }
             else
             {
                 best = PassiveFit.Fit(b, network, settings, variables, prev.Values, positive, PassiveFit.Depth.Polish, topology, rc);
@@ -224,7 +230,6 @@ public static class FamilyFit
 
         // 3. The joint refinement over every law's coefficients.
         rc?.BeginStage("Joint refinement", 0, "evaluation(s)");
-        var w = settings.Weights(train[0].FrequenciesHz);
         var coords = new List<FitCoordinate>();
         var owner = new List<(int Law, int K)>();
         for (int j = 0; j < laws.Count; j++)
@@ -235,6 +240,7 @@ public static class FamilyFit
                 double cval = laws[j].Coefficients[k];
                 double span = 4 * Math.Max(Math.Abs(cval), laws[j].Form == FamilyForm.Rational && k == 2 ? 0.25 : 0.1 * scale);
                 if (laws[j].Form == FamilyForm.Rational && k == 2) span = Math.Min(span, 0.95 - Math.Abs(cval) + 1e-12);
+                if (!(span > 0)) span = 1e-30;                // a value fitted to exactly 0 everywhere: still a box, not a point
                 coords.Add(new FitCoordinate(coords.Count, $"{laws[j].Variable}.c{k}", NetworkElementKind.Other, cval - span, cval + span, false));
                 owner.Add((j, k));
             }
@@ -245,13 +251,13 @@ public static class FamilyFit
             for (int i = 0; i < coef.Length; i++) list[owner[i].Law].Coefficients[owner[i].K] = coef[i];
             return list;
         }
-        IReadOnlyDictionary<string, double> At(List<ElementLaw> ls, double g)
+        IReadOnlyDictionary<string, double> At(List<ElementLaw> ls, double g, bool strict = true)
         {
             var free = new double[fv.Free.Length];
             for (int j = 0; j < free.Length; j++)
             {
                 double val = ls[j].Evaluate(g);
-                if (!(val >= fv.Free[j].Min && val <= fv.Free[j].Max)) throw new ArithmeticException();
+                if (strict && !(val >= fv.Free[j].Min && val <= fv.Free[j].Max)) throw new ArithmeticException();
                 free[j] = val;
             }
             return fv.Named(fv.Compose(free));
@@ -259,7 +265,8 @@ public static class FamilyFit
         double[] Residual(double[] coef)
         {
             var ls = Laws(coef);
-            var parts = train.Select(b => PassiveFit.Residual(network.S(b.FrequenciesHz, b.Z0, At(ls, b.Geometry)), b, w)).ToList();
+            var parts = train.Select(b => PassiveFit.Residual(network.S(b.FrequenciesHz, b.Z0, At(ls, b.Geometry)), b,
+                                                              settings.Weights(b.FrequenciesHz))).ToList();
             return [.. parts.SelectMany(p => p)];
         }
         var lsq = new BoxLeastSquares([.. coords], Residual, new EvaluationCounter());
@@ -268,8 +275,15 @@ public static class FamilyFit
         laws = Laws(refined.Free);
         rc?.ThrowIfCancellationRequested();
 
-        // 4. The held-out geometry, and the training error through the laws.
-        var heldS = network.S(held.FrequenciesHz, held.Z0, At(laws, held.Geometry));
+        // 4. The held-out geometry, and the training error through the laws. A held-out geometry the user put at an end of
+        //    the range is an extrapolation, and is predicted as one: the laws as they are, whatever bounds they cross.
+        Complex[][,] heldS;
+        try { heldS = network.S(held.FrequenciesHz, held.Z0, At(laws, held.Geometry, strict: false)); }
+        catch (Exception ex) when (BoxLeastSquares.Failure(ex))
+        {
+            throw new ModelingException("HeldOut", $"the laws do not solve at the held-out {geo} = {G(held.Geometry)} ({ex.Message}); " +
+                                                   $"hold out a geometry inside {G(lo)} to {G(hi)}.");
+        }
         var (heldRms, heldMax) = PassiveFit.DeltaS(heldS, held);
         double Rms(IEnumerable<double> r) { var a = r.ToArray(); return Math.Sqrt(a.Sum(v => v * v) / a.Length); }
         double independent = Rms(per.Select(p => p.Item2.RmsDeltaS));
@@ -286,6 +300,16 @@ public static class FamilyFit
         lines.AddRange(notes);
         return new FamilyFitResult(topology, family, lo, hi, per, laws, locked, ties, held.Geometry, heldRms, heldMax,
                                    independent, training, lines);
+    }
+
+    /// <summary>Every variable locked without a value, given <paramref name="values"/>' value for it.</summary>
+    private static IReadOnlyDictionary<string, NetworkVariableSettings> PinLocked(
+        IReadOnlyDictionary<string, NetworkVariableSettings> variables, IReadOnlyDictionary<string, double> values)
+    {
+        var d = new Dictionary<string, NetworkVariableSettings>(variables, StringComparer.Ordinal);
+        foreach (var (name, v) in variables)
+            if (v is { Lock: true, Tie: null, Value: null } && values.TryGetValue(name, out double x)) d[name] = v with { Value = x };
+        return d;
     }
 
     // ── Laws ──────────────────────────────────────────────────────────────────
