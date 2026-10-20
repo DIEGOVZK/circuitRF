@@ -225,7 +225,63 @@ public sealed partial class ModelComposerViewModel
             row.SetTips(m => usable is { } u && Enum.TryParse<ChargeMethod>(m, out var method) ? ChargeFit.Refusal(method, u.Points, u.SpansArea) : null);
         ChargeSeed = s.Seed.ToString(CultureInfo.InvariantCulture);
         DriftCharge = s.Drift is not null;
+        RefreshTypedCharges(s);
     }
+
+    // ── Typed charges (MC-18 R-mc18-5) ───────────────────────────────────────
+
+    /// <summary>True when the document has no S data, or capacitances are typed: the four typed fields show in place of the
+    /// method picker, and Run writes them.</summary>
+    [ObservableProperty] private bool _chargesTyped;
+    /// <summary>True when capacitances are typed beside S data — the fit refuses; Fit to the S data clears them.</summary>
+    [ObservableProperty] private bool _typedBesideData;
+    [ObservableProperty] private string _typedCgs = "";
+    [ObservableProperty] private string _typedCgd = "";
+    [ObservableProperty] private string _typedCds = "";
+    [ObservableProperty] private string _typedCm = "";
+
+    /// <summary>The datasheet relations, the typed fields' tooltip.</summary>
+    public string TypedChargesTip => $"No S data: the charges are these constant capacitances (0 for none). From a datasheet: {TypedCharges.Datasheet}.";
+
+    private void RefreshTypedCharges(ChargeFitSettings s)
+    {
+        // Until the data is open, its kinds say whether there is any S to fit to.
+        bool data = Loaded.Intrinsic.Count > 0
+            ? ChargeFit.HasData(Document, new IntrinsicResult(Loaded.Intrinsic, []))
+            : Document.DataSets.Any(d => d.Kind is DataSetKind.SParams or DataSetKind.PulsedSParams or DataSetKind.SimulatedTables);
+        ChargesTyped = !data || s.Typed is not null;
+        TypedBesideData = data && s.Typed is not null;
+        var t = s.Typed ?? new TypedCharges();
+        TypedCgs = ModelValueFormat.Eng(t.Cgs, "F");
+        TypedCgd = ModelValueFormat.Eng(t.Cgd, "F");
+        TypedCds = ModelValueFormat.Eng(t.Cds, "F");
+        TypedCm = ModelValueFormat.Eng(t.Cm, "F");
+    }
+
+    partial void OnTypedCgsChanged(string value) => EditTyped("Cgs", value, (t, v) => t with { Cgs = v }, signed: false);
+    partial void OnTypedCgdChanged(string value) => EditTyped("Cgd", value, (t, v) => t with { Cgd = v }, signed: false);
+    partial void OnTypedCdsChanged(string value) => EditTyped("Cds", value, (t, v) => t with { Cds = v }, signed: false);
+    partial void OnTypedCmChanged(string value) => EditTyped("Cm", value, (t, v) => t with { Cm = v }, signed: true);
+
+    private void EditTyped(string name, string text, Func<TypedCharges, double, TypedCharges> with, bool signed)
+    {
+        if (_loadingSteps || IsChoosingKind) return;
+        double v = 0;
+        if (text.Trim().Length > 0 && !(ModelValueFormat.TryParse(text, "F", out v) && (signed || v >= 0)))
+        {
+            Error($"Charge: '{text}' is not {(signed ? "a" : "a non-negative")} capacitance for {name}.");
+            return;
+        }
+        var s = ChargeFit.Settings(Document);
+        var next = with(s.Typed ?? new TypedCharges(), v);
+        if (next == s.Typed) return;
+        EditPart($"Charge: {name} {text}", ChargeFit.Settings, ChargeFit.WithSettings, s with { Typed = next });
+    }
+
+    /// <summary>Clears the typed capacitances so the charges are fitted to the S data again.</summary>
+    [RelayCommand]
+    private void ClearTypedCharges() =>
+        EditPart("Charge: fit to the S data", ChargeFit.Settings, ChargeFit.WithSettings, ChargeFit.Settings(Document) with { Typed = null });
 
     private void CommitCharge(MethodPickerRow row, string field, string text)
     {

@@ -11,6 +11,9 @@
 //      fitted to its derivatives. Or, as an advanced option, both come from [I11]'s drift decomposition.
 //   4. The report: each capacitance's RMS error against the model's ∂Q/∂v, a table's two-path difference.
 //
+// With no S, Y or capacitance data (MC-18) nothing is fitted: the charges are the Linear template at the capacitances the
+// settings type (zero by default), and typed values beside such data are refused rather than let discard it.
+//
 // The result goes to the .cmc's Steps.Charge; arrays to <name>.cmc-cache/charge/. Cancelled, nothing is written.
 
 using System.Globalization;
@@ -142,6 +145,7 @@ public static class ChargeFit
     public static string? Summary(CmcDocument doc)
     {
         if (Record(doc) is not { } r) return null;
+        if (r.Typed is { } typed) return $"typed · {typed.Text}";
         var s = Settings(doc);
         var parts = new List<string>
         {
@@ -200,7 +204,7 @@ public static class ChargeFit
         var data = new CmcCache(cmcPath).Open(doc, rc).Data;
         var intrinsic = new IntrinsicExtraction(cmcPath).Run(doc, data, rc: rc);
         var settings = Settings(doc);
-        var current = settings.Drift is null ? null : CurrentFit.Load(cmcPath, doc)
+        var current = settings.Drift is null || !HasData(doc, intrinsic) ? null : CurrentFit.Load(cmcPath, doc)
             ?? throw new ModelingException(StepName, "the drift charge reads the fitted Id; fit the currents first.");
         var result = Run(doc, data, intrinsic, settings, current, rc);
         rc?.ThrowIfCancellationRequested();
@@ -269,14 +273,19 @@ public static class ChargeFit
         catch (ModelingException) { return null; }
     }
 
+    /// <summary>The sets the capacitances come from: those the settings name, or every set with intrinsic capacitances.</summary>
+    private static List<CmcDataSet> Chosen(CmcDocument doc, IntrinsicResult intrinsic, ChargeFitSettings settings) =>
+        settings.DataSets.Count > 0
+            ? [.. settings.DataSets.Select(n => doc.DataSets.FirstOrDefault(s => s.Name == n)
+                                               ?? throw new ModelingException(n, "the charge step names it, and the document has no such data set."))]
+            : doc.DataSets.Where(s => intrinsic.Sets.TryGetValue(s.Name, out var d) && d.Contains("C11")).ToList();
+
     /// <summary>The capacitances of the chosen sets at their intrinsic points, with each point's flatness weight. Whether
     /// there are enough for the chosen methods is the fit's question (<see cref="Require"/>).</summary>
     public static ChargeData Gather(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data, IntrinsicResult intrinsic,
                                     ChargeFitSettings settings, List<string> report)
-    {        var chosen = settings.DataSets.Count > 0
-            ? [.. settings.DataSets.Select(n => doc.DataSets.FirstOrDefault(s => s.Name == n)
-                                               ?? throw new ModelingException(n, "the charge step names it, and the document has no such data set."))]
-            : doc.DataSets.Where(s => intrinsic.Sets.TryGetValue(s.Name, out var d) && d.Contains("C11")).ToList();
+    {
+        var chosen = Chosen(doc, intrinsic, settings);
         if (chosen.Count == 0)
             throw new ModelingException(StepName, "there is no S-parameter data set to take the capacitances from.");
         // MC-10 R-mc10-5: with traps, Qd takes the trap states when pulsed S-parameters give every enabled state a level.
@@ -408,8 +417,65 @@ public static class ChargeFit
                                       ChargeFitSettings settings, CurrentFitResult? current = null, RunControl? rc = null)
     {
         rc?.ThrowIfCancellationRequested();
+        var chosen = Chosen(doc, intrinsic, settings);
+        if (chosen.Count == 0) return Typed(settings);
+        if (settings.Typed is not null)
+            throw new ModelingException(StepName,
+                $"typed capacitances and S data ({string.Join(", ", chosen.Select(c => c.Name))}) are both given; typing would discard the data. Clear the typed values to fit to it.");
         var report = new List<string>();
         return Run(Gather(doc, data, intrinsic, settings, report), settings, current, report, rc);
+    }
+
+    // ── Typed charges (MC-18) ─────────────────────────────────────────────────
+
+    /// <summary>What the step, the export and <c>model explain</c> say of a model whose charges are all zero (R-mc18-2).</summary>
+    public const string ZeroLine = "the charges are zero: S-parameters and harmonic balance see the currents alone.";
+
+    /// <summary>Whether the document has data the charges could be fitted to — S, Y or capacitances at an intrinsic point.
+    /// Without it the step writes the typed charges (R-mc18-1).</summary>
+    public static bool HasData(CmcDocument doc, IntrinsicResult intrinsic) => Chosen(doc, intrinsic, Settings(doc)).Count > 0;
+
+    /// <summary>
+    /// The charges the settings type (R-mc18-1): MC-17's Linear constituents at <see cref="TypedCharges.Matrix"/>, zero at the
+    /// anchor like every fitted charge. Nothing is fitted, so there are no arrays, no errors and no points.
+    /// </summary>
+    public static ChargeFitResult Typed(ChargeFitSettings settings)
+    {
+        var typed = settings.Typed ?? new TypedCharges();
+        var (c11, c12, c21, c22) = typed.Matrix;
+        var anchor = settings.Anchor ?? (0, 0);
+        var linear = ChargeTemplates.Find(ChargeTemplates.Linear)!;
+        Constituent Charge(bool gate, string k1, double v1, string k2, double v2) =>
+            Constituent.Equation($"({linear.Expression(gate)})-Qanchor", Inputs,
+                                 [(k1, v1), (k2, v2), ("Qanchor", v1 * anchor.Vgs + v2 * anchor.Vds)]);
+        var report = new List<string> { $"no S data: the charges are typed — {typed.Text}." };
+        if (typed.IsZero) report.Add(ZeroLine);
+        var record = new ChargeFitRecord
+        {
+            Qg = Charge(true, "C11", c11, "C12", c12), Qd = Charge(false, "C21", c21, "C22", c22), Anchor = anchor,
+            Typed = typed, Report = report,
+        };
+        return new ChargeFitResult(settings, record, new Dictionary<string, DataCube>(StringComparer.Ordinal));
+    }
+
+    /// <summary>The points a typed model's check reads its model over and drives at: the intrinsic I–V points the current
+    /// step trains on, with no capacitances — there are none measured.</summary>
+    internal static ChargeData TypedRegion(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data, IntrinsicResult intrinsic)
+    {
+        var sets = CurrentFit.ChosenIv(doc, CurrentFit.Settings(doc));
+        var x = new List<(double, double)>();
+        foreach (var set in sets)
+        {
+            if (!intrinsic.Sets.TryGetValue(set.Name, out var ds) || !ds.Contains("Vgsi")) continue;
+            double[] vgs = ds["Vgsi"].RealValues, vds = ds["Vdsi"].RealValues;
+            double[]? ex = ds.Contains("Excluded") ? ds["Excluded"].RealValues : null;
+            for (int p = 0; p < vgs.Length; p++)
+                if ((ex is null || ex[p] == 0) && double.IsFinite(vgs[p]) && double.IsFinite(vds[p])) x.Add((vgs[p], vds[p]));
+        }
+        if (x.Count == 0) throw new ModelingException("Check", "there is no intrinsic I–V point to read the typed charges at.");
+        var zero = new double[x.Count];
+        var temps = CurrentFit.Temperatures(sets, data);
+        return ChargeData.Of(x, zero, zero, zero, zero, temperatureC: temps.Count > 0 ? temps[0] : 25.0);
     }
 
     /// <summary>Fits both charges to <paramref name="data"/> directly.</summary>
@@ -684,10 +750,13 @@ public static class ChargeFit
     /// <summary>
     /// What the <c>.cmodel</c>'s provenance and <c>model explain</c> say of linear charges (R-mc17-5):
     /// <c>Qg, Qd: Linear from 1 bias point(s)</c> — or the one charge that is — so such a model is never mistaken for a
-    /// nonlinear one. Null when neither charge is linear.
+    /// nonlinear one; typed charges (R-mc18-4): <c>Qg, Qd: typed (Cgs 300 fF, Cgd 50 fF, Cds 80 fF, Cm 0 F)</c>. Null when
+    /// neither charge is linear.
     /// </summary>
     public static string? LinearProvenance(ChargeFitSettings settings, ChargeFitRecord record)
     {
+        // R-mc18-4: typed charges say so, with the values typed.
+        if (record.Typed is { } typed) return $"Qg, Qd: typed ({typed.Text})";
         if (settings.Drift is not null) return null;
         var linear = new[] { ("Qg", settings.Qg), ("Qd", settings.Qd) }
             .Where(c => c.Item2.Method == ChargeMethod.Equation && ChargeTemplates.IsLinear(c.Item2.Template))

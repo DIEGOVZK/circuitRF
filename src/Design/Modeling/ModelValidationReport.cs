@@ -219,8 +219,13 @@ public static class ModelValidationReport
         if (options.Charge || options.CapacitanceSlices)
         {
             ChargeData? charges = null;
-            try { charges = ChargeFit.Gather(doc, data, ctx.Intrinsic, ChargeFit.Settings(doc), []); }
-            catch (ModelingException ex) { sections.Add(Note("Charge", $"Charge: not reported — {ex.Message}")); }
+            // Typed charges (MC-18) are constants with no measurement to draw them against: one line says what they are.
+            if (ChargeFit.Record(doc)?.Typed is { } typed) sections.Add(Note("Charge", $"Charge: typed — {typed.Text}."));
+            else
+            {
+                try { charges = ChargeFit.Gather(doc, data, ctx.Intrinsic, ChargeFit.Settings(doc), []); }
+                catch (ModelingException ex) { sections.Add(Note("Charge", $"Charge: not reported — {ex.Message}")); }
+            }
             if (charges is not null)
             {
                 if (options.Charge && charges.SpansArea)

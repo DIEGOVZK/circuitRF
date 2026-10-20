@@ -44,7 +44,7 @@ line can carry.
 | D9 | `N0`/`W0` are recorded; `N` scales the core by `N/N0` and each network variable by its rule. `M` keeps its meaning. |
 | D10 | Traps are a setting — `None`, `CaptureEmission`, `Custom` — behind one contract. |
 | D11 | Data sources are referenced, relative to the `.cmc`, and cached. |
-| D12 | Active exports a `.cmodel` with symbol, rules, temperature, traps and provenance; passive exports a cell through `CellCreate`. |
+| D12 | Active exports a `.cmodel` with symbol, rules, temperature, traps and provenance; passive exports a cell through `CellCreate`. Export needs the charge step's record, not fitted charges: with DC I–V alone the charges are typed constant capacitances, or zero (MC-18). |
 | D13 | Every long operation is a `src/Design/Modeling` function taking a `RunControl`. |
 | D14 | `src/Core/Devices/Composed/` (device, format, evaluators), `src/Engine/Modeling/` (numerics), `src/Design/Modeling/` (document and flows), `src/Ui/ModelComposer/` (window only). No new project. |
 | D15 | Every operation has a `model` CLI noun calling the same function as the GUI. |
@@ -85,7 +85,7 @@ line can carry.
   },
   "Symbol": "symbols/gan.csym",
   "Provenance": { "Created": "…", "CircuitRfVersion": "…", "Sources": [ { "Path": "…", "Sha256": "…" } ], "SettingsDigest": "…",
-                  "Charges": "…" }                       // only with linear charges (MC-17)
+                  "Charges": "…" }                       // only with linear (MC-17) or typed (MC-18) charges
 }
 ```
 
@@ -774,6 +774,18 @@ that span no area give `ChargeData` a degenerate domain — the points' extremes
 anchor stays where it was stated, since only an equation, defined everywhere, is fitted to them. The plots skip the
 charge surfaces then, and a C–V slice over one level sweeps a volt either side of it (`ChargeFit.SliceSpan`).
 
+**Typed charges** (MC-18, `ChargeFit.Typed`). With no S, Y or capacitance data — no set `Gather` would take
+capacitances from — nothing is fitted: the step writes `Linear` constituents from `Settings.Typed`, the circuit set
+`Cgs`, `Cgd`, `Cds`, `Cm` (each 0 by default; the three two-terminal values never negative), converted by R-mc17-1's
+relations read backwards (`TypedCharges.Matrix`: `C11 = Cgs + Cgd`, `C12 = −Cgd`, `C21 = Cm − Cgd`, `C22 = Cds + Cgd`)
+and shifted to zero at the anchor. The circuit set is the stored form because it is what a datasheet gives
+(`Cgd = Crss`, `Cgs = Ciss − Crss`, `Cds = Coss − Crss`), and the form bias-dependent datasheet curves will take. The
+record carries `Typed`, no arrays, no errors and `Points` 0; `LinearProvenance` then reads `Qg, Qd: typed (…)` with the
+four values. All four at zero is a legitimate DC-only model and is said (`ChargeFit.ZeroLine`) on the step, at export
+and in `model explain`. `Typed` beside such data is refused naming both — typing would discard it — rather than
+silently preferring either. `fit all` with no S-parameters holds the network at its values with one line
+(`ModelCommands.NetworkHeld`); naming the network step still refuses.
+
 ### 10.3 The drift decomposition (R-mc8-3)
 
 `Qg = QGS(vgs) + QGD(vgd) + Qdrift(vgd, Id)`, `Qd = −QGD(vgd) − (1 − λ)·Qdrift(vgd, Id) + QDS(vds)` ([I11] eq. 3).
@@ -805,7 +817,8 @@ Per capacitance, the RMS of the model's `∂Q/∂v` against it over every point,
 part returns a number and, where it has one, a map; `RunFile`/`Run` do all three for a `.cmc`, read-only. With fewer
 than 4 points across the bias plane (MC-17), (a) is not run — one line naming the point count, `Data` null, not a
 failure — and (b) reads the model over a box a volt either side of the points, where a linear charge's curl is
-exactly zero; (c) is unchanged.
+exactly zero; (c) is unchanged. Typed charges (MC-18) have no data: (a) is not run, and (b) and (c) read the model over
+and at the middle of the current step's intrinsic I–V points (`ChargeFit.TypedRegion`).
 
 - **(a) The data** (`Data`): per row the curl `∂Ci1/∂vds − ∂Ci2/∂vgs` by central differences of a smooth interpolant
   — a network per capacitance by default — normalised by the RMS over the points of `√((t1² + t2²)/2)`, as a map
@@ -1021,7 +1034,7 @@ temporary file and a rename, so a refusal, failure or cancellation leaves no fil
 - **Temperature**: `Single` at the current fit's data temperature unless a constituent reads `T`; then `Range` over the
   plan (or the constituents' own boxes at one temperature).
 - **Refusals**, each naming its field: a Passive document; no `N0`; a stale step (all of them, in one sentence); an
-  unfitted current or charge step, or one whose arrays left the cache; traps modelled and not run; self-heating on and no
+  unfitted current step, a charge step not yet run (fitted or typed), or one whose arrays left the cache; traps modelled and not run; self-heating on and no
   thermal network.
 - **Provenance**: the caller's `Created` (default now, UTC), the build's version without a commit suffix, each source's
   hash from the cache index, and a digest of the network and steps blocks.

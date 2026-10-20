@@ -5,11 +5,13 @@
 //     "Network":  "…",                                   the network digest the step was computed through
 //     "Settings": { "DataSets": ["bias"], "Qg": { "Method": "Table", "Path": "Mean" },
 //                   "Qd": { "Method": "Equation", "Template": "Angelov" }, "Anchor": [0, 0], "FlatnessLimit": 0.1,
-//                   "Drift": { "Lambda": 0, "VdsZero": 0.05 } },
+//                   "Drift": { "Lambda": 0, "VdsZero": 0.05 },
+//                   "Typed": { "Cgs": 3e-13, "Cgd": 5e-14, "Cds": 8e-14, "Cm": 0 } },
 //     "Result":   { "Constituents": { "Qg": { …as model.json writes it… }, "Qd": { … } }, "Arrays": "<key>",
 //                   "Anchor": [vgs, vds],
 //                   "Errors": { "C11": [rms, relative], "C12": …, "C21": …, "C22": … },
-//                   "PathDifference": { "Qg": …, "Qd": … }, "CdsSpread": …, "Points": n, "Report": [ "…" ] } }
+//                   "PathDifference": { "Qg": …, "Qd": … }, "CdsSpread": …, "Points": n,
+//                   "Typed": { "Cgs": …, "Cgd": …, "Cds": …, "Cm": … }, "Report": [ "…" ] } }
 //
 // Every Settings key is optional and written only when it differs from its default. As in Steps.Current, the
 // constituents are recorded exactly as the .cmodel will carry them; their arrays live in
@@ -181,6 +183,55 @@ public sealed record DriftChargeSettings
     }
 }
 
+/// <summary>
+/// Constant capacitances typed rather than fitted (brief-modelcomposer-18 R-mc18-1), in the circuit set a datasheet gives:
+/// <c>Cgd = Crss</c>, <c>Cgs = Ciss − Crss</c>, <c>Cds = Coss − Crss</c>. Each defaults to 0, and all four at 0 is a model
+/// whose small-signal and harmonic-balance behaviour is the currents' alone. The charges they make are MC-17's Linear
+/// constituents, through <see cref="Matrix"/>.
+/// </summary>
+public sealed record TypedCharges(double Cgs = 0, double Cgd = 0, double Cds = 0, double Cm = 0)
+{
+    private static readonly string[] Keys = ["Cgs", "Cgd", "Cds", "Cm"];
+
+    /// <summary>The datasheet relations, as the window's fields and the user page state them.</summary>
+    public const string Datasheet = "Cgd = Crss, Cgs = Ciss − Crss, Cds = Coss − Crss";
+
+    /// <summary>The matrix the Linear charges take (R-mc17-1's relations read backwards): <c>C11 = Cgs + Cgd</c>,
+    /// <c>C12 = −Cgd</c>, <c>C21 = Cm − Cgd</c>, <c>C22 = Cds + Cgd</c>.</summary>
+    public (double C11, double C12, double C21, double C22) Matrix => (Cgs + Cgd, -Cgd, Cm - Cgd, Cds + Cgd);
+
+    public bool IsZero => Cgs == 0 && Cgd == 0 && Cds == 0 && Cm == 0;
+
+    /// <summary><c>Cgs 300 fF, Cgd 50 fF, Cds 80 fF, Cm 0 F</c>.</summary>
+    public string Text =>
+        $"Cgs {ConservationCheck.Si(Cgs, "F")}, Cgd {ConservationCheck.Si(Cgd, "F")}, Cds {ConservationCheck.Si(Cds, "F")}, Cm {ConservationCheck.Si(Cm, "F")}";
+
+    /// <summary>The three two-terminal capacitances are physical and never negative; <c>Cm</c>, a transcapacitance, has
+    /// either sign.</summary>
+    public static TypedCharges Parse(JsonNode node, string f)
+    {
+        var o = Obj(node, f);
+        Only(o, f, Keys);
+        var t = new TypedCharges(Num(o, "Cgs", $"{f}.Cgs") ?? 0, Num(o, "Cgd", $"{f}.Cgd") ?? 0,
+                                 Num(o, "Cds", $"{f}.Cds") ?? 0, Num(o, "Cm", $"{f}.Cm") ?? 0);
+        foreach (var (k, v) in new[] { ("Cgs", t.Cgs), ("Cgd", t.Cgd), ("Cds", t.Cds), ("Cm", t.Cm) })
+            if (!double.IsFinite(v)) throw new CmcFormatException($"{f}.{k}", "it is not a finite number of farads.");
+        foreach (var (k, v) in new[] { ("Cgs", t.Cgs), ("Cgd", t.Cgd), ("Cds", t.Cds) })
+            if (v < 0) throw new CmcFormatException($"{f}.{k}", "it is negative.");
+        return t;
+    }
+
+    public JsonNode ToJson()
+    {
+        var o = new JsonObject();
+        if (Cgs != 0) o["Cgs"] = Cgs;
+        if (Cgd != 0) o["Cgd"] = Cgd;
+        if (Cds != 0) o["Cds"] = Cds;
+        if (Cm != 0) o["Cm"] = Cm;
+        return o;
+    }
+}
+
 /// <summary>The charge step's settings (R-mc8-1 … R-mc8-3), each with its stated default.</summary>
 public sealed record ChargeFitSettings
 {
@@ -201,11 +252,14 @@ public sealed record ChargeFitSettings
     public double HeldOutFraction { get; init; } = CurrentFitSettings.DefaultHeldOut;
     /// <summary>Null: no decomposition (the default).</summary>
     public DriftChargeSettings? Drift { get; init; }
+    /// <summary>Capacitances typed in place of a fit (MC-18): what the step writes when the document has no S data. Null
+    /// with no S data writes zero charges; set beside S data, the step refuses rather than discard the data.</summary>
+    public TypedCharges? Typed { get; init; }
 
     public static ChargeFitSettings Default { get; } = new();
 
     private static readonly string[] Keys =
-        ["DataSets", "Qg", "Qd", "Anchor", "FlatnessLimit", "Seed", "Restarts", "HeldOutFraction", "Drift"];
+        ["DataSets", "Qg", "Qd", "Anchor", "FlatnessLimit", "Seed", "Restarts", "HeldOutFraction", "Drift", "Typed"];
 
     public static ChargeFitSettings Parse(JsonNode node, string f)
     {
@@ -222,6 +276,7 @@ public sealed record ChargeFitSettings
             Restarts = (int)(Num(o, "Restarts", $"{f}.Restarts") ?? CurrentFitSettings.DefaultRestarts),
             HeldOutFraction = Num(o, "HeldOutFraction", $"{f}.HeldOutFraction") ?? CurrentFitSettings.DefaultHeldOut,
             Drift = o["Drift"] is { } dn ? DriftChargeSettings.Parse(dn, $"{f}.Drift") : null,
+            Typed = o["Typed"] is { } tn ? TypedCharges.Parse(tn, $"{f}.Typed") : null,
         };
         if (!(s.FlatnessLimit > 0)) throw new CmcFormatException($"{f}.FlatnessLimit", "it is not above 0.");
         if (s.Restarts < 1) throw new CmcFormatException($"{f}.Restarts", "it is below 1.");
@@ -241,6 +296,7 @@ public sealed record ChargeFitSettings
         if (Restarts != CurrentFitSettings.DefaultRestarts) o["Restarts"] = Restarts;
         if (HeldOutFraction != CurrentFitSettings.DefaultHeldOut) o["HeldOutFraction"] = HeldOutFraction;
         if (Drift is { } d) o["Drift"] = d.ToJson();
+        if (Typed is { } t) o["Typed"] = t.ToJson();
         return o;
     }
 }
@@ -275,9 +331,11 @@ public sealed record ChargeFitRecord
     public ModelTraps? Traps { get; init; }
     /// <summary>The number of S points the charges were fitted to (MC-17); 0 in a record written before it was kept.</summary>
     public int Points { get; init; }
+    /// <summary>The capacitances the charges were typed with (MC-18); null when they were fitted.</summary>
+    public TypedCharges? Typed { get; init; }
     public IReadOnlyList<string> Report { get; init; } = [];
 
-    private static readonly string[] Keys = ["Constituents", "Arrays", "Anchor", "Errors", "PathDifference", "CdsSpread", "Traps", "Points", "Report"];
+    private static readonly string[] Keys = ["Constituents", "Arrays", "Anchor", "Errors", "PathDifference", "CdsSpread", "Traps", "Points", "Typed", "Report"];
 
     public static ChargeFitRecord Parse(JsonNode node, string f)
     {
@@ -321,7 +379,8 @@ public sealed record ChargeFitRecord
             Anchor = o["Anchor"] is { } an ? CurrentFitSettings.Pair(an, $"{f}.Anchor") : (0, 0),
             Errors = errors, PathDifference = paths, CdsSpread = Num(o, "CdsSpread", $"{f}.CdsSpread"),
             Traps = o["Traps"] is { } tn ? CurrentFitRecord.TrapsOf(tn, $"{f}.Traps") : null,
-            Points = (int)(Num(o, "Points", $"{f}.Points") ?? 0), Report = report,
+            Points = (int)(Num(o, "Points", $"{f}.Points") ?? 0),
+            Typed = o["Typed"] is { } typedNode ? TypedCharges.Parse(typedNode, $"{f}.Typed") : null, Report = report,
         };
     }
 
@@ -353,6 +412,7 @@ public sealed record ChargeFitRecord
         if (CdsSpread is { } spread) o["CdsSpread"] = spread;
         if (Traps is { } traps) o["Traps"] = JsonNode.Parse(CmodelFile.TrapsJson(traps));
         if (Points > 0) o["Points"] = Points;
+        if (Typed is { } typed) o["Typed"] = typed.ToJson();
         if (Report.Count > 0) o["Report"] = new JsonArray([.. Report.Select(l => (JsonNode)l!)]);
         return o;
     }

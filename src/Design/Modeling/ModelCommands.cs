@@ -224,7 +224,8 @@ public static partial class ModelCommands
     /// <summary>
     /// The steps <c>all</c> runs on <paramref name="doc"/>, in order: a Passive document's passive step; an Active one's
     /// network (when a variable is free to fit), thermal, the currents (through the trap step when traps are modelled,
-    /// which re-trains them) and the charges.
+    /// which re-trains them) and the charges. With no S data, <c>all</c> holds the network at its values rather than fit
+    /// it (<see cref="NoSData"/>), and the charge step writes the typed charges (MC-18).
     /// </summary>
     public static IReadOnlyList<string> AllSteps(CmcDocument doc)
     {
@@ -238,6 +239,12 @@ public static partial class ModelCommands
         steps.Add("charge");
         return steps;
     }
+
+    /// <summary>The line <c>all</c> reports for the network when there is no S data to fit it to (R-mc18-3).</summary>
+    public const string NetworkHeld = "network: held at its values — no S data to fit to";
+
+    /// <summary>Whether <paramref name="doc"/> holds no S-parameters for the network to be fitted to (R-mc18-3).</summary>
+    public static bool NoSData(CmcDocument doc) => !doc.DataSets.Any(s => s.Kind is DataSetKind.SParams or DataSetKind.PulsedSParams);
 
     /// <summary><paramref name="doc"/> with <paramref name="options"/> written into <paramref name="step"/>'s settings, as the
     /// window's step panel writes them. A method the step does not have is refused naming the ones it does.</summary>
@@ -342,7 +349,11 @@ public static partial class ModelCommands
             foreach (string s in steps)
             {
                 rc?.ThrowIfCancellationRequested();
-                lines.AddRange(RunStep(cmcPath, s, rc));
+                // R-mc18-3: all holds the network with no S data; a fit naming the step still refuses, as it says why.
+                if (step == "all" && s == "network" && NoSData(configured))
+                    lines.Add(new ModelLine("step", s, NetworkHeld));
+                else
+                    lines.AddRange(RunStep(cmcPath, s, rc));
                 finished++;
             }
         }
@@ -452,7 +463,10 @@ public static partial class ModelCommands
         {
             // R-mc17-5: constant capacitances are said so, never left to be read as nonlinear charges.
             if (ChargeFit.Record(doc) is { } charge && ChargeFit.LinearProvenance(ChargeFit.Settings(doc), charge) is { } linear)
+            {
                 lines.Add(new ModelLine("charge", ChargeFit.StepName, $"{linear}."));
+                if (charge.Typed is { IsZero: true }) lines.Add(new ModelLine("charge", ChargeFit.StepName, ChargeFit.ZeroLine));
+            }
             lines.AddRange(NetworkValues(cmcPath, doc));
             if (TrapFit.Record(doc) is { } traps)
                 foreach (var (state, levels) in traps.Levels)

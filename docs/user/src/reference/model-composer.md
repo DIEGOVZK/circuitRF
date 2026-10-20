@@ -73,7 +73,7 @@ the data and network it came from. When either changes, the step is marked stale
 | Pads | Removes the probe pads: open and short dummies, a Touchstone two-port per side, or a two-pin schematic per side. |
 | Network | Chooses the extrinsic network and fits its values. Every data set is then re-referenced to the intrinsic plane. |
 | Current | Fits `Id` and `Ig`. |
-| Charge | Fits `Qg` and `Qd`. |
+| Charge | Fits `Qg` and `Qd`, or, with no S data, writes them from typed capacitances. |
 | Thermal | Adds self-heating: Rth (typed, or extracted from pulsed I–V) and the thermal time constants. |
 | Traps | Chooses a trap model and fits the currents again with the trap states as inputs. |
 | Check | Checks that the charges conserve charge. |
@@ -81,7 +81,9 @@ the data and network it came from. When either changes, the step is marked stale
 | Export | Writes the `.cmodel`. |
 
 **Fit all** (`model fit --step all`) runs every step the document needs, in this order: the network if any value is
-free, then thermal, current, traps when a trap model is chosen, and charge.
+free, then thermal, current, traps when a trap model is chosen, and charge. With no S data, the network is held at its
+values (`network: held at its values — no S data to fit to`) and the charge step writes the typed capacitances; a fit
+of the network step alone still refuses.
 
 ## Data kinds and their conditions {#kinds}
 
@@ -125,7 +127,7 @@ layout is secondary.
 | Data | Needed | What it gives the model |
 |---|---|---|
 | I–V: DC, or a simulator's DC currents; 4 points or more, varying both Vgs and Vds | **Required** | `Id` and `Ig`. With no gate current in the data, `Ig` is zero |
-| S or Y at one bias or more | **Required** | `Qg` and `Qd`. A single bias gives linear charges — constant capacitances, exact at that bias — with the `Linear` equation. Four biases or more allow ANN or Table charges, and biases across the I–V plane give nonlinear ones |
+| S or Y | Optional | `Qg` and `Qd`. None: the charges are constant capacitances you type, or zero. One bias or more: fitted linear charges — constant capacitances, exact at a single bias — with the `Linear` equation; four biases or more allow ANN or Table charges. Across the I–V plane: nonlinear charges |
 | S at Vds = 0 V, pinched off and with the gate forward-biased | Optional | The cold-FET network fit |
 | Open and short pad dummies | When measured at the probe tips | Removal of the pads |
 | Any set at two or more temperatures | Optional | `T` as an input: the model follows the run's `temp`, and self-heating becomes available |
@@ -211,8 +213,8 @@ what tools actually write.
 ### Checklist {#checklist}
 
 - The I–V covers the circuit's whole Vgs and Vds swing, gate forward conduction included.
-- S or Y is at one bias or more for linear charges, 4 or more for ANN or Table charges, and a hundred or more for
-  nonlinear ones.
+- S or Y, if there is any, is at one bias or more for fitted linear charges, 4 or more for ANN or Table charges, and a
+  hundred or more for nonlinear ones. Without it, the capacitances are typed (a datasheet's will do) or left at zero.
 - Currents are positive into the terminal, and every column has its unit.
 - Every set states its reference plane and ambient temperature.
 - Measured: the compliance limits are stated, so points at the limit are flagged.
@@ -283,7 +285,8 @@ of one charge each, and no DC is ever made by displacement current. **Check Char
 | (c) Large signal | A harmonic-balance drive at *f* and at 2*f*; the change in DC gate current is DC made by displacement current | Below 0.1 % of the fundamental gate current |
 
 Check (a) needs S at 4 biases or more across the bias plane; with fewer it reports *not run* and the number of biases,
-which is not a failure. A linear charge's (b) reads zero.
+which is not a failure. With typed charges it reports *not run*, as there is no S data. A linear or typed charge's (b)
+reads zero.
 
 A non-reciprocal capacitance matrix (a transcapacitance, `C21 ≠ C12`) is reported for information. It is physical, and
 it is not an error. Checks (b) and (c) also run on any nonlinear device in a netlist:
@@ -519,6 +522,14 @@ bias. From two or three biases it is the least-squares constant matrix, and the 
 the biases, with the circuit set `Cgs = C11 + C12`, `Cgd = −C12`, `Cds = C22 + C12` and `Cm = C21 − C12`. Its C–V
 plots are flat lines through the measured points. The exported model's provenance and `circuitrf model explain` say
 `Qg, Qd: Linear from 1 bias point(s)`. A linear charge has no training domain, so no extrapolation applies to it.
+
+**With no S data**, the step shows four capacitances in place of the pickers — `Cgs`, `Cgd`, `Cds` and `Cm`, each in
+farads and 0 unless you type a value — and Run writes them as `Linear` charges. A datasheet gives them as
+`Cgd = Crss`, `Cgs = Ciss − Crss` and `Cds = Coss − Crss`; `Cm` is a transcapacitance and may be negative. Export,
+the provenance and `circuitrf model explain` say `Qg, Qd: typed` with the four values. With all four at zero the step,
+the export and `model explain` say `the charges are zero: S-parameters and harmonic balance see the currents alone.`
+— a model meant only for DC. Validation then has DC and large-signal items and no S items. Typed values beside S data
+are refused, since typing would discard the data; **Fit to the S data** clears them.
 
 | Plot tab | Shows |
 |---|---|

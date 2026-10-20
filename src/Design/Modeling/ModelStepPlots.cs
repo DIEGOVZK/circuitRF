@@ -279,6 +279,9 @@ public static class ModelStepPlots
                                         IntrinsicResult intrinsic, RunControl? rc)
     {
         if (ChargeFit.Load(cmcPath, doc) is not { } charges) return null;
+        // Typed charges (MC-18) have no measured capacitances to plot against; the step's report says what they are.
+        if (charges.Record.Typed is { } typed)
+            return new StepPlotData { Step = "Charge", Data = new DataSet(), Notes = [$"the charges are typed — {typed.Text}; there is no S data to plot."] };
         var cd = ChargeFit.Gather(doc, data, intrinsic, charges.Settings, []);
         var program = ComposedCoreProgram.Compile(ChargeFit.Model(charges, CurrentFit.Load(cmcPath, doc), cd.TemperatureC), "plots");
         var ds = new DataSet();
@@ -401,7 +404,7 @@ public static class ModelStepPlots
                 ds.Add($"Curl.{row}", Map(Regrid.Rbf([.. keep.Select(k => a.Points[k])], [.. keep.Select(k => 100 * map[k])]), hull));
             }
         }
-        if (ChargeFit.Load(cmcPath, doc) is { } charges
+        if (ChargeFit.Load(cmcPath, doc) is { Record.Typed: null } charges
             && ChargeFit.Gather(doc, loaded.Data, new IntrinsicResult(loaded.Intrinsic, []), charges.Settings, []) is { SpansArea: true } cd)
         {
             var poly = cd.Domain.Polygon;

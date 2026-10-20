@@ -256,12 +256,35 @@
                     <!-- ── Charge (R-mc15-3) ───────────────────────────────── -->
                     <StackPanel IsVisible="{Binding IsChargeStep}" Spacing="4">
                         <TextBlock Classes="panelhdr" Text="Charges"/>
-                        <ItemsControl ItemsSource="{Binding ChargePickers}" ItemTemplate="{StaticResource MethodPicker}"/>
-                        <CheckBox Content="Drift charge in Qg" IsChecked="{Binding DriftCharge}" ToolTip.Tip="Qg carries a drift charge of vgd and Id"/>
-                        <Grid ColumnDefinitions="*,90">
-                            <TextBlock Classes="lbl" Text="Seed"/>
-                            <ctl:InlineEditText Grid.Column="1" Text="{Binding ChargeSeed, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
-                        </Grid>
+                        <!-- MC-18: with no S data, typed constant capacitances in place of the method picker. -->
+                        <StackPanel Spacing="3" IsVisible="{Binding ChargesTyped}" ToolTip.Tip="{Binding TypedChargesTip}">
+                            <Grid ColumnDefinitions="*,110">
+                                <TextBlock Classes="lbl" Text="Cgs"/>
+                                <ctl:InlineEditText Grid.Column="1" Text="{Binding TypedCgs, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,110">
+                                <TextBlock Classes="lbl" Text="Cgd"/>
+                                <ctl:InlineEditText Grid.Column="1" Text="{Binding TypedCgd, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,110">
+                                <TextBlock Classes="lbl" Text="Cds"/>
+                                <ctl:InlineEditText Grid.Column="1" Text="{Binding TypedCds, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="*,110">
+                                <TextBlock Classes="lbl" Text="Cm"/>
+                                <ctl:InlineEditText Grid.Column="1" Text="{Binding TypedCm, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                            </Grid>
+                            <Button Content="Fit to the S data" Command="{Binding ClearTypedChargesCommand}" IsVisible="{Binding TypedBesideData}"
+                                    ToolTip.Tip="The document has S data: clear the typed values to fit the charges to it"/>
+                        </StackPanel>
+                        <StackPanel Spacing="4" IsVisible="{Binding !ChargesTyped}">
+                            <ItemsControl ItemsSource="{Binding ChargePickers}" ItemTemplate="{StaticResource MethodPicker}"/>
+                            <CheckBox Content="Drift charge in Qg" IsChecked="{Binding DriftCharge}" ToolTip.Tip="Qg carries a drift charge of vgd and Id"/>
+                            <Grid ColumnDefinitions="*,90">
+                                <TextBlock Classes="lbl" Text="Seed"/>
+                                <ctl:InlineEditText Grid.Column="1" Text="{Binding ChargeSeed, Mode=TwoWay}" HorizontalContentAlignment="Right"/>
+                            </Grid>
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- ── Thermal (R-mc15-4) ──────────────────────────────── -->

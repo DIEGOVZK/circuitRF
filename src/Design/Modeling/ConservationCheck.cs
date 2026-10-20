@@ -271,7 +271,10 @@ public static class ConservationCheck
         var charges = ChargeFit.Load(cmcPath, doc)
             ?? throw new ModelingException("Check", "there is no fitted charge in the document; fit the charges first.");
         var current = CurrentFit.Load(cmcPath, doc);
-        var cd = ChargeFit.Gather(doc, data, intrinsic, charges.Settings, []);
+        // Typed charges have no capacitances to read (a) on; (b) and (c) read them over the I–V points (R-mc18-4).
+        var cd = charges.Record.Typed is not null
+            ? ChargeFit.TypedRegion(doc, data, intrinsic)
+            : ChargeFit.Gather(doc, data, intrinsic, charges.Settings, []);
         return Run(cd, charges, current, settings, rc);
     }
 
@@ -336,8 +339,13 @@ public static class ConservationCheck
         // (a) reads a curl across the bias plane, which a handful of points — or points along a line — do not span (R-mc17-4):
         // not run, and not a failure.
         DataConservation? a = null;
-        bool surface = data.X.Count >= ChargeFit.SurfaceMinimum && data.SpansArea;
-        if (surface)
+        bool typed = charges.Record.Typed is not null;
+        bool surface = !typed && data.X.Count >= ChargeFit.SurfaceMinimum && data.SpansArea;
+        if (typed)
+        {
+            lines.Add("data: not run — the charges are typed; there is no S data.");
+        }
+        else if (surface)
         {
             a = Data(data, charges.Record.Anchor, rc: rc);
             lines.Add($"data: curl {Pct(a.GateRms)} (Qg), {Pct(a.DrainRms)} (Qd); paths differ {Pct(a.GatePaths)}, {Pct(a.DrainPaths)}");
@@ -351,8 +359,8 @@ public static class ConservationCheck
         var program = ComposedCoreProgram.Compile(model, "check");
         var poly = data.Domain.Polygon;
         // Read away from the hull's edge, as (a) is: beyond it each charge is a linear continuation, and a curl read across
-        // the boundary measures the continuation rather than the fit. Fewer points carry only equations, defined
-        // everywhere, so the model is read over a volt either side of them.
+        // the boundary measures the continuation rather than the fit. Fewer points, and typed charges, carry only equations,
+        // defined everywhere, so the model is read over a volt either side of the points.
         double gLo = poly.Min(p => p.Vgs), gHi = poly.Max(p => p.Vgs), dLo = poly.Min(p => p.Vds), dHi = poly.Max(p => p.Vds);
         double gSpan = gHi - gLo, dSpan = dHi - dLo;
         var b = surface

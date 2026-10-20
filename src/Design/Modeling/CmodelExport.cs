@@ -8,7 +8,8 @@
 // leaves no file and never a partial one.
 //
 // Refusals name what is missing: no N0; a constituent no step has fitted (or whose arrays are not in the cache); a stale
-// step (CmcStamps), each one named. The symbol choice is stored in the .cmc (Steps.Export) as well as in the model.
+// step (CmcStamps), each one named. The charge step's record is what export needs, fitted or typed (MC-18): a document with
+// DC I–V alone exports, its charges the typed capacitances or zero. The symbol choice is stored in the .cmc (Steps.Export) as well as in the model.
 
 using System.Globalization;
 using System.Reflection;
@@ -237,6 +238,8 @@ public static class CmodelExport
             (model.Thermal is { } th ? $" · Rth {th.Rth.ToString("G4", CultureInfo.InvariantCulture)} K/W" : "") +
             (model.Traps is { } tr ? $" · traps {tr.Model} ({string.Join(", ", tr.States)})" : ""),
         };
+        // R-mc18-2: a model whose charges are zero is legitimate, and said so.
+        if (ChargeFit.Record(doc)?.Typed is { IsZero: true }) lines.Add(ChargeFit.ZeroLine);
         rc?.TickStage();
         return new CmodelExportResult(outPath, model, lines);
 

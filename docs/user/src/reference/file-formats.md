@@ -149,7 +149,7 @@ model always writes the same bytes.
 | `Core.Symmetry` | `Exchange`: the constituents describe `vds ≥ 0`, and a negative `vds` is the same device with drain and source exchanged. Absent for an asymmetric device. |
 | `Extrapolation` | `Gx`: for each table or ANN current (`Id`, `IgGs`, `IgGd`, `IdRF`), the conductance in S that current gains outside its domain. |
 | `Symbol` | A library symbol's name, or a `.csym` path relative to the `.cmodel`. |
-| `Provenance` | `Created`, `CircuitRfVersion`, `Sources` (`Path`, `Sha256`) and `SettingsDigest`; with linear charges, `Charges` (`Qg, Qd: Linear from 1 bias point(s)`). |
+| `Provenance` | `Created`, `CircuitRfVersion`, `Sources` (`Path`, `Sha256`) and `SettingsDigest`; with linear charges, `Charges` (`Qg, Qd: Linear from 1 bias point(s)`, or with typed ones `Qg, Qd: typed (Cgs 300 fF, Cgd 50 fF, Cds 80 fF, Cm 0 F)`). |
 
 `circuitrf check` reads a `.cmodel` and names the field of anything it refuses.
 
@@ -268,7 +268,8 @@ share of the RF conductances no single current reproduces), `Reference`, with tr
 `Report` lines.
 
 `Steps.Charge` is the gate and drain charges' step, with the same three fields. The charges are fitted to the
-intrinsic capacitances of the S-parameter sets, averaged over the `FlatnessBand`. `Settings` holds:
+intrinsic capacitances of the S-parameter sets, averaged over the `FlatnessBand`. A document with no S data has none to
+fit: the step writes `Linear` charges from `Typed` instead. `Settings` holds:
 
 | Field | What it holds |
 |---|---|
@@ -278,13 +279,14 @@ intrinsic capacitances of the S-parameter sets, averaged over the `FlatnessBand`
 | `FlatnessLimit` | 0.1: a point whose `C11` or `C22` varies across the band by more than this fraction of its mean counts for less. |
 | `Seed`, `Restarts`, `HeldOutFraction` | 1, 3 and 0.1, as for the currents. |
 | `Drift` | Present to fit the drift decomposition instead of `Qg` and `Qd`'s methods: `Lambda` (0), `VdsZero` (0.05 V — the points this close to `vds = 0` fit the depletion charges), `Hidden` and `MaxIterations`. Needs the current step: the drift charge reads its `Id`. |
+| `Typed` | Constant capacitances in farads for a document with no S data: `Cgs`, `Cgd`, `Cds` and `Cm`, each 0 when absent. `Cgs`, `Cgd` and `Cds` are never negative; `Cm`, a transcapacitance, may be. A datasheet gives `Cgd = Crss`, `Cgs = Ciss − Crss` and `Cds = Coss − Crss`. They become `C11 = Cgs + Cgd`, `C12 = −Cgd`, `C21 = Cm − Cgd` and `C22 = Cds + Cgd` of the `Linear` charges. Absent with no S data: all four are 0. Present beside S data: the step refuses, since typing would discard the data. |
 
 `Result` holds `Constituents` (`Qg` and `Qd` exactly as the `.cmodel` will), `Arrays`, `Anchor`, `Errors` (per
 capacitance `C11`, `C12`, `C21`, `C22`: the RMS error of the fitted charge's derivative, and that as a fraction of
 the capacitance's range), `PathDifference` (a table's two integration paths' RMS difference as a fraction of the
 charge's range), `CdsSpread` (with `Drift`: how much `Cds` varies across `vgs` at a fixed `vds`, which `QDS` cannot
-follow), with a trapped `Qd` the `Traps` block, `Points` (the number of S biases the charges were fitted to), and the
-`Report` lines.
+follow), with a trapped `Qd` the `Traps` block, `Points` (the number of S biases the charges were fitted to), `Typed`
+(the four capacitances the charges were written from, when there was no S data), and the `Report` lines.
 
 `Steps.Thermal` is temperature and self-heating: `Settings` and the `Result` of the last run. With the data at one
 temperature the model is valid at that temperature only and self-heating is unavailable. `Settings` holds:
