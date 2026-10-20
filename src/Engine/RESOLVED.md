@@ -3035,3 +3035,15 @@ number. The drift charge (MC-8) trains on derivatives plus 21 value targets of e
 `Id = 0`): the output scale became 1 C for a charge of ~1e-14 C, and the network would have had to hold its answer
 in weights of ~1e-14. Values that are all one number now take the scale from the derivatives, as a derivative-only
 problem always did, and the offset from that one value. Problems whose values vary are unchanged bit for bit.
+
+## Model Composer MC-12: vector fitting without an eigensolver (2026-10-19)
+
+- **The relocated poles are the zeros of `σ(z) = 1 + Σ r_k/(z − a_k)`, found by an Aberth iteration** on
+  `p(z) = σ(z)·Π(z − a_k)`, not as the eigenvalues of `A − b·c̃ᵀ` (the repository has no general eigensolver; `Mom/Dcim.cs`
+  says why). The obvious `p′/p = σ′/σ + Σ 1/(z − a_k)` cancels two terms of size `1/|z − a_i|` next to pole `a_i` — which
+  is where every root of a converging fit sits — so near pole `a_i` the pair is combined analytically into
+  `(1 + ρ + ρ′(z − a_i)) / ((z − a_i)(1 + ρ) + r_i)`. Poles of a known rational function come back to 1e-8.
+- **The fast formulation is the default, not an option.** The full stacked relocation system grows as
+  (responses × poles)²; triangularising each response's rows alone and stacking only σ's rows of R is the same solution.
+  Measured on a non-rational 2-port that climbs to order 12 for both Y and Z: 8.9 s → 0.7 s. Iterations default to 15:
+  exact data converges in a handful, and data that is not rational never meets the pole tolerance at all.

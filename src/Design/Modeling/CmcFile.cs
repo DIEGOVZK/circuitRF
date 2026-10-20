@@ -6,7 +6,8 @@
 // dropped would leave a data set measured under conditions nobody stated, and the step that needed it would
 // report it missing with the typo still sitting in the file. Pads and Network are kept as JSON and carried
 // verbatim, but validated through CmcExtrinsic (MC-4), their one reader; Steps is opaque except Steps.Current (MC-7),
-// Steps.Charge (MC-8), Steps.Thermal (MC-9) and Steps.Traps (MC-10).
+// Steps.Charge (MC-8), Steps.Thermal (MC-9), Steps.Traps (MC-10), MC-11's Export, Validate and Report, and
+// Steps.Passive (MC-12).
 
 using System.Globalization;
 using System.Numerics;
@@ -40,7 +41,8 @@ public static class CmcFile
     public static readonly IReadOnlyList<string> TableQuantities = ["freq", "S", "Y", "C"];
 
     /// <summary>The fields a Touchstone bias pattern may name.</summary>
-    public static readonly IReadOnlyList<string> PatternFields = ["vgs", "vds", "T", "id", "ig"];
+    /// <summary>The fields a bias pattern may name; <c>{geometry}</c> is a passive block's geometry value (MC-12).</summary>
+    public static readonly IReadOnlyList<string> PatternFields = ["vgs", "vds", "T", "id", "ig", "geometry"];
 
     /// <summary>A pre-pulse dissipating at least this (W) is warned about — its heating is not modelled.</summary>
     public const double DissipatingPrePulseW = 1e-3;
@@ -342,6 +344,7 @@ public static class CmcFile
         CmodelExport.Validate(d);
         ModelValidation.Validate(d);
         ModelValidationReport.Validate(d);
+        Passive.PassiveStep.Validate(d);
     }
 
     private static bool IsPulsed(DataSetKind k) => k is DataSetKind.PulsedIv or DataSetKind.PulsedSParams;
@@ -451,7 +454,7 @@ public static class CmcFile
             case ImportSettings.Touchstone:
                 if (s.Kind is DataSetKind.DcIv or DataSetKind.PulsedIv)
                     throw new CmcFormatException($"{f}.Format", $"a {s.Kind} data set is not read from Touchstone files.");
-                // A passive block has no bias; its pattern is optional (MC-12 adds its geometry field).
+                // A passive block has no bias; its pattern is optional, and gives a family's {geometry} (MC-12).
                 if (s.Kind == DataSetKind.PassiveSParams && im.Pattern is null) break;
                 if (im.PatternSource is not ("name" or "comment"))
                     throw new CmcFormatException($"{f}.PatternSource", $"'{im.PatternSource}' is not name or comment.");
@@ -459,6 +462,8 @@ public static class CmcFile
                 var pattern = BiasPattern.Parse(im.Pattern, $"{f}.Pattern");
                 if (s.Kind != DataSetKind.PassiveSParams && !(pattern.Scales.ContainsKey("vgs") && pattern.Scales.ContainsKey("vds")))
                     throw new CmcFormatException($"{f}.Pattern", "the pattern needs {vgs} and {vds}.");
+                if (s.Kind != DataSetKind.PassiveSParams && pattern.Scales.ContainsKey("geometry"))
+                    throw new CmcFormatException($"{f}.Pattern", "{geometry} belongs to a passive data set.");
                 break;
             case ImportSettings.Csv:
                 if (im.Columns is not { Count: > 0 }) throw new CmcFormatException($"{f}.Columns", "a CSV/TSV import needs a column map.");

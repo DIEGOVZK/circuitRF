@@ -24,6 +24,12 @@ public sealed partial class Evaluator
     public void RegisterFunction(UserFunction fn) => _functions[fn.Name] = fn;
 
     /// <summary>
+    /// Where <c>validrange</c> reports a value outside its range; null reports nothing. The elaborator points it at the
+    /// netlist's warnings, so a fitted model used outside the range it was fitted over says so once per instance.
+    /// </summary>
+    public Action<string>? Warn { get; set; }
+
+    /// <summary>
     /// Directly inject a pre-resolved value into the memo cache.
     /// Used by the Elaborator to store override values that were evaluated
     /// in the parent scope without re-parsing through ToString().
@@ -222,6 +228,7 @@ public sealed partial class Evaluator
         // `limit` with three arguments is the clamp, told apart by its arity.
         if (IsStatisticalCall(cl)) return EvalStatistical(cl, scope);
         if (cl.Name == "limit")    return EvalClamp(cl, scope);
+        if (cl.Name == "validrange") return EvalValidRange(cl, scope);
 
         // built-ins — cube-aware variants handle DataCube args; scalars fall through to normal math
         return cl.Name switch

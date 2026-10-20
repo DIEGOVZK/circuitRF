@@ -189,7 +189,9 @@ A data set's `Kind` is `DcIv`, `PulsedIv`, `SParams` (CW multi-bias), `PulsedSPa
 - `touchstone` — one file per bias. `Pattern` reads the bias from the file name (`PatternSource`
   `name`) or its comment lines (`comment`): literal text with the fields `{vgs}`, `{vds}`, `{T}`, `{id}`
   and `{ig}`, each optionally with its unit, `{id:mA}`. A space matches any run of spaces and `*`
-  matches anything. `Vgs{vgs}_Vds{vds}` reads `Vgs-1.5_Vds10.s2p`.
+  matches anything. `Vgs{vgs}_Vds{vds}` reads `Vgs-1.5_Vds10.s2p`. A `PassiveSParams` set needs no
+  pattern; a family over a geometry value reads it with `{geometry}`: `spiral_{geometry}t` reads
+  `spiral_2.5t.s2p`, and `{geometry:um}` a length in micrometres.
 - `csv` — CSV or TSV. `Columns` maps a column (its header, or its number from 1 with `"Header": false`)
   to `vgs`, `vds`, `ig`, `id`, `T`, `vgsi` or `vdsi`, with the `Unit` its numbers are in. A cell that
   carries its own unit (`12 mA`) uses it.
@@ -320,6 +322,24 @@ with a warning; one with none cannot be enabled. `Settings` holds:
 
 `Result` holds `Levels` (per state, the trap-setting levels in the data, V), `Beyond` (per state, the pulsed points
 beyond their bias used only to check the model) and the `Report` lines.
+
+`Steps.Passive` is a `Passive` document's model: `Settings` and the `Result` of the last fit. `Settings` holds:
+
+| Field | What it holds |
+|---|---|
+| `Set` | The passive data set. Absent: the document's only one. |
+| `Block` | The block one fit reads, by its source. Absent: the set's only one. Not with `Family`. |
+| `Topology` | A library topology — `series-rlc`, `parallel-rlc`, `inductor-skin`, `capacitor-esr-esl`, `resistor-parasitics`, `pi`, `tee`, `bond-wire`, `via`, `spiral`, `mim`, `tline-pads` — or a `.csch` relative to the `.cmc` whose pins 1…N are the ports. |
+| `Variables` | Per variable `Min`, `Max`, `Lock`, `Tie` and `Value`, as the network block has them. Bounds default to 0 … 1000× the starting value. |
+| `Fit` | `Weighting` (`Uniform`, or `Band` with `Band` in Hz and `Emphasis`, default 10), `Starts` (2), `Seed` (1), `Algorithm` (`cmaes` or `de`), `Budget`, `ProposalBudget` (40 per variable), `PoorRelativeError` (0.2), `PoorCorrelation` (0.95). |
+| `Family` | Fit every block as one model over a geometry: `Geometry` (the parameter's name, e.g. `turns`), `Form` (`Auto`, `Constant`, `Linear`, `Quadratic`, `Cubic` or `Rational`), `Monotone`, `HeldOut` (the geometry checked and not trained on; absent: the middle one). |
+| `Export` | `Cell`, `Library` (a folder relative to the `.cmc`) and an optional `Symbol` (`.csym`); absent symbol: a box with N pins. |
+
+`Result` holds the `Topology`, the fitted `Values` (base SI), `Cost`, `RmsDeltaS` and `Aic`, a family's laws
+(`Family`: the geometry's range, the held-out geometry and its |ΔS|, and per variable its `Form` and `Coefficients` in
+the normalised geometry `(g − Mid)/Half`), and the `Report` lines. The exported cell's parameters are the variables,
+defaulting to the fitted values; a family's are the geometry first and every element as an expression of it, with a
+warning when a schematic sets the geometry outside the range the family was fitted over.
 
 The data read from the sources is cached in `<name>.cmc-cache/`. When a source changes it is read
 again; when one goes missing the cached copy is used, with a warning. A step's arrays are cached there

@@ -19,6 +19,9 @@ public sealed record BiasPoint(string PointId, double Vgs, double Vds, double Ig
     /// <summary>Intrinsic voltages a simulated table carries beside its terminal ones (D6 cross-check).</summary>
     public double VgsIntrinsic { get; init; } = double.NaN;
     public double VdsIntrinsic { get; init; } = double.NaN;
+    /// <summary>A passive block's geometry value (<c>turns</c>, a length in metres) from its source's name or comments
+    /// (MC-12); NaN elsewhere.</summary>
+    public double Geometry { get; init; } = double.NaN;
     public bool Excluded { get; init; }
     public string Reason { get; init; } = "";
 }
@@ -62,7 +65,7 @@ public sealed class NormalisedData
     private static readonly (string Name, Func<BiasPoint, double> Get)[] Columns =
     [
         ("Vgs", p => p.Vgs), ("Vds", p => p.Vds), ("Ig", p => p.Ig), ("Id", p => p.Id),
-        ("T", p => p.AmbientC), ("Vgsi", p => p.VgsIntrinsic), ("Vdsi", p => p.VdsIntrinsic),
+        ("T", p => p.AmbientC), ("Vgsi", p => p.VgsIntrinsic), ("Vdsi", p => p.VdsIntrinsic), ("G", p => p.Geometry),
     ];
 
     public DataSet ToDataSet()
@@ -87,12 +90,14 @@ public sealed class NormalisedData
     {
         var vgs = ds["Vgs"];
         string[] ids = vgs.Axes[0].Labels ?? throw new InvalidDataException("The cached data has no point ids.");
-        var col = Columns.ToDictionary(c => c.Name, c => ds[c.Name].RealValues);
+        // A column a cache written before it existed lacks reads as NaN — what the source did not carry.
+        var col = Columns.ToDictionary(c => c.Name, c => ds.Contains(c.Name) ? ds[c.Name].RealValues
+                                                                             : [.. Enumerable.Repeat(double.NaN, ids.Length)]);
         var points = new BiasPoint[ids.Length];
         for (int k = 0; k < ids.Length; k++)
             points[k] = new BiasPoint(ids[k], col["Vgs"][k], col["Vds"][k], col["Ig"][k], col["Id"][k])
             {
-                AmbientC = col["T"][k], VgsIntrinsic = col["Vgsi"][k], VdsIntrinsic = col["Vdsi"][k],
+                AmbientC = col["T"][k], VgsIntrinsic = col["Vgsi"][k], VdsIntrinsic = col["Vdsi"][k], Geometry = col["G"][k],
             };
         var s = ds.Contains("S") ? ds["S"] : null;
         var c = ds.Contains("C") ? ds["C"] : null;

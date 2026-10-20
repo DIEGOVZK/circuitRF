@@ -123,6 +123,13 @@
                       LogicalName="CircuitRF.Design.Modeling.StockNetworks.%(Filename)%(Extension)" />
   </ItemGroup>
 
+  <!-- brief-modelcomposer-12 R-mc12-3: the passive topology library, read by PassiveTopologies under the prefix below.
+       Each is an ordinary N-pin schematic; a library entry with no resource enumerates and fails on first use. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Modeling\Passive\Topologies\*.csch"
+                      LogicalName="CircuitRF.Design.Modeling.Passive.Topologies.%(Filename)%(Extension)" />
+  </ItemGroup>
+
   <!-- brief-em3d-24 R-em3d24-1: the solver install recipes and their schema, read by SolverRecipes out of
        this assembly. The LogicalName is fixed so a recipe's resource name is its file name, which is what
        SolverInstallTests validates against the schema. A recipe file left out of this glob would compile,

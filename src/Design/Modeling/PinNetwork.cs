@@ -71,7 +71,8 @@ public abstract class PinNetwork
 
     /// <summary>
     /// Reads <paramref name="cschPath"/> and checks it has exactly <paramref name="pins"/> pins numbered 1…N, each
-    /// once. A wrong count, or a duplicated or missing number, is a refusal that lists the pins found.
+    /// once — or, with <paramref name="pins"/> 0, as many as it has, numbered 1…N. A wrong count, or a duplicated or
+    /// missing number, is a refusal that lists the pins found.
     /// </summary>
     protected static Loaded Read(string cschPath, int pins, string role)
     {
@@ -81,6 +82,25 @@ public abstract class PinNetwork
         try { model = SchematicPersistence.LoadFromFile(cschPath).model; }
         catch (Exception ex) when (ex is not OperationCanceledException)
         { throw new ModelingException(name, $"it is not a readable schematic ({ex.Message})."); }
+        return Read(cschPath, model, SchematicCircuit.ReferenceBaseOf(cschPath), pins, role);
+    }
+
+    /// <summary>
+    /// <see cref="Read(string, int, string)"/> for a schematic held as text — an embedded resource, which has no
+    /// folder of its own and so no references to resolve. <paramref name="name"/> stands in for its path.
+    /// </summary>
+    protected static Loaded ReadText(string name, string json, int pins, string role)
+    {
+        SchematicEditModel model;
+        try { model = SchematicPersistence.Deserialize(json).model; }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        { throw new ModelingException(name, $"it is not a readable schematic ({ex.Message})."); }
+        return Read(name, model, null, pins, role);
+    }
+
+    private static Loaded Read(string cschPath, SchematicEditModel model, string? refBase, int pins, string role)
+    {
+        string name = Path.GetFileName(cschPath);
 
         var found = new List<string>();
         var nums = new List<int>();
@@ -91,15 +111,17 @@ public abstract class PinNetwork
             found.Add(text.Length == 0 ? "(unnumbered)" : text);
             if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n)) nums.Add(n);
         }
-        bool exact = found.Count == pins && nums.Count == pins && nums.Order().SequenceEqual(Enumerable.Range(1, pins));
+        bool any = pins <= 0;
+        if (any) pins = found.Count;
+        bool exact = pins > 0 && found.Count == pins && nums.Count == pins && nums.Order().SequenceEqual(Enumerable.Range(1, pins));
         if (!exact)
         {
             string list = found.Count == 0 ? "none" : string.Join(", ", found.OrderBy(Key));
-            throw new ModelingException(name, $"{role} has exactly {pins} pins numbered 1 to {pins}; found {list}.");
+            throw new ModelingException(name, any ? $"{role} has its pins numbered 1 to N, each once; found {list}."
+                                                  : $"{role} has exactly {pins} pins numbered 1 to {pins}; found {list}.");
         }
 
         string cell = Path.GetFileNameWithoutExtension(cschPath);
-        string? refBase = SchematicCircuit.ReferenceBaseOf(cschPath);
         var extracted = SchematicCircuit.Extract(model, cell);
         string cnl = SchematicCircuit.CnlTextOf(extracted, cell);
         var (lib, tb) = SchematicCircuit.RoundTrip(cnl, cell, refBase);
@@ -228,9 +250,9 @@ public abstract class PinNetwork
 
     protected const double PortZ0 = 50;
 
-    protected static Instance Port(string name, int num, string plus, string minus) =>
+    protected static Instance Port(string name, int num, string plus, string minus, double z0 = PortZ0) =>
         new(name, "Port", [plus, minus], [new ParameterAssignment("Num", num.ToString(CultureInfo.InvariantCulture)),
-                                          new ParameterAssignment("Z", "50")]);
+                                          new ParameterAssignment("Z", z0.ToString("R", CultureInfo.InvariantCulture))]);
 
     protected static Instance VoltageSource(string name, string plus, string minus, double v) =>
         new(name, "Vdc", [plus, minus], [new ParameterAssignment("V", v.ToString("R", CultureInfo.InvariantCulture))]);
@@ -247,9 +269,7 @@ public abstract class PinNetwork
     protected Complex[][,] Admittance(double[] freqsHz, IReadOnlyDictionary<string, double>? overrides,
                                       Func<int, string?> pinNet, IReadOnlyList<(string Plus, string Minus)> ports, RunControl? rc)
     {
-        var portInstances = ports.Select((p, k) => Port($"__mc_port{k + 1}", k + 1, p.Plus, p.Minus)).ToList();
-        using var nl = Elaborate(overrides, pinNet, portInstances);
-        var s = SParameterEngine.Run(nl, freqsHz, control: rc?.Child())["S"];
+        var s = Scattering(freqsHz, overrides, pinNet, ports, PortZ0, rc);
         int n = ports.Count;
         var result = new Complex[freqsHz.Length][,];
         var m = new Mat<Complex>(n, n);
@@ -257,12 +277,35 @@ public abstract class PinNetwork
         {
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
-                    m[i, j] = (Complex)s[f, i, j];
+                    m[i, j] = s[f][i, j];
             var y = RFNetwork.SToY(m, new Complex(PortZ0, 0));
             var a = new Complex[n, n];
             for (int i = 0; i < n; i++)
                 for (int j = 0; j < n; j++)
                     a[i, j] = y[i, j];
+            result[f] = a;
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// The multiport scattering matrix between the given ports at every frequency, referenced to <paramref name="z0"/>
+    /// on every port: one S-parameter run of the network. <c>S[f][i, j]</c>, ports in the order given.
+    /// </summary>
+    protected Complex[][,] Scattering(double[] freqsHz, IReadOnlyDictionary<string, double>? overrides, Func<int, string?> pinNet,
+                                      IReadOnlyList<(string Plus, string Minus)> ports, double z0, RunControl? rc)
+    {
+        var portInstances = ports.Select((p, k) => Port($"__mc_port{k + 1}", k + 1, p.Plus, p.Minus, z0)).ToList();
+        using var nl = Elaborate(overrides, pinNet, portInstances);
+        var s = SParameterEngine.Run(nl, freqsHz, control: rc?.Child())["S"];
+        int n = ports.Count;
+        var result = new Complex[freqsHz.Length][,];
+        for (int f = 0; f < freqsHz.Length; f++)
+        {
+            var a = new Complex[n, n];
+            for (int i = 0; i < n; i++)
+                for (int j = 0; j < n; j++)
+                    a[i, j] = (Complex)s[f, i, j];
             result[f] = a;
         }
         return result;

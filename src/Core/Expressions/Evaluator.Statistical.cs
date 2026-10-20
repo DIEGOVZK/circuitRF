@@ -181,6 +181,31 @@ public sealed partial class Evaluator
         return new Value(Math.Min(Math.Max(x.AsReal(), lo.AsReal()), hi.AsReal()));
     }
 
+    /// <summary>
+    /// <c>validrange(x, lo, hi)</c> is <c>x</c>, unchanged — and, when <c>x</c> lies outside <c>[lo, hi]</c>, one
+    /// <see cref="Warn"/> naming it, its value and the range. A fitted model (a passive family cell, brief-modelcomposer-12
+    /// R-mc12-6) wraps its geometry parameter in it: outside the range it was fitted over the result is an extrapolation,
+    /// still computed, and said. Not a clamp, because a clamp would silently answer a different question.
+    /// </summary>
+    private Value EvalValidRange(CallExpr cl, Scope scope)
+    {
+        if (cl.Args.Length != 3) throw new TypeErrorException("'validrange' takes three arguments: the value, the lowest and the highest");
+        var x  = EvalExpr(cl.Args[0], scope);
+        var lo = EvalExpr(cl.Args[1], scope);
+        var hi = EvalExpr(cl.Args[2], scope);
+        if (x.Kind != ValueKind.Real || lo.Kind != ValueKind.Real || hi.Kind != ValueKind.Real)
+            throw new TypeErrorException("'validrange' requires real arguments");
+        double v = x.AsReal(), a = lo.AsReal(), b = hi.AsReal();
+        if ((v < a || v > b) && Warn is { } warn)
+        {
+            string name = cl.Args[0] is RefExpr r ? r.Name : "a value";
+            string where = scope.InstancePath is { Length: > 0 } path ? $"{path}: " : "";
+            string G(double d) => d.ToString("G6", System.Globalization.CultureInfo.InvariantCulture);
+            warn($"{where}{name} = {G(v)} lies outside {G(a)} to {G(b)}, the range it was fitted over; the result is an extrapolation.");
+        }
+        return x;
+    }
+
     /// <summary>Whether <paramref name="expression"/> calls a distribution anywhere; false when it does not parse.</summary>
     public static bool ContainsStatisticalCall(string expression)
     {

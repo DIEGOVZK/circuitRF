@@ -120,6 +120,7 @@ public sealed class Elaborator
         _evaluator.Statistics ??= tb.StatisticalDraws;
 
         var netlist     = new ElaboratedNetlist();
+        _evaluator.Warn = m => netlist.AddWarningOnce("validrange:" + m, m);
 
         // What reading the netlist decided (TestBench.ReadWarnings) — reported by the run like
         // anything the run itself decides, so no consumer needs to know the list exists.

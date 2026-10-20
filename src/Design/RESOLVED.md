@@ -20922,3 +20922,23 @@ for the currents to be fitted again. `AdjointExtra` also rebuilt `PointsWithT` (
   now opens first. A `.csym` given by absolute path is recorded in the `.cmc` relative to it, as `Steps.Export` states.
 - The S item's testbench was written at the bias of point 0 even when point 0 was excluded; an S set with every point
   excluded passed with a NaN median. Both fixed.
+
+## Model Composer MC-12: passive models (2026-10-19)
+
+- **A family law written in the normalised geometry must parenthesise it.** `ElementLaw.Expression` substituted
+  `x = ((g)-mid)/half` textually, so `c2*x^2` read as `c2*((g)-mid)/half^2` — the power bound to `half`, not to `x`.
+  The fitted laws were right and the exported cell evaluated a different polynomial, by |ΔS| 0.1, with nothing anywhere
+  looking wrong until the cell was placed and simulated. `x` is now `(((g)-mid)/half)`. `PassiveCellExportTests` places
+  the family cell through the Simulate path and compares it with the laws at 1e-12, which is what caught it.
+- **A step's `Network`/`Data` stamps live on the step block, not inside `Result`.** `CmcStamps.Stamp` writes them beside
+  `Settings` and `Result`; a step validator that lists only those two refuses the document the fit just wrote.
+- **The proposal ranking needs an RSS floor.** Exact synthetic data fits the generating topology and any topology that
+  nests it to RSS near 1e-30, and `n·ln(RSS/n)` then compares where two optimisers happened to stop rather than
+  element counts. `PassiveFit.Aic` floors RSS at `n·(1e-6)²` — a |ΔS| of a part in a million, below any measurement's
+  precision — stated in `docs/design/model-composer.md` §15.5.
+- **The out-of-range warning is an expression built-in**, `validrange(x, lo, hi)` (`src/Core/Expressions`), because a
+  cell parameter has no range of its own and adding one would have been a `.ccell`, `.cnl` and elaborator change for one
+  caller. It returns `x` unchanged — a clamp would answer a different question silently — and posts through
+  `Evaluator.Warn`, which `Elaborator.Elaborate` points at the netlist's warnings, deduplicated by message.
+- **`NetworkFitProblem`'s search, polish and identifiability report moved to `BoxLeastSquares`** unchanged, so the passive
+  fit is MC-5's machinery rather than a copy of it; the MC-5 gates pass unchanged.

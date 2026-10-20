@@ -1383,3 +1383,18 @@ src/Core/Devices/Composed/DriftCharges.cs|'{key}' is not a piece of a drift char
 src/Core/Devices/Composed/Traps/TrapModel.cs|'{name}' has no default.
 src/Core/Devices/Composed/Traps/TrapModels.cs|'{model.Name}' is already a trap model name.
 src/Core/Devices/Composed/Traps/TrapModels.cs|a trap model declares 1 to {TrapDynamics.MaxStates} states.
+
+# ── Model Composer MC-12: vector fitting, the topology library, validrange (2026-10-19) ──────
+# VectorFit and LeastSquares are numerics with no domain types; their argument checks are a caller's
+# mistake (the passive analysis builds every argument). PassiveTopologies.Find/Text name a library id
+# the code itself passes, and a missing resource is a build defect. validrange's two type errors are
+# the expression engine's, worded as 'limit''s are.
+src/Core/Expressions/Evaluator.Statistical.cs|'validrange' requires real arguments
+src/Core/Expressions/Evaluator.Statistical.cs|'validrange' takes three arguments: the value, the lowest and the highest
+src/Design/Modeling/Passive/PassiveTopologies.cs|'{id}' is not a passive topology; the topologies are {string.Join(
+src/Design/Modeling/Passive/PassiveTopologies.cs|The passive topology '{id}' is missing from this build.
+src/Engine/Modeling/VectorFit.cs|A fit needs at least two samples of one response.
+src/Engine/Modeling/VectorFit.cs|Every response has one value per frequency.
+src/Engine/Modeling/VectorFit.cs|Frequencies are positive.
+src/Engine/Modeling/VectorFit.cs|Least squares needs at least as many rows as columns.
+src/Engine/Modeling/VectorFit.cs|No order could be fitted.

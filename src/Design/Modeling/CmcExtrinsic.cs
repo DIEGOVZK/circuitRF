@@ -142,43 +142,8 @@ public static class CmcExtrinsic
     {
         var o = Obj(node, "Network");
         Only(o, "Network", NetworkKeys);
-        var vars = new Dictionary<string, NetworkVariableSettings>(StringComparer.Ordinal);
-        if (o["Variables"] is { } vn)
-        {
-            var vo = Obj(vn, "Network.Variables");
-            foreach (var (name, value) in vo)
-            {
-                string f = $"Network.Variables.{name}";
-                var e = Obj(value!, f);
-                Only(e, f, VariableKeys);
-                VariableTie? tie = null;
-                if (e["Tie"] is { } tn)
-                {
-                    var t = Obj(tn, $"{f}.Tie");
-                    Only(t, $"{f}.Tie", TieKeys);
-                    string to = Str(t, "To", $"{f}.Tie.To")!;
-                    if (to == name) throw new CmcFormatException($"{f}.Tie.To", "a variable cannot be tied to itself.");
-                    double factor = Num(t, "Factor", $"{f}.Tie.Factor") ?? 1;
-                    if (factor == 0) throw new CmcFormatException($"{f}.Tie.Factor", "it is zero.");
-                    tie = new VariableTie(to, factor);
-                }
-                string? scaling = Str(e, "Scaling", $"{f}.Scaling", required: false);
-                if (scaling is not null && !PeripheryScaling.IsKnown(scaling))
-                    throw new CmcFormatException($"{f}.Scaling",
-                        $"'{scaling}' is not a known rule; the known rules are {string.Join(", ", PeripheryScaling.Known)}.");
-                var s = new NetworkVariableSettings
-                {
-                    Min = Num(e, "Min", $"{f}.Min"), Max = Num(e, "Max", $"{f}.Max"),
-                    Lock = Bool(e, "Lock", $"{f}.Lock"), Tie = tie, Scaling = scaling, Value = Num(e, "Value", $"{f}.Value"),
-                };
-                if (s.Min is { } lo && s.Max is { } hi && !(lo <= hi))
-                    throw new CmcFormatException($"{f}.Max", $"{G(hi)} is below the minimum {G(lo)}.");
-                vars[name] = s;
-            }
-        }
-        foreach (var (name, s) in vars)
-            if (s.Tie is { } tie && vars.TryGetValue(tie.To, out var target) && target.Tie is not null)
-                throw new CmcFormatException($"Network.Variables.{name}.Tie.To", $"'{tie.To}' is itself tied; tie both to the same variable.");
+        var vars = o["Variables"] is { } vn ? ParseVariables(vn, "Network.Variables")
+                                            : new Dictionary<string, NetworkVariableSettings>(StringComparer.Ordinal);
 
         (double, double)? band = null;
         if (o["FlatnessBand"] is { } bn)
@@ -197,6 +162,65 @@ public static class CmcExtrinsic
         };
     }
 
+    /// <summary>A variables block — per variable <c>Min</c>, <c>Max</c>, <c>Lock</c>, <c>Tie</c>, <c>Scaling</c>, <c>Value</c> —
+    /// as a network's and a passive model's both carry it; every miss names its field under <paramref name="field"/>.</summary>
+    internal static Dictionary<string, NetworkVariableSettings> ParseVariables(JsonNode vn, string field)
+    {
+        var vars = new Dictionary<string, NetworkVariableSettings>(StringComparer.Ordinal);
+        var vo = Obj(vn, field);
+        foreach (var (name, value) in vo)
+        {
+            string f = $"{field}.{name}";
+            var e = Obj(value!, f);
+            Only(e, f, VariableKeys);
+            VariableTie? tie = null;
+            if (e["Tie"] is { } tn)
+            {
+                var t = Obj(tn, $"{f}.Tie");
+                Only(t, $"{f}.Tie", TieKeys);
+                string to = Str(t, "To", $"{f}.Tie.To")!;
+                if (to == name) throw new CmcFormatException($"{f}.Tie.To", "a variable cannot be tied to itself.");
+                double factor = Num(t, "Factor", $"{f}.Tie.Factor") ?? 1;
+                if (factor == 0) throw new CmcFormatException($"{f}.Tie.Factor", "it is zero.");
+                tie = new VariableTie(to, factor);
+            }
+            string? scaling = Str(e, "Scaling", $"{f}.Scaling", required: false);
+            if (scaling is not null && !PeripheryScaling.IsKnown(scaling))
+                throw new CmcFormatException($"{f}.Scaling",
+                    $"'{scaling}' is not a known rule; the known rules are {string.Join(", ", PeripheryScaling.Known)}.");
+            var s = new NetworkVariableSettings
+            {
+                Min = Num(e, "Min", $"{f}.Min"), Max = Num(e, "Max", $"{f}.Max"),
+                Lock = Bool(e, "Lock", $"{f}.Lock"), Tie = tie, Scaling = scaling, Value = Num(e, "Value", $"{f}.Value"),
+            };
+            if (s.Min is { } lo && s.Max is { } hi && !(lo <= hi))
+                throw new CmcFormatException($"{f}.Max", $"{G(hi)} is below the minimum {G(lo)}.");
+            vars[name] = s;
+        }
+        foreach (var (name, s) in vars)
+            if (s.Tie is { } tie && vars.TryGetValue(tie.To, out var target) && target.Tie is not null)
+                throw new CmcFormatException($"{field}.{name}.Tie.To", $"'{tie.To}' is itself tied; tie both to the same variable.");
+        return vars;
+    }
+
+    /// <summary>A variables block written in a fixed order, so the same block writes the same bytes.</summary>
+    internal static JsonObject VariablesJson(IReadOnlyDictionary<string, NetworkVariableSettings> variables)
+    {
+        var vo = new JsonObject();
+        foreach (var (name, s) in variables.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+        {
+            var e = new JsonObject();
+            if (s.Min is { } lo) e["Min"] = lo;
+            if (s.Max is { } hi) e["Max"] = hi;
+            if (s.Lock) e["Lock"] = true;
+            if (s.Tie is { } t) e["Tie"] = new JsonObject { ["To"] = t.To, ["Factor"] = t.Factor };
+            if (s.Scaling is not null) e["Scaling"] = s.Scaling;
+            if (s.Value is { } v) e["Value"] = v;
+            vo[name] = e;
+        }
+        return vo;
+    }
+
     // ── Writing (fixed order, so the same block writes the same bytes) ────────
 
     public static JsonNode ToJson(PadsSettings p)
@@ -213,22 +237,7 @@ public static class CmcExtrinsic
     {
         var o = new JsonObject();
         if (n.Schematic is not null) o["Schematic"] = n.Schematic;
-        if (n.Variables.Count > 0)
-        {
-            var vo = new JsonObject();
-            foreach (var (name, s) in n.Variables.OrderBy(kv => kv.Key, StringComparer.Ordinal))
-            {
-                var e = new JsonObject();
-                if (s.Min is { } lo) e["Min"] = lo;
-                if (s.Max is { } hi) e["Max"] = hi;
-                if (s.Lock) e["Lock"] = true;
-                if (s.Tie is { } t) e["Tie"] = new JsonObject { ["To"] = t.To, ["Factor"] = t.Factor };
-                if (s.Scaling is not null) e["Scaling"] = s.Scaling;
-                if (s.Value is { } v) e["Value"] = v;
-                vo[name] = e;
-            }
-            o["Variables"] = vo;
-        }
+        if (n.Variables.Count > 0) o["Variables"] = VariablesJson(n.Variables);
         if (n.FlatnessBand is { } b) o["FlatnessBand"] = new JsonArray(b.Lo, b.Hi);
         if (n.Fit is { } fit) o["Fit"] = fit.ToJson();
         if (n.Result is { } r) o["Result"] = r.ToJson();

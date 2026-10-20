@@ -132,12 +132,13 @@ public static class CellCreate
         return path;
     }
 
-    /// <summary>Writes one empty <c>.csym</c> — no primitives, no pins, no ports — and returns its
-    /// path. It loads through <c>SymbolPersistence</c> and opens on an empty canvas (R-aut3-8).</summary>
-    public static string WriteSymbolView(string cellDir, string fileNameWithoutExt)
+    /// <summary>Writes one <c>.csym</c> and returns its path: <paramref name="symbol"/>, or an empty one — no
+    /// primitives, no pins, no ports — which loads through <c>SymbolPersistence</c> and opens on an empty canvas
+    /// (R-aut3-8). A passive model's export hands its N-pin box here (brief-modelcomposer-12 R-mc12-7).</summary>
+    public static string WriteSymbolView(string cellDir, string fileNameWithoutExt, CircuitRF.Design.Symbol.Symbol? symbol = null)
     {
         string path = ViewPath(cellDir, ViewType.Symbol, fileNameWithoutExt);
-        SymbolPersistence.SaveToFile(path, new CircuitRF.Design.Symbol.Symbol([], [], portCount: 0));
+        SymbolPersistence.SaveToFile(path, symbol ?? new CircuitRF.Design.Symbol.Symbol([], [], portCount: 0));
         return path;
     }
 

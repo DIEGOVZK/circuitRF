@@ -198,6 +198,11 @@ dialect's statistical functions, with its argument meaning; real-valued:
 | `limit(nom, dev)` | nom − dev or nom + dev, equally likely | `nom` |
 | `limit(x, lo, hi)` | — a clamp, `min(max(x, lo), hi)`; three arguments is never a distribution | the clamp |
 
+`validrange(x, lo, hi)` (not a distribution) is `x`, unchanged; when `x` lies outside `[lo, hi]` it posts one
+elaboration warning naming the instance, the parameter, its value and the range (`Evaluator.Warn`, which the
+elaborator points at the netlist's warnings). A fitted model — a passive family cell (brief-modelcomposer-12) — wraps
+its geometry parameter in it. Not a clamp: outside the range the model still answers, and says it is extrapolating.
+
 - **Outside a Monte Carlo trial a distribution is its first argument, evaluated alone** — its kind and unit are that
   argument's, and the spread is not even read, so a spread naming something that does not resolve costs an ordinary
   run nothing. The unit rules (§8) read the same view: a distribution is unit-bearing exactly when its nominal is,

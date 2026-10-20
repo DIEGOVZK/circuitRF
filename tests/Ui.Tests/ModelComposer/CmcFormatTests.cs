@@ -47,8 +47,9 @@ public sealed class CmcFormatTests
             },
         ],
         // Current, Charge, Thermal and Traps are MC-7's … MC-10's (CurrentFit, ChargeFit, ThermalFit and TrapFit validate
-        // them; MC-11 Export, Validate and Report likewise); Passive is a later phase's, carried opaquely.
-        Steps = JsonNode.Parse("""{"Current":{"Settings":{"Id":{"Method":"Table","GridStep":0.05}}},"Charge":{"Settings":{"Qg":{"Method":"Table","Path":"A"}}},"Thermal":{"Settings":{"SelfHeating":true,"TauTh":1e-06}},"Traps":{"Settings":{"Model":"CaptureEmission","DcIv":"Validation"}},"Passive":{"Method":"ANN","Layers":[8,8]}}"""),
+        // them; MC-11 Export, Validate and Report likewise; MC-12's Passive belongs to a Passive document); Plots is a later
+        // phase's, carried opaquely.
+        Steps = JsonNode.Parse("""{"Current":{"Settings":{"Id":{"Method":"Table","GridStep":0.05}}},"Charge":{"Settings":{"Qg":{"Method":"Table","Path":"A"}}},"Thermal":{"Settings":{"SelfHeating":true,"TauTh":1e-06}},"Traps":{"Settings":{"Model":"CaptureEmission","DcIv":"Validation"}},"Plots":{"Layout":"Grid","Panes":[8,8]}}"""),
         Panels = new CmcPanels { Hidden = ["Plots", "Data"] },
     };
 

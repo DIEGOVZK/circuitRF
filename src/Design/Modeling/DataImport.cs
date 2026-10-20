@@ -102,7 +102,10 @@ public static class DataImport
                            ? $"the file name does not match the pattern '{im.Pattern}'."
                            : $"no comment line matches the pattern '{im.Pattern}'.");
             }
-            points.Add(new BiasPoint(src, Get(f, "vgs"), Get(f, "vds"), Get(f, "ig"), Get(f, "id")) { AmbientC = Get(f, "T") });
+            points.Add(new BiasPoint(src, Get(f, "vgs"), Get(f, "vds"), Get(f, "ig"), Get(f, "id"))
+            {
+                AmbientC = Get(f, "T"), Geometry = Get(f, "geometry"),
+            });
             foreach (var m in snp.Matrices)
                 for (int i = 0; i < ports; i++)
                     for (int j = 0; j < ports; j++)

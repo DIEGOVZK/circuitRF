@@ -9,7 +9,8 @@ DC/RF dispersion); MC-8 built (the charge constituents and Check Charge Conserva
 as an input, the thermal node, Rth extraction, the single-temperature model); MC-10 built (the trap contract and
 registry, `CaptureEmission` and `Custom`, trap-state training data, `Id` and `Qd` re-trained with the trap states); MC-11
 built (export to `.cmodel`, the symbol choice, the placement payload, staleness by data as well as network, validation
-against S, I–V and large-signal data, and the Model Validation Report's headless half) ·
+against S, I–V and large-signal data, and the Model Validation Report's headless half); MC-12 built (passive models:
+analysis, vector fitting, the topology library, ranked proposals, the fit, geometry families, export as a cell) ·
 **Source:** `docs/sonnet-briefs/brief-modelcomposer-0-overview.md` (decisions D1–D16) and the phase briefs
 `brief-modelcomposer-1` … `-16` · **Primary reference:** [P1] J. C. Pedro, D. E. Root, J. Xu, L. C. Nunes,
 *Nonlinear Circuit Simulation and Modeling*, Cambridge University Press, 2018.
@@ -1088,7 +1089,112 @@ cut one step past it as the engine's drive-up stops.
 
 The Data Display document and the dialog are the window's (MC-15); the `model report` noun is MC-13's.
 
-## 15. Where it lives
+## 15. Passive models (MC-12)
+
+A `Passive` document turns an N-port S-parameter block — or a family of them over one geometry value — into a lumped
+(or partly distributed) circuit, and exports it as an ordinary cell. Everything is in `src/Design/Modeling/Passive/`
+except the vector fit, which is numerics (`src/Engine/Modeling/VectorFit.cs`).
+
+### 15.1 Data (R-mc12-1)
+
+`PassiveSParams` sets as MC-3 imports them; a family's geometry value comes from the bias pattern's `{geometry}` field
+(`spiral_{geometry}t`, a unit allowed: `{geometry:um}`), from the name or the comments, onto `BiasPoint.Geometry` (NaN
+otherwise; a cache written before the column existed reads NaN). `{geometry}` on an active set is refused.
+`PassiveBlock.From` gives one block per non-excluded source.
+
+### 15.2 Analysis (`PassiveAnalysis`, R-mc12-2)
+
+One line each: the port count; reciprocity (`max |Sij − Sji|`, `TouchstoneHealth.ReciprocityError`); passivity (the
+largest eigenvalue of `SᴴS`, i.e. σmax² from `RFNetwork.Passivity`, over the band; above `1 + 1e-6` the frequencies
+are listed as a range); symmetry (`max |S11 − S22|`, port order reversed for N > 2); the low-frequency asymptotes
+(series R and L — or series C — of the principal impedance, shunt C per port); the self-resonances (upward zero
+crossings of the principal reactance, interpolated in log f by `PassiveMetrics.SelfResonance`, and the downward ones,
+the parallel resonances an inductor's self-resonance is); and the vector fit. The **principal impedance** is Z for a
+one-port and the π model's series branch `−1/Y21` otherwise; the shunts are the row sums of Y. These are also what a
+library topology's starting values read.
+
+### 15.3 Vector fitting (`VectorFit`, R-mc12-2)
+
+Gustavsen and Semlyen's method, written from the paper, with poles shared by every response and real arithmetic (a
+complex pole travels with its conjugate; the pair's basis is `1/(s − a) + 1/(s − a*)` and `j/(s − a) − j/(s − a*)`).
+Frequencies are divided by the top angular frequency first. Relocation is the fast formulation: each response's rows
+`[Φ, 1, s | −F·Φ]` are triangularised alone and only σ's rows of R are stacked — the same solution as the full system
+at (responses)⁻² the cost, measured 8.9 s → 0.7 s on a non-rational 2-port that climbs to order 12. **The new poles are
+the roots of the secular equation `1 + Σ r_k/(z − a_k) = 0`, found by an Aberth iteration** on
+`p(z) = σ(z)·Π(z − a_k)`; near pole `a_i` the two `1/(z − a_i)` terms of `p′/p` are combined analytically, so a
+converging fit — where every root sits next to an old pole — loses no digits. There is no general eigensolver in the
+repository (`Dcim.cs` gives why) and this needs none. Unstable poles are reflected; order is chosen by error
+(`FitByError`: the lowest order from 1 whose relative error is at most 1e-3, default maximum 12). Y is fitted unless
+Y does not exist at every frequency or Z fits better.
+
+### 15.4 The library (`PassiveTopologies`, R-mc12-3)
+
+Embedded `.csch` cells under `Passive/Topologies/`, pins 1…N the ports, references ground — drawn by
+`netlist --to-schematic` with numbered pins on labelled stubs, the stock extrinsic networks' construction. One-ports:
+`series-rlc`, `parallel-rlc`, `inductor-skin` (`R0 + Rsk·√f` as a one-port `Z_Port`, L, and the self-resonance C),
+`capacitor-esr-esl` (with pad C), `resistor-parasitics`. Two-ports: `pi`, `tee`, `bond-wire` (skin-effect R and L),
+`via` (series R–L, `Cv/2` each side), `spiral` (series R–L, inter-winding C, `Cox` – `Rsub ∥ Csub` per side), `mim`,
+`tline-pads` (`TLIN` with `E` at 1 GHz, pad C each side). Each entry carries its seed — closed forms of the analysis's
+asymptotes and resonances (`Ls = 1/((2πf0)²·Cs)` at a series resonance, and so on), falling back to a typical value
+where an asymptote has the wrong sign — and its **positive** non-R/L/C variables (`R0`, `Rsk`, `Zt`, `Et`), which get an
+element's logarithmic coordinate and bounds. `PassiveNetwork` reads any of them — or a user's `.csch` — through
+`PinNetwork` (which now also takes "N pins numbered 1…N") and solves S at the block's own Z0 with the engine.
+
+### 15.5 The fit and the proposals (`PassiveFit`, R-mc12-4, R-mc12-5)
+
+The residual is the topology's S minus the block's, real and imaginary parts of every entry at every frequency, each
+frequency weighted: uniform, or a band whose frequencies weigh `Emphasis` (default 10) times the rest in the cost. The
+search is MC-5's, now **`BoxLeastSquares`** (`src/Design/Modeling/`), which both fits share: `FitVariables` (starts,
+bounds, locks, ties as coordinates of the unit box), the registry's global algorithm per seeded start, the
+Levenberg–Marquardt polish, the identifiability report. Bounds default to 0 … 1000× the start (a library seed is cruder
+than an extrinsic network's start, hence wider than MC-4's 100×). A full fit is LM from the start, then `Starts`
+(default 2) global searches of 100 evaluations per variable each polished, keeping the best.
+
+**Proposals.** Every library topology with the block's port count gets its seed and a short fit (LM, one 40-per-variable
+global search, LM), and a user's drawn topology the same from its own values. They are ranked by
+
+    AIC = n·ln(max(RSS, n·(1e-6)²)/n) + 2k
+
+with n the number of real residuals and k the fitted variables. The floor — a |ΔS| of a part in a million — is what
+makes two exact fits compare by element count alone; without it the comparison is between two numbers near 1e-30 that
+measure only where each optimiser stopped. The top three are offered. Measured on the gates: the generating topology's
+AIC is lower than the runner-up's by 2,200 to 13,000.
+
+### 15.6 Families (`FamilyFit`, R-mc12-6)
+
+One topology across the family. (1) Each training geometry is fitted on its own in ascending order: the first by a
+proposal's short fit from its seed, each next by LM from its neighbour's solution and from its own seed, the lower
+kept, a short search when both land more than ten times worse than the first. (2) Each fitted variable becomes a law
+of the normalised geometry `x = (g − mid)/half` over the training range: a polynomial of degree 0–3 or
+`(a0 + a1·x)/(1 + b1·x)` with `|b1| < 0.95` (no pole in the range), chosen by **leave-one-out** error, the simplest
+form within 2 % of the best winning; a law that leaves the variable's bounds anywhere in the range is inadmissible, as
+is a non-monotone one when `Monotone` is set. (3) Every law's coefficients are refined together by LM against every
+training block. (4) The held-out geometry — the middle one, `sorted[(n−1)/2]`, unless named — is predicted and
+compared; it never trains. A family needs three training geometries besides it. Locked variables stay constant; a tie
+holds exactly through the laws.
+
+### 15.7 Export as a cell (`PassiveCellExport`, R-mc12-7)
+
+Through `CellCreate.Create` (schematic view) and `CellCreate.WriteSymbolView`, which now takes the symbol to write —
+the auto-generated N-pin box, or a chosen `.csym` whose pin count matches. The schematic is the topology with its VAR
+block removed; the variables become `.ccell` parameters in base SI with the base unit (Ω, H, F), defaulting to the
+fitted values. A family's cell has the geometry parameter first, defaulting to the held-out geometry, and every
+element an expression of it through **`validrange(g, lo, hi)`** — a new built-in that returns its value unchanged and,
+outside the range, posts one elaboration warning naming the instance, the parameter, its value and the range
+(`Evaluator.Warn`, pointed by the elaborator at the netlist's warnings). It is not a clamp: outside the range the
+model still answers, and says it is extrapolating. An existing cell name is refused and the existing cell is left as
+it was.
+
+### 15.8 The document (`PassiveStep`, R-mc12-8)
+
+`Steps.Passive` = `Settings` (`Set`, `Block`, `Topology` — a library id or a `.csch` relative to the `.cmc` —,
+`Variables` in the network block's own shape, `Fit`, `Family`, `Export` with `Cell`, `Library`, `Symbol`) and `Result`
+(the topology, the values or the laws, the quality and the report), stamped by `CmcStamps`. An Active document with
+the block is refused. `AnalyseFile`, `ProposeFile`, `FitFile` and `ExportFile` are what the window and the `model`
+verb call; every long one takes a `RunControl` (vector fitting is cancellable between orders, the fits per batch) and
+`FitFile` writes only on success, so a cancelled fit leaves the previous result. `ExportFile` refuses a stale fit.
+
+## 16. Where it lives
 
 | Path | What |
 |---|---|
@@ -1114,8 +1220,12 @@ The Data Display document and the dialog are the window's (MC-15); the `model re
 | `src/Core/Devices/Composed/Traps/` | MC-10: `TrapModel.cs` (`ModelTraps`, `TrapParameter`, `TrapModelDefinition`, `TrapDynamics`, `RateTrapDynamics`), `TrapModels` (the registry), `CaptureEmissionTraps`, `CustomTraps`; the trap ports in `ComposedCoreModel` and lanes in `ComposedCoreProgram` (`DcSeeds`) |
 | `src/Design/Modeling/` | MC-10: `TrapFit` (with `TrapMapping`), `TrapFitSettings` (with `TrapFitRecord`); the `Setting` cube in `IntrinsicExtraction`; the trap states through `CurrentFit` and `ChargeFit` |
 | `src/Design/Modeling/` | MC-11: `CmcStamps`, `CmodelExport` (with `ExportSettings`), `ModelSymbols`, `ComposedFetPlacement`, `ValidationBench`, `ModelValidation` (with `LoadSweep`), `ModelValidationReport` (with `ReportOptions`); `PinNetwork.DefineBlock`, `PadDeembedding.Embed`, `DataImport.CsvRows`, `LargeSignalConditions` in `CmcDocument` |
+| `src/Design/Modeling/` | MC-12: `BoxLeastSquares` (with `FitCoordinate`, `FitVariables`), shared with `NetworkFit` |
+| `src/Design/Modeling/Passive/` | MC-12: `PassiveNetwork`, `PassiveAnalysis` (with `PassiveBlock`), `PassiveTopologies` and `Topologies/*.csch`, `PassiveFit` (with `PassiveFitSettings`), `FamilyFit` (with `FamilySettings`, `ElementLaw`), `PassiveCellExport`, `PassiveStep` |
+| `src/Engine/Modeling/VectorFit.cs` | MC-12: `VectorFit`, `RationalModel`, `LeastSquares` |
+| `src/Core/Expressions/` | MC-12: `validrange` and `Evaluator.Warn` |
 
-## 16. Gates (MC-1 … MC-11)
+## 17. Gates (MC-1 … MC-12)
 
 `tests/Core.Tests/Composed/CmodelFormatTests`; `tests/Engine.Tests/Composed/` — `ComposedFetEquivalenceTests`
 (against an SDD with the same expressions in the same network: DC to 1e-12, S at three biases to 1e-9, HB
@@ -1231,3 +1341,17 @@ passes and its testbench runs through the `hb` verb with exit 0), `ModelValidati
 loads present harmonicaRF's intrinsic targets through the network and C22 to 1e-9 where reachable; a report on a 7-point
 disc runs S, charge, C–V and two classes with MXP and MXE, and writes its folder). The fixture is
 `Support/ExportFixture.cs`.
+
+MC-12: `tests/Engine.Tests/Modeling/VectorFitTests` (two lightly damped pairs and a real pole shared by three responses
+with constant and proportional terms: the poles to 1e-8, error by order stops at 5); `tests/Ui.Tests/ModelComposer/Passive/`
+— `PassiveAnalysisTests` (a series RLC between two ports: reciprocal to 1e-12, largest eigenvalue ≤ 1, the reactance
+crossing within 1e-4 of 1/(2π√LC) and the vector fit's pole within 1e-6; S raised 10 % over 4–5 GHz flagged at exactly
+those frequencies, eigenvalue 1.21), `TopologyProposalTests` (S of `parallel-rlc`, `pi` and `mim` at known values ranks
+that topology first among the five or seven candidates and recovers every value within 1e-3), `FamilyFitTests` (six
+spirals over turns 1.5 … 6.5 with L ∝ t^1.8 and R_sub ∝ 1/t, side 2 tied to side 1: the laws come out linear,
+quadratic, rational and cubic as the truth is, the held-out 3.5 within max |ΔS| 0.01 — measured 3.5e-4),
+`PassiveCellExportTests` (a fitted π exported, placed and simulated through extraction, the `.cnl` round trip and the
+engine equals the fitted network to 1e-12; an existing name refused and the cell unchanged; a family cell at
+turns = 2.5 equals its laws to 1e-12 and warns once at 7), `PassiveStepFileTests` (Touchstone files named
+`via_{geometry}t` fitted as a family into the `.cmc`, read back, exported from the record). The data is
+`Passive/SyntheticPassiveData.cs`.

@@ -27,7 +27,8 @@
 // COLD-FET DIRECT alternates two Levenberg–Marquardt fits until neither moves: the capacitances on the pinch-off
 // residual with the series elements held, then the resistances, inductances and mutuals on the forward residual with
 // the capacitances held. MULTI-BIAS runs a seeded global search per start, polishes each with Levenberg–Marquardt and
-// keeps the best; the spread of the polished starts is reported beside each standard error.
+// keeps the best; the spread of the polished starts is reported beside each standard error. The coordinates, the
+// searches and the identifiability report are BoxLeastSquares', which the passive fit (MC-12) shares.
 //
 // Nothing here writes: Run returns a result, Apply puts it in a document, FitFile does both and saves. A cancelled run
 // throws OperationCanceledException and the document — and the file — keep the previous values (D13).
@@ -39,8 +40,6 @@ using System.Text;
 using System.Text.Json.Nodes;
 using CircuitRF.Engine;
 using CircuitRF.Engine.Modeling;
-using CircuitRF.Engine.Optimization;
-using NumFlat;
 
 namespace CircuitRF.Design.Modeling;
 
@@ -174,47 +173,26 @@ internal sealed class FitPoint
     public required double Z0 { get; init; }
 }
 
-/// <summary>A variable as a coordinate of the unit box.</summary>
-internal sealed record FitCoordinate(int Index, string Name, NetworkElementKind Kind, double Min, double Max, bool Log)
-{
-    /// <summary>The bottom of a logarithmic axis: the minimum, or a millionth of the maximum when the minimum is zero.</summary>
-    public double LogFloor => Min > 0 ? Min : Max * 1e-6;
-
-    public double Decode(double u) => Log ? LogFloor * Math.Pow(Max / LogFloor, u) : Min + u * (Max - Min);
-
-    public double Encode(double v) => Math.Clamp(
-        Log ? Math.Log(Math.Max(v, LogFloor) / LogFloor) / Math.Log(Max / LogFloor) : (v - Min) / (Max - Min), 0, 1);
-}
-
 [Flags]
 internal enum FitTerms { None = 0, Flatness = 1, PinchOff = 2, Forward = 4, SmallSignal = 8, Cold = PinchOff | Forward }
 
 internal sealed class NetworkFitProblem
 {
     private readonly SixPinNetwork _network;
-    private readonly IReadOnlyList<NetworkVariable> _vars;
-    private readonly double[] _start;                      // every variable, network order
-    private readonly int[] _tieTo;                         // −1, or the index this one follows
-    private readonly double[] _tieFactor;
-    private readonly FitCoordinate[] _free;
+    private readonly FitVariables _v;
     private readonly NetworkFitSettings _settings;
     private readonly FitPoint[] _active;
     private readonly FitPoint? _pinch, _forward;
     private readonly (double Lo, double Hi) _flatBand;
     private readonly (double Lo, double Hi)? _coldBand;
     private readonly List<string> _notes;
-    private long _evaluations;
+    private readonly EvaluationCounter _counter = new();
 
-    private NetworkFitProblem(SixPinNetwork network, double[] start, int[] tieTo, double[] tieFactor, FitCoordinate[] free,
-                              NetworkFitSettings settings, FitPoint[] active, FitPoint? pinch, FitPoint? forward,
-                              (double, double) flatBand, List<string> notes)
+    private NetworkFitProblem(SixPinNetwork network, FitVariables v, NetworkFitSettings settings, FitPoint[] active,
+                              FitPoint? pinch, FitPoint? forward, (double, double) flatBand, List<string> notes)
     {
         _network = network;
-        _vars = network.Variables;
-        _start = start;
-        _tieTo = tieTo;
-        _tieFactor = tieFactor;
-        _free = free;
+        _v = v;
         _settings = settings;
         _active = active;
         _pinch = pinch;
@@ -237,42 +215,8 @@ internal sealed class NetworkFitProblem
         var notes = new List<string>();
 
         // Variables: start, bounds, ties, locks (R-mc5-1.3, R-mc5-2).
-        var vars = network.Variables;
-        int n = vars.Count;
-        var start = new double[n];
-        var tieTo = new int[n];
-        var tieFactor = new double[n];
-        var free = new List<FitCoordinate>();
-        for (int i = 0; i < n; i++)
-        {
-            var v = vars[i];
-            var s = net.Variables.GetValueOrDefault(v.Name) ?? new NetworkVariableSettings();
-            start[i] = s.Value ?? v.Value;
-            tieTo[i] = -1;
-            if (s.Tie is { } tie)
-            {
-                int t = IndexOf(vars, tie.To);
-                if (t < 0) throw new ModelingException($"Network.Variables.{v.Name}.Tie.To", $"'{tie.To}' is not a variable of the network.");
-                (tieTo[i], tieFactor[i]) = (t, tie.Factor);
-                continue;
-            }
-            if (s.Lock) continue;
-            var d = SixPinNetwork.DefaultFor(v);
-            double? lo = s.Min ?? d.Min, hi = s.Max ?? d.Max;
-            if (lo is null || hi is null)
-                throw new ModelingException(v.Name, $"it has no {(lo is null ? "Min" : "Max")}; give it one, or lock it.");
-            if (!(hi > lo)) throw new ModelingException(v.Name, $"its range {G(lo.Value)} to {G(hi.Value)} is empty; lock it instead.");
-            bool log = v.Kind != NetworkElementKind.Other && lo >= 0;
-            var c = new FitCoordinate(i, v.Name, v.Kind, lo.Value, hi.Value, log);
-            double inBox = c.Decode(c.Encode(start[i]));
-            if (inBox != start[i] && Math.Abs(inBox - start[i]) > 1e-12 * Math.Abs(start[i]))
-            {
-                notes.Add($"{v.Name}: start {G(start[i])} moved to {G(inBox)}, inside its range.");
-                start[i] = inBox;
-            }
-            free.Add(c);
-        }
-        if (free.Count == 0) throw new ModelingException("Network", "every variable is locked or tied; there is nothing to fit.");
+        var fv = FitVariables.Build(network.Variables, net.Variables, v => SixPinNetwork.DefaultFor(v), "Network.Variables", notes);
+        if (fv.Free.Length == 0) throw new ModelingException("Network", "every variable is locked or tied; there is nothing to fit.");
 
         // The data at the device plane.
         var pads = PadDeembedding.Load(CmcExtrinsic.Pads(doc), dir);
@@ -327,13 +271,7 @@ internal sealed class NetworkFitProblem
         };
         var axisF = (active.FirstOrDefault() ?? pinch ?? forward ?? points[0]).F;
         var band = net.FlatnessBand ?? IntrinsicQuantities.DefaultBand(axisF);
-        return new NetworkFitProblem(network, start, tieTo, tieFactor, [.. free], resolved, active, pinch, forward, band, notes);
-    }
-
-    private static int IndexOf(IReadOnlyList<NetworkVariable> vars, string name)
-    {
-        for (int i = 0; i < vars.Count; i++) if (vars[i].Name == name) return i;
-        return -1;
+        return new NetworkFitProblem(network, fv, resolved, active, pinch, forward, band, notes);
     }
 
     private static bool AtZeroVds(FitPoint p) => Math.Abs(p.Bias.Vds) <= NetworkFit.ZeroVds && !p.Bias.Excluded;
@@ -383,25 +321,6 @@ internal sealed class NetworkFitProblem
         return [.. new[] { off, on, knee, sat }.Distinct()];
     }
 
-    // ── Values and coordinates ────────────────────────────────────────────────
-
-    /// <summary>Every variable's value at the free coordinates' values <paramref name="freeValues"/>, ties applied.</summary>
-    private double[] Compose(double[] freeValues, double[] baseline)
-    {
-        var v = (double[])baseline.Clone();
-        for (int j = 0; j < _free.Length; j++) v[_free[j].Index] = freeValues[j];
-        for (int i = 0; i < v.Length; i++)
-            if (_tieTo[i] >= 0) v[i] = v[_tieTo[i]] * _tieFactor[i];
-        return v;
-    }
-
-    private Dictionary<string, double> Named(double[] all)
-    {
-        var d = new Dictionary<string, double>(StringComparer.Ordinal);
-        for (int i = 0; i < all.Length; i++) d[_vars[i].Name] = all[i];
-        return d;
-    }
-
     // ── The residual vector ───────────────────────────────────────────────────
 
     private int[] BandIndices(FitPoint p, (double Lo, double Hi)? band)
@@ -415,7 +334,7 @@ internal sealed class NetworkFitProblem
     /// <summary>The weighted residual vector at <paramref name="all"/> (every variable's value).</summary>
     internal double[] Residuals(double[] all, FitTerms terms)
     {
-        var values = Named(all);
+        var values = _v.Named(all);
         // |k| < 1 for every mutual (R-mc5-2): the network is solved with each coupling held to MaxCoupling — the
         // engine is never handed a non-physical one — and the excess is a penalty that is zero inside.
         var penalties = new List<double>();
@@ -593,87 +512,18 @@ internal sealed class NetworkFitProblem
 
     // ── Driving the ask/tell algorithms ───────────────────────────────────────
 
-    private sealed record Solved(double[] Free, double Cost);
+    private BoxLeastSquares Lsq(FitTerms terms) => new(_v.Free, v => Residuals(_v.Compose(v), terms), _counter);
 
-    private static readonly ParallelOptions Serial = new() { MaxDegreeOfParallelism = 1 };
+    private Solved Polish(double[] from, int[] coords, FitTerms terms, RunControl? rc) => Lsq(terms).Polish(from, coords, rc);
 
-    /// <summary>
-    /// Runs <paramref name="alg"/> over the coordinates <paramref name="coords"/> (indices into <see cref="_free"/>), the
-    /// others held at <paramref name="baseline"/>, until it finishes or has spent <paramref name="maxEvals"/>.
-    /// A batch is evaluated in parallel; the results go back in batch order, so the run is the same whatever the cores.
-    /// </summary>
-    private Solved Drive(IOptimizerAlgorithm alg, int[] coords, double[] baseline, FitTerms terms, int maxEvals, RunControl? rc)
-    {
-        double[]? best = null;
-        Evaluation? bestE = null;
-        int used = 0;
-        var po = new ParallelOptions { CancellationToken = rc?.Token ?? CancellationToken.None, MaxDegreeOfParallelism = Environment.ProcessorCount };
-        while (!alg.IsFinished && used < maxEvals)
-        {
-            rc?.ThrowIfCancellationRequested();
-            var batch = alg.Ask();
-            if (batch.Count == 0) break;
-            var results = new Evaluation[batch.Count];
-            Parallel.For(0, batch.Count, batch.Count > 1 ? po : Serial, i => results[i] = Evaluate(batch[i], coords, baseline, terms));
-            rc?.ThrowIfCancellationRequested();
-            used += batch.Count;
-            Interlocked.Add(ref _evaluations, batch.Count);
-            rc?.TickStage(batch.Count);
-            for (int i = 0; i < batch.Count; i++)
-                if (bestE is null || Better(results[i], bestE)) (bestE, best) = (results[i], batch[i]);
-            alg.Tell(results);
-        }
-        var freeValues = (double[])baseline.Clone();
-        if (best is not null)
-            for (int j = 0; j < coords.Length; j++) freeValues[coords[j]] = _free[coords[j]].Decode(best[j]);
-        return new Solved(freeValues, bestE?.Cost ?? double.PositiveInfinity);
-    }
-
-    private static bool Better(Evaluation a, Evaluation b) => a.Failed != b.Failed ? !a.Failed : a.Cost < b.Cost;
-
-    private Evaluation Evaluate(double[] u, int[] coords, double[] baseline, FitTerms terms)
-    {
-        var freeValues = (double[])baseline.Clone();
-        for (int j = 0; j < coords.Length; j++) freeValues[coords[j]] = _free[coords[j]].Decode(u[j]);
-        try
-        {
-            var r = Residuals(Compose(freeValues, _start), terms);
-            double cost = 0;
-            foreach (double x in r) cost += x * x;
-            return new Evaluation(cost, r);
-        }
-        catch (Exception ex) when (ex is ArithmeticException or ModelingException or InvalidOperationException or SingularMatrixException)
-        {
-            return new Evaluation(1e300, Failed: true);
-        }
-    }
-
-    private double[] FreeStart => [.. _free.Select(c => _start[c.Index])];
-
-    private double[] Encode(double[] freeValues, int[] coords) => [.. coords.Select(j => _free[j].Encode(freeValues[j]))];
-
-    /// <summary>Levenberg–Marquardt from <paramref name="from"/> over <paramref name="coords"/>, up to 100 iterations.</summary>
-    private Solved Polish(double[] from, int[] coords, FitTerms terms, RunControl? rc)
-    {
-        if (coords.Length == 0) return new Solved(from, Cost(from, terms));
-        var lm = new LevenbergMarquardt(Encode(from, coords));
-        var s = Drive(lm, coords, from, terms, 100 * (coords.Length + 2), rc);
-        return s.Cost <= Cost(from, terms) ? s : new Solved(from, Cost(from, terms));
-    }
-
-    private double Cost(double[] freeValues, FitTerms terms)
-    {
-        try { return Residuals(Compose(freeValues, _start), terms).Sum(x => x * x); }
-        catch (Exception ex) when (ex is ArithmeticException or ModelingException or InvalidOperationException or SingularMatrixException)
-        { return double.PositiveInfinity; }
-    }
+    private double Cost(double[] freeValues, FitTerms terms) => Lsq(terms).Cost(freeValues);
 
     // ── The methods ───────────────────────────────────────────────────────────
 
     public NetworkFitResult Fit(RunControl? rc)
     {
-        double[] values = FreeStart;
-        var spreads = new double[_free.Length];
+        double[] values = _v.FreeStart;
+        var spreads = new double[_v.Free.Length];
         var terms = FitTerms.Cold;
         if (_settings.Method != NetworkFitMethod.MultiBias)
             values = ColdFetDirect(values, rc);
@@ -684,16 +534,16 @@ internal sealed class NetworkFitProblem
         }
         rc?.ThrowIfCancellationRequested();
         var report = Identify(values, spreads, terms);
-        return new NetworkFitResult(Named(Compose(values, _start)), report, _settings, _settings.Method, Cost(values, terms),
-                                    _notes, Interlocked.Read(ref _evaluations));
+        return new NetworkFitResult(_v.Named(_v.Compose(values)), report, _settings, _settings.Method, Cost(values, terms),
+                                    _notes, _counter.Count);
     }
 
     /// <summary>R-mc5-1.1: the capacitances from the pinch-off point, then the series elements from the forward point,
     /// alternated until a round moves no value by more than 1e-7 of itself (at most eight rounds), then both together.</summary>
     private double[] ColdFetDirect(double[] values, RunControl? rc)
     {
-        int[] caps = [.. Enumerable.Range(0, _free.Length).Where(j => _free[j].Kind == NetworkElementKind.Capacitance)];
-        int[] series = [.. Enumerable.Range(0, _free.Length).Where(j => _free[j].Kind is NetworkElementKind.Resistance
+        int[] caps = [.. Enumerable.Range(0, _v.Free.Length).Where(j => _v.Free[j].Kind == NetworkElementKind.Capacitance)];
+        int[] series = [.. Enumerable.Range(0, _v.Free.Length).Where(j => _v.Free[j].Kind is NetworkElementKind.Resistance
                                                                      or NetworkElementKind.Inductance or NetworkElementKind.Mutual)];
         const int rounds = 8;
         for (int round = 0; round < rounds; round++)
@@ -718,136 +568,14 @@ internal sealed class NetworkFitProblem
     /// Levenberg–Marquardt; the best start wins and the polished starts' spread is kept.</summary>
     private (double[] Values, double[] Spread) MultiBias(double[] from, FitTerms terms, RunControl? rc)
     {
-        var all = Enumerable.Range(0, _free.Length).ToArray();
-        int budget = _settings.Budget ?? NetworkFitSettings.DefaultBudgetPerCoordinate * _free.Length;
-        var u0 = Encode(from, all);
-        var finals = new List<Solved>();
-        for (int s = 0; s < _settings.Starts; s++)
-        {
-            rc?.BeginStage($"Start {s + 1} of {_settings.Starts}", budget, "evaluation(s)");
-            var options = new Dictionary<string, string>(StringComparer.Ordinal);
-            if (_settings.Algorithm == DifferentialEvolution.AlgorithmId)
-                options["budget"] = budget.ToString(CultureInfo.InvariantCulture);
-            var alg = OptimizerFactory.Create(_settings.Algorithm, u0, _settings.Seed + (ulong)s, options)!;
-            var global = Drive(alg, all, from, terms, budget, rc);
-            rc?.BeginStage($"Start {s + 1} of {_settings.Starts}: polish", 0, "evaluation(s)");
-            finals.Add(Polish(global.Free, all, terms, rc));
-        }
-        var best = finals.MinBy(f => f.Cost)!;
-        var spread = new double[_free.Length];
-        for (int j = 0; j < spread.Length; j++)
-            spread[j] = finals.Max(f => f.Free[j]) - finals.Min(f => f.Free[j]);
-        return (best.Free, spread);
+        int budget = _settings.Budget ?? NetworkFitSettings.DefaultBudgetPerCoordinate * _v.Free.Length;
+        return Lsq(terms).MultiStart(from, _settings.Starts, _settings.Seed, _settings.Algorithm, budget, rc);
     }
 
     // ── Identifiability (R-mc5-4) ─────────────────────────────────────────────
 
-    /// <summary>
-    /// The residual Jacobian at the solution by central differences — in ln v for a logarithmic variable, so its column
-    /// reads relative sensitivity — then <c>Cov = s²(JᵀJ)⁻¹</c>, <c>s² = SSR/(m − n)</c>: each variable's standard error
-    /// and its correlation with every other ([R11] ch. 4).
-    /// </summary>
-    private IdentifiabilityReport Identify(double[] values, double[] spreads, FitTerms terms)
-    {
-        int n = _free.Length;
-        double[] r0 = Residuals(Compose(values, _start), terms);
-        int m = r0.Length;
-        var jac = new double[m, n];
-        for (int j = 0; j < n; j++)
-        {
-            var c = _free[j];
-            double h = c.Log ? 1e-4 : 1e-4 * (c.Max - c.Min);
-            double[] Step(double sgn)
-            {
-                var v = (double[])values.Clone();
-                v[j] = c.Log ? values[j] * Math.Exp(sgn * h) : values[j] + sgn * h;
-                return Residuals(Compose(v, _start), terms);
-            }
-            var rp = Step(+1);
-            var rm = Step(-1);
-            for (int k = 0; k < m; k++) jac[k, j] = (rp[k] - rm[k]) / (2 * h);
-        }
-        double ssr = r0.Sum(x => x * x);
-        double s2 = ssr / Math.Max(1, m - n);
-
-        // JᵀJ, normalised to a unit diagonal, inverted through its SVD (a direction the data does not see is a huge
-        // variance, not a crash).
-        var jtj = new double[n, n];
-        for (int a = 0; a < n; a++)
-            for (int b = 0; b < n; b++)
-            {
-                double sum = 0;
-                for (int k = 0; k < m; k++) sum += jac[k, a] * jac[k, b];
-                jtj[a, b] = sum;
-            }
-        var dScale = new double[n];
-        for (int a = 0; a < n; a++) dScale[a] = jtj[a, a] > 0 ? 1 / Math.Sqrt(jtj[a, a]) : 0;
-        var mat = new Mat<double>(n, n);
-        for (int a = 0; a < n; a++)
-            for (int b = 0; b < n; b++)
-                mat[a, b] = jtj[a, b] * dScale[a] * dScale[b];
-        var svd = mat.Svd();
-        double smax = svd.S[0];
-        var inv = new double[n, n];
-        for (int q = 0; q < n; q++)
-        {
-            double sv = Math.Max(svd.S[q], 1e-15 * Math.Max(smax, 1e-300));
-            for (int a = 0; a < n; a++)
-                for (int b = 0; b < n; b++)
-                    inv[a, b] += svd.U[a, q] * svd.U[b, q] / sv;
-        }
-
-        var vars = new List<FittedVariable>();
-        for (int j = 0; j < n; j++)
-        {
-            var c = _free[j];
-            double v = values[j];
-            bool seen = dScale[j] > 0;
-            double sigmaP = seen ? Math.Sqrt(s2 * inv[j, j]) * dScale[j] : double.PositiveInfinity;
-            double stdErr = c.Log ? Math.Abs(v) * sigmaP : sigmaP;
-            double rel = v != 0 ? stdErr / Math.Abs(v) : double.PositiveInfinity;
-            string? partner = null;
-            double rho = 0;
-            for (int k = 0; k < n; k++)
-            {
-                if (k == j || !seen || dScale[k] == 0) continue;
-                double rk = inv[j, k] / Math.Sqrt(inv[j, j] * inv[k, k]);
-                if (Math.Abs(rk) > Math.Abs(rho)) (rho, partner) = (rk, _free[k].Name);
-            }
-            double u = c.Encode(v);
-            string? atBound = u <= 0.005 ? "Min" : u >= 0.995 ? "Max" : null;
-            bool poor = !seen || rel > _settings.PoorRelativeError || Math.Abs(rho) > _settings.PoorCorrelation;
-            vars.Add(new FittedVariable(c.Name, v, c.Min, c.Max, stdErr, rel, spreads[j], atBound, partner, rho, poor));
-        }
-
-        var lines = new List<string>();
-        foreach (var v in vars.Where(v => v.Poor))
-        {
-            if (double.IsInfinity(v.StdError)) lines.Add($"{v.Name} not determined by the data");
-            else if (Math.Abs(v.Correlation) > _settings.PoorCorrelation)
-                lines.Add($"{v.Name} poorly determined (ρ = {Signed(v.Correlation)} with {v.Partner})");
-            else lines.Add($"{v.Name} poorly determined (±{(100 * v.RelativeError).ToString("0", CultureInfo.InvariantCulture)} %)");
-        }
-        foreach (var v in vars.Where(v => v.AtBound is not null))
-            lines.Add($"{v.Name} at bound {v.AtBound} ({G(v.AtBound == "Min" ? v.Min : v.Max)})");
-        // One suggestion per poorly determined variable or correlated pair, named once.
-        var named = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var v in vars.Where(v => v.Poor))
-        {
-            if (!named.Add(v.Name)) continue;
-            if (v.Partner is { } p && Math.Abs(v.Correlation) > _settings.PoorCorrelation)
-            {
-                named.Add(p);
-                double other = vars.First(x => x.Name == p).Value;
-                lines.Add($"Lock {v.Name}, or tie it to {p} × {G(v.Value / other)}.");
-            }
-            else lines.Add($"Lock {v.Name} at a typed value.");
-        }
-        return new IdentifiabilityReport(vars, lines);
-    }
-
-    private static string Signed(double x) =>
-        (x < 0 ? "−" : "") + Math.Abs(x).ToString("0.00", CultureInfo.InvariantCulture);
+    private IdentifiabilityReport Identify(double[] values, double[] spreads, FitTerms terms) =>
+        Lsq(terms).Identify(values, spreads, _settings.PoorRelativeError, _settings.PoorCorrelation);
 
     private static string G(double v) => v.ToString("G4", CultureInfo.InvariantCulture);
 }
