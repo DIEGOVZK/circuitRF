@@ -1659,10 +1659,11 @@ internal static class Explain
         {
             string? Raw(string name) => inst.Overrides.FirstOrDefault(o => o.Name == name)?.Expression;
             string text = ComposedSwitches.Annotate(Raw);
-            bool linear = ComposedSwitches.Spelling(Raw(ComposedSwitches.LinearCName) ?? "") == true
+            bool linear = ComposedSwitches.Names.Any(n => n.StartsWith(ComposedSwitches.LinearCName, StringComparison.Ordinal)
+                                                          && ComposedSwitches.Spelling(Raw(n) ?? "") == true)
                        && ComposedSwitches.Spelling(Raw(ComposedSwitches.ChargeName) ?? "") != false;
             walks.Add(new ResolutionStepJson($"switches {where}", path, text.Length > 0 ? text : "as fitted",
-                linear ? "its switches; the intrinsic charge is frozen at the quiescent DC operating point, which every analysis solves first"
+                linear ? "its switches; what is linearised is taken at the quiescent DC operating point, which every analysis solves first"
                        : "its switches; nothing refits the model"));
         }
     }

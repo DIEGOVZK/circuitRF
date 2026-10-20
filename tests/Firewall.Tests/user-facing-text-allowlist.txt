@@ -1269,7 +1269,7 @@ src/Core/Devices/ComponentModelFactory.cs|'{file}' cannot be used: {ex.Message}
 src/Core/Devices/ComponentModelFactory.cs|N={(double.IsNaN(n) ? nv.ToString() : n.ToString(
 src/Core/Devices/ComponentModelFactory.cs|a ComposedFet elaborates as a cell — its network and its ComposedCore — and is never 
 src/Core/Devices/ComponentModelFactory.cs|no .cmodel file is specified; set 'File'.
-src/Core/Devices/Composed/ComposedCoreModel.cs|'{Label}': LinearC=true linearises the intrinsic charge at the bias point, and the bias point was 
+src/Core/Devices/Composed/ComposedCoreModel.cs|'{Label}': {LinearisedWhat()} at the bias point, and the bias point was never set — nothing froze 
 src/Core/Devices/Composed/ComposedSwitches.cs|'{name}' is not a ComposedFet switch.
 src/Core/Devices/Composed/Traps/TrapModel.cs|trap state {States[state]} has no DC gradient; its model defines no shift coupling.
 src/Core/Devices/Composed/ComposedCoreProgram.cs|input '{inputs[k]}' has no seed in this model.

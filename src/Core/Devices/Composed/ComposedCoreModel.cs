@@ -59,6 +59,12 @@ namespace CircuitRF.Core.Devices.Composed;
 /// gradient folds through <see cref="TrapDynamics.DcValue(int, double, double, double, Span{double})"/>, and its node is
 /// not minted. <c>SelfHeating=false</c> evaluates at the ambient and drives no power into the thermal port, which stays,
 /// so a bound pin 4 still connects. <c>Dispersion=false</c> conducts <c>IdDC</c> and mints no dispersion node.</para>
+///
+/// <para><b>Branch switches</b> (brief-modelcomposer-22, <see cref="BranchLinearisation"/>): <c>LinearCgs</c>, <c>LinearCdg</c>,
+/// <c>LinearCds</c> and <c>LinearCm</c> hold one circuit-set capacitance at its bias-point value and let the others follow
+/// the model. The whole charge is then read with its temperature and trap inputs at the frozen point's values — the
+/// surface <c>Q̃(vgs, vds)</c> the construction acts on, in the terminal frame, so a line across <c>vds = 0</c> under
+/// <c>Exchange</c> needs nothing special.</para>
 /// </summary>
 public sealed class ComposedCoreModel : ComponentModel, IBiasFrozen
 {
@@ -77,6 +83,7 @@ public sealed class ComposedCoreModel : ComponentModel, IBiasFrozen
     private readonly int[]  _kept;        // node j holds state _kept[j]
     private readonly int[]  _nodeOf;      // state k's node, or −1 when its lag is switched off
     private readonly bool   _dcGradient;  // the dynamics supply DcValue's gradient overload
+    private readonly ChargeBranches _branches;   // the branches held at the bias point, none under LinearC
     private Frozen? _frozen;
 
     /// <summary>The model this core evaluates.</summary>
@@ -100,6 +107,7 @@ public sealed class ComposedCoreModel : ComponentModel, IBiasFrozen
         Loaded   = loaded;
         N        = n;
         Switches = switches ?? ComposedSwitches.Default;
+        _branches = Switches.LinearC ? ChargeBranches.None : Switches.FrozenBranches;
         _p     = loaded.Program;
         _scale = (double)n / loaded.N0;
         _exchange = _p.Symmetry == DrainSourceSymmetry.Exchange;
@@ -176,8 +184,58 @@ public sealed class ComposedCoreModel : ComponentModel, IBiasFrozen
     // ── The bias point (R-mc21-3) ────────────────────────────────────────────
 
     /// <summary>The intrinsic charge at the frozen point and its 2×2 capacitance, scaled, plus the port voltages it was
-    /// frozen at — one immutable object, swapped in whole.</summary>
-    private sealed record Frozen(double[] At, double Qg, double Qd, double Cgg, double Cgd, double Cdg, double Cdd);
+    /// frozen at — one immutable object, swapped in whole. <see cref="Held"/> is the seed vector there, whose lanes past
+    /// the voltages a branch-frozen charge is read at; <see cref="Branch"/> the four branch capacitances of that surface at
+    /// the point, unscaled.</summary>
+    private sealed record Frozen(double[] At, double Qg, double Qd, double Cgg, double Cgd, double Cdg, double Cdd,
+                                 double[] Held, double[] Branch);
+
+    /// <summary>The intrinsic charge with its inputs past <c>vgs</c>, <c>vds</c> held at <paramref name="held"/>'s, in the
+    /// terminal frame and unscaled — what <see cref="BranchLinearisation"/> integrates along.</summary>
+    private readonly struct HeldSurface(ComposedCoreModel core, double[] held) : IChargeSurface
+    {
+        public bool Evaluate(double vgs, double vds, out double qg, out double qd, Span<double> c, Span<double> dC)
+        {
+            var p = core._p;
+            int width = p.Width;
+            bool image = core._exchange && vds < 0;
+            Span<double> s = stackalloc double[RuntimeEvaluator.MaxInputs];
+            held.CopyTo(s);
+            s[0] = image ? vgs - vds : vgs;
+            s[1] = image ? -vds : vds;
+            Span<double> gQg = stackalloc double[RuntimeEvaluator.MaxInputs], gQd = stackalloc double[RuntimeEvaluator.MaxInputs];
+            (qg, qd) = p.Charges(s[..width], gQg, gQd);
+
+            Span<double> hg = stackalloc double[3], hd = stackalloc double[3];
+            bool exact = !dC.IsEmpty && p.ChargeHessians(s[..width], hg, hd);
+            if (image)
+            {
+                // As Core maps the image back: ∂/∂vds = −∂′/∂vgs′ − ∂′/∂vds′, Qd = −Qg′ − Qd′; a Hessian through the same
+                // linear map is JᵀHJ.
+                FromImage(gQg); FromImage(gQd);
+                for (int k = 0; k < 2; k++) gQd[k] = -gQg[k] - gQd[k];
+                qd = -qg - qd;
+                if (exact)
+                {
+                    ImageHessian(hg); ImageHessian(hd);
+                    for (int k = 0; k < 3; k++) hd[k] = -hg[k] - hd[k];
+                }
+            }
+            c[0] = gQg[0]; c[1] = gQg[1]; c[2] = gQd[0]; c[3] = gQd[1];
+            if (!exact) return false;
+            // ∂C/∂vgs, then ∂C/∂vds, each in C's order (C11 C12 C21 C22).
+            dC[0] = hg[0]; dC[1] = hg[1]; dC[2] = hd[0]; dC[3] = hd[1];
+            dC[4] = hg[1]; dC[5] = hg[2]; dC[6] = hd[1]; dC[7] = hd[2];
+            return true;
+        }
+
+        private static void ImageHessian(Span<double> h)
+        {
+            double h00 = h[0], h01 = h[1], h11 = h[2];
+            h[1] = -h00 - h01;
+            h[2] = h00 + 2 * h01 + h11;
+        }
+    }
 
     /// <summary>Only a linearised charge needs one.</summary>
     public bool NeedsBiasPoint => Switches.LinearCharge;
@@ -195,9 +253,20 @@ public sealed class ComposedCoreModel : ComponentModel, IBiasFrozen
                      rg = stackalloc double[MaxPorts * MaxPorts], rc = stackalloc double[MaxPorts * MaxPorts];
         Span<double> state = stackalloc double[TrapDynamics.MaxStates];
         for (int k = 0; k < _trapCount; k++) state[k] = portVoltages[2 + k];
-        Core(portVoltages[0], portVoltages[1], _dispersive ? portVoltages[2] : 0.0, state,
-             _thermal ? portVoltages[ThermalPort] : 0.0, ri, rq, rg, rc, frozenCharge: false);
-        _frozen = new Frozen(portVoltages.ToArray(), rq[0], rq[1], rc[0], rc[1], rc[n], rc[n + 1]);
+        double dT = _thermal ? portVoltages[ThermalPort] : 0.0;
+        Core(portVoltages[0], portVoltages[1], _dispersive ? portVoltages[2] : 0.0, state, dT, ri, rq, rg, rc, frozenCharge: false);
+
+        var held = new double[_p.Width];
+        Span<double> dcGrad = stackalloc double[3 * TrapDynamics.MaxStates];
+        Inputs(portVoltages[0], portVoltages[1], state, dT, held, dcGrad);
+        var branch = new double[4];
+        if (_branches != ChargeBranches.None)
+        {
+            Span<double> c = stackalloc double[4];
+            new HeldSurface(this, held).Evaluate(portVoltages[0], portVoltages[1], out _, out _, c, []);
+            BranchLinearisation.Capacitances(c, branch);
+        }
+        _frozen = new Frozen(portVoltages.ToArray(), rq[0], rq[1], rc[0], rc[1], rc[n], rc[n + 1], held, branch);
         return true;
     }
 
@@ -289,17 +358,12 @@ public sealed class ComposedCoreModel : ComponentModel, IBiasFrozen
 
         bool image = _exchange && vds < 0;
         int width = _p.Width;
-        double temperature = _temperatureC + (_heats ? dT : 0.0);
         Span<double> seeds = stackalloc double[RuntimeEvaluator.MaxInputs];
+        Span<double> dcGrad = stackalloc double[3 * TrapDynamics.MaxStates];
+        double temperature = Inputs(vgs, vds, state, dT, seeds, dcGrad);
         seeds[0] = image ? vgs - vds : vgs;
         seeds[1] = image ? -vds : vds;
-        if (_hasT) seeds[2] = temperature;
         int trapLane = _p.TrapLane;
-        // A state whose lag is switched off is its DC value at the instantaneous voltages (R-mc21-4); its gradient by
-        // (vgs, vds, T) is what its lane folds through below.
-        Span<double> dcGrad = stackalloc double[3 * TrapDynamics.MaxStates];
-        for (int k = 0; k < _allTraps; k++)
-            seeds[trapLane + k] = _nodeOf[k] >= 0 ? state[_nodeOf[k]] : DcState(k, vgs, vds, temperature, dcGrad.Slice(3 * k, 3));
         var s = seeds[..width];
 
         const int W = RuntimeEvaluator.MaxInputs;
@@ -419,9 +483,16 @@ public sealed class ComposedCoreModel : ComponentModel, IBiasFrozen
             q[0] = q[1] = 0;
             dc[..(2 * n)].Clear();
         }
-        else if (Switches.LinearC && frozenCharge)
+        else if (Switches.LinearCharge && frozenCharge)
         {
-            if (_frozen is { } f)
+            if (_frozen is not { } f)
+            {
+                if (!ChargeReading.Unread)
+                    throw new ComposedEvaluationException(
+                        $"'{Label}': {LinearisedWhat()} at the bias point, and the bias point was never set — nothing froze " +
+                        "the quiescent DC operating point before the charge was read.");
+            }
+            else if (Switches.LinearC)
             {
                 double d0 = vgs - f.At[0], d1 = vds - f.At[1];
                 q[0] = f.Qg + f.Cgg * d0 + f.Cgd * d1;
@@ -429,10 +500,17 @@ public sealed class ComposedCoreModel : ComponentModel, IBiasFrozen
                 dc[..(2 * n)].Clear();
                 dc[0] = f.Cgg; dc[1] = f.Cgd; dc[n] = f.Cdg; dc[n + 1] = f.Cdd;
             }
-            else if (!ChargeReading.Unread)
-                throw new ComposedEvaluationException(
-                    $"'{Label}': LinearC=true linearises the intrinsic charge at the bias point, and the bias point was " +
-                    "never set — nothing froze the quiescent DC operating point before the charge was read.");
+            else
+            {
+                // R-mc22-1: the held surface, each frozen branch's residual along the line from the bias point removed.
+                Span<double> c = stackalloc double[4];
+                BranchLinearisation.Evaluate(new HeldSurface(this, f.Held), _branches, f.At[0], f.At[1], f.Branch,
+                                             vgs, vds, out double bqg, out double bqd, c);
+                q[0] = k0 * bqg;
+                q[1] = k0 * bqd;
+                dc[..(2 * n)].Clear();
+                dc[0] = k0 * c[0]; dc[1] = k0 * c[1]; dc[n] = k0 * c[2]; dc[n + 1] = k0 * c[3];
+            }
         }
 
         if (!_thermal) return;
@@ -446,6 +524,30 @@ public sealed class ComposedCoreModel : ComponentModel, IBiasFrozen
             double dp = dg[col] * vgs + dg[n + col] * vds + (col == 0 ? i[0] : col == 1 ? i[1] : 0.0);
             dg[th * n + col] = -dp;
         }
+    }
+
+    /// <summary>
+    /// Every seed lane past the voltages: <c>T</c> when it is one, then each trap state — a kept one from its node, one whose
+    /// lag is switched off at its DC value at the instantaneous voltages (R-mc21-4), its gradient by <c>(vgs, vds, T)</c>
+    /// into <paramref name="dcGrad"/> for its lane to fold through. Returns the device temperature.
+    /// </summary>
+    private double Inputs(double vgs, double vds, ReadOnlySpan<double> state, double dT, Span<double> seeds, Span<double> dcGrad)
+    {
+        double temperature = _temperatureC + (_heats ? dT : 0.0);
+        if (_hasT) seeds[2] = temperature;
+        int trapLane = _p.TrapLane;
+        for (int k = 0; k < _allTraps; k++)
+            seeds[trapLane + k] = _nodeOf[k] >= 0 ? state[_nodeOf[k]] : DcState(k, vgs, vds, temperature, dcGrad.Slice(3 * k, 3));
+        return temperature;
+    }
+
+    /// <summary>The switches that need the bias point, for a refusal.</summary>
+    private string LinearisedWhat()
+    {
+        if (Switches.LinearC) return "LinearC=true linearises the intrinsic charge";
+        var names = BranchLinearisation.Names(_branches).ToArray();
+        string set = string.Join(", ", names.Select(b => $"Linear{b}=true"));
+        return names.Length == 1 ? $"{set} holds that capacitance" : $"{set} hold those capacitances";
     }
 
     /// <summary>A removed state's DC value at the instantaneous point, its gradient by <c>(vgs, vds, T)</c> into

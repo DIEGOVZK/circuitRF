@@ -8,7 +8,7 @@ namespace CircuitRF.Core.Devices.Composed;
 /// evaluates. None refits anything — the <c>.cmodel</c> is untouched, and the defaults are the model as fitted, so an
 /// instance that states none of them is exactly the instance it always was.
 ///
-/// <para>The ONE place the six names are read and written: the elaborator, the schematic's extraction and annotation,
+/// <para>The ONE place the ten names are read and written: the elaborator, the schematic's extraction and annotation,
 /// the parameter editor and <c>explain</c> all go through here, so they cannot disagree about a spelling or a default.
 /// Every value is read by <see cref="BooleanParameter"/>; a bare spelling (<c>off</c>, <c>no</c>) is taken as written
 /// before anything is evaluated, because to the expression engine it is a variable name.</para>
@@ -18,15 +18,33 @@ public sealed record ComposedSwitches
     public const string ChargeName = "Charge", LinearCName = "LinearC", GateLagName = "GateLag",
                         DrainLagName = "DrainLag", SelfHeatingName = "SelfHeating", DispersionName = "Dispersion";
 
-    /// <summary>The six names in their fixed order — the order <see cref="Write"/> writes and the editor lists.</summary>
+    /// <summary>The four branch switches (brief-modelcomposer-22 R-mc22-3), in <see cref="ChargeBranches"/>' order.</summary>
+    public const string LinearCgsName = "LinearCgs", LinearCdgName = "LinearCdg", LinearCdsName = "LinearCds",
+                        LinearCmName = "LinearCm";
+
+    /// <summary>The ten names in their fixed order — the order <see cref="Write"/> writes and the editor lists.</summary>
     public static readonly IReadOnlyList<string> Names =
-        [ChargeName, LinearCName, GateLagName, DrainLagName, SelfHeatingName, DispersionName];
+        [ChargeName, LinearCName, LinearCgsName, LinearCdgName, LinearCdsName, LinearCmName,
+         GateLagName, DrainLagName, SelfHeatingName, DispersionName];
 
     /// <summary><c>false</c>: no intrinsic charge at all. The extrinsic network's capacitors stay.</summary>
     public bool Charge { get; init; } = true;
 
     /// <summary><c>true</c>: both intrinsic charges linearised at the quiescent DC operating point.</summary>
     public bool LinearC { get; init; }
+
+    /// <summary><c>true</c>: the gate–source capacitance <c>C11 + C12</c> held at its bias-point value, the others following
+    /// the model (<see cref="BranchLinearisation"/>).</summary>
+    public bool LinearCgs { get; init; }
+
+    /// <summary><c>true</c>: the gate–drain capacitance <c>−C12</c> held at its bias-point value.</summary>
+    public bool LinearCdg { get; init; }
+
+    /// <summary><c>true</c>: the drain–source capacitance <c>C22 + C12</c> held at its bias-point value.</summary>
+    public bool LinearCds { get; init; }
+
+    /// <summary><c>true</c>: the transcapacitance <c>C21 − C12</c> held at its bias-point value.</summary>
+    public bool LinearCm { get; init; }
 
     /// <summary><c>false</c>: every gate-lag trap state follows its DC value at the instantaneous voltages.</summary>
     public bool GateLag { get; init; } = true;
@@ -44,11 +62,21 @@ public sealed record ComposedSwitches
 
     public bool IsDefault => this == Default;
 
-    /// <summary>Whether the intrinsic charge is linearised: <see cref="LinearC"/>, unless <see cref="Charge"/> removes it.</summary>
-    public bool LinearCharge => Charge && LinearC;
+    /// <summary>The branches the four branch switches name; <see cref="LinearC"/> is not folded in.</summary>
+    public ChargeBranches Branches =>
+        (LinearCgs ? ChargeBranches.Cgs : 0) | (LinearCdg ? ChargeBranches.Cdg : 0) |
+        (LinearCds ? ChargeBranches.Cds : 0) | (LinearCm ? ChargeBranches.Cm : 0);
 
-    /// <summary>A switch's default.</summary>
-    public static bool DefaultOf(string name) => name != LinearCName;
+    /// <summary>The branches this instance freezes: every one under <see cref="LinearC"/>, none when <see cref="Charge"/>
+    /// removes the charge.</summary>
+    public ChargeBranches FrozenBranches => !Charge ? ChargeBranches.None : LinearC ? ChargeBranches.All : Branches;
+
+    /// <summary>Whether any of the intrinsic charge is linearised — the whole of it, or a branch — so the instance needs the
+    /// bias point. <see cref="Charge"/>=false removes it.</summary>
+    public bool LinearCharge => FrozenBranches != ChargeBranches.None;
+
+    /// <summary>A switch's default: on for the parts of the model, off for the linearisations.</summary>
+    public static bool DefaultOf(string name) => !name.StartsWith(LinearCName, StringComparison.Ordinal);
 
     /// <summary>Whether <paramref name="name"/> is one of the six, as written (ordinal, like every parameter name).</summary>
     public static bool IsSwitch(string name) => Names.Contains(name, StringComparer.Ordinal);
@@ -58,6 +86,10 @@ public sealed record ComposedSwitches
     {
         ChargeName      => Charge,
         LinearCName     => LinearC,
+        LinearCgsName   => LinearCgs,
+        LinearCdgName   => LinearCdg,
+        LinearCdsName   => LinearCds,
+        LinearCmName    => LinearCm,
         GateLagName     => GateLag,
         DrainLagName    => DrainLag,
         SelfHeatingName => SelfHeating,
@@ -69,6 +101,10 @@ public sealed record ComposedSwitches
     {
         ChargeName      => this with { Charge = value },
         LinearCName     => this with { LinearC = value },
+        LinearCgsName   => this with { LinearCgs = value },
+        LinearCdgName   => this with { LinearCdg = value },
+        LinearCdsName   => this with { LinearCds = value },
+        LinearCmName    => this with { LinearCm = value },
         GateLagName     => this with { GateLag = value },
         DrainLagName    => this with { DrainLag = value },
         SelfHeatingName => this with { SelfHeating = value },
@@ -118,8 +154,8 @@ public sealed record ComposedSwitches
     public IReadOnlyList<KeyValuePair<string, string>> Write()
         => [.. Names.Where(n => this[n] != DefaultOf(n)).Select(n => new KeyValuePair<string, string>(n, this[n] ? "true" : "false"))];
 
-    /// <summary>The short summary the schematic draws under a switched instance — <c>linear C · no gate lag · isothermal</c>;
-    /// empty for the default.</summary>
+    /// <summary>The short summary the schematic draws under a switched instance — <c>linear C · no gate lag · isothermal</c>,
+    /// or <c>linear Cgs, Cds</c> for branches; empty for the default.</summary>
     public string Describe() => string.Join(" · ", Phrases(sentence: false));
 
     /// <summary>The run note's form — <c>linear C at the bias point, no gate lag</c>; empty for the default.</summary>
@@ -129,6 +165,11 @@ public sealed record ComposedSwitches
     {
         if (!Charge)       yield return "no intrinsic charge";
         else if (LinearC)  yield return sentence ? "linear C at the bias point" : "linear C";
+        else if (Branches != ChargeBranches.None)
+        {
+            string names = string.Join(", ", BranchLinearisation.Names(Branches));
+            yield return sentence ? $"linear {names} at the bias point" : $"linear {names}";
+        }
         if (!GateLag)      yield return "no gate lag";
         if (!DrainLag)     yield return "no drain lag";
         if (!SelfHeating)  yield return "isothermal";

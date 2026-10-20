@@ -72,6 +72,27 @@ public static class ComposedTestModels
         };
     }
 
+    /// <summary>
+    /// The intrinsic charge's Jacobian against a central difference (1e-6 V) of the charge, at <paramref name="at"/> (every
+    /// port's voltage): the largest mismatch over <c>dc[0..1, 0..1]</c> as a fraction of the largest of those entries.
+    /// </summary>
+    public static double IntrinsicJacobianError(ComponentModel core, double[] at)
+    {
+        const double h = 1e-6;
+        var r = core.Evaluate(new PortVoltages(at));
+        double scale = 0, worst = 0;
+        for (int p = 0; p < 2; p++) for (int j = 0; j < 2; j++) scale = Math.Max(scale, Math.Abs(r.Dc[p, j]));
+        for (int j = 0; j < 2; j++)
+        {
+            var plus = (double[])at.Clone();  plus[j] += h;
+            var minus = (double[])at.Clone(); minus[j] -= h;
+            var qp = core.Evaluate(new PortVoltages(plus)).Q;
+            var qm = core.Evaluate(new PortVoltages(minus)).Q;
+            for (int p = 0; p < 2; p++) worst = Math.Max(worst, Math.Abs(r.Dc[p, j] - (qp[p] - qm[p]) / (2 * h)));
+        }
+        return worst / scale;
+    }
+
     /// <summary>Writes <paramref name="model"/> into a fresh temporary folder; returns its path.</summary>
     public static string WriteTemp(ComposedModel model, string name = "gan.cmodel")
     {

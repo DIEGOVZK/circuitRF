@@ -35,7 +35,7 @@ public sealed class ComposedFetSwitchesSchematicTests
     {
         var defaults = ComponentTypeRegistry.DefaultParameters(SymbolKind.ComposedFet, 3)
             .Where(d => d.Name is not ("File" or "N" or "Symbol")).Select(d => (d.Name, d.Expression)).ToArray();
-        Assert.Equal(6, defaults.Length);
+        Assert.Equal(10, defaults.Length);
 
         string before = Cnl(Fet());
         Assert.Equal(before, Cnl(Fet(defaults)));
@@ -49,13 +49,14 @@ public sealed class ComposedFetSwitchesSchematicTests
     [Fact]
     public void TheEditor_GroupsTheSwitches_AsTrueFalsePickers_AndAnExpressionAsText()
     {
-        var comp = Fet(("GateLag", "gl"));   // placed before the other five existed: the editor tops them up
+        var comp = Fet(("GateLag", "gl"));   // placed before the other nine existed: the editor tops them up
         var model = Model(comp);
         var editor = new ParameterEditorViewModel();
         editor.SetTargetDirect(new SchematicViewModel(model), comp, showClose: false);
 
         Assert.True(editor.ShowModelSwitches);
-        Assert.Equal(["GateLag", "Charge", "LinearC", "DrainLag", "SelfHeating", "Dispersion"], editor.SwitchRows.Select(r => r.Name));
+        Assert.Equal(["GateLag", "Charge", "LinearC", "LinearCgs", "LinearCdg", "LinearCds", "LinearCm", "DrainLag", "SelfHeating",
+                      "Dispersion"], editor.SwitchRows.Select(r => r.Name));
         Assert.DoesNotContain(editor.Rows, r => r.Name is "Charge" or "LinearC");
         foreach (var row in editor.SwitchRows.Where(r => r.Name != "GateLag"))
         {

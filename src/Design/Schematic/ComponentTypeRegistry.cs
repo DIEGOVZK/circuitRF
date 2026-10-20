@@ -1359,6 +1359,10 @@ public static class ComponentTypeRegistry
                   + "Blank is the model's own. Its pins 1, 2 and 3 are g, d and s.",
         ComposedSwitches.ChargeName      => "Off: no intrinsic charge at all. The network's capacitors stay.",
         ComposedSwitches.LinearCName     => "On: the intrinsic charge is linearised at the quiescent DC bias point.",
+        ComposedSwitches.LinearCgsName   => "On: Cgs is held at its bias-point value; the other capacitances follow the model.",
+        ComposedSwitches.LinearCdgName   => "On: Cdg is held at its bias-point value; the other capacitances follow the model.",
+        ComposedSwitches.LinearCdsName   => "On: Cds is held at its bias-point value; the other capacitances follow the model.",
+        ComposedSwitches.LinearCmName    => "On: the transcapacitance Cm is held at its bias-point value; the others follow the model.",
         ComposedSwitches.GateLagName     => "Off: gate-lag traps follow the voltage, with no lag.",
         ComposedSwitches.DrainLagName    => "Off: drain-lag traps follow the voltage, with no lag.",
         ComposedSwitches.SelfHeatingName => "Off: evaluated at the run's temperature, with no self-heating.",
@@ -2293,7 +2297,7 @@ public static class ComponentTypeRegistry
             // true as well, so a schematic saved before this existed behaves identically.
             // A composed FET: the .cmodel, the finger count (blank = the model's own N0) and the symbol
             // (blank = the model's own). Symbol is artwork and never reaches the engine.
-            // The six instance switches (brief-modelcomposer-21) follow, seeded at their defaults — the model as fitted —
+            // The ten instance switches (brief-modelcomposer-21, -22) follow, seeded at their defaults — the model as fitted —
             // and never drawn; extraction writes one only when it is not the default.
             case SymbolKind.ComposedFet:
                 return [

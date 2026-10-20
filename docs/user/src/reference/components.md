@@ -1936,8 +1936,8 @@ parallel with it.
 The glyph is the model's own symbol, which the `Symbol` row changes per instance; pins 1, 2 and 3 are
 `g`, `d` and `s`. A symbol that cannot be found draws as the standard FET, with one warning.
 
-Six switches turn one part of the model off on one instance — the intrinsic charge, its nonlinearity, gate
-lag, drain lag, self-heating and dispersion — without refitting anything:
+Ten switches turn one part of the model off on one instance — the intrinsic charge, its nonlinearity (all of it,
+or one capacitance at a time), gate lag, drain lag, self-heating and dispersion — without refitting anything:
 [Switching parts of the model off](model-composer.html#switches).
 
 {{table: components/ComposedFet}}

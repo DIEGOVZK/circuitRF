@@ -211,6 +211,21 @@ public sealed class GuidedExtrapolation
 
     public int InputCount => _domain.InputCount;
 
+    /// <summary>The Hessian along <paramref name="w"/> into <paramref name="hw"/> where <paramref name="p"/> is inside the
+    /// training domain — the evaluator's own; false outside, where the continuation's curvature is not formed.</summary>
+    public bool HessianAlong(ReadOnlySpan<double> p, ReadOnlySpan<double> w, Span<double> hw)
+    {
+        int d = _domain.InputCount;
+        Span<double> u   = stackalloc double[RuntimeEvaluator.MaxInputs];
+        Span<double> ub  = stackalloc double[RuntimeEvaluator.MaxInputs];
+        Span<double> jac = stackalloc double[RuntimeEvaluator.MaxInputs * RuntimeEvaluator.MaxInputs];
+        Span<double> g   = stackalloc double[RuntimeEvaluator.MaxInputs];
+        _domain.ToNormalised(p, u[..d]);
+        if (!_domain.Project(u[..d], ub[..d], jac)) return false;
+        _f.Evaluate(p, g[..d], w, hw);
+        return true;
+    }
+
     public double Evaluate(ReadOnlySpan<double> p, Span<double> grad)
     {
         int d = _domain.InputCount;

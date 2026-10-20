@@ -5,7 +5,7 @@ namespace CircuitRF.Engine;
 
 /// <summary>
 /// The bias-point freeze (brief-modelcomposer-21 R-mc21-3): solves the circuit's quiescent DC operating point and hands
-/// every model that evaluates part of itself there (<see cref="IBiasFrozen"/> — a composed FET with <c>LinearC=true</c>)
+/// every model that evaluates part of itself there (<see cref="IBiasFrozen"/> — a composed FET with <c>LinearC=true</c> or a branch switch such as <c>LinearCgs</c>)
 /// its own port voltages at that point. Intrinsic charge never affects a DC solution, so finding the point is never
 /// circular.
 ///
@@ -56,7 +56,7 @@ public static class BiasFreeze
         if (!IsNeeded(netlist)) return;
         if (nodeVoltages is null)
             netlist.AddWarningOnce("bias-freeze-nonconverged",
-                "The DC operating point did not converge, so the linearised intrinsic charge (LinearC) is taken at " +
+                "The DC operating point did not converge, so the linearised intrinsic charge (LinearC, or a branch switch) is taken at " +
                 (fallback is null ? "0 V" : "the last DC iterate") + " rather than at the quiescent bias.");
         var v = nodeVoltages ?? fallback;
 

@@ -25,6 +25,20 @@ public sealed class ComposedSwitchesTests
         Assert.Equal("no intrinsic charge", (s with { Charge = false, DrainLag = true, SelfHeating = true }).Describe());
     }
 
+    /// <summary>brief-modelcomposer-22 R-mc22-3: the four branch switches, and <c>LinearC</c> as all four.</summary>
+    [Fact]
+    public void BranchSwitches_DescribeByName_AndLinearCFreezesAllFour()
+    {
+        var s = new ComposedSwitches { LinearCgs = true, LinearCds = true };
+        Assert.Equal(["LinearCgs", "LinearCds"], s.Write().Select(kv => kv.Key));
+        Assert.Equal("linear Cgs, Cds", s.Describe());
+        Assert.Equal("linear Cgs, Cds at the bias point", s.Sentence());
+        Assert.Equal(ChargeBranches.Cgs | ChargeBranches.Cds, s.FrozenBranches);
+        Assert.Equal(ChargeBranches.All, new ComposedSwitches { LinearC = true }.FrozenBranches);
+        Assert.Equal(ChargeBranches.None, (s with { Charge = false }).FrozenBranches);
+        Assert.False((s with { Charge = false }).LinearCharge);
+    }
+
     public static TheoryData<string> Spellings =>
         [.. BooleanParameter.TrueSpellings, .. BooleanParameter.FalseSpellings, "OFF", "Yes"];
 

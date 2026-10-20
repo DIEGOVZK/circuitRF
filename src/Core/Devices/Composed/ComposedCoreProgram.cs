@@ -84,8 +84,8 @@ public sealed class ComposedCoreProgram
             {
                 var parameters = new Dictionary<string, double>(StringComparer.Ordinal);
                 foreach (var p in c.Parameters) parameters[p.Key] = p.Value;
-                return new EquationFunction(
-                    CompiledSddExpr.CompileNamed(Parser.Parse(c.Expression(key)!), seeds, parameters, label), label);
+                var ast = Parser.Parse(c.Expression(key)!);
+                return new EquationFunction(CompiledSddExpr.CompileNamed(ast, seeds, parameters, label), ast, seeds, parameters, label);
             }
 
             var evaluator = RuntimePayload.Build(model, c, key, $"Core.Constituents.{name}.{key}");
@@ -165,6 +165,14 @@ public sealed class ComposedCoreProgram
         return (qg, qd);
     }
 
+    /// <summary>
+    /// Both charges' Hessians over <c>(vgs, vds)</c>, <c>[h00, h01, h11]</c> each, the other lanes held: what the branch
+    /// linearisation (brief-modelcomposer-22 R-mc22-2) reads. False where a payload forms none exactly — a drift charge, or a
+    /// table or ANN outside its training domain — and the caller differences the gradients instead.
+    /// </summary>
+    internal bool ChargeHessians(ReadOnlySpan<double> seeds, Span<double> hQg, Span<double> hQd)
+        => Drift is null && Qg.Hessian(seeds, hQg) && Qd.Hessian(seeds, hQd);
+
     /// <summary>The current a drift charge reads: <see cref="Channel"/> without the shift, which no charge takes (R-mc19-1).</summary>
     internal double DriftChannel(ReadOnlySpan<double> seeds, Span<double> grad)
         => IdRF is { } rf ? Eval(rf, "IdRF", seeds, grad) : Eval(Id, "Id", seeds, grad);
@@ -209,6 +217,10 @@ public sealed class ComposedCoreProgram
 internal abstract class ComposedFunction
 {
     public abstract double Evaluate(ReadOnlySpan<double> seeds, Span<double> grad);
+
+    /// <summary>The Hessian over lanes 0 and 1 (<c>vgs</c>, <c>vds</c>) as <c>[h00, h01, h11]</c>, or false when this
+    /// function forms none exactly at <paramref name="seeds"/>.</summary>
+    public virtual bool Hessian(ReadOnlySpan<double> seeds, Span<double> h) => false;
 }
 
 /// <summary>A charge the drift decomposition supplies instead.</summary>
@@ -221,12 +233,51 @@ internal sealed class ZeroFunction : ComposedFunction
         grad.Clear();
         return 0.0;
     }
+
+    public override bool Hessian(ReadOnlySpan<double> seeds, Span<double> h)
+    {
+        h[..3].Clear();
+        return true;
+    }
 }
 
-internal sealed class EquationFunction(CompiledSddExpr expr, string label) : ComposedFunction
+/// <summary>An equation: <see cref="CompiledSddExpr"/>'s register program for the value and gradient, and the same AST's
+/// node tree in <see cref="SecondOrderDual"/> arithmetic for the Hessian, built on first use.</summary>
+internal sealed class EquationFunction(CompiledSddExpr expr, Expr ast, IReadOnlyList<string> seeds,
+                                       IReadOnlyDictionary<string, double> parameters, string label) : ComposedFunction
 {
+    private (CNode Root, double[] Constants)? _second;
+
     public override double Evaluate(ReadOnlySpan<double> seeds, Span<double> grad)
         => expr.EvalDualInto(seeds, grad, label);
+
+    public override bool Hessian(ReadOnlySpan<double> at, Span<double> h)
+    {
+        var (root, constants) = _second ??= Compile();
+        int n = seeds.Count;
+        int total = n + constants.Length;
+        Span<SecondOrderDual> slots = total <= 64 ? stackalloc SecondOrderDual[total] : new SecondOrderDual[total];
+        for (int i = 0; i < n; i++) slots[i] = i < 2 ? SecondOrderDual.Seed(at[i], i) : SecondOrderDual.Constant(at[i]);
+        for (int i = 0; i < constants.Length; i++) slots[n + i] = SecondOrderDual.Constant(constants[i]);
+        var r = SddCompiler.Eval<SecondOrderDual>(root, slots);
+        h[0] = r.H00; h[1] = r.H01; h[2] = r.H11;
+        return double.IsFinite(r.H00) && double.IsFinite(r.H01) && double.IsFinite(r.H11);
+    }
+
+    private (CNode, double[]) Compile()
+    {
+        // CompileNamed's slot order: the seeds, then each parameter not shadowed by one.
+        var slotOf = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (int i = 0; i < seeds.Count; i++) slotOf[seeds[i]] = i;
+        var constants = new double[parameters.Count];
+        int k = 0;
+        foreach (var kv in parameters)
+        {
+            if (!slotOf.ContainsKey(kv.Key)) slotOf[kv.Key] = seeds.Count + k;
+            constants[k++] = kv.Value;
+        }
+        return (SddCompiler.CompileNode(ast, slotOf, label), constants);
+    }
 }
 
 /// <summary>A table or ANN: its inputs gathered from the seeds, its gradient scattered back.</summary>
@@ -260,6 +311,32 @@ internal sealed class RuntimeFunction : ComposedFunction
         grad[.._width].Clear();
         for (int k = 0; k < d; k++) grad[_lane[k]] = g[k];
         return v;
+    }
+
+    /// <summary>Inside the training domain, the evaluator's own Hessian along <c>vgs</c> and then <c>vds</c>; outside it the
+    /// continuation forms none.</summary>
+    public override bool Hessian(ReadOnlySpan<double> seeds, Span<double> h)
+    {
+        int d = _lane.Length;
+        Span<double> x = stackalloc double[RuntimeEvaluator.MaxInputs];
+        Span<double> w = stackalloc double[RuntimeEvaluator.MaxInputs];
+        Span<double> hw = stackalloc double[RuntimeEvaluator.MaxInputs];
+        for (int k = 0; k < d; k++) x[k] = seeds[_lane[k]];
+        h[..3].Clear();
+        for (int lane = 0; lane < 2; lane++)
+        {
+            w[..d].Clear();
+            bool reads = false;
+            for (int k = 0; k < d; k++) if (_lane[k] == lane) { w[k] = 1; reads = true; }
+            if (!reads) continue;
+            if (!_f.HessianAlong(x[..d], w[..d], hw[..d])) return false;
+            for (int k = 0; k < d; k++)
+            {
+                if (_lane[k] == 0 && lane == 0) h[0] = hw[k];
+                if (_lane[k] == 1) h[lane == 0 ? 1 : 2] = hw[k];
+            }
+        }
+        return true;
     }
 }
 

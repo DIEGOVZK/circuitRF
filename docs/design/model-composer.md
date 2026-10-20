@@ -1672,3 +1672,72 @@ method of `HbEngine`.
 `ComposedEvaluationException` naming the instance. The DC engine reads no charge and says so explicitly:
 `NonlinearDcEngine.Run` opens a `ChargeReading.NotRead()` scope, inside which the unfrozen core returns its currents
 without refusing.
+
+## 24. One capacitance at a time (MC-22)
+
+Four more switches, `LinearCgs`, `LinearCdg`, `LinearCds` and `LinearCm`, hold one circuit-set capacitance at its
+bias-point value and leave the others nonlinear. `ComposedSwitches.FrozenBranches` (a `ChargeBranches` set) is what the
+core reads. `LinearC` stands for all four but keeps its own exact tangent path, and `Charge=false` empties the set. Any
+branch switch makes the core need a bias point, so `NeedsBiasPoint`, `BiasFreeze` and the unfrozen refusal behave as
+they do for `LinearC`.
+
+**The convention** is `IntrinsicQuantities`' and MC-17's: from `C = ∂(Qg, Qd)/∂(vgs, vds)`,
+`Cgs = C11 + C12`, `Cdg = −C12`, `Cds = C22 + C12`, `Cm = C21 − C12`. Branch `b` has a controlling voltage `u_b`
+(`vgs`, `vgs − vds`, `vds`, `vgs`) and an incidence `e_b` over (g, d) (`(1,0)`, `(1,−1)`, `(0,1)`, `(0,1)`), and
+`C = Σ_b e_b C_b ∇u_bᵀ`.
+
+**Why the Jacobian alone cannot be edited.** Holding `C_b` at `C_b(v_Q)` in `dc` gives the matrix
+`C̃ = C − e_b (C_b − C_b(v_Q)) ∇u_bᵀ`. Its rows are gradients only if each row's curl vanishes; `C`'s does, and the
+correction's is `e_b,i (∇C_b × ∇u_b)`, which is zero only when `C_b` depends on `u_b` alone, that is, for a separable
+charge. So in general `C̃` is the Jacobian of no charge: the Newton matrix would disagree with the `q` it differentiates,
+and a capacitance with curl makes DC under drive. A constant re-weighting `q′ = A·Q̃` does not help either: three free
+branches equal to the model's at every `v` force `A = I`, which leaves the fourth following the model too.
+
+**The construction** (`BranchLinearisation`, `src/Core/Devices/Composed/`). `Q̃(v)` is the charge with its temperature and
+trap inputs held at the frozen point's values (`Frozen.Held`, the seed vector there), in the terminal frame. With
+`Δv = v − v_Q`:
+
+```
+r_b(v) = [ ∫₀¹ C_b(v_Q + s·Δv) ds − C_b(v_Q) ] · Δu_b,     q(v) = Q̃(v) − Σ_{b∈F} e_b · r_b(v)
+```
+
+`q` is an explicit function of `v`, so it conserves charge. `r_b` and its gradient vanish at `v_Q`, so every
+combination has `Q̃`'s C matrix there (the core skips the quadrature at `Δv = 0` exactly). Freezing all four gives
+`Q̃(v_Q) + C(v_Q)·Δv` by the fundamental theorem along the line. The straight line from the bias point is a definition,
+chosen because it makes those three hold. A separable branch frozen alone is that branch replaced by its tangent.
+
+**Evaluation.** 8-point Gauss–Legendre (`Nodes`), exact for a cubic charge. `dc` is the exact derivative of that sum,
+`∇r_b = (I_b − C_b(v_Q))·∇u_b + Δu_b·Σ w_k s_k ∇C_b(v_k)`. The last term needs second derivatives, which come from:
+- an equation: `SecondOrderDual` (`src/Core/Expressions/`), a value, gradient and 2×2 Hessian over `(vgs, vds)`, run
+  through `SddCompiler`'s node tree for the same AST. `Dual` stops at the gradient, and the register program is
+  `Dual`-only;
+- a table or ANN inside its training domain: the evaluator's own Hessian along `vgs` and along `vds`
+  (`GuidedExtrapolation.HessianAlong`);
+- a drift charge, or a table or ANN outside its domain (the linear continuation): a central difference of the analytic
+  `C` with a 1e-6 V step (`DifferenceStep`). `BranchLinearChargesGanTests` holds this path's `dc` against a central
+  difference of `q`.
+
+Under `Exchange` the surface applies the image itself, so gradients map as in `Core` and a Hessian maps as `JᵀHJ`. A line
+crossing `vds = 0` needs nothing special.
+
+**Measured on the shipped SyntheticGan model** (ANN charges over `vgs, vds, T`):
+- With self-heating, every one of the 16 combinations gives exactly `LinearC`'s S-parameters at the bias point. Those
+  differ from the model's by |ΔS| 6.8e-10 at 0.5 GHz, falling with frequency. The held surface has no temperature
+  column, and in the model as fitted the thermal node still moves the charge slightly. Isothermal, all 16 match the
+  model to 1e-12.
+- All four against `LinearC`: below 1e-6 relative inside the training hull, but 1.8e-5 at vgs ≈ −2.9 V. A line that
+  leaves the hull crosses its boundary, where the continued capacitance is continuous but its slope is not, and
+  Gauss–Legendre is not exact across that kink.
+- Check (c) reads exactly 0 A for `LinearCgs` and `LinearCdg`, and for the model as fitted too. Harmonic balance writes a
+  charge's current as `jkω·Q_k`, so a charge-based device has no displacement current at DC, whatever its charge. Here
+  the check confirms that the charge is single-valued but does not separate the modes.
+
+- The example's GanPowerSweep bench does not converge at every rung even for the model as fitted: Pin 14 and 16 to
+  21 dBm stop at 100 iterations. `TheGanBenches_Run` never saw it, because it checks the run's `Converged`, which a
+  parametric sweep never sets to false. The per-switch sweep gate therefore stops at 13 dBm, where every rung of the
+  fitted model converges. The stall needs the drain-lag trap node and the thermal node together; either one switched
+  off converges in 14 to 23 iterations (`src/Core/RESOLVED.md`). On the full sweep, `LinearCgs` converged at 18 dBm, where the fitted model does not, and missed
+  22 dBm, the rung after the run of misses whose results it starts from.
+
+**Cost.** A frozen instance evaluates the surface at 8 nodes per sample, each with its Hessian (for network charges, two
+extra passes per charge). Only instances with a branch switch pay it, and an instance with none runs the code it ran before.

@@ -128,6 +128,7 @@ Z. Wang, Y. Guo, "A physics-informed neural network-based scalable model for GaN
 | MC-22 | `brief-modelcomposer-22-branch-linear-charges.md` | Linear Cgs, Cdg, Cds, Cm one at a time, by a charge-conserving branch construction exact at the bias point | MC-21 |
 | MC-23 | `brief-modelcomposer-23-harmonicarf-dut.md` | A `.cmodel` as harmonicaRF's DUT, read at its core's intrinsic plane with no mapping; the switches live | MC-21 (MC-22) |
 | MC-24 | `brief-modelcomposer-24-loadline-planes.md` | harmonicaRF's loadline and DCIV family at the intrinsic or the extrinsic plane, for every DUT kind | MC-23 for the composed case |
+| MC-25 | `brief-modelcomposer-25-trap-thermal-hb-convergence.md` | Harmonic balance stalls when a trap node and the thermal node are both present; the example's power sweep converges to 22 dBm and a sweep's non-convergence is visible | MC-9, MC-10, MC-21 |
 
 MC-1/MC-2, MC-3/MC-4/MC-5 and MC-6 are three independent tracks. MC-7 and MC-8 can run side by side.
 

@@ -2074,7 +2074,7 @@ public sealed class Elaborator
             if (!ComposedParams.Contains(ov.Name, StringComparer.Ordinal))
                 throw new InvalidOperationException(
                     $"{who}: '{ov.Name}' is not a parameter of a ComposedFet; it takes File, N, m, " +
-                    "Charge, LinearC, GateLag, DrainLag, SelfHeating and Dispersion.");
+                    string.Join(", ", ComposedSwitches.Names.SkipLast(1)) + " and " + ComposedSwitches.Names[^1] + ".");
 
         try { switches = ComposedSwitches.Read(inst.Overrides, ov => EvalOverride(inst, ov, parentScope)); }
         catch (InvalidOperationException ex) { throw new InvalidOperationException($"{who}: {ex.Message}"); }

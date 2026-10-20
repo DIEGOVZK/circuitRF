@@ -3692,3 +3692,29 @@ catch-all. On a single-tone grid every frequency is an exact harmonic and the ba
 loadpull and pursuit are unchanged (the Tuner, PnTone, two-tone and Hero 5 gates pass as before). Gate:
 `TunerPerHarmonicZInPlainHbTests.UnderTwoTones_TheCarriersSeeZ1_NotTheCatchAll` — the carrier voltage at the load is
 2.5× the gate's (0.05 S into 50 Ω) to 1e-6.
+
+## brief-modelcomposer-22 — one intrinsic capacitance held at the bias point (2026-10-20)
+
+`BranchLinearisation` holds `Cgs`, `Cdg`, `Cds` or `Cm` at its bias-point value through a residual integrated along the
+line from the bias point (`docs/design/model-composer.md` §24). Things worth knowing:
+
+- **An equation charge had no second derivative anywhere.** `Dual` carries a gradient only, and the register program is
+  `Dual`-only. `SecondOrderDual` is an `IAdScalar` with a 2×2 Hessian, run through `SddCompiler`'s node tree for the same
+  AST, so the separable cubic gate holds `dc` to 1e-12. A central difference of the gradients holds it only to ~1e-10:
+  that is the rounding floor of a 1e-6 V step. The difference remains for drift charges and for a table or ANN outside
+  its domain.
+- **A held surface has no temperature column.** On a self-heating model whose charges read `T` (the shipped
+  SyntheticGan), the bias-point S-parameters of `LinearC` and of every branch combination match one another exactly.
+  They differ from the model's by |ΔS| 6.8e-10 at 0.5 GHz, the thermal node's slight reach into the charge. Isothermal,
+  they match the model to 1e-12. MC-21's `LinearC` gates ran on a model without self-heating, so this had not shown.
+- **Check (c) reads exactly 0 A on every charge-based device**, the model as fitted included. Harmonic balance writes
+  the displacement current as `jkω·Q_k`, so its DC term is zero by construction. It confirms that a mode's charge is
+  single-valued, but cannot rank modes.
+- **The example's power sweep does not converge above 13 dBm, with no switch set.** On `GanPowerSweep` the fitted model
+  stops at 100 iterations at Pin 14 and 16 to 21 dBm. `ExampleWorkspaceLoadsTests.TheGanBenches_Run` passes anyway,
+  because it reads `AnalysisConvergence.Converged`, which a parametric sweep never sets to false. The per-rung truth is
+  the sweep's `Converged` cube. The cause is the drain-lag trap node and the thermal node TOGETHER. At 18 dBm, cold, the
+  fitted model takes 100 iterations and 596 backtracks and fails. `DrainLag=false` converges in 16 iterations,
+  `SelfHeating=false` in 23, and both off in 14. The device Jacobian matches finite differences everywhere except the
+  continuation's known kinks. So the stall is in the HB solve of the two coupled slow state nodes, not a wrong derivative.
+  Not fixed here; the MC-22 sweep gate stops at 13 dBm and says why.
