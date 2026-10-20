@@ -298,6 +298,7 @@ public static class CmcFile
         CmcExtrinsic.Network(d);
         // MC-7's step: its settings and record are parsed, so a misspelt key is refused here too.
         CurrentFit.Validate(d);
+        ChargeFit.Validate(d);
     }
 
     private static bool IsPulsed(DataSetKind k) => k is DataSetKind.PulsedIv or DataSetKind.PulsedSParams;

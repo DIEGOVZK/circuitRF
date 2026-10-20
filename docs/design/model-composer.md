@@ -122,6 +122,11 @@ they were trained over. `Core.Symmetry` and the top-level `Extrapolation` appear
   guided extrapolation continues the current itself. It exists for the gate current (§9.3).
 - **`Core.Dispersion` (MC-7)**: `{ "Tau": τ }`, present exactly when `Core.Constituents.IdRF` is; `Id` is then
   `IdDC`. `IdRF` takes a `G_x` like `Id`.
+- **`Drift` (MC-8)**, [I11]'s decomposition, on `Qg` and `Qd` together (§10.3). `Qg` names `QGS`, `QGD` and `Qdrift`,
+  `Qd` names `QGD`, `Qdrift` and `QDS` (the same two networks) and carries `Parameters: { "Lambda": λ }`; each piece is
+  an ANN of its own variables. The `Domain` is the data's hull, and its `Box` holds each piece's training interval,
+  keyed `QGS`, `QGD`, `QDS`, `Qdrift.vgd`, `Qdrift.Id`; outside it a piece is continued to first order
+  (`BoxContinuation`).
 
 ### 3.2 What the validator refuses
 
@@ -154,6 +159,9 @@ Every refusal is a `CmodelFormatException` whose message begins with the field: 
   key, or not a positive number. `Core.Symmetry`: anything but `None`/`Exchange`.
 - `Transform`: on an equation or a charge; a `Kind` other than `Asinh`; a `Scale` that is not a positive current.
   `Core.Dispersion`: missing with `IdRF`, present without it, or a `Tau` that is not a positive time.
+- `Drift`: on a current; on one charge and not the other; inputs other than `vgs, vds`; a missing or extra piece; a
+  `QGD` or `Qdrift` naming a different network in `Qg` and `Qd`; a parameter other than `Qd`'s `Lambda`, or a
+  `Lambda` outside [0, 1]; a box missing a piece's interval or holding another key; a `Smoothing`.
 
 ## 4. The device
 
@@ -668,7 +676,89 @@ grouped `.npy` in `<name>.cmc-cache/current/<key>.npy`, `key` a SHA-256 of their
 and a rename after the fit, other entries removed. `CmcFile.Validate` parses `Steps.Current` (an unknown key is a
 refusal by field); other steps stay opaque. `NetworkFit.StaleSteps` names the step when the network moves on.
 
-## 10. Where it lives
+## 10. The charge constituents (MC-8)
+
+`ChargeFit` (`src/Design/Modeling/`): `Gather` (the capacitance data, a `ChargeData`), `Run` from the open data or from
+a `ChargeData`, `Apply` into `Steps.Charge`, `FitFile`, `Load`, and for the report and the window `Model` (the fitted
+charges and currents as a `ComposedModel`), `Capacitances` and `Slice` (each `Cij` along one voltage with the other
+fixed — MC-15's 1-D plots). Settings and record: `ChargeFitSettings`, `ChargeFitRecord`; templates: `ChargeTemplates`.
+
+### 10.1 Training data (R-mc8-1)
+
+Every set with intrinsic S (or those named), one temperature and one trap state as for the currents. At each point,
+`C11 … C22` averaged over the flatness band with flagged frequencies left out. A point whose worse **diagonal**
+flatness (`C11` or `C22` — the diagonals never cross zero, so theirs is always defined) exceeds `FlatnessLimit`
+(0.1) weighs `(limit/flatness)²`, and the report counts them. Both charges are zero at the anchor: `(0, 0)` or the
+stated point, moved to the nearest data point when it lies outside the hull.
+
+### 10.2 Methods (R-mc8-2)
+
+- **ANN** (default, 2 × 8 `tanh`, 3000 iterations): MC-6 derivative training, `∂Q/∂vgs → Ci1`, `∂Q/∂vds → Ci2`,
+  anchored. Domain: the hull; charges are continued linearly (`G_x = 0`). Measured on the synthetic device through
+  the GaN network: held-out capacitances within 0.49 % of the row's largest, the charges within 0.06 % of their range.
+- **Table**: each capacitance interpolated over the points, both paths of [P1] Fig. 6.16 integrated onto the hull's
+  bounding grid (`LineIntegral.OntoGrid`, adaptive Simpson, cumulative over the sites), `Path` A, B or their mean
+  (default) kept as MC-2's table; the RMS of `Q_A − Q_B` over the charge's range is recorded. **The interpolant is a
+  network by default**: an RBF through each capacitance alone is exact at the points but the two are not mutually
+  conservative between them, and the integrals carry that across the domain — C11 fitted to 15.6 % of its range
+  through an RBF, 0.34 % through a network.
+- **Equation**: `Depletion` ([P1] eq. 6.11 for a gate–source and a gate–drain junction, `min`/`max` so neither branch
+  is evaluated outside its range, `Fc` locked at 0.8) or `Angelov` (each junction a constant plus a `tanh` step in
+  its own voltage, switched by `tanh` in `vds`, integrated through `ln cosh`), or the user's own; fitted by
+  `EquationFit` with **derivative terms** (the expression's gradient lanes are the targets), then shifted by a
+  parameter `Qanchor` so it is zero at the anchor.
+
+### 10.3 The drift decomposition (R-mc8-3)
+
+`Qg = QGS(vgs) + QGD(vgd) + Qdrift(vgd, Id)`, `Qd = −QGD(vgd) − (1 − λ)·Qdrift(vgd, Id) + QDS(vds)` ([I11] eq. 3).
+`Id` is the current step's channel current as the core evaluates it (`ComposedCoreProgram.Channel`: `IdRF` when
+dispersive), and the core takes `∂/∂v` through it by the chain rule, so the charges inherit whatever the current
+depends on — when MC-10's traps arrive, `Qg` depends on the trap states through `Id`, D10's one exception.
+
+1. `QGS` and `QGD`: 1-D adjoint fits to `Cgs = C11 + C12` and `Cgd = −C12` at the points with `|vds| ≤ VdsZero`
+   (0.05 V) — [I11] §III defines the depletion charges as what is measured there.
+2. `Qdrift`: with `R1 = C11 − QGS' − QGD'` and `R2 = C12 + QGD'`, the decomposition says `R1 = ∂Qdr/∂vgd + τ·gm` and
+   `R2 = −∂Qdr/∂vgd + τ·gds`, so **exactly** `τ = (R1 + R2)/(gm + gds)` ([I11] eq. 4's first line) and
+   `∂Qdr/∂vgd = (R1·gds − R2·gm)/(gm + gds)`. [I11] eq. 4 prints the second as `½(Cii-sum terms)`, which drops
+   `τ·(gm − gds)/2`; the exact form is used. A point weighs `(gm + gds)²` relative to the largest — the solve's
+   conditioning — and `Qdrift = 0` along `Id = 0` is 21 value targets trained with the derivatives.
+3. `QDS`: a 1-D fit to `C22 + C12 − λ·∂Qdrift/∂vds` at every point. Its residual is the spread of `Cds` across `vgs`
+   at fixed `vds` — what the decomposition cannot represent — recorded as `CdsSpread` and reported in one line.
+
+It needs the current step (refused otherwise). A training problem whose values are all one number now takes its
+output scale from its derivatives (`AnnTrainer`), since zero targets carry no size.
+
+### 10.4 The report and the record (R-mc8-4)
+
+Per capacitance, the RMS of the model's `∂Q/∂v` against it over every point, absolute and as a fraction of its range.
+`Steps.Charge` = `{ Network, Settings, Result }` as `Steps.Current`; arrays in `<name>.cmc-cache/charge/<key>.npy`.
+
+## 11. Check Charge Conservation (MC-8)
+
+`ConservationCheck` (`src/Design/Modeling/`), numerics `CurlMetric` and `LineIntegral` (`src/Engine/Modeling/`). Each
+part returns a number and, where it has one, a map; `RunFile`/`Run` do all three for a `.cmc`, read-only.
+
+- **(a) The data** (`Data`): per row the curl `∂Ci1/∂vds − ∂Ci2/∂vgs` by central differences of a smooth interpolant
+  — a network per capacitance by default — normalised by the RMS over the points of `√((t1² + t2²)/2)`, as a map
+  and an RMS; and the two-path difference over the grid sites inside the hull, as a fraction of the charge's range.
+  An RBF interpolant read 33 % curl on exactly conservative synthetic data (its errors at the hull's edges, divided
+  by terms that are small); the networks read 0.33 % and 1.5 %.
+- **(b) The model** (`Model`): the same curl on a capacitance matrix over a grid (step 0.05 V), differenced a tenth of
+  the step apart. On a device in a `.cnl` (`DeviceCapacitance`): the instance's one nonlinear component, ports 1 and
+  2 gate–source and drain–source sharing a source, any further ports its own state nodes — solved at DC, eliminated
+  at the check's frequency, `C = Im Y / ω` — so a capacitance written through an auxiliary node is read as a
+  charge's `∂q/∂v` is. The transcapacitance's RMS is reported as information ([P1] §6.3.8).
+- **(c) Large signal** (`LargeSignal`, `Drive`): the device alone on a testbench of ideal tone sources through 1 mΩ
+  (an ideal source on an HB interface node has no finite admittance), solved by HB at order ≥ 5 at `f` and `2f`;
+  `ΔIdc = Igate,dc(2f) − Igate,dc(f)`, relative to the fundamental gate current at `f`, and one line through the gate
+  bias resistor. **The drain is driven too, in quadrature** (`DrainAmplitude`, 1 V): with the drain held at a
+  constant voltage the trajectory is a line in `(vgs, vds)`, `∮C11 dvgs = 0` along it for any `C11`, and no
+  capacitance makes DC — the check as first written could not fail. An ellipse encloses area, the same ellipse at
+  every `f` makes the displacement DC exactly `f·∮C·dv`, and conduction DC cancels in the difference.
+- The composer's model is run as a `ComposedFet` of a temporary `.cmodel` whose network joins each pin to its
+  intrinsic one through 1 µΩ (`ChargeFit.IntrinsicNetwork`), with zero currents until the current step has run.
+
+## 12. Where it lives
 
 | Path | What |
 |---|---|
@@ -686,8 +776,11 @@ refusal by field); other steps stay opaque. `NetworkFit.StaleSteps` names the st
 | `src/Design/Modeling/` | MC-7: `CurrentFit`, `CurrentFitSettings` (with `CurrentFitRecord`), `CurrentTemplates`, `EquationFit` |
 | `src/Engine/Modeling/` | MC-7: `Regrid` (grid axes, sampling, the RBF source), `LocalGradients` |
 | `src/Core/Devices/Composed/` | MC-7: `ModelDispersion` and `OutputTransform` (records), `AsinhOutput` (evaluator), the state node in `ComposedCoreModel` |
+| `src/Design/Modeling/` | MC-8: `ChargeFit` (with `ChargeData`), `ChargeFitSettings` (with `ChargeFitRecord`), `ChargeTemplates`, `ConservationCheck` (with `DeviceCapacitance`) |
+| `src/Engine/Modeling/LineIntegral.cs` | MC-8: `LineIntegral` (paths A and B onto a grid), `CurlMetric` |
+| `src/Core/Devices/Composed/` | MC-8: `DriftCharges` (with `BoxContinuation`); `ComposedCoreProgram.Channel` and `.Charges` |
 
-## 11. Gates (MC-1 … MC-7)
+## 13. Gates (MC-1 … MC-8)
 
 `tests/Core.Tests/Composed/CmodelFormatTests`; `tests/Engine.Tests/Composed/` — `ComposedFetEquivalenceTests`
 (against an SDD with the same expressions in the same network: DC to 1e-12, S at three biases to 1e-9, HB
@@ -746,3 +839,16 @@ decades where it conducts above I0; the record round-trips through the document)
 1.5 %, as its network; the step warning at 0.2 V and not 0.1 V), `CurrentFitEquationTests` (the Angelov template
 recovers all seven parameters of Angelov data to 1e-3). `CmcFormatTests` refuses a misspelt `Steps.Current` key. The
 I–V grid (`SyntheticFetData.Iv`) is denser below 1 V, and the held-out biases lie between its lines.
+
+MC-8: `tests/Engine.Tests/Modeling/ChargeLineIntegralTests` (both paths equal a non-separable charge to 1e-21 C; with a
+constant curl κ they differ by `−κ·Δvgs·Δvds` at every site); `tests/Ui.Tests/ModelComposer/` — `ChargeFitAdjointTests`
+(90 S points of the SDD truth through the GaN network, one start: held-out capacitances within 0.49 % of the row's
+largest, charges within 0.06 % of their range up to the anchor), `ConservationCheckDataTests` (closed-form
+capacitances at a jittered grid: 3.0 % and 0.23 %; a Gaussian planted in `C12` peaks 2.37 inside it, 0.21 at most
+beyond three widths, the drain row untouched), `ConservationCheckLargeSignalTests` (the truth as a charge SDD: 7e-23
+of the fundamental; with its gate current as capacitances times dV/dt through two auxiliary ports, the f→2f and
+2f→3f steps agree to 5e-6 and the spurious DC is 0.41 % of the fundamental), `TranscapacitanceReportTests` (the
+synthetic `.cmodel` through a `ComposedFet`: curl 6e-6, `Cm` 39 fF RMS reported), `DriftChargeTests` (an [I11]
+truth as an SDD at its intrinsic plane, `Id` the truth's: QGS, QGD and QDS within 0.34 %, `Qdrift` at `Id = 0`
+0.27 % of its size, held-out capacitances within 0.29 %). `SyntheticFetData.BiasedS` simulates multi-bias S through
+ideal bias tees; `SDocument` de-embeds it through the stock network or not at all.

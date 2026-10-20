@@ -40,14 +40,19 @@ public sealed class ComposedCoreProgram
     internal readonly ComposedFunction Id, IgGs, IgGd, Qg, Qd;
     internal readonly ComposedFunction? IdRF;
 
+    /// <summary>The drift decomposition when <c>Qg</c> and <c>Qd</c> are <c>Drift</c> (MC-8); the core then takes the
+    /// charges from it, and <see cref="Qg"/>/<see cref="Qd"/> are zero.</summary>
+    public DriftCharges? Drift { get; }
+
     private readonly string _label;
 
     private ComposedCoreProgram(IReadOnlyList<string> seeds, string label, DrainSourceSymmetry symmetry,
                                 ComposedFunction id, ComposedFunction igGs, ComposedFunction igGd,
-                                ComposedFunction qg, ComposedFunction qd, ComposedFunction? idRf, double? tau)
+                                ComposedFunction qg, ComposedFunction qd, ComposedFunction? idRf, double? tau,
+                                DriftCharges? drift)
     {
         Seeds = seeds; _label = label; Symmetry = symmetry;
-        Id = id; IgGs = igGs; IgGd = igGd; Qg = qg; Qd = qd; IdRF = idRf; DispersionTau = tau;
+        Id = id; IgGs = igGs; IgGd = igGd; Qg = qg; Qd = qd; IdRF = idRf; DispersionTau = tau; Drift = drift;
     }
 
     /// <summary>Compiles a model already checked by <see cref="CmodelFile.Validate"/>.</summary>
@@ -59,6 +64,7 @@ public sealed class ComposedCoreProgram
 
         ComposedFunction One(Constituent c, string name, string key, double[]? ownBranch)
         {
+            if (c.Method == Constituent.DriftMethod) return ZeroFunction.Instance;
             if (c.Method == Constituent.EquationMethod)
             {
                 var parameters = new Dictionary<string, double>(StringComparer.Ordinal);
@@ -81,7 +87,29 @@ public sealed class ComposedCoreProgram
             One(k.Qg, "Qg", k.Qg.PayloadKey, null),
             One(k.Qd, "Qd", k.Qd.PayloadKey, null),
             k.IdRF is { } rf ? One(rf, "IdRF", rf.PayloadKey, Branch(rf.Inputs, vgs: 0, vds: 1)) : null,
-            k.Dispersion?.Tau);
+            k.Dispersion?.Tau,
+            k.Qg.Method == Constituent.DriftMethod ? DriftCharges.Build(model) : null);
+    }
+
+    /// <summary>
+    /// The channel current the core evaluates at an operating point — <c>IdRF</c> for a dispersive model, else
+    /// <c>Id</c> — and its gradient over the seed lanes: what a drift charge reads (MC-8 R-mc8-3), and what the
+    /// composer trains one against.
+    /// </summary>
+    public double Channel(ReadOnlySpan<double> seeds, Span<double> grad)
+        => IdRF is { } rf ? Eval(rf, "IdRF", seeds, grad) : Eval(Id, "Id", seeds, grad);
+
+    /// <summary>
+    /// Both charges and their gradients over the seed lanes at one operating point, unscaled and before any
+    /// drain–source image — what the composer's report and conservation checks read (MC-8).
+    /// </summary>
+    public (double Qg, double Qd) Charges(ReadOnlySpan<double> seeds, Span<double> gQg, Span<double> gQd)
+    {
+        if (Drift is not { } drift) return (Eval(Qg, "Qg", seeds, gQg), Eval(Qd, "Qd", seeds, gQd));
+        Span<double> g = stackalloc double[3];
+        double id = Channel(seeds, g);
+        drift.Evaluate(seeds[0], seeds[1], id, g, Width, out double qg, gQg, out double qd, gQd);
+        return (qg, qd);
     }
 
     /// <summary>The <c>Extrapolation.Gx</c> key of a current payload: <c>Id</c>, <c>IgGs</c>, <c>IgGd</c>.</summary>
@@ -124,6 +152,18 @@ public sealed class ComposedCoreProgram
 internal abstract class ComposedFunction
 {
     public abstract double Evaluate(ReadOnlySpan<double> seeds, Span<double> grad);
+}
+
+/// <summary>A charge the drift decomposition supplies instead.</summary>
+internal sealed class ZeroFunction : ComposedFunction
+{
+    public static readonly ZeroFunction Instance = new();
+
+    public override double Evaluate(ReadOnlySpan<double> seeds, Span<double> grad)
+    {
+        grad.Clear();
+        return 0.0;
+    }
 }
 
 internal sealed class EquationFunction(CompiledSddExpr expr, string label) : ComposedFunction

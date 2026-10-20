@@ -1,0 +1,611 @@
+// The charge constituents, Qg and Qd, from the intrinsic capacitances (brief-modelcomposer-8 R-mc8-1 … R-mc8-4;
+// overview D4, D7, D13).
+//
+//   1. The training data are C11, C12 (Qg's row) and C21, C22 (Qd's) at each intrinsic S point, averaged over MC-4's
+//      flatness band with flagged frequencies left out; a point whose diagonal flatness is poor weighs less. One
+//      temperature and one trap state, as for the currents.
+//   2. Both charges are zero at the anchor — the arbitrary constant of [P1] §6.3.4.
+//   3. Each charge is an ANN trained on its two partial derivatives by the adjoint method (the default, [P1] §6.3.6), a
+//      table from the line integrals of [P1] eqs. 6.30/6.31 over an interpolant of the capacitances, or an equation
+//      fitted to its derivatives. Or, as an advanced option, both come from [I11]'s drift decomposition.
+//   4. The report: each capacitance's RMS error against the model's ∂Q/∂v, a table's two-path difference.
+//
+// The result goes to the .cmc's Steps.Charge; arrays to <name>.cmc-cache/charge/. Cancelled, nothing is written.
+
+using System.Globalization;
+using System.Text.Json.Nodes;
+using CircuitRF.Core.Devices.Composed;
+using CircuitRF.Engine;
+using CircuitRF.Engine.Modeling;
+using CircuitRF.Engine.Modeling.Ann;
+using RfCore.Data;
+
+namespace CircuitRF.Design.Modeling;
+
+/// <summary>A fitted charge step: what the document records, the arrays it names, and the settings it was fitted with.</summary>
+public sealed record ChargeFitResult(ChargeFitSettings Settings, ChargeFitRecord Record,
+                                     IReadOnlyDictionary<string, DataCube> Arrays);
+
+/// <summary>
+/// The capacitances a charge fit trains on and check (a) reads (R-mc8-1): at each intrinsic point, the four elements of
+/// the capacitance matrix (<c>Cij = ∂Qi/∂vj</c>, <c>i, j</c> = gate, drain) and the point's weight; the points' hull.
+/// </summary>
+public sealed class ChargeData
+{
+    public required IReadOnlyList<(double Vgs, double Vds)> X { get; init; }
+    public required double[] C11 { get; init; }
+    public required double[] C12 { get; init; }
+    public required double[] C21 { get; init; }
+    public required double[] C22 { get; init; }
+    public required double[] Weight { get; init; }
+    public required TrainingDomain Domain { get; init; }
+    public double TemperatureC { get; init; } = 25;
+
+    /// <summary>Data at scattered points, every point weighing one unless <paramref name="weight"/> says otherwise.</summary>
+    public static ChargeData Of(IReadOnlyList<(double Vgs, double Vds)> x, double[] c11, double[] c12, double[] c21,
+                                double[] c22, double[]? weight = null, double temperatureC = 25) => new()
+    {
+        X = x, C11 = c11, C12 = c12, C21 = c21, C22 = c22, Weight = weight ?? [.. x.Select(_ => 1.0)],
+        Domain = CurrentFit.Hull([.. x.Select(p => new[] { p.Vgs, p.Vds })]), TemperatureC = temperatureC,
+    };
+
+    /// <summary>A charge's row: <c>(C11, C12)</c> for <c>Qg</c>, <c>(C21, C22)</c> for <c>Qd</c>.</summary>
+    public (double[] C1, double[] C2) Row(bool gate) => gate ? (C11, C12) : (C21, C22);
+
+    internal double[][] Points => [.. X.Select(p => new[] { p.Vgs, p.Vds })];
+}
+
+public static class ChargeFit
+{
+    public const string StepName = "Charge";
+    public const string CacheFolder = "charge";
+
+    private static readonly IReadOnlyList<string> Inputs = [ComposedCoreProgram.Vgs, ComposedCoreProgram.Vds];
+
+    /// <summary>
+    /// A network that joins each extrinsic pin to its intrinsic one through 1 µΩ: what a model built from the steps
+    /// carries until the network step's own is exported (MC-11), so check (c) drives the core itself.
+    /// </summary>
+    internal const string IntrinsicNetwork =
+        "define intrinsic (P1 P2 P3 P4 P5 P6)\nR:R1 P1 P4 R=1e-6\nR:R2 P2 P5 R=1e-6\nR:R3 P3 P6 R=1e-6\nend\n";
+
+    // ── The document ──────────────────────────────────────────────────────────
+
+    /// <summary>The step's settings in <paramref name="doc"/>, or the defaults.</summary>
+    public static ChargeFitSettings Settings(CmcDocument doc) =>
+        Step(doc)?["Settings"] is { } s ? ChargeFitSettings.Parse(s, $"Steps.{StepName}.Settings") : ChargeFitSettings.Default;
+
+    /// <summary>The step's recorded result, or null when it has not been run.</summary>
+    public static ChargeFitRecord? Record(CmcDocument doc) =>
+        Step(doc)?["Result"] is { } r ? ChargeFitRecord.Parse(r, $"Steps.{StepName}.Result") : null;
+
+    /// <summary>The block's keys checked and parsed — <see cref="CmcFile.Validate"/>'s call.</summary>
+    public static void Validate(CmcDocument doc)
+    {
+        if (Step(doc) is not { } o) return;
+        CmcExtrinsic.Only(o, $"Steps.{StepName}", ["Network", "Settings", "Result"]);
+        Settings(doc);
+        Record(doc);
+    }
+
+    /// <summary>The document with <paramref name="settings"/> as the step's settings; a recorded result is kept.</summary>
+    public static CmcDocument WithSettings(CmcDocument doc, ChargeFitSettings settings)
+    {
+        var steps = StepsCopy(doc);
+        var o = steps[StepName] as JsonObject ?? new JsonObject();
+        steps[StepName] = o;
+        o["Settings"] = settings.ToJson();
+        return doc with { Steps = steps };
+    }
+
+    /// <summary>The document with <paramref name="result"/> recorded, through the network it was computed with.</summary>
+    public static CmcDocument Apply(CmcDocument doc, ChargeFitResult result)
+    {
+        var steps = StepsCopy(doc);
+        steps[StepName] = new JsonObject
+        {
+            ["Network"] = NetworkFit.Digest(CmcExtrinsic.Network(doc)),
+            ["Settings"] = result.Settings.ToJson(),
+            ["Result"] = result.Record.ToJson(),
+        };
+        return doc with { Steps = steps };
+    }
+
+    private static JsonObject? Step(CmcDocument doc) =>
+        doc.Steps is JsonObject s && s[StepName] is { } n ? CmcExtrinsic.Obj(n, $"Steps.{StepName}") : null;
+
+    private static JsonObject StepsCopy(CmcDocument doc) =>
+        doc.Steps is JsonObject s ? (JsonObject)JsonNode.Parse(s.ToJsonString())! : new JsonObject();
+
+    /// <summary>
+    /// Reads the <c>.cmc</c>, fits with its settings, writes the arrays and the document — what the window and the
+    /// <c>model</c> verb both call. Cancelled, nothing is written.
+    /// </summary>
+    public static ChargeFitResult FitFile(string cmcPath, RunControl? rc = null)
+    {
+        var doc = CmcFile.Read(cmcPath);
+        var data = new CmcCache(cmcPath).Open(doc, rc).Data;
+        var intrinsic = new IntrinsicExtraction(cmcPath).Run(doc, data, rc: rc);
+        var settings = Settings(doc);
+        var current = settings.Drift is null ? null : CurrentFit.Load(cmcPath, doc)
+            ?? throw new ModelingException(StepName, "the drift charge reads the fitted Id; fit the currents first.");
+        var result = Run(doc, data, intrinsic, settings, current, rc);
+        rc?.ThrowIfCancellationRequested();
+        CurrentFit.WriteArrays(cmcPath, CacheFolder, result.Record.Arrays, result.Arrays);
+        CmcFile.Write(cmcPath, Apply(doc, result));
+        return result;
+    }
+
+    /// <summary>The recorded step and its arrays from the cache; null when there is no record, or its arrays are not in the
+    /// cache (derived data: run the step again).</summary>
+    public static ChargeFitResult? Load(string cmcPath, CmcDocument doc) =>
+        Record(doc) is { } record && CurrentFit.ReadArrays(cmcPath, CacheFolder, record.Arrays) is { } arrays
+            ? new ChargeFitResult(Settings(doc), record, arrays)
+            : null;
+
+    // ── Training data (R-mc8-1) ───────────────────────────────────────────────
+
+    /// <summary>The capacitances of the chosen sets at their intrinsic points, with each point's flatness weight.</summary>
+    public static ChargeData Gather(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data, IntrinsicResult intrinsic,
+                                    ChargeFitSettings settings, List<string> report)
+    {
+        var chosen = settings.DataSets.Count > 0
+            ? [.. settings.DataSets.Select(n => doc.DataSets.FirstOrDefault(s => s.Name == n)
+                                               ?? throw new ModelingException(n, "the charge step names it, and the document has no such data set."))]
+            : doc.DataSets.Where(s => intrinsic.Sets.TryGetValue(s.Name, out var d) && d.Contains("C11")).ToList();
+        if (chosen.Count == 0)
+            throw new ModelingException(StepName, "there is no S-parameter data set to take the capacitances from.");
+        double t = CurrentFit.OneCondition(chosen, data, StepName);
+
+        int iC11 = Index("C11"), iC22 = Index("C22");
+        var x = new List<(double, double)>();
+        var c = new List<double>[4] { [], [], [], [] };
+        var w = new List<double>();
+        int poor = 0;
+        foreach (var set in chosen)
+        {
+            if (!intrinsic.Sets.TryGetValue(set.Name, out var ds) || !ds.Contains("C11"))
+                throw new ModelingException(set.Name, "the charges read its intrinsic capacitances, and it has no intrinsic S data.");
+            double[] f = ds["C11"].Axes[1].Values, band = ds["Band"].RealValues, flagged = ds["Flagged"].RealValues;
+            double[] vgs = ds["Vgsi"].RealValues, vds = ds["Vdsi"].RealValues, ex = ds["Excluded"].RealValues;
+            double[] flat = ds["Flatness"].RealValues;
+            double[][] cij = [ds["C11"].RealValues, ds["C12"].RealValues, ds["C21"].RealValues, ds["C22"].RealValues];
+            int nf = f.Length, nq = IntrinsicQuantities.Names.Count;
+            for (int p = 0; p < vgs.Length; p++)
+            {
+                if (ex[p] != 0 || !double.IsFinite(vgs[p]) || !double.IsFinite(vds[p])) continue;
+                var sum = new double[4];
+                int count = 0;
+                for (int k = 0; k < nf; k++)
+                {
+                    if (f[k] < band[0] || f[k] > band[1] || flagged[p * nf + k] != 0) continue;
+                    for (int i = 0; i < 4; i++) sum[i] += cij[i][p * nf + k];
+                    count++;
+                }
+                if (count == 0) continue;
+                x.Add((vgs[p], vds[p]));
+                for (int i = 0; i < 4; i++) c[i].Add(sum[i] / count);
+                double worst = Math.Max(Finite(flat[p * nq + iC11]), Finite(flat[p * nq + iC22]));
+                double weight = worst <= settings.FlatnessLimit ? 1.0 : Math.Pow(settings.FlatnessLimit / worst, 2);
+                if (weight < 1) poor++;
+                w.Add(weight);
+            }
+        }
+        if (poor > 0) report.Add($"{poor} point(s) with flatness above {G(100 * settings.FlatnessLimit)} % down-weighted by (limit/flatness)².");
+        if (x.Count < 4) throw new ModelingException(StepName, $"{x.Count} usable S point(s); a charge fit needs at least 4.");
+        return ChargeData.Of(x, [.. c[0]], [.. c[1]], [.. c[2]], [.. c[3]], [.. w], t);
+
+        static int Index(string name) => IntrinsicQuantities.Names.ToList().IndexOf(name);
+        static double Finite(double v) => double.IsFinite(v) ? v : 0;
+    }
+
+    /// <summary>The anchor: the stated one, or (0, 0); a point outside the data's hull moves to the data point nearest it.</summary>
+    internal static (double Vgs, double Vds) Anchor(ChargeData data, ChargeFitSettings settings, List<string> report)
+    {
+        var want = settings.Anchor ?? (0, 0);
+        if (Inside(data.Domain.Polygon, want)) return want;
+        var near = data.X.MinBy(p => Math.Pow(p.Vgs - want.Vgs, 2) + Math.Pow(p.Vds - want.Vds, 2));
+        report.Add($"anchor ({G(want.Vgs)}, {G(want.Vds)}) V is outside the data; charges are zero at ({G(near.Vgs)}, {G(near.Vds)}) V.");
+        return near;
+    }
+
+    internal static bool Inside(IReadOnlyList<(double Vgs, double Vds)> poly, (double Vgs, double Vds) p)
+    {
+        int sign = 0;
+        for (int k = 0; k < poly.Count; k++)
+        {
+            var a = poly[k]; var b = poly[(k + 1) % poly.Count];
+            double cross = (b.Vgs - a.Vgs) * (p.Vds - a.Vds) - (b.Vds - a.Vds) * (p.Vgs - a.Vgs);
+            int s = Math.Sign(cross);
+            if (s == 0) continue;
+            if (sign == 0) sign = s;
+            else if (s != sign) return false;
+        }
+        return true;
+    }
+
+    // ── The fit ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Fits both charges (R-mc8-1 … R-mc8-4) from the open document's data and its intrinsic result.
+    /// <paramref name="current"/> is the current step's result, which the drift decomposition needs. Throws
+    /// <see cref="ModelingException"/> for a refusal and <see cref="OperationCanceledException"/> when cancelled.
+    /// </summary>
+    public static ChargeFitResult Run(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data, IntrinsicResult intrinsic,
+                                      ChargeFitSettings settings, CurrentFitResult? current = null, RunControl? rc = null)
+    {
+        rc?.ThrowIfCancellationRequested();
+        var report = new List<string>();
+        return Run(Gather(doc, data, intrinsic, settings, report), settings, current, report, rc);
+    }
+
+    /// <summary>Fits both charges to <paramref name="data"/> directly.</summary>
+    public static ChargeFitResult Run(ChargeData data, ChargeFitSettings settings, CurrentFitResult? current = null,
+                                      RunControl? rc = null) => Run(data, settings, current, [], rc);
+
+    private static ChargeFitResult Run(ChargeData data, ChargeFitSettings settings, CurrentFitResult? current,
+                                       List<string> report, RunControl? rc)
+    {
+        rc?.ThrowIfCancellationRequested();
+        var anchor = Anchor(data, settings, report);
+        var arrays = new Dictionary<string, DataCube>(StringComparer.Ordinal);
+        var paths = new Dictionary<string, double>(StringComparer.Ordinal);
+        Constituent qg, qd;
+        double? cdsSpread = null;
+        if (settings.Drift is { } drift)
+        {
+            if (current is null) throw new ModelingException(StepName, "the drift charge reads the fitted Id; fit the currents first.");
+            (qg, qd, cdsSpread) = FitDrift(data, settings, drift, current, anchor, arrays, report, rc);
+        }
+        else
+        {
+            qg = FitOne("Qg", true, settings.Qg, data, settings, anchor, arrays, paths, report, rc);
+            qd = FitOne("Qd", false, settings.Qd, data, settings, anchor, arrays, paths, report, rc);
+        }
+
+        var program = ComposedCoreProgram.Compile(Model(qg, qd, arrays, current, data.TemperatureC), "charge fit");
+        var errors = Errors(program, data);
+        foreach (var (k, e) in errors) report.Add($"{k}: RMS error {G(100 * e.Relative)} % of its range.");
+        string key = arrays.Count > 0 ? CurrentFit.ArraysKey(arrays, out _) : "";
+        var record = new ChargeFitRecord
+        {
+            Qg = qg, Qd = qd, Arrays = key, Anchor = anchor, Errors = errors, PathDifference = paths, CdsSpread = cdsSpread,
+            Report = report,
+        };
+        return new ChargeFitResult(settings, record, arrays);
+    }
+
+    private static Constituent FitOne(string name, bool gate, ChargeConstituentSettings s, ChargeData data, ChargeFitSettings settings,
+                                      (double Vgs, double Vds) anchor, Dictionary<string, DataCube> arrays,
+                                      Dictionary<string, double> paths, List<string> report, RunControl? rc)
+    {
+        rc?.ThrowIfCancellationRequested();
+        var (c1, c2) = data.Row(gate);
+        switch (s.Method)
+        {
+            case ChargeMethod.ANN:
+            {
+                // The adjoint method ([P1] §6.3.6, [X03]): ∂Q/∂vgs → Ci1 and ∂Q/∂vds → Ci2, with Q = 0 at the anchor.
+                rc?.BeginStage($"Training {name}");
+                var trained = AnnTrainer.Train(new AnnTrainingProblem(2)
+                {
+                    Derivatives = new AnnDerivativeData(data.Points, [0, 1], [.. c1.Select((v, k) => new[] { v, c2[k] })],
+                                                        [.. data.Weight.Select(w => new[] { w, w })]),
+                    Anchor = new AnnAnchor([anchor.Vgs, anchor.Vds], 0),
+                }, AnnSettings(s.Hidden, s.Activation, s.MaxIterations, settings, settings.HeldOutFraction), rc);
+                foreach (string warning in trained.Warnings) report.Add($"{name}: {warning}");
+                if (trained.Derivatives is { HeldOutCount: > 0 } e)
+                    report.Add($"{name}: held-out ∂Q/∂v error {G(100 * e.HeldOutRelative)} % over {e.HeldOutCount} point(s).");
+                foreach (var (k, v) in trained.Arrays(name)) arrays[k] = v;
+                return Constituent.Ann(name, Inputs, data.Domain, s.Activation);
+            }
+            case ChargeMethod.Table:
+                return FitTable(name, s, c1, c2, data, settings, anchor, arrays, paths, report, rc);
+            default:
+                return FitEquation(name, gate, s, c1, c2, data, settings, anchor, rc);
+        }
+    }
+
+    private static AnnTrainingSettings AnnSettings(IReadOnlyList<int> hidden, AnnActivation activation, int iterations,
+                                                   ChargeFitSettings s, double heldOut) =>
+        new() { Hidden = hidden, Activation = activation, MaxIterations = iterations, Restarts = s.Restarts, Seed = s.Seed,
+                HeldOutFraction = heldOut };
+
+    /// <summary>
+    /// [P1] eqs. 6.30/6.31: each capacitance interpolated over the scattered points, both paths integrated onto the hull's
+    /// bounding grid, the chosen one (or their mean) kept as an MC-2 table. The paths' difference is recorded.
+    /// </summary>
+    private static Constituent FitTable(string name, ChargeConstituentSettings s, double[] c1, double[] c2, ChargeData data,
+                                        ChargeFitSettings settings, (double Vgs, double Vds) anchor,
+                                        Dictionary<string, DataCube> arrays, Dictionary<string, double> paths,
+                                        List<string> report, RunControl? rc)
+    {
+        rc?.BeginStage($"Interpolating {name}");
+        var f1 = Interpolant(c1, s.Interpolant, data, AnnSettings(s.Hidden, s.Activation, s.MaxIterations, settings, 0.0), rc);
+        var f2 = Interpolant(c2, s.Interpolant, data, AnnSettings(s.Hidden, s.Activation, s.MaxIterations, settings, 0.0), rc);
+
+        var poly = data.Domain.Polygon;
+        double[] vgs = Regrid.Axis(poly.Min(p => p.Vgs), poly.Max(p => p.Vgs), s.GridStep);
+        double[] vds = Regrid.Axis(poly.Min(p => p.Vds), poly.Max(p => p.Vds), s.GridStep);
+        double typical = Math.Sqrt(c1.Concat(c2).Average(v => v * v));
+        rc?.BeginStage($"Integrating {name}", vgs.Length + vds.Length, "line(s)");
+        var (a, b) = LineIntegral.OntoGrid(f1, f2, anchor, vgs, vds, 1e-7 * typical * s.GridStep, rc);
+
+        double[] values = s.Path switch
+        {
+            IntegrationPath.A => a,
+            IntegrationPath.B => b,
+            _ => [.. a.Select((v, k) => 0.5 * (v + b[k]))],
+        };
+        double range = values.Max() - values.Min();
+        double diff = range > 0 ? Math.Sqrt(a.Select((v, k) => (v - b[k]) * (v - b[k])).Average()) / range : 0;
+        paths[name] = diff;
+        report.Add($"{name}: paths A and B differ by {G(100 * diff)} % of its range.");
+
+        IReadOnlyList<double[]> sites = [vgs, vds];
+        var coefficients = TensorSplineFit.Fit(sites, values, s.Smoothing);
+        foreach (var (k, v) in ComposedArrays.Table(name, Inputs, sites, values, coefficients)) arrays[k] = v;
+        return Constituent.Table(name, Inputs, data.Domain, s.Smoothing);
+    }
+
+    /// <summary>A smooth function of one capacitance over the scattered points: a radial-basis interpolant through them, or a
+    /// network trained on them and continued linearly outside the hull.</summary>
+    internal static Func<double, double, double> Interpolant(double[] c, RegridSource source, ChargeData data,
+                                                             AnnTrainingSettings ann, RunControl? rc)
+    {
+        if (source == RegridSource.RBF) return Regrid.Rbf(data.X, c);
+        var trained = AnnTrainer.Train(new AnnTrainingProblem(2) { Values = new AnnValueData(data.Points, c, data.Weight) }, ann, rc);
+        var linear = new GuidedExtrapolation(trained.Network, data.Domain, Inputs, 0.0, null);
+        return (vgs, vds) =>
+        {
+            Span<double> p = [vgs, vds];
+            Span<double> g = stackalloc double[2];
+            return linear.Evaluate(p, g);
+        };
+    }
+
+    /// <summary>A template or the user's expression fitted to the row's two capacitances — its partial derivatives — then
+    /// shifted by a constant <c>Qanchor</c> so it is zero at the anchor.</summary>
+    private static Constituent FitEquation(string name, bool gate, ChargeConstituentSettings s, double[] c1, double[] c2,
+                                           ChargeData data, ChargeFitSettings settings, (double Vgs, double Vds) anchor,
+                                           RunControl? rc)
+    {
+        string expression;
+        IReadOnlyList<TemplateParameter> parameters;
+        if (s.Template is { } t)
+        {
+            var tpl = ChargeTemplates.Find(t)
+                ?? throw new ModelingException(name, $"'{t}' is not a template here; the templates are {string.Join(", ", ChargeTemplates.Names)}.");
+            expression = tpl.Expression(gate);
+            parameters = tpl.Parameters(gate, new ChargeTemplateData([.. data.X.Select(p => p.Vgs)], [.. data.X.Select(p => p.Vds)], c1, c2));
+        }
+        else
+        {
+            expression = s.Expression ?? throw new ModelingException(name, $"a {name} equation names a template or an Expression.");
+            parameters = [];
+        }
+        parameters = CurrentFit.Overrides(name, parameters, s.Parameters);
+
+        var x = data.Points;
+        rc?.BeginStage($"Fitting {name}", 0, "evaluation(s)");
+        var fit = EquationFit.Fit([new EquationTerm(expression, x, c1, data.Weight, 0), new EquationTerm(expression, x, c2, data.Weight, 1)],
+                                  parameters, s.Algorithm, settings.Seed, name, rc);
+        double q0 = EquationFit.Function(expression, fit.Values, name)(anchor.Vgs, anchor.Vds).F;
+        return Constituent.Equation($"({expression})-Qanchor", Inputs,
+                                    [.. fit.Values.Select(kv => (kv.Key, kv.Value)), ("Qanchor", q0)]);
+    }
+
+    // ── The drift decomposition (R-mc8-3) ─────────────────────────────────────
+
+    private static (Constituent Qg, Constituent Qd, double CdsSpread) FitDrift(
+        ChargeData data, ChargeFitSettings settings, DriftChargeSettings drift, CurrentFitResult current,
+        (double Vgs, double Vds) anchor, Dictionary<string, DataCube> arrays, List<string> report, RunControl? rc)
+    {
+        var channel = Channel(current, data.TemperatureC);
+        int n = data.X.Count;
+        var zero = Enumerable.Range(0, n).Where(k => Math.Abs(data.X[k].Vds) <= drift.VdsZero).ToArray();
+        if (zero.Length < 3)
+            throw new ModelingException(StepName,
+                $"{zero.Length} point(s) at |vds| ≤ {G(drift.VdsZero)} V; the depletion charges are fitted there and need at least 3.");
+        var ann = AnnSettings(drift.Hidden, AnnActivation.Tanh, drift.MaxIterations, settings, 0.0);
+        var box = new Dictionary<string, (double, double)>(StringComparer.Ordinal);
+
+        // The depletion charges at vds = 0 ([I11] §III, [P1] eq. 6.43): QGS(vgs) on Cgs = C11 + C12, QGD(vgd) on Cgd = −C12.
+        var qgs = Train1D(DriftCharges.Qgs, [.. zero.Select(k => data.X[k].Vgs)], [.. zero.Select(k => data.C11[k] + data.C12[k])],
+                          [.. zero.Select(k => data.Weight[k])], anchor.Vgs, ann, arrays, box, report, rc);
+        var qgd = Train1D(DriftCharges.Qgd, [.. zero.Select(k => data.X[k].Vgs - data.X[k].Vds)], [.. zero.Select(k => -data.C12[k])],
+                          [.. zero.Select(k => data.Weight[k])], anchor.Vgs - anchor.Vds, ann, arrays, box, report, rc);
+
+        // The drift charge on what the depletion charges leave ([I11] eq. 4). With R1 = C11 − QGS' − QGD' and
+        // R2 = C12 + QGD', the decomposition says R1 = ∂Qdr/∂vgd + τ·gm and R2 = −∂Qdr/∂vgd + τ·gds, so exactly
+        // τ = (R1 + R2)/(gm + gds) and ∂Qdr/∂vgd = (R1·gds − R2·gm)/(gm + gds). A point weighs (gm + gds)² relative to
+        // the largest — the conditioning of that solve — and Qdrift = 0 along Id = 0 is imposed as values.
+        var vgd = new double[n]; var id = new double[n]; var gm = new double[n]; var gds = new double[n];
+        for (int k = 0; k < n; k++)
+        {
+            vgd[k] = data.X[k].Vgs - data.X[k].Vds;
+            (id[k], gm[k], gds[k]) = channel(data.X[k].Vgs, data.X[k].Vds);
+        }
+        double denMax = Enumerable.Range(0, n).Max(k => Math.Abs(gm[k] + gds[k]));
+        if (!(denMax > 0)) throw new ModelingException(StepName, "the fitted Id has no conductance over the data; the drift charge needs one.");
+        var dx = new List<double[]>(); var dt = new List<double[]>(); var dw = new List<double[]>();
+        for (int k = 0; k < n; k++)
+        {
+            double den = gm[k] + gds[k];
+            double ww = data.Weight[k] * Math.Pow(den / denMax, 2);
+            if (!(ww > 1e-12)) continue;
+            double r1 = data.C11[k] - Slope(qgs, data.X[k].Vgs) - Slope(qgd, vgd[k]);
+            double r2 = data.C12[k] + Slope(qgd, vgd[k]);
+            dx.Add([vgd[k], id[k]]);
+            dt.Add([(r1 * gds[k] - r2 * gm[k]) / den, (r1 + r2) / den]);
+            dw.Add([ww, ww]);
+        }
+        if (dx.Count < 4) throw new ModelingException(StepName, $"{dx.Count} point(s) carry current; the drift charge needs at least 4.");
+        double vgdLo = vgd.Min(), vgdHi = vgd.Max(), idLo = Math.Min(0, id.Min()), idHi = Math.Max(0, id.Max());
+        double[][] line = [.. Enumerable.Range(0, 21).Select(j => new[] { vgdLo + (vgdHi - vgdLo) * j / 20.0, 0.0 })];
+        rc?.BeginStage("Training Qdrift");
+        var qdr = AnnTrainer.Train(new AnnTrainingProblem(2)
+        {
+            Values = new AnnValueData(line, new double[line.Length]),
+            Derivatives = new AnnDerivativeData(dx, [0, 1], dt, dw),
+        }, ann, rc);
+        foreach (string w in qdr.Warnings) report.Add($"Qdrift: {w}");
+        foreach (var (k, v) in qdr.Arrays(DriftCharges.Qdrift)) arrays[k] = v;
+        box[DriftCharges.DriftVgd] = (vgdLo, vgdHi);
+        box[DriftCharges.DriftId] = (idLo, idHi);
+
+        // QDS(vds) on Cds = C22 + C12 = QDS' + λ·∂Qdr/∂vds at every point — a 1-D fit, so the spread of Cds across vgs at a
+        // fixed vds is what it cannot represent.
+        var cds = new double[n];
+        Span<double> g = stackalloc double[2];
+        for (int k = 0; k < n; k++)
+        {
+            qdr.Network.Evaluate([vgd[k], id[k]], g);
+            cds[k] = data.C22[k] + data.C12[k] - drift.Lambda * (-g[0] + g[1] * gds[k]);
+        }
+        var qds = Train1D(DriftCharges.Qds, [.. data.X.Select(p => p.Vds)], cds, data.Weight, anchor.Vds, ann, arrays, box, report, rc);
+        double miss = 0, size = 0;
+        for (int k = 0; k < n; k++)
+        {
+            miss += Math.Pow(Slope(qds, data.X[k].Vds) - cds[k], 2);
+            size += cds[k] * cds[k];
+        }
+        double spread = size > 0 ? Math.Sqrt(miss / size) : 0;
+        report.Add($"Cds varies {G(100 * spread)} % across vgs at fixed vds; QDS(vds) cannot follow that.");
+
+        var domain = new TrainingDomain(data.Domain.Polygon,
+            [.. DriftCharges.BoxKeys.Select(k => new KeyValuePair<string, (double Lo, double Hi)>(k, box[k]))]);
+        return (Constituent.Drift(true, domain), Constituent.Drift(false, domain, drift.Lambda), spread);
+    }
+
+    /// <summary>A 1-D charge piece by adjoint training on its capacitance, zero at <paramref name="zeroAt"/>.</summary>
+    private static AnnTrainingResult Train1D(string name, double[] v, double[] c, double[] w, double zeroAt, AnnTrainingSettings ann,
+                                             Dictionary<string, DataCube> arrays, Dictionary<string, (double, double)> box,
+                                             List<string> report, RunControl? rc)
+    {
+        double lo = v.Min(), hi = v.Max();
+        if (!(hi > lo)) throw new ModelingException(StepName, $"{name}'s points do not vary; a 1-D charge needs a range.");
+        rc?.BeginStage($"Training {name}");
+        var trained = AnnTrainer.Train(new AnnTrainingProblem(1)
+        {
+            Derivatives = new AnnDerivativeData([.. v.Select(x => new[] { x })], [0], [.. c.Select(y => new[] { y })],
+                                                [.. w.Select(x => new[] { x })]),
+            Anchor = new AnnAnchor([zeroAt], 0),
+        }, ann, rc);
+        foreach (string warning in trained.Warnings) report.Add($"{name}: {warning}");
+        foreach (var (k, a) in trained.Arrays(name)) arrays[k] = a;
+        box[name] = (lo, hi);
+        return trained;
+    }
+
+    private static double Slope(AnnTrainingResult piece, double v)
+    {
+        Span<double> g = stackalloc double[1];
+        piece.Network.Evaluate([v], g);
+        return g[0];
+    }
+
+    /// <summary>The fitted channel current as the core evaluates it — <c>IdRF</c> when dispersive — with <c>gm</c>, <c>gds</c>.</summary>
+    internal static Func<double, double, (double Id, double Gm, double Gds)> Channel(CurrentFitResult current, double temperatureC)
+    {
+        var zero = Constituent.Equation("0", Inputs);
+        var program = ComposedCoreProgram.Compile(Model(zero, zero, new Dictionary<string, DataCube>(), current, temperatureC), "current fit");
+        return (vgs, vds) =>
+        {
+            Span<double> s = [vgs, vds];
+            Span<double> g = stackalloc double[2];
+            double id = program.Channel(s, g);
+            return (id, g[0], g[1]);
+        };
+    }
+
+    // ── The model and the report (R-mc8-4) ────────────────────────────────────
+
+    /// <summary>
+    /// A model holding these charges and, when given, the fitted currents (equations of zero otherwise), inside
+    /// <see cref="IntrinsicNetwork"/> at one finger — what the conservation checks run.
+    /// </summary>
+    internal static ComposedModel Model(Constituent qg, Constituent qd, IReadOnlyDictionary<string, DataCube> chargeArrays,
+                                        CurrentFitResult? current, double temperatureC)
+    {
+        var all = new Dictionary<string, DataCube>(chargeArrays, StringComparer.Ordinal);
+        var zero = Constituent.Equation("0", Inputs);
+        Constituent id = zero, ig = Constituent.GateEquations("0", "0", Inputs);
+        Constituent? idRf = null;
+        ModelExtrapolation? extrapolation = null;
+        ModelDispersion? dispersion = null;
+        if (current is not null)
+        {
+            var r = current.Record;
+            (id, ig, idRf) = (r.Id, r.Ig, r.IdRF);
+            foreach (var (k, v) in current.Arrays) all[k] = v;
+            extrapolation = r.Gx.Count > 0 ? new ModelExtrapolation(r.Gx) : null;
+            dispersion = r.Tau is { } tau ? new ModelDispersion(tau) : null;
+        }
+        return new ComposedModel
+        {
+            BasePeriphery = new BasePeriphery(1, "1 um"),
+            Temperature = ModelTemperature.Single(temperatureC),
+            Network = new ExtrinsicNetwork(IntrinsicNetwork, []),
+            Core = new CoreConstituents(id, ig, qg, qd, idRf) { Dispersion = dispersion },
+            Extrapolation = extrapolation,
+            Arrays = all,
+        };
+    }
+
+    /// <summary>A fitted step's model, as <see cref="Model(Constituent, Constituent, IReadOnlyDictionary{string, DataCube}, CurrentFitResult?, double)"/>.</summary>
+    public static ComposedModel Model(ChargeFitResult charges, CurrentFitResult? current, double temperatureC = 25) =>
+        Model(charges.Record.Qg, charges.Record.Qd, charges.Arrays, current, temperatureC);
+
+    /// <summary>The capacitance matrix of a model's charges at a point: <c>(C11, C12, C21, C22)</c>.</summary>
+    public static (double C11, double C12, double C21, double C22) Capacitances(ComposedCoreProgram program, double vgs, double vds)
+    {
+        Span<double> s = stackalloc double[3];
+        s[0] = vgs; s[1] = vds; s[2] = 25;
+        Span<double> gg = stackalloc double[3], gd = stackalloc double[3];
+        program.Charges(s[..program.Width], gg, gd);
+        return (gg[0], gg[1], gd[0], gd[1]);
+    }
+
+    private static Dictionary<string, CapacitanceErrorRecord> Errors(ComposedCoreProgram program, ChargeData data)
+    {
+        double[][] measured = [data.C11, data.C12, data.C21, data.C22];
+        var sums = new double[4];
+        foreach (var (k, p) in data.X.Select((p, k) => (k, p)))
+        {
+            var (c11, c12, c21, c22) = Capacitances(program, p.Vgs, p.Vds);
+            double[] model = [c11, c12, c21, c22];
+            for (int i = 0; i < 4; i++) sums[i] += Math.Pow(model[i] - measured[i][k], 2);
+        }
+        var errors = new Dictionary<string, CapacitanceErrorRecord>(StringComparer.Ordinal);
+        for (int i = 0; i < 4; i++)
+        {
+            double rms = Math.Sqrt(sums[i] / data.X.Count), range = measured[i].Max() - measured[i].Min();
+            errors[ChargeFitRecord.Capacitances[i]] = new CapacitanceErrorRecord(rms, range > 0 ? rms / range : 0);
+        }
+        return errors;
+    }
+
+    /// <summary>
+    /// The model's four capacitances along one voltage with the other fixed (R-mc8-4) — the 1-D slices the window draws
+    /// against the data (MC-15): <paramref name="sweepGate"/> sweeps <c>vgs</c> at <c>vds = fixedValue</c>, else the
+    /// reverse. One cube per capacitance over the swept axis.
+    /// </summary>
+    public static DataSet Slice(ComposedCoreProgram program, bool sweepGate, double fixedValue, double lo, double hi, int points = 101)
+    {
+        var v = Enumerable.Range(0, points).Select(k => lo + (hi - lo) * k / (points - 1)).ToArray();
+        var c = new double[4][];
+        for (int i = 0; i < 4; i++) c[i] = new double[points];
+        for (int k = 0; k < points; k++)
+        {
+            var (c11, c12, c21, c22) = sweepGate ? Capacitances(program, v[k], fixedValue) : Capacitances(program, fixedValue, v[k]);
+            (c[0][k], c[1][k], c[2][k], c[3][k]) = (c11, c12, c21, c22);
+        }
+        var axis = new Axis(sweepGate ? ComposedCoreProgram.Vgs : ComposedCoreProgram.Vds, v, "V");
+        var ds = new DataSet();
+        for (int i = 0; i < 4; i++) ds.Add(ChargeFitRecord.Capacitances[i], new DataCube([axis], c[i]));
+        return ds;
+    }
+
+    private static string G(double v) => v.ToString("G3", CultureInfo.InvariantCulture);
+}

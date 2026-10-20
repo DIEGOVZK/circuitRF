@@ -39,7 +39,7 @@ public static class CmodelFile
 
     /// <summary>The methods a constituent may name in this build.</summary>
     public static readonly IReadOnlyList<string> KnownMethods =
-        [Constituent.EquationMethod, Constituent.TableMethod, Constituent.AnnMethod];
+        [Constituent.EquationMethod, Constituent.TableMethod, Constituent.AnnMethod, Constituent.DriftMethod];
 
     /// <summary>The trap models this build knows (D10). MC-10 adds the rest.</summary>
     public static readonly IReadOnlyList<string> KnownTrapModels = ["None"];
@@ -393,6 +393,7 @@ public static class CmodelFile
         ValidateConstituent(m, m.Core.Qg, "Qg", inputs);
         ValidateConstituent(m, m.Core.Qd, "Qd", inputs);
         if (m.Core.IdRF is { } idRf) ValidateConstituent(m, idRf, "IdRF", inputs);
+        ValidateDriftPair(m);
         ValidateDispersion(m);
         ValidateExtrapolation(m);
 
@@ -406,6 +407,11 @@ public static class CmodelFile
         if (!KnownMethods.Contains(c.Method, StringComparer.Ordinal))
             throw new CmodelFormatException($"{field}.Method",
                 $"'{c.Method}' is not a known method; the known methods are {string.Join(", ", KnownMethods)}.");
+        if (c.Method == Constituent.DriftMethod)
+        {
+            ValidateDrift(c, name, field);
+            return;
+        }
         string[] keys = name == "Ig" ? ["IgGs", "IgGd"] : [c.PayloadKey];
         if (c.Inputs.Distinct(StringComparer.Ordinal).Count() != c.Inputs.Count)
             throw new CmodelFormatException($"{field}.Inputs", "an input is listed twice.");
@@ -506,9 +512,92 @@ public static class CmodelFile
         }
     }
 
+    /// <summary>
+    /// A drift charge's own shape (MC-8 R-mc8-3): a charge, reading vgs and vds, naming its three pieces, with the
+    /// partition factor on Qd and every piece's interval in its box. The pieces' arrays are built by
+    /// <see cref="ValidateDriftPair"/>, which needs both charges.
+    /// </summary>
+    private static void ValidateDrift(Constituent c, string name, string field)
+    {
+        if (name is not ("Qg" or "Qd"))
+            throw new CmodelFormatException($"{field}.Method", $"Drift is a charge method; {name} is a current.");
+        if (!c.Inputs.SequenceEqual([ComposedCoreProgram.Vgs, ComposedCoreProgram.Vds], StringComparer.Ordinal))
+            throw new CmodelFormatException($"{field}.Inputs", "a Drift charge reads vgs and vds, and the current through Id.");
+        var keys = name == "Qg" ? DriftCharges.QgKeys : DriftCharges.QdKeys;
+        foreach (var e in c.Expressions)
+            if (!keys.Contains(e.Key))
+                throw new CmodelFormatException($"{field}.{e.Key}",
+                    $"a Drift {name} is {string.Join(", ", keys)}; '{e.Key}' is not one of them.");
+        foreach (string key in keys)
+            if (c.Expression(key) is not { Length: > 0 })
+                throw new CmodelFormatException($"{field}.{key}", "it is missing; it names the piece's network.");
+        if (c.Smoothing is not null)
+            throw new CmodelFormatException($"{field}.Smoothing", "only a Table has a smoothing weight.");
+
+        string[] parameters = name == "Qd" ? [DriftCharges.Lambda] : [];
+        foreach (var p in c.Parameters)
+            if (!parameters.Contains(p.Key))
+                throw new CmodelFormatException($"{field}.Parameters.{p.Key}",
+                    name == "Qd" ? "a Drift Qd's one parameter is Lambda." : "a Drift Qg has no parameters; Lambda is Qd's.");
+        if (name == "Qd")
+        {
+            var lambda = c.Parameters.FirstOrDefault(p => p.Key == DriftCharges.Lambda);
+            if (lambda.Key is null)
+                throw new CmodelFormatException($"{field}.Parameters.Lambda", "it is missing; the partition factor, 0 by default.");
+            if (!(lambda.Value is >= 0 and <= 1))
+                throw new CmodelFormatException($"{field}.Parameters.Lambda", "the partition factor is between 0 and 1.");
+        }
+
+        var domain = c.Domain ?? throw new CmodelFormatException($"{field}.Domain",
+            "a Drift charge stores the data's hull and each piece's interval; it is missing.");
+        ValidatePolygon(domain.Polygon, $"{field}.Domain");
+        foreach (var (key, (lo, hi)) in domain.Box)
+        {
+            if (!DriftCharges.BoxKeys.Contains(key))
+                throw new CmodelFormatException($"{field}.Domain.Box.{key}",
+                    $"a Drift charge's box holds {string.Join(", ", DriftCharges.BoxKeys)}.");
+            if (!(double.IsFinite(lo) && double.IsFinite(hi) && lo < hi))
+                throw new CmodelFormatException($"{field}.Domain.Box.{key}", "lo must be below hi.");
+        }
+        foreach (string key in DriftCharges.BoxKeys)
+            if (!domain.Box.Any(b => b.Key == key))
+                throw new CmodelFormatException($"{field}.Domain.Box.{key}", "the piece's training interval is missing.");
+    }
+
+    /// <summary>Qg and Qd are both Drift or neither, share their QGD and Qdrift, and their pieces build.</summary>
+    private static void ValidateDriftPair(ComposedModel m)
+    {
+        bool g = m.Core.Qg.Method == Constituent.DriftMethod, d = m.Core.Qd.Method == Constituent.DriftMethod;
+        if (!g && !d) return;
+        if (g != d)
+            throw new CmodelFormatException($"Core.Constituents.{(g ? "Qd" : "Qg")}.Method",
+                "Qg and Qd are both Drift or neither: the two share QGD and Qdrift.");
+        foreach (string key in (string[])[DriftCharges.Qgd, DriftCharges.Qdrift])
+            if (m.Core.Qg.Expression(key) != m.Core.Qd.Expression(key))
+                throw new CmodelFormatException($"Core.Constituents.Qd.{key}", $"it names a different network from Qg's {key}.");
+        DriftCharges.Build(m);
+    }
+
     private static void ValidateDomain(TrainingDomain d, IReadOnlyList<string> inputs, string field)
     {
-        var poly = d.Polygon;
+        ValidatePolygon(d.Polygon, field);
+        var boxed = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (input, (lo, hi)) in d.Box)
+        {
+            if (input is ComposedCoreProgram.Vgs or ComposedCoreProgram.Vds || !inputs.Contains(input))
+                throw new CmodelFormatException($"{field}.Box.{input}",
+                    "the box holds the inputs other than vgs and vds, and this is not one of them.");
+            if (!(double.IsFinite(lo) && double.IsFinite(hi) && lo < hi))
+                throw new CmodelFormatException($"{field}.Box.{input}", "lo must be below hi.");
+            boxed.Add(input);
+        }
+        foreach (string input in inputs)
+            if (input is not (ComposedCoreProgram.Vgs or ComposedCoreProgram.Vds) && !boxed.Contains(input))
+                throw new CmodelFormatException($"{field}.Box.{input}", "the input's training interval is missing.");
+    }
+
+    private static void ValidatePolygon(IReadOnlyList<(double Vgs, double Vds)> poly, string field)
+    {
         if (poly.Count < 3)
             throw new CmodelFormatException($"{field}.Polygon", "a polygon has at least three vertices.");
         if (poly.Any(v => !double.IsFinite(v.Vgs) || !double.IsFinite(v.Vds)))
@@ -530,20 +619,6 @@ public static class CmodelFile
                 throw new CmodelFormatException($"{field}.Polygon",
                     "the polygon is not convex; the nearest-point continuation needs a convex domain.");
         }
-
-        var boxed = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var (input, (lo, hi)) in d.Box)
-        {
-            if (input is ComposedCoreProgram.Vgs or ComposedCoreProgram.Vds || !inputs.Contains(input))
-                throw new CmodelFormatException($"{field}.Box.{input}",
-                    "the box holds the inputs other than vgs and vds, and this is not one of them.");
-            if (!(double.IsFinite(lo) && double.IsFinite(hi) && lo < hi))
-                throw new CmodelFormatException($"{field}.Box.{input}", "lo must be below hi.");
-            boxed.Add(input);
-        }
-        foreach (string input in inputs)
-            if (input is not (ComposedCoreProgram.Vgs or ComposedCoreProgram.Vds) && !boxed.Contains(input))
-                throw new CmodelFormatException($"{field}.Box.{input}", "the input's training interval is missing.");
     }
 
     /// <summary><c>IdRF</c> and <c>Core.Dispersion</c> come together: one without the other has no meaning.</summary>
@@ -787,7 +862,7 @@ public static class CmodelFile
             }
             w.WriteEndObject();
         }
-        if (c.Method == Constituent.EquationMethod)
+        if (c.Method is Constituent.EquationMethod || c.Parameters.Count > 0)
         {
             w.WriteStartObject("Parameters");
             foreach (var p in c.Parameters) w.WriteNumber(p.Key, p.Value);

@@ -16,7 +16,8 @@ namespace CircuitRF.Core.Devices.Composed;
 ///
 /// <para><b>Charges.</b> <c>q = (Qg, Qd)</c> and <c>dc = ∂q/∂v</c> come from the same evaluation, so the
 /// model is terminal-charge-conserving by construction (D7) — <c>Qs = −Qg − Qd</c> is the KCL the
-/// engine already writes. A transcapacitance (<c>∂Qd/∂vgs ≠ ∂Qg/∂vds</c>) is kept, not symmetrised.</para>
+/// engine already writes. A transcapacitance (<c>∂Qd/∂vgs ≠ ∂Qg/∂vds</c>) is kept, not symmetrised. A drift
+/// decomposition (MC-8, <see cref="DriftCharges"/>) reads the channel current of the same evaluation.</para>
 ///
 /// <para><b>The internal-node seam</b> used by the thermal, trap and dispersion phases:
 /// <see cref="InternalStateNodeCount"/> ground-referenced nodes, minted by the elaborator after the two
@@ -171,6 +172,8 @@ public sealed class ComposedCoreModel : ComponentModel
         double qg   = _p.Eval(_p.Qg,   "Qg",   s, gQg);
         double qd   = _p.Eval(_p.Qd,   "Qd",   s, gQd);
         double idRf = _dispersive ? _p.Eval(_p.IdRF!, "IdRF", s, gRf) : 0.0;
+        if (_p.Drift is { } drift)
+            drift.Evaluate(s[0], s[1], _dispersive ? idRf : id, _dispersive ? gRf : gId, _p.Width, out qg, gQg, out qd, gQd);
 
         if (image)
         {

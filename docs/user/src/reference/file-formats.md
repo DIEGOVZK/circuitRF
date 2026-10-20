@@ -141,6 +141,7 @@ model always writes the same bytes.
 | `Network` | `Netlist`: `.cnl` text holding one `define` block with exactly six pins — extrinsic gate, drain, source, then intrinsic gate, drain, source — and its element values as variables. `Scaling`: each variable's rule, `fixed` (the default), `perFinger` or `perFingerInverse`. |
 | `Core.Constituents` | `Id`, `Ig`, `Qg` and `Qd`, each `{ "Method", "Inputs", … }`, the method one of `Equation`, `Table` or `ANN`. An `Equation` carries `Expression` and `Parameters` (named constants). A `Table` names its arrays in `Table` — a grid of values and the coefficients of the smooth spline through them — and records its `Smoothing`. An `ANN` names its arrays in `Network` and its hidden layers' `Activation`, `Tanh` or `Sigmoid`. `Ig` carries two of whichever its method uses, `IgGs` and `IgGd`. Inputs are `vgs` and `vds` in volts, and `T` in °C for a `Range` model. Currents are in A, charges in C. An optional `IdRF` is the drain current at RF, with `Core.Dispersion`. |
 | `Transform` (Table, ANN current) | `{ "Kind": "Asinh", "Scale": I0 }`: the arrays hold `u`, and the current is `I0·sinh(u)` — straight through zero within ±I0 and logarithmic beyond, so a current spanning many decades is held to the same ratio throughout. |
+| `Drift` (`Qg`, `Qd`) | The charges as a gate–source and a gate–drain depletion charge, a drain–source charge, and a drift charge that depends on the gate–drain voltage and the drain current: `Qg = QGS + QGD + Qdrift`, `Qd = −QGD − (1 − Lambda)·Qdrift + QDS`. Both charges are `Drift` or neither. `Qg` names the networks `QGS`, `QGD` and `Qdrift`, `Qd` names `QGD`, `Qdrift` and `QDS` and carries `Parameters: { "Lambda": … }`, between 0 and 1. The `Domain`'s `Box` holds each network's training interval: `QGS`, `QGD`, `QDS`, `Qdrift.vgd` and `Qdrift.Id`. |
 | `Core.Dispersion` | `{ "Tau": τ }`, in seconds, present exactly when `IdRF` is: the drain current follows `Id` at DC and `IdRF` well above 1/(2πτ), moving between them as one pole. |
 | `Domain` (Table, ANN) | Where the constituent was trained: `Polygon`, a convex list of `[vgs, vds]` vertices, and `Box`, an interval per other input. Outside it the constituent is continued in a straight line from the nearest point of the domain; a current also gains a conductance that grows with the distance. |
 | `Core.Symmetry` | `Exchange`: the constituents describe `vds ≥ 0`, and a negative `vds` is the same device with drain and source exchanged. Absent for an asymmetric device. |
@@ -164,7 +165,7 @@ except temperatures, in °C.
 | `DataSets` | Each with a `Name`, a `Kind`, its `Sources`, its `Conditions`, its `Import` settings and any `Exclusions`. |
 | `Pads` | How the probe pads are removed — see below. Absent when the data is at the device plane. |
 | `Network` | The six-pin extrinsic network and its variables' settings — see below. Absent when the data is intrinsic. |
-| `Steps` | Each model step's settings and result: `Current` below. A step not described here is kept as written. |
+| `Steps` | Each model step's settings and result: `Current` and `Charge` below. A step not described here is kept as written. |
 | `Panels` | `Hidden`: the window panels switched off. Absent when every panel shows. |
 
 A data set's `Kind` is `DcIv`, `PulsedIv`, `SParams` (CW multi-bias), `PulsedSParams`, `SimulatedTables`
@@ -259,6 +260,24 @@ digest of the network values the fit was made through (a later network fit makes
 error, absolute and relative to the range (`Errors`), `Conductance` (the fitted Gm and Gds against the data's
 own DC derivatives), `Symmetry` (with `Exchange`: the value, slope and gate jumps at `vds = 0`), `Eq649` (the
 share of the RF conductances no single current reproduces), `Reference` and the `Report` lines.
+
+`Steps.Charge` is the gate and drain charges' step, with the same three fields. The charges are fitted to the
+intrinsic capacitances of the S-parameter sets, averaged over the `FlatnessBand`. `Settings` holds:
+
+| Field | What it holds |
+|---|---|
+| `DataSets` | The S-parameter sets to fit to. Absent: every set with S data. One temperature and one trap state, as for the currents. |
+| `Qg`, `Qd` | Each `Method` (`ANN`, the default, `Table` or `Equation`) and that method's settings: `Hidden` (`[8, 8]`), `Activation` and `MaxIterations` (3000) for a network, trained on the charge's two capacitances; `GridStep` (0.1 V), `Interpolant` (`ANN`, or `RBF` through the points themselves), `Path` (`A`, `B` or `Mean`, the default) and `Smoothing` for a table integrated from the capacitances; `Template` (`Depletion` or `Angelov`) or the user's own `Expression`, with `Parameters` and `Algorithm`, for an equation. |
+| `Anchor` | `[vgs, vds]` where both charges are zero. Absent: `[0, 0]`, or the data point nearest it when it lies outside the data. |
+| `FlatnessLimit` | 0.1: a point whose `C11` or `C22` varies across the band by more than this fraction of its mean counts for less. |
+| `Seed`, `Restarts`, `HeldOutFraction` | 1, 3 and 0.1, as for the currents. |
+| `Drift` | Present to fit the drift decomposition instead of `Qg` and `Qd`'s methods: `Lambda` (0), `VdsZero` (0.05 V — the points this close to `vds = 0` fit the depletion charges), `Hidden` and `MaxIterations`. Needs the current step: the drift charge reads its `Id`. |
+
+`Result` holds `Constituents` (`Qg` and `Qd` exactly as the `.cmodel` will), `Arrays`, `Anchor`, `Errors` (per
+capacitance `C11`, `C12`, `C21`, `C22`: the RMS error of the fitted charge's derivative, and that as a fraction of
+the capacitance's range), `PathDifference` (a table's two integration paths' RMS difference as a fraction of the
+charge's range), `CdsSpread` (with `Drift`: how much `Cds` varies across `vgs` at a fixed `vds`, which `QDS` cannot
+follow) and the `Report` lines.
 
 The data read from the sources is cached in `<name>.cmc-cache/`. When a source changes it is read
 again; when one goes missing the cached copy is used, with a warning. A step's arrays are cached there

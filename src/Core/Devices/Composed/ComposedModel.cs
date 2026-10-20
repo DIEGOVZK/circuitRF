@@ -131,6 +131,9 @@ public sealed record Constituent
     public const string EquationMethod = "Equation";
     public const string TableMethod    = "Table";
     public const string AnnMethod      = "ANN";
+    /// <summary>A charge by [I11]'s drift decomposition (MC-8, <see cref="DriftCharges"/>): <c>Qg</c> and <c>Qd</c>
+    /// together, their payloads the pieces' networks.</summary>
+    public const string DriftMethod    = "Drift";
 
     public required string Method { get; init; }
     public required IReadOnlyList<string> Inputs { get; init; }
@@ -185,6 +188,19 @@ public sealed record Constituent
                                   AnnActivation activation = AnnActivation.Tanh)
         => new() { Method = AnnMethod, Inputs = inputs, Expressions = [new("Network", name)],
                    Domain = domain, Activation = activation };
+
+    /// <summary>One drift charge (<see cref="DriftCharges"/>): <c>Qg</c> names QGS, QGD and Qdrift, <c>Qd</c> names QGD,
+    /// Qdrift and QDS and carries <c>Lambda</c>. Each piece's network is named after its key.</summary>
+    public static Constituent Drift(bool gate, TrainingDomain domain, double lambda = 0.0)
+        => new()
+        {
+            Method      = DriftMethod,
+            Inputs      = [ComposedCoreProgram.Vgs, ComposedCoreProgram.Vds],
+            Expressions = [.. (gate ? DriftCharges.QgKeys : DriftCharges.QdKeys).Select(k => new KeyValuePair<string, string>(k, k))],
+            Parameters  = gate ? [] : [new(DriftCharges.Lambda, lambda)],
+            Domain      = domain,
+            Activation  = AnnActivation.Tanh,
+        };
 
     /// <summary>A gate-conduction pair by table or ANN: the two branches' array names.</summary>
     public static Constituent Gate(string method, string igGs, string igGd, IReadOnlyList<string> inputs,

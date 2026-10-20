@@ -1370,3 +1370,8 @@ src/Engine/Modeling/Ann/AnnTrainer.cs|there is nothing to train to: no values an
 src/Engine/Modeling/LocalGradients.cs|one value per point.
 src/Engine/Modeling/Regrid.cs|a radial-basis interpolant needs at least three points, one value each.
 src/Engine/Modeling/Regrid.cs|the axis runs from lo up to hi.
+
+# ── Model Composer MC-8: the drift charge's pieces (2026-10-19) ────────────────────────
+# DriftCharges.Piece is read by the composer's report and tests, which name the piece by the
+# class's own constants; an unknown key is a caller's mistake, not a sentence a user reads.
+src/Core/Devices/Composed/DriftCharges.cs|'{key}' is not a piece of a drift charge.

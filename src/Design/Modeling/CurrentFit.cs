@@ -96,7 +96,7 @@ public static class CurrentFit
         var intrinsic = new IntrinsicExtraction(cmcPath).Run(doc, data, rc: rc);
         var result = Run(doc, data, intrinsic, Settings(doc), rc);
         rc?.ThrowIfCancellationRequested();
-        WriteArrays(cmcPath, result);
+        WriteArrays(cmcPath, CacheFolder, result.Record.Arrays, result.Arrays);
         CmcFile.Write(cmcPath, Apply(doc, result));
         return result;
     }
@@ -106,24 +106,29 @@ public static class CurrentFit
     public static CurrentFitResult? Load(string cmcPath, CmcDocument doc)
     {
         if (Record(doc) is not { } record) return null;
+        return ReadArrays(cmcPath, CacheFolder, record.Arrays) is { } arrays ? new CurrentFitResult(Settings(doc), record, arrays) : null;
+    }
+
+    /// <summary>A step's arrays from <c>&lt;name&gt;.cmc-cache/&lt;folder&gt;/&lt;key&gt;.npy</c>; empty for an empty key, null when the
+    /// file is missing or unreadable (derived data: run the step again).</summary>
+    internal static Dictionary<string, DataCube>? ReadArrays(string cmcPath, string folder, string key)
+    {
         var arrays = new Dictionary<string, DataCube>(StringComparer.Ordinal);
-        if (record.Arrays.Length > 0)
+        if (key.Length == 0) return arrays;
+        string file = Path.Combine(CmcCache.FolderFor(cmcPath), folder, key + ".npy");
+        if (!File.Exists(file)) return null;
+        try
         {
-            string file = Path.Combine(CmcCache.FolderFor(cmcPath), CacheFolder, record.Arrays + ".npy");
-            if (!File.Exists(file)) return null;
-            try
-            {
-                var ds = DataSetImporter.Import(file).DataSet;
-                foreach (var (name, cube) in ds.Cubes) arrays[name] = cube;
-            }
-            catch (Exception ex) when (ex is IOException or InvalidDataException or FormatException or ArgumentException)
-            { return null; }
+            var ds = DataSetImporter.Import(file).DataSet;
+            foreach (var (name, cube) in ds.Cubes) arrays[name] = cube;
         }
-        return new CurrentFitResult(Settings(doc), record, arrays);
+        catch (Exception ex) when (ex is IOException or InvalidDataException or FormatException or ArgumentException)
+        { return null; }
+        return arrays;
     }
 
     /// <summary>The content key of a result's arrays: what the record names and the cache file is called.</summary>
-    private static string ArraysKey(IReadOnlyDictionary<string, DataCube> arrays, out byte[] bytes)
+    internal static string ArraysKey(IReadOnlyDictionary<string, DataCube> arrays, out byte[] bytes)
     {
         var ds = new DataSet();
         foreach (var (name, cube) in arrays.OrderBy(kv => kv.Key, StringComparer.Ordinal)) ds.Add(name, cube);
@@ -133,13 +138,15 @@ public static class CurrentFit
         return Convert.ToHexStringLower(SHA256.HashData(bytes))[..32];
     }
 
-    private static void WriteArrays(string cmcPath, CurrentFitResult result)
+    /// <summary>A step's arrays written as one grouped <c>.npy</c> named by <paramref name="key"/>, by a temporary file and a
+    /// rename; the folder's other entries are removed.</summary>
+    internal static void WriteArrays(string cmcPath, string cacheFolder, string key, IReadOnlyDictionary<string, DataCube> arrays)
     {
-        string folder = Path.Combine(CmcCache.FolderFor(cmcPath), CacheFolder);
-        if (result.Record.Arrays.Length == 0) return;
-        ArraysKey(result.Arrays, out var bytes);
+        string folder = Path.Combine(CmcCache.FolderFor(cmcPath), cacheFolder);
+        if (key.Length == 0) return;
+        ArraysKey(arrays, out var bytes);
         Directory.CreateDirectory(folder);
-        string target = Path.Combine(folder, result.Record.Arrays + ".npy");
+        string target = Path.Combine(folder, key + ".npy");
         string tmp = target + ".tmp-" + Guid.NewGuid().ToString("N")[..8];
         try
         {
@@ -148,7 +155,7 @@ public static class CurrentFit
         }
         finally { if (File.Exists(tmp)) File.Delete(tmp); }
         foreach (string file in Directory.EnumerateFiles(folder, "*.npy"))
-            if (Path.GetFileNameWithoutExtension(file) != result.Record.Arrays)
+            if (Path.GetFileNameWithoutExtension(file) != key)
                 try { File.Delete(file); } catch (IOException) { }
     }
 
@@ -272,7 +279,7 @@ public static class CurrentFit
             : doc.DataSets.Where(s => s.Kind is DataSetKind.DcIv or DataSetKind.PulsedIv or DataSetKind.SimulatedTables).ToList();
         if (chosen.Count == 0)
             throw new ModelingException("Current", "there is no I–V data set (DcIv, PulsedIv or SimulatedTables) to fit the currents to.");
-        double t = OneCondition(chosen, data);
+        double t = OneCondition(chosen, data, "Current");
 
         var x = new List<double[]>();
         var id = new List<double>();
@@ -335,7 +342,7 @@ public static class CurrentFit
     /// One temperature and one quiescent point across the chosen sets, or a refusal naming the condition that differs
     /// (MC-9 and MC-10 handle the mixes). Returns the temperature, °C (25 when none is stated).
     /// </summary>
-    private static double OneCondition(IReadOnlyList<CmcDataSet> sets, IReadOnlyDictionary<string, NormalisedData> data)
+    internal static double OneCondition(IReadOnlyList<CmcDataSet> sets, IReadOnlyDictionary<string, NormalisedData> data, string step)
     {
         var temps = new List<(string Set, double T)>();
         foreach (var s in sets)
@@ -346,13 +353,13 @@ public static class CurrentFit
         }
         foreach (var other in temps)
             if (Math.Abs(other.T - temps[0].T) > 0.01)
-                throw new ModelingException("Current",
+                throw new ModelingException(step,
                     $"the data differs in AmbientC ({G(temps[0].T)} °C in {temps[0].Set}, {G(other.T)} °C in {other.Set}); " +
                     "one temperature per fit until temperature is an input.");
 
         var pulsed = sets.Where(s => s.Kind is DataSetKind.PulsedIv or DataSetKind.PulsedSParams).ToList();
         if (pulsed.Count > 0 && pulsed.Count < sets.Count)
-            throw new ModelingException("Current",
+            throw new ModelingException(step,
                 $"the data differs in Quiescent ({sets.First(s => !pulsed.Contains(s)).Name} is not pulsed, {pulsed[0].Name} is); " +
                 "one trap state per fit until traps are modelled.");
         for (int k = 1; k < pulsed.Count; k++)
@@ -365,11 +372,11 @@ public static class CurrentFit
                 _ => false,
             };
             if (!same)
-                throw new ModelingException("Current",
+                throw new ModelingException(step,
                     $"the data differs in Quiescent ({pulsed[0].Name} and {pulsed[k].Name}); one quiescent point per fit until traps are modelled.");
             if ((a.PrePulse is null) != (b.PrePulse is null)
                 || a.PrePulse is { } pa && b.PrePulse is { } pb && (Math.Abs(pa.Vgs - pb.Vgs) > 1e-3 || Math.Abs(pa.Vds - pb.Vds) > 1e-3))
-                throw new ModelingException("Current",
+                throw new ModelingException(step,
                     $"the data differs in PrePulse ({pulsed[0].Name} and {pulsed[k].Name}); one trap state per fit until traps are modelled.");
         }
         return temps.Count > 0 ? temps[0].T : 25.0;
@@ -561,7 +568,7 @@ public static class CurrentFit
 
     /// <summary>The document's per-parameter settings over the template's: a start, bounds, a lock. A parameter the template
     /// does not have is the user's own and must state all three numbers.</summary>
-    private static IReadOnlyList<TemplateParameter> Overrides(string constituent, IReadOnlyList<TemplateParameter> template,
+    internal static IReadOnlyList<TemplateParameter> Overrides(string constituent, IReadOnlyList<TemplateParameter> template,
                                                               IReadOnlyDictionary<string, EquationParameterSettings> overrides)
     {
         var list = template.ToList();
@@ -749,7 +756,7 @@ public static class CurrentFit
     }
 
     /// <summary>The point nearest the middle of the points' span.</summary>
-    private static (double, double) Middle(List<double[]> x)
+    internal static (double, double) Middle(IReadOnlyList<double[]> x)
     {
         double gLo = x.Min(p => p[0]), gHi = x.Max(p => p[0]), dLo = x.Min(p => p[1]), dHi = x.Max(p => p[1]);
         var best = x.MinBy(p => Math.Pow(Norm(p[0], gLo, gHi), 2) + Math.Pow(Norm(p[1], dLo, dHi), 2))!;

@@ -146,7 +146,9 @@ public static class AnnTrainer
             foreach (var t in derivs.Targets) foreach (double v in t) { ss += v * v; count++; }
             derivNorm = Math.Sqrt(ss / Math.Max(count, 1));
         }
-        if (values is not null)
+        // Values that are all one number say nothing about the output's size; with derivatives present (a charge
+        // constrained to zero along a line — MC-8's drift charge) the derivatives set the scale.
+        if (values is not null && (derivs is null || values.Y.Max() > values.Y.Min()))
         {
             double lo = values.Y.Min(), hi = values.Y.Max();
             outOffset = 0.5 * (lo + hi);
@@ -154,7 +156,7 @@ public static class AnnTrainer
         }
         else
         {
-            outOffset = problem.Anchor?.Y ?? 0.0;
+            outOffset = values is not null ? values.Y[0] : problem.Anchor?.Y ?? 0.0;
             outScale = 0.0;
             for (int j = 0; j < derivs!.Directions.Count; j++)
             {

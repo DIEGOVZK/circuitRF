@@ -3027,3 +3027,11 @@ Design note: `docs/design/model-composer.md` §8. Findings worth keeping:
   (`outputScale·inputScale_j`) looks like harmless conditioning but changes the relative weight of the directions,
   and for non-conservative targets that moves the least-squares compromise. The derivative term divides by the
   RMS of all its targets instead.
+
+## Model Composer MC-8: a constant value target says nothing about the output's size (2026-10-19)
+
+`AnnTrainer` scaled the output by the value targets' range, falling back to `max(|offset|, 1)` when they were all one
+number. The drift charge (MC-8) trains on derivatives plus 21 value targets of exactly zero (`Qdrift = 0` along
+`Id = 0`): the output scale became 1 C for a charge of ~1e-14 C, and the network would have had to hold its answer
+in weights of ~1e-14. Values that are all one number now take the scale from the derivatives, as a derivative-only
+problem always did, and the offset from that one value. Problems whose values vary are unchanged bit for bit.

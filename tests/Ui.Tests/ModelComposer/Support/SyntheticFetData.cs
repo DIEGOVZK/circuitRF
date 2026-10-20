@@ -308,6 +308,80 @@ public static class SyntheticFetData
         return (cmc, CmcExtrinsic.With(doc, n with { Variables = vars, Fit = fit }));
     }
 
+    // ── MC-8: multi-bias S of a nonlinear device ──────────────────────────────
+
+    /// <summary>The extrinsic biases of the capacitance grid: 10 × 9 = 90 points, vds = 0 included (the drift
+    /// decomposition's depletion charges are fitted there).</summary>
+    public static readonly double[] CvVgs = [-2.0, -1.7, -1.4, -1.1, -0.8, -0.5, -0.2, 0.1, 0.4, 0.7];
+    public static readonly double[] CvVds = [0, 0.5, 1, 2, 3, 4, 6, 8, 10];
+    /// <summary>Held-out biases, every one between the grid's lines.</summary>
+    public static readonly double[] CvHeldVgs = [-1.85, -0.95, -0.35, 0.25];
+    public static readonly double[] CvHeldVds = [0.75, 2.5, 5, 9];
+    /// <summary>The default flatness band takes 1–5 GHz of these.</summary>
+    public static readonly double[] CvFreqs = [0.5e9, 1e9, 2e9, 3e9, 4e9, 5e9, 10e9];
+
+    /// <summary>
+    /// S (50 Ω, common source) at every (vgs, vds) of the two lists of a device on nets <c>g d 0</c> — <paramref name="device"/>
+    /// is its defines and its instance line — biased through ideal tees (1 H, 1 F), with the DC terminal currents from
+    /// probes. <paramref name="intrinsic"/> names the nets whose voltages are the intrinsic ones (gate, drain, source), or
+    /// null when the device's terminals are its intrinsic plane.
+    /// </summary>
+    public static NormalisedData BiasedS(string device, double[] vgsList, double[] vdsList, double[] freqs,
+                                         (string G, string D, string S)? intrinsic = null)
+    {
+        var points = new List<BiasPoint>();
+        var flat = new List<Complex>();
+        foreach (double vgs in vgsList)
+            foreach (double vds in vdsList)
+            {
+                string cnl = device +
+                    $"Vdc:VG vg 0 V={R(vgs)}\nIProbe:IPG vg lg\nL:LG lg g L=1\nC:CG pa g C=1\nPort:P1 pa 0 Num=1 Z=50 Ohm\n" +
+                    $"Vdc:VD vd 0 V={R(vds)}\nIProbe:IPD vd ld\nL:LD ld d L=1\nC:CD pb d C=1\nPort:P2 pb 0 Num=2 Z=50 Ohm\n";
+                var (lib, tb) = new CnlReader().Read(cnl);
+                using var nl = new Elaborator(lib).Elaborate(tb);
+                var dc = NonlinearDcEngine.Run(nl);
+                Assert.True(dc.Converged);
+                var (rows, names) = nl.Nodes.ResultRows(excludeInternal: false);
+                var v = new Dictionary<string, double>(StringComparer.Ordinal) { ["0"] = 0 };
+                for (int k = 0; k < rows.Length; k++) v[names[k]] = dc.NodeVoltages[rows[k] - 1];
+                var (gi, di, si) = intrinsic ?? ("g", "d", "0");
+                points.Add(new BiasPoint($"Vgs{R(vgs)}_Vds{R(vds)}", vgs, vds, dc.ProbeCurrents["IPG"], dc.ProbeCurrents["IPD"])
+                {
+                    VgsIntrinsic = v[gi] - v[si],
+                    VdsIntrinsic = v[di] - v[si],
+                });
+                var sp = SParameterEngine.Run(nl, freqs)["S"];
+                for (int k = 0; k < freqs.Length; k++)
+                    for (int i = 0; i < 2; i++)
+                        for (int j = 0; j < 2; j++)
+                            flat.Add((Complex)sp[k, i, j]);
+            }
+        return new NormalisedData { Points = points, Ports = 2, FrequenciesHz = freqs, S = [.. flat], Z0 = 50 };
+    }
+
+    /// <summary><see cref="ComposedTestModels"/>' SDD device inside the GaN network, as <see cref="BiasedS"/> reads it.</summary>
+    public static string NetworkDevice => ComposedTestModels.SddGlobals + ComposedTestModels.ReferenceCell("ref") + "ref:X1 g d 0\n";
+
+    /// <summary>
+    /// A document with one SParams set <c>bias</c> holding <paramref name="s"/>, and its intrinsic data: through the stock
+    /// GaN network at the truth's own values when <paramref name="network"/>, else at the intrinsic plane.
+    /// </summary>
+    public static (CmcDocument Doc, Dictionary<string, NormalisedData> Data, IntrinsicResult Intrinsic) SDocument(NormalisedData s, bool network)
+    {
+        string dir = Directory.CreateTempSubdirectory("crf-mc8-").FullName;
+        var set = Set("bias", network ? ReferencePlane.Device : ReferencePlane.Intrinsic);
+        var doc = new CmcDocument { Kind = CmcKind.Active, DataSets = [set] };
+        SixPinNetwork? net = null;
+        if (network)
+        {
+            doc = StockNetworks.Choose(doc, Path.Combine(dir, "fet.cmc"), "gan-two-shell");
+            net = SixPinNetwork.Load(DataImport.ResolveSource(dir, CmcExtrinsic.Network(doc).Schematic!));
+        }
+        var ds = IntrinsicExtraction.Compute(set, s, PadDeembedding.Load(PadsSettings.None, dir), net, null, null, []);
+        var data = new Dictionary<string, NormalisedData>(StringComparer.Ordinal) { ["bias"] = s };
+        return (doc, data, new IntrinsicResult(new Dictionary<string, DataSet>(StringComparer.Ordinal) { ["bias"] = ds }, []));
+    }
+
     public static CmcDataSet Set(string name, ReferencePlane plane, BiasPathOhms? path = null) => new()
     {
         Name = name, Kind = DataSetKind.SParams, Sources = ["x.s2p"],

@@ -129,8 +129,12 @@ internal static class RuntimePayload
     }
 
     private static AnnEvaluator BuildAnn(ComposedModel model, Constituent c, string name, string field)
+        => BuildAnn(model, name, c.Inputs.Count, c.Activation ?? AnnActivation.Tanh, field);
+
+    /// <summary>The network named <paramref name="name"/> over <paramref name="d"/> inputs — a drift charge's pieces
+    /// (MC-8) read their own variables, not the constituent's.</summary>
+    public static AnnEvaluator BuildAnn(ComposedModel model, string name, int d, AnnActivation activation, string field)
     {
-        int d = c.Inputs.Count;
         double[] Vec(string suffix, int length)
         {
             var cube = Array(model, $"{name}.{suffix}", field);
@@ -172,8 +176,7 @@ internal static class RuntimePayload
             throw new CmodelFormatException(field, $"the output layer '{name}.W{weights.Count}' has {width} neurons, not one.");
 
         double outOffset = Vec("outputOffset", 1)[0], outScale = Vec("outputScale", 1)[0];
-        return new AnnEvaluator(inOffset, inScale, weights, biases, outOffset, outScale,
-                                c.Activation ?? AnnActivation.Tanh);
+        return new AnnEvaluator(inOffset, inScale, weights, biases, outOffset, outScale, activation);
     }
 
     private static DataCube Array(ComposedModel model, string array, string field)

@@ -20785,3 +20785,31 @@ instead the share of the RF conductances the least-squares `IdRF` does not repro
 **The synthetic I–V grid needed to be denser at low `vds`.** With rows at 0 and 0.5 V the held-out row at 0.25 V sat
 in the steepest part of the knee between two lines, and every method was 5–10 % off there for want of data, not of
 fit. The fixture's 12 drain values are now denser below 1 V, as a measured grid is, with held-out rows between them.
+
+## Model Composer MC-8: the charges and Check Charge Conservation (2026-10-19)
+
+**The large-signal check as first specified could not fail.** It drove the gate with the drain "held at DC". With
+`vds` constant the trajectory is a line in `(vgs, vds)`, and `∮C11(vgs, vds0) dvgs = 0` along it for any `C11` at
+all, so no capacitance — conservative or not — makes DC. `ConservationCheck.Drive` drives the drain too, in
+quadrature (`DrainAmplitude`, 1 V): the ellipse encloses area, and because it is the same ellipse at every
+frequency the displacement DC is exactly `f·∮C·dv`. Measured on an SDD whose gate current is capacitances times
+dV/dt: the f→2f and 2f→3f steps agree to 5e-6; the same device written with charges reads 7e-23 of the fundamental.
+An ideal tone source directly on an HB interface node has no finite admittance, so each source reaches the device
+through 1 mΩ, which moves the trajectory by ~1e-5 of itself.
+
+**An RBF through each capacitance is not a smooth enough field.** Fitted to the 90 synthetic points through the GaN
+network, independent RBFs of `C11` and `C12` are exact at the points but not mutually conservative between them: the
+curl map of exactly conservative data read 33 %, its errors at the hull's edges divided by the small true terms, and
+a line-integral table through them fitted `C11` to 15.6 % of its range. A network per capacitance reads 0.33 % and
+1.5 %, and its table 0.34 %. Both check (a) and the table method default to the network interpolant; `RBF` stays
+selectable.
+
+**[I11] eq. 4's `CGD,drift` drops a term.** From eq. 3 with `R1 = C11 − QGS' − QGD'` and `R2 = C12 + QGD'`, exactly
+`R1 = ∂Qdr/∂vgd + τ·gm` and `R2 = −∂Qdr/∂vgd + τ·gds`, so `τ = (R1 + R2)/(gm + gds)` — eq. 4's first line — and
+`∂Qdr/∂vgd = (R1·gds − R2·gm)/(gm + gds)`, where eq. 4 prints `½(R1 − R2)`, short by `τ·(gm − gds)/2`. The fit uses
+the exact pair. Recovery is exact only when the truth's drift charge vanishes with its derivatives at `Id = 0` —
+the condition under which [I11] reads the depletion charges at `Vds = 0` — so the gate's truth uses `Id²`.
+
+**An auxiliary SDD node carrying dv/dt must be scaled to milliamps.** `I[3,0]=s*_v3 I[3,1]=-_v1` makes `v3 = dv1/dt/s`,
+but KCL at that node balances a 1 F charge's current, ~1e9 A at GHz, and HB's residual floored at 1e-6 A whatever
+`s`. Writing the charge as 1 pF (`I[3,1]=-1e-12*_v1`, `I[3,0]=1e-2*_v3`) puts the node's currents at milliamps.

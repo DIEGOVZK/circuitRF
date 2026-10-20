@@ -15,8 +15,10 @@ namespace CircuitRF.Design.Modeling;
 /// <summary>A fitted equation: every parameter's value, and the weighted cost it reached.</summary>
 public sealed record EquationFitResult(IReadOnlyList<KeyValuePair<string, double>> Values, double Cost);
 
-/// <summary>One expression and the points it is fitted to: rows of (vgs, vds), targets, weights.</summary>
-internal sealed record EquationTerm(string Expression, double[][] X, double[] Y, double[] W);
+/// <summary>One expression and the points it is fitted to: rows of (vgs, vds), targets, weights. With
+/// <paramref name="Derivative"/> the targets are the expression's partial derivative by that input (0 = vgs, 1 = vds)
+/// — how a charge equation is fitted to capacitances (MC-8).</summary>
+internal sealed record EquationTerm(string Expression, double[][] X, double[] Y, double[] W, int? Derivative = null);
 
 internal sealed class EquationFit
 {
@@ -138,6 +140,7 @@ internal sealed class EquationFit
                 double f;
                 try { f = expr.EvalDualInto(seeds[..(2 + n)], grad, _label); }
                 catch (ArithmeticException) { return new Evaluation(1e300, Failed: true); }
+                if (term.Derivative is { } d) f = grad[d];
                 if (!double.IsFinite(f)) return new Evaluation(1e300, Failed: true);
                 r[i] = sqrtW[k] * (f - term.Y[k]) / scale;
                 cost += r[i] * r[i];
