@@ -8,7 +8,8 @@
 //              removed as TwoPorts are. Its series resistance also drops DC (R-mc4-4 step 1).
 //
 // A pad whose frequency axis does not cover the data's is a refusal naming both ranges — never an extrapolation.
-// Within the axis a pad is interpolated linearly in S, sample to sample; an exact sample is used as stored.
+// Within the axis a pad is interpolated linearly, sample to sample, in the form its removal works in — Y for the open
+// and short (exact for a lumped shunt C), ABCD for a launch; an exact sample is used as stored.
 
 using System.Globalization;
 using CircuitRF.Engine;
@@ -183,8 +184,24 @@ public sealed class PadDeembedding
     public Func<double, double, double, double, (double Vgs, double Vds)> DcDrop()
     {
         if (Kind != PadsKind.Network) return (vgs, vds, _, _) => (vgs, vds);
-        var (ga, gb) = _gateNet!.Dc();
-        var (da, db) = _drainNet!.Dc();
+        var ((ga, gb), (da, db)) = NetworkDc();
         return (vgs, vds, ig, id) => (ga * vgs + gb * ig, da * vds + db * id);
     }
+
+    /// <summary>True when the terminal currents move the device-plane bias — a network pad with series resistance.
+    /// A pad without one asks nothing of the data's currents.</summary>
+    public bool DcNeedsCurrents
+    {
+        get
+        {
+            if (Kind != PadsKind.Network) return false;
+            var ((_, gb), (_, db)) = NetworkDc();
+            return gb != 0 || db != 0;
+        }
+    }
+
+    private ((double A, double B) Gate, (double A, double B) Drain)? _networkDc;
+
+    private ((double A, double B) Gate, (double A, double B) Drain) NetworkDc() =>
+        _networkDc ??= (_gateNet!.Dc(), _drainNet!.Dc());
 }

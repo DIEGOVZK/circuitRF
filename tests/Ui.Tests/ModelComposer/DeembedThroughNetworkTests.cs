@@ -1,3 +1,5 @@
+using CircuitRF.Core.Design;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Tests.Composed;
 using CircuitRF.Design.Modeling;
 using CircuitRF.Design.Schematic;
@@ -55,6 +57,36 @@ public sealed class DeembedThroughNetworkTests(ITestOutputHelper output)
 
         var ex = Assert.Throws<ModelingException>(() => SixPinNetwork.Load(path));
         Assert.Equal("series-only.csch: an extrinsic network has exactly 6 pins numbered 1 to 6; found 1, 2, 3, 4, 4, 6.", ex.Message);
+    }
+
+    [Fact]
+    public void Override_OfAUnitBearingVariable_IsNotScaledAgainByASiteUnit_InASolveOrAModel()
+    {
+        // The editor's default site units left on two fields that name a variable: var-unit-wins ignores them, and an
+        // override (base SI, as a fit hands it) must keep the variable unit-bearing so it still does.
+        string dir = Directory.CreateTempSubdirectory("crf-mc4-units-").FullName;
+        string path = StockNetworks.CopyInto(dir, "gan-two-shell");
+        var (model, _, cell) = SchematicPersistence.LoadFromFile(path);
+        model.Components.Single(c => c.InstanceName == "C1").Parameters.Single(p => p.Name == "C").Unit = "pF";
+        model.Components.Single(c => c.InstanceName == "L1").Parameters.Single(p => p.Name == "L").Unit = "nH";
+        SchematicPersistence.SaveToFile(path, model, cell);
+
+        var net = SixPinNetwork.Load(path);
+        var own = net.Blocks(Freqs);
+        var same = net.Blocks(Freqs, new Dictionary<string, double> { ["Cpga"] = 7e-15, ["Lg"] = 39.5e-12 });
+        for (int k = 0; k < Freqs.Length; k++)
+            Assert.True((own[k].Aa - same[k].Aa).MaxAbs <= 1e-12 * own[k].Aa.MaxAbs, $"{Freqs[k] / 1e9} GHz");
+
+        // The same network exported into a .cmodel (MC-11) and read back: each element takes the variable's value, scaled
+        // by a periphery rule or not.
+        var template = ComposedNetworkTemplate.Build(new ExtrinsicNetwork(net.DefineBlock("network"),
+                                                                          [new ScalingRule("Cpga", PeripheryScaling.PerFinger)]));
+        var cellOut = template.Synthesize("dut", 4, 2, 1, new Instance(ComposedNetworkTemplate.CoreInstanceName, "R", ["gi", "si"], []));
+        double Value(string element, string param) =>
+            double.Parse(cellOut.Instances.Single(i => i.InstanceName == element).Overrides.Single(o => o.Name == param).Expression,
+                         System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(2 * 7e-15, Value("C1", "C"), 1e-27);
+        Assert.Equal(39.5e-12, Value("L1", "L"), 1e-24);
     }
 
     [Fact]

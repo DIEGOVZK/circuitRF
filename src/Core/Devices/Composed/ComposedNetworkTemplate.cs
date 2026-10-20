@@ -31,6 +31,7 @@ public sealed class ComposedNetworkTemplate
 
     private readonly Cell _cell;
     private readonly IReadOnlyList<(string Name, double Value, string Rule)> _variables;
+    private readonly IReadOnlyDictionary<string, string?> _standInUnits;
 
     /// <summary>The network's six pins, in order.</summary>
     public IReadOnlyList<string> Pins => _cell.Ports;
@@ -63,10 +64,12 @@ public sealed class ComposedNetworkTemplate
         for (int k = 1; k < thermal.Poles.Count; k++) yield return $"{ThermalNet}_{k}";
     }
 
-    private ComposedNetworkTemplate(Cell cell, IReadOnlyList<(string, double, string)> variables)
+    private ComposedNetworkTemplate(Cell cell, IReadOnlyList<(string, double, string)> variables,
+                                    IReadOnlyDictionary<string, string?> standInUnits)
     {
-        _cell      = cell;
-        _variables = variables;
+        _cell         = cell;
+        _variables    = variables;
+        _standInUnits = standInUnits;
     }
 
     /// <summary>Reads and checks a network, refusing with a <see cref="CmodelFormatException"/> that
@@ -141,6 +144,7 @@ public sealed class ComposedNetworkTemplate
 
         var evaluator = new Evaluator();
         var variables = new List<(string, double, string)>(names.Count);
+        var standIn = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (string name in names)
         {
             Value v;
@@ -152,9 +156,10 @@ public sealed class ComposedNetworkTemplate
             if (v.Kind != ValueKind.Real || !double.IsFinite(v.AsReal()))
                 throw new CmodelFormatException(field, $"variable '{name}' is not a finite real number.");
             variables.Add((name, v.AsReal(), rules.GetValueOrDefault(name, PeripheryScaling.Fixed)));
+            standIn[name] = Evaluator.BaseUnitStandIn(name, local);
         }
 
-        return new ComposedNetworkTemplate(cell, variables);
+        return new ComposedNetworkTemplate(cell, variables, standIn);
     }
 
     /// <summary>
@@ -179,9 +184,12 @@ public sealed class ComposedNetworkTemplate
     public Cell Synthesize(string cellName, int n, int n0, double multiplicity, Instance core,
                            ModelThermal? thermal = null, double ambientC = 25, bool thermalPin = false)
     {
+        // Each scaled value is base SI, stated in its stand-in unit so a unit-bearing variable stays one: an element field
+        // typed in pF that names it is not scaled by its site unit a second time (var-unit-wins), as it was not when the
+        // network was read.
         var scaled = new Scope("network-scaled");
         foreach (var (name, value, rule) in _variables)
-            scaled.Bind(name, Literal(value * PeripheryScaling.Factor(rule, n, n0)));
+            scaled.Bind(name, Literal(value * PeripheryScaling.Factor(rule, n, n0)), _standInUnits[name]);
 
         var evaluator = new Evaluator();
         var cell = new Cell(cellName);

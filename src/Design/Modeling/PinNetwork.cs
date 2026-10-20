@@ -37,16 +37,20 @@ public enum NetworkElementKind { Other, Resistance, Inductance, Capacitance, Mut
 /// <summary>One variable of a network's VAR block: its expression as written, and its value in base SI.</summary>
 public sealed record NetworkVariable(string Name, string Expression, string? Unit, double Value, NetworkElementKind Kind);
 
+/// <summary>One mutual of a network: its two inductors' value expressions and its own, each with its site unit.</summary>
+public sealed record NetworkMutual(string Inductor1, string Inductor2, string M, string? Unit1, string? Unit2, string? MUnit);
+
 /// <summary>A schematic whose pins are numbered 1…N, solved by the linear engine.</summary>
 public abstract class PinNetwork
 {
     /// <summary>What reading a network produced: the netlist text a run consumes, and what it says about itself.</summary>
     protected sealed record Loaded(string Path, string Cnl, string? ReferenceBase, IReadOnlyList<string> PinNets,
-                                   IReadOnlyList<NetworkVariable> Variables,
-                                   IReadOnlyList<(string Inductor1, string Inductor2, string M)> Mutuals);
+                                   IReadOnlyList<NetworkVariable> Variables, IReadOnlyList<NetworkMutual> Mutuals,
+                                   IReadOnlyDictionary<string, string?> StandInUnits);
 
     private readonly string _cnl;
     private readonly string? _referenceBase;
+    private readonly IReadOnlyDictionary<string, string?> _standInUnits;
 
     protected PinNetwork(Loaded l)
     {
@@ -56,6 +60,7 @@ public abstract class PinNetwork
         PinNets = l.PinNets;
         Variables = l.Variables;
         Mutuals = l.Mutuals;
+        _standInUnits = l.StandInUnits;
     }
 
     public string SchematicPath { get; }
@@ -67,7 +72,14 @@ public abstract class PinNetwork
     public IReadOnlyList<NetworkVariable> Variables { get; }
 
     /// <summary>Each mutual: its two inductors' value expressions and its own (for the coupling constraint).</summary>
-    public IReadOnlyList<(string Inductor1, string Inductor2, string M)> Mutuals { get; }
+    public IReadOnlyList<NetworkMutual> Mutuals { get; }
+
+    /// <summary>
+    /// The unit a base-SI number standing in for variable <paramref name="name"/> states (<see
+    /// cref="Evaluator.BaseUnitStandIn"/>): the scale-1 base of the variable's own unit, so it stays unit-bearing and an
+    /// element field that names it is not scaled by its site unit a second time; null for a unit-less variable.
+    /// </summary>
+    public string? StandInUnit(string name) => _standInUnits.GetValueOrDefault(name);
 
     /// <summary>
     /// Reads <paramref name="cschPath"/> and checks it has exactly <paramref name="pins"/> pins numbered 1…N, each
@@ -134,38 +146,49 @@ public abstract class PinNetwork
                                                   "join two pins through an element (a Short), never directly.");
 
         var (vars, mutuals) = Describe(cschPath, lib, tb);
-        return new Loaded(cschPath, cnl, refBase, extracted.CellPorts, vars, mutuals);
+        var scope = new Scope("network");
+        foreach (var v in tb.GlobalVariables) scope.Bind(v.Name, v.Expression, v.Unit);
+        var standIn = tb.GlobalVariables.ToDictionary(v => v.Name, v => Evaluator.BaseUnitStandIn(v.Name, scope), StringComparer.Ordinal);
+        return new Loaded(cschPath, cnl, refBase, extracted.CellPorts, vars, mutuals, standIn);
 
         static (int, string) Key(string s) => (int.TryParse(s, out int n) ? n : int.MaxValue, s);
     }
 
-    private static readonly Dictionary<string, (string Param, NetworkElementKind Kind)> ElementParams = new(StringComparer.OrdinalIgnoreCase)
+    // The lumped elements whose values have a kind, by parameter. The RLC family counts too: a mutual may couple any
+    // member that carries an inductor (MutualInductanceModel), and its R, L and C take the same default bounds.
+    private static readonly (string Param, NetworkElementKind Kind) R_ = ("R", NetworkElementKind.Resistance),
+        L_ = ("L", NetworkElementKind.Inductance), C_ = ("C", NetworkElementKind.Capacitance);
+    private static readonly Dictionary<string, (string Param, NetworkElementKind Kind)[]> ElementParams = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["R"] = ("R", NetworkElementKind.Resistance), ["L"] = ("L", NetworkElementKind.Inductance),
-        ["C"] = ("C", NetworkElementKind.Capacitance), ["Mutual"] = ("M", NetworkElementKind.Mutual),
+        ["R"] = [R_], ["L"] = [L_], ["C"] = [C_], ["Mutual"] = [("M", NetworkElementKind.Mutual)],
+        ["SRLC"] = [R_, L_, C_], ["SRL"] = [R_, L_], ["SRC"] = [R_, C_], ["SLC"] = [L_, C_],
+        ["PRLC"] = [R_, L_, C_], ["PRL"] = [R_, L_], ["PRC"] = [R_, C_], ["PLC"] = [L_, C_],
     };
 
-    private static (IReadOnlyList<NetworkVariable>, IReadOnlyList<(string, string, string)>) Describe(string path, Library lib, TestBench tb)
+    private static (IReadOnlyList<NetworkVariable>, IReadOnlyList<NetworkMutual>) Describe(string path, Library lib, TestBench tb)
     {
         // Which element each variable is the value of — by the identifiers in that element's own value.
         var kinds = new Dictionary<string, NetworkElementKind>(StringComparer.Ordinal);
-        var lValue = new Dictionary<string, string>(StringComparer.Ordinal);
+        var lValue = new Dictionary<string, (string Expression, string? Unit)>(StringComparer.Ordinal);
         foreach (var inst in tb.Instances)
         {
-            if (!ElementParams.TryGetValue(inst.Reference, out var ep)) continue;
-            var a = inst.Overrides.FirstOrDefault(o => o.Name == ep.Param);
-            if (a is null) continue;
-            if (ep.Kind == NetworkElementKind.Inductance) lValue[inst.InstanceName] = a.Expression;
-            foreach (Match m in Regex.Matches(a.Expression, @"[A-Za-z_][A-Za-z0-9_]*"))
-                kinds.TryAdd(m.Value, ep.Kind);
+            if (!ElementParams.TryGetValue(inst.Reference, out var eps)) continue;
+            foreach (var ep in eps)
+            {
+                var a = inst.Overrides.FirstOrDefault(o => o.Name == ep.Param);
+                if (a is null) continue;
+                if (ep.Kind == NetworkElementKind.Inductance) lValue[inst.InstanceName] = (a.Expression, a.Unit);
+                foreach (Match m in Regex.Matches(a.Expression, @"[A-Za-z_][A-Za-z0-9_]*"))
+                    kinds.TryAdd(m.Value, ep.Kind);
+            }
         }
-        var mutuals = new List<(string, string, string)>();
+        var mutuals = new List<NetworkMutual>();
         foreach (var inst in tb.Instances.Where(i => i.Reference.Equals("Mutual", StringComparison.OrdinalIgnoreCase)))
         {
             string L(string p) => inst.Overrides.FirstOrDefault(o => o.Name == p)?.Expression.Trim('"') ?? "";
-            string m = inst.Overrides.FirstOrDefault(o => o.Name == "M")?.Expression ?? "0";
+            var m = inst.Overrides.FirstOrDefault(o => o.Name == "M");
             if (lValue.TryGetValue(L("Inductor1"), out var l1) && lValue.TryGetValue(L("Inductor2"), out var l2))
-                mutuals.Add((l1, l2, m));
+                mutuals.Add(new NetworkMutual(l1.Expression, l2.Expression, m?.Expression ?? "0", l1.Unit, l2.Unit, m?.Unit));
         }
 
         var values = ResolveGlobals(path, lib, tb);
@@ -219,10 +242,12 @@ public abstract class PinNetwork
         tb.Instances.AddRange(extra);
         tb.Analyses.Clear();
         tb.Measurements.Clear();
+        // An override is base SI, stated in its stand-in unit so a unit-bearing variable stays one (StandInUnit).
         if (overrides is { Count: > 0 })
             for (int i = 0; i < tb.GlobalVariables.Count; i++)
                 if (overrides.TryGetValue(tb.GlobalVariables[i].Name, out double v))
-                    tb.GlobalVariables[i] = new Variable(tb.GlobalVariables[i].Name, v.ToString("R", CultureInfo.InvariantCulture));
+                    tb.GlobalVariables[i] = new Variable(tb.GlobalVariables[i].Name, v.ToString("R", CultureInfo.InvariantCulture),
+                                                         StandInUnit(tb.GlobalVariables[i].Name));
         try { return new Elaborator(lib).Elaborate(tb); }
         catch (Exception ex) when (ex is not OperationCanceledException)
         { throw new ModelingException(Path.GetFileName(SchematicPath), $"it does not elaborate ({ex.Message})."); }
@@ -230,7 +255,8 @@ public abstract class PinNetwork
 
     /// <summary>
     /// The network as one <c>define</c> block over its pins, every variable a <c>parameters</c> entry holding its number
-    /// in base SI — <paramref name="values"/> in place of the file's own — and every element as the schematic extracts
+    /// in base SI and its <see cref="StandInUnit"/> — <paramref name="values"/> in place of the file's own — and every
+    /// element as the schematic extracts
     /// it: what a <c>.cmodel</c>'s <c>Network.Netlist</c> carries (MC-11 R-mc11-1). <c>\n</c> line ends on every system,
     /// so the same network writes the same model bytes.
     /// </summary>
@@ -241,7 +267,8 @@ public abstract class PinNetwork
         var cell = new Cell(name);
         cell.Ports.AddRange(PinNets);
         foreach (var v in Variables)
-            cell.Parameters.Add(new ParameterDeclaration(v.Name, resolved[v.Name].ToString("R", CultureInfo.InvariantCulture)));
+            cell.Parameters.Add(new ParameterDeclaration(v.Name, resolved[v.Name].ToString("R", CultureInfo.InvariantCulture),
+                                                         StandInUnit(v.Name)));
         cell.Instances.AddRange(tb.Instances);
         var lib = new Library("network");
         lib.Cells.Add(cell);

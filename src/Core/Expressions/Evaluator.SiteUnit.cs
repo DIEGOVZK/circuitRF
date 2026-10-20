@@ -43,6 +43,37 @@ public sealed partial class Evaluator
         catch { return false; }
     }
 
+    /// <summary>
+    /// The unit a base-SI number standing in for binding <paramref name="name"/> must state to stay unit-bearing exactly
+    /// when the binding is: null for a bare binding; otherwise the scale-1 base (<see cref="Units.BaseUnit"/>) of the unit
+    /// its value carries — its stated unit, or the first unit literal it reaches through unit-less bindings. A resolved
+    /// value rebound with no unit turns a unit-bearing name bare, and a site unit var-unit-wins skipped (an element field
+    /// typed in pF that names it) then scales the number a second time. The parametric sweep's re-injection is the same
+    /// rule for a stated unit.
+    /// </summary>
+    public static string? BaseUnitStandIn(string name, Scope scope)
+    {
+        if (!NameIsUnitBearing(name, scope, null)) return null;
+        return CarriedUnit(name, scope, new HashSet<string>(StringComparer.Ordinal)) is { } u ? Units.BaseUnit(u) : null;
+    }
+
+    // The unit a unit-bearing binding's value carries, followed exactly as LiteralBearing follows it.
+    private static string? CarriedUnit(string name, Scope scope, HashSet<string> visiting)
+    {
+        if (scope.Lookup(name) is not { } found) return null;
+        if (!string.IsNullOrEmpty(found.Unit)) return found.Unit;
+        if (!visiting.Add($"{found.Owner.DebugName}::{name}")) return null;
+        Expr ast;
+        try { ast = Parser.Parse(found.Expression); }
+        catch { return null; }
+        string? literal = null;
+        if (AnyNode(ast, e => e is NumberExpr { Unit: { } u } && (literal = u) is not null)) return literal;
+        foreach (var r in AstWalker.CollectRefs(ast))
+            if (found.Owner.Lookup(r) is { } f && string.IsNullOrEmpty(f.Unit) && CarriedUnit(r, found.Owner, visiting) is { } carried)
+                return carried;
+        return null;
+    }
+
     /// <summary>True when <paramref name="ast"/> holds a unit literal anywhere.</summary>
     public static bool ContainsUnitLiteral(Expr ast) => AnyNode(ast, e => e is NumberExpr { Unit: not null });
 

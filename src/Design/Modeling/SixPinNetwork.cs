@@ -86,20 +86,14 @@ public sealed class SixPinNetwork : PinNetwork
     /// as a constraint, not a bound (R-mc4-2).</summary>
     public IReadOnlyList<double> CouplingFactors(IReadOnlyDictionary<string, double> values)
     {
-        var list = new List<double>();
-        foreach (var (l1, l2, m) in Mutuals)
-        {
-            double a = Eval(l1, values), b = Eval(l2, values), c = Eval(m, values);
-            list.Add(Math.Abs(c) / Math.Sqrt(a * b));
-        }
-        return list;
-    }
-
-    private static double Eval(string expr, IReadOnlyDictionary<string, double> values)
-    {
+        // Each value as the engine reads its field: in its site unit, with the variables standing in as the solve binds them.
         var scope = new Scope("network");
-        foreach (var (k, v) in values) scope.Bind(k, v.ToString("R", CultureInfo.InvariantCulture));
-        return new Evaluator().Eval(expr, scope).AsReal();
+        foreach (var (k, v) in values) scope.Bind(k, v.ToString("R", CultureInfo.InvariantCulture), StandInUnit(k));
+        double Eval(string expr, string? unit) => new Evaluator().Eval(expr, scope, string.IsNullOrEmpty(unit) ? null : unit).AsReal();
+        var list = new List<double>();
+        foreach (var m in Mutuals)
+            list.Add(Math.Abs(Eval(m.M, m.MUnit)) / Math.Sqrt(Eval(m.Inductor1, m.Unit1) * Eval(m.Inductor2, m.Unit2)));
+        return list;
     }
 
     /// <summary>

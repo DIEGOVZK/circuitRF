@@ -123,7 +123,7 @@ public sealed class IntrinsicExtraction
         // Re-referencing (R-mc4-4).
         var padDrop = beforePads ? pads.DcDrop() : null;
         var transfer = throughNetwork ? network!.Dc(values) : DcTransfer.Identity;
-        bool padNeedsCurrents = beforePads && pads.Kind == PadsKind.Network;
+        bool padNeedsCurrents = beforePads && pads.DcNeedsCurrents;
         var (vgsi, vdsi) = ReReference(set, data, padDrop, transfer, padNeedsCurrents, notes);
         ds.Add("Vgs", new DataCube([point], [.. data.Points.Select(p => p.Vgs)]));
         ds.Add("Vds", new DataCube([point], [.. data.Points.Select(p => p.Vds)]));

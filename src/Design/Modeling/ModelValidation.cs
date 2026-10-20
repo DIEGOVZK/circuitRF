@@ -270,7 +270,7 @@ public static class ModelValidation
         var pads = PadDeembedding.Load(CmcExtrinsic.Pads(ctx.Doc), ctx.Dir);
         bool beforePads = plane is ReferencePlane.Instrument or ReferencePlane.Probe;
         var (vgs, vds) = IntrinsicExtraction.ReReference(set, nd, beforePads ? pads.DcDrop() : null, DcTransfer.Identity,
-                                                         beforePads && pads.Kind == PadsKind.Network, []);
+                                                         beforePads && pads.DcNeedsCurrents, []);
         return (vgs, vds, plane == ReferencePlane.Intrinsic);
     }
 

@@ -20733,6 +20733,23 @@ on short stubs carrying net labels `P1…P6`; same-name labels join the stubs to
 MC-3's `CmcFormatTests` wrote arbitrary JSON into `Pads`/`Network` to prove later-phase blocks survive; those two
 are validated now, so the test round-trips valid MC-4 blocks and the opaque claim stays with `Steps`.
 
+**An override must keep its variable unit-bearing (review, 2026-10-20).** `PinNetwork.Elaborate` replaced an
+overridden variable with its base-SI number and NO unit. A field that names a unit-bearing variable ignores its own
+site unit (var-unit-wins) — but a Capacitor placed in the editor keeps its default `pF` when the user types a
+variable name over the `1`, and once the override stripped the variable's unit that `pF` applied again: a fit's
+trial `Cpg = 2e-14` stamped as 2e-26 F, silently. The stock networks escaped only because their fields carry no
+site unit. The override now states the variable's BASE unit (`fF` → `F`, scale 1), which keeps it unit-bearing and
+the number exact. The `.cmodel` path had it twice over: `DefineBlock` declared its parameters unit-less, and
+`ComposedNetworkTemplate.Synthesize` rebound every scaled value unit-less even when the declaration had one. All
+three — and the coupling-factor check, which read the inductor values without their site units — now go through
+one rule in the expression engine, `Evaluator.BaseUnitStandIn`: the base of the unit the binding states, or of the
+first unit literal it reaches (a VAR typed `39.5pH` with no unit field is unit-bearing too), or none for a bare one.
+`ParametricSweepEngine`'s re-injection already followed the stated-unit half. Gate:
+`DeembedThroughNetworkTests.Override_OfAUnitBearingVariable_IsNotScaledAgainByASiteUnit_InASolveOrAModel`.
+
+**A pad network without series resistance asks nothing of the currents.** Re-referencing refused a point with no
+drain current for ANY `Network` pad; `PadDeembedding.DcNeedsCurrents` now asks the pad's own DC solve.
+
 ## Model Composer MC-5: fitting the extrinsic network (2026-10-19)
 
 **The cold-core elements are not coordinates.** Each trial point de-embeds the cold point, fits the core in closed
