@@ -54,6 +54,8 @@ internal static partial class Recognize
         public int? Npts;
         public int? Digits;
         public bool FreeOrientation;
+        /// <summary><c>--arrange board</c> — a layout's alone; <c>tidy</c> is either kind's and is held by the picture flags.</summary>
+        public bool ArrangeBoard;
     }
 
     public static int Run(string[] args)
@@ -65,6 +67,8 @@ internal static partial class Recognize
         if (!File.Exists(o.Path) && !Directory.Exists(o.Path))
             return JsonRun.Fail(CliDiagnostics.RecognizePathNotFound(o.Path));
 
+        if (o.ArrangeBoard && (o.Pictures.Count > 0 || DocumentKinds.Classify(o.Path) == DocumentKind.Picture))
+            return JsonRun.Fail(CliDiagnostics.RecognizeBadValue("--arrange", "board", "drawn or tidy for a schematic picture; board is a layout's"));
         if (o.Pictures.Count > 0)
         {
             try { return RecognisePictures(o); }
@@ -83,7 +87,10 @@ internal static partial class Recognize
                 return 130;
             }
         }
-        if ((o.Picture.All.FirstOrDefault() ?? (o.Tech is null ? null : "--tech")) is { } pictureFlag)
+        // --arrange is a layout's too (R-dfr22-2-1): board or tidy; drawn is a schematic picture's alone.
+        if (o.Picture.Arrange == SchematicArrange.AsDrawn)
+            return JsonRun.Fail(CliDiagnostics.RecognizeBadValue("--arrange", "drawn", "board or tidy for a layout"));
+        if ((o.Picture.All.FirstOrDefault(f => f != "--arrange") ?? (o.Tech is null ? null : "--tech")) is { } pictureFlag)
             return JsonRun.Fail(CliDiagnostics.PictureFlagWrongKind(Verb, pictureFlag, "a picture", "a layout"));
         if (o.Plot.Given.FirstOrDefault() is { } plotFlag)
             return JsonRun.Fail(CliDiagnostics.PictureFlagWrongKind(Verb, plotFlag, "a plot picture", "a layout"));
@@ -113,7 +120,7 @@ internal static partial class Recognize
             "                 [--placement-origin symbol|body|pin1] [--placement-unit mm|mil|in]\n" +
             "                 [--region x0,y0,x1,y1] [--ground <net> | --ground-at x,y] [--vias model|ground]\n" +
             "                 [--coplanar auto|microstrip|gcpw] [--coplanar-factor k]\n" +
-            "                 [--start f] [--stop f] [--npts n] [--digits n] [--free-orientation]\n" +
+            "                 [--start f] [--stop f] [--npts n] [--digits n] [--free-orientation] [--arrange board|tidy]\n" +
             "  a picture:     [--image-kind auto|schematic|layout] [--tech <id|path.ctech>] [--overlay out.png]\n" +
             "                 [--underlay on|off]\n" +
             "    layout:      --scale <len>/px | --dpi <n> | --scale-points x0,y0,x1,y1=<len> | --scale auto\n" +
@@ -142,6 +149,13 @@ internal static partial class Recognize
             if (o.Plot.Take(Verb, args, ref i) is { } plotTook)
             {
                 if (plotTook != 0) return plotTook;
+                continue;
+            }
+            // "board" is a layout's arrangement alone (R-dfr22-2-1); "drawn" and "tidy" are read with the picture flags.
+            if (args[i] == "--arrange" && i + 1 < args.Length && args[i + 1].Equals("board", StringComparison.OrdinalIgnoreCase))
+            {
+                o.ArrangeBoard = true;
+                i++;
                 continue;
             }
             if (o.Picture.Take(Verb, args, ref i, schematic: true) is { } took)
@@ -350,7 +364,8 @@ internal static partial class Recognize
         input = input with { Options = options };
 
         var emit = new RecognitionEmitOptions { Sweep = Sweep(o, input), Digits = o.Digits ?? RecognitionEmitOptions.DefaultDigits,
-                                              ArtworkSides = !o.FreeOrientation };
+                                              ArtworkSides = !o.FreeOrientation,
+                                              Arrange = o.Picture.Arrange == SchematicArrange.Tidy ? ArtworkArrange.Tidy : ArtworkArrange.Board };
 
         // ── recognise and emit; --into writes the schematic, and only after everything else succeeded ─
         RecognitionResult result;

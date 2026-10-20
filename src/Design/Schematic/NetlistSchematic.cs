@@ -67,7 +67,16 @@ public sealed record ExactPlacement
     /// <summary>Pins (instance name, pin index) joined to their net by a net label on the pin rather than a dog-leg — a
     /// hidden power pin, or a port added beside the drawing.</summary>
     public IReadOnlySet<(string Instance, int Pin)> JoinByLabel { get; init; } = new HashSet<(string, int)>();
+
+    /// <summary>Wire every net with <see cref="SchematicAutoRouter"/>, as an arranged drawing is, rather than along
+    /// <see cref="Routes"/> (unused then): the placement is given and the wiring is not — a board's parts sit where its
+    /// copper puts them, and its copper runs are not schematic wires (R-dfr22-2-2).</summary>
+    public bool AutoRoute { get; init; }
 }
+
+/// <summary>Where one instance sits on a board, in the board's own units with y up, and — when it has a direction
+/// there — which way its pin 1 → pin 2 runs, in degrees on the board's axes (R-dfr22-2-2).</summary>
+public readonly record struct BoardHint(long X, long Y, double? AxisDeg = null);
 
 /// <summary>A cell instance an <see cref="ExactPlacement"/> draws: the <c>CellRef</c> it stores and its symbol's pins,
 /// local, in port order.</summary>
@@ -260,7 +269,7 @@ public static class NetlistSchematic
         if (exact is not { PlaceOnly: true })
         {
             var grounds = PlaceGrounds(model, placed);
-            if (exact is null) Wire(model, placed, grounds, notes);
+            if (exact is null or { AutoRoute: true }) Wire(model, placed, grounds, notes);
             else WireExact(model, placed, grounds, exact, notes);
         }
         PlaceDirectives(model, tb);
@@ -302,6 +311,215 @@ public static class NetlistSchematic
 
     /// <summary>The schematic grid every drawn point is snapped to.</summary>
     public const double Grid = P;
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //  As on the board (R-dfr22-2-2)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// <summary>The clearance kept between the closest pair of glyphs, labels included, when the board is scaled.</summary>
+    private const double BoardClearance = 2 * P;
+
+    /// <summary>The longest a board's drawing is let grow: a pair of anchors almost on top of each other (a via beside
+    /// its pad) would otherwise scale the sheet without limit. A pair still too close falls back, and is reported.</summary>
+    private const double BoardMaxExtent = 40_000;
+
+    /// <summary>
+    /// R-dfr22-2-2 — "As on the board": every hinted instance where the board has it, as an <see cref="ExactPlacement"/>
+    /// <see cref="Build"/> draws with <see cref="PlaceExact"/>, so a placement that would land on another falls back
+    /// per instance exactly as a picture's does. One uniform scale, the smallest that keeps the closest pair of glyphs
+    /// (labels included, measured as drawn) apart; y flipped; the drawing framed on the hinted instances themselves, so a
+    /// recognition of a selection is placed relative to that selection. A two-pin instance with a direction is turned to
+    /// it, to the nearest quarter turn; anything else turns its pins towards what they connect to on the board. Nothing
+    /// is wired here: the placement asks for <see cref="ExactPlacement.AutoRoute"/>.
+    /// </summary>
+    public static ExactPlacement BoardPlacement(TestBench tb, IReadOnlyDictionary<string, BoardHint> hints)
+    {
+        ArgumentNullException.ThrowIfNull(tb);
+        ArgumentNullException.ThrowIfNull(hints);
+
+        var items = new List<(Item It, BoardHint H)>();
+        foreach (var inst in tb.Instances)
+            if (hints.TryGetValue(inst.InstanceName, out var h) && MapInstance(inst, null, out _) is { Local.Length: > 0 } it)
+                items.Add((it, h));
+        if (items.Count == 0) return new ExactPlacement { AutoRoute = true };
+
+        // Where each signal net's instances are on the board, so a pin can be turned towards what it joins.
+        var onNet = new Dictionary<string, List<(Item It, BoardHint H)>>(StringComparer.Ordinal);
+        foreach (var (it, h) in items)
+            foreach (var n in it.SignalNets)
+                (onNet.TryGetValue(n, out var l) ? l : onNet[n] = []).Add((it, h));
+        foreach (var (it, h) in items)
+        {
+            if (h.AxisDeg is { } deg && it.Local.Length == 2) TurnTo(it, deg);
+            else TurnTowards(it, h, onNet);
+            BoxOf(it);
+        }
+
+        double scale = BoardScale(items);
+        long x0 = items.Min(i => i.H.X), y1 = items.Max(i => i.H.Y);
+        foreach (var (it, h) in items)
+        {
+            // The glyph's centre on the board point: the origin is offset by the glyph's own centre.
+            double cx = (h.X - x0) * scale, cy = (y1 - h.Y) * scale;
+            it.Comp.X = Snap(cx - (it.Box.MinX + it.Box.MaxX) / 2);
+            it.Comp.Y = Snap(cy - (it.Box.MinY + it.Box.MaxY) / 2);
+        }
+        Straighten([.. items.Select(i => i.It)]);
+
+        var placed = new Dictionary<string, ExactInstance>(StringComparer.Ordinal);
+        foreach (var (it, _) in items)
+            placed[it.Comp.InstanceName] = new ExactInstance(it.Comp.X, it.Comp.Y, it.Comp.Rotation, it.Comp.MirrorX);
+        return new ExactPlacement { Instances = placed, AutoRoute = true };
+    }
+
+    /// <summary>
+    /// What a scaled board leaves a cell or two off: the router reaches a pin only along its lead, so two pins that face
+    /// each other a row apart are joined by a dog-leg or not at all, and a pin a row short of the wire it joins is reached
+    /// by a loop. Two passes, a grid cell at a time: pins facing each other on one net are lined up (each instance moved
+    /// once per axis, in the netlist's order, which walks the board from port 1); then a pin whose lead points at a
+    /// pin of its net less than two cells away — four, when the two face each other off to one side and meet by a
+    /// jog — has its instance moved back to make the room.
+    /// </summary>
+    private static void Straighten(List<Item> items)
+    {
+        var pins = items.SelectMany(it => Enumerable.Range(0, it.Local.Length)
+                                                    .Where(k => it.Nets[k] != Ground)
+                                                    .Select(k => (It: it, K: k))).ToList();
+        var lockedX = new HashSet<Item>(ReferenceEqualityComparer.Instance);
+        var lockedY = new HashSet<Item>(ReferenceEqualityComparer.Instance);
+
+        foreach (var net in pins.Select(p => p.It.Nets[p.K]).Distinct(StringComparer.Ordinal).ToList())
+        {
+            var on = pins.Where(p => p.It.Nets[p.K] == net).ToList();
+            for (int i = 0; i < on.Count; i++)
+                for (int j = i + 1; j < on.Count; j++)
+                {
+                    var (a, ka) = on[i];
+                    var (b, kb) = on[j];
+                    if (ReferenceEquals(a, b)) continue;
+                    var (ux, uy) = Outward(a, ka);
+                    var (vx, vy) = Outward(b, kb);
+                    if (ux != -vx || uy != -vy) continue;   // not facing along one axis
+                    var (pa, pb) = (a.Pin(ka), b.Pin(kb));
+                    if ((pb.X - pa.X) * ux + (pb.Y - pa.Y) * uy < 2 * P) continue;
+                    bool alongX = ux != 0;   // facing along x: lined up in y
+                    double off = alongX ? pb.Y - pa.Y : pb.X - pa.X;
+                    if (off == 0 || Math.Abs(off) > 2 * P) { Lock(a, b, alongX); continue; }
+                    var locked = alongX ? lockedY : lockedX;
+                    if (!locked.Contains(b)) Shift(b, alongX ? 0 : -off, alongX ? -off : 0);
+                    else if (!locked.Contains(a)) Shift(a, alongX ? 0 : off, alongX ? off : 0);
+                    Lock(a, b, alongX);
+                }
+        }
+
+        foreach (var (it, k) in pins)
+        {
+            var (ux, uy) = Outward(it, k);
+            var p = it.Pin(k);
+            double short_ = 0;
+            foreach (var (o, ko) in pins)
+            {
+                if (ReferenceEquals(o, it) || o.Nets[ko] != it.Nets[k]) continue;
+                var at = o.Pin(ko);
+                double d = (at.X - p.X) * ux + (at.Y - p.Y) * uy, side = Math.Abs((at.X - p.X) * uy - (at.Y - p.Y) * ux);
+                // Two leads facing each other off to one side meet by a jog, which needs a row clear of both keep-outs.
+                var (vx, vy) = Outward(o, ko);
+                double need = vx == -ux && vy == -uy && side > 0 ? 4 * P : 2 * P;
+                if (d > 0 && d < need) short_ = Math.Max(short_, need - d);
+            }
+            if (short_ > 0) Shift(it, -ux * short_, -uy * short_);
+        }
+
+        void Lock(Item a, Item b, bool alongX)
+        {
+            var locked = alongX ? lockedY : lockedX;
+            locked.Add(a);
+            locked.Add(b);
+        }
+        static void Shift(Item it, double dx, double dy)
+        {
+            it.Comp.X = Snap(it.Comp.X + dx);
+            it.Comp.Y = Snap(it.Comp.Y + dy);
+        }
+    }
+
+    /// <summary>A two-pin item turned so pin 1 → pin 2 runs along <paramref name="deg"/> (board axes, y up), to the
+    /// nearest quarter turn — R0 on a tie.</summary>
+    private static void TurnTo(Item it, double deg)
+    {
+        double rad = deg * Math.PI / 180;
+        var (tx, ty) = (Math.Cos(rad), -Math.Sin(rad));   // the schematic's y runs down
+        SymbolRotation best = SymbolRotation.R0;
+        double bestScore = double.MinValue;
+        foreach (var rot in new[] { SymbolRotation.R0, SymbolRotation.R90, SymbolRotation.R180, SymbolRotation.R270 })
+        {
+            it.Comp.Rotation = rot;
+            it.Comp.MirrorX = false;
+            var (ax, ay) = it.Offset(0);
+            var (bx, by) = it.Offset(1);
+            double len = Math.Sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+            double score = len > 0 ? ((bx - ax) * tx + (by - ay) * ty) / len : 0;
+            if (score > bestScore + 1e-9) { bestScore = score; best = rot; }
+        }
+        it.Comp.Rotation = best;
+    }
+
+    /// <summary>An item with no direction of its own (a port, a via, a tee, a bend) turned — and mirrored, where that
+    /// reads better — so each signal pin points at the board position of what its net joins. R0 on a tie.</summary>
+    private static void TurnTowards(Item it, BoardHint h, Dictionary<string, List<(Item It, BoardHint H)>> onNet)
+    {
+        var wanted = new List<(int Pin, double X, double Y)>();
+        for (int k = 0; k < it.Nets.Length; k++)
+        {
+            if (it.Nets[k] == Ground || !onNet.TryGetValue(it.Nets[k], out var others)) continue;
+            var far = others.Where(o => !ReferenceEquals(o.It, it)).ToList();
+            if (far.Count == 0) continue;
+            double dx = far.Average(o => (double)o.H.X) - h.X, dy = -(far.Average(o => (double)o.H.Y) - h.Y);
+            double len = Math.Sqrt(dx * dx + dy * dy);
+            if (len > 0) wanted.Add((k, dx / len, dy / len));
+        }
+
+        (SymbolRotation Rot, bool Mirror) best = (SymbolRotation.R0, false);
+        double bestScore = double.MinValue;
+        foreach (bool mirror in new[] { false, true })
+            foreach (var rot in new[] { SymbolRotation.R0, SymbolRotation.R90, SymbolRotation.R180, SymbolRotation.R270 })
+            {
+                it.Comp.Rotation = rot;
+                it.Comp.MirrorX = mirror;
+                var pins = Enumerable.Range(0, it.Local.Length).Select(it.Offset).ToList();
+                double mx = pins.Average(p => p.X), my = pins.Average(p => p.Y);
+                double score = 0;
+                foreach (var (k, wx, wy) in wanted)
+                {
+                    double px = pins[k].X - mx, py = pins[k].Y - my, len = Math.Sqrt(px * px + py * py);
+                    if (len > 0) score += (px * wx + py * wy) / len;
+                }
+                if (score > bestScore + 1e-9) { bestScore = score; best = (rot, mirror); }
+            }
+        it.Comp.Rotation = best.Rot;
+        it.Comp.MirrorX = best.Mirror;
+    }
+
+    /// <summary>Schematic units per board unit: the least that puts every pair of glyphs — labels included, centred on
+    /// their board points — a clearance apart along x or along y, capped at <see cref="BoardMaxExtent"/>.</summary>
+    private static double BoardScale(List<(Item It, BoardHint H)> items)
+    {
+        double scale = 0;
+        for (int i = 0; i < items.Count; i++)
+            for (int j = i + 1; j < items.Count; j++)
+            {
+                var (a, ha) = items[i];
+                var (b, hb) = items[j];
+                double dx = Math.Abs(ha.X - hb.X), dy = Math.Abs(ha.Y - hb.Y);
+                double needX = (a.Full.MaxX - a.Full.MinX + b.Full.MaxX - b.Full.MinX) / 2 + BoardClearance;
+                double needY = (a.Full.MaxY - a.Full.MinY + b.Full.MaxY - b.Full.MinY) / 2 + BoardClearance;
+                double pair = Math.Min(dx > 0 ? needX / dx : double.PositiveInfinity, dy > 0 ? needY / dy : double.PositiveInfinity);
+                if (double.IsFinite(pair)) scale = Math.Max(scale, pair);
+            }
+        double extent = Math.Max(items.Max(i => i.H.X) - items.Min(i => i.H.X), items.Max(i => i.H.Y) - items.Min(i => i.H.Y));
+        if (extent > 0) scale = scale > 0 ? Math.Min(scale, BoardMaxExtent / extent) : BoardMaxExtent / extent / 4;
+        return scale > 0 ? scale : 1;
+    }
 
     // ─────────────────────────────────────────────────────────────────────────
     //  Netlist line → component
@@ -671,12 +889,23 @@ public static class NetlistSchematic
         {
             // Take the next one touching something already placed, so a chain grows outwards from
             // the path rather than being scattered in file order.
-            var next = rest.FirstOrDefault(i => i.SignalNets.Any(anchor.ContainsKey)) ?? rest[0];
+            // A link that continues a chain goes before what merely hangs from it, so the chain takes the column under
+            // its predecessor and a shunt part is drawn beside the chain rather than the chain beside it (R-dfr22-2-3).
+            var next = rest.FirstOrDefault(i => i.Local.Length == 2 && i.SignalNets.Count() == 2 && i.SignalNets.Count(anchor.ContainsKey) == 1)
+                    ?? rest.FirstOrDefault(i => i.SignalNets.Any(anchor.ContainsKey)) ?? rest[0];
             rest.Remove(next);
 
             OrientFree(next, anchor);
             var xs = next.SignalNets.Where(anchor.ContainsKey).Select(n => anchor[n].Average()).ToList();
             double want = xs.Count > 0 ? xs.Average() : rightmost + 2 * Slot;
+
+            // A two-pin part joining a net that so far ends on ONE pin continues that pin's chain: straight below it, rows
+            // lower if need be, never beside it. Beside, its upper pin sat barely below the one it joins, and the wire —
+            // which reaches each pin along its lead — looped round to come at it from above (R-dfr22-2-3).
+            var joined = next.SignalNets.Where(anchor.ContainsKey).ToList();
+            bool chain = next.Local.Length == 2 && joined.Count == 1 && anchor[joined[0]].Count == 1;
+            if (chain) want = anchor[joined[0]][0] - next.Offset(Array.IndexOf(next.Nets, joined[0])).X;
+            double sideways = chain ? 10 : 1;
 
             double left = next.Full.MinX - 2 * P, right = next.Full.MaxX + 2 * P;
             double height = next.Full.MaxY - next.Full.MinY + (next.Nets.Contains(Ground) ? 300 : 0);
@@ -687,6 +916,12 @@ public static class NetlistSchematic
             double below = next.SignalNets.Where(anchorTop.ContainsKey)
                                .Select(n => anchorTop[n] + 2 * P).DefaultIfEmpty(rowsTop).Max();
             int firstRow = Math.Max(0, (int)Math.Ceiling((below - rowsTop) / RowPitchOf()));
+
+            // An upright part drawn BESIDE the pins of the net above it is reached by a wire that leaves that net
+            // sideways: its upper pin must sit far enough down for that wire to run clear of both glyphs and come at the
+            // pin along its lead, or it loops round from above (R-dfr22-2-3).
+            int upper = next.Local.Length == 2 ? Enumerable.Range(0, 2).Where(k => anchor.ContainsKey(next.Nets[k]))
+                                                     .OrderBy(k => next.Offset(k).Y).DefaultIfEmpty(-1).First() : -1;
 
             double bestCost = double.MaxValue, bestX = want; int bestRow = firstRow;
             for (int row = firstRow; row < firstRow + 40; row++)
@@ -699,7 +934,14 @@ public static class NetlistSchematic
                         bool clash = occupied.Any(o => o.Row >= row && o.Row < row + rowsNeeded
                                                        && o.L < x + right && x + left < o.R);
                         if (clash) continue;
-                        double cost = Math.Abs(x - want) / Slot + (row - firstRow) * 3;
+                        if (upper >= 0)
+                        {
+                            string net = next.Nets[upper];
+                            double pinX = x + next.Offset(upper).X;
+                            double pinY = Snap(rowsTop + row * RowPitchOf() - next.Full.MinY) + next.Offset(upper).Y;
+                            if (!anchor[net].Any(ax => Math.Abs(ax - pinX) < 1) && pinY < anchorTop[net] + 4 * P) continue;
+                        }
+                        double cost = Math.Abs(x - want) / Slot * sideways + (row - firstRow) * 3;
                         if (cost < bestCost) { bestCost = cost; bestX = x; bestRow = row; }
                     }
                 }
@@ -1216,6 +1458,15 @@ public static class NetlistSchematic
                 model.NetLabels.Add(label);
                 continue;
             }
+            // No stretch clear of everything else: still ON a wire of its own, the middle of its longest run — a label
+            // left on a terminal of a net that has wires floated off them once the drawing was edited (R-dfr22-2-4).
+            if (LongestRun(net, wiresOf) is { } run)
+            {
+                var label = new EditableNetLabel { Name = net };
+                label.AnchorToWire(run.Wire, run.X, run.Y);
+                model.NetLabels.Add(label);
+                continue;
+            }
             var term = placed.SelectMany(i => Enumerable.Range(0, i.Nets.Length).Where(k => i.Nets[k] == net).Select(k => i.Pin(k))).First();
             model.NetLabels.Add(new EditableNetLabel { X = term.X, Y = term.Y, Name = net });
         }
@@ -1301,7 +1552,7 @@ public static class NetlistSchematic
             {
                 var mine = new Dictionary<string, List<EditableWire>>(StringComparer.Ordinal) { [net] = [.. group.Select(i => wires[i])] };
                 var label = new EditableNetLabel { Name = net };
-                if (LabelPoint(net, mine, segs, []) is { } at) label.AnchorToWire(at.Wire, at.X, at.Y);
+                if ((LabelPoint(net, mine, segs, []) ?? LongestRun(net, mine)) is { } at) label.AnchorToWire(at.Wire, at.X, at.Y);
                 else { label.X = runs[group.First()][0].X; label.Y = runs[group.First()][0].Y; }
                 model.NetLabels.Add(label);
             }
@@ -1369,6 +1620,24 @@ public static class NetlistSchematic
         if (candidates.Count == 0) return null;
         var best = candidates.MinBy(c => c.Score);
         return (best.W, best.X, best.Y);
+    }
+
+    /// <summary>The middle of <paramref name="net"/>'s longest wire segment, or null when it has no wire — where its label
+    /// goes when no stretch of its wiring is clear of everything else (R-dfr22-2-4).</summary>
+    private static (EditableWire Wire, double X, double Y)? LongestRun(string net, Dictionary<string, List<EditableWire>> wiresOf)
+    {
+        if (!wiresOf.TryGetValue(net, out var ws)) return null;
+        (EditableWire Wire, double X, double Y)? best = null;
+        double longest = -1;
+        foreach (var w in ws)
+            for (int i = 0; i + 1 < w.Points.Count; i++)
+            {
+                var (ax, ay) = w.Points[i];
+                var (bx, by) = w.Points[i + 1];
+                double len = Math.Abs(bx - ax) + Math.Abs(by - ay);
+                if (len > longest) { longest = len; best = (w, (ax + bx) / 2, (ay + by) / 2); }
+            }
+        return best;
     }
 
     /// <summary>

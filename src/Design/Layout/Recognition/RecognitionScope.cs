@@ -40,6 +40,13 @@ public sealed record RecognitionScope
         return kept.Count == 0 ? Whole : new RecognitionScope(kept);
     }
 
+    /// <summary>Two scopes are equal when their rings are, point for point — so a recognition input rebuilt from the same
+    /// selection equals the one a preview was made from (R-dfr22-2-8).</summary>
+    public bool Equals(RecognitionScope? other) =>
+        other is not null && Rings.Count == other.Rings.Count && Rings.Zip(other.Rings).All(p => p.First.AsSpan().SequenceEqual(p.Second));
+
+    public override int GetHashCode() => Rings.Aggregate(Rings.Count, (h, r) => System.HashCode.Combine(h, r.Length, r.Length > 0 ? r[0] : 0));
+
     /// <summary>The rings unioned, Clipper form — overlapping selection outlines are one region.</summary>
     internal Paths64 Paths()
     {

@@ -148,5 +148,10 @@ public partial class CreateSchematicFromArtworkDialog : Window
         else DocLauncher.Open("reference/artwork-to-schematic.html");
     }
 
-    private void OnCancelClick(object? sender, RoutedEventArgs e) => Close();
+    /// <summary>Cancel stops a Create in flight and leaves the dialog open (R-dfr22-2-7); otherwise it closes it.</summary>
+    private void OnCancelClick(object? sender, RoutedEventArgs e)
+    {
+        if (_vm is { IsCreating: true } vm) vm.CancelRunCommand.Execute(null);
+        else Close();
+    }
 }

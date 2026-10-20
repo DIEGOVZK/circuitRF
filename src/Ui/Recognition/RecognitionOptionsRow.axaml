@@ -1,6 +1,6 @@
-<!-- The recognition's options (brief-artsch-8 R-as8-2; brief-img-5 R-im5-1; brief-img-10 R-im10-9): ground, vias,
-     coplanar lines — or, for a schematic picture, Arrange and the crossing rule — the sweep and the digits: the CLI's
-     flags, one control each. Shown wherever a schematic is recognised: from artwork, from a layout picture and from a
+<!-- The recognition's options (brief-artsch-8 R-as8-2; brief-img-5 R-im5-1; brief-img-10 R-im10-9): Arrange, ground,
+     vias, coplanar lines — or, for a schematic picture, Arrange and the crossing rule — the sweep and the digits: the
+     CLI's flags, one control each. Shown wherever a schematic is recognised: from artwork, from a layout picture and from a
      schematic picture. -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -40,6 +40,14 @@
             <TextBlock Classes="label" Text="Reading" Width="70" Margin="0,0,10,0"/>
             <ComboBox ItemsSource="{Binding ReadingChoices}" SelectedIndex="{Binding ReadingIndex}" MinWidth="220"
                       ToolTip.Tip="The picture was read a few ways and the most plausible kept. Pick another to see it; Create makes the one shown."/>
+        </WrapPanel>
+
+        <!-- Artwork (brief-dfr22-2 R-dfr22-2-1): how the schematic is laid out — the CLI's arrange board|tidy. -->
+        <WrapPanel Classes="row" Orientation="Horizontal" IsVisible="{Binding ArtworkArrangeApplies}">
+            <TextBlock Classes="label" Text="Arrange" Width="70" Margin="0,0,10,0"/>
+            <ComboBox ItemsSource="{x:Static rec:RecognitionSessionViewModel.ArtworkArrangeOptions}"
+                      SelectedIndex="{Binding ArtworkArrangeIndex}" MinWidth="150"
+                      ToolTip.Tip="As on the board: each part roughly where it sits on the board, to check the schematic side by side with the layout. Tidy: the signal path as one line from port to port, everything else hanging from it."/>
         </WrapPanel>
 
         <WrapPanel Classes="row" Orientation="Horizontal" IsVisible="{Binding ArtworkOptionsApply}">

@@ -234,6 +234,14 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
     public static IReadOnlyList<string> ArrangeOptions { get; } = ["As drawn", "Tidy"];
     [ObservableProperty] private int _arrangeIndex;
 
+    /// <summary>Whether the artwork's Arrange applies (R-dfr22-2-1): Create Schematic from Artwork.</summary>
+    public virtual bool ArtworkArrangeApplies => false;
+
+    /// <summary>Arrange for artwork (R-dfr22-2-1): each part where the board has it, or the main line and its hangers —
+    /// the CLI's <c>--arrange board|tidy</c>. Only the drawing reads it, so a change re-runs nothing.</summary>
+    public static IReadOnlyList<string> ArtworkArrangeOptions { get; } = ["As on the board", "Tidy"];
+    [ObservableProperty] private int _artworkArrangeIndex;
+
     /// <summary>Schematic pictures (IM-7, D11): where a four-way crossing connects.</summary>
     public static IReadOnlyList<string> CrossingOptions { get; } = ["Never", "With a dot", "Always"];
     [ObservableProperty] private int _crossingIndex = 1;
@@ -378,7 +386,8 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
         int? npts = int.TryParse(PointsText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n)
                     && n != (_basis.NumPoints ?? RecognitionEmitOptions.DefaultSweep.NumPoints) ? n : null;
         return new RecognitionEmitOptions { Sweep = RecognitionSweep.Compose(EmSetupForSweep, start, StatedStop(), npts), Digits = Digits,
-                                           ArtworkSides = ArtworkSides };
+                                           ArtworkSides = ArtworkSides,
+                                           Arrange = ArtworkArrangeIndex == 1 ? ArtworkArrange.Tidy : ArtworkArrange.Board };
     }
 
     /// <summary>The EM setup the sweep is composed over — the artwork's; a picture has none.</summary>
@@ -764,9 +773,10 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
 
     /// <summary>A write, captured on the UI thread.</summary>
     /// <param name="BusyText">The status line while it runs.</param>
-    /// <param name="Work">The write, run in the background.</param>
+    /// <param name="Work">The write, run in the background under the control the preview's progress bar and Cancel
+    /// drive (R-dfr22-2-7) — a cancelled write throws and writes nothing.</param>
     /// <param name="FailurePrefix">How an exception from it is introduced.</param>
-    protected sealed record CreateJob(string BusyText, Func<CreateOutcome> Work, string FailurePrefix);
+    protected sealed record CreateJob(string BusyText, Func<RunControl, CreateOutcome> Work, string FailurePrefix);
 
     /// <summary>What a write did: a refusal, or the report and what to do on the UI thread.</summary>
     protected sealed record CreateOutcome(string? Refusal, RecognitionReport? Report, Action? Done);
@@ -790,33 +800,73 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
 
     [ObservableProperty] private bool _isCreating;
 
-    partial void OnIsCreatingChanged(bool value) => RefreshCreate();
+    partial void OnIsCreatingChanged(bool value)
+    {
+        RefreshCreate();
+        OnPropertyChanged(nameof(IsBusy));
+    }
+
+    partial void OnIsRecognisingChanged(bool value) => OnPropertyChanged(nameof(IsBusy));
+
+    /// <summary>Whether the progress bar shows: a recognition or a Create is running (R-dfr22-2-7).</summary>
+    public bool IsBusy => IsRecognising || IsCreating;
+
+    private CancellationTokenSource? _createCts;
+
+    /// <summary>The Create in flight — what a test awaits.</summary>
+    public Task Creation { get; private set; } = Task.CompletedTask;
 
     [RelayCommand(CanExecute = nameof(CanCreate))]
-    private async Task Create()
+    private Task Create() => Creation = RunCreate();
+
+    private async Task RunCreate()
     {
         CancelRecognition();
         var job = BeginCreate();
+        var cts = _createCts = new CancellationTokenSource();
         IsCreating = true;
         Status = job.BusyText;
+        // The preview's progress and its Cancel, on the write too (R-dfr22-2-7): a cancelled one writes nothing.
+        var control = new RunControl
+        {
+            Token = cts.Token,
+            Progress = new Progress<RunProgress>(p => _post(() => { if (IsCreating && !cts.IsCancellationRequested) ProgressText = p.Stage; })),
+        };
         try
         {
-            var outcome = await Task.Run(job.Work).ConfigureAwait(false);
+            var outcome = await Task.Run(() => job.Work(control), cts.Token).ConfigureAwait(false);
             _post(() =>
             {
                 IsCreating = false;
+                ProgressText = "";
                 if (outcome.Refusal is { } why) { Status = why; return; }
                 Status = "";
                 LastReport = outcome.Report;
                 outcome.Done?.Invoke();
             });
         }
+        catch (OperationCanceledException)
+        {
+            _post(() => { IsCreating = false; ProgressText = ""; Status = "Cancelled; nothing was written."; });
+        }
         catch (Exception ex)
         {
-            _post(() => { IsCreating = false; Status = $"{job.FailurePrefix}: {ex.Message}"; });
+            _post(() => { IsCreating = false; ProgressText = ""; Status = $"{job.FailurePrefix}: {ex.Message}"; });
         }
     }
 
-    /// <summary>Closing the dialog: stops a recognition in flight; nothing is written.</summary>
-    public virtual void Close() => _cts?.Cancel();
+    /// <summary>The progress bar's Cancel: stops a Create in flight, or else the recognition (R-dfr22-2-7).</summary>
+    [RelayCommand]
+    private void CancelRun()
+    {
+        if (IsCreating) _createCts?.Cancel();
+        else CancelRecognition();
+    }
+
+    /// <summary>Closing the dialog: stops a recognition or a Create in flight; nothing is written.</summary>
+    public virtual void Close()
+    {
+        _cts?.Cancel();
+        _createCts?.Cancel();
+    }
 }

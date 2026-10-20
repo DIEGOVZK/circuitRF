@@ -3820,7 +3820,10 @@ in 201 points; `--stop` is also the top frequency a TLIN and the coupled-pair ch
 (the significant figures every number the circuit carries is written with — line widths and lengths, via sizes,
 a port's Z, part values, variables and their tuning range; 1 to 15, default 6; the dialog's digits menu),
 `--free-orientation` (every shunt part drawn below its line rather than on its copper's side — the GUI's "Link symbol
-and footprint orientation" setting, off).
+and footprint orientation" setting, off), `--arrange board|tidy` (brief-dfr22-2: `board`, the default, draws each
+instance where the board has it; `tidy` is the main line and its hangers. `tidy` is also a schematic picture's
+spelling and `drawn` is a picture's alone, so `drawn` on a layout and `board` on a picture are refusals naming the
+values that kind takes).
 `--json` carries `result.recognize`: the layout, technology and scope, the instance count, each report class
 with its count, sentence and anchors (DBU), the parts table row for row keyed by the CSV's columns, and the
 paths written.

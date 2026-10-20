@@ -143,6 +143,7 @@ public sealed class RecognizeCliVerbTests(ITestOutputHelper output) : IDisposabl
             "RecognitionFindingClass", "RecognitionAnchor", "PartsTable", "PartRow", "PartsTableCsv", "PartsCsvReading",
             "RecognitionSweep", "RecognitionFrequency",   // the options' sweep, composed once for the CLI and the dialog (AS-8)
             "RecognitionBom",                             // the BOM… button's reader, which --bom reads through (round 15)
+            "ArtworkArrange",                             // the emit options' arrangement, --arrange board|tidy (DFR22-2)
         ];
         var declared = Directory.GetFiles(Path.Combine(repo, "src", "Design", "Layout", "Recognition"), "*.cs")
             .SelectMany(f => Regex.Matches(File.ReadAllText(f),

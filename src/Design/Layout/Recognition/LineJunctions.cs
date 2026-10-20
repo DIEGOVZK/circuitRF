@@ -5,6 +5,12 @@
 // region three arms are an MTEE and four an MCROSS; anywhere else, or with more than four arms, a junction is a
 // plain node, reported.
 //
+// A junction whose arms are grounded coplanar, or coplanar and microstrip mixed, takes the microstrip tee or cross
+// too (brief-dfr22-2 R-dfr22-2-6, the owner's choice (a)): circuitRF has no coplanar tee model, and the microstrip one
+// with the arms' widths is the nearest model there is — closer than a plain node, which models no junction at all.
+// It is reported as the approximation it is (JunctionReading.Coplanar). Any other arm type (SLIN, TLIN) keeps the
+// plain node.
+//
 // Reference planes are the models' own: an MTEE's through arms start half the BRANCH's width from the centre and
 // its branch half the THROUGH line's width (the shortest arm MTeePCell admits — ClampArmLength(stub, W3/2) on
 // L1/L2 and (max(W1, W2))/2 on L3 — which is where its artwork ends and where MicrostripTeeModel's star network,
@@ -29,7 +35,9 @@ internal sealed record JunctionArm(LineDraft Line, bool AtStart, ChainEnd End)
 /// <summary>What one junction became.</summary>
 /// <param name="Element">The MTEE or MCROSS, or null for a plain node.</param>
 /// <param name="Plain">Why it is a plain node, or null.</param>
-internal sealed record JunctionReading(LineDraft? Element, string? Plain);
+/// <param name="Coplanar">Whether the element stands in for a coplanar junction — the microstrip model with the coplanar
+/// arms' widths, the nearest model there is (R-dfr22-2-6).</param>
+internal sealed record JunctionReading(LineDraft? Element, string? Plain, bool Coplanar = false);
 
 /// <summary>R-as5-4's junction rules and R-as5-5's arm lengths.</summary>
 internal static class LineJunctions
@@ -37,8 +45,8 @@ internal static class LineJunctions
     /// <summary>The reason a junction with more than four arms is a plain node.</summary>
     public const string TooManyArms = "more than four arms";
 
-    /// <summary>The reason a junction outside a microstrip region is a plain node.</summary>
-    public const string NotMicrostrip = "not every arm is microstrip";
+    /// <summary>The reason a junction with an arm neither microstrip nor grounded coplanar is a plain node.</summary>
+    public const string NotMicrostrip = "not every arm is microstrip or grounded coplanar";
 
     /// <summary>
     /// Resolves <paramref name="junction"/>: writes each arm's node into its line, extends each arm's line from
@@ -48,9 +56,10 @@ internal static class LineJunctions
     {
         string id = junction.Id;
         bool mlin = arms.All(a => a.Line.Type == LineElementType.MLIN);
+        bool modelled = arms.All(a => a.Line.Type is LineElementType.MLIN or LineElementType.CPWG);
         string? plain = arms.Count > 4 ? TooManyArms
                       : arms.Count < 3 ? null
-                      : !mlin ? NotMicrostrip
+                      : !modelled ? NotMicrostrip
                       : null;
         if (arms.Count < 3 || plain is not null)
         {
@@ -75,7 +84,7 @@ internal static class LineJunctions
             {
                 Type = LineElementType.MTEE, Kind = LineKind.Mlin, Nodes = [$"{id}.1", $"{id}.2", $"{id}.3"],
                 Widths = [w1, w2, w3], Source = id, Layer = junction.Layer, Anchor = [(junction.X, junction.Y)],
-            }, null);
+            }, null, !mlin);
         }
 
         // Four arms, counter-clockwise from the one nearest +X — MCROSS's pin order.
@@ -89,7 +98,7 @@ internal static class LineJunctions
         {
             Type = LineElementType.MCROSS, Kind = LineKind.Mlin, Nodes = [$"{id}.1", $"{id}.2", $"{id}.3", $"{id}.4"],
             Widths = widths, Source = id, Layer = junction.Layer, Anchor = [(junction.X, junction.Y)],
-        }, null);
+        }, null, !mlin);
     }
 
     /// <summary>Names the arm's node at the junction, and runs its line from the trace's end to the centre less

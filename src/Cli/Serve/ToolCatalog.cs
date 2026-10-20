@@ -1186,7 +1186,8 @@ internal static class ToolCatalog
                         new("crossings", "--crossings", OptKind.Str,
                             "A schematic picture: never, dot (default) or always — when two crossing wires join."),
                         new("arrange", "--arrange", OptKind.Str,
-                            "A schematic picture: drawn (default: parts where the picture draws them) or tidy."),
+                            "A layout: board (default: each part roughly where it sits on the board) or tidy (the main line and its "
+                          + "hangers). A schematic picture: drawn (default: parts where the picture draws them) or tidy."),
                         new("connect", "--connect", OptKind.StrRepeat,
                             "A schematic picture: join the wires crossing at x,y (source pixels), or x,y:x2,y2 to join two ends."),
                         new("disconnect", "--disconnect", OptKind.StrRepeat,

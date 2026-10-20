@@ -1402,7 +1402,7 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
     protected override CreateJob BeginCreate()
     {
         if (IsPlotPicture)
-            return new CreateJob("", () => new CreateOutcome("A plot is written with Create… (it asks where).", null, null), "");
+            return new CreateJob("", _ => new CreateOutcome("A plot is written with Create… (it asks where).", null, null), "");
         var techChoice = Technology;
         var cachedTech = techChoice is not null && _technologies.TryGetValue(techChoice.Path, out var t) ? t : null;
         var input = BuildTraceInput(cachedTech, CurrentKind());
@@ -1417,9 +1417,9 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             var target = IntoPlacedLayout ? ImageTraceTarget.IntoLayout
                 : IsReplace ? ImageTraceTarget.Replace(NewCellDir(name))
                 : ImageTraceTarget.NewCell(_workspaceDir, name);
-            return new CreateJob(IntoPlacedLayout ? "Tracing into the layout…" : $"Writing {name}…", () =>
+            return new CreateJob(IntoPlacedLayout ? "Tracing into the layout…" : $"Writing {name}…", control =>
             {
-                var run = _runner.TraceRun(input with { Technology = Tech() }, target, new ImageTraceRunOptions(), null);
+                var run = _runner.TraceRun(input with { Technology = Tech() }, target, new ImageTraceRunOptions(), control);
                 return new CreateOutcome(run.Refusal, run.Report, () => LayoutCreated?.Invoke(run));
             }, "The layout could not be created");
         }
@@ -1427,10 +1427,10 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
         var recognition = BuildRecognitionInput(input);
         var schematicTarget = IsReplace ? ImageRecognitionTarget.Replace(NewCellDir(name)) : ImageRecognitionTarget.NewCell(_workspaceDir, name);
         var options = new ImageRecognitionRunOptions { Emit = BuildEmit() };
-        return new CreateJob($"Writing {name}…", () =>
+        return new CreateJob($"Writing {name}…", control =>
         {
             var run = _runner.RecognitionRun(recognition with { Trace = recognition.Trace with { Technology = Tech() } },
-                                             schematicTarget, options, null);
+                                             schematicTarget, options, control);
             return new CreateOutcome(run.Refusal, run.Report, () => SchematicCreated?.Invoke(run));
         }, "The schematic could not be created");
     }
@@ -1628,16 +1628,16 @@ public sealed partial class ImageSourceViewModel : RecognitionSessionViewModel
             // A snapshot of the open schematic, taken here on the UI thread: the background only reads its names.
             var open = OpenSchematic?.Invoke(placed.Document);
             var snapshot = open is null ? new SchematicEditModel() : SchematicPersistence.Deserialize(SchematicPersistence.Serialize(open)).model;
-            return new CreateJob("Drawing over the picture…", () =>
+            return new CreateJob("Drawing over the picture…", control =>
             {
-                var edit = _runner.IntoSchematic(input with { Technology = tech() }, snapshot, placed, emit, null);
+                var edit = _runner.IntoSchematic(input with { Technology = tech() }, snapshot, placed, emit, control);
                 return new CreateOutcome(edit.Refusal, edit.Report, () => SchematicPictureDrawn?.Invoke(edit, placed));
             }, "The schematic could not be drawn");
         }
         var target = IsReplace ? SchematicImageTarget.Replace(NewCellDir(name)) : SchematicImageTarget.NewCell(_workspaceDir, name);
-        return new CreateJob($"Writing {name}…", () =>
+        return new CreateJob($"Writing {name}…", control =>
         {
-            var run = _runner.SchematicRun(input with { Technology = tech() }, target, new SchematicImageRunOptions { Emit = emit }, null);
+            var run = _runner.SchematicRun(input with { Technology = tech() }, target, new SchematicImageRunOptions { Emit = emit }, control);
             return new CreateOutcome(run.Refusal, run.Report, () => SchematicPictureCreated?.Invoke(run));
         }, "The schematic could not be created");
     }

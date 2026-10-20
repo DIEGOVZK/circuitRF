@@ -102,6 +102,7 @@ is how you model one section of a board without any EM. Ground is always read fr
 
 | Option | Choices |
 |---|---|
+| **Arrange** | **As on the board** (the default) draws each part roughly where it sits on the board, so you can check the schematic side by side with the layout. **Tidy** draws the signal path as one line from port to port with everything else hanging from it. The circuit is the same either way. |
 | **Ground** | **Auto** reads the largest copper on the stackup's reference conductor, and everything joined to it, as ground. **Pick on layout** asks you to click the copper that is ground. |
 | **Ground vias** | **Model as VIAGND** keeps a via that grounds a part's own pad or a line end as a stackup-bound `VIAGND` (at most four per pad). **Plain GND** writes a plain ground instead. Stitching vias are dropped either way. |
 | **Coplanar lines** | How a line with ground close beside it is read: **Auto**, **Microstrip** or **GCPW** &mdash; see [the coplanar choice](#coplanar). |
@@ -204,7 +205,8 @@ the dialog and from the command line alike. They are kept with your own settings
 | A trace with ground close on both sides | `CPWG` &mdash; see [the coplanar choice](#coplanar) |
 | A trace between two planes | `SLIN`, its heights from the stackup |
 | Any other cross-section | `TLIN` in its physical form, with Z0 and εeff from the cross-section solve; the report says why |
-| A corner or junction on a `CPWG`, `SLIN` or `TLIN` | No discontinuity model: a corner is centre-line length, a junction a plain node |
+| A tee or crossing of `CPWG` lines, or of `CPWG` and `MLIN` | `MTEE` or `MCROSS` with the lines' widths &mdash; the nearest model, since there is no coplanar tee; the report says so |
+| A corner on a `CPWG`, `SLIN` or `TLIN`, or a junction on an `SLIN` or `TLIN` | No discontinuity model: a corner is centre-line length, a junction a plain node |
 | A junction of more than four lines | A plain node |
 | A short piece between two lines | Merged into its neighbours; no line is ever dropped for being short |
 | A two-pad part across a gap in a line | `R`, `L`, `C` or a two-port `SnP`, in series |
@@ -308,10 +310,23 @@ Clear the box to hand that component back to ordinary layout sync; it is one und
 
 ### Drawing the schematic {#drawing}
 
-The schematic is laid out along the signal path, in the order the parts sit along the copper. With **Settings ▸
-Link symbol and footprint orientation** on (the default), a shunt part is drawn on the side of its line its copper is
-on; off, every shunt part is drawn below its line. The same setting decides whether turning a symbol later turns its
-footprint at the next **Update Layout from Schematic**.
+With **Arrange ▸ As on the board** (the default), each part, line and port is drawn roughly where it sits on the
+board, turned the way it lies there, and the wires are routed between them. A part that would land on another is
+drawn below the rest instead, and the report names it. A recognition of a selection is drawn relative to that
+selection. **Update Schematic from Layout** on a layout of bare artwork draws the same way.
+
+With **Tidy**, the schematic is laid out along the signal path, in the order the parts sit along the copper. With
+**Settings ▸ Link symbol and footprint orientation** on (the default), a shunt part is drawn on the side of its line its
+copper is on; off, every shunt part is drawn below its line. The same setting decides whether turning a symbol later
+turns its footprint at the next **Update Layout from Schematic**.
+
+Every net carries a label on one of its wires. To move a label, drag it: dropped on another wire of the same net it
+moves there; dropped beside its wire it stays with that wire, at most one grid cell away; it cannot be dropped on
+another net's wire.
+
+**Create** shows its progress like the preview does. Right-click the progress bar, or press **Cancel**, to stop it;
+nothing is written. When nothing has changed since the preview, Create uses what the preview already read rather than
+reading the board again.
 
 ## From the command line {#headless}
 

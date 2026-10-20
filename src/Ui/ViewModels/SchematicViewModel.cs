@@ -1059,6 +1059,9 @@ public sealed partial class SchematicViewModel : ObservableObject
         // A selected picture's scale handles come FIRST — they sit on and just outside its edge.
         if (!shift && TryBeginPictureScale(wx, wy, alt)) return;
 
+        // A net label drags (R-dfr22-2-5): its text sits over its wire, so it is tested before the wire.
+        if (!shift && TryBeginNetLabelDrag(wx, wy)) return;
+
         // Cyclic click-through: build the top→bottom stack (labels excluded — B9) and pick the next
         // object under the cursor when the current single selection is already in the stack; otherwise
         // the topmost. Shift acts on the topmost only (no cycling).
@@ -1230,6 +1233,12 @@ public sealed partial class SchematicViewModel : ObservableObject
 
     private void HandleSelectDrag(double wx, double wy, KeyModifiers modifiers)
     {
+        if (_labelDrag is not null)
+        {
+            NetLabelDragMove(wx, wy);
+            return;
+        }
+
         // B4: Segment drag takes priority — perpendicular-only live preview.
         if (_segmentDragWireId is not null && _segmentDragStartPoints is not null)
         {
@@ -1349,6 +1358,12 @@ public sealed partial class SchematicViewModel : ObservableObject
 
     private void HandleSelectRelease(double wx, double wy, KeyModifiers modifiers)
     {
+        if (_labelDrag is not null)
+        {
+            NetLabelDragRelease(wx, wy);
+            return;
+        }
+
         if (_isRubberBanding)
         {
             FinishRubberBand(wx, wy);

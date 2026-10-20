@@ -21163,3 +21163,24 @@ read; it imports with connectivity matching both its drawing and its declared ne
   part's list, most with no wire — a no-connect mark is the likely flag). Read unsigned, pin 24 was pin 65512 and the
   declared nets disagreed with the drawing. The magnitude is the pin.
 - Multi-unit parts still import one instance per unit (`U1`, `U1_2`), as before.
+
+## DFR22-2: artwork schematics drawn as on the board (2026-10-20)
+
+- **The bias-chain wire loop was `NetlistSchematic.Place`, not `SchematicAutoRouter`.** The "everything else" rows
+  priced a sideways shift (1 per slot) below a row further down (3 per row), so the second link of a chain hanging off
+  the main line landed beside the first with its upper pin a row or two below the pin it joins. The router reaches a
+  pin only along its lead, so it came at it from above round a U. Chain links now go straight below their predecessor,
+  series links before shunts, and a part drawn beside its net's pins sits at least four cells below the net's top
+  terminal. The synthetic board's Tidy drawing hashes the same as before (`ArtworkBoardArrangementTests`).
+- **The same lead rule bites a board-scaled placement.** Scaling a board leaves pins a cell or two off; facing pins one
+  row apart are a dog-leg or unroutable, and a pin one row short of its net's wire row is a loop. `BoardPlacement`
+  straightens before handing over: facing pins lined up, then room made along each lead (two cells, four for facing pins
+  offset sideways).
+- **A net label's net was read from where it is DRAWN.** `FindLabelNetKey` matched the label's point against wire
+  vertices (±half a grid) and segments; a label drawn more than half a grid off its wire named nothing, or the node it
+  landed on. An anchored label now names its owner wire's node. Nothing in the routine connectivity suite moved.
+- **Reusing a recognition re-runs its emit.** The emit and drawing add report lines to the result they are handed, so a
+  preview's result reused by Create would carry them twice; those lines are `RecognitionReport.Set` now (replace, then
+  add), which changes nothing for a fresh result.
+- **`RecognitionScope` compared its rings by reference** (a record over `long[]`), so an input rebuilt from the same
+  selection never equalled the preview's. It compares point for point now.

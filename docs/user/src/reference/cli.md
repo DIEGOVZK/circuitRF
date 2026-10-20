@@ -1042,7 +1042,7 @@ example workspace.
 <span class="prompt">  </span>[--placement-origin symbol|body|pin1] [--placement-unit mm|mil|in]
 <span class="prompt">  </span>[--region x0,y0,x1,y1] [--ground NET | --ground-at x,y] [--vias model|ground]
 <span class="prompt">  </span>[--coplanar auto|microstrip|gcpw] [--coplanar-factor K] [--start F] [--stop F] [--npts N]
-<span class="prompt">  </span>[--digits N] [--free-orientation]</code></pre>
+<span class="prompt">  </span>[--digits N] [--free-orientation] [--arrange board|tidy]</code></pre>
 
 `recognize` reads a board's copper and writes the circuit it implements: the ground, the vias that matter,
 the ports, every two-terminal part as an R, L, C or S-parameter file, and every trace as an `MLIN` (with its
@@ -1071,7 +1071,8 @@ and the **parts table** as CSV. Review that table before writing anything:
 | `--coplanar auto\|microstrip\|gcpw`, `--coplanar-factor K` | How a line with ground close beside it is read. |
 | `--start`, `--stop`, `--npts` | The analysis range, each frequency with its unit. Default: the layout's EM setup's sweep, else 100 MHz – 6 GHz in 201 points. |
 | `--digits N` | The significant digits every number in the circuit is written with, 1 to 15. Default 6. |
-| `--free-orientation` | Draws every shunt part below its line. Without it, a shunt part is drawn on the side of its line that its copper is on — the app's **Link symbol and footprint orientation** setting. |
+| `--free-orientation` | Draws every shunt part below its line. Without it, a shunt part is drawn on the side of its line that its copper is on — the app's **Link symbol and footprint orientation** setting. Applies to `--arrange tidy`. |
+| `--arrange board\|tidy` | How the schematic is laid out. `board` (the default) puts each part roughly where it sits on the board, so the drawing can be checked side by side with the layout. `tidy` draws the signal path as one line from port to port with everything else hanging from it. The circuit is the same either way. |
 
 **Exit 0** when the board was read (and written, when asked), **1** when it was refused &mdash; no technology,
 no copper in the region, no port &mdash; with nothing written, **130** on a cancellation. With `--json` the

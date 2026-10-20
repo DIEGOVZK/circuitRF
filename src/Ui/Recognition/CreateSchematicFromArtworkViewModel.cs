@@ -237,16 +237,30 @@ public sealed partial class CreateSchematicFromArtworkViewModel : RecognitionSes
         PartsCsvText = PartsCsvText,
     };
 
+    /// <summary>What a completed preview recognised, and from what: its input and the layout file's write time then.</summary>
+    private sealed record PreviewMade(RecognitionInput Input, DateTime ClayWritten, RecognitionResult Result);
+
+    private PreviewMade? _lastPreview;
+
+    private static DateTime ClayWritten(string? clay)
+    {
+        try { return clay is not null && File.Exists(clay) ? File.GetLastWriteTimeUtc(clay) : DateTime.MinValue; }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { return DateTime.MinValue; }
+    }
+
     protected override Func<RunControl, RecognitionPreview> BeginPreview()
     {
         var input = BuildInput();
         var emit = BuildEmit();
         return control =>
         {
+            var written = ClayWritten(input.ClayPath);
             var (result, _) = _runner.Preview(input, emit, control);
-            return new RecognitionPreview(result.Parts, result.Report, result.Refusal, result);
+            return new RecognitionPreview(result.Parts, result.Report, result.Refusal, new PreviewMade(input, written, result));
         };
     }
+
+    protected override void OnPreviewApplied(RecognitionPreview preview) => _lastPreview = preview.Detail as PreviewMade;
 
     /// <summary>Raised on the UI thread when a schematic was written.</summary>
     public event Action<RecognitionRun>? Created;
@@ -255,16 +269,24 @@ public sealed partial class CreateSchematicFromArtworkViewModel : RecognitionSes
     {
         var input = BuildInput();
         var target = Target;
-        var options = new RecognitionRunOptions { Emit = BuildEmit() };
+        // The last completed preview's recognition, when Create would recognise exactly what it recognised — same scope,
+        // options, companions and parts edits, and the layout file unwritten since (R-dfr22-2-8). Arrange, the digits and
+        // the sweep only change what is emitted and drawn from it, so they do not count.
+        var reuse = _lastPreview is { } last && last.Input == input && last.Result.Ok ? last : null;
+        var emit = BuildEmit();
         return new CreateJob(
             TargetArtworkCell ? $"Writing {ArtworkCellName}'s schematic…" : $"Writing {NewCellName.Trim()}…",
-            () =>
+            control =>
             {
-                var run = _runner.Run(input, target, options, null);
+                var recognised = reuse is not null && ClayWritten(input.ClayPath) == reuse.ClayWritten ? reuse.Result : null;
+                var run = _runner.Run(input, target, new RecognitionRunOptions { Emit = emit, Recognised = recognised }, control);
                 return new CreateOutcome(run.Refusal, run.Report, () => Created?.Invoke(run));
             },
             "The schematic could not be created");
     }
+
+    /// <summary>Arrange is the artwork's (R-dfr22-2-1).</summary>
+    public override bool ArtworkArrangeApplies => true;
 
     /// <summary>Closing the dialog: stops a recognition in flight and takes the part off the layout.</summary>
     public override void Close()

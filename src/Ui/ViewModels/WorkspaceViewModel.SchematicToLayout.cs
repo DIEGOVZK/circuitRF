@@ -507,6 +507,9 @@ public partial class WorkspaceViewModel
             Emit = new RecognitionEmitOptions
             {
                 ArtworkSides = CircuitRF.Ui.Theming.AppPreferencesIo.Load().LinkSchematicLayoutOrientation ?? true,
+                // As on the board, Create's default (brief-dfr22-2): this path only ever draws into an EMPTY schematic,
+                // so no part already in it can be moved.
+                Arrange = ArtworkArrange.Board,
             },
         };
         RecognitionRun run;

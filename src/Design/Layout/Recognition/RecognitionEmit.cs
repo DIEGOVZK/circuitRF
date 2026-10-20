@@ -20,6 +20,10 @@ using CircuitRF.Core.Netlist;
 
 namespace CircuitRF.Design.Layout.Recognition;
 
+/// <summary>How a recognised circuit is drawn (R-dfr22-2-1): each instance where the board has it, or the automatic
+/// main line with its hangers.</summary>
+public enum ArtworkArrange { Board, Tidy }
+
 /// <summary>What the emitted circuit may be told beyond the recognition itself.</summary>
 public sealed record RecognitionEmitOptions
 {
@@ -42,6 +46,11 @@ public sealed record RecognitionEmitOptions
     /// user's "Link symbol and footprint orientation" setting, <c>--free-orientation</c> off it. False draws every one
     /// below its line, as an unhinted drawing does (designer report, round 15).</summary>
     public bool ArtworkSides { get; init; } = true;
+
+    /// <summary>How the schematic is arranged (R-dfr22-2-1): <see cref="ArtworkArrange.Board"/>, each part roughly where
+    /// it sits on the board, or <see cref="ArtworkArrange.Tidy"/>, the main line and its hangers — <c>--arrange</c>, the
+    /// dialog's Arrange. The circuit is the same either way; only the drawing differs.</summary>
+    public ArtworkArrange Arrange { get; init; } = ArtworkArrange.Board;
 
     /// <summary>Every figure a double carries that survives a round trip as text.</summary>
     public const int AllDigits = 15;
@@ -70,6 +79,25 @@ public sealed record RecognitionCircuit(TestBench TestBench)
     /// <summary>Each instance's artwork point — the drawing's placement hints (R-as6-3).</summary>
     public IReadOnlyDictionary<string, (long X, long Y)> Hints =>
         Anchors.Where(a => a.Value.Count > 0).ToDictionary(a => a.Key, a => ArtworkAnchors_Centre(a.Value));
+
+    /// <summary>Each instance's artwork point and, where it has one, its direction there — a part's pad axis, a line's
+    /// trace direction at its centre — for the drawing "As on the board" (R-dfr22-2-2).</summary>
+    public IReadOnlyDictionary<string, Schematic.BoardHint> BoardHints =>
+        Anchors.Where(a => a.Value.Count > 0).ToDictionary(a => a.Key, a =>
+        {
+            var (x, y) = ArtworkAnchors_Centre(a.Value);
+            double? axis = Measured.TryGetValue(a.Key, out var m) && m.TryGetValue(RecognitionEmit.PadAxisKey, out double pad) ? pad
+                         : a.Value.Count >= 2 ? TraceDirection(a.Value) : null;
+            return new Schematic.BoardHint(x, y, axis);
+        });
+
+    /// <summary>A line's direction at its centre, degrees: its middle segment, start toward end.</summary>
+    private static double? TraceDirection(IReadOnlyList<(long X, long Y)> line)
+    {
+        int i = Math.Max(1, line.Count / 2);
+        double dx = line[i].X - line[i - 1].X, dy = line[i].Y - line[i - 1].Y;
+        return dx == 0 && dy == 0 ? null : Math.Atan2(dy, dx) * 180 / Math.PI;
+    }
 
     /// <summary>Parts read as shorts — emitted as 0 Ω resistors, and drawn Shorted.</summary>
     public IReadOnlySet<string> Shorted { get; init; } = new HashSet<string>(StringComparer.Ordinal);

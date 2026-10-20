@@ -108,6 +108,11 @@ public sealed record RecognitionRunOptions
 
     /// <summary>The time the provenance block records; null is now.</summary>
     public DateTime? Now { get; init; }
+
+    /// <summary>A recognition already made of this very input — the dialog's last completed preview, when nothing it
+    /// was made from has changed since (R-dfr22-2-8). The run emits and draws from it rather than recognising again;
+    /// null recognises. The caller vouches that it is this input's: the run cannot tell.</summary>
+    public RecognitionResult? Recognised { get; init; }
 }
 
 /// <summary>What one run did (R-as6-8).</summary>
@@ -148,12 +153,12 @@ public static partial class ArtworkRecognition
     private static RecognitionCircuit Emit(RecognitionResult result, RecognitionInput input, RecognitionEmitOptions emit)
     {
         var circuit = RecognitionEmit.Build(result, input, emit);
-        result.Report.Add(RecognitionFindingClass.EmitOmissions, circuit.Notes.Count, string.Join(" ", circuit.Notes));
+        result.Report.Set(RecognitionFindingClass.EmitOmissions, circuit.Notes.Count, string.Join(" ", circuit.Notes));
         if (circuit.StrayLines.Count > 0)
         {
             var types = circuit.StrayLines.GroupBy(l => l.Type).OrderBy(g => g.Key, StringComparer.Ordinal)
                                           .Select(g => $"{g.Count()} {g.Key}");
-            result.Report.Add(RecognitionFindingClass.StrayLines, circuit.StrayLines.Count,
+            result.Report.Set(RecognitionFindingClass.StrayLines, circuit.StrayLines.Count,
                 $"{circuit.StrayLines.Count} line element{(circuit.StrayLines.Count == 1 ? "" : "s")} ({string.Join(", ", types)}) " +
                 "reach no port and no part — traces to a pin of a part the circuit does not model — and were left out.",
                 [.. circuit.StrayLines.Select(l => ArtworkAnchors.Centre(l.Anchor)).OfType<(long X, long Y)>()
@@ -173,7 +178,7 @@ public static partial class ArtworkRecognition
         ArgumentNullException.ThrowIfNull(target);
         options ??= new RecognitionRunOptions();
 
-        var result = Recognize(input, control);
+        var result = options.Recognised ?? Recognize(input, control);
         RecognitionRun Refused(string why, RecognitionCircuit? circuit = null) => new(result, circuit, null, null, null, why);
         if (!result.Ok) return Refused(result.Refusal ?? "The artwork could not be read.");
         if (input.ClayPath is not { } clay)
@@ -222,6 +227,8 @@ public static partial class ArtworkRecognition
         var (circuit, model, drawRefusal) = DrawCircuit(result, input, schematicDir, options);
         if (model is null) return Refused(drawRefusal!, circuit);
         var report = result.Report;
+        // Cancelled after the recognition (R-dfr22-2-7): nothing is written.
+        control?.Token.ThrowIfCancellationRequested();
 
         // ── the write: the schematic only, never the layout ─────────────────────────────────────────
         string path;
@@ -258,7 +265,7 @@ public static partial class ArtworkRecognition
             return Refused($"The schematic could not be written: {ex.Message}", circuit);
         }
 
-        report.Add(RecognitionFindingClass.SchematicWritten, 1,
+        report.Set(RecognitionFindingClass.SchematicWritten, 1,
             (checkpoint ? $"A history checkpoint (\"{RecognitionTarget.ReplaceIntent}\") was taken, then " : "") +
             $"{cellName}'s schematic was {(checkpoint ? "replaced" : "written")}: {path}.");
         return new RecognitionRun(result, circuit, model, path, cellDir, null) { CheckpointTaken = checkpoint };
@@ -291,11 +298,18 @@ public static partial class ArtworkRecognition
         RecognitionResult result, RecognitionInput input, string schematicDir, RecognitionRunOptions options)
     {
         var circuit = Emit(result, input, options.Emit);
+        // As on the board (R-dfr22-2-2): the board's own placement, drawn by the picture path's exact placement; Tidy is
+        // the main line and its hangers, exactly as before.
+        var exact = options.Emit.Arrange == ArtworkArrange.Board ? NetlistSchematic.BoardPlacement(circuit.TestBench, circuit.BoardHints) : null;
         var drawn = NetlistSchematic.Build(new Library("netlist"), circuit.TestBench, schematicDir, circuit.Hints,
-                                           artworkSides: options.Emit.ArtworkSides);
+                                           artworkSides: options.Emit.ArtworkSides, exact: exact);
         if (drawn.Schematic is not { } model)
             return (circuit, null, "The recognised circuit cannot be drawn: " + string.Join(" ", drawn.Refusals));
-        result.Report.Add(RecognitionFindingClass.DrawingNotes, drawn.Notes.Count, string.Join(" ", drawn.Notes));
+        result.Report.Set(RecognitionFindingClass.DrawingNotes, drawn.Notes.Count, string.Join(" ", drawn.Notes));
+        int fell = drawn.PlacementFallbacks.Count;
+        result.Report.Set(RecognitionFindingClass.BoardPlacementFallbacks, fell,
+            $"{string.Join(", ", drawn.PlacementFallbacks)} would land on another part where the board puts " +
+            $"{(fell == 1 ? "it, and was" : "them, and were")} arranged automatically below the drawing.");
 
         RecognitionProvenance.Apply(model, circuit);
         model.TechRef = input.TechnologyPath is { } tech ? SchematicTechnology.StoredRef(Path.GetFullPath(tech), schematicDir) : null;

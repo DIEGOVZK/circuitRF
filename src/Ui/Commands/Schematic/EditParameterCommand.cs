@@ -84,6 +84,38 @@ internal sealed class RenameNetLabelCommand : IUiCommand
     public void Undo()    { _label.Name = _oldName; _model.NotifyChanged(); }
 }
 
+/// <summary>Where a net label is: its wire anchor and its drawn point — every field a move changes.</summary>
+internal readonly record struct NetLabelPlace(
+    string OwnerWireId, int SegmentIndex, double AlongT, double OffsetX, double OffsetY, double X, double Y)
+{
+    public static NetLabelPlace Of(EditableNetLabel l) =>
+        new(l.OwnerWireId, l.SegmentIndex, l.AlongT, l.OffsetX, l.OffsetY, l.X, l.Y);
+
+    public void ApplyTo(EditableNetLabel l)
+    {
+        l.OwnerWireId  = OwnerWireId;
+        l.SegmentIndex = SegmentIndex;
+        l.AlongT       = AlongT;
+        l.OffsetX      = OffsetX;
+        l.OffsetY      = OffsetY;
+        l.X            = X;
+        l.Y            = Y;
+    }
+}
+
+/// <summary>
+/// A net label dragged in the Select tool (brief-dfr22-2 R-dfr22-2-5): re-anchored along a wire of its own net, or
+/// offset from the anchor it keeps — one undoable step. The name never changes, so neither does any net.
+/// </summary>
+internal sealed class MoveNetLabelCommand(SchematicEditModel model, EditableNetLabel label, NetLabelPlace from, NetLabelPlace to)
+    : IUiCommand
+{
+    public string Description => $"Move net label '{label.Name}'";
+
+    public void Execute() { to.ApplyTo(label); model.NotifyChanged(); }
+    public void Undo()    { from.ApplyTo(label); model.NotifyChanged(); }
+}
+
 /// <summary>
 /// Moves a net label to a new wire anchor (re-anchors + optionally renames in one undoable step).
 /// Used when the user double-clicks a different wire in the same net to reposition the label.

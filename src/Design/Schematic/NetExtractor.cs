@@ -369,7 +369,7 @@ public static class NetExtractor
         // even across physically-disjoint wires.
         var labelNetKeys = new Dictionary<EditableNetLabel, (long, long)?>();
         foreach (var lbl in model.NetLabels)
-            labelNetKeys[lbl] = FindLabelNetKey(uf, QK, gs, model, lbl.X, lbl.Y);
+            labelNetKeys[lbl] = FindLabelNetKey(uf, QK, gs, model, lbl);
 
         foreach (var grp in model.NetLabels.GroupBy(l => l.Name, StringComparer.Ordinal))
         {
@@ -1626,7 +1626,7 @@ public static class NetExtractor
         var byRoot = new Dictionary<(long, long), List<EditableNetLabel>>();
         foreach (var lbl in model.NetLabels)
         {
-            var k = FindLabelNetKey(uf, QK, gs, model, lbl.X, lbl.Y);
+            var k = FindLabelNetKey(uf, QK, gs, model, lbl);
             if (k is null || !uf.Contains(k.Value)) continue;
             var root = uf.Find(k.Value);
             if (!byRoot.TryGetValue(root, out var list)) byRoot[root] = list = [];
@@ -1663,7 +1663,7 @@ public static class NetExtractor
         foreach (var lbl in model.NetLabels)
         {
             if (exceptId is not null && lbl.Id == exceptId) continue;
-            var k = FindLabelNetKey(uf, QK, gs, model, lbl.X, lbl.Y);
+            var k = FindLabelNetKey(uf, QK, gs, model, lbl);
             if (k is null || !uf.Contains(k.Value)) continue;
             if (uf.Find(k.Value) == targetRoot) return lbl;
         }
@@ -1737,13 +1737,22 @@ public static class NetExtractor
     /// then scans wire segments with gs/2 tolerance (label placed mid-span).
     /// Returns null if the label is not on any wire or pin.
     /// </summary>
+    /// <summary>The union-find key of the node <paramref name="lbl"/> names. An anchored label names its OWNER WIRE's
+    /// node wherever it is drawn: the anchor is the source of truth for its position, and a label drawn a little off
+    /// its wire — dragged clear of a part, or left there by an edit — used to name whatever its drawn point landed on,
+    /// or nothing (brief-dfr22-2 R-dfr22-2-4, R-dfr22-2-5). An unanchored label, or one whose wire is gone, names the
+    /// node under its point.</summary>
     private static (long, long)? FindLabelNetKey(
         UnionFind uf,
         Func<double, double, (long, long)> QK,
         double gs,
         SchematicEditModel model,
-        double lx, double ly)
+        EditableNetLabel lbl)
     {
+        if (lbl.IsAnchored && model.FindWire(lbl.OwnerWireId) is { Points.Count: >= 2 } owner
+            && QK(owner.Points[0].X, owner.Points[0].Y) is var ownerKey && uf.Contains(ownerKey))
+            return ownerKey;
+        double lx = lbl.X, ly = lbl.Y;
         var lKey = QK(lx, ly);
         if (uf.Contains(lKey)) return lKey;
 

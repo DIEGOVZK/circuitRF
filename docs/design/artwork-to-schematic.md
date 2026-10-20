@@ -465,6 +465,48 @@ one main-line net are ordered by their projection on the artwork's travel there 
 and a two-pin hanger whose copper lies on the left of that travel is drawn above the line. Hints that agree with the
 default drawing change no byte of it; no hints is the default code path.
 
+#### 7.3.1 "As on the board" (brief-dfr22-2)
+
+**Arrange** (`RecognitionEmitOptions.Arrange`, `--arrange board|tidy`) picks the drawing; the circuit is the same.
+**Tidy** is the drawing above, unchanged byte for byte. **As on the board**, the default — and the default of Update
+Schematic from Layout's artwork fill, which only ever draws into an EMPTY schematic, so no part already drawn moves —
+builds an `ExactPlacement` (`NetlistSchematic.BoardPlacement`) from `RecognitionCircuit.BoardHints` (each instance's
+anchor centre, y up, and its direction: a part's `PadAxisDeg`, a line's trace direction at its centre) and draws it with
+`PlaceExact`, the schematic-picture path. No third placement algorithm:
+
+- **Scale.** One per drawing: the least that puts every pair of glyphs (labels included, `Full` boxes, centred on their
+  board points) two grid cells apart along x or y, capped so the sheet stays under 40,000 units — a via beside its pad
+  would otherwise scale it without limit. Framed on the hinted instances, so a selection-scoped recognition is placed
+  relative to the selection. y is flipped.
+- **Orientation.** A two-pin instance with a direction is turned to it to the nearest quarter turn; anything else (a
+  port, a via, a tee, a bend) is turned — and mirrored where that scores better — so each signal pin points at the board
+  position of what its net joins.
+- **Straightening.** A scaled board leaves pins a cell or two off, and the router reaches a pin only along its lead:
+  pins facing each other on one net are lined up (each instance moved once per axis, in netlist order), and a pin whose
+  lead points at a pin of its net less than two cells away (four, when the two face each other off to one side and
+  meet by a jog) has its instance moved back.
+- **Wiring** is `SchematicAutoRouter`'s (`ExactPlacement.AutoRoute`): a board's copper runs are not schematic wires, so
+  the picture path's `WireExact`, which wires along given routes, has nothing to follow. **Grounds** sit on their pins as
+  in Tidy. **Collisions** fall back per instance to the automatic rows below the drawing (`PlacementFallbacks`), and the
+  report counts them (`BoardPlacementFallbacks`).
+
+**The wire loop (R-dfr22-2-3) came from `Place`, not the router.** A chain hanging off the main line — line, line, port
+to ground — is placed by the "everything else" rows, whose cost made a shift sideways cheaper than a row further down,
+so the second link landed BESIDE the first with its upper pin barely below the pin it joins; the router, which must
+reach that pin along its lead, then came at it from above round a U. Two changes in `Place`: a series link that
+continues a chain is placed before what merely hangs from it, and a two-pin part joining a net that so far ends on one
+pin goes straight below it (a sideways shift costs ten rows); an upright part drawn beside its net's pins keeps its
+upper pin at least four cells below that net's top terminal. Tidy drawings without such a chain are unchanged.
+
+**Labels (R-dfr22-2-4).** Every label `Build` writes is anchored to a wire of its own net. Where no stretch of the net's
+wiring is clear of everything else, the label used to go on a terminal unanchored, and after an edit floated off; it now
+goes on the middle of the net's longest run. A net with no wire (unrouted) keeps its label on its terminal. Extraction
+reads an anchored label's net from its OWNER WIRE (`NetExtractor.FindLabelNetKey`), not from where it is drawn: a label
+drawn a little off its wire used to name whatever its point landed on, or nothing. That is also what lets a label be
+dragged off its wire (R-dfr22-2-5, `SchematicViewModel.NetLabelDrag.cs`, `MoveNetLabelCommand`): dropped on a wire of
+its own net it re-anchors there; on another net's wire it snaps back; clear of every wire it keeps its anchor and
+takes the drop as its offset, at most 100 units (one connection-grid cell) from it.
+
 ### 7.4 The component fields and the provenance (R-as6-4, R-as6-5)
 
 `EditableComponent.FromArtwork`, `ArtworkAnchor` (DBU points) and `ArtworkMeasured` (line Z0, Eeff, side gaps; a TLIN's
@@ -531,6 +573,16 @@ routine. A part is marked as `RailPartMarks` marks one (pads plus the placement 
 anchor is drawn as a ring that runs out and back along the centre line. Show in Artwork resolves the provenance's
 `Layout` against the schematic's folder. Messages gained expandable rows (`IMessageSink.PostItems`, default: the text
 alone), whose items act on a double-click.
+
+### 8.3.1 Create's progress, its Cancel, and the preview it reuses (brief-dfr22-2 R-7, R-8)
+
+Create runs under a `RunControl` like the preview: the same progress bar (`IsBusy`) and stage text, a Cancel on the
+bar's right-click and on the dialog's Cancel (which stops a Create in flight rather than closing), and nothing written
+when cancelled — `ArtworkRecognition.Run` checks the token after drawing and before the write. When the input Create
+would recognise equals the last completed preview's (`RecognitionInput` value equality; `RecognitionScope` compares its
+rings point for point) and the `.clay` has not been written since, Create hands that `RecognitionResult` over
+(`RecognitionRunOptions.Recognised`) and only emits and draws. The emit's and drawing's report lines are `Set`, not
+added, so a reused result does not say them twice.
 
 ### 8.4 The MoM refusal (R-as8-6)
 
@@ -767,7 +819,10 @@ recognised schematic's S11 at 2 GHz from −7.7 dB to −15.9 dB against the des
 
 - **Not modelled** (D18): coupled lines (reported, modelled uncoupled), step, gap and open-end discontinuities, case
   parasitics and the pads themselves, devices with more than two pins (cut out, D9), Klopfenstein and other curved
-  tapers (MTAPER or stepped lines). CPWG, SLIN and TLIN regions get no bend, junction or step models (D14).
+  tapers (MTAPER or stepped lines). CPWG, SLIN and TLIN regions get no bend or step models (D14). A junction of
+  grounded coplanar arms (or coplanar and microstrip mixed) is the microstrip `MTEE`/`MCROSS` with the arms' widths —
+  the nearest model, reported as such (brief-dfr22-2 R-dfr22-2-6, the owner's choice); a coplanar tee model with its
+  own externally generated reference would be a series of its own. SLIN and TLIN junctions stay plain nodes.
 - **The stackup is the user's.** A recognition is only as right as the technology it reads; an imported Gerber set's
   is a guess until corrected.
 - **Ground is a heuristic** (D6) with an override; a split ground is a separate pour and a signal island.

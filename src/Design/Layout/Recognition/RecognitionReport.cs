@@ -178,6 +178,10 @@ public enum RecognitionFindingClass
     /// <summary>Junctions with more than four arms, written as a plain node.</summary>
     JunctionsOverFourArms,
 
+    /// <summary>Coplanar (or coplanar and microstrip) junctions modelled with the microstrip tee or cross — there is no
+    /// coplanar tee model (R-dfr22-2-6).</summary>
+    CoplanarJunctionsAsMicrostrip,
+
     /// <summary>Bends, junctions and steps outside microstrip, which have no discontinuity model. Said once.</summary>
     DiscontinuitiesNotModelled,
 
@@ -204,6 +208,10 @@ public enum RecognitionFindingClass
 
     /// <summary>What the drawing does not carry or carries differently (<c>NetlistSchematic.Build</c>'s notes).</summary>
     DrawingNotes,
+
+    /// <summary>Instances drawn by the automatic arrangement because, where the board puts them, they would land on
+    /// another (R-dfr22-2-2).</summary>
+    BoardPlacementFallbacks,
 
     /// <summary>Where the schematic was written, and the history checkpoint taken before a replace.</summary>
     SchematicWritten,
@@ -353,6 +361,14 @@ public sealed class RecognitionReport
     {
         if (count <= 0) return;
         _findings.Add(new RecognitionFinding(cls, count, sentence, anchors ?? []));
+    }
+
+    /// <summary><see cref="Add"/>, replacing any finding of <paramref name="cls"/> already made — for what is said of the
+    /// emit and the drawing, which a recognition reused by Create (R-dfr22-2-8) has already been through once.</summary>
+    internal void Set(RecognitionFindingClass cls, int count, string sentence, IReadOnlyList<RecognitionAnchor>? anchors = null)
+    {
+        _findings.RemoveAll(f => f.Class == cls);
+        Add(cls, count, sentence, anchors);
     }
 
     /// <summary>One line per class — the CLI's stderr form.</summary>

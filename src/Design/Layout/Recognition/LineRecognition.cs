@@ -116,6 +116,7 @@ public static class LineRecognition
         // ── 3. the junctions ─────────────────────────────────────────────────────────────────────────
         var junctionElements = new List<LineDraft>();
         var plainJunctions = new List<(TraceJunction Junction, string Why)>();
+        var coplanarJunctions = new List<TraceJunction>();
         var continuations = new List<(TraceJunction Junction, JunctionArm A, JunctionArm B)>();
         var resolved = new HashSet<(TraceLines, bool)>();
         var byId = traces.ToDictionary(t => t.Run.Id);
@@ -134,6 +135,7 @@ public static class LineRecognition
             var reading = LineJunctions.Resolve(junction, arms);
             if (reading.Element is { } e) junctionElements.Add(e);
             if (reading.Plain is { } why) plainJunctions.Add((junction, why));
+            if (reading.Coplanar) coplanarJunctions.Add(junction);
             if (arms.Count == 2) continuations.Add((junction, arms[0], arms[1]));
         }
 
@@ -369,7 +371,7 @@ public static class LineRecognition
 
         // ── 7. coupled pairs, and the report ──────────────────────────────────────────────────────────
         var coupled = CoupledPairs(elements, ctx.TopFrequencyHz, dbu);
-        Report(result, report, options, counts, plainJunctions, openEnds, absorbed, coupled, fmt);
+        Report(result, report, options, counts, plainJunctions, coplanarJunctions, openEnds, absorbed, coupled, fmt);
         return result;
     }
 
@@ -500,7 +502,7 @@ public static class LineRecognition
 
     private static void Report(
         LineRecognitionResult result, RecognitionReport report, RecognitionOptions options, SegmentationCounts counts,
-        List<(TraceJunction Junction, string Why)> plain, List<(string Node, ChainEnd End)> openEnds,
+        List<(TraceJunction Junction, string Why)> plain, List<TraceJunction> coplanar, List<(string Node, ChainEnd End)> openEnds,
         List<(long X, long Y)> absorbed, List<(LineElement A, LineElement B, (long X, long Y) At)> coupled,
         RailLengthFormat fmt)
     {
@@ -540,6 +542,12 @@ public static class LineRecognition
         report.Add(RecognitionFindingClass.JunctionsOverFourArms, many.Count,
             $"{Plural(many.Count, "junction has", "junctions have")} more than four arms and {(many.Count == 1 ? "is" : "are")} a plain node.",
             [.. many.Select(p => new RecognitionAnchor(p.Junction.X, p.Junction.Y, p.Junction.Layer))]);
+
+        // R-dfr22-2-6: there is no coplanar tee model, so a coplanar junction is the microstrip tee or cross.
+        report.Add(RecognitionFindingClass.CoplanarJunctionsAsMicrostrip, coplanar.Count,
+            $"{Plural(coplanar.Count, "coplanar junction is", "coplanar junctions are")} modelled with the microstrip tee or cross " +
+            "(no coplanar tee model), with the arms' widths.",
+            [.. coplanar.Select(j => new RecognitionAnchor(j.X, j.Y, j.Layer))]);
 
         int bends = counts.UnmodelledBends.Count, steps = counts.UnmodelledSteps.Count;
         var notMs = plain.Where(p => p.Why == LineJunctions.NotMicrostrip).ToList();
