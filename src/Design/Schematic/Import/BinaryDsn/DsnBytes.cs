@@ -102,7 +102,7 @@ internal sealed class DsnBytes(byte[] bytes, string stream, EdifText text)
         var pairs = new List<(int, int)>();
         while (Pos < end && Bytes[Pos] == t)
         {
-            if (FinalPrefixAt(Pos, end) is { } n)
+            if (FinalPrefixAt(Pos, end) is { } n && !SizedChainEndsSooner(Pos, end, Pos + 3 + 8L * n))
             {
                 Pos += 3;
                 for (int i = 0; i < n; i++) pairs.Add(((int)U32(), (int)U32()));
@@ -118,6 +118,32 @@ internal sealed class DsnBytes(byte[] bytes, string stream, EdifText text)
             break;
         }
         return (end, t, pairs);
+    }
+
+    /// <summary>A sized prefix at <paramref name="at"/> (type, u32 size, u32 0, inside the record), or false.</summary>
+    private bool SizedPrefixAt(int at, int end) =>
+        at + 9 <= end && BinaryPrimitives.ReadUInt32LittleEndian(Bytes.AsSpan(at + 5)) == 0
+        && at + 9 + (long)BinaryPrimitives.ReadUInt32LittleEndian(Bytes.AsSpan(at + 1)) <= end;
+
+    /// <summary>
+    /// Whether the bytes at <paramref name="at"/> also read as a SIZED prefix whose chain reaches a final prefix ending
+    /// before <paramref name="finalMagicAt"/> — in which case that nearer one is the header's real end.
+    ///
+    /// <para>A sized prefix <c>0D 2B 00 00 00 00 00 00 00</c> also reads as a final prefix claiming 0x2B pairs, and on one
+    /// field design a pin record's own end marker sat exactly 43 × 8 bytes on: the header swallowed the part's body and
+    /// the page read as running 39,889 bytes past its end. The real header ends at the NEAREST marker, so the reading
+    /// whose final prefix closes first is the one taken.</para>
+    /// </summary>
+    private bool SizedChainEndsSooner(int at, int end, long finalMagicAt)
+    {
+        if (!SizedPrefixAt(at, end)) return false;
+        byte t = Bytes[at];
+        for (int p = at + 9; p < end && Bytes[p] == t; p += 9)
+        {
+            if (FinalPrefixAt(p, end) is { } n) return p + 3 + 8L * n < finalMagicAt;
+            if (!SizedPrefixAt(p, end)) return false;
+        }
+        return false;
     }
 
     /// <summary>The pair count of a final prefix at <paramref name="at"/>, or null when there is none.</summary>

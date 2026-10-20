@@ -120,4 +120,61 @@ public sealed class BinaryDsnReaderTests : IDisposable
         Assert.Equal([(20, 10), (10, 17), (10, 3), (20, 10)], triangle.Points);
         Assert.Equal([(18, 1), (19, 8)], Assert.IsType<DsnPolyline>(symbol.Graphics[2]).Points);
     }
+
+    private static readonly byte[] Magic = [0xFF, 0xE4, 0x5C, 0x39];
+
+    /// <summary>
+    /// A sized prefix <c>0D 2B 00 00 00 00 00 00 00</c> also reads as a final prefix claiming 0x2B pairs, and a pin's own end
+    /// marker can sit exactly 43 × 8 bytes on. The header ends at the NEAREST final prefix: the record's one real pair is
+    /// read and its body starts after it (a field design's part read past its page's end before this).
+    /// </summary>
+    [Fact]
+    public void ARecordHeader_EndsAtTheNearestFinalPrefix_WhenASizedPrefixAlsoReadsAsOne()
+    {
+        var b = new List<byte>();
+        void U32(int v) => b.AddRange(BitConverter.GetBytes(v));
+        b.Add(0x0D); U32(0); U32(0);                       // outer sized prefix; size patched below
+        b.Add(0x0D); U32(0x2B); U32(0);                    // a sized prefix that also reads as "43 pairs"
+        b.Add(0x0D); b.AddRange([1, 0]); U32(7); U32(8); b.AddRange(Magic);   // the real final prefix: one pair
+        int body = b.Count;
+        while (b.Count < 9 + 3 + 8 * 0x2B) b.Add(0x10);
+        b.AddRange(Magic);                                 // a pin record's marker, where "43 pairs" would end
+        b.AddRange(new byte[16]);
+        var bytes = b.ToArray();
+        BitConverter.GetBytes(bytes.Length - 9).CopyTo(bytes, 1);
+
+        var r = new DsnBytes(bytes, "test", new EdifText(1252));
+        var (_, _, pairs) = r.Record(0x0D);
+
+        Assert.Equal([(7, 8)], pairs);
+        Assert.Equal(body, r.Pos);
+    }
+
+    /// <summary>The Hierarchy stream's occurrence records give each placed part the reference the design SHOWS, keyed by
+    /// instance id: after the end marker and a counted block (empty, or a part's 37-byte display block), u32, the id, and
+    /// the reference 16 bytes on. An empty reference, and an id met twice, give nothing.</summary>
+    [Fact]
+    public void TheHierarchyStream_GivesEachInstanceTheReferenceTheDesignShows()
+    {
+        var b = new List<byte>();
+        void U32(int v) => b.AddRange(BitConverter.GetBytes(v));
+        void Occurrence(int id, string reference, int block = 0)
+        {
+            b.AddRange([0x42, 0, 0]); b.AddRange(Magic);
+            U32(block); b.AddRange(new byte[block]);
+            U32(4000);                                     // the record's own id
+            U32(id);
+            b.Add(0x42); U32(0x7E); U32(0); b.AddRange(new byte[3]);   // nested prefix and 3 bytes
+            b.AddRange(BitConverter.GetBytes((ushort)reference.Length)); b.AddRange(Encoding.ASCII.GetBytes(reference)); b.Add(0);
+        }
+        Occurrence(0x12B684, "Y1");
+        Occurrence(0x10B9E5, "TP115", block: 37);
+        Occurrence(0x189710, "");                          // keeps its page reference
+        Occurrence(0x0C2F89, "C5");
+        Occurrence(0x0C2F89, "C6");                        // placed twice: not used
+
+        var shown = DsnOccurrences.Read([.. b], new EdifText(1252));
+
+        Assert.Equal(new Dictionary<uint, string> { [0x12B684] = "Y1", [0x10B9E5] = "TP115" }, shown);
+    }
 }

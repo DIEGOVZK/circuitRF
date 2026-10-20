@@ -34,6 +34,10 @@ internal sealed record DsnPart(
 {
     /// <summary>The fields the page shows for this part, each where it is drawn relative to <see cref="Position"/>.</summary>
     public IReadOnlyList<DsnDisplayProp> Display { get; init; } = [];
+
+    /// <summary>The part's instance id (version 3): what the schematic's Hierarchy stream keys its displayed reference on
+    /// (<see cref="DsnOccurrences"/>). 0 when not read.</summary>
+    public uint InstanceId { get; init; }
 }
 
 /// <summary>A ground, power or off-page symbol: its symbol's name, the net it names (a string index), where it is, and the

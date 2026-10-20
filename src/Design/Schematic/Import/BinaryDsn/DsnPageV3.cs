@@ -123,7 +123,7 @@ internal static class DsnPageV3
 
     /// <summary>
     /// 0x0D with the instance's (name, value) property pairs in its header; body: the counted block (37 bytes on most
-    /// parts, holding "1 9 Reference 0 0  0  "; empty on some), two u32s, the symbol NAME, u32 instance, 8 bytes, x y (i16), colour, ROTATION (as version 2), 2 bytes,
+    /// parts, holding "1 9 Reference 0 0  0  "; empty on some), two u32s, the symbol NAME, u32 INSTANCE id (DsnOccurrences), 8 bytes, x y (i16), colour, ROTATION (as version 2), 2 bytes,
     /// display-property records, a byte, the REFERENCE, u32 VALUE (string index), 8 bytes, u16, u16 pin count, the pin
     /// records (the counted block, u16 index, x y (i16), u32 WIRE, …), the source part's name, u16 UNIT (0-based).
     /// </summary>
@@ -133,7 +133,7 @@ internal static class DsnPageV3
         r.SkipBlob();
         r.Skip(8);
         string symbol = r.Str();
-        r.U32();
+        uint instance = r.U32();
         r.Skip(8);
         var pos = ((int)r.I16(), (int)r.I16());
         r.U8();
@@ -152,7 +152,11 @@ internal static class DsnPageV3
         {
             var (pinEnd, _, _) = r.Record(0x10);
             r.SkipBlob();
-            int index = r.U16();
+            // Some pins store their index NEGATED (−24 for pin 24): on one field design, 20 pins of six parts, the
+            // negative ones exactly the numbers missing from each part's list, most with no wire (a no-connect mark is
+            // the likely flag) and one wired. Read as an unsigned number, pin 24 became pin 65512, on no symbol pin,
+            // and the file's declared nets disagreed with its own drawing.
+            int index = Math.Abs((int)r.I16());
             var at = ((int)r.I16(), (int)r.I16());
             uint wire = r.U32();
             pins.Add(new DsnPlacedPin(index, at, wire));
@@ -161,7 +165,11 @@ internal static class DsnPageV3
         r.Str();                                 // the source part's name
         int unit = r.U16();
         r.Pos = end;
-        return new DsnPart(reference, symbol, value, pairs, pos, rot & 3, (rot & 4) != 0, pins, unit + 1) { Display = display };
+        return new DsnPart(reference, symbol, value, pairs, pos, rot & 3, (rot & 4) != 0, pins, unit + 1)
+        {
+            Display = display,
+            InstanceId = instance,
+        };
     }
 
     /// <summary>

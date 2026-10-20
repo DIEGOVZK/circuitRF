@@ -98,7 +98,21 @@ public static class BinaryDsnReader
                     var stream = new DsnBytes(bytes.Bytes!, entry.Path, text);
                     pages.Add(library.Major >= 3 ? DsnPageV3.Read(stream, cache) : DsnPageV2.Read(stream));
                 }
-                schematics.Add(new DsnSchematic(storage.Name, pages));
+                int reannotated = 0;
+                if (library.Major >= 3 && cfb.Streams.FirstOrDefault(s => s.Path == storage.Path + "/Hierarchy/Hierarchy") is { } hier
+                    && cfb.ReadStream(hier) is { Ok: true } hierBytes)
+                {
+                    var shown = DsnOccurrences.Read(hierBytes.Bytes!, text);
+                    for (int i = 0; i < pages.Count; i++)
+                    {
+                        var parts = pages[i].Parts.Select(part =>
+                            shown.TryGetValue(part.InstanceId, out var reference) && reference != part.Reference
+                                ? part with { Reference = reference } : part).ToList();
+                        reannotated += parts.Where((part, k) => !ReferenceEquals(part, pages[i].Parts[k])).Count();
+                        pages[i] = pages[i] with { Parts = parts };
+                    }
+                }
+                schematics.Add(new DsnSchematic(storage.Name, pages) { Reannotated = reannotated });
             }
             if (schematics.All(s => s.Pages.Count == 0))
                 return Refused($"{file}'s schematic{(schematics.Count == 1 ? " has" : "s have")} no pages.");
@@ -119,7 +133,11 @@ public static class BinaryDsnReader
     private static ForeignSchematicRead Refused(string why) => new(null, why);
 
     /// <summary>One schematic of the design (a <c>Views/</c> storage) and its pages, in the order the container lists them.</summary>
-    private sealed record DsnSchematic(string Name, IReadOnlyList<DsnPage> Pages);
+    private sealed record DsnSchematic(string Name, IReadOnlyList<DsnPage> Pages)
+    {
+        /// <summary>Parts whose page reference differs from the one the design shows, and took that one (DsnOccurrences).</summary>
+        public int Reannotated { get; init; }
+    }
 
     /// <summary>
     /// The root of a hierarchy: the one schematic no block places — or, when several are placed by none (left-over
@@ -147,6 +165,8 @@ public static class BinaryDsnReader
                                           DsnSchematic root, EdifText text)
     {
         var notes = new List<string>();
+        if (schematics.Sum(s => s.Reannotated) is var renamed and > 0)
+            notes.Add($"{renamed} part(s) take the reference the design shows, from its annotation, not the one stored on their page.");
         var symbols = new Dictionary<string, ForeignSymbol>(StringComparer.OrdinalIgnoreCase);
         // A hierarchy is one sheet per schematic, its pages tiled left to right in it, the root first; a flat design one sheet
         // per page, which the build tiles.

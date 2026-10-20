@@ -21141,3 +21141,25 @@ every pole of a ladder scales by the one factor, and a model that does not self-
 messages and the docs. Old files still open: the factory and the elaborator compare the keyword ignoring case, and
 System.Text.Json reads the `.csch` symbol enum ignoring case (`ComposedFetSymbolTests.ASchematicSavedAsComposedFet_StillOpens`).
 C# identifiers (`ComposedFetSymbolProvider`, `ComposedFetTypeName`) are unchanged.
+
+## Binary .DSN 3.2: a header misread, page references that are not the shown ones, negated pin numbers (2026-10-20)
+
+A field design of nine pages was refused ("the 04_… stream … ends 39,889 byte(s) early"). Three separate facts, all now
+read; it imports with connectivity matching both its drawing and its declared nets, and the corpus is unchanged.
+
+- **Record headers end at the NEAREST final prefix.** A sized prefix `0D 2B 00 00 00 00 00 00 00` also reads as a final
+  prefix claiming 0x2B pairs, and on this design a pin record's own `FF E4 5C 39` sat exactly 43 × 8 bytes on. `Record()`
+  took the final reading first, swallowed the part body, and the rest of the page was garbage. When both readings are
+  valid, the one whose chain closes first wins (`DsnBytes.SizedChainEndsSooner`).
+- **The reference a page record stores is not always the one the design shows.** The editor annotates per occurrence in
+  `Views/<schematic>/Hierarchy/Hierarchy`, keyed by the part's instance id — the u32 after the symbol name in the page
+  record. Parts copied between pages keep their old page reference; only the occurrence is re-annotated. Here 302 of
+  308 parts differed, three pages' worth came out as duplicates (62 renames) and were joined as units of one part.
+  `DsnOccurrences` reads the occurrence reference: after the end marker and a counted block (empty, or the 37-byte
+  display block), u32, the instance id, and the string 16 bytes after the id. An empty string keeps the page reference;
+  an id met twice (a schematic placed twice in a hierarchy) is not used. Checked against the design's own PDF by
+  position: every one tried was the reference printed there.
+- **Some pins store their number negated** (−24 for pin 24; 20 pins on six parts, exactly the numbers missing from each
+  part's list, most with no wire — a no-connect mark is the likely flag). Read unsigned, pin 24 was pin 65512 and the
+  declared nets disagreed with the drawing. The magnitude is the pin.
+- Multi-unit parts still import one instance per unit (`U1`, `U1_2`), as before.
