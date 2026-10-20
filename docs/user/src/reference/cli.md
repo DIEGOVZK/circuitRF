@@ -127,6 +127,7 @@ convention behind both.</p>
 | `yield corners` | `.csch` or `.cnl` | The design at every enabled corner, or a Monte Carlo at each (`--mc`) | A corner × goal margin table to stdout; the corners to `<design>.corners.npy`; **nothing** in the design (`--generate … --write` on a `.csch`) |
 | `yield center` | `.csch` or `.cnl` | Design centering — the [Yield](yield.html#centering) panel's Centering run | The verified start and centred yields and the centred values to stdout; the verification to `<design>.yield.npy`; **nothing** in the design (`--save-preset` adds a preset) |
 | `yield doe` | `.csch` or `.cnl` | A design of experiments over the optimizer's or the tolerances' values | Each response's effects to stdout; the runs to `<design>.doe.npy`; **nothing** in the design |
+| `model new`, `import`, `deembed`, `fit`, `check-charge`, `explain`, `export`, `validate`, `report` | a `.cmc` | The [Model Composer](#model)'s steps — the same functions its window calls | The `.cmc`, its cache, a `.cmodel` or a cell, a report folder — as the noun says |
 | `rail` | `.crail` | The same DC solve and via check [railRF](railrf.html)'s **Run** button calls | The ports, the ranked breakdown and the via check to stdout; `-o .csv/.npy/.mat/.txt/.svg/.pdf` |
 | `smith` | `.csmith` | The same cascade evaluator the Smith Chart window walks on every edit | The reading and the per-node table to stdout; `-o .s1p` for the load Γ, `-o .svg/.pdf/.png` for the chart |
 | `lvs` | a cell folder, a workspace, a `.clay` or a `.csch` | The same comparison the [LVS panel](lvs.html)'s **Compare** button calls | **Nothing** — the report to stdout; `-o report.txt` |
@@ -878,6 +879,44 @@ estimated from the small ones is starred; an effect a fractional design cannot t
 
 It writes `<design>.doe.npy` and nothing in the design. There is no target, so the exit codes are **0**, **1**, **2**
 and **130**. Over MCP it is `run analysis=doe`.
+
+## `model` — the Model Composer, headless {#model}
+
+```
+circuitrf model <noun> <doc.cmc> [flags]
+```
+
+Builds a FET model (`.cmodel`) or a passive cell from measured or simulated data, step by step, through the same
+functions the Model Composer window calls — so a document worked on here and opened in the window holds the same
+bytes. Each noun prints one line per item on stdout (`--json` gives the same lines as `result.model.items`, each with
+what it is about), progress on stderr. The formats are in [File Formats](file-formats.html#cmc), and as
+`circuitrf reference cmc` and `reference cmodel`.
+
+| Noun | What it does |
+|---|---|
+| `new <doc.cmc> --kind active\|passive` | Creates the document. Active: `--network` a stock network (`gan-two-shell`, `classic-shell`, `series-only`, copied beside the document) or a six-pin `.csch`; `--fingers N0 --unit-width W0` (`"125 um"`), the measured device's periphery. |
+| `import <doc.cmc> <source…> --as <kind>` | Adds a data set — `DcIv`, `PulsedIv`, `SParams`, `PulsedSParams`, `SimulatedTables`, `LargeSignal` or `PassiveSParams` — and imports it. A folder is every file in it. `--pattern` reads a Touchstone set's bias from its file names (`--pattern-source comment` from its comments); `--map` says what a CSV column (`Vg=vgs:V`) or an array (`vg=vgs`) holds; `--condition Key=Value` sets a measurement condition (`ReferencePlane=device`, `AmbientC=25`, `Quiescent.Vds=28`); `--name`, `--format`, `--no-header`, `--delimiter`, `--z0`, `--freq`. |
+| `deembed <doc.cmc>` | Removes the pads and the network: a line for each, then a line per data set of its intrinsic bias ranges. |
+| `fit <doc.cmc> --step <step>` | `network`, `thermal`, `current`, `traps`, `charge`, `passive`, or `all` — every step the document needs, in order. The document's own settings, with `--method` (the step's method: `MultiBias`, `ANN`, `Table`, `Equation`, a trap model), `--seed n` and, for a passive document, `--topology` written into them first. To change anything else, edit the step's `Settings` in the `.cmc` and fit again. |
+| `check-charge <doc.cmc>` | Checks the fitted charges conserve charge. Also `<design.cnl> --device X1 --bias vgs,vds`, for any device in a netlist (`--region` adds the capacitance check over a rectangle). Exit **3** when the spurious DC at the gate is above `--threshold` (default 0.1 % of the fundamental gate current). |
+| `explain <doc.cmc>` | The data sets and their planes, the intrinsic ranges, N0 and W0, the temperature mode, each step as fresh, stale or absent, every network value with its error and whether it is poorly determined, and the levels each trap state was trained from. Fits nothing. |
+| `export <doc.cmc> -o <out.cmodel>` | Writes the model; `--symbol` names the symbol. A passive document exports as a cell: `--cell <workspace> <name>`. |
+| `validate <doc.cmc>` | Compares the document's current model — or `--model x.cmodel` (or a `.cmodel` with `--cmc doc.cmc`) — with its data, at the measurement plane. `--against set,set`, `--tolerance S95=0.02`. Exit **3** when a tolerance is missed. |
+| `report <doc.cmc>` | Writes the Model Validation Report folder (`-o`, default `<name>-report` beside the document): `report.npy`, `summary.txt` and every testbench it ran. `--model`, `--sections`, `--classes B,J,F,FInverse`, `--freq`, `--bias vgs,vds`, `--source-2f0 re,im`, `--ropt`, `--disc radius,rings,spokes`, `--pin start,step,max` and `--compression` override the options the document stores. |
+
+A choice the window would ask you for is refused, naming the flag that answers it: a Touchstone import with no
+`--pattern`, a fit of an Active document with no N0 (`--fingers`), an export with no `-o`.
+
+<pre><code class="cmd"><span class="prompt">$ </span>circuitrf model new fet.cmc --kind active --network gan-two-shell --fingers 4 --unit-width "125 um"
+<span class="prompt">$ </span>circuitrf model import fet.cmc sparams --as SParams --pattern "Vgs{vgs}_Vds{vds}_Id{id:mA}" --condition ReferencePlane=device
+<span class="prompt">$ </span>circuitrf model import fet.cmc dc.csv --as DcIv --map Vgs=vgs:V --map Vds=vds:V --map Ig=ig:A --map Id=id:A
+<span class="prompt">$ </span>circuitrf model fit fet.cmc --step all --seed 1
+<span class="prompt">$ </span>circuitrf model export fet.cmc -o fet.cmodel</code></pre>
+
+Then place it — `ComposedFet:X1 g d 0 File=fet.cmodel` — and run it like any device.
+
+Exit **0** done; **1** refused; **3** finished, but a check failed; **130** cancelled, with nothing written. `fit --step
+all` keeps the steps that finished before a cancellation. Over MCP it is the `model` tool, one mode per noun.
 
 ## `rail` — power integrity, headless {#rail}
 
@@ -3007,6 +3046,7 @@ the same documents.
 | `find` | `find` — the workspaces, cells, views and analyses under a directory |
 | `lvs` | [`lvs`](#lvs) — does a cell's artwork implement its schematic |
 | `impedance` | [`impedance`](#impedance) — every trace on a layout against a target Z0, and its return path |
+| `model` | [`model`](#model) — the Model Composer's nouns, chosen by `noun` |
 | `history` | [`history checkpoint`, `list` or `restore`](history.html) — the correction nouns (`rename`, `retitle`, `correct`, `review`) are on the verb but not on this server |
 | `reference` | `reference` |
 | `batch` | The **only** tool with no verb behind it: it holds a restore-point batch open across several calls, which a process that exits after one command cannot |
@@ -3144,7 +3184,7 @@ would.
 | **0** | Ran, and produced something usable |
 | **1** | Could not run — bad arguments, a missing file, no matching analysis, a refusal, an exception |
 | **2** | Ran, but did not converge |
-| **3** | `opt` only: finished, with at least one goal unmet |
+| **3** | Finished, but a check failed: an `opt` goal unmet, a `yield` below its target, a `model check-charge` above its threshold or a `model validate` tolerance missed |
 | **130** | Stopped — a run cancelled at a work boundary, by `em`'s own stop or by a `serve` client's cancellation |
 
 **`2` is deliberately not the same test for every verb.** `hb` and `dc` fail on any non-converged

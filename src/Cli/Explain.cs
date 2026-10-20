@@ -1163,6 +1163,18 @@ internal static class Explain
             ? Path.GetFullPath(path)
             : Path.GetDirectoryName(Path.GetFullPath(path))!;
 
+        // A ComposedFet's model file resolves by the elaborator's own rule (brief-modelcomposer-13 R-mc13-5), never by the
+        // cell walk: a .cmodel is a file, and the walk would answer a question elaboration never asks.
+        if (reference.EndsWith(".cmodel", StringComparison.OrdinalIgnoreCase))
+        {
+            string model = CircuitRF.Core.Elaboration.Elaborator.ResolveFileReference(reference.Trim('"'), from);
+            string? root = WorkspaceRootFinder.FindAncestorCws(from) is { } ws ? Path.GetDirectoryName(ws) : null;
+            bool exists = File.Exists(model);
+            int code = exists ? 0 : JsonRun.Fail(CliDiagnostics.ExplainRefFileNotFound(reference, model));
+            return (new ExplainReferenceJson(reference, from, model, exists ? "resolved" : "not-found",
+                root is null ? null : WorkspaceRootFinder.IsOutside(model, root), null), code);
+        }
+
         var res = CellSymbolResolver.Resolve(reference, from);
         string? resolved = ExternalCellRef.ResolveCellDir(reference, from);
 

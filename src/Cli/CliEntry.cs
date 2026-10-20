@@ -199,6 +199,9 @@ return JsonRun.Finish(Dispatch(JsonRun.Verb) is { } run ? run(args[1..]) : Unkno
     // src/Design/Statistics' StatisticalRun, the object the Yield panel drives, and it writes nothing to the
     // design's values but the two opt-in writes.
     "yield"  => CircuitRF.Cli.Yield.Run,
+    // The Model Composer, headless (brief-modelcomposer-13): ONE verb with nouns. It owns no modelling — every noun calls
+    // the src/Design/Modeling function the window's command calls, so both write the same bytes.
+    "model"  => CircuitRF.Cli.Model.Run,
     // The whole railRF window, with no display (brief-railrf-10-cli-verb.md). It owns no analysis:
     // every number comes out of src/Design/RailRf and every pixel out of CircuitRF.Render, which is
     // what lets a BOARD be gated in CI rather than only looked at (railrf.md §5).
@@ -2505,6 +2508,8 @@ static int PrintHelp()
     Console.WriteLine("  em     <file.cem>   (electromagnetic extraction of the layout it names)");
     Console.WriteLine("  opt    <file.cnl|.csch>   (optimize: the tune, goal and optimize lines; exit 3 = a goal unmet)");
     Console.WriteLine("  yield  mc|estimate|trial <file.cnl|.csch>   (Monte Carlo / yield; exit 3 = below --target)");
+    Console.WriteLine("  model  new|import|deembed|fit|check-charge|explain|export|validate|report <file.cmc>");
+    Console.WriteLine("           (the Model Composer: a FET model or a passive cell from data; exit 3 = a check failed)");
     Console.WriteLine("  rail   <file.crail> (railRF: the DC drop, the ranked breakdown, the vias)");
     Console.WriteLine("  smith  <file.csmith> (the matching cascade: the reading, and the walk node by node)");
     Console.WriteLine("  elab   <file.cnl|.csch>   (dump elaborated netlist)");

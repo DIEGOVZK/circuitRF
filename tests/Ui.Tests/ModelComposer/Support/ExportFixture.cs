@@ -76,7 +76,7 @@ public static class ExportFixture
 
     private static string F(double v) => v.ToString("0.###", CultureInfo.InvariantCulture);
 
-    private static string Touchstone(NormalisedData s, int p)
+    internal static string Touchstone(NormalisedData s, int p)
     {
         var sb = new StringBuilder("# Hz S RI R 50\n");
         for (int k = 0; k < s.FrequenciesHz!.Length; k++)

@@ -287,6 +287,14 @@ internal sealed class McpServer
                 "connect/disconnect=x,y to flip a schematic crossing, imageKind if the kind is wrong — or write the .cnl " +
                 "yourself. 3. recognize into=new:<name> (or output=<x.cnl>). 4. run analysis=sparam. convert path=<.png> " +
                 "output=<dir|x.gds> traces a layout picture without recognising it.\n" +
+                // brief-modelcomposer-13 R-mc13-6: a FET model from measured data, in the order the window's step rail runs.
+                "Model Composer: 1. model noun=new path=<f.cmc> kind=active network=gan-two-shell fingers=<N0> " +
+                "unitWidth=\"125 um\". 2. model noun=import path=<f.cmc> source=<folder> as=SParams pattern=Vgs{vgs}_Vds{vds} " +
+                "condition=[ReferencePlane=device, AmbientC=25] (a CSV: as=DcIv map=[Vg=vgs:V, Id=id:mA]). 3. model " +
+                "noun=deembed -> one line of intrinsic data per set. 4. model noun=fit step=all seed=1 (edit the .cmc's " +
+                "Steps.<Step>.Settings first to change a step; 'reference cmc'). 5. model noun=check-charge -> exit 3 above " +
+                "threshold. 6. model noun=export output=<f.cmodel>. 7. model noun=validate -> exit 3 when a tolerance is " +
+                "missed. Place it as ComposedFet:X1 g d s File=<f.cmodel> in a .cnl and run analysis=hb.\n" +
                 "On an instance line the NETS come first and every 'Key=value' after them; how many " +
                 "nets each type takes is the 'nets' field of reference components, which is not the " +
                 "same number as its symbol's pin count; 'reference component-index' lists every type " +

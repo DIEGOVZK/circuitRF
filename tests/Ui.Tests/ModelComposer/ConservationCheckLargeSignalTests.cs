@@ -44,7 +44,7 @@ public sealed class ConservationCheckLargeSignalTests(ITestOutputHelper output)
     /// (nodes a, b) carry dv/dt × 1e-10 (KCL there: 10 mS·v3 = 1 pF·dv1/dt), scaled so their currents are milliamps — a
     /// 1 F charge there would make them ~1e9 A and floor the HB residual at ~1e-6 A.
     /// </summary>
-    private static string CapacitanceDevice =>
+    internal static string CapacitanceDevice =>
         $"SDD:X1 g 0 d 0 a 0 b 0 I[1,0]=({Sdd(ComposedTestModels.IgGsEq)})+({Sdd(ComposedTestModels.IgGdEq)})" +
         "+(C0+C1+Cx*tanh(_v2))*1e10*_v3-C1*1e10*_v4 " +
         $"I[2,0]=({Sdd(ComposedTestModels.IdEq)})-({Sdd(ComposedTestModels.IgGdEq)}) I[2,1]={Sdd(ComposedTestModels.QdEq)} " +

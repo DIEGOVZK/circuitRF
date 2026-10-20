@@ -242,6 +242,10 @@ public static class ModelValidationReport
         return new ModelReport(validation.ModelPath, sections);
     }
 
+    /// <summary>Where a report is written when no folder is named: <c>&lt;name&gt;-report/</c> beside the <c>.cmc</c>.</summary>
+    public static string DefaultFolder(string cmcPath) =>
+        Path.Combine(Path.GetDirectoryName(Path.GetFullPath(cmcPath))!, Path.GetFileNameWithoutExtension(cmcPath) + "-report");
+
     /// <summary>
     /// Writes <paramref name="report"/> into <paramref name="folder"/>: <c>report.npy</c> (one group per section),
     /// <c>summary.txt</c> and <c>testbenches/</c>. Written into a sibling folder and swapped in, so a failure leaves the

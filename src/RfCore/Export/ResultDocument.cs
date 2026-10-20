@@ -180,7 +180,31 @@ namespace RfCore.Export
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         StepImportReportJson? StepImport = null,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        ConvertImageJson? Convert = null);
+        ConvertImageJson? Convert = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        ModelReportJson? Model = null);
+
+    /// <summary>What a <c>model</c> noun did (brief-modelcomposer-13 R-mc13-3): the same lines stdout carries, one item
+    /// each, with what each is about.</summary>
+    /// <param name="Noun"><c>new</c>, <c>import</c>, <c>deembed</c>, <c>fit</c>, <c>check-charge</c>, <c>explain</c>,
+    /// <c>export</c>, <c>validate</c> or <c>report</c>.</param>
+    /// <param name="Document">The <c>.cmc</c> (or <c>.cnl</c>, <c>.cmodel</c>) the noun read.</param>
+    public sealed record ModelReportJson(string Noun, string Document, IReadOnlyList<ModelItemJson> Items);
+
+    /// <summary>One line of a <c>model</c> report.</summary>
+    /// <param name="Kind">What the line is about: <c>document</c>, <c>dataSet</c>, <c>step</c>, <c>check</c>,
+    /// <c>validation</c>, <c>networkValue</c>, … .</param>
+    /// <param name="Name">Which one — a data set, a step, a variable; empty when the kind says enough.</param>
+    /// <param name="Passed">A check or a validation item: whether it passed.</param>
+    /// <param name="Values">A check's numbers, by name.</param>
+    public sealed record ModelItemJson(
+        string Kind,
+        string Name,
+        string Line,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        bool? Passed = null,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        IReadOnlyDictionary<string, double>? Values = null);
 
     /// <summary>What <c>convert</c> read off a picture (brief-img-11 R-im11-4): <c>recognize</c>'s <c>image</c>,
     /// <c>scale</c> and <c>layers</c>, the same three objects.</summary>

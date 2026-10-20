@@ -1669,6 +1669,12 @@ internal static class CliDiagnostics
 
     /// <summary>A relative reference that resolved to nothing. Names what was looked for and the
     /// directory it was looked in (R-aut4-8).</summary>
+    /// <summary>A file reference (a ComposedFet's <c>.cmodel</c>) that resolves, by elaboration's rule, to no file.</summary>
+    public static Diagnostic ExplainRefFileNotFound(string reference, string resolved) => Diagnostic.Create(
+        "explain.ref.file-not-found", DiagnosticSeverity.Error,
+        "'{reference}' resolves to '{resolved}', which does not exist.",
+        ("reference", reference), ("resolved", resolved));
+
     public static Diagnostic ExplainRefNotFound(string reference, string from) => Diagnostic.Create(
         "explain.ref.not-found", DiagnosticSeverity.Error,
         "'{reference}' resolves to no cell folder from '{from}'.",
@@ -4339,6 +4345,59 @@ internal static class CliDiagnostics
     public static Diagnostic YieldCancelled() => Diagnostic.Create(
         "cli.yield.cancelled", DiagnosticSeverity.Error,
         "yield: cancelled — nothing was written.");
+
+    // ── model (brief-modelcomposer-13) ──────────────────────────────────────────
+    //
+    // The verb's own refusals: a noun, a flag, a missing argument. What the Model Composer itself refuses arrives as one id
+    // carrying its sentence (cli.model.refused), never re-authored here.
+
+    public static Diagnostic ModelNoun(string noun) => Diagnostic.Create(
+        "cli.model.noun", DiagnosticSeverity.Error,
+        "model: expected new, import, deembed, fit, check-charge, explain, export, validate or report before the path, got '{noun}'.",
+        ("noun", noun));
+
+    public static Diagnostic ModelUnknownOption(string option) => Diagnostic.Create(
+        "cli.model.args.unknown-option", DiagnosticSeverity.Error,
+        "model: unknown option '{option}'.", ("option", option));
+
+    public static Diagnostic ModelFlagValue(string flag, string text, string expected) => Diagnostic.Create(
+        "cli.model.flag-value", DiagnosticSeverity.Error,
+        "model: {flag} expects {expected}, got '{text}'.", ("flag", flag), ("text", text), ("expected", expected));
+
+    public static Diagnostic ModelFlagNotForNoun(string flag, string noun, string nouns) => Diagnostic.Create(
+        "cli.model.flag-not-for-noun", DiagnosticSeverity.Error,
+        "model {noun}: {flag} belongs to model {nouns}.", ("flag", flag), ("noun", noun), ("nouns", nouns));
+
+    public static Diagnostic ModelPathRequired(string noun) => Diagnostic.Create(
+        "cli.model.path-required", DiagnosticSeverity.Error,
+        "model {noun}: name the document, e.g. circuitrf model {noun} fet.cmc.", ("noun", noun));
+
+    public static Diagnostic ModelExtraPath(string noun, string path) => Diagnostic.Create(
+        "cli.model.extra-path", DiagnosticSeverity.Error,
+        "model {noun}: takes one document; '{path}' is a second.", ("noun", noun), ("path", path));
+
+    public static Diagnostic ModelNotFound(string path) => Diagnostic.Create(
+        "cli.model.not-found", DiagnosticSeverity.Error,
+        "model: '{path}' does not exist.", ("path", path));
+
+    /// <summary>A choice the window would ask for, refused naming the flag that answers it (R-mc13-4).</summary>
+    public static Diagnostic ModelMissing(string noun, string flag, string why) => Diagnostic.Create(
+        "cli.model.missing", DiagnosticSeverity.Error,
+        "model {noun}: {why} ({flag}).", ("noun", noun), ("flag", flag), ("why", why));
+
+    /// <summary>The Model Composer's own refusal, its sentence unchanged.</summary>
+    public static Diagnostic ModelRefused(string noun, string message) => Diagnostic.Create(
+        "cli.model.refused", DiagnosticSeverity.Error,
+        "model {noun}: {message}", ("noun", noun), ("message", message));
+
+    /// <summary>D16's exit 3: the run finished and a check failed.</summary>
+    public static Diagnostic ModelCheckFailed(string noun, string what) => Diagnostic.Create(
+        "cli.model.check-failed", DiagnosticSeverity.Warning,
+        "model {noun}: {what}.", ("noun", noun), ("what", what));
+
+    public static Diagnostic ModelCancelled() => Diagnostic.Create(
+        "cli.model.cancelled", DiagnosticSeverity.Error,
+        "model: cancelled — nothing was written.");
 
     // ── `yield corners` (brief-yield-6) ─────────────────────────────────────────
 

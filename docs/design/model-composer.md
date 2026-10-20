@@ -1224,6 +1224,8 @@ verb call; every long one takes a `RunControl` (vector fitting is cancellable be
 | `src/Design/Modeling/Passive/` | MC-12: `PassiveNetwork`, `PassiveAnalysis` (with `PassiveBlock`), `PassiveTopologies` and `Topologies/*.csch`, `PassiveFit` (with `PassiveFitSettings`), `FamilyFit` (with `FamilySettings`, `ElementLaw`), `PassiveCellExport`, `PassiveStep` |
 | `src/Engine/Modeling/VectorFit.cs` | MC-12: `VectorFit`, `RationalModel`, `LeastSquares` |
 | `src/Core/Expressions/` | MC-12: `validrange` and `Evaluator.Warn` |
+| `src/Design/Modeling/ModelCommands.cs` | MC-13: the operations no step function was whole — `New`, `Import` (with `Sources`, `FormatOf`, `DefaultName`), `Deembed`, `Fit` (with `AllSteps`, `Configure`, `FitOptions`), `Explain`, `ExportCell`; `CmcFile.ParseDataSet`, `ConservationCheck.RunDevice`/`DefaultThreshold`, `ModelValidationReport.DefaultFolder` |
+| `src/Cli/Model.cs`, `src/Cli/Serve/ToolCatalog.cs` | MC-13: the `model` verb and its MCP tool (`cli.md` §31); `reference cmc`/`cmodel` in `DocumentSchema` |
 
 ## 17. Gates (MC-1 … MC-12)
 

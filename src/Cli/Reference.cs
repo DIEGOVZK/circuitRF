@@ -242,8 +242,10 @@ internal static partial class Reference
     /// <summary>The one line the topic list and the resource listing carry for a format. Built from
     /// the format itself so a new one needs nothing written down.</summary>
     public static string SchemaSummary(DocumentSchema.Format f)
-        => $"Generated from the type the {f.Extension} reader deserialises into: every field, its " +
-           "JSON type and what it is when a document omits it, with a minimal working example.";
+        => f.Root is null
+            ? $"The {f.Extension} field table, served from the file-formats page: every field and what it holds."
+            : $"Generated from the type the {f.Extension} reader deserialises into: every field, its " +
+              "JSON type and what it is when a document omits it, with a minimal working example.";
 
     // ── the analysis directives ──────────────────────────────────────────────
 

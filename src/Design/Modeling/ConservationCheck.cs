@@ -262,6 +262,38 @@ public static class ConservationCheck
         return Run(cd, charges, current, settings, rc);
     }
 
+    /// <summary>
+    /// Check (c) on any two-port device instance in a <c>.cnl</c> (R-mc8-5's applicability) — and check (b) over
+    /// <paramref name="region"/> when one is given, since a <c>.cnl</c> states no data hull to take it from. The bias is
+    /// required: a device outside a document has no data whose middle to take.
+    /// </summary>
+    public static ConservationReport RunDevice(string cnlPath, string instance, LargeSignalSettings settings,
+                                               (double VgsLo, double VgsHi, double VdsLo, double VdsHi)? region = null,
+                                               RunControl? rc = null)
+    {
+        if (settings.Bias is null) throw new ModelingException("Check", "the large-signal check needs a bias for a device in a .cnl.");
+        var lines = new List<string>();
+        ModelConservation? b = null;
+        if (region is { } r)
+        {
+            b = Model(cnlPath, instance, r, DefaultStep, settings.FrequencyHz, rc);
+            lines.Add($"model: curl {Pct(b.GateRms)} (Qg), {Pct(b.DrainRms)} (Qd)");
+            lines.Add($"transcapacitance Cm {Si(b.Transcapacitance, "F")} RMS ({Pct(b.TranscapacitanceRelative)} of C11)");
+        }
+        var c = LargeSignal(cnlPath, instance, settings, rc);
+        lines.Add($"large signal: {c.Line} ({Pct(c.Relative)} of the fundamental)");
+        return new ConservationReport(null, b, c, lines);
+    }
+
+    /// <summary>The spurious DC of check (c), relative to the fundamental gate current, above which the check fails (D16's
+    /// exit 3). A charge-based device reads ~1e-20; a gate current written as capacitances times dV/dt with a planted
+    /// curl reads 0.4 % (ConservationCheckLargeSignalTests).</summary>
+    public const double DefaultThreshold = 1e-3;
+
+    /// <summary>Whether <paramref name="report"/>'s large-signal check is above <paramref name="threshold"/> — D16's failed check.</summary>
+    public static bool Exceeds(ConservationReport report, double threshold = DefaultThreshold) =>
+        report.LargeSignal is { } c && c.Relative > threshold;
+
     /// <summary><see cref="RunFile"/> on data and fitted steps already in hand.</summary>
     public static ConservationReport Run(ChargeData data, ChargeFitResult charges, CurrentFitResult? current,
                                          LargeSignalSettings settings, RunControl? rc = null)

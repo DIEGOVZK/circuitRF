@@ -39,7 +39,12 @@ internal static class DocumentSchema
     /// <param name="Root">The type the reader deserialises the whole file into.</param>
     /// <param name="Preamble">The authored half: what the format is FOR and a minimal working
     /// example. Everything after it is generated.</param>
-    internal sealed record Format(string Topic, string Title, string Extension, Type Root, string Preamble);
+    /// <param name="More">Further types walked after the root — the blocks a document carries as raw JSON (a
+    /// <c>.cmc</c>'s <c>Network</c> and step settings), which the root's own properties cannot reach.</param>
+    /// <remarks>A null <paramref name="Root"/> is a format whose JSON is written field by field in a shape its types do not
+    /// mirror (a <c>.cmodel</c>'s <c>model.json</c>): its page is the authored field table alone, never a walk that would
+    /// name fields the file does not have.</remarks>
+    internal sealed record Format(string Topic, string Title, string Extension, Type? Root, string Preamble, Type[]? More = null);
 
     // ── the formats ──────────────────────────────────────────────────────────
 
@@ -76,7 +81,46 @@ internal static class DocumentSchema
         // component a resistor without a word (SchematicLoadAudit now says so).
         new("schematic", "The .csch schematic format", ".csch",
             typeof(CircuitRF.Design.Schematic.CschFile), CschPreamble),
+        // The Model Composer's two documents (brief-modelcomposer-13 R-mc13-6). Their field tables are the authored
+        // file-formats page's own sections, served from the embedded page rather than copied, so the reference and the
+        // manual cannot disagree; the .cmc adds the walk of its step settings for every default.
+        new("cmc", "The .cmc Model Composer document", ".cmc",
+            typeof(CircuitRF.Design.Modeling.CmcDocument), ModelPreamble("cmc", CmcIntro),
+            [typeof(CircuitRF.Design.Modeling.PadsSettings), typeof(CircuitRF.Design.Modeling.NetworkSettings),
+             typeof(CircuitRF.Design.Modeling.CurrentFitSettings), typeof(CircuitRF.Design.Modeling.ChargeFitSettings),
+             typeof(CircuitRF.Design.Modeling.ThermalFitSettings), typeof(CircuitRF.Design.Modeling.TrapFitSettings),
+             typeof(CircuitRF.Design.Modeling.ValidationSettings), typeof(CircuitRF.Design.Modeling.ReportOptions),
+             typeof(CircuitRF.Design.Modeling.Passive.PassiveStepSettings)]),
+        new("cmodel", "The .cmodel composed FET model", ".cmodel", null, ModelPreamble("cmodel", CmodelIntro)),
     ];
+
+    private const string CmcIntro = """
+        A .cmc is written by `circuitrf model` (new, import, fit, export, …) and by the Model Composer window; edit it
+        as JSON to change a step's settings, then run the step again. `Pads` is a PadsSettings, `Network` a
+        NetworkSettings, and each `Steps.<Step>.Settings` the settings type of that step (Current: CurrentFitSettings,
+        Charge: ChargeFitSettings, Thermal: ThermalFitSettings, Traps: TrapFitSettings, Validate: ValidationSettings,
+        Report: ReportOptions, Passive: PassiveStepSettings); every field and its default follows the manual's table.
+        """;
+
+    private const string CmodelIntro = """
+        A .cmodel is written by `circuitrf model export` and read by a ComposedFet instance
+        (`ComposedFet:X1 g d s File=fet.cmodel N=8`). It is not meant to be written by hand; `circuitrf check` names the
+        field of anything it refuses.
+        """;
+
+    /// <summary>A preamble whose field table is the file-formats page's section <c>{#anchor}</c>, up to the next
+    /// heading of its level.</summary>
+    private static string ModelPreamble(string anchor, string intro)
+    {
+        string page = CircuitRF.Design.Reference.ReferenceLibrary.Find("file-formats") is { } t
+            ? CircuitRF.Design.Reference.ReferenceLibrary.Read(t) : "";
+        var lines = page.Split('\n');
+        int start = Array.FindIndex(lines, l => l.StartsWith("## ", StringComparison.Ordinal) && l.Contains("{#" + anchor + "}"));
+        if (start < 0) return intro;
+        int end = Array.FindIndex(lines, start + 1, l => l.StartsWith("## ", StringComparison.Ordinal));
+        var section = lines[(start + 1)..(end < 0 ? lines.Length : end)];
+        return intro.TrimEnd() + "\n\n" + string.Join('\n', section).Trim();
+    }
 
     public static Format? Find(string topic)
         => All.FirstOrDefault(f => string.Equals(f.Topic, topic, StringComparison.OrdinalIgnoreCase));
@@ -1050,7 +1094,7 @@ internal static class DocumentSchema
         sb.AppendLine(format.Preamble);
         sb.AppendLine();
 
-        foreach (var (type, fields) in Walk(format.Root))
+        foreach (var (type, fields) in Walk(format))
         {
             sb.AppendLine(type);
             foreach (var f in fields)
@@ -1062,7 +1106,7 @@ internal static class DocumentSchema
 
     /// <summary>The same walk as a document, for <c>--json</c>.</summary>
     public static IReadOnlyList<ReferenceSchemaTypeJson> Json(Format format)
-        => [.. Walk(format.Root).Select(t => new ReferenceSchemaTypeJson(
+        => [.. Walk(format).Select(t => new ReferenceSchemaTypeJson(
                 t.Type, [.. t.Fields.Select(f => new ReferenceSchemaFieldJson(f.Name, f.Type, f.Default))]))];
 
     private sealed record Field(string Name, string Type, string Default);
@@ -1074,13 +1118,16 @@ internal static class DocumentSchema
     /// reader needs them in, since a nested type is only interesting once the field naming it has
     /// been read. Enums come last, all together, because they are referenced from everywhere.
     /// </summary>
-    private static IReadOnlyList<Block> Walk(Type root)
+    private static IReadOnlyList<Block> Walk(Format format)
     {
+        if (format.Root is not { } root) return [];
         var asm     = root.Assembly;
         var objects = new List<Block>();
         var enums   = new List<Block>();
         var seen    = new HashSet<Type> { root };
         var queue   = new Queue<Type>([root]);
+        foreach (var more in format.More ?? [])
+            if (seen.Add(more)) queue.Enqueue(more);
 
         while (queue.Count > 0)
         {
@@ -1183,6 +1230,11 @@ internal static class DocumentSchema
         if (nullable is not null) return Spell(nullable) + "?";
         if (SpelledAs(t) is { } spelled) return spelled;
         if (t == typeof(System.Text.Json.JsonElement)) return "(any JSON)";
+        if (typeof(System.Text.Json.Nodes.JsonNode).IsAssignableFrom(t)) return "(a JSON object)";
+        // A pair or a complex number is written as a two-element array, never as an object.
+        if (t == typeof(System.Numerics.Complex)) return "[re, im]";
+        if (t.IsGenericType && t.FullName?.StartsWith("System.ValueTuple`", StringComparison.Ordinal) == true)
+            return "[" + string.Join(", ", t.GetGenericArguments().Select(Spell)) + "]";
 
         if (t == typeof(string))                          return "string";
         if (t == typeof(bool))                            return "bool";

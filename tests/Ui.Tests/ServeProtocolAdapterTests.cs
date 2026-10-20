@@ -874,7 +874,7 @@ public sealed class ServeProtocolAdapterTests(ITestOutputHelper output) : IDispo
         // `impedance` is the Trace Impedance Analysis — a board review an agent can run on artwork it
         // did not draw. `recognize` (brief-artsch-7) turns that artwork into a circuit.
         Assert.Equal(["run", "check", "explain", "create", "import", "convert", "render", "netlist", "plot",
-                      "find", "lvs", "recognize", "impedance", "read", "history", "solver", "reference", "batch"],
+                      "find", "lvs", "recognize", "impedance", "read", "model", "history", "solver", "reference", "batch"],
                      tools);
 
         Assert.Equal(0, server.Close());
@@ -1007,6 +1007,17 @@ public sealed class ServeProtocolAdapterTests(ITestOutputHelper output) : IDispo
             ["history/checkpoint"] = ["path"],
             ["history/list"]       = ["path"],
             ["history/restore"]    = ["path"],
+            // brief-modelcomposer-13 R-mc13-6: the `model` verb's nouns. `import` alone takes a second positional, the
+            // source file or folder.
+            ["model/new"]          = ["path"],
+            ["model/import"]       = ["path", "source"],
+            ["model/deembed"]      = ["path"],
+            ["model/fit"]          = ["path"],
+            ["model/check-charge"] = ["path"],
+            ["model/explain"]      = ["path"],
+            ["model/export"]       = ["path"],
+            ["model/validate"]     = ["path"],
+            ["model/report"]       = ["path"],
         };
 
         using var server = Start(Root);

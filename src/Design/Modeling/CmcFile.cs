@@ -63,6 +63,19 @@ public static class CmcFile
         return cmc;
     }
 
+    /// <summary>
+    /// One data set, read from its JSON as the document holds it under <c>DataSets</c> — how an import that is not a whole
+    /// document (the window's importer, the <c>model import</c> verb) gets the reader's own field checks. Whether it fits
+    /// the rest of a document is <see cref="Validate"/>'s question.
+    /// </summary>
+    public static CmcDataSet ParseDataSet(string json, string field = "DataSet")
+    {
+        JsonDocument doc;
+        try { doc = JsonDocument.Parse(json); }
+        catch (JsonException ex) { throw new CmcFormatException(field, $"it is not JSON ({ex.Message})."); }
+        using (doc) return ParseDataSet(doc.RootElement, field);
+    }
+
     private static readonly string[] RootKeys =
         ["FormatVersion", "Kind", "BasePeriphery", "DataSets", "Pads", "Network", "Steps", "Panels"];
 

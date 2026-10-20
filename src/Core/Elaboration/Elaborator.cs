@@ -2026,13 +2026,20 @@ public sealed class Elaborator
     // Resolves a relative SnP File path against BaseDirectory (the workspace root); absolute paths and
     // the no-root case pass through unchanged. Cross-platform: Path.* honor the host separator rules,
     // and we tolerate a Windows-authored '\' in a relative path so a netlist ports across OSes.
-    private string ResolveSnpFilePath(string file)
+    private string ResolveSnpFilePath(string file) => ResolveFileReference(file, BaseDirectory);
+
+    /// <summary>
+    /// How a file parameter (an SnP's or a ComposedFet's <c>File</c>) resolves against the directory a netlist is
+    /// elaborated from — the ONE rule, so <c>explain --ref</c> can answer exactly as elaboration does
+    /// (brief-modelcomposer-13 R-mc13-5).
+    /// </summary>
+    public static string ResolveFileReference(string file, string? baseDirectory)
     {
         if (string.IsNullOrWhiteSpace(file))       return file;
         if (Path.IsPathRooted(file))               return file;   // absolute on this OS → unchanged
-        if (string.IsNullOrEmpty(BaseDirectory))   return file;   // no workspace root → legacy behavior
+        if (string.IsNullOrEmpty(baseDirectory))   return file;   // no workspace root → legacy behavior
         var rel = file.Replace('\\', '/');                        // tolerate Windows-authored separators
-        return Path.GetFullPath(Path.Combine(BaseDirectory, rel));
+        return Path.GetFullPath(Path.Combine(baseDirectory, rel));
     }
 
     // ── Composed FET (brief-modelcomposer-1) ──────────────────────────────────

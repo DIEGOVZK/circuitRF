@@ -4097,3 +4097,63 @@ parsing, refusals and reporting; a comment-stripped source scan (`SchematicImpor
 
 Gate: `tests/Ui.Tests/SchematicImport/SchematicImportEntryPointTests.cs` — the CLI as a process against the in-process
 `SchematicImport.Import` on one committed fixture, byte for byte except the provenance timestamp.
+
+## 31. `model` — the Model Composer, headless (brief-modelcomposer-13)
+
+```
+circuitrf model new|import|deembed|fit|check-charge|explain|export|validate|report <doc.cmc> [flags]
+```
+
+The Model Composer with no display — **one verb with nouns** (the `new`/`history` rule: `new` is a noun of `model`,
+never a verb). `src/Cli/Model.cs` owns argument parsing, refusals and reporting only.
+
+### 31.1 It owns no modelling
+
+Every noun calls the `src/Design/Modeling` function the window's command calls: `ModelCommands.New`, `.Import`,
+`.Deembed`, `.Fit`, `.Explain` and `.ExportCell` (written for this phase, because no single step function was the
+whole operation), and the steps' own `CmodelExport.Export`, `ModelValidation.RunFile`, `ModelValidationReport.Generate`/
+`.Write`, `ConservationCheck.RunFile`/`.RunDevice`. Each reads the `.cmc` from disk and writes it back, so the verb and
+the window produce the same bytes from the same file. Flag values the documents spell (a data set's conditions, a
+validation tolerance, a report option) are turned into the document's own JSON and parsed by the document's own reader
+(`CmcFile.ParseDataSet`, `ValidationSettings.Parse`, `ReportOptions.Parse`), so a refusal names the field as a
+`check` of the file would. `ModelCliNoLogicTests` scans `Model.cs` and the window's folders, comments stripped, for the
+calls a flow is made of.
+
+### 31.2 Every default is the window's
+
+A choice the window would ask for is a refusal naming the flag that answers it (`cli.model.missing`): `--kind` for
+`new`; `--as` for `import`, and `--pattern` for a Touchstone set or `--map` for a CSV or array set; `--step` for `fit`,
+and `--fingers` for an Active document with no N0; `-o` for an Active export and `--cell` for a passive one; `--cmc` to
+validate a bare `.cmodel`; `--device` and `--bias` to check a device in a `.cnl`. A folder source is every importable
+file directly in it, in ordinal order; a data set is named after its first source unless `--name` says. `--method`,
+`--seed`, `--topology` and `--fingers`/`--unit-width` on `fit` are written into the document's settings first, as the
+window's step panel writes them, and put back if the fit is refused or cancelled before a step finishes.
+
+### 31.3 Output and exit codes
+
+One line per item on stdout; `--json` gives the same lines as `result.model.items` (`kind`, `name`, `line`, and for a
+check or a validation item `passed` and its numbers). Progress goes to stderr through a `RunControl` — a changed line
+only, `-q` silences it — and to a `serve` client through `RunHost`. D16: **0** done · **1** refused · **3** finished,
+but a check failed — `check-charge`'s spurious gate DC above `--threshold` (`ConservationCheck.DefaultThreshold`,
+0.1 % of the fundamental gate current), or a `validate` tolerance missed · **130** cancelled, nothing written.
+`fit --step all` commits each step as it finishes, as the window's step rail does: a cancellation keeps the steps
+before it.
+
+`export --created` sets the provenance timestamp, so a build can reproduce a `.cmodel` byte for byte. `report --pdf`
+is refused until the report's Data Display document exists (MC-15); the folder is the report.
+
+### 31.4 `check`, `explain` and the protocol
+
+`check` already reads a `.cmc` and a `.cmodel` through their validators (MC-1, MC-3). `explain --ref x.cmodel` resolves
+the file by `Elaborator.ResolveFileReference`, the rule a `ComposedFet`'s `File` is resolved by at elaboration.
+Over MCP the verb is the `model` tool, one mode per noun; `reference cmc` and `reference cmodel` serve the file-formats
+page's own sections (the `.cmc` adds the walk of its step settings), and the server's instructions carry the
+new → import → deembed → fit → check-charge → export → validate recipe.
+
+### 31.5 The gate
+
+`tests/Ui.Tests/ModelComposer/`: `ModelCliVerbTests` (the verb as a process against the in-process functions, byte for
+byte, for `new`, `import`, `fit --step all --seed 1`, `export` and `check-charge` on `SyntheticFetData`'s raw files; exit
+3 on a planted non-conservative device; 130 on a cancel, nothing written), `ModelCliNoLogicTests`,
+`ModelAgentEndToEndTests` (raw files to a `circuitrf hb` run of the exported model, held within 1 dB of the truth's
+output) and `ModelMcpToolTests` (the tool's export is the CLI's bytes; `reference cmodel` serves the field table).

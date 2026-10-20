@@ -3202,3 +3202,42 @@ the write and the optimum) before it was changed; none turned out wrong. Gate:
   the differences can be looked at, and a build machine still cannot read it as success.
 - `--port` and `--symbol-cell` are repeated flags (`StrRepeat` on the MCP side), passed through to the build; a `--port`
   naming nothing is the build's own note, not a refusal, exactly as in the dialog.
+
+## `model` and MCP `model` (brief-modelcomposer-13, 2026-10-19)
+
+`docs/design/cli.md` §31 has the design; these are the things that turned out to be true.
+
+**Most nouns had no single function to call.** Each step had its `FitFile`, but a new document, an import into an
+open one, a de-embedding report, `fit all`, an explanation and a passive export that records its target were each a
+sequence a shell would have had to assemble — which is the second copy D15 forbids. They became
+`src/Design/Modeling/ModelCommands.cs`, so the window (MC-14) calls the same functions; `ModelCliNoLogicTests` scans
+`Model.cs` for the calls a flow is made of, and proves the patterns non-vacuous against `ModelCommands.cs` itself.
+
+**A refused fit used to keep the periphery it was given.** `--fingers` was first written as its own step before the fit;
+a fit then refused for another reason (`--method` with `--step all`) left N0 recorded. The periphery is now part of
+`FitOptions`, written with the method and seed and put back with them when the fit is refused or cancelled before a step
+finishes.
+
+**`--unit-width 125um` is refused; the reader wants `"125 um"`.** The format's own spelling, so the help and the MCP
+description quote it with the space.
+
+**Flag values the documents spell go through the documents' own readers.** A data set is built as the JSON the `.cmc`
+holds (`--condition Quiescent.Vds=28` becomes `{"Quiescent": {"Vds": 28}}`) and read by `CmcFile.ParseDataSet`; a
+tolerance and the report options are overlaid on their settings' `ToJson()` and parsed back. A refusal therefore names
+the field exactly as `check` of the file would, and the verb holds no table of field names.
+
+**`--created` exists for reproducibility, not for tests alone.** The provenance timestamp is the only byte that differs
+between two exports of one document; the byte-for-byte gates pass it to both sides.
+
+**`reference cmodel` is the manual's section, not a walk.** `model.json` is written field by field in a shape
+`ComposedModel` does not mirror (thermal poles flattened, constituents nested under `Core.Constituents`, scaling as a
+map), so a reflected walk would name fields the file does not have. `DocumentSchema.Format` takes a null root for that
+case; `reference cmc` serves its section plus the walk of the step settings, whose JSON keys are their property names.
+The walk now spells a value tuple and a complex number as the two-element arrays the files hold, and a raw JSON block as
+an object.
+
+**`report --pdf` is refused until MC-15**, which owns the report's Data Display document; the MCP tool does not
+advertise it yet.
+
+Measured, routine tier: the four gate classes take ~7 s together; the end-to-end run's exported model drives a 2 GHz
+stage to within 0.04 dB of the truth's output.
