@@ -69,8 +69,12 @@ internal sealed class SchematicGroupTransform
     public List<WireMoveSnapshot>              Wires      { get; } = [];
     public List<DotMoveSnapshot>               Dots       { get; } = [];
 
+    /// <summary>Stub wires the transform adds to keep a pin on what it was attached to — see
+    /// <see cref="PinFollowReroute.Build"/>.</summary>
+    public List<EditableWire>                  NewWires   { get; } = [];
+
     public bool IsEmpty => Components.Count == 0 && Objects.Count == 0
-                        && Wires.Count == 0 && Dots.Count == 0;
+                        && Wires.Count == 0 && Dots.Count == 0 && NewWires.Count == 0;
 
     private SchematicGroupTransform(SchematicEditModel model) => _model = model;
 
@@ -187,9 +191,100 @@ internal sealed class SchematicGroupTransform
             t.Dots.Add(new DotMoveSnapshot(dot, dot.X, dot.Y, nx, ny));
         }
 
+        // ── Ground symbols riding on a moved pin ─────────────────────────────
+        // A ground drawn straight onto a pin — which is how Create Schematic from Artwork draws
+        // every shunt part — has no wire to re-route, so it used to be left where it stood and the
+        // part came off ground. It belongs to that pin and nothing else, so it moves with it: carried
+        // to the pin's new place and kept upright, as a ground is drawn. A ground that also touches a
+        // wire or another part is shared and stays; the pin grows a stub back to it instead.
+        foreach (var rider in GroundRiders(model, moved, wireIds))
+        {
+            t.Components.Add(rider);
+            moved.Add(new PinFollowReroute.Transformed(
+                rider.Comp, rider.EndX, rider.EndY, rider.EndRot, rider.EndMirrorX));
+        }
+
         // ── Wires straddling the boundary ────────────────────────────────────
-        t.Wires.AddRange(PinFollowReroute.Build(model, moved, carried));
+        var reroute = PinFollowReroute.Build(model, moved, carried);
+        t.Wires.AddRange(reroute.Rerouted);
+        t.NewWires.AddRange(reroute.Stubs);
         return t;
+    }
+
+    /// <summary>
+    /// Unselected ground symbols whose one pin sits on a pin that is moving, and on nothing else —
+    /// each with the translation that keeps it on that pin.
+    /// </summary>
+    private static List<ComponentTransformSnapshot> GroundRiders(
+        SchematicEditModel model, List<PinFollowReroute.Transformed> moved, HashSet<string> carriedWireIds)
+    {
+        const double tol = SchematicEditModel.ConnectTolerance;
+        var riders = new List<ComponentTransformSnapshot>();
+        foreach (var (g, owner, def) in GroundRidersOf(model, moved.Select(m => m.Comp).ToList(), carriedWireIds))
+        {
+            var m = moved.First(x => ReferenceEquals(x.Comp, owner));
+            var (ox, oy) = SchematicGeometry.LocalToWorld(
+                def.LocalX, def.LocalY, owner.X, owner.Y, owner.Rotation, owner.MirrorX);
+            var (nx, ny) = SchematicGeometry.LocalToWorld(
+                def.LocalX, def.LocalY, m.NewX, m.NewY, m.NewRotation, m.NewMirrorX);
+            if (SchematicGeometry.CoincidentPoints(ox, oy, nx, ny, tol)) continue;
+            riders.Add(new ComponentTransformSnapshot(
+                g, g.X, g.Y, g.Rotation, g.MirrorX,
+                g.X + (nx - ox), g.Y + (ny - oy), g.Rotation, g.MirrorX));
+        }
+        return riders;
+    }
+
+    /// <summary>
+    /// The ground symbols that belong to one moving pin and to nothing else: unselected, their pin
+    /// on exactly one pin of <paramref name="moving"/>, and on no wire that stays (one not in
+    /// <paramref name="movingWireIds"/>) and no other part's pin. A ground drawn straight onto a pin
+    /// — which is how Create Schematic from Artwork draws every shunt part — has no wire to follow,
+    /// so a rotate or a drag that left it standing took the part off ground (designer report,
+    /// 2026-10-20). Rotate and drag both carry these with the part.
+    /// </summary>
+    internal static List<(EditableComponent Ground, EditableComponent Owner, (float LocalX, float LocalY, int PortIndex) Pin)>
+        GroundRidersOf(SchematicEditModel model, IReadOnlyCollection<EditableComponent> moving, IReadOnlySet<string> movingWireIds)
+    {
+        const double tol = SchematicEditModel.ConnectTolerance;
+        var result = new List<(EditableComponent, EditableComponent, (float, float, int))>();
+        var movingIds = moving.Select(c => c.Id).ToHashSet(StringComparer.Ordinal);
+
+        var pins = new List<(EditableComponent Owner, (float LocalX, float LocalY, int PortIndex) Def, double X, double Y)>();
+        foreach (var c in moving)
+        {
+            if (ComponentTypeRegistry.DetachesFreely(c.Symbol)) continue;
+            foreach (var def in model.PortDefsOf(c))
+            {
+                if (c.IsPortDetached(def.PortIndex)) continue;
+                var (x, y) = SchematicGeometry.LocalToWorld(def.LocalX, def.LocalY, c.X, c.Y, c.Rotation, c.MirrorX);
+                pins.Add((c, def, x, y));
+            }
+        }
+
+        foreach (var g in model.Components)
+        {
+            if (g.Symbol != SymbolKind.Ground || movingIds.Contains(g.Id)) continue;
+            var (gx, gy) = g.GetPortWorldCoord(0);
+            var hits = pins.Where(p => SchematicGeometry.CoincidentPoints(p.X, p.Y, gx, gy, tol)).ToList();
+            if (hits.Count != 1) continue;
+
+            bool shared = model.Wires.Any(w => !movingWireIds.Contains(w.Id)
+                                               && WireGeometry.PointOnWire(w, gx, gy, tol));
+            if (!shared)
+                foreach (var c in model.Components)
+                {
+                    if (c.Id == g.Id || movingIds.Contains(c.Id)) continue;
+                    foreach (var def in model.PortDefsOf(c))
+                    {
+                        var (cx, cy) = model.PortWorldOf(c, def);
+                        if (SchematicGeometry.CoincidentPoints(cx, cy, gx, gy, tol)) { shared = true; break; }
+                    }
+                    if (shared) break;
+                }
+            if (!shared) result.Add((g, hits[0].Owner, hits[0].Def));
+        }
+        return result;
     }
 
     /// <summary>True when both of this wire's ends sit on a pin of a component that is moving.</summary>
@@ -221,6 +316,7 @@ internal sealed class SchematicGroupTransform
         foreach (var s in Objects) { s.Obj.X = s.EndX; s.Obj.Y = s.EndY; s.Obj.RotationDeg = s.EndDeg; }
         foreach (var s in Wires)   { s.Wire.Points.Clear(); s.Wire.Points.AddRange(s.EndPoints); }
         foreach (var s in Dots)    { s.Dot.X = s.EndX; s.Dot.Y = s.EndY; }
+        foreach (var w in NewWires) _model.Wires.Add(w);
     }
 
     public void Revert()
@@ -233,5 +329,6 @@ internal sealed class SchematicGroupTransform
         foreach (var s in Objects) { s.Obj.X = s.StartX; s.Obj.Y = s.StartY; s.Obj.RotationDeg = s.StartDeg; }
         foreach (var s in Wires)   { s.Wire.Points.Clear(); s.Wire.Points.AddRange(s.StartPoints); }
         foreach (var s in Dots)    { s.Dot.X = s.StartX; s.Dot.Y = s.StartY; }
+        foreach (var w in NewWires) _model.Wires.Remove(w);
     }
 }

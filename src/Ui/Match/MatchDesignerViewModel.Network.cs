@@ -768,6 +768,7 @@ public sealed partial class MatchDesignerViewModel
             var standalone = MatchFlattenService.RunStandalone(
                 _rebuild, _design, InstanceName, parentDir, cellName,
                 significantDigits: Settings.SignificantDigits);
+            if (standalone.Ok) _keptPayload = MatchEmbedding.Write(_design);
             RefreshFlatten();
             return standalone;
         }

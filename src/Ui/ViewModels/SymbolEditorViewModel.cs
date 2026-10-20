@@ -42,8 +42,8 @@ public sealed partial class SymbolEditorViewModel : ObservableObject
     {
         _isDrawingTwoPoint = false;
         _drawPoints.Clear();
-        _isTypingText = false;
-        _textBuffer   = "";
+        // Leaving the Text tool places a typed text; Escape (CancelOp) empties the buffer first.
+        if (_isTypingText) CommitText();
         // Cancel pin state
         _selectedPins.Clear();
         _isPinDragging = false;
@@ -624,6 +624,7 @@ public sealed partial class SymbolEditorViewModel : ObservableObject
         }
         else if (ActiveTool == Tool.Text)
         {
+            if (_isTypingText) CommitText();   // a click elsewhere places what was typed
             _isTypingText = true;
             _textAnchorX  = sx;
             _textAnchorY  = sy;

@@ -1279,6 +1279,12 @@ public static class SchematicToLayoutGenerator
         {
             var si = resolved.Where(kv => kv.Key is "W" or "G" or "E" or "F")
                              .ToDictionary(kv => kv.Key, kv => resolved.Real(kv.Key), StringComparer.Ordinal);
+            // TryResolveSiValue hands an angle stated in degrees back IN DEGREES — the unit PCell generators take
+            // a bend in — while LengthMeters reads E in radians. Passed through as it was, a 90° line at 10 GHz
+            // was drawn 57× too long (designer report, 2026-10-20: a quarter-wave stub came out 252 mm).
+            if (string.Equals(UnitNormalizer.ToEngineUnit(comp.Parameters.FirstOrDefault(p => p.Name == "E")?.Unit),
+                              "deg", StringComparison.Ordinal))
+                si["E"] *= Math.PI / 180.0;
             if (LineEntryConversion.LengthMeters(comp.Symbol, si, signalOverride, groundOverride, technology) is { } lengthM)
                 resolved["L"] = lengthM;
             resolved.Remove("E");

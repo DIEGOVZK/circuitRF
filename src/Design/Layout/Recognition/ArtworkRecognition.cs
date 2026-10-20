@@ -17,6 +17,7 @@ using CircuitRF.Design.Layout.Drc;
 using CircuitRF.Design.Layout.Em;
 using CircuitRF.Design.Layout.Extraction;
 using CircuitRF.Design.Layout.Interchange;
+using CircuitRF.Design.Layout.PCells;
 using CircuitRF.Design.RailRf;
 using CircuitRF.Design.Workspace;
 using CircuitRF.Engine;
@@ -478,9 +479,27 @@ public static partial class ArtworkRecognition
         var origins = new List<PlacedPinOrigin>();
         var pads = PlacedPins.Of(input.View, input.ClayPath, tech, PinNaming.ArtworkOnly,
                                  origins: origins, scope: PlacementScope.Designated);
+
+        // A line, tee or other structure Update Layout from Schematic generated (an MLIN, an MTEE) is copper the
+        // traces are read from, not a part: read as one it was "bridged" by its own copper and left out, and an MTEE
+        // — three pads — was cut out of the circuit with the stub that hangs on it (designer report, 2026-10-20).
+        // Footprints come from the land-pattern generators, which are not in the built-in structure set.
+        var structures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var inst in input.View.Instances)
+        {
+            string folder = Path.GetFileName(inst.CellRef.TrimEnd('/', '\\'));
+            if (inst.DisplayRefDes is { Length: > 0 } refdes
+                && input.View.PCellSnapshots.TryGetValue(folder, out var snap)
+                && PCellRegistry.KnownGeneratorIds.Contains(snap.GeneratorId))
+                structures.Add(refdes);
+        }
+
         var result = new List<PlacedPin>(pads.Count);
         for (int i = 0; i < pads.Count; i++)
+        {
+            if (pads[i].Refdes is { } r && structures.Contains(r)) continue;
             result.Add(i < origins.Count ? pads[i] with { Layer = origins[i].Layer } : pads[i]);
+        }
         return result;
     }
 

@@ -41,8 +41,8 @@
                             <StackPanel Classes="row" Orientation="Horizontal" Spacing="10">
                                 <TextBlock Classes="label" Text="Scope" Width="70"/>
                                 <RadioButton GroupName="scope" Content="Selection" IsChecked="{Binding ScopeSelection}"
-                                             IsEnabled="{Binding SelectionAvailable}"
-                                             ToolTip.Tip="Read only the copper inside the layout's selection; a line the outline cuts becomes a port."/>
+                                             IsEnabled="{Binding SelectionAvailable}" ToolTip.ShowOnDisabled="True"
+                                             ToolTip.Tip="Read only the copper inside the layout's selection; a line the outline cuts becomes a port. Select on the layout — this dialog can stay open — and it is used."/>
                                 <RadioButton GroupName="scope" Content="Whole layout" IsChecked="{Binding ScopeWhole}"/>
                             </StackPanel>
                             <WrapPanel Classes="row" Orientation="Horizontal">

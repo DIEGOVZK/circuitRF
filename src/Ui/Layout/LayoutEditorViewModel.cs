@@ -559,7 +559,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
             bool shapesChanged = _selectedIndices.RemoveAll(i => i < 0 || i >= Model.Shapes.Count) > 0;
             bool instancesChanged = _selectedInstanceIndices.RemoveAll(i => i < 0 || i >= Model.Instances.Count) > 0;
             bool rulersChanged = PruneRulerSelection();
-            if (shapesChanged || instancesChanged || rulersChanged) SelectionStatusText = ComputeSelectionStatus();
+            if (shapesChanged || instancesChanged || rulersChanged) SelectionStatusText = ComputeSelectionStatus(); SelectionChanged?.Invoke();
 
             // Unconditionally, not only when the selection LIST changed. A PCell parameter committed
             // from the Properties Inspector re-points the selected instance at a different generated
@@ -1279,6 +1279,10 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
 
     [ObservableProperty] private string _selectionStatusText = "";
 
+    /// <summary>Raised after the selection changes — what a modeless dialog reading <see cref="SelectionOutline"/>
+    /// follows (Create Schematic from Artwork's Selection scope).</summary>
+    public event Action? SelectionChanged;
+
     public IRelayCommand SelectAllCommand { get; private set; } = null!;
     public IRelayCommand DeselectAllCommand { get; private set; } = null!;
 
@@ -1329,7 +1333,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         // other three were never taught about it, so it survived every replace that followed.
         if (clearOtherKind && _selectedDesignatorIndices.Count > 0) _selectedDesignatorIndices.Clear();
 
-        SelectionStatusText = ComputeSelectionStatus();
+        SelectionStatusText = ComputeSelectionStatus(); SelectionChanged?.Invoke();
         RebuildOverlay();
     }
 
@@ -2160,7 +2164,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
                 return;
             }
         }
-        SelectionStatusText = ComputeSelectionStatus();
+        SelectionStatusText = ComputeSelectionStatus(); SelectionChanged?.Invoke();
     }
 
     /// <summary>The one selected thing, when exactly one thing of exactly one kind is selected —
@@ -2579,7 +2583,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         _marqueeInstancePreview.Clear();
         _marqueeRulerPreview.Clear();
         _marqueeLastComputedCorner = null;
-        SelectionStatusText = ComputeSelectionStatus();
+        SelectionStatusText = ComputeSelectionStatus(); SelectionChanged?.Invoke();
     }
 
     private void HandleSelectMove(double wx, double wy, bool leftDown, KeyModifiers mods, long tolDbu, long pixelDbu = 0, long snapTolDbu = 0,
@@ -3183,7 +3187,7 @@ public sealed partial class LayoutEditorViewModel : ObservableObject
         _selectedDesignatorIndices.Clear();
         _pickedVertexIndex = null;
 
-        SelectionStatusText = ComputeSelectionStatus();
+        SelectionStatusText = ComputeSelectionStatus(); SelectionChanged?.Invoke();
         RebuildOverlay();
     }
 

@@ -26,7 +26,7 @@ public sealed partial class CreateSchematicFromArtworkViewModel : RecognitionSes
 {
     private readonly RecognitionInput _base;
     private readonly IArtworkRecognitionRunner _runner;
-    private readonly IReadOnlyList<long[]> _selection;
+    private IReadOnlyList<long[]> _selection;
 
     /// <param name="baseInput">The layout as the CLI reads it (<see cref="IArtworkRecognitionRunner.Load"/>); its
     /// <see cref="RecognitionInput.ClayPath"/> must be set — a scratch layout never reaches here.</param>
@@ -90,8 +90,23 @@ public sealed partial class CreateSchematicFromArtworkViewModel : RecognitionSes
 
     // ── scope (D11) ──────────────────────────────────────────────────────────────────────────────────
 
-    public bool SelectionAvailable { get; }
+    [ObservableProperty] private bool _selectionAvailable;
     [ObservableProperty] private bool _scopeSelection;
+
+    /// <summary>
+    /// The layout's selection changed while the dialog is open. The dialog is modeless so a region can be picked
+    /// after opening it, as the EM setup's can — it used to read the selection only once, so Selection stayed
+    /// greyed until the dialog was closed and opened again, and a large board was read whole in the meantime
+    /// (designer report, 2026-10-20). A new selection is taken as the scope; clearing it goes back to the whole layout.
+    /// </summary>
+    public void UpdateSelection(IReadOnlyList<long[]> rings)
+    {
+        _selection = rings ?? [];
+        bool available = RecognitionScope.Polygons(_selection) is { IsWhole: false };
+        SelectionAvailable = available;
+        if (ScopeSelection != available) ScopeSelection = available;   // reschedules through OnScopeSelectionChanged
+        else if (available) ScheduleRecognition();                    // a different region under the same scope
+    }
 
     public bool ScopeWhole
     {

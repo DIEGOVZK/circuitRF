@@ -1367,7 +1367,30 @@ public sealed class EditableNetLabel
     public string Id   { get; } = Guid.NewGuid().ToString("N")[..12];
     public double X    { get; set; }   // DERIVED draw origin (recomputed from the anchor each build)
     public double Y    { get; set; }
-    public string Name { get; set; } = "";
+
+    /// <summary>The net's name. Normalised on every write by <see cref="NormalizeName"/>: a .cnl is
+    /// whitespace-delimited, so a label "to pin1" became two nets on the instance line and the part
+    /// read as wired to one net too many.</summary>
+    public string Name { get => _name; set => _name = NormalizeName(value); }
+    private string _name = "";
+
+    /// <summary>Trims, turns each run of whitespace into one '_', and replaces the three characters
+    /// a .cnl net token cannot hold (<c>"</c> quotes, <c>=</c> starts a parameter, <c>;</c> starts a
+    /// comment) with '_'. Idempotent; a name that was already legal is returned unchanged.</summary>
+    public static string NormalizeName(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return "";
+        var s = name.Trim();
+        var sb = new System.Text.StringBuilder(s.Length);
+        bool inSpace = false;
+        foreach (char c in s)
+        {
+            if (char.IsWhiteSpace(c)) { if (!inSpace) sb.Append('_'); inSpace = true; continue; }
+            inSpace = false;
+            sb.Append(c is '"' or '=' or ';' ? '_' : c);
+        }
+        return sb.ToString();
+    }
 
     // ── Wire anchor (source of truth for position) ──
     public string OwnerWireId  { get; set; } = "";

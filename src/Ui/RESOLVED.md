@@ -40021,3 +40021,40 @@ which holds the reload back while it checks the plot.
 **Plot titles were twice the axis labels' size.** The renderer draws a title at `FontSizeLabel × 1.4` and an axis label
 at `FontSizeTicks × 0.9`. The Model Composer sets `FontSizeLabel` on its two plots so the title is a tenth larger than
 the labels, as harmonicaRF does for its own titles; the Data Display's defaults are unchanged.
+
+## Designer feedback round 22 — rotate/drag connectivity, Text tool, E at F, archive (2026-10-20)
+
+Field report on a schematic made by Create Schematic from Artwork: rotating a part detached its wires or shorted
+the net; dragging one detached a wire; typed text vanished; an MLIN came out 57× too long in the layout.
+
+- **Rotate/mirror re-routed a wire whole, dropping its taps.** `PinFollowReroute` re-drew every wire ending on a
+  moved pin from its far end, so a line tapped onto that wire mid-span (recognition draws exactly that) was cut off,
+  and a ground drawn straight onto the pin was left behind. Each moved pin now decides FOLLOW (all attachments are
+  wire ends, none of those wires carries a tap) or STUB (keep every wire, grow one clean wire from the pin's old
+  place to its new one). A ground whose only contact is a moving pin rides with it, translated and upright
+  (`SchematicGroupTransform.GroundRidersOf`, shared with drag).
+- **Drag trimmed a doubled-back leg past a corner.** `WireGeometry.FollowEndpoints` can return a route whose last
+  leg runs back over the one before; `SimplifyWirePoints` collapses that and drops the corner another wire starts
+  from. `FollowEndpointsFor` now checks `LosesStationaryTap` and trims the moved end back until the pin lands on the
+  wire's body (a T) instead, or keeps the unsimplified route.
+- **Drag shorted a part through its followed wires.** Wires following several pins of one part were routed one at a
+  time, so a later one's corner could land on an earlier one's body (a T). `AvoidOtherMovedPins` now also refuses
+  new contacts with the wires routed so far; when every re-shape either crosses a pin or drops a tap, the wire is
+  kept whole and extended along a clean route (`PinFollowReroute.TryChooseCleanRoute`). The pin-on-pin auto-wire
+  used a bare L and could cross the part's other pin; it uses the clean-route chooser too.
+- **How it was found:** a scratch probe rotated and dragged every part of the designer's five schematics and diffed
+  the netlist partition. Everything left after the fix is a pin dropped onto another net, which is a user action.
+- **Net label with a space** (`to pin1`) made the `.cnl` instance line one net too long ("CPWG:CP5 is wired to 3
+  nets"). `EditableNetLabel.Name` normalises on every write: whitespace runs, `"`, `=` and `;` become `_`.
+- **Text tool:** a second click restarted the buffer and a tool change discarded it. Both now place what was typed;
+  Escape still abandons. Same in the symbol editor.
+- **E at F drawn 57× long.** `TryResolveSiValue` returns a `deg` value in degrees (what PCell bend angles want) and
+  the E → L step passed it to `LineEntryConversion.LengthMeters`, which reads radians. Converted at that step.
+- **A new F on an E-at-F MLIN/CPWG/SLIN now moves E**, keeping the copper length (`LineEntryConversion.WithFrequency`,
+  one undo step). TLIN is not changed: its E at F is the line.
+- **Archive and the standalone Match Designer.** Its design has no file until Flatten to Cell, so the save prompt
+  never saw it. `MatchDesignerViewModel.HasUnkeptDesign` (edited since opened or last flattened) and
+  `MatchDesignerWindow.StandaloneWithUnkeptDesigns` let Archive ask first.
+- **Create Schematic from Artwork read the selection once.** The dialog is modeless; it now follows
+  `LayoutEditorViewModel.SelectionChanged`, so a region picked after opening becomes the scope (and cancels the
+  whole-board preview already running).

@@ -147,6 +147,14 @@ public partial class MatchDesignerWindow : Window, ICrfMenuWindow
         return window;
     }
 
+    /// <summary>The standalone Designers open right now — what the workspace archive asks about.</summary>
+    private static readonly List<MatchDesignerWindow> OpenStandalone = [];
+
+    /// <summary>The standalone Designers holding a design that exists only in their window
+    /// (<see cref="MatchDesignerViewModel.HasUnkeptDesign"/>).</summary>
+    public static IReadOnlyList<MatchDesignerWindow> StandaloneWithUnkeptDesigns()
+        => OpenStandalone.Where(w => w.Vm?.HasUnkeptDesign == true).ToList();
+
     /// <summary>
     /// Opens a Designer bound to <b>nothing</b> — Tools ▸ Match Designer.
     /// </summary>
@@ -168,7 +176,12 @@ public partial class MatchDesignerWindow : Window, ICrfMenuWindow
         vm.SetStandalone(workspaceRoot);
 
         var window = new MatchDesignerWindow { DataContext = vm };
-        window.Closed += (_, _) => vm.Dispose();
+        OpenStandalone.Add(window);
+        window.Closed += (_, _) =>
+        {
+            OpenStandalone.Remove(window);
+            vm.Dispose();
+        };
 
         ShowUnowned(window, owner);
         return window;

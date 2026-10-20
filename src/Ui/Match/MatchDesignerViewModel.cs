@@ -172,6 +172,7 @@ public sealed partial class MatchDesignerViewModel : ObservableObject, IDisposab
         _design = MatchEmbedding.DefaultDesign();
         PayloadError = "";
         _openingDesign = _design.Clone();
+        _keptPayload = MatchEmbedding.Write(_design);
         Refresh(specChanged: true);
         RefreshProbeAvailability();
         OnPropertyChanged(nameof(IsStandalone));
@@ -184,6 +185,17 @@ public sealed partial class MatchDesignerViewModel : ObservableObject, IDisposab
 
     /// <summary>True for a Designer opened from Tools ▸ Match Designer, with no component behind it.</summary>
     public bool IsStandalone => _isStandalone;
+
+    /// <summary>A standalone design as it was last KEPT — when the window opened, or last flattened to a cell.</summary>
+    private string? _keptPayload;
+
+    /// <summary>
+    /// True when a standalone Designer holds a design that exists nowhere but this window: edited since it opened
+    /// or was last flattened. A placed Designer writes every edit into its schematic, so it never is. The workspace
+    /// archive asks about these (designer report, 2026-10-20: an archive went out without the design that was
+    /// open in the Matching tool, and nothing said so).
+    /// </summary>
+    public bool HasUnkeptDesign => _isStandalone && _keptPayload is not null && MatchEmbedding.Write(_design) != _keptPayload;
 
     /// <summary>The component this Designer edits — one window per instance keys on it.</summary>
     public EditableComponent? Target => _target;

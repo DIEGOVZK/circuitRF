@@ -229,7 +229,7 @@ public sealed partial class LayoutEditorViewModel
             if (_selectedRulerIndices.Count > 0) _selectedRulerIndices.Clear();
         }
 
-        SelectionStatusText = ComputeSelectionStatus();
+        SelectionStatusText = ComputeSelectionStatus(); SelectionChanged?.Invoke();
         RebuildOverlay();
     }
 

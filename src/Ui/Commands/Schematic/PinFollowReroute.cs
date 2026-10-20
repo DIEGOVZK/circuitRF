@@ -53,9 +53,22 @@ internal static class PinFollowReroute
     /// <summary>One pin's world position before and after the transform.</summary>
     private readonly record struct PinMove(double Ox, double Oy, double Nx, double Ny);
 
+    /// <summary>What a transform does to the wires: re-routed existing wires, and new stub wires.</summary>
+    internal readonly record struct Result(List<WireMoveSnapshot> Rerouted, List<EditableWire> Stubs);
+
     /// <summary>
-    /// The wire snapshots that keep every pin attachment intact across <paramref name="transformed"/>.
-    /// Empty when nothing the transform touches has a wire on it.
+    /// The wire changes that keep every pin attachment intact across <paramref name="transformed"/>.
+    /// Empty when nothing the transform touches has anything attached to it.
+    ///
+    /// <para><b>Each moved pin is decided on its own, between FOLLOW and STUB</b> (designer report,
+    /// 2026-10-20 — rotating one capacitor on a recognised board cut the line tapped onto its wire and
+    /// left its ground symbol behind). A pin's wire ends FOLLOW it — the wire is re-drawn from its far
+    /// end to the pin's new place — only when every attachment at the pin's old place is such a wire
+    /// end, and none of those wires carries a tap anywhere along it, since a re-drawn wire no longer
+    /// passes where the tap meets it. Anything else — another wire tapped through the point, a
+    /// stationary part's pin touching it, a tap along the wire — keeps every wire exactly where it is
+    /// and grows one STUB from the old place to the new one. A stub cannot lose a connection: the old
+    /// point stays the node it was, and the stub ties the pin back to it.</para>
     ///
     /// <para>Call this BEFORE mutating the components — it reads their current placement as the
     /// "before" state and takes the "after" state from the tuples.</para>
@@ -66,17 +79,19 @@ internal static class PinFollowReroute
     /// re-drawing them would throw away bends the user placed — but their NEW geometry is what the
     /// obstacle test sees, so a wire that IS re-routed does not get laid across one of them.
     /// </param>
-    public static List<WireMoveSnapshot> Build(
+    public static Result Build(
         SchematicEditModel model, IReadOnlyList<Transformed> transformed,
         IReadOnlyDictionary<string, IReadOnlyList<(double X, double Y)>>? carried = null)
     {
         const double tol = SchematicEditModel.ConnectTolerance;
+        var result = new Result([], []);
 
         // ── Which pins move, and where to ────────────────────────────────────
         // A DETACHED port is skipped: it is a port the user has explicitly disconnected, so nothing
         // is attached to it and a wire that merely passes over it must not be dragged along. This is
         // the same exclusion ComputeConnectivityGeometry makes.
         var moves = new List<PinMove>();
+        var movingIds = new HashSet<string>(transformed.Select(t => t.Comp.Id), StringComparer.Ordinal);
         foreach (var (comp, newX, newY, newRot, newMirror) in transformed)
         {
             // A probe drags nothing behind it — ComponentTypeRegistry.DetachesFreely, and the same
@@ -91,10 +106,11 @@ internal static class PinFollowReroute
                 var (nx, ny) = SchematicGeometry.LocalToWorld(
                     def.LocalX, def.LocalY, newX, newY, newRot, newMirror);
                 if (SchematicGeometry.CoincidentPoints(ox, oy, nx, ny, tol)) continue;   // pin stays put
+                if (moves.Any(m => SchematicGeometry.CoincidentPoints(m.Ox, m.Oy, ox, oy, tol))) continue;
                 moves.Add(new PinMove(ox, oy, nx, ny));
             }
         }
-        if (moves.Count == 0) return [];
+        if (moves.Count == 0) return result;
 
         // ── Every connection point the schematic will HAVE afterwards ────────
         // A route may END on one of these — that is the attachment it exists to preserve — but it
@@ -102,6 +118,7 @@ internal static class PinFollowReroute
         var newState = transformed.ToDictionary(
             t => t.Comp.Id, t => (t.NewX, t.NewY, t.NewRotation, t.NewMirrorX), StringComparer.Ordinal);
         var pinPoints = new List<(double X, double Y)>();
+        var stationaryPins = new List<(double X, double Y)>();
         foreach (var comp in model.Components)
         {
             var (cx, cy, rot, mirror) = newState.TryGetValue(comp.Id, out var st)
@@ -110,8 +127,9 @@ internal static class PinFollowReroute
             foreach (var def in model.PortDefsOf(comp))
             {
                 if (comp.IsPortDetached(def.PortIndex)) continue;
-                pinPoints.Add(SchematicGeometry.LocalToWorld(
-                    def.LocalX, def.LocalY, cx, cy, rot, mirror));
+                var p = SchematicGeometry.LocalToWorld(def.LocalX, def.LocalY, cx, cy, rot, mirror);
+                pinPoints.Add(p);
+                if (!movingIds.Contains(comp.Id)) stationaryPins.Add(p);
             }
         }
 
@@ -124,21 +142,43 @@ internal static class PinFollowReroute
                 ? moved
                 : (IReadOnlyList<(double X, double Y)>)w.Points.ToList(),
             StringComparer.Ordinal);
+        var staying = model.Wires
+            .Where(w => w.Points.Count >= 2 && (carried is null || !carried.ContainsKey(w.Id)))
+            .ToList();
 
-        var snaps = new List<WireMoveSnapshot>();
-        foreach (var wire in model.Wires)
+        // ── Decide each moved pin: FOLLOW its wire ends, or grow a STUB ──────
+        var followEnds = new Dictionary<string, (PinMove? Start, PinMove? End)>(StringComparer.Ordinal);
+        var stubs = new List<PinMove>();
+        foreach (var m in moves)
         {
-            if (wire.Points.Count < 2) continue;
-            if (carried is not null && carried.ContainsKey(wire.Id)) continue;   // already carried whole
+            var ends = new List<(EditableWire Wire, bool AtStart)>();
+            bool fixedHere = stationaryPins.Any(p => SchematicGeometry.CoincidentPoints(p.X, p.Y, m.Ox, m.Oy, tol));
+            foreach (var w in staying)
+            {
+                bool atStart = SchematicGeometry.CoincidentPoints(w.Points[0].X, w.Points[0].Y, m.Ox, m.Oy, tol);
+                bool atEnd   = SchematicGeometry.CoincidentPoints(w.Points[^1].X, w.Points[^1].Y, m.Ox, m.Oy, tol);
+                if (atStart) ends.Add((w, true));
+                if (atEnd)   ends.Add((w, false));
+                if (!atStart && !atEnd && WireGeometry.PointOnWire(w, m.Ox, m.Oy, tol)) fixedHere = true;
+            }
+            if (ends.Count == 0 && !fixedHere) continue;   // nothing attached: nothing to keep
 
+            bool follow = !fixedHere && ends.All(e => !HasTap(e.Wire, staying, stationaryPins, moves, tol));
+            if (!follow) { stubs.Add(m); continue; }
+            foreach (var (w, atStart) in ends)
+            {
+                followEnds.TryGetValue(w.Id, out var fe);
+                followEnds[w.Id] = atStart ? (m, fe.End) : (fe.Start, m);
+            }
+        }
+
+        foreach (var wire in staying)
+        {
+            if (!followEnds.TryGetValue(wire.Id, out var fe)) continue;
             var (sx, sy) = wire.Points[0];
             var (ex, ey) = wire.Points[^1];
-            var sMove = FindMove(moves, sx, sy, tol);
-            var eMove = FindMove(moves, ex, ey, tol);
-            if (sMove is null && eMove is null) continue;
-
-            double nsx = sMove?.Nx ?? sx, nsy = sMove?.Ny ?? sy;
-            double nex = eMove?.Nx ?? ex, ney = eMove?.Ny ?? ey;
+            double nsx = fe.Start?.Nx ?? sx, nsy = fe.Start?.Ny ?? sy;
+            double nex = fe.End?.Nx ?? ex,   ney = fe.End?.Ny ?? ey;
 
             // A wire whose two ends land on the same point has nothing left to draw. It is left
             // alone rather than collapsed to a degenerate stub: the two pins are coincident now, so
@@ -151,9 +191,47 @@ internal static class PinFollowReroute
             var route = ChooseRoute(nsx, nsy, nex, ney, pinPoints, others, model.GridSize, tol);
 
             live[wire.Id] = route;
-            snaps.Add(new WireMoveSnapshot(wire, wire.Points.ToList(), route));
+            result.Rerouted.Add(new WireMoveSnapshot(wire, wire.Points.ToList(), route));
         }
-        return snaps;
+
+        foreach (var m in stubs)
+        {
+            var route = ChooseRoute(m.Ox, m.Oy, m.Nx, m.Ny, pinPoints, live.Values.ToList(), model.GridSize, tol);
+            var stub = new EditableWire();
+            stub.Points.AddRange(route);
+            live[stub.Id] = route;
+            result.Stubs.Add(stub);
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// True when something other than a moving pin meets <paramref name="w"/> anywhere but its two
+    /// ends: another wire's vertex on it, or a stationary pin on it. Re-drawing such a wire from its
+    /// far end would leave that attachment behind, so the pin grows a stub instead.
+    /// </summary>
+    private static bool HasTap(
+        EditableWire w, List<EditableWire> wires, List<(double X, double Y)> stationaryPins,
+        List<PinMove> moves, double tol)
+    {
+        bool AtOwnEnd(double x, double y) =>
+            SchematicGeometry.CoincidentPoints(x, y, w.Points[0].X, w.Points[0].Y, tol) ||
+            SchematicGeometry.CoincidentPoints(x, y, w.Points[^1].X, w.Points[^1].Y, tol);
+
+        foreach (var (px, py) in stationaryPins)
+            if (!AtOwnEnd(px, py) && WireGeometry.PointOnWire(w, px, py, tol)) return true;
+        foreach (var m in moves)
+            if (!AtOwnEnd(m.Ox, m.Oy) && WireGeometry.PointOnWire(w, m.Ox, m.Oy, tol)) return true;
+        foreach (var o in wires)
+        {
+            if (ReferenceEquals(o, w)) continue;
+            foreach (var (px, py) in o.Points)
+                if (!AtOwnEnd(px, py) && WireGeometry.PointOnWire(w, px, py, tol)) return true;
+            // The same T-junction seen from the other side: one of this wire's own bends on o.
+            for (int i = 1; i < w.Points.Count - 1; i++)
+                if (WireGeometry.PointOnWire(o, w.Points[i].X, w.Points[i].Y, tol)) return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -183,7 +261,20 @@ internal static class PinFollowReroute
     /// when every candidate is obstructed, so the worst case is what shipped before rather than a
     /// wire that fails to appear.</para>
     /// </summary>
-    private static IReadOnlyList<(double X, double Y)> ChooseRoute(
+    /// <summary>The nearest candidate route that touches nothing but its two endpoints, or null
+    /// when every candidate is obstructed.</summary>
+    internal static IReadOnlyList<(double X, double Y)>? TryChooseCleanRoute(
+        double x0, double y0, double x1, double y1,
+        List<(double X, double Y)> pinPoints,
+        List<IReadOnlyList<(double X, double Y)>> others,
+        double gridSize, double tol)
+    {
+        foreach (var candidate in Candidates(x0, y0, x1, y1, gridSize))
+            if (IsClean(candidate, pinPoints, others, tol)) return candidate;
+        return null;
+    }
+
+    internal static IReadOnlyList<(double X, double Y)> ChooseRoute(
         double x0, double y0, double x1, double y1,
         List<(double X, double Y)> pinPoints,
         List<IReadOnlyList<(double X, double Y)>> others,

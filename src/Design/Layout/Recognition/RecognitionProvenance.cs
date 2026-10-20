@@ -81,6 +81,7 @@ public static class RecognitionProvenance
         {
             if (!created.Contains(comp.InstanceName)) continue;
             comp.FromArtwork = true;
+            if (circuit.Shorted.Contains(comp.InstanceName)) comp.Disable = DisableState.Short;
             comp.ArtworkAnchor.Clear();
             if (circuit.Anchors.TryGetValue(comp.InstanceName, out var anchor)) comp.ArtworkAnchor.AddRange(anchor);
             comp.ArtworkMeasured.Clear();

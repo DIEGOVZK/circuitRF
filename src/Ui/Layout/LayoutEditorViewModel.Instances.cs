@@ -102,7 +102,7 @@ public sealed partial class LayoutEditorViewModel
             if (_selectedDesignatorIndices.Count > 0) _selectedDesignatorIndices.Clear();
         }
 
-        SelectionStatusText = ComputeSelectionStatus();
+        SelectionStatusText = ComputeSelectionStatus(); SelectionChanged?.Invoke();
         RebuildOverlay();
     }
 

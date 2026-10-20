@@ -74,7 +74,13 @@ public partial class WorkspaceViewModel
             ReportArtworkSchematic(run, layoutPath);
             dialog.Close();
         };
-        dialog.Closed += (_, _) => _artworkDialog = null;
+        void FollowSelection() => vm.UpdateSelection(layoutVm.SelectionOutline());
+        layoutVm.SelectionChanged += FollowSelection;
+        dialog.Closed += (_, _) =>
+        {
+            layoutVm.SelectionChanged -= FollowSelection;
+            _artworkDialog = null;
+        };
         _artworkDialog = dialog;
         if (ResolveOwner(owner) is { } window) dialog.Show(window);
         else dialog.Show();

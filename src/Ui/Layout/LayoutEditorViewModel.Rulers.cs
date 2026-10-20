@@ -63,7 +63,7 @@ public sealed partial class LayoutEditorViewModel
         // selection arriving from anywhere ELSE invalidates the cache at its own call site instead
         // (SelectAll, DeselectAll, Delete, the marquee commit, and every model mutation).
 
-        SelectionStatusText = ComputeSelectionStatus();
+        SelectionStatusText = ComputeSelectionStatus(); SelectionChanged?.Invoke();
         RebuildOverlay();
     }
 

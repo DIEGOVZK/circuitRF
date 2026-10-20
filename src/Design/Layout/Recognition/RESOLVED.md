@@ -545,3 +545,25 @@ the eight parts and modelled none of the traces or vias between them.
   and unit are tried together, run together, then the expression alone.
 - **Slow:** the second board's recognition takes ~54 s wall (285 s CPU) — 1,589 filled silkscreen shapes and 2,900
   copper shapes. Not addressed; it is why the update does not run a recognition just to list trace lengths.
+
+## Shorts, unlisted footprints and generated lines (designer feedback round 22, 2026-10-20)
+
+Three findings on the eval board and the stub-match test layout the designer sent.
+
+- **A 0 Ω part vanished from the schematic.** `RecognitionEmit` handled `PartKind.Short` by joining the two nets and
+  emitting nothing, so the part was not in the drawing and not in a later Update Layout either. It is now a 0 Ω
+  resistor (`R=0 Ohm`) listed in `RecognitionCircuit.Shorted`, and `RecognitionProvenance.Apply` sets the drawn
+  component's `Disable = Short` — so the schematic simulates it as the short it is, with no near-short warning. The
+  `.cnl` written by `recognize -o` carries `R=0 Ohm`, which the resistor model stamps as `Gmax` with a warning;
+  `.cnl` has no disable state to say more.
+- **A land pattern the bill of materials does not list was modelled.** With a BOM given, a two-pad pattern with no
+  BOM row and no placed-part kind is now `Open` ("read as not fitted"). A part whose kind came from a placed instance
+  is left alone. Trap found while writing it: `PartEvidenceSource`'s default is `Instance`, so
+  `GetValueOrDefault(PartField.Kind)` on a generated part read as a placed one.
+- **Generated lines and tees were read as parts.** A layout made by Update Layout from Schematic places MLIN/MTEE
+  cells with designators; `PlacedPadsOf` turned their pins into parts — the MLINs "bridged" by their own copper,
+  the MTEE cut out with its stub. An instance whose cell's `PCellSnapshot.GeneratorId` is in
+  `PCellRegistry.KnownGeneratorIds` (the built-in structures — footprints come from the land-pattern resolver and
+  are not in that set) is now artwork only.
+- **The stub layout's lines were 57× too long** — not recognition's fault: see the E-at-F entry in
+  `src/Ui/RESOLVED.md`. Recognition then saw three lines that did not meet.

@@ -267,7 +267,7 @@ public static class PartReading
         foreach (var d in drafts)
         {
             var bomRows = bom is not null && d.RefdesSource != PartEvidenceSource.Generated ? bom.RowsFor(d.Refdes!) : [];
-            rows.Add(Build(ctx, d, bomRows, resolver, baseDir, wrongDimension));
+            rows.Add(Build(ctx, d, bomRows, resolver, baseDir, wrongDimension, bomGiven: bom is not null));
         }
         rows.Sort((a, b) => PartsTable.NaturalCompare(a.Refdes, b.Refdes));
 
@@ -284,7 +284,8 @@ public static class PartReading
     // ── one row ─────────────────────────────────────────────────────────────────────────────────────
 
     private static PartRow Build(PartReadingContext ctx, Draft d, IReadOnlyList<BomRow> bomRows,
-                                 PartModelResolver resolver, string? baseDir, List<RecognitionAnchor> wrongDimension)
+                                 PartModelResolver resolver, string? baseDir, List<RecognitionAnchor> wrongDimension,
+                                 bool bomGiven = false)
     {
         var evidence = new Dictionary<PartField, PartEvidenceSource> { [PartField.Refdes] = d.RefdesSource };
         var notes = new List<string>(d.Notes);
@@ -348,6 +349,16 @@ public static class PartReading
         {
             kind = PartKind.Open;
             evidence[PartField.Kind] = PartEvidenceSource.Bom;
+        }
+        // A bill of materials lists what is FITTED: a two-pad land pattern it does not list, and that no placed
+        // part claims, is an empty footprint — do not populate (designer report, 2026-10-20: the open pads beside
+        // the amplifier came out as a variable capacitor).
+        if (bomGiven && pads == 2 && bomRows.Count == 0 && kind is PartKind.Unknown or PartKind.R or PartKind.L or PartKind.C
+            && !(evidence.TryGetValue(PartField.Kind, out var kindFrom) && kindFrom == PartEvidenceSource.Instance))
+        {
+            kind = PartKind.Open;
+            evidence[PartField.Kind] = PartEvidenceSource.Bom;
+            notes.Add("the bill of materials does not list it, so it is read as not fitted");
         }
         if (smt?.Family == SmtCaseFamily.WireJumper && kind is PartKind.Unknown or PartKind.R)
         {

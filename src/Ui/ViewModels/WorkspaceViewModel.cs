@@ -1879,6 +1879,24 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
             !await PromptSaveBeforeClose(window, "archiving the workspace", includeFloated: false))
             return;
 
+        // A standalone Match Designer has no file: its design reaches the workspace only as a flattened cell, so
+        // the save prompt above cannot see it, and an archive went out without it (designer report, 2026-10-20).
+        if (Views.Match.MatchDesignerWindow.StandaloneWithUnkeptDesigns() is { Count: > 0 } designers)
+        {
+            bool one = designers.Count == 1;
+            if (!await Views.Dialogs.TextConfirmDialog.AskAsync(window, "Archive Workspace",
+                    one ? "A Match Designer has a design that is not in the workspace."
+                        : $"{designers.Count} Match Designers have designs that are not in the workspace.",
+                    "A design made in Tools ▸ Match Designer lives only in its window until Flatten to Cell writes it " +
+                    "into the workspace, so the archive cannot include it. Cancel, and use Flatten to Cell in the " +
+                    "Designer to keep it — or archive without it.",
+                    one ? "Archive Without It" : "Archive Without Them"))
+            {
+                designers[0].Activate();
+                return;
+            }
+        }
+
         // The .cws itself is always refreshed: the dock arrangement and open-document list are what
         // the recipient's window will come up in, and they only reach disk from here.
         WriteWorkspaceFile(CurrentWorkspacePath, silent: true);

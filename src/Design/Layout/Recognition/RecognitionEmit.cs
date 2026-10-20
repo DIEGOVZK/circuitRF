@@ -71,6 +71,9 @@ public sealed record RecognitionCircuit(TestBench TestBench)
     public IReadOnlyDictionary<string, (long X, long Y)> Hints =>
         Anchors.Where(a => a.Value.Count > 0).ToDictionary(a => a.Key, a => ArtworkAnchors_Centre(a.Value));
 
+    /// <summary>Parts read as shorts — emitted as 0 Ω resistors, and drawn Shorted.</summary>
+    public IReadOnlySet<string> Shorted { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+
     /// <summary>What the emit could not write, one sentence each.</summary>
     public IReadOnlyList<string> Notes { get; init; } = [];
 
@@ -177,6 +180,7 @@ public static class RecognitionEmit
 
         // ── parts ────────────────────────────────────────────────────────────────────────────────────
         var variables = new List<(string Name, double Value, PartKind Kind, bool Shunt)>();
+        var shorted = new HashSet<string>(StringComparer.Ordinal);
         foreach (var row in result.Parts.Rows.Where(r => r.IsModelled))
         {
             var ends = new List<string>();
@@ -188,10 +192,14 @@ public static class RecognitionEmit
             }
             if (ends.Count < 2) { notes.Add($"{row.Refdes}: fewer than two terminals were measured, so it is not in the circuit."); continue; }
 
-            if (row.Kind == PartKind.Short) { Union(ends[0], ends[1]); continue; }
             if (row.Kind is PartKind.Open or PartKind.Ignore) continue;
 
-            string name = Identifier(row.Refdes, row.ParameterName);
+            // A short (a 0 Ω link, a jumper) used to merge its two nets and leave nothing behind, so the
+            // part vanished from the schematic (designer report, 2026-10-20). It is a 0 Ω resistor now,
+            // which the drawing marks Shorted (RecognitionCircuit.Shorted): the part stays visible and
+            // in the layout round trip, and simulates as the short it is.
+            bool isShort = row.Kind == PartKind.Short;
+            string name = Identifier(row.Refdes, isShort ? "R" : row.ParameterName);
             // Which way the part lies on the board — pad 1 toward pad 2, degrees — so a layout made back from the
             // schematic can lay it as the board does (designer report, round 16).
             var (t1, t2) = (row.Terminals[0], row.Terminals[1]);
@@ -208,8 +216,13 @@ public static class RecognitionEmit
                 continue;
             }
 
-            var part = new Proto { Type = row.ParameterName, Prefix = "", FixedName = name, Nodes = ends, Anchor = [(row.X, row.Y)] };
-            if (row.Value is { } value)
+            var part = new Proto { Type = isShort ? "R" : row.ParameterName, Prefix = "", FixedName = name, Nodes = ends, Anchor = [(row.X, row.Y)] };
+            if (isShort)
+            {
+                part.Parameters.Add(new ParameterAssignment("R", "0", "Ohm"));
+                shorted.Add(name);
+            }
+            else if (row.Value is { } value)
             {
                 var (number, unit) = Split(PartsTable.ValueText(value, row.GeneratedKind, digits));
                 part.Parameters.Add(new ParameterAssignment(row.ParameterName, number, unit));
@@ -370,7 +383,7 @@ public static class RecognitionEmit
         var sweep = options.Sweep ?? input.EmSetup?.Frequency ?? RecognitionEmitOptions.DefaultSweep;
         tb.Analyses.Add(new SParameterAnalysis(AnalysisName, sweep));
 
-        return new RecognitionCircuit(tb) { Anchors = anchors, Measured = measured, Notes = notes, StrayLines = stray };
+        return new RecognitionCircuit(tb) { Anchors = anchors, Measured = measured, Notes = notes, StrayLines = stray, Shorted = shorted };
     }
 
     private const string Ground = "0";

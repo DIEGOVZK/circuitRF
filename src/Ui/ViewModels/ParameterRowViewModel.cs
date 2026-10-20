@@ -865,7 +865,22 @@ public sealed partial class ParameterRowViewModel : ObservableObject
         string expr = StagedExpression.Trim();
         if (expr == _param.Expression) return;
         if (expr.Length == 0 && !IsLayerChoiceParam) return;
+        if (TryRetuneLineFrequency(expr, _param.Unit)) return;
         _schematicVm.Execute(new EditParameterCommand(_schematicVm.EditModel, _param, expr, _param.Unit));
+    }
+
+    /// <summary>
+    /// A new F on an MLIN, CPWG or SLIN stated as E at F moves E with it, so the line keeps its length — one undo
+    /// step for both (<see cref="LineEntryConversion.WithFrequency"/>). False, and nothing done, for anything else.
+    /// </summary>
+    private bool TryRetuneLineFrequency(string fExpression, string fUnit)
+    {
+        if (_param.Name != "F" || _ownerComp is null) return false;
+        var retuned = LineEntryConversion.WithFrequency(
+            _ownerComp, SchematicTechnology.Of(_schematicVm.EditModel), fExpression, fUnit);
+        if (retuned is null) return false;
+        _schematicVm.Execute(new SetParametersCommand(_schematicVm.EditModel, _ownerComp, retuned));
+        return true;
     }
 
     /// <summary>
@@ -907,6 +922,7 @@ public sealed partial class ParameterRowViewModel : ObservableObject
         if (!ExpressionEnabled) return;
 
         if (unit == _param.Unit) return;
+        if (TryRetuneLineFrequency(_param.Expression, unit)) return;
         _schematicVm.Execute(new EditParameterCommand(_schematicVm.EditModel, _param, _param.Expression, unit));
     }
 

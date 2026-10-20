@@ -112,6 +112,37 @@ public static class LineEntryConversion
     }
 
     /// <summary>
+    /// <paramref name="component"/>'s parameters with <c>F</c> set to <paramref name="fExpression"/>
+    /// <paramref name="fUnit"/> and <c>E</c> moved so the line keeps its physical length — or null when the line does
+    /// not state E at F, or either length cannot be worked out (a non-numeric W, E or F).
+    ///
+    /// <para>For a planar line the copper is the line, and E at F is only how its length is written: a new F with
+    /// the old E was a different, silently longer or shorter line, and switching back to L showed the change
+    /// (designer report, 2026-10-20). A TLIN is not this: its E at F IS the line.</para>
+    /// </summary>
+    public static List<EditableParameter>? WithFrequency(
+        EditableComponent component, Technology? tech, string fExpression, string fUnit)
+    {
+        ArgumentNullException.ThrowIfNull(component);
+        if (!Applies(component.Symbol) || !IsElectrical(component.Parameters)) return null;
+        var (physical, _) = Switch(component, tech, 0);
+        if (physical?.FirstOrDefault(p => p.Name == "L") is not { } lRow || Si(lRow) is not { } lengthM) return null;
+
+        var retuned = component.Parameters.Select(p => p.Clone()).ToList();
+        var fRow = retuned.FirstOrDefault(p => p.Name == "F");
+        if (fRow is null) return null;
+        fRow.Expression = fExpression;
+        fRow.Unit = fUnit;
+        var probe = new EditableComponent { Symbol = component.Symbol, InstanceName = component.InstanceName };
+        probe.Parameters.AddRange(retuned);
+        if (AngleDegreesFor(probe, tech, lengthM) is not { } eDeg) return null;
+        var eRow = retuned.First(p => p.Name == "E");
+        eRow.Expression = eDeg;
+        eRow.Unit = "deg";
+        return retuned;
+    }
+
+    /// <summary>
     /// The <c>E</c> (degrees, at the line's own <c>F</c>) that <paramref name="lengthMeters"/> of an electrically stated
     /// <paramref name="component"/> is on <paramref name="tech"/> — what a writer arriving with a physical length (the
     /// layout's, on Update Schematic from Layout) puts in E, so the line keeps the form its user chose and never carries
