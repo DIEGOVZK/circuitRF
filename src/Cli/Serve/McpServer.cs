@@ -295,6 +295,10 @@ internal sealed class McpServer
                 "Steps.<Step>.Settings first to change a step; 'reference cmc'). 5. model noun=check-charge -> exit 3 above " +
                 "threshold. 6. model noun=export output=<f.cmodel>. 7. model noun=validate -> exit 3 when a tolerance is " +
                 "missed. Place it as ComposedFet:X1 g d s File=<f.cmodel> in a .cnl and run analysis=hb.\n" +
+                // The same file written with no .cmc: equations, a table or a network trained elsewhere.
+                "A FET model of your own (equations, a table, an ANN): reference topic=cmodel gives the format and complete " +
+                "Python and MATLAB scripts; write and run your script with your own tools, then check path=<f.cmodel>, " +
+                "then place it as above.\n" +
                 "On an instance line the NETS come first and every 'Key=value' after them; how many " +
                 "nets each type takes is the 'nets' field of reference components, which is not the " +
                 "same number as its symbol's pin count; 'reference component-index' lists every type " +

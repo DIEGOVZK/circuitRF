@@ -63,6 +63,7 @@ public static class ReferenceLibrary
         "pins-ports-terms",
         "sdd",
         "file-formats",
+        "cmodel",
         ComponentNotesTopic,
     ];
 

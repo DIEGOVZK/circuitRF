@@ -1325,7 +1325,8 @@ internal static class ToolCatalog
         new("model",
             "Model Composer: build a FET model (.cmodel) or a passive cell from measured or simulated data. "
           + "new -> import -> deembed -> fit (step=all) -> check-charge -> export -> validate. 'reference cmc' and "
-          + "'reference cmodel' hold the formats. Exit 3: a check failed (charge conservation, a validation tolerance).",
+          + "'reference cmodel' hold the formats; a .cmodel of your own (equations, a table, an ANN) needs no .cmc, and "
+          + "'reference cmodel' is how to write one. Exit 3: a check failed (charge conservation, a validation tolerance).",
             "noun",
             "What to do.",
             [

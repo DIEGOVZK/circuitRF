@@ -3719,3 +3719,10 @@ line from the bias point (`docs/design/model-composer.md` §24). Things worth kn
   continuation's known kinks. So the stall is in the HB solve of the two coupled slow state nodes, not a wrong derivative.
   Not fixed here; the MC-22 sweep gate stops at 13 dBm and says why. Fixed by MC-25 (the HB line search's norm), and
   the gate is back at 22 dBm: `src/Engine/RESOLVED.md`.
+
+## A `.cmodel` zipped by a tool refused its own `arrays/` folder entry (2026-10-20)
+
+`CmodelFile.Read` refused every entry under `arrays/` that did not end in `.npy`, and the folder entry `arrays/` itself
+is one. circuitRF's own writer never emits it, but MATLAB's `zip`, `zip -r` and an operating system's "compress" all do,
+so every hand-built model with a Table or ANN was refused as `arrays/: an entry under arrays/ is not a .npy.` The reader
+now skips an entry whose name ends in `/`. Gate: `CmodelFormatTests.AFolderEntryUnderArrays_IsSkipped`.

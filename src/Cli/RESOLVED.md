@@ -3236,6 +3236,13 @@ case; `reference cmc` serves its section plus the walk of the step settings, who
 The walk now spells a value tuple and a complex number as the two-element arrays the files hold, and a raw JSON block as
 an object.
 
+**`reference cmodel` is now the authored page `docs/user/src/reference/cmodel.md`** (2026-10-20), a `ReferenceLibrary`
+topic, and `DocumentSchema` no longer carries a `cmodel` format. The field table alone was enough to read a `.cmodel` but
+not to write one: a script needs the arrays' `.npy` layout, the spline's knots, the ANN's array names and the core's sign
+conventions, none of which a field table states. Its preamble had also said the file was not meant to be written by
+hand. Every script on that page was run against `check` and a DC solve when it was written; the table and ANN payloads
+agree with an independent evaluation of the same constituent.
+
 **`report --pdf` is refused until MC-15**, which owns the report's Data Display document; the MCP tool does not
 advertise it yet.
 

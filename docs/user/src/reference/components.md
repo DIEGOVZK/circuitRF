@@ -1904,7 +1904,9 @@ glyph, the pins and the parameter table.</p>
 
 {{symbol: composed-fet}}
 
-A transistor model built from measured or simulated device data, placed from its `.cmodel` file:
+A transistor model built from measured or simulated device data, placed from its `.cmodel` file. The
+[Model Composer](model-composer.html) writes one from data, and [Writing a .cmodel](cmodel.html) describes the file
+for a script of your own:
 
 ```
 ComposedFet:X1  g d s  File="gan_8x125.cmodel"  N=8

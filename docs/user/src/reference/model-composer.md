@@ -60,7 +60,8 @@ every setting and every result, so a model can be rebuilt, checked and changed l
 A transistor model has four parts, called **constituents**: the drain current `Id`, the gate current `Ig` (a gate–source
 and a gate–drain branch), and the gate and drain charges `Qg` and `Qd`. Each one is an ANN, a table or an equation. They
 sit inside an extrinsic network of pads, inductances and resistances. A model can add self-heating, trap states, or a
-simpler DC/RF dispersion.
+simpler DC/RF dispersion. A `.cmodel` can also be written without the composer, from equations, a table or a network
+trained elsewhere: [Writing a .cmodel](cmodel.html).
 
 ## The steps {#steps}
 

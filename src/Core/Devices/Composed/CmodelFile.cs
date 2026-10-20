@@ -83,6 +83,9 @@ public static class CmodelFile
             foreach (var e in zip.Entries)
             {
                 if (!e.FullName.StartsWith(ArraysFolder, StringComparison.Ordinal)) continue;
+                // A folder entry (`arrays/`) is what most zip tools add before the files in it — Matlab's zip,
+                // `zip -r`, an operating system's "compress" — so it carries no array and is not refused.
+                if (e.FullName.EndsWith('/')) continue;
                 string name = e.FullName[ArraysFolder.Length..];
                 if (!name.EndsWith(".npy", StringComparison.Ordinal))
                     throw new CmodelFormatException(e.FullName, "an entry under arrays/ is not a .npy.");

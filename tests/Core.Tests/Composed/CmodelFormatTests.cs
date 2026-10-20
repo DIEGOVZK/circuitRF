@@ -29,6 +29,24 @@ public sealed class CmodelFormatTests
         Assert.Equal([1.5, -2.25, 3e-12], read.Arrays["w1"].RealValues);
     }
 
+    /// <summary>A file written by a zip tool rather than by circuitRF carries an <c>arrays/</c> folder entry before the
+    /// files in it; that entry is no array and is not refused.</summary>
+    [Fact]
+    public void AFolderEntryUnderArrays_IsSkipped()
+    {
+        var model = ComposedTestModels.Model() with
+        {
+            Arrays = new Dictionary<string, DataCube> { ["w1"] = new([new Axis("i", [0, 1])], [1.5, -2.25]) },
+        };
+        using var s = new MemoryStream();
+        s.Write(Bytes(model));
+        using (var zip = new ZipArchive(s, ZipArchiveMode.Update, leaveOpen: true))
+            zip.CreateEntry(CmodelFile.ArraysFolder);
+        s.Position = 0;
+
+        Assert.Equal([1.5, -2.25], CmodelFile.Read(s).Arrays["w1"].RealValues);
+    }
+
     [Theory]
     [InlineData("\"Method\": \"Equation\"", "\"Method\": \"Spline\"", "Core.Constituents.Id.Method")]
     [InlineData("\"Fingers\": 4", "\"Fingers\": 0", "BasePeriphery.Fingers")]

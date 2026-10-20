@@ -131,6 +131,7 @@ usually needs them:
 | `schematic` | before the first `.csch` | components, wires, variables and analyses, with a worked example |
 | `layout` | before the first `.clay` | shapes, layers, nets, ports |
 | `em-setup` | before the first `.cem` | solver, mesh, ports and sweep |
+| `cmodel` | before writing a FET model without the Model Composer | every field of a `.cmodel`, the arrays' layout, and complete Python and MATLAB scripts |
 
 **Start from `component-index`, then ask for one type at a time.** `reference components` with no
 type is the whole catalogue, around 100 kB, which is more than many agents can take in one tool
@@ -217,6 +218,10 @@ runs and calls the same function, so a document an agent builds opens in the win
    the model with every data set at the plane it was measured at (exit 3 when a tolerance is missed).
 8. `model` with `noun=export` and `output` writes the `.cmodel`. Place it in a netlist as
    `ComposedFet:X1 g d 0 File=fet.cmodel N=8` and `run` it like any other device.
+
+A model that does not come from data — equations from a paper, a table another simulator wrote, a network trained in
+another framework — needs no `.cmc`. `reference` with topic `cmodel` gives the file and scripts that write it; the agent
+runs its script with its own tools and then calls `check` on the `.cmodel`.
 
 `model` with `noun=explain` says, at any point, what the document holds: each data set and its plane, each step as fresh,
 stale or absent, each network value with its error, and the trap levels each state was trained from. It fits nothing.

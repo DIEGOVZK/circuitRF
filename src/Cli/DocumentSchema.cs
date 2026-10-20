@@ -42,8 +42,10 @@ internal static class DocumentSchema
     /// <param name="More">Further types walked after the root — the blocks a document carries as raw JSON (a
     /// <c>.cmc</c>'s <c>Network</c> and step settings), which the root's own properties cannot reach.</param>
     /// <remarks>A null <paramref name="Root"/> is a format whose JSON is written field by field in a shape its types do not
-    /// mirror (a <c>.cmodel</c>'s <c>model.json</c>): its page is the authored field table alone, never a walk that would
-    /// name fields the file does not have.</remarks>
+    /// mirror: its page is the authored preamble alone, never a walk that would name fields the file does not have. A
+    /// <c>.cmodel</c>'s <c>model.json</c> is such a format, and it is served whole as the AUTHORED topic <c>cmodel</c>
+    /// (<see cref="CircuitRF.Design.Reference.ReferenceLibrary"/>) rather than from here, because a file a script writes
+    /// from scratch needs the whole page — its arrays, its knots, its signs — and not a field table alone.</remarks>
     internal sealed record Format(string Topic, string Title, string Extension, Type? Root, string Preamble, Type[]? More = null);
 
     // ── the formats ──────────────────────────────────────────────────────────
@@ -81,9 +83,10 @@ internal static class DocumentSchema
         // component a resistor without a word (SchematicLoadAudit now says so).
         new("schematic", "The .csch schematic format", ".csch",
             typeof(CircuitRF.Design.Schematic.CschFile), CschPreamble),
-        // The Model Composer's two documents (brief-modelcomposer-13 R-mc13-6). Their field tables are the authored
-        // file-formats page's own sections, served from the embedded page rather than copied, so the reference and the
-        // manual cannot disagree; the .cmc adds the walk of its step settings for every default.
+        // The Model Composer's document (brief-modelcomposer-13 R-mc13-6). Its field table is the authored file-formats
+        // page's own section, served from the embedded page rather than copied, so the reference and the manual cannot
+        // disagree, and the walk of its step settings adds every default. The .cmodel it exports is the authored topic
+        // `cmodel`.
         new("cmc", "The .cmc Model Composer document", ".cmc",
             typeof(CircuitRF.Design.Modeling.CmcDocument), ModelPreamble("cmc", CmcIntro),
             [typeof(CircuitRF.Design.Modeling.PadsSettings), typeof(CircuitRF.Design.Modeling.NetworkSettings),
@@ -91,7 +94,6 @@ internal static class DocumentSchema
              typeof(CircuitRF.Design.Modeling.ThermalFitSettings), typeof(CircuitRF.Design.Modeling.TrapFitSettings),
              typeof(CircuitRF.Design.Modeling.ValidationSettings), typeof(CircuitRF.Design.Modeling.ReportOptions),
              typeof(CircuitRF.Design.Modeling.Passive.PassiveStepSettings)]),
-        new("cmodel", "The .cmodel composed FET model", ".cmodel", null, ModelPreamble("cmodel", CmodelIntro)),
     ];
 
     private const string CmcIntro = """
@@ -100,12 +102,6 @@ internal static class DocumentSchema
         NetworkSettings, and each `Steps.<Step>.Settings` the settings type of that step (Current: CurrentFitSettings,
         Charge: ChargeFitSettings, Thermal: ThermalFitSettings, Traps: TrapFitSettings, Validate: ValidationSettings,
         Report: ReportOptions, Passive: PassiveStepSettings); every field and its default follows the manual's table.
-        """;
-
-    private const string CmodelIntro = """
-        A .cmodel is written by `circuitrf model export` and read by a ComposedFet instance
-        (`ComposedFet:X1 g d s File=fet.cmodel N=8`). It is not meant to be written by hand; `circuitrf check` names the
-        field of anything it refuses.
         """;
 
     /// <summary>A preamble whose field table is the file-formats page's section <c>{#anchor}</c>, up to the next
