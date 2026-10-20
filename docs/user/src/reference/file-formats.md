@@ -139,8 +139,9 @@ model always writes the same bytes.
 | `BasePeriphery` | `Fingers` (N0) and `UnitWidth` (`"125 um"`) of the device the model was extracted from. |
 | `Temperature` | `{ "Mode": "Single", "T0": 25 }` — valid at one temperature, with no temperature input — or `{ "Mode": "Range", "Tmin": …, "Tmax": … }`, in °C. |
 | `Thermal` | Self-heating, on a `Range` model only: `{ "Rth": …, "Cth": … }` in K/W and J/K, or a `Ladder` of up to five such poles, at the base periphery; optionally `RthSlope` (K/W per K) and `Tref` (°C) for a thermal resistance that varies with the ambient. The device then has a thermal node `t` whose voltage is the temperature rise, into which it puts its dissipated power, with `Rth ∥ Cth` (or the ladder) from it to ground; every constituent is evaluated at the run's temperature plus that rise. A symbol's pin 4 is that node, so a heatsink network attached there is in parallel with the model's own. `Rth` scales by N0/N and `Cth` by N/N0. |
+| `Traps` | Trapping: `Model` (`CaptureEmission`, `Custom`, or another installed model), `States` (the enabled ones: `phi1` gate-lag, `phi2` drain-lag), the model's `Parameters` and the `Levels` each state was trained at, in volts. Each state is a node of the device whose voltage is the state; the states are inputs of `Id` and `Qd`, never of `Ig` or `Qg`. `CaptureEmission`'s parameters are `TauCapt1`/`TauCapt2` and `TauEmit1`/`TauEmit2` (s), `Xref` and `Vc` (V), and with thermally activated emission `Ea1`/`Ea2` (eV) and `Tref` (°C). A `Custom` model adds `Expressions`: per state its `Dynamics` (dphi/dt, in V/s) and `Dc` (its DC value) over the state, `vgs`, `vds`, `T` (°C) and its parameters; the `Dc` must be a fixed point of the `Dynamics`. Absent: no traps. Not combined with `Core.Dispersion` or `Core.Symmetry: Exchange`. |
 | `Network` | `Netlist`: `.cnl` text holding one `define` block with exactly six pins — extrinsic gate, drain, source, then intrinsic gate, drain, source — and its element values as variables. `Scaling`: each variable's rule, `fixed` (the default), `perFinger` or `perFingerInverse`. |
-| `Core.Constituents` | `Id`, `Ig`, `Qg` and `Qd`, each `{ "Method", "Inputs", … }`, the method one of `Equation`, `Table` or `ANN`. An `Equation` carries `Expression` and `Parameters` (named constants). A `Table` names its arrays in `Table` — a grid of values and the coefficients of the smooth spline through them — and records its `Smoothing`. An `ANN` names its arrays in `Network` and its hidden layers' `Activation`, `Tanh` or `Sigmoid`. `Ig` carries two of whichever its method uses, `IgGs` and `IgGd`. Inputs are `vgs` and `vds` in volts, and `T` in °C for a `Range` model. Currents are in A, charges in C. An optional `IdRF` is the drain current at RF, with `Core.Dispersion`. |
+| `Core.Constituents` | `Id`, `Ig`, `Qg` and `Qd`, each `{ "Method", "Inputs", … }`, the method one of `Equation`, `Table` or `ANN`. An `Equation` carries `Expression` and `Parameters` (named constants). A `Table` names its arrays in `Table` — a grid of values and the coefficients of the smooth spline through them — and records its `Smoothing`. An `ANN` names its arrays in `Network` and its hidden layers' `Activation`, `Tanh` or `Sigmoid`. `Ig` carries two of whichever its method uses, `IgGs` and `IgGd`. Inputs are `vgs` and `vds` in volts, `T` in °C for a `Range` model, and the trap states in volts for a model with `Traps`. Currents are in A, charges in C. An optional `IdRF` is the drain current at RF, with `Core.Dispersion`. |
 | `Transform` (Table, ANN current) | `{ "Kind": "Asinh", "Scale": I0 }`: the arrays hold `u`, and the current is `I0·sinh(u)` — straight through zero within ±I0 and logarithmic beyond, so a current spanning many decades is held to the same ratio throughout. |
 | `Drift` (`Qg`, `Qd`) | The charges as a gate–source and a gate–drain depletion charge, a drain–source charge, and a drift charge that depends on the gate–drain voltage and the drain current: `Qg = QGS + QGD + Qdrift`, `Qd = −QGD − (1 − Lambda)·Qdrift + QDS`. Both charges are `Drift` or neither. `Qg` names the networks `QGS`, `QGD` and `Qdrift`, `Qd` names `QGD`, `Qdrift` and `QDS` and carries `Parameters: { "Lambda": … }`, between 0 and 1. The `Domain`'s `Box` holds each network's training interval: `QGS`, `QGD`, `QDS`, `Qdrift.vgd` and `Qdrift.Id`. |
 | `Core.Dispersion` | `{ "Tau": τ }`, in seconds, present exactly when `IdRF` is: the drain current follows `Id` at DC and `IdRF` well above 1/(2πτ), moving between them as one pole. |
@@ -166,7 +167,7 @@ except temperatures, in °C.
 | `DataSets` | Each with a `Name`, a `Kind`, its `Sources`, its `Conditions`, its `Import` settings and any `Exclusions`. |
 | `Pads` | How the probe pads are removed — see below. Absent when the data is at the device plane. |
 | `Network` | The six-pin extrinsic network and its variables' settings — see below. Absent when the data is intrinsic. |
-| `Steps` | Each model step's settings and result: `Current`, `Charge` and `Thermal` below. A step not described here is kept as written. |
+| `Steps` | Each model step's settings and result: `Current`, `Charge`, `Thermal` and `Traps` below. A step not described here is kept as written. |
 | `Panels` | `Hidden`: the window panels switched off. Absent when every panel shows. |
 
 A data set's `Kind` is `DcIv`, `PulsedIv`, `SParams` (CW multi-bias), `PulsedSParams`, `SimulatedTables`
@@ -246,8 +247,8 @@ digest of the network values the fit was made through (a later network fit makes
 
 | Field | What it holds |
 |---|---|
-| `DataSets` | The I–V sets to fit to. Absent: every `DcIv`, `PulsedIv` and `SimulatedTables` set. If pulsed they must share one `Quiescent` and `PrePulse`; a mix is refused, naming what differs. At two or more temperatures the currents take the temperature `T` as an input: each point at its chuck temperature, a DC point at its junction temperature when `Thermal` models self-heating. |
-| `Id`, `Ig` | Each `Method` (`ANN`, the default, `Table` or `Equation`) and that method's settings: `Hidden` (`[8, 8]`), `Activation` and `MaxIterations` (6000) for a network; `GridStep` (0.1 V), `Regrid` (`ANN`, or `RBF` through the points themselves), `Smoothing` and, with `T` an input, `TemperatureStep` (25 °C, which needs `Regrid: ANN`) for a table; `Template` or the user's own `Expression` (`Id`) or `IgGs` and `IgGd` (`Ig`), with `Parameters` (`Value`, `Min`, `Max`, `Lock` each), `TemperatureCoefficients` (template parameters made linear in `T`) and `Algorithm` (`cmaes`, `de` or `lm`) for an equation. The templates are `Angelov`, `CurticeQuadratic`, `CurticeCubic`, `Statz` and `Materka` for `Id`, and `Diode` for `Ig`. |
+| `DataSets` | The I–V sets to fit to. Absent: every `DcIv`, `PulsedIv` and `SimulatedTables` set. If pulsed they must share one `Quiescent` and `PrePulse`, unless `Traps` models trapping; a mix is refused, naming what differs. With traps each point takes the trap state `Steps.Traps` maps it to, as further inputs of `Id`. At two or more temperatures the currents take the temperature `T` as an input: each point at its chuck temperature, a DC point at its junction temperature when `Thermal` models self-heating. |
+| `Id`, `Ig` | Each `Method` (`ANN`, the default, `Table` or `Equation`) and that method's settings: `Hidden` (`[8, 8]`), `Activation` and `MaxIterations` (6000) for a network; `GridStep` (0.1 V), `Regrid` (`ANN`, or `RBF` through the points themselves), `Smoothing` and, with `T` an input, `TemperatureStep` (25 °C, which needs `Regrid: ANN`) and with traps `TrapStep` (1 V) for a table; `Template` or the user's own `Expression` (`Id`) or `IgGs` and `IgGd` (`Ig`), with `Parameters` (`Value`, `Min`, `Max`, `Lock` each), `TemperatureCoefficients` (template parameters made linear in `T`) and `Algorithm` (`cmaes`, `de` or `lm`) for an equation. The templates are `Angelov`, `CurticeQuadratic`, `CurticeCubic`, `Statz` and `Materka` for `Id`, and `Diode` for `Ig`. |
 | `IdFloor` | 0.1: `Id` is fitted to each point's own value down to this fraction of the largest current, and to that floor below it. |
 | `IgFloor` | 1e-4: `Ig` is fitted to the same ratio everywhere above this fraction of the largest gate current (`I0` of its `Transform`). |
 | `GateSplit` | `Sign` (the default): at `vds ≥ 0` a forward gate current is the gate–source branch and a reverse one the gate–drain branch, the other way round at `vds < 0`. `GateSource` or `GateDrain` puts all of it in one branch. |
@@ -260,14 +261,16 @@ digest of the network values the fit was made through (a later network fit makes
 `Arrays` — the name of the cache file holding their arrays — then per current the training and held-out RMS
 error, absolute and relative to the range (`Errors`), `Conductance` (the fitted Gm and Gds against the data's
 own DC derivatives), `Symmetry` (with `Exchange`: the value, slope and gate jumps at `vds = 0`), `Eq649` (the
-share of the RF conductances no single current reproduces), `Reference` and the `Report` lines.
+share of the RF conductances no single current reproduces), `Reference`, with traps the `Traps` block exactly as the
+`.cmodel` will carry it and `DcIv` (the DC I–V's RMS error at its DC trap states: `Count`, `Rms`, `Relative`), and the
+`Report` lines.
 
 `Steps.Charge` is the gate and drain charges' step, with the same three fields. The charges are fitted to the
 intrinsic capacitances of the S-parameter sets, averaged over the `FlatnessBand`. `Settings` holds:
 
 | Field | What it holds |
 |---|---|
-| `DataSets` | The S-parameter sets to fit to. Absent: every set with S data. One trap state, as for the currents. At two or more temperatures an `ANN` charge takes `T` as an input; any other method is fitted temperature-independent. |
+| `DataSets` | The S-parameter sets to fit to. Absent: every set with S data. One trap state, as for the currents, unless `Traps` models trapping: then an `ANN` `Qd` takes the trap states when pulsed S-parameters give each a level, and `Qg` never does. At two or more temperatures an `ANN` charge takes `T` as an input; any other method is fitted temperature-independent. |
 | `Qg`, `Qd` | Each `Method` (`ANN`, the default, `Table` or `Equation`) and that method's settings: `Hidden` (`[8, 8]`), `Activation` and `MaxIterations` (3000) for a network, trained on the charge's two capacitances; `GridStep` (0.1 V), `Interpolant` (`ANN`, or `RBF` through the points themselves), `Path` (`A`, `B` or `Mean`, the default) and `Smoothing` for a table integrated from the capacitances; `Template` (`Depletion` or `Angelov`) or the user's own `Expression`, with `Parameters` and `Algorithm`, for an equation. |
 | `Anchor` | `[vgs, vds]` where both charges are zero. Absent: `[0, 0]`, or the data point nearest it when it lies outside the data. |
 | `FlatnessLimit` | 0.1: a point whose `C11` or `C22` varies across the band by more than this fraction of its mean counts for less. |
@@ -278,7 +281,7 @@ intrinsic capacitances of the S-parameter sets, averaged over the `FlatnessBand`
 capacitance `C11`, `C12`, `C21`, `C22`: the RMS error of the fitted charge's derivative, and that as a fraction of
 the capacitance's range), `PathDifference` (a table's two integration paths' RMS difference as a fraction of the
 charge's range), `CdsSpread` (with `Drift`: how much `Cds` varies across `vgs` at a fixed `vds`, which `QDS` cannot
-follow) and the `Report` lines.
+follow), with a trapped `Qd` the `Traps` block, and the `Report` lines.
 
 `Steps.Thermal` is temperature and self-heating: `Settings` and the `Result` of the last run. With the data at one
 temperature the model is valid at that temperature only and self-heating is unavailable. `Settings` holds:
@@ -298,6 +301,25 @@ temperature the model is valid at that temperature only and self-heating is unav
 `Poles` (the thermal network's `Rth` and `Cth`, absent until its dynamics are set), `TauTh`, `Extraction` (the fit's
 residual in K and relative to the temperature rise, the points used, those left out for low power and those
 unresolved, and the vgs, vds and power ranges of the points used), `TauFit` and the `Report` lines.
+
+`Steps.Traps` is trapping: `Settings` and the `Result` of the last run. It needs pulsed I–V. A pulsed set's trap state
+is set by its `PrePulse` level when it has one, else its `Quiescent` bias. A point pulsed toward that bias — no lower
+in `vgs` for gate-lag, no higher in `vds` for drain-lag — is at that bias's trap state; one pulsed beyond it is placed
+by the set's `TrapState`: `auto` (the default) uses it to check the model only, `setting` puts it at the bias's trap
+state, `extreme` at the pulse's own. DC points are at their DC state. A state trained from one trap level is used
+with a warning; one with none cannot be enabled. `Settings` holds:
+
+| Field | What it holds |
+|---|---|
+| `Model` | `None` (the default), `CaptureEmission` or `Custom`. |
+| `States` | The enabled states. Absent: drain-lag (`phi2`) for `CaptureEmission`, every state with expressions for `Custom`. |
+| `Emission` | `Constant` (the default) or `ThermallyActivated`, which needs each enabled state's `Ea`. `CaptureEmission` only. |
+| `Parameters` | The model's parameters, as the `.cmodel` names them. Absent ones take their defaults: capture 10 ns, emission 1 ms, `Xref` 1 V, `Vc` 50 mV, `Tref` 25 °C. |
+| `Expressions` | `Custom`: per state, `{ "Dynamics": …, "Dc": … }`. |
+| `DcIv` | `Target` (the default): the DC I–V trains the model. `Validation`: it is held out, and only checks it. |
+
+`Result` holds `Levels` (per state, the trap-setting levels in the data, V), `Beyond` (per state, the pulsed points
+beyond their bias used only to check the model) and the `Report` lines.
 
 The data read from the sources is cached in `<name>.cmc-cache/`. When a source changes it is read
 again; when one goes missing the cached copy is used, with a warning. A step's arrays are cached there

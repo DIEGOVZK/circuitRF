@@ -9,8 +9,9 @@ namespace CircuitRF.Core.Devices.Composed;
 /// </summary>
 public abstract class RuntimeEvaluator
 {
-    /// <summary>The most inputs a constituent has: <c>vgs</c>, <c>vds</c>, <c>T</c>, <c>phi1</c>, <c>phi2</c>.</summary>
-    public const int MaxInputs = 5;
+    /// <summary>The most inputs a constituent has: <c>vgs</c>, <c>vds</c>, <c>T</c> and up to four trap states
+    /// <c>phi1</c> … <c>phi4</c> (MC-10).</summary>
+    public const int MaxInputs = 7;
 
     public abstract int InputCount { get; }
 

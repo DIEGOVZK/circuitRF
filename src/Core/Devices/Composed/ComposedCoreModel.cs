@@ -1,3 +1,4 @@
+using CircuitRF.Core.Devices.Composed.Traps;
 using CircuitRF.Core.Elaboration;
 
 namespace CircuitRF.Core.Devices.Composed;
@@ -32,6 +33,12 @@ namespace CircuitRF.Core.Devices.Composed;
 /// are taken in the terminal frame (after the drain–source image), so <c>x</c> means the same on either
 /// side of <c>vds = 0</c>. The node is unscaled — <c>N/N0</c> multiplies the drain current it feeds.</para>
 ///
+/// <para><b>Traps</b> (MC-10 R-mc10-1, [X10] eqs. 1.1–1.5) are the second user: one state node per enabled trap state,
+/// ports 2 … in the states' order, whose voltage is the state in volts. The trap model supplies each node's current and
+/// charge (<see cref="TrapDynamics"/>) from the intrinsic <c>vgs</c>, <c>vds</c> — never their drain–source image, which a
+/// model with traps does not have — and <c>T</c>; the states are inputs of <c>Id</c> and <c>Qd</c>, so their lanes'
+/// gradients land in those ports' columns. The nodes are unscaled, like the dispersion node.</para>
+///
 /// <para><b>Self-heating</b> (MC-9 R-mc9-2, [P1] §6.6.2) adds a fourth net, the thermal node, as the last port
 /// <c>(t, 0)</c>: its voltage is the temperature rise ΔT and every constituent is evaluated at
 /// <c>T = temp + ΔT</c>. The port carries <c>−P</c>, the dissipated power <c>Id·vds + IgGs·vgs + IgGd·vgd</c>
@@ -50,6 +57,8 @@ public sealed class ComposedCoreModel : ComponentModel
     private readonly bool   _dispersive;
     private readonly double _tau;
     private readonly bool   _thermal;
+    private readonly TrapDynamics? _traps;
+    private readonly int    _trapCount;
 
     /// <summary>The model this core evaluates.</summary>
     public LoadedComposedModel Loaded { get; }
@@ -71,6 +80,8 @@ public sealed class ComposedCoreModel : ComponentModel
         _tau = _p.DispersionTau ?? 0.0;
         _dispersive = _p.IdRF is not null;
         _thermal = loaded.Model.Thermal is not null;
+        _traps = _p.Traps;
+        _trapCount = _traps?.States.Count ?? 0;
 
         var t = loaded.Model.Temperature;
         _hasT = t.Mode == TemperatureMode.Range;
@@ -80,8 +91,9 @@ public sealed class ComposedCoreModel : ComponentModel
     public override int       PortCount => 2 + InternalStateNodeCount + (_thermal ? 1 : 0);
     public override ModelKind Kind      => ModelKind.Nonlinear;
 
-    /// <summary>Internal state nodes the elaborator mints (trap, dispersion): one, <c>x</c>, for a dispersive model.</summary>
-    public int InternalStateNodeCount => _dispersive ? 1 : 0;
+    /// <summary>Internal state nodes the elaborator mints: one, <c>x</c>, for a dispersive model; one per enabled trap state
+    /// for a model with traps (the two are never combined).</summary>
+    public int InternalStateNodeCount => _dispersive ? 1 : _trapCount;
 
     /// <summary>Whether the model self-heats: the core then takes a fourth net, the thermal node, as its last port.</summary>
     public bool HasThermalNode => _thermal;
@@ -90,7 +102,8 @@ public sealed class ComposedCoreModel : ComponentModel
     public int ThermalPort => _thermal ? 2 + InternalStateNodeCount : -1;
 
     public override string[] TerminalNames =>
-        [ "gi", "si", "di", "si", .. (_dispersive ? (string[])["x", "0"] : []), .. (_thermal ? (string[])["t", "0"] : []) ];
+        [ "gi", "si", "di", "si", .. (_dispersive ? (string[])["x", "0"] : []),
+          .. (_traps?.States ?? []).SelectMany(s => (string[])[s, "0"]), .. (_thermal ? (string[])["t", "0"] : []) ];
 
     public override void Stamp(IMnaContext mna, ElaboratedComponent c, double omega) { }
 
@@ -99,8 +112,9 @@ public sealed class ComposedCoreModel : ComponentModel
     public override Activity Activity => Activity.ActiveExact;
 
     /// <summary>With dispersion the drain's dependence on <c>x</c> is the other controlled source: zeroing
-    /// both leaves the drain a conductance.</summary>
-    /// <summary>The thermal coupling is a controlled source both ways — the currents' dependence on ΔT, and the power
+    /// both leaves the drain a conductance. A trap node's dependence on the gate and drain voltages, and the drain's on the
+    /// trap state, are controlled sources too: passivated, the node is a conductance of its own.
+    /// The thermal coupling is a controlled source both ways — the currents' dependence on ΔT, and the power
     /// the voltages drive into the thermal node — so passivated, the thermal node is decoupled.</summary>
     public override IReadOnlyList<(int P, int Q)> ControlledConductances
     {
@@ -108,6 +122,7 @@ public sealed class ComposedCoreModel : ComponentModel
         {
             var list = new List<(int, int)> { (1, 0) };
             if (_dispersive) list.Add((1, 2));
+            for (int k = 0; k < _trapCount; k++) { list.Add((1, 2 + k)); list.Add((2 + k, 0)); list.Add((2 + k, 1)); }
             if (_thermal)
             {
                 int th = ThermalPort;
@@ -137,7 +152,9 @@ public sealed class ComposedCoreModel : ComponentModel
         int n = PortCount;
         Span<double> ri = stackalloc double[MaxPorts], rq = stackalloc double[MaxPorts],
                      rg = stackalloc double[MaxPorts * MaxPorts], rc = stackalloc double[MaxPorts * MaxPorts];
-        Core(v[0], v[1], _dispersive ? v[2] : 0.0, _thermal ? v[ThermalPort] : 0.0, ri, rq, rg, rc);
+        Span<double> state = stackalloc double[TrapDynamics.MaxStates];
+        for (int k = 0; k < _trapCount; k++) state[k] = v[2 + k];
+        Core(v[0], v[1], _dispersive ? v[2] : 0.0, state, _thermal ? v[ThermalPort] : 0.0, ri, rq, rg, rc);
         for (int p = 0; p < n; p++)
         {
             i[p] = ri[p];
@@ -159,10 +176,12 @@ public sealed class ComposedCoreModel : ComponentModel
         into.ResetTerms();
         Span<double> ri = stackalloc double[MaxPorts], rq = stackalloc double[MaxPorts],
                      rg = stackalloc double[MaxPorts * MaxPorts], rc = stackalloc double[MaxPorts * MaxPorts];
+        Span<double> state = stackalloc double[TrapDynamics.MaxStates];
         int th = ThermalPort;
         for (int t = 0; t < sampleCount; t++)
         {
-            Core(portVoltages[t], portVoltages[sampleCount + t], _dispersive ? portVoltages[2 * sampleCount + t] : 0.0,
+            for (int k = 0; k < _trapCount; k++) state[k] = portVoltages[(2 + k) * sampleCount + t];
+            Core(portVoltages[t], portVoltages[sampleCount + t], _dispersive ? portVoltages[2 * sampleCount + t] : 0.0, state,
                  _thermal ? portVoltages[th * sampleCount + t] : 0.0, ri, rq, rg, rc);
             for (int p = 0; p < n; p++)
             {
@@ -187,20 +206,25 @@ public sealed class ComposedCoreModel : ComponentModel
     /// charge, [P1] eq. 6.63 in charge form). Each gradient maps through the image's Jacobian:
     /// <c>∂/∂vgs = ∂′/∂vgs′</c>, <c>∂/∂vds = −∂′/∂vgs′ − ∂′/∂vds′</c>.</para>
     /// </summary>
-    private void Core(double vgs, double vds, double x, double dT, Span<double> i, Span<double> q, Span<double> dg, Span<double> dc)
+    private void Core(double vgs, double vds, double x, ReadOnlySpan<double> state, double dT,
+                      Span<double> i, Span<double> q, Span<double> dg, Span<double> dc)
     {
         int n = PortCount;
         i[..n].Clear(); q[..n].Clear(); dg[..(n * n)].Clear(); dc[..(n * n)].Clear();
 
         bool image = _exchange && vds < 0;
-        Span<double> seeds = stackalloc double[3];
+        int width = _p.Width;
+        double temperature = _temperatureC + dT;
+        Span<double> seeds = stackalloc double[RuntimeEvaluator.MaxInputs];
         seeds[0] = image ? vgs - vds : vgs;
         seeds[1] = image ? -vds : vds;
-        seeds[2] = _temperatureC + dT;
-        var s = seeds[.._p.Width];
+        if (_hasT) seeds[2] = temperature;
+        for (int k = 0; k < _trapCount; k++) seeds[_p.TrapLane + k] = state[k];
+        var s = seeds[..width];
 
-        Span<double> gId = stackalloc double[3], gGs = stackalloc double[3], gGd = stackalloc double[3],
-                     gQg = stackalloc double[3], gQd = stackalloc double[3], gRf = stackalloc double[3];
+        const int W = RuntimeEvaluator.MaxInputs;
+        Span<double> gId = stackalloc double[W], gGs = stackalloc double[W], gGd = stackalloc double[W],
+                     gQg = stackalloc double[W], gQd = stackalloc double[W], gRf = stackalloc double[W];
 
         double id   = _p.Eval(_p.Id,   "Id",   s, gId);
         double igGs = _p.Eval(_p.IgGs, "IgGs", s, gGs);
@@ -216,7 +240,7 @@ public sealed class ComposedCoreModel : ComponentModel
             FromImage(gId); FromImage(gGs); FromImage(gGd); FromImage(gQg); FromImage(gQd); FromImage(gRf);
             id = -id;
             idRf = -idRf;
-            for (int k = 0; k < 3; k++)   // the T lane maps as the voltages do: the image changes no temperature
+            for (int k = 0; k < width; k++)   // the T lane maps as the voltages do: the image changes no temperature
             {
                 gId[k] = -gId[k];
                 gRf[k] = -gRf[k];
@@ -228,10 +252,12 @@ public sealed class ComposedCoreModel : ComponentModel
         }
 
         double k0 = _scale;
-        // The voltage lanes are columns 0 and 1; the T lane, when the model self-heats, is the thermal port's column.
+        // The voltage lanes are columns 0 and 1; the T lane is the thermal port's column when the model self-heats, and
+        // no column otherwise (T is then the run's constant); trap lane k is state port 2 + k.
         int th = ThermalPort;
-        int lanes = _thermal ? 3 : 2;
-        int Col(int lane) => lane < 2 ? lane : th;
+        int trapLane = _p.TrapLane;
+        int Col(int lane) => lane < 2 ? lane : lane >= trapLane && _trapCount > 0 ? 2 + lane - trapLane : _thermal ? th : -1;
+        int lanes = width;
 
         i[0] = k0 * (igGs + igGd);
         q[0] = k0 * qg;
@@ -239,6 +265,7 @@ public sealed class ComposedCoreModel : ComponentModel
         for (int lane = 0; lane < lanes; lane++)
         {
             int col = Col(lane);
+            if (col < 0) continue;
             dg[col]     = k0 * (gGs[lane] + gGd[lane]);
             dc[col]     = k0 * gQg[lane];
             dc[n + col] = k0 * gQd[lane];
@@ -247,7 +274,8 @@ public sealed class ComposedCoreModel : ComponentModel
         if (!_dispersive)
         {
             i[1] = k0 * (id - igGd);
-            for (int lane = 0; lane < lanes; lane++) dg[n + Col(lane)] = k0 * (gId[lane] - gGd[lane]);
+            for (int lane = 0; lane < lanes; lane++)
+                if (Col(lane) is >= 0 and var col) dg[n + col] = k0 * (gId[lane] - gGd[lane]);
         }
         else
         {
@@ -258,12 +286,30 @@ public sealed class ComposedCoreModel : ComponentModel
             for (int lane = 0; lane < lanes; lane++)
             {
                 int col = Col(lane);
+                if (col < 0) continue;
                 dg[n + col]     = k0 * (gRf[lane] - gGd[lane]);
                 dg[2 * n + col] = -(gId[lane] - gRf[lane]);
             }
             dg[n + 2] = k0;
             dg[2 * n + 2] = 1.0;
             dc[2 * n + 2] = _tau;
+        }
+
+        // The trap nodes (MC-10): each state's own current and charge, read at the intrinsic voltages and the device temperature.
+        if (_traps is { } traps)
+        {
+            Span<double> gi = stackalloc double[4], gq = stackalloc double[4];
+            for (int k = 0; k < _trapCount; k++)
+            {
+                int sp = 2 + k, row = sp * n;
+                i[sp] = traps.Evaluate(k, state[k], vgs, vds, temperature, gi, out q[sp], gq);
+                if (!double.IsFinite(i[sp]) || !double.IsFinite(q[sp]) || !double.IsFinite(gi[0]))
+                    throw new ComposedEvaluationException(string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                        $"'{Loaded.Model.Traps!.Model}' trap state {traps.States[k]} is not finite at vgs={vgs:G6}, vds={vds:G6}, {traps.States[k]}={state[k]:G6}."));
+                dg[row + sp] = gi[0]; dg[row] = gi[1]; dg[row + 1] = gi[2];
+                dc[row + sp] = gq[0]; dc[row] = gq[1]; dc[row + 1] = gq[2];
+                if (_thermal) { dg[row + th] = gi[3]; dc[row + th] = gq[3]; }
+            }
         }
 
         if (!_thermal) return;
@@ -278,8 +324,9 @@ public sealed class ComposedCoreModel : ComponentModel
         }
     }
 
-    /// <summary>The most ports a core has: two intrinsic, the dispersion node, the thermal node.</summary>
-    private const int MaxPorts = 4;
+    /// <summary>The most ports a core has: two intrinsic, the state nodes (one dispersion node, or up to four trap states),
+    /// the thermal node.</summary>
+    private const int MaxPorts = 2 + TrapDynamics.MaxStates + 1;
 
     private static void FromImage(Span<double> g) => g[1] = -g[0] - g[1];
 }

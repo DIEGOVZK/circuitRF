@@ -204,10 +204,8 @@ public static class ThermalFit
         return new ThermalFitResult(settings, record);
     }
 
-    /// <summary>Whether the document models traps (MC-10's <c>Steps.Traps</c>, read only for its model name).</summary>
-    internal static bool TrapsModelled(CmcDocument doc) =>
-        doc.Steps is JsonObject s && s["Traps"] is JsonObject t && t["Settings"] is JsonObject ts
-        && ts["Model"] is JsonValue v && v.TryGetValue<string>(out var model) && model != "None";
+    /// <summary>Whether the document models traps (MC-10).</summary>
+    internal static bool TrapsModelled(CmcDocument doc) => TrapFit.Modelled(doc);
 
     // ── Rth (R-mc9-3) ─────────────────────────────────────────────────────────
 

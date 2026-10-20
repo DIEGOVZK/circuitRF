@@ -46,9 +46,9 @@ public sealed class CmcFormatTests
                 },
             },
         ],
-        // Current, Charge and Thermal are MC-7's, MC-8's and MC-9's (CurrentFit, ChargeFit and ThermalFit validate them);
-        // Traps is a later phase's, carried opaquely.
-        Steps = JsonNode.Parse("""{"Current":{"Settings":{"Id":{"Method":"Table","GridStep":0.05}}},"Charge":{"Settings":{"Qg":{"Method":"Table","Path":"A"}}},"Thermal":{"Settings":{"SelfHeating":true,"TauTh":1e-06}},"Traps":{"Method":"ANN","Layers":[8,8]}}"""),
+        // Current, Charge, Thermal and Traps are MC-7's … MC-10's (CurrentFit, ChargeFit, ThermalFit and TrapFit validate
+        // them); Export is a later phase's, carried opaquely.
+        Steps = JsonNode.Parse("""{"Current":{"Settings":{"Id":{"Method":"Table","GridStep":0.05}}},"Charge":{"Settings":{"Qg":{"Method":"Table","Path":"A"}}},"Thermal":{"Settings":{"SelfHeating":true,"TauTh":1e-06}},"Traps":{"Settings":{"Model":"CaptureEmission","DcIv":"Validation"}},"Export":{"Method":"ANN","Layers":[8,8]}}"""),
         Panels = new CmcPanels { Hidden = ["Plots", "Data"] },
     };
 

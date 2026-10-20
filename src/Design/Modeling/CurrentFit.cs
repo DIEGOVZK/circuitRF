@@ -2,7 +2,8 @@
 // (brief-modelcomposer-7 R-mc7-1 … R-mc7-5; overview D4, D6, D13).
 //
 //   1. The training points are the intrinsic points of the chosen I–V sets (MC-4 R-mc4-4), excluded points removed. One
-//      quiescent point (MC-10 lifts that); a mix is refused naming what differs. At two or more ambient temperatures T
+//      quiescent point unless traps are modelled; a mix is refused naming what differs. With traps (MC-10 R-mc10-4) each
+//      point is mapped to its trap state, and the enabled states are inputs of Id (never of Ig). At two or more ambient temperatures T
 //      is an input (MC-9 R-mc9-1): each point at its chuck temperature, a DC point at its junction temperature
 //      Tamb + Rth·P when self-heating is modelled, a point pulsed from a dissipating quiescent bias at Tamb + Rth·Pq.
 //   2. The gate current is split into its two branches (GateSplit), and the channel current is the drain terminal's plus
@@ -11,9 +12,11 @@
 //      an equation (a template or the user's own, its parameters fitted by the optimizer registry's algorithms).
 //   4. The training domain's hull becomes each table or ANN's Domain, and G_x its extrapolation conductance (MC-2).
 //   5. Optionally IdRF ([P1] eq. 6.52): derivative training on the intrinsic RF Gm and Gds, anchored to IdDC.
-//   6. With self-heating, an ANN Id trains by MC-6's combined mode: the I–V values at each point's Tj, and the RF Gm/Gds
-//      as its derivatives at the Tj frozen at each S point's DC value ([X03] §IV-C, [X10] §VI) — so one function gives
-//      both the DC and the RF output conductance of [P1] eq. 6.69.
+//   6. With self-heating or traps, an ANN Id (and a table's re-gridding network) trains by MC-6's combined mode: the I–V
+//      values at each point's Tj and trap state, and the RF Gm/Gds as its derivatives with Tj and the trap states frozen at
+//      each S point's DC values ([X03] §IV-C, [X10] §VI) — so one function gives both the DC and the RF output conductance
+//      of [P1] eq. 6.69. With traps an equation template gains saturating trap terms, the DC I–V is a target or held out,
+//      and its error is reported apart; dispersion (step 5) and drain–source exchange are refused.
 //
 // The result goes to the .cmc's Steps.Current; arrays to <name>.cmc-cache/current/. Cancelled, nothing is written.
 
@@ -21,6 +24,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using CircuitRF.Core.Devices.Composed;
+using CircuitRF.Core.Devices.Composed.Traps;
 using CircuitRF.Engine;
 using CircuitRF.Engine.Modeling;
 using CircuitRF.Engine.Modeling.Ann;
@@ -177,6 +181,14 @@ public static class CurrentFit
     {
         rc?.ThrowIfCancellationRequested();
         var report = new List<string>();
+        if (TrapFit.Modelled(doc))
+        {
+            // R-mc10-5: the trap states carry the DC/RF difference; and they follow the forward device, which has no image.
+            if (settings.Dispersion is not null)
+                throw new ModelingException("Current", "dispersion and traps are not combined: with traps the DC/RF difference follows from the trap states.");
+            if (settings.Symmetry == DrainSourceSymmetry.Exchange)
+                throw new ModelingException("Current", "drain–source exchange is not defined for a model with traps.");
+        }
         var heating = ThermalFit.Heating(doc);
         var iv = Gather(doc, data, intrinsic, settings, report, heating);
         var arrays = new Dictionary<string, DataCube>(StringComparer.Ordinal);
@@ -187,10 +199,10 @@ public static class CurrentFit
         double idMax = iv.Id.Max(Math.Abs);
         double[] idW = [.. iv.Id.Select(y => Weight(y, settings.IdFloor * idMax))];
         AnnDerivativeData? rf = null;
-        if (iv.SelfHeated)
+        if (iv.SelfHeated || iv.Trapped)
         {
-            if (settings.Id.Method == CurrentMethod.ANN) rf = RfDerivatives(doc, data, intrinsic, settings, heating, report);
-            else report.Add($"Id: a {settings.Id.Method} trains on I–V values only; the RF Gm and Gds are not used.");
+            if (settings.Id.Method != CurrentMethod.Equation) rf = RfDerivatives(doc, data, intrinsic, settings, heating, iv, report);
+            else report.Add($"Id: an Equation trains on I–V values only; the RF Gm and Gds are not used.");
         }
         var idFit = FitPayloads("Id", settings.Id,
             [new("Id", iv.Id, idW, Own(0, 1))], iv, settings, report, rc, rf);
@@ -229,6 +241,18 @@ public static class CurrentFit
 
         // The report (R-mc7-5): the fitted Gm and Gds against the data's own DC derivatives.
         var conductance = Conductances(iv, idFit.Payloads[0].Eval, report);
+        ValidationRecord? dcIv = null;
+        if (iv.Trapped && iv.DcX.Length > 0)
+        {
+            // R-mc10-5: the DC I–V at its DC trap states, reported apart from the training error whether it trained or not.
+            var f = idFit.Payloads[0].Eval;
+            double sq = 0;
+            for (int k = 0; k < iv.DcX.Length; k++) sq += Math.Pow(f(iv.DcX[k]).F - iv.DcId[k], 2);
+            double rms = Math.Sqrt(sq / iv.DcX.Length), range = iv.DcId.Max() - iv.DcId.Min();
+            dcIv = new ValidationRecord(iv.DcX.Length, rms, range > 0 ? rms / range : 0);
+            bool held = TrapFit.Settings(doc).DcIv == DcIvUse.Validation;
+            report.Add($"Id: DC I–V error {G(100 * dcIv.Relative)} % of its range over {dcIv.Count} point(s) ({(held ? "validation" : "trained on")}).");
+        }
         SymmetryRecord? symmetry = settings.Symmetry == DrainSourceSymmetry.Exchange
             ? Jumps(iv, idFit.Payloads[0].Eval, igFit?.Payloads[0].Eval, igFit?.Payloads[1].Eval)
             : null;
@@ -253,7 +277,7 @@ public static class CurrentFit
         {
             Id = idConstituent, Ig = igConstituent, IdRF = idRf, Gx = gx, Tau = settings.Dispersion?.Tau, Arrays = key,
             Errors = errors, Conductance = conductance, Symmetry = symmetry, Eq649 = eq649, Reference = reference,
-            Report = report,
+            Traps = iv.Traps?.Block, DcIv = dcIv, Report = report,
         };
         return new CurrentFitResult(settings, record, arrays);
     }
@@ -292,9 +316,21 @@ public static class CurrentFit
         /// <summary>Whether the DC points sit at their junction temperatures (self-heating modelled).</summary>
         public bool SelfHeated { get; init; }
 
-        public bool HasT => Inputs.Count == 3;
+        /// <summary>Whether T is an input.</summary>
+        public bool HasT { get; init; }
 
-        /// <summary>A point of this fit's inputs at a bias: at <paramref name="t"/> when T is an input.</summary>
+        /// <summary>The trap states the points were mapped to (MC-10), or null without traps. Then each row of
+        /// <see cref="X"/> ends with the enabled states' values, and <see cref="Inputs"/> with their names.</summary>
+        public TrapMapping? Traps { get; init; }
+
+        public bool Trapped => Traps is not null;
+
+        /// <summary>The DC points at their DC trap states (MC-10), whether they trained or were held out — what the DC I–V
+        /// error is reported over; empty without traps.</summary>
+        public double[][] DcX { get; init; } = [];
+        public double[] DcId { get; init; } = [];
+
+        /// <summary>A point of this fit's inputs at a bias: at <paramref name="t"/> when T is an input. Not with traps.</summary>
         public double[] At(double vgs, double vds, double t) => HasT ? [vgs, vds, t] : [vgs, vds];
 
         /// <summary>The middle of the temperature span, °C.</summary>
@@ -302,17 +338,35 @@ public static class CurrentFit
             ? 0.5 * (b.Value.Lo + b.Value.Hi) : TemperatureC;
     }
 
-    internal static IvPoints Gather(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data, IntrinsicResult intrinsic,
-                                    CurrentFitSettings settings, List<string> report, ThermalHeating? heating = null)
-    {
-        heating ??= ThermalHeating.None;
-        var chosen = settings.DataSets.Count > 0
+    /// <summary>The I–V sets the current step trains on: those it names, or every DcIv, PulsedIv and SimulatedTables set.</summary>
+    internal static List<CmcDataSet> ChosenIv(CmcDocument doc, CurrentFitSettings settings) =>
+        settings.DataSets.Count > 0
             ? [.. settings.DataSets.Select(n => doc.DataSets.FirstOrDefault(s => s.Name == n)
                                                ?? throw new ModelingException(n, "the current step names it, and the document has no such data set."))]
             : doc.DataSets.Where(s => s.Kind is DataSetKind.DcIv or DataSetKind.PulsedIv or DataSetKind.SimulatedTables).ToList();
+
+    /// <summary>
+    /// The training points. With traps modelled (MC-10 R-mc10-4) and <paramref name="withTraps"/>, every point is mapped to
+    /// its trap state, which <c>Id</c> takes as further inputs: a pulsed point beyond its trap-setting bias under TrapState
+    /// auto is left out of Id, and so are the DC points when the DC I–V is held out as validation. The gate current takes
+    /// no trap input (D10), so it trains on every usable point.
+    /// </summary>
+    internal static IvPoints Gather(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data, IntrinsicResult intrinsic,
+                                    CurrentFitSettings settings, List<string> report, ThermalHeating? heating = null,
+                                    bool withTraps = true)
+    {
+        heating ??= ThermalHeating.None;
+        var chosen = ChosenIv(doc, settings);
         if (chosen.Count == 0)
             throw new ModelingException("Current", "there is no I–V data set (DcIv, PulsedIv or SimulatedTables) to fit the currents to.");
-        TrapCondition(chosen, "Current");
+        var trapSettings = withTraps ? TrapFit.Settings(doc) : TrapFitSettings.Default;
+        TrapMapping? traps = null;
+        if (trapSettings.Modelled)
+        {
+            traps = TrapFit.Map(doc, data, intrinsic, trapSettings, chosen, "pulsed I–V");
+            report.AddRange(traps.Report);
+        }
+        else TrapCondition(chosen, "Current");
         var temps = Temperatures(chosen, data);
         double t = temps.Count > 0 ? temps[0] : 25.0;
         bool hasT = temps.Count >= 2;
@@ -325,6 +379,9 @@ public static class CurrentFit
         var ambient = new List<double>();
         var id = new List<double>();
         var ig = new List<double?>();
+        var phi = new List<double[]?>();     // a point's trap states; null when it does not train Id
+        var dcX = new List<double[]>();
+        var dcAt = new List<int>();          // where each DC point sits among the gathered points
         int noId = 0, reverse = 0;
         foreach (var set in chosen)
         {
@@ -351,10 +408,16 @@ public static class CurrentFit
                     tk = tAmb + heating.RthAt(tAmb) * Power(vgs[k], vds[k], double.IsNaN(igs[k]) ? 0 : igs[k], ids[k]);
                 else if (hasT && pq is > 0 && heating.Rth is not null)
                     tk = tAmb + heating.RthAt(tAmb) * pq.Value;
-                x.Add(hasT ? [vgs[k], vds[k], tk] : [vgs[k], vds[k]]);
+                double[] xk = hasT ? [vgs[k], vds[k], tk] : [vgs[k], vds[k]];
+                x.Add(xk);
                 ambient.Add(tAmb);
                 id.Add(ids[k]);
                 ig.Add(double.IsNaN(igs[k]) ? null : igs[k]);
+                if (traps is null) continue;
+                var state = traps.At(set.Name, k);
+                bool dcPoint = set.Kind is not (DataSetKind.PulsedIv or DataSetKind.PulsedSParams);
+                if (dcPoint && state is not null) { dcX.Add([.. xk, .. state]); dcAt.Add(x.Count - 1); }
+                phi.Add(state is null || dcPoint && trapSettings.DcIv == DcIvUse.Validation ? null : [.. xk, .. state]);
             }
         }
         if (hasT && !selfHeating && chosen.Any(s => s.Kind == DataSetKind.DcIv))
@@ -384,13 +447,35 @@ public static class CurrentFit
         {
             X = [.. gateIdx.Select(k => x[k])], Id = [.. gateIdx.Select(k => channel[k])], Ig = [.. gateIdx.Select(k => ig[k]!.Value)],
             IgGs = [.. gateIdx.Select(k => gs[k])], IgGd = [.. gateIdx.Select(k => gd[k])],
-            ForGate = null!, Domain = domain, TemperatureC = t, Inputs = inputs,
+            ForGate = null!, Domain = domain, TemperatureC = t, Inputs = inputs, HasT = hasT,
             Ambient = [.. gateIdx.Select(k => ambient[k])], SelfHeated = selfHeating,
         };
+        if (traps is null)
+            return new IvPoints
+            {
+                X = [.. x], Id = channel, Ig = gate.Ig, IgGs = gate.IgGs, IgGd = gate.IgGd, ForGate = gate,
+                Domain = domain, TemperatureC = t, Inputs = inputs, HasT = hasT, Ambient = [.. ambient], SelfHeated = selfHeating,
+            };
+
+        // With traps the drain current trains on the points that have a trap state, each with the states appended; the DC
+        // points' targets are their channel currents, in the order they were gathered.
+        var train = Enumerable.Range(0, n).Where(k => phi[k] is not null).ToArray();
+        if (train.Length < 4) throw new ModelingException("Current", $"{train.Length} I–V point(s) with a trap state; a current fit needs at least 4.");
+        var xTrap = train.Select(k => phi[k]!).ToArray();
+        int first = inputs.Count;
+        var box = domain.Box.ToList();
+        for (int j = 0; j < traps.States.Count; j++)
+        {
+            var column = xTrap.Select(p => p[first + j]).Concat(dcX.Select(p => p[first + j])).ToArray();
+            double lo = column.Min(), hi = column.Max();
+            if (!(hi > lo)) (lo, hi) = (lo - 0.5, hi + 0.5);
+            box.Add(new(traps.States[j], (lo, hi)));
+        }
         return new IvPoints
         {
-            X = [.. x], Id = channel, Ig = gate.Ig, IgGs = gate.IgGs, IgGd = gate.IgGd, ForGate = gate,
-            Domain = domain, TemperatureC = t, Inputs = inputs, Ambient = [.. ambient], SelfHeated = selfHeating,
+            X = xTrap, Id = [.. train.Select(k => channel[k])], Ig = gate.Ig, IgGs = gate.IgGs, IgGd = gate.IgGd, ForGate = gate,
+            Domain = Hull(xTrap) with { Box = box }, TemperatureC = t, Inputs = [.. inputs, .. traps.States], HasT = hasT,
+            Ambient = [.. train.Select(k => ambient[k])], SelfHeated = selfHeating, Traps = traps, DcX = [.. dcX], DcId = [.. dcAt.Select(k => channel[k])],
         };
     }
 
@@ -412,7 +497,7 @@ public static class CurrentFit
     {
         var settings = Settings(doc) with { DataSets = sets, Id = method, Dispersion = null };
         var own = new List<string>();
-        var iv = Gather(doc, data, intrinsic, settings, own, ThermalHeating.None);
+        var iv = Gather(doc, data, intrinsic, settings, own, ThermalHeating.None, withTraps: false);
         if (!iv.HasT) throw new ModelingException(ThermalFit.StepName, "the isothermal Id needs pulsed I–V at two or more chuck temperatures.");
         double idMax = iv.Id.Max(Math.Abs);
         double[] w = [.. iv.Id.Select(y => Weight(y, settings.IdFloor * idMax))];
@@ -543,7 +628,7 @@ public static class CurrentFit
         foreach (var t in targets)
         {
             rc?.ThrowIfCancellationRequested();
-            payloads.Add(s.Method == CurrentMethod.ANN ? FitAnn(t, s, iv, settings, report, rc, rf) : FitTable(t, s, iv, settings, report, rc));
+            payloads.Add(s.Method == CurrentMethod.ANN ? FitAnn(t, s, iv, settings, report, rc, rf) : FitTable(t, s, iv, settings, report, rc, rf));
         }
         string method = s.Method == CurrentMethod.ANN ? Constituent.AnnMethod : Constituent.TableMethod;
         Constituent c = targets.Count == 1
@@ -576,7 +661,7 @@ public static class CurrentFit
                                        AnnSettings(s.Hidden, s.Activation, s.MaxIterations, settings, 0.0), rc);
         foreach (string w in trained.Warnings) report.Add($"{t.Name}: {w}");
         if (rf is not null && trained.Derivatives is { } e)
-            report.Add($"{t.Name}: RF Gm/Gds at the frozen junction temperature, RMS error {G(100 * e.TrainRelative)} % of their range.");
+            report.Add($"{t.Name}: RF Gm/Gds at the frozen {(iv.SelfHeated && iv.Trapped ? "junction temperature and trap states" : iv.SelfHeated ? "junction temperature" : "trap states")}, RMS error {G(100 * e.TrainRelative)} % of their range.");
         var f = t.Output(trained.Network);
         var own = OwnOver(t.Own, iv.Inputs.Count);
         double gx = Gx(f, iv.X, own);
@@ -594,7 +679,7 @@ public static class CurrentFit
     }
 
     private static Payload FitTable(Target t, CurrentConstituentSettings s, IvPoints iv, CurrentFitSettings settings,
-                                    List<string> report, RunControl? rc)
+                                    List<string> report, RunControl? rc, AnnDerivativeData? rf = null)
     {
         var (held, trainX, trainU, trainW) = Training(t, iv, settings);
 
@@ -604,14 +689,19 @@ public static class CurrentFit
         // The G_x term grows with the square of the distance — amps a few volts out — and a spline through it rings
         // back into the cells inside the hull (measured: 7.7 % held-out error, against 1.5 % for the network itself);
         // the runtime adds G_x outside the domain on its own.
-        // With T an input (MC-9) the grid gains a temperature axis, spline in T as well; the radial-basis interpolant is
-        // two-dimensional, so such a table re-grids through a network.
+        // With T an input (MC-9) the grid gains a temperature axis, and with traps (MC-10) an axis per trap state, spline in
+        // each; the radial-basis interpolant is two-dimensional, so such a table re-grids through a network — trained, for a
+        // self-heating or trapped Id, on the RF conductances too (MC-6's combined mode).
         int d = iv.Inputs.Count;
         Func<double[], double> source;
         if (s.Regrid == RegridSource.ANN)
         {
             rc?.BeginStage($"Training {t.Name} for its table");
-            var trained = AnnTrainer.Train(new AnnTrainingProblem(d) { Values = new AnnValueData(trainX, trainU, trainW) },
+            var trained = AnnTrainer.Train(new AnnTrainingProblem(d)
+                                           {
+                                               Values = new AnnValueData(trainX, trainU, trainW),
+                                               Derivatives = t.Transform is null ? rf : null,
+                                           },
                                            AnnSettings(s.Hidden, s.Activation, s.MaxIterations, settings, 0.0), rc);
             var linear = new GuidedExtrapolation(trained.Network, iv.Domain, iv.Inputs, 0.0, null);
             source = p =>
@@ -620,8 +710,8 @@ public static class CurrentFit
                 return linear.Evaluate(p, g[..p.Length]);
             };
         }
-        else if (iv.HasT)
-            throw new ModelingException(t.Name, "a table with T as an input re-grids through an ANN; the RBF interpolant is two-dimensional.");
+        else if (d > 2)
+            throw new ModelingException(t.Name, "a table with T or a trap state as an input re-grids through an ANN; the RBF interpolant is two-dimensional.");
         else
         {
             var rbf = Regrid.Rbf([.. trainX.Select(p => (p[0], p[1]))], trainU);
@@ -635,10 +725,10 @@ public static class CurrentFit
             Regrid.Axis(poly.Min(p => p.Vgs), poly.Max(p => p.Vgs), s.GridStep),
             Regrid.Axis(poly.Min(p => p.Vds), poly.Max(p => p.Vds), s.GridStep),
         };
-        if (iv.HasT)
+        foreach (string input in iv.Inputs.Skip(2))
         {
-            var (lo, hi) = iv.Domain.Box.First(b => b.Key == ComposedCoreProgram.T).Value;
-            siteList.Add(Regrid.Axis(lo, hi, s.TemperatureStep));
+            var (lo, hi) = iv.Domain.Box.First(b => b.Key == input).Value;
+            siteList.Add(Regrid.Axis(lo, hi, input == ComposedCoreProgram.T ? s.TemperatureStep : s.TrapStep));
         }
         IReadOnlyList<double[]> sites = siteList;
         double[] values = Grid(source, sites);
@@ -690,6 +780,8 @@ public static class CurrentFit
                                                          gate ? iv.Ig : iv.Id, iv.TemperatureC));
             if (s.TemperatureCoefficients.Count > 0)
                 (expressions, parameters) = WithTemperatureCoefficients(constituent, expressions, parameters, s.TemperatureCoefficients, iv);
+            if (!gate && iv.Traps is { } traps)
+                (expressions, parameters) = WithTrapTerms(name, expressions[0], parameters, traps.States);
             if (gate)    // the two branches share one list, so each branch's own parameters are named for it
             {
                 expressions = [Rename(expressions[0], "Gs", parameters), Rename(expressions[1], "Gd", parameters)];
@@ -754,6 +846,32 @@ public static class CurrentFit
         }
         list.Add(new TemplateParameter(Tnom, iv.TemperatureC, iv.TemperatureC, iv.TemperatureC, Lock: true));
         return (expressions, list);
+    }
+
+    /// <summary>
+    /// A drain-current template with the trap terms of R-mc10-5, each zero at DC by construction (<c>phi = v</c>) and each
+    /// saturating, as [G19] eqs. 8, A.1, A.8 and [L26] eq. 33 find them: a threshold shift
+    /// <c>vgs → vgs − a1·tanh((vgs − phi1)/c1) − a2·tanh((phi2 − vds)/c2)</c> ([P21]'s back-gate view) and, on drain-lag, a
+    /// knee term on the template's knee parameter, <c>α → α·(1 + a3·tanh((phi2 − vds)/c3))</c>. The amplitudes start at zero
+    /// — the trap-free fit — and the widths at 5 V.
+    /// </summary>
+    private static (string[] Expressions, IReadOnlyList<TemplateParameter> Parameters) WithTrapTerms(
+        string template, string expression, IReadOnlyList<TemplateParameter> parameters, IReadOnlyList<string> states)
+    {
+        bool gateLag = states.Contains(CaptureEmissionTraps.GateLag), drainLag = states.Contains(CaptureEmissionTraps.DrainLag);
+        var list = parameters.ToList();
+        string shift = "vgs";
+        if (gateLag) { shift += "-a1*tanh((vgs-phi1)/c1)"; list.Add(new("a1", 0, -2, 2)); list.Add(new("c1", 5, 0.05, 50)); }
+        if (drainLag) { shift += "-a2*tanh((phi2-vds)/c2)"; list.Add(new("a2", 0, -2, 2)); list.Add(new("c2", 5, 0.05, 50)); }
+        expression = System.Text.RegularExpressions.Regex.Replace(expression, @"\bvgs\b", $"({shift})");
+        string knee = template == CurrentTemplates.CurticeCubic ? "Gamma" : "Alpha";
+        if (drainLag && list.Any(p => p.Name == knee))
+        {
+            expression = System.Text.RegularExpressions.Regex.Replace(expression, $@"\b{knee}\b", $"({knee}*(1+a3*tanh((phi2-vds)/c3)))");
+            list.Add(new("a3", 0, -0.9, 0.9));
+            list.Add(new("c3", 5, 0.05, 50));
+        }
+        return ([expression], list);
     }
 
     /// <summary>A template's free parameters renamed with a branch suffix in its expression.</summary>
@@ -842,9 +960,11 @@ public static class CurrentFit
     /// their own. Not with self-heating: a self-heated DC derivative includes the heating that the isothermal Gds does not.</summary>
     private static ConductanceRecord? Conductances(IvPoints iv, Func<double[], (double F, double Dg, double Dd)> f, List<string> report)
     {
-        if (iv.SelfHeated)
+        if (iv.SelfHeated || iv.Trapped)
         {
-            report.Add("Id: Gm and Gds are not compared with the DC data's own slopes, which include its self-heating.");
+            report.Add(iv.Trapped
+                ? "Id: Gm and Gds are not compared with the DC data's own slopes, which include the trap states' response."
+                : "Id: Gm and Gds are not compared with the DC data's own slopes, which include its self-heating.");
             return null;
         }
         if (iv.X.Length < 7) return null;
@@ -973,16 +1093,16 @@ public static class CurrentFit
     }
 
     /// <summary>
-    /// The RF conductances a self-heating Id trains on (R-mc9-1): at every S point of the document's S-parameter sets,
-    /// <c>Gm</c> and <c>Gds</c> averaged over the flatness band, at <c>(vgs, vds, Tj)</c> with <c>Tj = Tamb + Rth·P</c> from
-    /// the point's DC currents — the junction temperature is frozen at its DC value, because the S stimulus is far above
-    /// the thermal corner. Null when there are none.
+    /// The RF conductances a self-heating or trapped Id trains on (R-mc9-1, R-mc10-5): at every S point of the document's
+    /// CW S-parameter sets, <c>Gm</c> and <c>Gds</c> averaged over the flatness band, as derivatives at the point's inputs
+    /// with the slow states FROZEN at their DC values — <c>Tj = Tamb + Rth·P</c> from its DC currents, and each trap state at
+    /// its DC state — because the S stimulus is far above the thermal and trap corners ([X10] §VI). Null when there are none.
     /// </summary>
     private static AnnDerivativeData? RfDerivatives(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data,
                                                     IntrinsicResult intrinsic, CurrentFitSettings settings, ThermalHeating heating,
-                                                    List<string> report)
+                                                    IvPoints iv, List<string> report)
     {
-        if (heating.Rth is null) return null;
+        if (iv.SelfHeated && heating.Rth is null) return null;
         var x = new List<double[]>();
         var targets = new List<double[]>();
         foreach (var set in doc.DataSets.Where(s => s.Kind == DataSetKind.SParams))
@@ -1006,13 +1126,18 @@ public static class CurrentFit
                 }
                 if (c == 0) continue;
                 double tAmb = AmbientOf(set, points?[p]);
-                double tj = tAmb + heating.RthAt(tAmb) * Power(vgs[p], vds[p], double.IsNaN(ig[p]) ? 0 : ig[p], id[p]);
-                x.Add([vgs[p], vds[p], tj]);
+                double tj = iv.SelfHeated ? tAmb + heating.RthAt(tAmb) * Power(vgs[p], vds[p], double.IsNaN(ig[p]) ? 0 : ig[p], id[p]) : tAmb;
+                double[] xp = iv.HasT ? [vgs[p], vds[p], tj] : [vgs[p], vds[p]];
+                if (iv.Traps is { } traps)
+                    xp = [.. xp, .. Enumerable.Range(0, traps.States.Count).Select(k => traps.Dynamics.DcValue(k, vgs[p], vds[p], tj))];
+                x.Add(xp);
                 targets.Add([sg / c, sd / c]);
             }
         }
         if (x.Count == 0) return null;
-        report.Add($"Id: trained on the I–V values and on the RF Gm/Gds of {x.Count} S point(s) at their junction temperatures.");
+        string at = iv.SelfHeated && iv.Trapped ? "junction temperatures and DC trap states"
+                  : iv.SelfHeated ? "junction temperatures" : "DC trap states";
+        report.Add($"Id: trained on the I–V values and on the RF Gm/Gds of {x.Count} S point(s) at their {at}.");
         return new AnnDerivativeData(x, [0, 1], targets);
     }
 

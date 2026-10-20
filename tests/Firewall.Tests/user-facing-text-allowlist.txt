@@ -1375,3 +1375,11 @@ src/Engine/Modeling/Regrid.cs|the axis runs from lo up to hi.
 # DriftCharges.Piece is read by the composer's report and tests, which name the piece by the
 # class's own constants; an unknown key is a caller's mistake, not a sentence a user reads.
 src/Core/Devices/Composed/DriftCharges.cs|'{key}' is not a piece of a drift charge.
+
+# ── Model Composer MC-10: the trap-model registry (2026-10-19) ─────────────────────────
+# TrapModels.Register is the developer's seam for adding a trap model; its checks are a
+# developer's mistake at registration, and a missing default is a definition's own bug. A
+# .cmodel's refusals are CmodelFormatExceptions by field.
+src/Core/Devices/Composed/Traps/TrapModel.cs|'{name}' has no default.
+src/Core/Devices/Composed/Traps/TrapModels.cs|'{model.Name}' is already a trap model name.
+src/Core/Devices/Composed/Traps/TrapModels.cs|a trap model declares 1 to {TrapDynamics.MaxStates} states.

@@ -6,7 +6,8 @@ MC-3 built (the `.cmc` document, data sets, importers, the cache, data hygiene);
 MC-4 built (pads, the six-pin network, de-embedding, intrinsic re-referencing and quantities);
 MC-5 built (the extrinsic fit); MC-6 built (the ANN trainer); MC-7 built (the current constituents and the
 DC/RF dispersion); MC-8 built (the charge constituents and Check Charge Conservation); MC-9 built (temperature
-as an input, the thermal node, Rth extraction, the single-temperature model) ·
+as an input, the thermal node, Rth extraction, the single-temperature model); MC-10 built (the trap contract and
+registry, `CaptureEmission` and `Custom`, trap-state training data, `Id` and `Qd` re-trained with the trap states) ·
 **Source:** `docs/sonnet-briefs/brief-modelcomposer-0-overview.md` (decisions D1–D16) and the phase briefs
 `brief-modelcomposer-1` … `-16` · **Primary reference:** [P1] J. C. Pedro, D. E. Root, J. Xu, L. C. Nunes,
 *Nonlinear Circuit Simulation and Modeling*, Cambridge University Press, 2018.
@@ -89,8 +90,22 @@ line can carry.
 ```
 
 `Temperature` is `{ "Mode": "Range", "Tmin": …, "Tmax": … }` for a ranged model. `Symbol` is omitted for
-the standard FET symbol. `Traps` (MC-10) is absent until its phase, and `Traps.Model` must name a known model
-(`None` today).
+the standard FET symbol.
+
+**`Traps` (MC-10)**, after `Thermal`, gives the core one internal state node per enabled trap state (§13):
+
+```json
+"Traps": { "Model": "CaptureEmission", "States": ["phi2"],
+           "Parameters": { "TauCapt2": 1e-8, "TauEmit2": 1e-3, "Xref": 1, "Vc": 0.05 },
+           "Levels": { "phi2": [5, 10, 20] } }
+```
+
+`Model` names a registered model (`CaptureEmission`, `Custom`, or one a developer adds); `States` the enabled ones, in
+the model's order; `Parameters` the model's own (a declared one left out takes its default); `Levels` the distinct
+trap-setting levels each state was trained at, volts — a model trained from one level says so. A `Custom` model adds
+`"Expressions": { "phi2": { "Dynamics": "…", "Dc": "vds" } }`. A block naming `None` reads as no traps and is never
+written, so a model without traps is byte-identical to one written before traps existed. The states are inputs of
+`Id` and `Qd` (`phi1` …), and their domain's `Box` holds each one's training interval.
 
 **`Thermal` (MC-9)**, after `Temperature`, makes the model self-heat (§12.2): `{ "Rth": 60, "Cth": 1.7e-8 }` for one
 pole, or `{ "Ladder": [ { "Rth": …, "Cth": … }, … ] }` for a Foster ladder of up to five, in K/W and J/K at the base
@@ -168,6 +183,14 @@ Every refusal is a `CmodelFormatException` whose message begins with the field: 
 - `Extrapolation.Gx`: missing for a table or ANN current, present for an equation current or an unknown
   key, or not a positive number. `Core.Symmetry`: anything but `None`/`Exchange`.
 - `Transform`: on an equation or a charge; a `Kind` other than `Asinh`; a `Scale` that is not a positive current.
+- `Traps`: an unknown `Model`, by name, listing the known ones; an unknown field; no state enabled, a state listed twice,
+  out of the model's order or not the model's; an undeclared or non-finite parameter (a `Custom` model's parameters are
+  its own, but none may share an input's name); `Levels` for a state not enabled; `Expressions` on a model other than
+  `Custom`; the model's own checks (`CaptureEmission`: a time, `Xref` or `Vc` that is not positive, a negative `Ea`;
+  `Custom`: an expression that does not parse, names anything but its own state, `vgs`, `vds`, `T` and the parameters,
+  or a `Dc` that is not a fixed point of its `Dynamics`). Combined with `Core.Dispersion`/`IdRF` (the trap states carry
+  the DC/RF difference instead) or with `Core.Symmetry: Exchange` (the states follow the forward device, which has no
+  image). A trap state named as an input of `Ig` or `Qg` — never, [X10] eq. 1.5 — or of a model without traps.
   `Core.Dispersion`: missing with `IdRF`, present without it, or a `Tau` that is not a positive time.
 - `Drift`: on a current; on one charge and not the other; inputs other than `vgs, vds`; a missing or extra piece; a
   `QGD` or `Qdrift` naming a different network in `Qg` and `Qd`; a parameter other than `Qd`'s `Lambda`, or a
@@ -867,7 +890,93 @@ the record has no poles, one line says so, and `ThermalFit.Network` gives no the
 
 Every long part takes the `RunControl`; `FitFile` writes the document only when the run completes (D13).
 
-## 13. Where it lives
+## 13. Traps (MC-10)
+
+`src/Core/Devices/Composed/Traps/` holds the contract and the models; `TrapFit` (with `TrapMapping`) and
+`TrapFitSettings` (with `TrapFitRecord`) the step, whose `.cmc` block is `Steps.Traps`.
+
+### 13.1 The contract and the registry (R-mc10-1)
+
+A trap model is a `TrapModelDefinition` registered by name in `TrapModels` — its states (at most four, `phi1` … in lane
+order), its parameters with units, and `Build`, which compiles a `Traps` block into `TrapDynamics`: per state the node's
+current and charge `(i, q)` from `(phi, vgs, vds, T)` with exact derivatives, its DC value, the direction capture moves
+it (`CaptureSign`) and its emission time when it has one. `RateTrapDynamics` is the form both built-ins take, a rate
+`dphi/dt = D`: the node carries `q = C·phi` and `i = −C·D` with one normalised `C`, so the node voltage IS the state in
+volts. A developer adds a model by implementing the same contract and registering it; nothing else names a model.
+
+**Why `C` is 1 mF.** Newton is invariant to the scaling of a row, so `C` only trades two floors, both measured on the
+gate device. The DC engine's `gmin` moves a DC state by `gmin·phi·τ_emit/C` — 1e-12 of it at 1 mF and 1 ms (at 1 F,
+1e-14). In HB the round-off of the charge's DC part (`C` times tens of volts), multiplied by `kω`, floors the residual
+near `6e-5·C` A at 2 GHz with eight harmonics — 6e-8 A at 1 mF against the 1e-6 A default tolerance; at 1 F HB stalled
+at 1.6e-7 A with backtracking even at −20 dB drive, and at 10 mF at 3e-9 A against a 1e-9 tolerance.
+
+In the core (`ComposedCoreModel`) each enabled state is a ground-referenced port after the two intrinsic ones, minted
+by the elaborator through MC-1's seam; the states are seed lanes after `T`, so `Id`'s and `Qd`'s gradients by them land
+in those ports' columns, and the nodes read the intrinsic `vgs`, `vds` and the device temperature (`temp + ΔT` when it
+self-heats). With MC-8's drift charge `Qg` sees the states through the channel current alone. A trap node's coupling to
+the gate and drain, and the drain's to the state, are controlled conductances, so passivated the node stands alone.
+
+### 13.2 `CaptureEmission` (R-mc10-2)
+
+Gate-lag `dphi1/dt = (vgs − phi1)/τ_emit,1 − f1(phi1 − vgs)`; drain-lag `dphi2/dt = (vds − phi2)/τ_emit,2 +
+f2(vds − phi2)` ([P1] eqs. 6.73–6.74), with `f(x) = (x_ref/τ_capt)·(e^((x − x_ref)/Vc) − e^(−x_ref/Vc))`: `f(0) = 0`, so
+DC is exactly `phi = v`; at most 0.2 V/s for a negative gap with the defaults; 10 ns at a 1 V gap and ~0.1 ms at
+0.5 V. The exponential is continued by its tangent above `e^20` (a capture ~2e-9 of `τ_capt`) so a Newton start a drain
+voltage away stays finite — C¹ there, and no solution sits there. Defaults: `TauCapt` 10 ns, `TauEmit` 1 ms,
+`Xref` 1 V, `Vc` 50 mV; drain-lag on and gate-lag off when the model is first chosen. **ThermallyActivated** emission
+(the setting `Emission`, a state's `Ea` in the block): `1/τ_emit(T) = (1/τ_emit)·(T/Tref)²·e^(−(Ea/k)(1/T − 1/Tref))`,
+T in kelvin, `Tref` in °C as everywhere else; capture stays fixed ([N22]). `TrapFitSettings.TimeConstantsNote` is the
+step's tooltip: CW HB depends on the time constants only through their ratio.
+
+Under CW with `τ_capt ≪ 1/f ≪ τ_emit` the state settles where a cycle's capture balances a cycle's emission — [P1]
+eq. 6.75 with the gap kept: driven ±4 V about 6 V at 1 MHz, `phi2` sits 0.638 V below the drain's peak, on the cycle
+balance of its own dynamics to 1e-4 V, moving 3.5 mV over the cycle (one cycle's emission).
+
+### 13.3 `Custom` (R-mc10-3)
+
+Per state a `Dynamics` (`dphi/dt`) and a `Dc` expression over the state itself, `vgs`, `vds`, `T` (°C) and the block's
+parameters, compiled by the one expression engine with its dual numbers. When built, every name is checked and the
+`Dc` must be a fixed point — `|D(phi_dc)| ≤ 1e-9 V·|∂D/∂phi|` at 30 biases (−5 … 1 V, 0 … 50 V) and 25 and 125 °C. A
+`Custom` state follows the convention odd states capture downward (like gate-lag) and even states upward. Written to
+equal `CaptureEmission` (its exponential continued by `if(u<20, exp(u), exp(20)*(1+u−20))`) it gives the same DC and S
+exactly and HB within 1e-12.
+
+### 13.4 The data's trap states (R-mc10-4)
+
+`IntrinsicExtraction` re-references a pulsed set's `Quiescent` bias and `PrePulse` level exactly as its points (the
+`Setting` cube: `Vgsi`, `Vdsi`, and whether the drain current was stated; the cache key moved to `mc10-1`). The
+trap-setting bias is the pre-pulse level when there is one, else the quiescent point. `TrapFit.Map`, per enabled state:
+a pulsed point is **toward** the setting when its own DC state lies on the setting's side in the direction capture moves
+(`CaptureSign`) — pulsed no lower in `vgs` for gate-lag, no higher in `vds` for drain-lag — and takes the setting's
+state exactly (only slow emission acted); otherwise **beyond**, and the set's `TrapState` decides: `auto` leaves it as
+validation (counted, one line per state), `setting` maps it to the setting's state, `extreme` to the pulse's own
+(`max` for drain-lag, `min` for gate-lag; [X10] eqs. 1.8–1.9). DC points sit at their DC state. Refused: a pulsed set
+with neither bias; a bias that states no drain current while the data shows it conducting (the nearest measured point,
+both voltages normalised by the data's spans, times its drain voltage, above 1 % of the largest point power). One line
+per timing (`SampleDelay`, `PulseWidth`, `PrePulse.Gap`) above a tenth of `τ_emit`. The levels are the distinct settings
+(within 1 mV) of the sets that contribute a used point: two or more fit fully, one fits with one line ("drain-lag
+from one trap level, 10 V") and is recorded in the block's `Levels`, none refuses the state naming what it needs. The
+step is unavailable without pulsed I–V — "no pulsed I–V" is the only text.
+
+### 13.5 Fitting with traps (R-mc10-5, R-mc10-6)
+
+The current step, with traps modelled, maps its sets instead of refusing a mix of trap states: `Id` takes the enabled
+states as further inputs (beyond points left out under `auto`; the DC points too when `DcIv` is `Validation`), `Ig`
+never does and trains on every point. By any method: an ANN, and a table's re-gridding network, train by MC-6's
+combined mode on the I–V values and on every CW S point's RF `Gm`/`Gds` as derivatives with the trap states (and `Tj`)
+frozen at their DC values ([X10] §VI); a table gains an axis per state every `TrapStep` (1 V); an equation template
+gains the saturating terms `vgs → vgs − a1·tanh((vgs − phi1)/c1) − a2·tanh((phi2 − vds)/c2)` and, on drain-lag,
+`α → α·(1 + a3·tanh((phi2 − vds)/c3))` on its knee parameter (`Gamma` for `CurticeCubic`), amplitudes from 0, widths
+from 5 V — zero at DC by construction — and trains on values only, with one line. The DC I–V error at the DC trap
+states is recorded (`DcIv`) and reported apart from the training error. Dispersion and drain–source exchange are
+refused alongside traps. The record carries the `Traps` block, levels included, exactly as the `.cmodel` will.
+
+`Qd` takes the states only when pulsed S-parameters give every enabled state a level (one warns), and only as an ANN:
+its adjoint problem gains a lane per state, the zero held along each at the anchor as for `T`. Otherwise one line says
+it is trap-independent. `Qg` never takes them. `TrapFit.FitFile` runs the step and re-trains the currents through one
+`RunControl`, writing nothing when cancelled (D13).
+
+## 14. Where it lives
 
 | Path | What |
 |---|---|
@@ -890,8 +999,10 @@ Every long part takes the `RunControl`; `FitFile` writes the document only when 
 | `src/Core/Devices/Composed/` | MC-8: `DriftCharges` (with `BoxContinuation`); `ComposedCoreProgram.Channel` and `.Charges` |
 | `src/Core/Devices/Composed/` | MC-9: `ModelThermal`, `ThermalPole` (records); the thermal port in `ComposedCoreModel`; the thermal network in `ComposedNetworkTemplate.Synthesize` |
 | `src/Design/Modeling/` | MC-9: `ThermalFit` (with `TemperaturePlan`, `ThermalHeating`), `ThermalFitSettings` (with `ThermalFitRecord`); `T` through `CurrentFit`, `EquationFit` and `ChargeFit` |
+| `src/Core/Devices/Composed/Traps/` | MC-10: `TrapModel.cs` (`ModelTraps`, `TrapParameter`, `TrapModelDefinition`, `TrapDynamics`, `RateTrapDynamics`), `TrapModels` (the registry), `CaptureEmissionTraps`, `CustomTraps`; the trap ports in `ComposedCoreModel` and lanes in `ComposedCoreProgram` (`DcSeeds`) |
+| `src/Design/Modeling/` | MC-10: `TrapFit` (with `TrapMapping`), `TrapFitSettings` (with `TrapFitRecord`); the `Setting` cube in `IntrinsicExtraction`; the trap states through `CurrentFit` and `ChargeFit` |
 
-## 14. Gates (MC-1 … MC-9)
+## 15. Gates (MC-1 … MC-10)
 
 `tests/Core.Tests/Composed/CmodelFormatTests`; `tests/Engine.Tests/Composed/` — `ComposedFetEquivalenceTests`
 (against an SDD with the same expressions in the same network: DC to 1e-12, S at three biases to 1e-9, HB
@@ -978,3 +1089,21 @@ current within 0.5 % along vgs = 0.4 V, its negative DC output conductance kept;
 ~160 kHz corner, within 2 % of the truth's isothermal `Gds` at its junction temperature), `SingleTemperatureStepTests`
 (one temperature: no `T` input, self-heating refused with "one temperature", the model `Mode: Single` at `T0`). The
 truth is `SyntheticFetData.ThermalCell` — an SDD at its intrinsic plane whose third port is the thermal node.
+
+MC-10: `tests/Engine.Tests/Composed/` — `CaptureEmissionNodeTests` (DC `phi2 = vds` to 1e-12 of itself at three biases;
+HB at 1 MHz, ±4 V about 6 V: 0.638 V below the drain's peak and on the cycle balance within 0.02 V — measured 1e-4 V;
+S at 0.5–20 GHz as the frozen-state device's within 1e-6 — measured 1.2e-7 with both DC solves at 1e-14 A, where the
+DC engine's default 1e-6 A left the two biases 1e-6 V apart), `ThermallyActivatedEmissionTests` (0.5 eV: the emission
+rate ×22.3 at 75 °C and the node's recovery time ×235.6 between 25 and 125 °C, each as predicted to 1e-9),
+`CustomTrapModelTests` (a `Custom` equal to `CaptureEmission`: DC and S identical, HB within 1e-12; an unknown name and
+a non-fixed-point `Dc` refused by field), `TrapInputsTests` (`Ig` and `Qg` refuse a trap input, `Qd` takes one; with
+the drift charge `∂Qg/∂phi2 = ∂Qdrift/∂Id · ∂Id/∂phi2` to 1e-12, in the program and in the core's charge Jacobian);
+`tests/Ui.Tests/ModelComposer/` — `TrapTrainingDataTests` (toward points at the setting under every `TrapState`, the
+pre-pulse level over the quiescent one; `auto` leaves 21 beyond points out and counts them, `setting` and `extreme` map
+them; one level warns once, a cold pulse and no pulsed data refuse naming the remedy; a conducting pre-pulse with no
+current refused, a 0.5 ms pulse warns), `TrappedModelFitTests` (the closed-form drain-lag truth: from quiescent 5, 10
+and 20 V with the DC held out, each level's pulsed I–V within 1 % — measured 0.17–0.63 % — the DC I–V 0.10 %, the RF
+`Gds` 1.7 % of its RMS where the DC slope is 77 % away; one level warns once and reproduces it at 0.10 %; no pulsed
+data: unavailable, no `Traps`; dispersion refused), `TrapRegistryTests` (an unknown model refused by name; a `None`
+block byte-identical to none; the current step under `None` records exactly what it did without the step). The truth is
+`Support/SyntheticTrapData.cs`; the engine gates' device is `tests/Engine.Tests/Composed/Support/TrapTestModels.cs`.

@@ -121,9 +121,10 @@ public sealed class IntrinsicExtraction
                              labels: [.. data.Points.Select(p => p.PointId)]);
 
         // Re-referencing (R-mc4-4).
-        var (vgsi, vdsi) = ReReference(set, data, beforePads ? pads.DcDrop() : null,
-                                       throughNetwork ? network!.Dc(values) : DcTransfer.Identity,
-                                       beforePads && pads.Kind == PadsKind.Network, notes);
+        var padDrop = beforePads ? pads.DcDrop() : null;
+        var transfer = throughNetwork ? network!.Dc(values) : DcTransfer.Identity;
+        bool padNeedsCurrents = beforePads && pads.Kind == PadsKind.Network;
+        var (vgsi, vdsi) = ReReference(set, data, padDrop, transfer, padNeedsCurrents, notes);
         ds.Add("Vgs", new DataCube([point], [.. data.Points.Select(p => p.Vgs)]));
         ds.Add("Vds", new DataCube([point], [.. data.Points.Select(p => p.Vds)]));
         ds.Add("Ig", new DataCube([point], [.. data.Points.Select(p => p.Ig)]));
@@ -131,6 +132,7 @@ public sealed class IntrinsicExtraction
         ds.Add("Vgsi", new DataCube([point], vgsi));
         ds.Add("Vdsi", new DataCube([point], vdsi));
         ds.Add("Excluded", new DataCube([point], [.. data.Points.Select(p => p.Excluded ? 1.0 : 0.0)]));
+        if (Setting(set, padDrop, transfer, padNeedsCurrents) is { } setting) ds.Add(SettingCube, setting);
 
         if (data.S is null) return ds;
         if (data.Ports != 2) throw new ModelingException(set.Name, $"it is a {data.Ports}-port; a FET's data is a 2-port.");
@@ -205,6 +207,36 @@ public sealed class IntrinsicExtraction
         return ds;
     }
 
+    /// <summary>The cube of a pulsed set's trap-setting biases (MC-10 R-mc10-4).</summary>
+    public const string SettingCube = "Setting";
+
+    /// <summary>The <see cref="SettingCube"/> rows and columns.</summary>
+    public static readonly IReadOnlyList<string> SettingBiases = ["Quiescent", "PrePulse"], SettingColumns = ["Vgsi", "Vdsi", "Stated"];
+
+    /// <summary>
+    /// A pulsed set's quiescent bias and pre-pulse level re-referenced to intrinsic exactly as its points are (MC-10
+    /// R-mc10-4): rows <c>Quiescent</c> and <c>PrePulse</c>, columns <c>Vgsi</c>, <c>Vdsi</c> and <c>Stated</c> — 1 when the
+    /// condition states its drain current, 0 when it was taken as zero (the trap step refuses that for a dissipating
+    /// bias). NaN for a row the set does not have; null when it has neither.
+    /// </summary>
+    private static DataCube? Setting(CmcDataSet set, Func<double, double, double, double, (double Vgs, double Vds)>? padDrop,
+                                     DcTransfer transfer, bool padNeedsCurrents)
+    {
+        var c = set.Conditions;
+        if (c.Quiescent is null && c.PrePulse is null) return null;
+        var values = Enumerable.Repeat(double.NaN, 6).ToArray();
+        void Row(int r, double vgs, double vds, double? ig, double? id)
+        {
+            var one = new NormalisedData { Points = [new BiasPoint(SettingBiases[r], vgs, vds, ig ?? 0, id ?? 0)] };
+            var (g, d) = ReReference(set, one, padDrop, transfer, padNeedsCurrents, []);
+            (values[3 * r], values[3 * r + 1], values[3 * r + 2]) = (g[0], d[0], id is null ? 0 : 1);
+        }
+        if (c.Quiescent is { } q) Row(0, q.Vgs, q.Vds, q.Ig, q.Id);
+        if (c.PrePulse is { } pp) Row(1, pp.Vgs, pp.Vds, null, pp.Id);
+        return new DataCube([new Axis("bias", [0, 1], labels: [.. SettingBiases]), new Axis("column", [0, 1, 2], labels: [.. SettingColumns])],
+                            values);
+    }
+
     /// <summary>
     /// R-mc4-4: each point's bias moved from its stated plane to the device plane, then through the network's DC map.
     /// A set at the intrinsic plane is its own answer. A set that carries intrinsic voltages of its own gets the
@@ -261,7 +293,8 @@ public sealed class IntrinsicExtraction
 
     // ── The cache ─────────────────────────────────────────────────────────────
 
-    private const string KeyVersion = "mc4-1";
+    /// <summary>Bumped when what an entry holds changes: mc10-1 added the trap-setting biases.</summary>
+    private const string KeyVersion = "mc10-1";
 
     private static string SharedKey(string dir, PadsSettings pads, string? netPath, IReadOnlyDictionary<string, double>? values,
                                      (double Lo, double Hi)? band)

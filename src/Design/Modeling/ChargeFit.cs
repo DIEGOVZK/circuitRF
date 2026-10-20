@@ -16,6 +16,7 @@
 using System.Globalization;
 using System.Text.Json.Nodes;
 using CircuitRF.Core.Devices.Composed;
+using CircuitRF.Core.Devices.Composed.Traps;
 using CircuitRF.Engine;
 using CircuitRF.Engine.Modeling;
 using CircuitRF.Engine.Modeling.Ann;
@@ -47,6 +48,12 @@ public sealed class ChargeData
 
     public bool HasT => T is not null;
 
+    /// <summary>MC-10: each point's trap states for <c>Qd</c> — null for a pulsed point beyond its trap-setting bias — when
+    /// pulsed S-parameters give <c>Qd</c> its trap inputs; null when the charges are trap-independent.</summary>
+    public double[]?[]? Phi { get; init; }
+    /// <summary>The mapping <see cref="Phi"/> came from.</summary>
+    public TrapMapping? Traps { get; init; }
+
     /// <summary><c>vgs, vds</c>, and <c>T</c> when the points span temperatures.</summary>
     public IReadOnlyList<string> Inputs => HasT ? [ComposedCoreProgram.Vgs, ComposedCoreProgram.Vds, ComposedCoreProgram.T] : ChargeFit.VoltageInputs;
 
@@ -54,7 +61,13 @@ public sealed class ChargeData
     public ChargeData Isothermal() => !HasT ? this : new()
     {
         X = X, C11 = C11, C12 = C12, C21 = C21, C22 = C22, Weight = Weight, TemperatureC = TemperatureC,
-        Domain = Domain with { Box = [] },
+        Domain = Domain with { Box = [] }, Phi = Phi, Traps = Traps,
+    };
+
+    /// <summary>The same points as trap-independent charges see them.</summary>
+    public ChargeData Untrapped() => Phi is null ? this : new()
+    {
+        X = X, C11 = C11, C12 = C12, C21 = C21, C22 = C22, Weight = Weight, TemperatureC = TemperatureC, T = T, Domain = Domain,
     };
 
     /// <summary>The span of <see cref="T"/>, °C.</summary>
@@ -181,7 +194,26 @@ public static class ChargeFit
             : doc.DataSets.Where(s => intrinsic.Sets.TryGetValue(s.Name, out var d) && d.Contains("C11")).ToList();
         if (chosen.Count == 0)
             throw new ModelingException(StepName, "there is no S-parameter data set to take the capacitances from.");
-        CurrentFit.TrapCondition(chosen, StepName);
+        // MC-10 R-mc10-5: with traps, Qd takes the trap states when pulsed S-parameters give every enabled state a level.
+        var trapSettings = TrapFit.Settings(doc);
+        TrapMapping? traps = null;
+        if (!trapSettings.Modelled) CurrentFit.TrapCondition(chosen, StepName);
+        else if (!chosen.Any(s => s.Kind == DataSetKind.PulsedSParams))
+            report.Add("Qd is trap-independent: there are no pulsed S-parameters.");
+        else
+        {
+            traps = TrapFit.Map(doc, data, intrinsic, trapSettings, chosen, "pulsed S-parameters", requireLevels: false);
+            var missing = traps.States.Where(st => traps.Levels[st].Count == 0).ToList();
+            if (missing.Count > 0)
+            {
+                report.Add($"Qd is trap-independent: no pulsed S point gives {string.Join(", ", missing.Select(st => TrapFit.Label(trapSettings.Model, st)))} a trap level.");
+                traps = null;
+            }
+            else
+            {
+                report.AddRange(traps.Report.Select(l => $"Qd: {l}"));
+            }
+        }
         var temps = CurrentFit.Temperatures(chosen, data);
         double t = temps.Count > 0 ? temps[0] : 25.0;
         bool hasT = temps.Count >= 2;
@@ -194,6 +226,7 @@ public static class ChargeFit
         var x = new List<(double, double)>();
         var c = new List<double>[4] { [], [], [], [] };
         var w = new List<double>();
+        var phi = new List<double[]?>();
         int poor = 0;
         foreach (var set in chosen)
         {
@@ -224,6 +257,7 @@ public static class ChargeFit
                     ? tAmb + heating.RthAt(tAmb) * CurrentFit.Power(vgs[p], vds[p], double.IsNaN(igc[p]) ? 0 : igc[p], idc[p])
                     : tAmb);
                 x.Add((vgs[p], vds[p]));
+                phi.Add(traps?.At(set.Name, p));
                 for (int i = 0; i < 4; i++) c[i].Add(sum[i] / count);
                 double worst = Math.Max(Finite(flat[p * nq + iC11]), Finite(flat[p * nq + iC22]));
                 double weight = worst <= settings.FlatnessLimit ? 1.0 : Math.Pow(settings.FlatnessLimit / worst, 2);
@@ -234,11 +268,19 @@ public static class ChargeFit
         if (poor > 0) report.Add($"{poor} point(s) with flatness above {G(100 * settings.FlatnessLimit)} % down-weighted by (limit/flatness)².");
         if (x.Count < 4) throw new ModelingException(StepName, $"{x.Count} usable S point(s); a charge fit needs at least 4.");
         var cd = ChargeData.Of(x, [.. c[0]], [.. c[1]], [.. c[2]], [.. c[3]], [.. w], t);
-        if (!hasT) return cd;
+        if (hasT)
+            cd = new ChargeData
+            {
+                X = cd.X, C11 = cd.C11, C12 = cd.C12, C21 = cd.C21, C22 = cd.C22, Weight = cd.Weight, TemperatureC = t, T = [.. tk],
+                Domain = cd.Domain with { Box = [new(ComposedCoreProgram.T, (tk.Min(), tk.Max()))] },
+            };
+        if (traps is null) return cd;
+        int used = phi.Count(r => r is not null);
+        if (used < 4) throw new ModelingException(StepName, $"{used} S point(s) with a trap state; Qd needs at least 4.");
         return new ChargeData
         {
-            X = cd.X, C11 = cd.C11, C12 = cd.C12, C21 = cd.C21, C22 = cd.C22, Weight = cd.Weight, TemperatureC = t, T = [.. tk],
-            Domain = cd.Domain with { Box = [new(ComposedCoreProgram.T, (tk.Min(), tk.Max()))] },
+            X = cd.X, C11 = cd.C11, C12 = cd.C12, C21 = cd.C21, C22 = cd.C22, Weight = cd.Weight, TemperatureC = t, T = cd.T,
+            Domain = cd.Domain, Phi = [.. phi], Traps = traps,
         };
 
         static int Index(string name) => IntrinsicQuantities.Names.ToList().IndexOf(name);
@@ -308,24 +350,28 @@ public static class ChargeFit
         if (settings.Drift is { } drift)
         {
             if (current is null) throw new ModelingException(StepName, "the drift charge reads the fitted Id; fit the currents first.");
-            (qg, qd, cdsSpread) = FitDrift(For("the drift charge"), settings, drift, current, anchor, arrays, report, rc);
+            (qg, qd, cdsSpread) = FitDrift(For("the drift charge").Untrapped(), settings, drift, current, anchor, arrays, report, rc);
         }
         else
         {
-            qg = FitOne("Qg", true, settings.Qg, settings.Qg.Method == ChargeMethod.ANN ? data : For($"Qg ({settings.Qg.Method})"),
+            // Only an ANN Qd takes the trap states (MC-10); the gate charge never does.
+            if (data.Phi is not null && settings.Qd.Method != ChargeMethod.ANN)
+                report.Add($"Qd ({settings.Qd.Method}) is trap-independent: only an ANN charge takes the trap states.");
+            var qdData = settings.Qd.Method == ChargeMethod.ANN ? data : For($"Qd ({settings.Qd.Method})").Untrapped();
+            qg = FitOne("Qg", true, settings.Qg, settings.Qg.Method == ChargeMethod.ANN ? data.Untrapped() : For($"Qg ({settings.Qg.Method})").Untrapped(),
                         settings, anchor, arrays, paths, report, rc);
-            qd = FitOne("Qd", false, settings.Qd, settings.Qd.Method == ChargeMethod.ANN ? data : For($"Qd ({settings.Qd.Method})"),
-                        settings, anchor, arrays, paths, report, rc);
+            qd = FitOne("Qd", false, settings.Qd, qdData, settings, anchor, arrays, paths, report, rc);
         }
 
-        var program = ComposedCoreProgram.Compile(Model(qg, qd, arrays, current, data.TemperatureC), "charge fit");
+        var traps = qd.Inputs.Any(i => i.StartsWith("phi", StringComparison.Ordinal)) ? data.Traps!.Block : null;
+        var program = ComposedCoreProgram.Compile(Model(qg, qd, arrays, current, data.TemperatureC, traps), "charge fit");
         var errors = Errors(program, data);
         foreach (var (k, e) in errors) report.Add($"{k}: RMS error {G(100 * e.Relative)} % of its range.");
         string key = arrays.Count > 0 ? CurrentFit.ArraysKey(arrays, out _) : "";
         var record = new ChargeFitRecord
         {
             Qg = qg, Qd = qd, Arrays = key, Anchor = anchor, Errors = errors, PathDifference = paths, CdsSpread = cdsSpread,
-            Report = report,
+            Traps = traps, Report = report,
         };
         return new ChargeFitResult(settings, record, arrays);
     }
@@ -342,18 +388,18 @@ public static class ChargeFit
             {
                 // The adjoint method ([P1] §6.3.6, [X03]): ∂Q/∂vgs → Ci1 and ∂Q/∂vds → Ci2, with Q = 0 at the anchor.
                 rc?.BeginStage($"Training {name}");
-                var problem = data.HasT ? AdjointWithT(data, c1, c2, anchor) : new AnnTrainingProblem(2)
+                var (problem, inputs, domain) = data.HasT || data.Phi is not null ? AdjointExtra(data, c1, c2, anchor) : (new AnnTrainingProblem(2)
                 {
                     Derivatives = new AnnDerivativeData(data.Points, [0, 1], [.. c1.Select((v, k) => new[] { v, c2[k] })],
                                                         [.. data.Weight.Select(w => new[] { w, w })]),
                     Anchor = new AnnAnchor([anchor.Vgs, anchor.Vds], 0),
-                };
+                }, data.Inputs, data.Domain);
                 var trained = AnnTrainer.Train(problem, AnnSettings(s.Hidden, s.Activation, s.MaxIterations, settings, settings.HeldOutFraction), rc);
                 foreach (string warning in trained.Warnings) report.Add($"{name}: {warning}");
                 if (trained.Derivatives is { HeldOutCount: > 0 } e)
                     report.Add($"{name}: held-out ∂Q/∂v error {G(100 * e.HeldOutRelative)} % over {e.HeldOutCount} point(s).");
                 foreach (var (k, v) in trained.Arrays(name)) arrays[k] = v;
-                return Constituent.Ann(name, data.Inputs, data.Domain, s.Activation);
+                return Constituent.Ann(name, inputs, domain, s.Activation);
             }
             case ChargeMethod.Table:
                 return FitTable(name, s, c1, c2, data, settings, anchor, arrays, paths, report, rc);
@@ -363,29 +409,62 @@ public static class ChargeFit
     }
 
     /// <summary>
-    /// The adjoint problem with T a third input (MC-9). The capacitances constrain ∂Q/∂v at each point's temperature; the
-    /// charge's zero is fixed at the anchor bias for EVERY temperature, by ∂Q/∂T = 0 at nine temperatures along it and the
-    /// value 0 at the middle one — a charge that moved with T at the anchor would carry a displacement current dQ/dT·dT/dt
-    /// the data never measured.
+    /// The adjoint problem with inputs beyond the voltages: T (MC-9) and, for a trapped <c>Qd</c>, the trap states (MC-10;
+    /// a pulsed point beyond its trap-setting bias is left out). The capacitances constrain ∂Q/∂v at each point's own
+    /// temperature and trap state; the charge's zero is fixed at the anchor bias for EVERY value of each further input, by
+    /// ∂Q/∂x = 0 at nine values along it (the others at their middles) and the value 0 at the middle — a charge that moved
+    /// with T or a trap state at the anchor would carry a displacement current the data never measured. Returns the
+    /// problem, its inputs, and the domain with each further input's interval in its box.
     /// </summary>
-    private static AnnTrainingProblem AdjointWithT(ChargeData data, double[] c1, double[] c2, (double Vgs, double Vds) anchor)
+    private static (AnnTrainingProblem Problem, IReadOnlyList<string> Inputs, TrainingDomain Domain) AdjointExtra(
+        ChargeData data, double[] c1, double[] c2, (double Vgs, double Vds) anchor)
     {
-        var x = data.PointsWithT.ToList();
-        var targets = c1.Select((v, k) => new[] { v, c2[k], 0.0 }).ToList();
-        var weights = data.Weight.Select(w => new[] { w, w, 0.0 }).ToList();
-        var (lo, hi) = data.TSpan;
-        double mean = data.Weight.Average();
-        for (int k = 0; k <= 8; k++)
+        var states = data.Phi is null ? [] : data.Traps!.States;
+        IReadOnlyList<string> inputs = [.. data.Inputs, .. states];
+        int d = inputs.Count;
+        var x = new List<double[]>();
+        var targets = new List<double[]>();
+        var weights = new List<double[]>();
+        for (int k = 0; k < data.X.Count; k++)
         {
-            x.Add([anchor.Vgs, anchor.Vds, lo + (hi - lo) * k / 8.0]);
-            targets.Add([0.0, 0.0, 0.0]);
-            weights.Add([0.0, 0.0, mean]);
+            if (data.Phi is not null && data.Phi[k] is null) continue;
+            var p = data.PointsWithT[k];
+            x.Add([.. p, .. data.Phi?[k] ?? []]);
+            targets.Add([c1[k], c2[k], .. new double[d - 2]]);
+            weights.Add([data.Weight[k], data.Weight[k], .. new double[d - 2]]);
         }
-        return new AnnTrainingProblem(3)
+        var box = new List<KeyValuePair<string, (double Lo, double Hi)>>();
+        var mid = new double[d];
+        for (int j = 2; j < d; j++)
         {
-            Derivatives = new AnnDerivativeData(x, [0, 1, 2], targets, weights),
-            Anchor = new AnnAnchor([anchor.Vgs, anchor.Vds, 0.5 * (lo + hi)], 0),
+            double lo = x.Min(p => p[j]), hi = x.Max(p => p[j]);
+            if (!(hi > lo)) (lo, hi) = (lo - 0.5, hi + 0.5);
+            box.Add(new(inputs[j], (lo, hi)));
+            mid[j] = 0.5 * (lo + hi);
+        }
+        double mean = weights.Average(w => w[0]);
+        for (int j = 2; j < d; j++)
+        {
+            var (lo, hi) = box[j - 2].Value;
+            for (int k = 0; k <= 8; k++)
+            {
+                var p = (double[])mid.Clone();
+                (p[0], p[1], p[j]) = (anchor.Vgs, anchor.Vds, lo + (hi - lo) * k / 8.0);
+                x.Add(p);
+                targets.Add(new double[d]);
+                var w = new double[d];
+                w[j] = mean;
+                weights.Add(w);
+            }
+        }
+        var at = (double[])mid.Clone();
+        (at[0], at[1]) = (anchor.Vgs, anchor.Vds);
+        var problem = new AnnTrainingProblem(d)
+        {
+            Derivatives = new AnnDerivativeData(x, [.. Enumerable.Range(0, d)], targets, weights),
+            Anchor = new AnnAnchor(at, 0),
         };
+        return (problem, inputs, data.Domain with { Box = box });
     }
 
     private static AnnTrainingSettings AnnSettings(IReadOnlyList<int> hidden, AnnActivation activation, int iterations,
@@ -594,8 +673,10 @@ public static class ChargeFit
         var program = ComposedCoreProgram.Compile(Model(zero, zero, new Dictionary<string, DataCube>(), current, temperatureC), "current fit");
         return (vgs, vds) =>
         {
-            Span<double> s = [vgs, vds, temperatureC];
-            Span<double> g = stackalloc double[3];
+            // At a DC operating point: T at the temperature given, every trap state at its DC value.
+            Span<double> s = stackalloc double[RuntimeEvaluator.MaxInputs];
+            Span<double> g = stackalloc double[RuntimeEvaluator.MaxInputs];
+            program.DcSeeds(vgs, vds, temperatureC, s);
             double id = program.Channel(s[..program.Width], g);
             return (id, g[0], g[1]);
         };
@@ -608,7 +689,7 @@ public static class ChargeFit
     /// <see cref="IntrinsicNetwork"/> at one finger — what the conservation checks run.
     /// </summary>
     internal static ComposedModel Model(Constituent qg, Constituent qd, IReadOnlyDictionary<string, DataCube> chargeArrays,
-                                        CurrentFitResult? current, double temperatureC)
+                                        CurrentFitResult? current, double temperatureC, ModelTraps? traps = null)
     {
         var all = new Dictionary<string, DataCube>(chargeArrays, StringComparer.Ordinal);
         var zero = Constituent.Equation("0", Inputs);
@@ -630,6 +711,7 @@ public static class ChargeFit
             Temperature = TemperatureOf([id, ig, qg, qd, idRf], temperatureC),
             Network = new ExtrinsicNetwork(IntrinsicNetwork, []),
             Core = new CoreConstituents(id, ig, qg, qd, idRf) { Dispersion = dispersion },
+            Traps = current?.Record.Traps ?? traps,
             Extrapolation = extrapolation,
             Arrays = all,
         };
@@ -652,16 +734,22 @@ public static class ChargeFit
 
     /// <summary>A fitted step's model, as <see cref="Model(Constituent, Constituent, IReadOnlyDictionary{string, DataCube}, CurrentFitResult?, double)"/>.</summary>
     public static ComposedModel Model(ChargeFitResult charges, CurrentFitResult? current, double temperatureC = 25) =>
-        Model(charges.Record.Qg, charges.Record.Qd, charges.Arrays, current, temperatureC);
+        Model(charges.Record.Qg, charges.Record.Qd, charges.Arrays, current, temperatureC, charges.Record.Traps);
 
     /// <summary>The capacitance matrix of a model's charges at a point: <c>(C11, C12, C21, C22)</c>.</summary>
     public static (double C11, double C12, double C21, double C22) Capacitances(ComposedCoreProgram program, double vgs, double vds,
                                                                                 double temperatureC = 25)
     {
-        Span<double> s = stackalloc double[3];
-        s[0] = vgs; s[1] = vds; s[2] = temperatureC;
-        Span<double> gg = stackalloc double[3], gd = stackalloc double[3];
-        program.Charges(s[..program.Width], gg, gd);
+        Span<double> s = stackalloc double[RuntimeEvaluator.MaxInputs];
+        program.DcSeeds(vgs, vds, temperatureC, s);
+        return Capacitances(program, s);
+    }
+
+    /// <summary>The capacitance matrix at explicit seeds (a pulsed point's own trap states, MC-10).</summary>
+    internal static (double C11, double C12, double C21, double C22) Capacitances(ComposedCoreProgram program, ReadOnlySpan<double> seeds)
+    {
+        Span<double> gg = stackalloc double[RuntimeEvaluator.MaxInputs], gd = stackalloc double[RuntimeEvaluator.MaxInputs];
+        program.Charges(seeds[..program.Width], gg, gd);
         return (gg[0], gg[1], gd[0], gd[1]);
     }
 
@@ -669,9 +757,13 @@ public static class ChargeFit
     {
         double[][] measured = [data.C11, data.C12, data.C21, data.C22];
         var sums = new double[4];
+        var seeds = new double[RuntimeEvaluator.MaxInputs];
         foreach (var (k, p) in data.X.Select((p, k) => (k, p)))
         {
-            var (c11, c12, c21, c22) = Capacitances(program, p.Vgs, p.Vds, data.TemperatureOf(k));
+            // Each point at its own temperature and, when Qd is trapped, its own trap states (its DC ones when it has none).
+            program.DcSeeds(p.Vgs, p.Vds, data.TemperatureOf(k), seeds);
+            if (data.Phi?[k] is { } own) own.CopyTo(seeds, program.TrapLane);
+            var (c11, c12, c21, c22) = Capacitances(program, seeds);
             double[] model = [c11, c12, c21, c22];
             for (int i = 0; i < 4; i++) sums[i] += Math.Pow(model[i] - measured[i][k], 2);
         }

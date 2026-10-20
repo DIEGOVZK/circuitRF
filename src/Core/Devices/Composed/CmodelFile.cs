@@ -2,6 +2,7 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using CircuitRF.Core.Devices.Composed.Traps;
 using CircuitRF.Core.Expressions;
 using RfCore.Data;
 using RfCore.Export;
@@ -41,8 +42,8 @@ public static class CmodelFile
     public static readonly IReadOnlyList<string> KnownMethods =
         [Constituent.EquationMethod, Constituent.TableMethod, Constituent.AnnMethod, Constituent.DriftMethod];
 
-    /// <summary>The trap models this build knows (D10). MC-10 adds the rest.</summary>
-    public static readonly IReadOnlyList<string> KnownTrapModels = ["None"];
+    /// <summary>The trap model names this build knows (D10): <c>None</c> and every registered model.</summary>
+    public static IReadOnlyList<string> KnownTrapModels => TrapModels.Names;
 
     private static readonly DateTimeOffset EntryTime = new(1980, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
@@ -132,13 +133,7 @@ public static class CmodelFile
             extrapolation = new ModelExtrapolation(gx);
         }
 
-        if (root.TryGetProperty("Traps", out var traps))
-        {
-            string trapModel = Str(traps, "Model", "Traps.Model");
-            if (!KnownTrapModels.Contains(trapModel, StringComparer.Ordinal))
-                throw new CmodelFormatException("Traps.Model",
-                    $"'{trapModel}' is not a known trap model; the known models are {string.Join(", ", KnownTrapModels)}.");
-        }
+        ModelTraps? traps = root.TryGetProperty("Traps", out var tr) ? ParseTraps(tr) : null;
 
         var bp = Obj(root, "BasePeriphery");
         var t  = Obj(root, "Temperature");
@@ -234,6 +229,7 @@ public static class CmodelFile
                                               Str(bp, "UnitWidth", "BasePeriphery.UnitWidth")),
             Temperature   = temperature,
             Thermal       = thermal,
+            Traps         = traps,
             Network       = new ExtrinsicNetwork(Str(net, "Netlist", "Network.Netlist"), scaling),
             Core          = new CoreConstituents(One("Id"), One("Ig"), One("Qg"), One("Qd"), idRf)
                             { Symmetry = symmetry, Dispersion = dispersion },
@@ -280,6 +276,59 @@ public static class CmodelFile
         {
             RthSlope = t.TryGetProperty("RthSlope", out _) ? Num(t, "RthSlope", "Thermal.RthSlope") : 0.0,
             Tref     = t.TryGetProperty("Tref", out _) ? Num(t, "Tref", "Thermal.Tref") : 25.0,
+        };
+    }
+
+    private static readonly string[] TrapKeys = ["Model", "States", "Parameters", "Levels", "Expressions"];
+
+    /// <summary><c>Traps</c> (MC-10): the model by name — refused by name when unknown — and its states, parameters, levels
+    /// and expressions. A block naming <c>None</c> is no traps. The model's own rules are the validator's.</summary>
+    private static ModelTraps? ParseTraps(JsonElement t)
+    {
+        if (t.ValueKind != JsonValueKind.Object) throw new CmodelFormatException("Traps", "it is not an object.");
+        foreach (var p in t.EnumerateObject())
+            if (!TrapKeys.Contains(p.Name, StringComparer.Ordinal))
+                throw new CmodelFormatException($"Traps.{p.Name}", $"it is not a field of Traps; the fields are {string.Join(", ", TrapKeys)}.");
+        string model = Str(t, "Model", "Traps.Model");
+        if (!KnownTrapModels.Contains(model, StringComparer.Ordinal))
+            throw new CmodelFormatException("Traps.Model",
+                $"'{model}' is not a known trap model; the known models are {string.Join(", ", KnownTrapModels)}.");
+        if (model == ModelTraps.None) return null;
+
+        var parameters = new List<KeyValuePair<string, double>>();
+        if (t.TryGetProperty("Parameters", out var pe))
+        {
+            if (pe.ValueKind != JsonValueKind.Object) throw new CmodelFormatException("Traps.Parameters", "it is not an object of name → number.");
+            foreach (var p in pe.EnumerateObject()) parameters.Add(new(p.Name, Num(pe, p.Name, $"Traps.Parameters.{p.Name}")));
+        }
+        var levels = new List<KeyValuePair<string, IReadOnlyList<double>>>();
+        if (t.TryGetProperty("Levels", out var le))
+        {
+            if (le.ValueKind != JsonValueKind.Object) throw new CmodelFormatException("Traps.Levels", "it is not an object of state → levels.");
+            foreach (var p in le.EnumerateObject())
+            {
+                if (p.Value.ValueKind != JsonValueKind.Array || p.Value.EnumerateArray().Any(x => x.ValueKind != JsonValueKind.Number))
+                    throw new CmodelFormatException($"Traps.Levels.{p.Name}", "it is not a list of voltages.");
+                levels.Add(new(p.Name, [.. p.Value.EnumerateArray().Select(x => x.GetDouble())]));
+            }
+        }
+        var expressions = new List<KeyValuePair<string, string>>();
+        if (t.TryGetProperty("Expressions", out var ee))
+        {
+            if (ee.ValueKind != JsonValueKind.Object) throw new CmodelFormatException("Traps.Expressions", "it is not an object of state → expressions.");
+            foreach (var st in ee.EnumerateObject())
+            {
+                if (st.Value.ValueKind != JsonValueKind.Object)
+                    throw new CmodelFormatException($"Traps.Expressions.{st.Name}", "it is not an object of Dynamics and Dc.");
+                foreach (var e in st.Value.EnumerateObject())
+                    expressions.Add(new($"{st.Name}.{e.Name}", Str(st.Value, e.Name, $"Traps.Expressions.{st.Name}.{e.Name}")));
+            }
+        }
+        return new ModelTraps
+        {
+            Model = model,
+            States = t.TryGetProperty("States", out _) ? Strings(t, "States", "Traps.States") : [],
+            Parameters = parameters, Levels = levels, Expressions = expressions,
         };
     }
 
@@ -439,13 +488,18 @@ public static class CmodelFile
                         $"a net is named '{net}', which names the thermal network of a self-heating model.");
         }
 
+        ValidateTraps(m);
+
         var inputs = new HashSet<string>(StringComparer.Ordinal) { ComposedCoreProgram.Vgs, ComposedCoreProgram.Vds };
         if (t.Mode == TemperatureMode.Range) inputs.Add(ComposedCoreProgram.T);
+        // The trap states enter Id and Qd only ([X10] eq. 1.5, D10): never the gate current or the gate charge.
+        var trapped = new HashSet<string>(inputs, StringComparer.Ordinal);
+        foreach (string state in m.Traps?.States ?? []) trapped.Add(state);
 
-        ValidateConstituent(m, m.Core.Id, "Id", inputs);
+        ValidateConstituent(m, m.Core.Id, "Id", trapped);
         ValidateConstituent(m, m.Core.Ig, "Ig", inputs);
         ValidateConstituent(m, m.Core.Qg, "Qg", inputs);
-        ValidateConstituent(m, m.Core.Qd, "Qd", inputs);
+        ValidateConstituent(m, m.Core.Qd, "Qd", trapped);
         if (m.Core.IdRF is { } idRf) ValidateConstituent(m, idRf, "IdRF", inputs);
         ValidateDriftPair(m);
         ValidateDispersion(m);
@@ -476,7 +530,9 @@ public static class CmodelFile
             string why = input switch
             {
                 ComposedCoreProgram.T => "a single-temperature model has no temperature input",
-                "phi1" or "phi2"      => "trap states are inputs only of a model with traps",
+                _ when m.Traps is null && TrapState(input) => "trap states are inputs only of a model with traps",
+                _ when m.Traps is { } own && own.States.Contains(input) => "the trap states are inputs of Id and Qd only, never of the gate current or charge",
+                _ when m.Traps is { } any && TrapState(input) => $"the model's trap states are {string.Join(", ", any.States)}",
                 _                     => $"the inputs are {string.Join(", ", allowed)}",
             };
             throw new CmodelFormatException($"{field}.Inputs", $"'{input}' is not an input here: {why}.");
@@ -704,6 +760,27 @@ public static class CmodelFile
                 "it makes the thermal resistance zero or negative inside the model's temperature range.");
     }
 
+    private static bool TrapState(string input) => input.StartsWith("phi", StringComparison.Ordinal);
+
+    /// <summary>
+    /// <c>Traps</c> (MC-10): the model's block compiled by the registry, which refuses an unknown model by name and
+    /// everything else by field — and two combinations refused: [P1] eq. 6.52's dispersion, whose DC/RF difference the trap
+    /// states carry instead, and drain–source exchange, under which the trap states (which follow the forward device's
+    /// gate and drain) have no image.
+    /// </summary>
+    private static void ValidateTraps(ComposedModel m)
+    {
+        if (m.Traps is not { } traps) return;
+        if (traps.Model == ModelTraps.None)
+            throw new CmodelFormatException("Traps.Model", "a model without traps carries no Traps block.");
+        TrapModels.Build(traps, "validation");
+        if (m.Core.Dispersion is not null || m.Core.IdRF is not null)
+            throw new CmodelFormatException("Core.Dispersion",
+                "dispersion and traps are not combined: with traps the DC/RF difference follows from the trap states.");
+        if (m.Core.Symmetry == DrainSourceSymmetry.Exchange)
+            throw new CmodelFormatException("Core.Symmetry", "drain–source exchange is not defined for a model with traps.");
+    }
+
     /// <summary><c>IdRF</c> and <c>Core.Dispersion</c> come together: one without the other has no meaning.</summary>
     private static void ValidateDispersion(ComposedModel m)
     {
@@ -845,6 +922,8 @@ public static class CmodelFile
                 w.WriteEndObject();
             }
 
+            if (m.Traps is { } traps) WriteTraps(w, traps);
+
             w.WriteStartObject("Network");
             w.WriteString("Netlist", m.Network.Netlist);
             w.WriteStartObject("Scaling");
@@ -900,6 +979,67 @@ public static class CmodelFile
         }
         buffer.WriteByte((byte)'\n');
         return buffer.ToArray();
+    }
+
+    /// <summary>The <c>Traps</c> block as <c>model.json</c> writes it — what a <c>.cmc</c> records for a fitted model before
+    /// export (brief-modelcomposer-10). Not validated here: a block is validated with its model.</summary>
+    public static string TrapsJson(ModelTraps t)
+    {
+        using var buffer = new MemoryStream();
+        using (var w = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = false }))
+        {
+            w.WriteStartObject();
+            WriteTraps(w, t);
+            w.WriteEndObject();
+        }
+        using var doc = JsonDocument.Parse(buffer.ToArray());
+        return doc.RootElement.GetProperty("Traps").GetRawText();
+    }
+
+    /// <summary>The inverse of <see cref="TrapsJson"/>: null for a block naming <c>None</c>.</summary>
+    public static ModelTraps? ParseTrapsJson(string json)
+    {
+        JsonDocument doc;
+        try { doc = JsonDocument.Parse(json); }
+        catch (JsonException ex) { throw new CmodelFormatException("Traps", $"it is not JSON ({ex.Message})."); }
+        using (doc) return ParseTraps(doc.RootElement);
+    }
+
+    private static void WriteTraps(Utf8JsonWriter w, ModelTraps t)
+    {
+        w.WriteStartObject("Traps");
+        w.WriteString("Model", t.Model);
+        w.WriteStartArray("States");
+        foreach (string s in t.States) w.WriteStringValue(s);
+        w.WriteEndArray();
+        w.WriteStartObject("Parameters");
+        foreach (var (name, value) in t.Parameters) w.WriteNumber(name, value);
+        w.WriteEndObject();
+        if (t.Levels.Count > 0)
+        {
+            w.WriteStartObject("Levels");
+            foreach (var (state, levels) in t.Levels)
+            {
+                w.WriteStartArray(state);
+                foreach (double l in levels) w.WriteNumberValue(l);
+                w.WriteEndArray();
+            }
+            w.WriteEndObject();
+        }
+        if (t.Expressions.Count > 0)
+        {
+            w.WriteStartObject("Expressions");
+            foreach (string state in t.States)
+            {
+                var own = t.Expressions.Where(e => e.Key.StartsWith(state + ".", StringComparison.Ordinal)).ToList();
+                if (own.Count == 0) continue;
+                w.WriteStartObject(state);
+                foreach (var (key, text) in own) w.WriteString(key[(state.Length + 1)..], text);
+                w.WriteEndObject();
+            }
+            w.WriteEndObject();
+        }
+        w.WriteEndObject();
     }
 
     /// <summary>

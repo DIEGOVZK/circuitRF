@@ -3649,3 +3649,31 @@ Design note: `docs/design/model-composer.md` §4.1–§4.4 and §12. Findings wo
 - **The T lane maps through the drain–source image like a voltage lane** (the current negates, the gate branches
   swap, `Qd → −Qg − Qd`) and lands in the thermal port's column of `dg`/`dc`; the port's own row is `−∂P/∂v` with
   `P = i·v` from the already-scaled terminal currents, so the scaling and the image are both inherited for free.
+
+## brief-modelcomposer-10 — trap states as nodes of a composed FET (2026-10-19)
+
+Design note: `docs/design/model-composer.md` §3.1, §3.2 and §13. Findings worth keeping:
+
+- **The trap node's normalising capacitance trades two floors, and 1 mF is where both clear.** A rate model's node
+  carries `q = C·phi`, `i = −C·D`; Newton is invariant to a row's scaling, so `C` changes no solution — only two
+  floors. The DC engine's `gmin` (applied to every node unless `ConductanceRegularization` is `Never`) moves a DC state
+  by `gmin·phi·τ_emit/C`: 1e-12 of it at 1 mF and τ_emit = 1 ms, 1e-14 at 1 F. But in HB the round-off of the charge's
+  large DC part (`C` times tens of volts), multiplied by `kω`, floors the residual — measured ~`6e-5·C` A at 2 GHz with
+  eight harmonics, ~`1.6e-4·C` with sixteen. At 1 F HB stalled at 1.6e-7 A with hundreds of backtracks even at −20 dB
+  drive; at 10 mF at 3e-9 A against a 1e-9 tolerance; at 1 mF it converges in six iterations, and at 2 GHz its floor is
+  6e-8 A, 16× under the 1e-6 A default. The FD Jacobian oracle reads ~4e-3 on the trap block's small off-diagonal
+  entries at every `C` — FD noise beside the `jkωC` diagonal, not a wrong derivative, since Newton converges
+  quadratically at 1 mF. A GHz run at much tighter `Tol` with many harmonics will meet the floor first.
+- **A comparison of S-parameters between two DC solutions must tighten the DC tolerance.** `NonlinearAbsTol` is 1e-6 A
+  by default; two devices that reach the same bias by different Newton paths (a trapped model and its frozen-state
+  twin) stopped 1e-6 V apart, which moved S21 by 3.8e-6 — a frequency-flat difference that looks like a modelling
+  error. At 1e-14 A it is 1.2e-7, the trap node's own `1/(ωτ)` residual.
+- **The capture exponential is continued by its tangent above e^20.** A DC Newton start has every state at 0 V, a full
+  drain voltage from its solution: `e^((28 − 1)/0.05)` overflows. Above `u = 20` the capture rate is already ~5e8 times
+  its reference, so no solution sits there, and the continuation is C¹ where the brief asks C∞ — only off every
+  solution. A `Custom` model written to equal it must continue the same way (`if(u<20, exp(u), …)`), or it diverges
+  from the same start.
+- **`RuntimeEvaluator.MaxInputs` is 7** (vgs, vds, T and up to four trap states), and the core's seeds, gradient
+  buffers and `MaxPorts` follow it; every caller outside the core that evaluates a constituent seeds through
+  `ComposedCoreProgram.DcSeeds` (the trap states at their DC values), never a fixed `[vgs, vds, T]` span — which,
+  sliced to a width-3 trapped program, silently feeds `T` in as `phi2`.

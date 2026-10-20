@@ -11,7 +11,8 @@
 //                   "Errors": { "Id": { "Train": …, "TrainRelative": …, "HeldOut": …, "HeldOutRelative": … } },
 //                   "Conductance": { "Gm": [rms, relative], "Gds": [rms, relative] },
 //                   "Symmetry": { "ValueJump": …, "SlopeJump": …, "GateJump": … }, "Eq649": …,
-//                   "Reference": [vgs, vds], "Report": [ "…" ] } }
+//                   "Reference": [vgs, vds], "Traps": { …as model.json writes it… },
+//                   "DcIv": { "Count": …, "Rms": …, "Relative": … }, "Report": [ "…" ] } }
 //
 // Every Settings key is optional and written only when it differs from its default. The constituents are recorded
 // exactly as the .cmodel will carry them (CmodelFile.ConstituentJson), so export copies rather than re-spells them;
@@ -20,6 +21,7 @@
 
 using System.Text.Json.Nodes;
 using CircuitRF.Core.Devices.Composed;
+using CircuitRF.Core.Devices.Composed.Traps;
 using static CircuitRF.Design.Modeling.CmcExtrinsic;
 
 namespace CircuitRF.Design.Modeling;
@@ -46,6 +48,8 @@ public sealed record CurrentConstituentSettings
     public const double DefaultGridStep = 0.1;
     /// <summary>A table's temperature axis spacing, °C (MC-9), when T is an input.</summary>
     public const double DefaultTemperatureStep = 25;
+    /// <summary>A table's trap-state axis spacing, volts (MC-10), when the model has traps.</summary>
+    public const double DefaultTrapStep = 1;
     /// <summary>L-BFGS iterations per start: relative weighting makes the problem stiff, and 2000 measured short of
     /// converged on a 2 × 8 network over ~170 points (5.6 % worst held-out error, against 0.6 % at 6000).</summary>
     public const int DefaultMaxIterations = 6000;
@@ -66,6 +70,8 @@ public sealed record CurrentConstituentSettings
     public double Smoothing { get; init; }
     /// <summary>Table, with T an input (MC-9): the temperature axis's spacing, °C.</summary>
     public double TemperatureStep { get; init; } = DefaultTemperatureStep;
+    /// <summary>Table, with traps (MC-10): each trap-state axis's spacing, volts.</summary>
+    public double TrapStep { get; init; } = DefaultTrapStep;
     /// <summary>Equation, with T an input (MC-9 R-mc9-1): the template parameters made linear in temperature, each
     /// <c>p</c> becoming <c>p + p_T·(T − Tnom)</c>.</summary>
     public IReadOnlyList<string> TemperatureCoefficients { get; init; } = [];
@@ -86,7 +92,7 @@ public sealed record CurrentConstituentSettings
     public static readonly IReadOnlyList<string> Algorithms = ["cmaes", "de", "lm"];
 
     private static readonly string[] Keys =
-        ["Method", "Hidden", "Activation", "MaxIterations", "GridStep", "Regrid", "Smoothing", "TemperatureStep", "Template", "Expression",
+        ["Method", "Hidden", "Activation", "MaxIterations", "GridStep", "Regrid", "Smoothing", "TemperatureStep", "TrapStep", "Template", "Expression",
          "IgGs", "IgGd", "Parameters", "TemperatureCoefficients", "Algorithm"];
     private static readonly string[] ParameterKeys = ["Value", "Min", "Max", "Lock"];
 
@@ -116,6 +122,7 @@ public sealed record CurrentConstituentSettings
             Regrid = Enum<RegridSource>(o, "Regrid", f) ?? RegridSource.ANN,
             Smoothing = Num(o, "Smoothing", $"{f}.Smoothing") ?? 0,
             TemperatureStep = Num(o, "TemperatureStep", $"{f}.TemperatureStep") ?? DefaultTemperatureStep,
+            TrapStep = Num(o, "TrapStep", $"{f}.TrapStep") ?? DefaultTrapStep,
             TemperatureCoefficients = o["TemperatureCoefficients"] is { } tc ? Words(tc, $"{f}.TemperatureCoefficients") : [],
             Template = Str(o, "Template", $"{f}.Template", required: false),
             Expression = Str(o, "Expression", $"{f}.Expression", required: false),
@@ -128,6 +135,7 @@ public sealed record CurrentConstituentSettings
         if (!(s.GridStep > 0)) throw new CmcFormatException($"{f}.GridStep", "it is not a positive step in volts.");
         if (s.Smoothing < 0) throw new CmcFormatException($"{f}.Smoothing", "it is negative.");
         if (!(s.TemperatureStep > 0)) throw new CmcFormatException($"{f}.TemperatureStep", "it is not a positive step in °C.");
+        if (!(s.TrapStep > 0)) throw new CmcFormatException($"{f}.TrapStep", "it is not a positive step in volts.");
         if (!Algorithms.Contains(s.Algorithm))
             throw new CmcFormatException($"{f}.Algorithm", $"'{s.Algorithm}' is not {string.Join(", ", Algorithms)}.");
         return s;
@@ -144,6 +152,7 @@ public sealed record CurrentConstituentSettings
         if (Regrid != RegridSource.ANN) o["Regrid"] = Regrid.ToString();
         if (Smoothing != 0) o["Smoothing"] = Smoothing;
         if (TemperatureStep != DefaultTemperatureStep) o["TemperatureStep"] = TemperatureStep;
+        if (TrapStep != DefaultTrapStep) o["TrapStep"] = TrapStep;
         if (Template is not null) o["Template"] = Template;
         if (Expression is not null) o["Expression"] = Expression;
         if (IgGs is not null) o["IgGs"] = IgGs;
@@ -343,6 +352,9 @@ public sealed record ConductanceRecord(double GmRms, double GmRelative, double G
 /// magnitude over the domain's <c>vgs</c>.</summary>
 public sealed record SymmetryRecord(double ValueJump, double SlopeJump, double GateJump);
 
+/// <summary>An error over points that may not have trained the fit: their count, RMS and RMS relative to the targets' range.</summary>
+public sealed record ValidationRecord(int Count, double Rms, double Relative);
+
 /// <summary>The current step's result as the document records it (R-mc7-5).</summary>
 public sealed record CurrentFitRecord
 {
@@ -362,10 +374,15 @@ public sealed record CurrentFitRecord
     public double? Eq649 { get; init; }
     /// <summary>Where <c>IdRF</c> was anchored to <c>IdDC</c>.</summary>
     public (double Vgs, double Vds)? Reference { get; init; }
+    /// <summary>The trap block the currents were fitted with (MC-10), exactly as the <c>.cmodel</c> will carry it — its
+    /// levels included; null without traps.</summary>
+    public ModelTraps? Traps { get; init; }
+    /// <summary>With traps, the DC I–V error at the DC trap states (R-mc10-5), whether it trained or was held out.</summary>
+    public ValidationRecord? DcIv { get; init; }
     public IReadOnlyList<string> Report { get; init; } = [];
 
     private static readonly string[] Keys =
-        ["Constituents", "Gx", "Tau", "Arrays", "Errors", "Conductance", "Symmetry", "Eq649", "Reference", "Report"];
+        ["Constituents", "Gx", "Tau", "Arrays", "Errors", "Conductance", "Symmetry", "Eq649", "Reference", "Traps", "DcIv", "Report"];
     private static readonly string[] ConstituentKeys = ["Id", "Ig", "IdRF"];
     private static readonly string[] ErrorKeys = ["TrainCount", "Train", "TrainRelative", "HeldOutCount", "HeldOut", "HeldOutRelative"];
     private static readonly string[] SymmetryKeys = ["ValueJump", "SlopeJump", "GateJump"];
@@ -425,8 +442,24 @@ public sealed record CurrentFitRecord
             Id = One("Id"), Ig = One("Ig"), IdRF = c["IdRF"] is null ? null : One("IdRF"),
             Gx = gx, Tau = Num(o, "Tau", $"{f}.Tau"), Arrays = Str(o, "Arrays", $"{f}.Arrays", required: false) ?? "",
             Errors = errors, Conductance = conductance, Symmetry = symmetry, Eq649 = Num(o, "Eq649", $"{f}.Eq649"),
-            Reference = o["Reference"] is { } r ? CurrentFitSettings.Pair(r, $"{f}.Reference") : null, Report = report,
+            Reference = o["Reference"] is { } r ? CurrentFitSettings.Pair(r, $"{f}.Reference") : null,
+            Traps = o["Traps"] is { } tn ? TrapsOf(tn, $"{f}.Traps") : null,
+            DcIv = o["DcIv"] is { } dn ? ValidationOf(dn, $"{f}.DcIv") : null,
+            Report = report,
         };
+    }
+
+    internal static ModelTraps? TrapsOf(JsonNode n, string f)
+    {
+        try { return CmodelFile.ParseTrapsJson(n.ToJsonString()); }
+        catch (CmodelFormatException ex) { throw new CmcFormatException($"{f}{ex.Field[5..]}", ex.Message[(ex.Field.Length + 2)..]); }
+    }
+
+    private static ValidationRecord ValidationOf(JsonNode n, string f)
+    {
+        var o = Obj(n, f);
+        Only(o, f, ["Count", "Rms", "Relative"]);
+        return new ValidationRecord((int)(Num(o, "Count", $"{f}.Count") ?? 0), Num(o, "Rms", $"{f}.Rms") ?? 0, Num(o, "Relative", $"{f}.Relative") ?? 0);
     }
 
     public JsonNode ToJson()
@@ -467,6 +500,8 @@ public sealed record CurrentFitRecord
             o["Symmetry"] = new JsonObject { ["ValueJump"] = s.ValueJump, ["SlopeJump"] = s.SlopeJump, ["GateJump"] = s.GateJump };
         if (Eq649 is { } r649) o["Eq649"] = r649;
         if (Reference is { } r) o["Reference"] = new JsonArray(r.Vgs, r.Vds);
+        if (Traps is { } traps) o["Traps"] = JsonNode.Parse(CmodelFile.TrapsJson(traps));
+        if (DcIv is { } dc) o["DcIv"] = new JsonObject { ["Count"] = dc.Count, ["Rms"] = dc.Rms, ["Relative"] = dc.Relative };
         if (Report.Count > 0) o["Report"] = new JsonArray([.. Report.Select(l => (JsonNode)l!)]);
         return o;
     }

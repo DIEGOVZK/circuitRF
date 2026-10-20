@@ -1,4 +1,5 @@
 using System.Globalization;
+using CircuitRF.Core.Devices.Composed.Traps;
 using CircuitRF.Core.Expressions;
 
 namespace CircuitRF.Core.Devices.Composed;
@@ -7,8 +8,8 @@ namespace CircuitRF.Core.Devices.Composed;
 /// The constituents of one <c>.cmodel</c>, compiled ONCE when the file is loaded and shared by every
 /// <see cref="ComposedCoreModel"/> built on it (R-mc1-3, R-mc2-1/2/3).
 ///
-/// <para><b>Inputs are seeds.</b> <c>vgs</c> and <c>vds</c> always, and <c>T</c> when the model is
-/// over a temperature range, occupy the first gradient lanes in that order, so one evaluation returns
+/// <para><b>Inputs are seeds.</b> <c>vgs</c> and <c>vds</c> always, <c>T</c> when the model is
+/// over a temperature range, and the enabled trap states (MC-10) occupy the gradient lanes in that order, so one evaluation returns
 /// a constituent's value and its derivative by each. An equation runs through the SDD's own
 /// dual-number arithmetic (<see cref="CompiledSddExpr.CompileNamed"/>); a table or an ANN runs through
 /// its evaluator inside its <see cref="GuidedExtrapolation"/>, its inputs gathered from the seeds and
@@ -26,8 +27,17 @@ public sealed class ComposedCoreProgram
     /// <summary>The seed names in lane order.</summary>
     public IReadOnlyList<string> Seeds { get; }
 
-    /// <summary>Gradient width: 2, or 3 with <c>T</c>.</summary>
+    /// <summary>Gradient width: 2, 3 with <c>T</c>, plus one per enabled trap state.</summary>
     public int Width => Seeds.Count;
+
+    /// <summary>Whether <c>T</c> is a lane (a <see cref="TemperatureMode.Range"/> model).</summary>
+    public bool HasT { get; }
+
+    /// <summary>The trap states' dynamics (MC-10), or null for a model without traps.</summary>
+    public TrapDynamics? Traps { get; }
+
+    /// <summary>The lane of the first trap state: 2, or 3 with <c>T</c>.</summary>
+    public int TrapLane => HasT ? 3 : 2;
 
     /// <summary>The drain–source symmetry option (R-mc2-4).</summary>
     public DrainSourceSymmetry Symmetry { get; }
@@ -46,21 +56,21 @@ public sealed class ComposedCoreProgram
 
     private readonly string _label;
 
-    private ComposedCoreProgram(IReadOnlyList<string> seeds, string label, DrainSourceSymmetry symmetry,
+    private ComposedCoreProgram(IReadOnlyList<string> seeds, bool hasT, TrapDynamics? traps, string label, DrainSourceSymmetry symmetry,
                                 ComposedFunction id, ComposedFunction igGs, ComposedFunction igGd,
                                 ComposedFunction qg, ComposedFunction qd, ComposedFunction? idRf, double? tau,
                                 DriftCharges? drift)
     {
-        Seeds = seeds; _label = label; Symmetry = symmetry;
+        Seeds = seeds; HasT = hasT; Traps = traps; _label = label; Symmetry = symmetry;
         Id = id; IgGs = igGs; IgGd = igGd; Qg = qg; Qd = qd; IdRF = idRf; DispersionTau = tau; Drift = drift;
     }
 
     /// <summary>Compiles a model already checked by <see cref="CmodelFile.Validate"/>.</summary>
     public static ComposedCoreProgram Compile(ComposedModel model, string label)
     {
-        IReadOnlyList<string> seeds = model.Temperature.Mode == TemperatureMode.Range
-            ? [Vgs, Vds, T]
-            : [Vgs, Vds];
+        bool hasT = model.Temperature.Mode == TemperatureMode.Range;
+        var traps = model.Traps is { } tb ? TrapModels.Build(tb, label) : null;
+        IReadOnlyList<string> seeds = [Vgs, Vds, .. (hasT ? (string[])[T] : []), .. traps?.States ?? []];
 
         ComposedFunction One(Constituent c, string name, string key, double[]? ownBranch)
         {
@@ -80,7 +90,7 @@ public sealed class ComposedCoreProgram
         }
 
         var k = model.Core;
-        return new ComposedCoreProgram(seeds, label, k.Symmetry,
+        return new ComposedCoreProgram(seeds, hasT, traps, label, k.Symmetry,
             One(k.Id, "Id", k.Id.PayloadKey, Branch(k.Id.Inputs, vgs: 0, vds: 1)),
             One(k.Ig, "Ig", "IgGs", Branch(k.Ig.Inputs, vgs: 1, vds: 0)),
             One(k.Ig, "Ig", "IgGd", Branch(k.Ig.Inputs, vgs: 1, vds: -1)),
@@ -89,6 +99,19 @@ public sealed class ComposedCoreProgram
             k.IdRF is { } rf ? One(rf, "IdRF", rf.PayloadKey, Branch(rf.Inputs, vgs: 0, vds: 1)) : null,
             k.Dispersion?.Tau,
             k.Qg.Method == Constituent.DriftMethod ? DriftCharges.Build(model) : null);
+    }
+
+    /// <summary>
+    /// The seeds of a DC operating point: <paramref name="vgs"/>, <paramref name="vds"/>, <paramref name="t"/> (°C) when
+    /// it is a lane, and every trap state at its DC value — what a caller outside the core evaluates a constituent at.
+    /// </summary>
+    public void DcSeeds(double vgs, double vds, double t, Span<double> seeds)
+    {
+        seeds[0] = vgs;
+        seeds[1] = vds;
+        if (HasT) seeds[2] = t;
+        if (Traps is { } traps)
+            for (int k = 0; k < traps.States.Count; k++) seeds[TrapLane + k] = traps.DcValue(k, vgs, vds, t);
     }
 
     /// <summary>
@@ -106,7 +129,7 @@ public sealed class ComposedCoreProgram
     public (double Qg, double Qd) Charges(ReadOnlySpan<double> seeds, Span<double> gQg, Span<double> gQd)
     {
         if (Drift is not { } drift) return (Eval(Qg, "Qg", seeds, gQg), Eval(Qd, "Qd", seeds, gQd));
-        Span<double> g = stackalloc double[3];
+        Span<double> g = stackalloc double[RuntimeEvaluator.MaxInputs];
         double id = Channel(seeds, g);
         drift.Evaluate(seeds[0], seeds[1], id, g, Width, out double qg, gQg, out double qd, gQd);
         return (qg, qd);

@@ -17,6 +17,7 @@
 
 using System.Text.Json.Nodes;
 using CircuitRF.Core.Devices.Composed;
+using CircuitRF.Core.Devices.Composed.Traps;
 using static CircuitRF.Design.Modeling.CmcExtrinsic;
 
 namespace CircuitRF.Design.Modeling;
@@ -269,9 +270,12 @@ public sealed record ChargeFitRecord
     /// <summary>With the drift decomposition: the RMS spread of <c>Cds</c> across <c>vgs</c> at fixed <c>vds</c>, as a fraction
     /// of <c>Cds</c>'s RMS — what <c>QDS(vds)</c> cannot represent (R-mc8-3).</summary>
     public double? CdsSpread { get; init; }
+    /// <summary>The trap block <c>Qd</c> takes its trap inputs under (MC-10), as the <c>.cmodel</c> carries it; null when the
+    /// charges are trap-independent.</summary>
+    public ModelTraps? Traps { get; init; }
     public IReadOnlyList<string> Report { get; init; } = [];
 
-    private static readonly string[] Keys = ["Constituents", "Arrays", "Anchor", "Errors", "PathDifference", "CdsSpread", "Report"];
+    private static readonly string[] Keys = ["Constituents", "Arrays", "Anchor", "Errors", "PathDifference", "CdsSpread", "Traps", "Report"];
 
     public static ChargeFitRecord Parse(JsonNode node, string f)
     {
@@ -313,7 +317,8 @@ public sealed record ChargeFitRecord
         {
             Qg = One("Qg"), Qd = One("Qd"), Arrays = Str(o, "Arrays", $"{f}.Arrays", required: false) ?? "",
             Anchor = o["Anchor"] is { } an ? CurrentFitSettings.Pair(an, $"{f}.Anchor") : (0, 0),
-            Errors = errors, PathDifference = paths, CdsSpread = Num(o, "CdsSpread", $"{f}.CdsSpread"), Report = report,
+            Errors = errors, PathDifference = paths, CdsSpread = Num(o, "CdsSpread", $"{f}.CdsSpread"),
+            Traps = o["Traps"] is { } tn ? CurrentFitRecord.TrapsOf(tn, $"{f}.Traps") : null, Report = report,
         };
     }
 
@@ -343,6 +348,7 @@ public sealed record ChargeFitRecord
             o["PathDifference"] = po;
         }
         if (CdsSpread is { } spread) o["CdsSpread"] = spread;
+        if (Traps is { } traps) o["Traps"] = JsonNode.Parse(CmodelFile.TrapsJson(traps));
         if (Report.Count > 0) o["Report"] = new JsonArray([.. Report.Select(l => (JsonNode)l!)]);
         return o;
     }

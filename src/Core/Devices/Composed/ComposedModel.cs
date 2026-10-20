@@ -1,3 +1,4 @@
+using CircuitRF.Core.Devices.Composed.Traps;
 using RfCore.Data;
 
 namespace CircuitRF.Core.Devices.Composed;
@@ -32,6 +33,11 @@ public sealed record ComposedModel
     /// <summary>Self-heating (MC-9): the thermal network on the core's thermal node. Null: no thermal node. Only a
     /// <see cref="TemperatureMode.Range"/> model can carry one.</summary>
     public ModelThermal? Thermal { get; init; }
+
+    /// <summary>Traps (MC-10): the trap model and its enabled states, each an internal node of the core whose voltage is the
+    /// state. Null: no traps — never a block naming <see cref="ModelTraps.None"/>, which the reader reads as null and the
+    /// writer never writes.</summary>
+    public ModelTraps? Traps { get; init; }
 
     public required ExtrinsicNetwork Network { get; init; }
 
