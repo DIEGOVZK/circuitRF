@@ -118,6 +118,20 @@ public sealed class TrappedModelFitTests(ITestOutputHelper output)
     }
 
     [Fact]
+    public void AnEquationTemplate_GainsTheThresholdAndKneeTrapTerms()
+    {
+        var (doc, data, intrinsic) = Document(DrainLag(), Dc(), Pulsed("q10", 10));
+        var fit = CurrentFit.Run(doc, data, intrinsic, Fit with
+        {
+            Id = new CurrentConstituentSettings { Method = CurrentMethod.Equation, Template = "Angelov", Algorithm = "lm" },
+        });
+        string id = fit.Record.Id.Expression("Expression")!;
+        Assert.Contains("-a2*tanh((phi2-vds)/c2)", id);
+        Assert.Contains("(Alpha*(1+ak*tanh((phi2-vds)/ck)))", id);
+        Evaluator(fit);   // the fitted equation validates and compiles with phi2 an input
+    }
+
+    [Fact]
     public void DispersionAlongsideTraps_IsRefused()
     {
         var (doc, data, intrinsic) = Document(DrainLag(), Dc(), Pulsed("q10", 10), S());

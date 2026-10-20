@@ -153,7 +153,10 @@ public static class TrapFit
             if (s.Expressions.Count > 0) throw new ModelingException(StepName, "only a Custom model is written as expressions.");
             bool thermal = s.Emission == TrapEmission.ThermallyActivated;
             foreach (var (name, _) in s.Parameters)
-                if (name.StartsWith("Ea", StringComparison.Ordinal) && !thermal)
+                if (!model.Parameters.Any(p => p.Name == name))
+                    throw new ModelingException(StepName,
+                        $"{name} is not a parameter of {model.Name}; they are {string.Join(", ", model.Parameters.Select(p => p.Name))}.");
+                else if (name.StartsWith("Ea", StringComparison.Ordinal) && !thermal)
                     throw new ModelingException(StepName, $"{name} is the activation energy of ThermallyActivated emission; the emission is Constant.");
             foreach (var p in model.Parameters)
             {
@@ -234,7 +237,7 @@ public static class TrapFit
         {
             if (!intrinsic.Sets.TryGetValue(set.Name, out var ds))
                 throw new ModelingException(set.Name, "it has no intrinsic data; de-embed it first.");
-            double[] vgs = ds["Vgsi"].RealValues, vds = ds["Vdsi"].RealValues;
+            double[] vgs = ds["Vgsi"].RealValues, vds = ds["Vdsi"].RealValues, ex = ds["Excluded"].RealValues;
             var points = data.TryGetValue(set.Name, out var nd) && nd.Points.Count == vgs.Length ? nd.Points : null;
             var rows = new double[]?[vgs.Length];
             bool pulsed = set.Kind is DataSetKind.PulsedIv or DataSetKind.PulsedSParams;
@@ -255,9 +258,12 @@ public static class TrapFit
             var used = new bool[n];
             for (int p = 0; p < rows.Length; p++)
             {
+                // An excluded point trains nothing, so it neither sets a level nor counts as beyond.
+                if (ex[p] != 0) continue;
                 double t = CurrentFit.AmbientOf(set, points?[p]);
                 var row = new double[n];
-                for (int k = 0; k < n && row is not null; k++)
+                bool validation = false;
+                for (int k = 0; k < n; k++)
                 {
                     double at = dyn.DcValue(k, sg, sd, t), own = dyn.DcValue(k, vgs[p], vds[p], t);
                     int sign = dyn.CaptureSign(k);
@@ -268,13 +274,14 @@ public static class TrapFit
                         case TrapStateMode.Setting: row[k] = at; break;
                         case TrapStateMode.Extreme: row[k] = sign > 0 ? Math.Max(at, own) : Math.Min(at, own); break;
                         default:
+                            // Counted for every state it lies beyond, not only the first.
                             beyond[k]++;
-                            row = null;
+                            validation = true;
                             break;
                     }
                 }
-                rows[p] = row;
-                if (row is not null) for (int k = 0; k < n; k++) used[k] = true;
+                rows[p] = validation ? null : row;
+                if (!validation) for (int k = 0; k < n; k++) used[k] = true;
             }
             phi[set.Name] = rows;
             for (int k = 0; k < n; k++)

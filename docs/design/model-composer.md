@@ -188,7 +188,7 @@ Every refusal is a `CmodelFormatException` whose message begins with the field: 
   its own, but none may share an input's name); `Levels` for a state not enabled; `Expressions` on a model other than
   `Custom`; the model's own checks (`CaptureEmission`: a time, `Xref` or `Vc` that is not positive, a negative `Ea`;
   `Custom`: an expression that does not parse, names anything but its own state, `vgs`, `vds`, `T` and the parameters,
-  or a `Dc` that is not a fixed point of its `Dynamics`). Combined with `Core.Dispersion`/`IdRF` (the trap states carry
+  a `Dc` that reads its own state, or a `Dc` that is not a fixed point of its `Dynamics`). Combined with `Core.Dispersion`/`IdRF` (the trap states carry
   the DC/RF difference instead) or with `Core.Symmetry: Exchange` (the states follow the forward device, which has no
   image). A trap state named as an input of `Ig` or `Qg` — never, [X10] eq. 1.5 — or of a model without traps.
   `Core.Dispersion`: missing with `IdRF`, present without it, or a `Tau` that is not a positive time.
@@ -934,8 +934,8 @@ balance of its own dynamics to 1e-4 V, moving 3.5 mV over the cycle (one cycle's
 
 ### 13.3 `Custom` (R-mc10-3)
 
-Per state a `Dynamics` (`dphi/dt`) and a `Dc` expression over the state itself, `vgs`, `vds`, `T` (°C) and the block's
-parameters, compiled by the one expression engine with its dual numbers. When built, every name is checked and the
+Per state a `Dynamics` (`dphi/dt`) expression over the state itself, `vgs`, `vds`, `T` (°C) and the block's
+parameters, and a `Dc` expression over the same less the state, compiled by the one expression engine with its dual numbers. When built, every name is checked and the
 `Dc` must be a fixed point — `|D(phi_dc)| ≤ 1e-9 V·|∂D/∂phi|` at 30 biases (−5 … 1 V, 0 … 50 V) and 25 and 125 °C. A
 `Custom` state follows the convention odd states capture downward (like gate-lag) and even states upward. Written to
 equal `CaptureEmission` (its exponential continued by `if(u<20, exp(u), exp(20)*(1+u−20))`) it gives the same DC and S
@@ -949,7 +949,7 @@ trap-setting bias is the pre-pulse level when there is one, else the quiescent p
 a pulsed point is **toward** the setting when its own DC state lies on the setting's side in the direction capture moves
 (`CaptureSign`) — pulsed no lower in `vgs` for gate-lag, no higher in `vds` for drain-lag — and takes the setting's
 state exactly (only slow emission acted); otherwise **beyond**, and the set's `TrapState` decides: `auto` leaves it as
-validation (counted, one line per state), `setting` maps it to the setting's state, `extreme` to the pulse's own
+validation (counted against every state it lies beyond, one line per state; an excluded point counts nowhere), `setting` maps it to the setting's state, `extreme` to the pulse's own
 (`max` for drain-lag, `min` for gate-lag; [X10] eqs. 1.8–1.9). DC points sit at their DC state. Refused: a pulsed set
 with neither bias; a bias that states no drain current while the data shows it conducting (the nearest measured point,
 both voltages normalised by the data's spans, times its drain voltage, above 1 % of the largest point power). One line
@@ -965,8 +965,9 @@ states as further inputs (beyond points left out under `auto`; the DC points too
 never does and trains on every point. By any method: an ANN, and a table's re-gridding network, train by MC-6's
 combined mode on the I–V values and on every CW S point's RF `Gm`/`Gds` as derivatives with the trap states (and `Tj`)
 frozen at their DC values ([X10] §VI); a table gains an axis per state every `TrapStep` (1 V); an equation template
-gains the saturating terms `vgs → vgs − a1·tanh((vgs − phi1)/c1) − a2·tanh((phi2 − vds)/c2)` and, on drain-lag,
-`α → α·(1 + a3·tanh((phi2 − vds)/c3))` on its knee parameter (`Gamma` for `CurticeCubic`), amplitudes from 0, widths
+gains the saturating terms `vgs → vgs − a1·tanh((vgs − phi1)/c1) − a2·tanh((phi2 − vds)/c2)` (a `Custom` model's
+`phi3`, `phi4` likewise, `a3`/`c3` and `a4`/`c4`, gate-like or drain-like by their capture direction) and, on the first
+drain-like state, `α → α·(1 + ak·tanh((phi2 − vds)/ck))` on its knee parameter (`Gamma` for `CurticeCubic`), amplitudes from 0, widths
 from 5 V — zero at DC by construction — and trains on values only, with one line. The DC I–V error at the DC trap
 states is recorded (`DcIv`) and reported apart from the training error. Dispersion and drain–source exchange are
 refused alongside traps. The record carries the `Traps` block, levels included, exactly as the `.cmodel` will.

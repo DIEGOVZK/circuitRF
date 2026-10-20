@@ -64,6 +64,22 @@ public sealed class TrapTrainingDataTests
 
         var extreme = States(Map(Dc(), Pulsed("q5", 5, TrapStateMode.Extreme)), "q5");
         for (int k = 0; k < data.Count; k++) Assert.Equal(Math.Max(5, data.Points[k].Vds), extreme[k]);
+
+        // With both states a point beyond both counts against both, not only the first.
+        var both = DrainLag() with { States = ["phi1", "phi2"] };
+        var (dbl, dblData) = Pulsed("pp", 5, prePulse: new PrePulse(0, 5, 1e-6, 1e-6, Id: 0.01));
+        var (doc, all, intrinsic) = Document(both, Dc(), (dbl, dblData));
+        var m = TrapFit.Map(doc, all, intrinsic, both, doc.DataSets, "pulsed I–V");
+        Assert.Equal(dblData.Points.Count(p => p.Vgs < 0), m.Beyond["phi1"]);
+        Assert.Equal(dblData.Points.Count(p => p.Vds > 5), m.Beyond["phi2"]);
+    }
+
+    [Fact]
+    public void AParameterTheModelDoesNotDeclare_IsRefused()
+    {
+        var ex = Assert.Throws<ModelingException>(() =>
+            TrapFit.Block(DrainLag() with { Parameters = new Dictionary<string, double> { ["TauEmt2"] = 1e-3 } }));
+        Assert.Contains("TauEmt2 is not a parameter of CaptureEmission", ex.Message);
     }
 
     [Fact]

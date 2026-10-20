@@ -73,6 +73,11 @@ public sealed class CustomTrapModelTests(ITestOutputHelper output)
         var ex = Assert.Throws<CmodelFormatException>(() => CmodelFile.Validate(With(Custom(dynamics: "(vdx-phi2)/TauEmit2"))));
         Assert.Equal("Traps.Expressions.phi2.Dynamics", ex.Field);
         Assert.Contains("'vdx'", ex.Message);
+
+        // A DC value is the state's own, so it cannot read the state.
+        var own = Assert.Throws<CmodelFormatException>(() => CmodelFile.Validate(With(Custom(dc: "vds+0*phi2"))));
+        Assert.Equal("Traps.Expressions.phi2.Dc", own.Field);
+        Assert.Contains("'phi2'", own.Message);
     }
 
     [Fact]

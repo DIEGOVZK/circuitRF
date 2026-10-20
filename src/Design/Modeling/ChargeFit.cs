@@ -335,6 +335,11 @@ public static class ChargeFit
                                        List<string> report, RunControl? rc)
     {
         rc?.ThrowIfCancellationRequested();
+        // The model carries the currents' trap block, so a Qd mapped under other trap settings would read the wrong lanes.
+        if (data.Traps is { } mapped && current?.Record.Traps is { } fitted
+            && (fitted.Model != mapped.Block.Model || !fitted.States.SequenceEqual(mapped.States)))
+            throw new ModelingException(StepName,
+                $"the currents were fitted with {fitted.Model} ({string.Join(", ", fitted.States)}) and the trap step now sets {mapped.Block.Model} ({string.Join(", ", mapped.States)}); fit the currents again.");
         var anchor = Anchor(data, settings, report);
         var arrays = new Dictionary<string, DataCube>(StringComparer.Ordinal);
         var paths = new Dictionary<string, double>(StringComparer.Ordinal);
@@ -425,10 +430,11 @@ public static class ChargeFit
         var x = new List<double[]>();
         var targets = new List<double[]>();
         var weights = new List<double[]>();
+        var points = data.PointsWithT;
         for (int k = 0; k < data.X.Count; k++)
         {
             if (data.Phi is not null && data.Phi[k] is null) continue;
-            var p = data.PointsWithT[k];
+            var p = points[k];
             x.Add([.. p, .. data.Phi?[k] ?? []]);
             targets.Add([c1[k], c2[k], .. new double[d - 2]]);
             weights.Add([data.Weight[k], data.Weight[k], .. new double[d - 2]]);

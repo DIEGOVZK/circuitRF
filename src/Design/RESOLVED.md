@@ -20846,3 +20846,25 @@ Angelov's capacitance along its voltage, still conservative by construction. A `
 expression it recorded; a refit takes the new one. `ChargeMethodsTests` fits capacitances written by hand from the
 published form and recovers all thirteen parameters — by Levenberg–Marquardt alone in 0.7 s; with CMA-ES first it
 takes 5.5 s.
+
+## Model Composer MC-10 review: traps (2026-10-19)
+
+**A point beyond two trap-setting biases was counted against the first only.** `TrapFit.Map` stopped evaluating a
+point's states once one of them made it validation-only, so with gate-lag and drain-lag both enabled, a pulse below the
+setting's `vgs` and above its `vds` never reached the drain-lag count, and the "N points beyond" line under-reported.
+Every state is evaluated now. Excluded points are skipped in the mapping too — before, a set whose points were all
+excluded still contributed a trap level.
+
+**A misspelled `CaptureEmission` parameter was dropped in silence.** `TrapFit.Block` copied only the parameters the
+model declares, so `TauEmt2` left the emission at its 1 ms default with no word; it is refused naming the real ones.
+
+**A `Custom` model's `Dc` could read its own state**, which evaluated as 0 and could still pass the fixed-point check
+(`vds+0*phi2`). The DC value reads `vgs`, `vds`, `T` and the parameters only.
+
+**The equation templates ignored a `Custom` model's `phi3` and `phi4`.** Each enabled state now gets a threshold-shift
+term in the direction its capture moves (`CaptureSign`), `aN`/`cN`; the knee term is `ak`/`ck` on the first
+drain-like state, renamed from `a3`/`c3` so it cannot collide with `phi3`'s.
+
+**A charge fit after the trap settings changed read the wrong lanes.** The model takes the currents' trap block, so a
+`Qd` mapped under other states fed its trap values to the wrong seeds; `ChargeFit.Run` refuses the mismatch and asks
+for the currents to be fitted again. `AdjointExtra` also rebuilt `PointsWithT` (every point's array) once per point.

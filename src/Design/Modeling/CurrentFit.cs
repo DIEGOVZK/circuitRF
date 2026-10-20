@@ -781,7 +781,7 @@ public static class CurrentFit
             if (s.TemperatureCoefficients.Count > 0)
                 (expressions, parameters) = WithTemperatureCoefficients(constituent, expressions, parameters, s.TemperatureCoefficients, iv);
             if (!gate && iv.Traps is { } traps)
-                (expressions, parameters) = WithTrapTerms(name, expressions[0], parameters, traps.States);
+                (expressions, parameters) = WithTrapTerms(name, expressions[0], parameters, traps);
             if (gate)    // the two branches share one list, so each branch's own parameters are named for it
             {
                 expressions = [Rename(expressions[0], "Gs", parameters), Rename(expressions[1], "Gd", parameters)];
@@ -850,26 +850,35 @@ public static class CurrentFit
 
     /// <summary>
     /// A drain-current template with the trap terms of R-mc10-5, each zero at DC by construction (<c>phi = v</c>) and each
-    /// saturating, as [G19] eqs. 8, A.1, A.8 and [L26] eq. 33 find them: a threshold shift
-    /// <c>vgs → vgs − a1·tanh((vgs − phi1)/c1) − a2·tanh((phi2 − vds)/c2)</c> ([P21]'s back-gate view) and, on drain-lag, a
-    /// knee term on the template's knee parameter, <c>α → α·(1 + a3·tanh((phi2 − vds)/c3))</c>. The amplitudes start at zero
-    /// — the trap-free fit — and the widths at 5 V.
+    /// saturating, as [G19] eqs. 8, A.1, A.8 and [L26] eq. 33 find them: a threshold shift per enabled state, in the
+    /// direction its capture moves it — <c>vgs → vgs − a1·tanh((vgs − phi1)/c1) − a2·tanh((phi2 − vds)/c2)</c> for
+    /// gate-lag and drain-lag ([P21]'s back-gate view), and likewise <c>a3</c>, <c>a4</c> for a <c>Custom</c> model's
+    /// further states — and, on the first drain-like state, a knee term on the template's knee parameter,
+    /// <c>α → α·(1 + ak·tanh((phi2 − vds)/ck))</c>. The amplitudes start at zero — the trap-free fit — and the widths at 5 V.
     /// </summary>
     private static (string[] Expressions, IReadOnlyList<TemplateParameter> Parameters) WithTrapTerms(
-        string template, string expression, IReadOnlyList<TemplateParameter> parameters, IReadOnlyList<string> states)
+        string template, string expression, IReadOnlyList<TemplateParameter> parameters, TrapMapping traps)
     {
-        bool gateLag = states.Contains(CaptureEmissionTraps.GateLag), drainLag = states.Contains(CaptureEmissionTraps.DrainLag);
         var list = parameters.ToList();
         string shift = "vgs";
-        if (gateLag) { shift += "-a1*tanh((vgs-phi1)/c1)"; list.Add(new("a1", 0, -2, 2)); list.Add(new("c1", 5, 0.05, 50)); }
-        if (drainLag) { shift += "-a2*tanh((phi2-vds)/c2)"; list.Add(new("a2", 0, -2, 2)); list.Add(new("c2", 5, 0.05, 50)); }
+        string? drainLike = null;
+        for (int k = 0; k < traps.States.Count; k++)
+        {
+            string state = traps.States[k];
+            string n = state.StartsWith("phi", StringComparison.Ordinal) ? state[3..] : (k + 1).ToString(CultureInfo.InvariantCulture);
+            bool gateLike = traps.Dynamics.CaptureSign(k) < 0;
+            shift += gateLike ? $"-a{n}*tanh((vgs-{state})/c{n})" : $"-a{n}*tanh(({state}-vds)/c{n})";
+            list.Add(new($"a{n}", 0, -2, 2));
+            list.Add(new($"c{n}", 5, 0.05, 50));
+            if (!gateLike) drainLike ??= state;
+        }
         expression = System.Text.RegularExpressions.Regex.Replace(expression, @"\bvgs\b", $"({shift})");
         string knee = template == CurrentTemplates.CurticeCubic ? "Gamma" : "Alpha";
-        if (drainLag && list.Any(p => p.Name == knee))
+        if (drainLike is not null && list.Any(p => p.Name == knee))
         {
-            expression = System.Text.RegularExpressions.Regex.Replace(expression, $@"\b{knee}\b", $"({knee}*(1+a3*tanh((phi2-vds)/c3)))");
-            list.Add(new("a3", 0, -0.9, 0.9));
-            list.Add(new("c3", 5, 0.05, 50));
+            expression = System.Text.RegularExpressions.Regex.Replace(expression, $@"\b{knee}\b", $"({knee}*(1+ak*tanh(({drainLike}-vds)/ck)))");
+            list.Add(new("ak", 0, -0.9, 0.9));
+            list.Add(new("ck", 5, 0.05, 50));
         }
         return ([expression], list);
     }

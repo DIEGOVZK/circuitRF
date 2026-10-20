@@ -7,7 +7,7 @@ namespace CircuitRF.Core.Devices.Composed.Traps;
 /// The <c>Custom</c> trap model (brief-modelcomposer-10 R-mc10-3): per enabled state, a <b>dynamics</b> expression
 /// <c>dphi/dt = …</c> and a <b>DC value</b> expression, in the one expression engine, over the state itself, <c>vgs</c>,
 /// <c>vds</c>, <c>T</c> (°C, as every constituent reads it — write <c>(T+273.15)</c> for kelvin) and the block's named
-/// parameters. Derivatives come from the engine's dual numbers. How a user adds a model — the thermally activated emission
+/// parameters; the DC value reads all of those but the state itself. Derivatives come from the engine's dual numbers. How a user adds a model — the thermally activated emission
 /// of [P21]/[N22], say — without a code change.
 ///
 /// <para><b>Checked when built:</b> every name an expression reads is one of those; and the DC expression is a fixed point
@@ -59,15 +59,16 @@ public sealed class CustomTraps : TrapModelDefinition
         {
             string state = traps.States[k];
             IReadOnlyList<string> seeds = [state, ComposedCoreProgram.Vgs, ComposedCoreProgram.Vds, ComposedCoreProgram.T];
-            dynamics[k] = Compile(traps, Key(state, DynamicsKey), seeds, parameters, label);
-            dc[k] = Compile(traps, Key(state, DcKey), seeds, parameters, label);
+            dynamics[k] = Compile(traps, Key(state, DynamicsKey), seeds, seeds, parameters, label);
+            // The DC value is the state's, so it cannot read the state; the lane stays, at zero, so one layout serves both.
+            dc[k] = Compile(traps, Key(state, DcKey), seeds, seeds.Skip(1).ToList(), parameters, label);
         }
         var built = new Dynamics(traps.States, dynamics, dc, label);
         CheckFixedPoints(built);
         return built;
     }
 
-    private static CompiledSddExpr Compile(ModelTraps traps, string key, IReadOnlyList<string> seeds,
+    private static CompiledSddExpr Compile(ModelTraps traps, string key, IReadOnlyList<string> seeds, IReadOnlyList<string> allowed,
                                            IReadOnlyDictionary<string, double> parameters, string label)
     {
         string field = $"Traps.Expressions.{key}";
@@ -76,9 +77,9 @@ public sealed class CustomTraps : TrapModelDefinition
         try { ast = Parser.Parse(text); }
         catch (Exception ex) { throw new CmodelFormatException(field, $"it does not parse: {ex.Message}"); }
         foreach (string r in AstWalker.CollectRefs(ast))
-            if (!seeds.Contains(r) && !parameters.ContainsKey(r) && r is not ("pi" or "e"))
+            if (!allowed.Contains(r) && !parameters.ContainsKey(r) && r is not ("pi" or "e"))
                 throw new CmodelFormatException(field,
-                    $"'{r}' is neither one of its inputs ({string.Join(", ", seeds)}) nor one of the model's parameters.");
+                    $"'{r}' is neither one of its inputs ({string.Join(", ", allowed)}) nor one of the model's parameters.");
         return CompiledSddExpr.CompileNamed(ast, seeds, parameters, label);
     }
 
