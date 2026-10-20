@@ -87,6 +87,9 @@ public static class CmodelExport
         if (doc.BasePeriphery is not { } periphery)
             throw new ModelingException("BasePeriphery", "the base finger count N0 is not set; state the measured device's fingers and unit width.");
 
+        // The cache opens before the stale check: the data digest reads each source's hash from its index, and only an open
+        // brings that up to date with a source edited on disk since — the case the stale check exists for.
+        var data = new CmcCache(cmcPath).Open(doc, rc).Data;
         var stale = CmcStamps.StaleSteps(cmcPath, doc);
         if (stale.Count > 0) throw new ModelingException("Steps", CmcStamps.Describe(stale));
 
@@ -100,7 +103,6 @@ public static class CmodelExport
             throw new ModelingException(ThermalFit.StepName, "self-heating is on and the thermal network has not been extracted.");
 
         // The temperature mode: what the constituents read, at the temperature the current fit's data was taken at.
-        var data = new CmcCache(cmcPath).Open(doc, rc).Data;
         var r = current.Record;
         Constituent?[] all = [r.Id, r.Ig, r.IdRF, charge.Record.Qg, charge.Record.Qd];
         var cs = all.OfType<Constituent>().ToList();
@@ -218,8 +220,13 @@ public static class CmodelExport
         }
         finally { if (File.Exists(tmp)) File.Delete(tmp); }
 
-        if (symbol is not null && symbol != Settings(doc).Symbol)
-            CmcFile.Write(cmcPath, WithSettings(doc, new ExportSettings(symbol.Length == 0 ? null : symbol)));
+        // The .cmc records a .csym relative to itself, as Settings documents it.
+        string? stored = symbol?.Trim() is { Length: > 0 } sym
+            ? sym.EndsWith(".csym", StringComparison.OrdinalIgnoreCase) && Path.IsPathRooted(sym)
+                ? Path.GetRelativePath(Path.GetDirectoryName(Path.GetFullPath(cmcPath))!, sym).Replace('\\', '/') : sym
+            : null;
+        if (symbol is not null && stored != Settings(doc).Symbol)
+            CmcFile.Write(cmcPath, WithSettings(doc, new ExportSettings(stored)));
 
         var lines = new List<string>
         {

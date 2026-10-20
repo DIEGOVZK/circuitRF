@@ -202,9 +202,11 @@ public static class ModelValidationReport
         // The validation's items carry the DC, pulsed and S sections; it also exports the current state when asked to.
         var fitSets = doc.DataSets.Where(s => s.Kind is DataSetKind.DcIv or DataSetKind.PulsedIv or DataSetKind.SParams)
                                   .Where(s => s.Kind == DataSetKind.SParams ? options.SParams : options.Dc).Select(s => s.Name).ToList();
-        var validation = ModelValidation.RunFile(cmcPath, cmodelPath, ValidationSettings.Default with { DataSets = fitSets }, rc);
-        var data = new CmcCache(cmcPath).Open(doc, rc).Data;
-        string work = Path.Combine(CmcCache.FolderFor(cmcPath), ModelValidation.CacheFolder);
+        // An empty DataSets would mean every set — the large-signal ones included — so with none to validate there is no run.
+        var (modelPath, data, work) = ModelValidation.Prepare(cmcPath, doc, cmodelPath, rc);
+        var validation = fitSets.Count > 0
+            ? ModelValidation.Run(cmcPath, doc, data, modelPath, ValidationSettings.Default with { DataSets = fitSets }, work, rc)
+            : new ValidationResult(modelPath, [], []);
         var ctx = new ModelValidation.Context(cmcPath, doc, data, validation.ModelPath, CmodelFile.Read(validation.ModelPath),
                                               ValidationSettings.Default with { MaxHarmonic = options.MaxHarmonic }, work, rc);
         var program = ComposedCoreProgram.Compile(ctx.Model, "report");
@@ -397,7 +399,7 @@ public static class ModelValidationReport
             var (a, b) = LineIntegral.OntoGrid(f1, f2, anchor, vgs, vds, 1e-7 * typical * ChargeConstituentSettings.DefaultGridStep, ctx.Rc);
             var measured = new double[a.Length]; var model = new double[a.Length]; var diff = new double[a.Length];
             double q0 = Charge(program, anchor.Vgs, anchor.Vds, gate);
-            var inside = new List<int>();
+            var inside = new HashSet<int>();
             for (int i = 0; i < vgs.Length; i++)
                 for (int j = 0; j < vds.Length; j++)
                 {
@@ -430,7 +432,7 @@ public static class ModelValidationReport
 
     // ── C–V families ──────────────────────────────────────────────────────────
 
-    /// <summary>The circuit capacitances from the matrix: Cgs = C11 + C12, Cgd = −C12, Cds = C22 + C21 … written as [P1] does,
+    /// <summary>The circuit capacitances from the matrix: Cgs = C11 + C12, Cgd = −C12, Cds = C22 + C12, written as [P1] does,
     /// with the transcapacitance Cm = C21 − C12.</summary>
     private static readonly (string Name, Func<double, double, double, double, double> Of)[] Circuit =
     [

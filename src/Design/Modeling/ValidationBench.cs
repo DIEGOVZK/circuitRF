@@ -4,7 +4,8 @@
 // The device is the exported .cmodel as a ComposedFet at its base finger count (a ComposedCore for data stated at the
 // intrinsic plane). Bias is applied at the device plane: through ideal voltage sources for DC, ideal tees (1 H, 1 F) for
 // S-parameters as the multi-bias data was taken, and a power source and a Tuner with their own bias tees for large signal,
-// each harmonic terminated as the data states (a harmonic not stated is shorted). Ambient is `temp`.
+// each harmonic terminated as the data states (a harmonic not stated is shorted); a loadpull is two Tuners on the device's
+// terminals, which the loadpull engine reads Pout from. Ambient is `temp`.
 
 using System.Globalization;
 using System.Numerics;
@@ -81,6 +82,27 @@ internal static class ValidationBench
         sb.Append($"IProbe:IPD dx ld\nTuner:TL ld 0 {Harmonics(c.LoadZ ?? 50, c.LoadHarmonics, maxHarm)} BiasTee=on Vbias=Vds\n\n");
         sb.Append($"analysis HB1 type=hb Tone=f0 MaxHarm={maxHarm}\n");
         sb.Append($"analysis SW1 type=parametric_sweep Var=Pin Values={string.Join(",", pin.Select(R))} Inner=HB1\n");
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// A loadpull over the loads in <paramref name="gamPath"/>: the source and load tuners on the device's terminals, each
+    /// with its harmonic terminations and bias tee, the drive from <paramref name="pinStart"/> to <paramref name="pinMax"/>
+    /// dBm. The compression target is out of reach, so every load is driven up the whole ladder as the data was.
+    /// <c>circuitrf lp</c> runs it as written.
+    /// </summary>
+    internal static string Loadpull(string set, string device, double ambientC, double f0, double vgs, double vds, Complex sourceZ,
+                                    IReadOnlyList<Complex> sourceHarmonics, IReadOnlyList<Complex> loadHarmonics, string gamPath,
+                                    double pinStart, double pinStep, double pinMax, int maxHarm)
+    {
+        var sb = new StringBuilder(Header("loadpull", set));
+        sb.Append($"temp = {R(ambientC)}\nf0 = {R(f0)}\nVgs = {R(vgs)}\nVds = {R(vds)}\n\n");
+        sb.Append($"Tuner:SRC g 0 {Harmonics(sourceZ, sourceHarmonics, maxHarm)} BiasTee=on Vbias=Vgs\n");
+        sb.Append(device);
+        sb.Append($"Tuner:LOAD d 0 {Harmonics(50, loadHarmonics, maxHarm)} BiasTee=on Vbias=Vds\n\n");
+        sb.Append($"analysis LP1 type=loadpull Tone=f0 MaxHarm={maxHarm} LoadTuner=LOAD SourceTuner=SRC Sweep=Load TuneHarm=1 ");
+        sb.Append($"Grid=\"{gamPath.Replace('\\', '/')}\" Compression=1000 GainType=Gt ");
+        sb.Append($"PinStart={R(pinStart)} PinStep={R(pinStep)} PinMax={R(pinMax)}\n");
         return sb.ToString();
     }
 

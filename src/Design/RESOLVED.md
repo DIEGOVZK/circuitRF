@@ -20871,15 +20871,12 @@ for the currents to be fitted again. `AdjointExtra` also rebuilt `PointsWithT` (
 
 ## Model Composer MC-11: export, validation and the Model Validation Report (2026-10-19)
 
-- **`LoadpullEngine` cannot load-pull a `ComposedFet`.** It reads Pout and Pin from the nonlinear interface current at
-  each tuner's net and refuses a tuner on a net no nonlinear device touches ("… is not a nonlinear interface node") — and
-  a composed FET's terminals always sit behind its extrinsic network. So the `lp` verb refuses every composed model too.
-  Validation and the report run one HB power sweep per load instead (`ModelValidation.LoadSweep`), measured by probes at
-  the device terminals and written under the loadpull DataSet's canonical names so `LoadpullSurface` reads it unchanged.
-  The owner's position (paraphrased): reading Pout through the composed FET's linear network is valid — that network is
-  part of the model — and using the engine that way is acceptable; leaving the per-load sweep in place is also fine. The
-  engine fix is the load tuner's branch current from `HbLinearBackSolver`, mirroring `ComputeSourceInputCurrent`; it
-  needs the Hero 3/3B goldens re-gated, so it was left for its own phase.
+- **`LoadpullEngine` refused a `ComposedFet`** (fixed in the MC-11 review below). It read Pout and Pin from the nonlinear
+  interface current at each tuner's net and refused a tuner on a net no nonlinear device touches — and a composed FET's
+  terminals always sit behind its extrinsic network, so the `lp` and `lpp` verbs refused every composed model. The
+  report's PA modes run one HB power sweep per load (`ModelValidation.LoadSweep`), written under the loadpull DataSet's
+  canonical names so `LoadpullSurface` reads it unchanged. The owner's position (paraphrased): reading Pout through the
+  composed FET's linear network is valid — that network is part of the model.
 - **PA classes follow harmonicaRF's method, at the owner's direction**: `PaClassPresets.IntrinsicLoad` (Z0 = R_opt) at the
   intrinsic plane, carried to the extrinsic plane by `IntrinsicAbcd`'s bilinear inverse with the output capacitance
   linearized at the intrinsic DC bias (here the model's C22). A six-pin network generalises the fixed package chain:
@@ -20900,3 +20897,28 @@ for the currents to be fitted again. `AdjointExtra` also rebuilt `PointsWithT` (
   (95 % 0.024 at 10 GHz), Lg × 3 fails (0.098). The gate perturbs by 3.
 - Large-signal CSV units: `CmcFile.UnitScale("dBm")` is not a dBm-aware scale, so powers, gain and efficiencies are read
   in their own unit (dBm, dB, %) and any other unit on them is refused; only currents are scaled.
+
+## Model Composer MC-11 review (2026-10-19)
+
+- **`lp` and `lpp` run a `ComposedFet`.** `LoadpullEngine.PrepareContext` no longer refuses a tuner on a net no nonlinear
+  device touches: it adds that net to the HB interface (`HbEngine.ExtraInterfaceNodes`), so `V` still has a row there,
+  and reads the current into the load from the load tuner's Z_Port and choke branches (`TunerModel.LoadZPortBranchIndex`,
+  new) and the gate bias current from the source tuner's choke. A tuner on a device terminal keeps the interface-current
+  path bit for bit, so the Hero 3/3B goldens did not move. Gates: `LoadpullOffDeviceTunerTests` (Engine: the same FET
+  behind 1 µΩ resistors reports what the canonical circuit reports) and `ComposedFetLoadpullTests` (a composed model's `lp`
+  equals an HB power sweep at each load; `lpp` finds both optima).
+- **Loadpull-file validation runs the engine** (`ValidationBench.Loadpull`, `circuitrf lp` runs it as written), so "show
+  testbench" shows what was simulated — before, it showed the first load's power sweep. Three defects went with the old
+  path: a multi-frequency `.spl`/`.lpcwave` (every cube on a leading `freq` axis) was read as if its frequency axis were
+  the load grid; a single-frequency file's frequency was read only from `ZSource`, never `__Freq`; and a measured drive
+  more than 0.05 dB from the model's uniform ladder was silently dropped. The model's ladder now steps by the smallest gap
+  between measured drives — a file written by circuitRF carries its tickle drive as a measured point, and a ladder spread
+  evenly from it lands on none of the real drives.
+- **The report ran every data set when it asked for none.** `ValidationSettings.DataSets` empty means every set, so a
+  report with the DC and S sections off (or a document with neither kind) ran the large-signal sets too.
+  `ModelValidation.Prepare` now exports the model without validating, and the report skips validation with no sets.
+- **Export's stale check read the cache index before opening it.** The data digest takes each source's hash from the
+  index, and only an `Open` updates it, so a source edited on disk since the last open was not seen as stale. The cache
+  now opens first. A `.csym` given by absolute path is recorded in the `.cmc` relative to it, as `Steps.Export` states.
+- The S item's testbench was written at the bias of point 0 even when point 0 was excluded; an S set with every point
+  excluded passed with a NaN median. Both fixed.

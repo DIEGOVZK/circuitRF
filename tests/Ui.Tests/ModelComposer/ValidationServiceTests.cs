@@ -10,8 +10,9 @@ namespace CircuitRF.Ui.Tests.ModelComposer;
 
 /// <summary>
 /// brief-modelcomposer-11 §4 (R-mc11-4): validation against data of the truth the model was composed from passes — S at
-/// the measurement plane, and a power sweep against the truth's own HB — a model with a perturbed Lg fails the S item,
-/// and the power sweep's generated testbench runs unchanged through <c>circuitrf hb</c>.
+/// the measurement plane, a power sweep against the truth's own HB and a loadpull file against the truth's own loadpull — a
+/// model with a perturbed Lg fails the S item, and the generated testbenches run unchanged through <c>circuitrf hb</c> and
+/// <c>circuitrf lp</c>.
 /// </summary>
 public sealed class ValidationServiceTests(ITestOutputHelper output)
 {
@@ -83,5 +84,50 @@ public sealed class ValidationServiceTests(ITestOutputHelper output)
         string bench = ModelValidation.WriteTestbenches(cmc, result).Single();
         JsonRun.Reset();
         Assert.Equal(0, CliEntry.Run(["hb", bench]));
+    }
+
+    [Fact]
+    public void Loadpull_MatchesTheTruthsLoadpull_AndItsTestbenchRunsThroughTheLpVerb()
+    {
+        string cmc = ExportFixture.Document();
+        string dir = Path.GetDirectoryName(cmc)!;
+        string R(double v) => v.ToString("R", CultureInfo.InvariantCulture);
+        System.Numerics.Complex[] loads = [new(40, 10), new(70, -15), new(25, 5)];
+        string gam = Path.Combine(dir, "truth.gam");
+        File.WriteAllLines(gam, ["# impedance Z0=50 re_im", .. loads.Select(z => $"{R(z.Real)} {R(z.Imaginary)}")]);
+
+        // The "measurement": the truth load-pulled through the testbench validation generates for the model.
+        var truth = CircuitEvaluation.Evaluate(
+            PreparedCircuit.FromText(ValidationBench.Loadpull("lp", ExportFixture.Truth(), 25, 2e9, -0.6, 6, 50, [], [], gam, -15, 5, -5, 5), dir, dir),
+            new CircuitEvaluationRequest { Measurements = false });
+        Assert.True(truth.Status == RunStatus.Success, truth.StatusMessage);
+        RfCore.Loadpull.SplWriter.WriteSpl(truth.Results.First(r => r.Data.Contains("StopCode")).Data, Path.Combine(dir, "truth.spl"));
+        var doc = CmcFile.Read(cmc);
+        CmcFile.Write(cmc, doc with
+        {
+            DataSets = [.. doc.DataSets, new CmcDataSet
+            {
+                Name = "lp", Kind = DataSetKind.LargeSignal, Sources = ["truth.spl"],
+                Conditions = new DataConditions
+                {
+                    AmbientC = 25,
+                    LargeSignal = new LargeSignalConditions { Measurement = LargeSignalMeasurement.Loadpull, Vgs = -0.6, Vds = 6, SourceZ = 50 },
+                },
+                Import = new ImportSettings { Format = ImportSettings.Loadpull },
+            }],
+        });
+
+        var result = ModelValidation.RunFile(cmc, settings: ValidationSettings.Default with { DataSets = ["lp"] });
+        var item = Assert.Single(result.Items);
+        output.WriteLine(item.Line);
+        Assert.Equal(ValidationKind.Loadpull, item.Kind);
+        Assert.True(item.Passed, item.Line);
+        Assert.Contains("over 12 point(s)", item.Line);   // three loads × the tickle and three drives
+        var (meas, model) = (item.Data["Pout.meas"].RealValues, item.Data["Pout.model"].RealValues);
+        Assert.All(meas.Zip(model), m => Assert.True(Math.Abs(m.First - m.Second) < 1e-3, $"{m.First} vs {m.Second} dBm"));
+
+        string bench = ModelValidation.WriteTestbenches(cmc, result).Single();
+        JsonRun.Reset();
+        Assert.Equal(0, CliEntry.Run(["lp", bench]));
     }
 }

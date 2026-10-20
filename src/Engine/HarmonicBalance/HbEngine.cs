@@ -256,6 +256,20 @@ public sealed class HbEngine
     private (double Gmin, RegularizationMode Cond, RegularizationMode Ind, double IndR, bool Diag)
         _extractorKey;
 
+    /// <summary>
+    /// Circuit nodes every solve of this engine carries as interface unknowns beyond the nonlinear-facing
+    /// ones (<see cref="HbLinearExtractor"/>'s <c>extraInterfaceNodes</c>). The loadpull engine sets its
+    /// tuners' DUT nets here when no nonlinear device touches them — a composed FET's terminals sit behind
+    /// its own linear network — so the result's <c>V</c> still has a row at each tuner. Such a row carries
+    /// zero nonlinear current and changes no solution. Empty, the default, is the shipped interface.
+    /// </summary>
+    public IReadOnlyList<int> ExtraInterfaceNodes
+    {
+        get => _extraInterfaceNodes;
+        set { _extraInterfaceNodes = value; _extractor = null; }
+    }
+    private IReadOnlyList<int> _extraInterfaceNodes = [];
+
     private HbLinearExtractor GetExtractor(AnalysisSettings settings)
     {
         var key = (settings.Gmin, settings.ConductanceRegularization,
@@ -265,7 +279,8 @@ public sealed class HbEngine
         if (_extractor is not null && _extractorKey == key) return _extractor;
 
         _extractorKey = key;
-        return _extractor = new HbLinearExtractor(_netlist, settings);
+        return _extractor = new HbLinearExtractor(_netlist, settings,
+                                                  _extraInterfaceNodes.Count > 0 ? _extraInterfaceNodes : null);
     }
 
     /// <summary>

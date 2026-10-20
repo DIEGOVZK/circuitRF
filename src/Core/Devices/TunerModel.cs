@@ -123,6 +123,14 @@ public sealed class TunerModel : ComponentModel
     /// </summary>
     public int SourceZPortBranchIndex { get; private set; } = -1;
 
+    /// <summary>
+    /// Branch index of the LoadTuner's Z_Port (between n_block and n_ref). Its branch current plus the
+    /// choke's is the current flowing from n_dut INTO the load tuner — what the LoadpullEngine reads Pout
+    /// and the drain bias current from when no nonlinear device sits on n_dut (a composed FET, whose
+    /// terminals are behind its own linear network). −1 for the Source role.
+    /// </summary>
+    public int LoadZPortBranchIndex { get; private set; } = -1;
+
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public TunerModel(
@@ -155,6 +163,7 @@ public sealed class TunerModel : ComponentModel
         ChokeBranchIndex        = -1;  // reset each stamp pass
         BiasSupplyBranchIndex   = -1;
         SourceZPortBranchIndex  = -1;
+        LoadZPortBranchIndex    = -1;
 
         if (Role == TunerRole.Load)
             StampLoad(mna, nDut, nRef, nBlock, nBias, omega, isDC);
@@ -174,7 +183,7 @@ public sealed class TunerModel : ComponentModel
             mna.AddAdmittance(nDut, nBlock, new Complex(0, omega * IdealC));
 
         // 2. Z_Port (load impedance): between nBlock and nRef.
-        StampZPort(mna, nBlock, nRef, GetZ(omega));
+        LoadZPortBranchIndex = StampZPort(mna, nBlock, nRef, GetZ(omega));
 
         // 3. RF choke L=1H: Group-2 branch between nDut and nBias.
         //    ChokeBranchIndex is captured so HbLinearExtractor.ApplyInductanceReg()

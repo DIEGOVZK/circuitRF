@@ -343,3 +343,22 @@ ladder. What it is reporting is the problem. Zin measured across the drive-up at
 **The pursuit phase is untouched by all of this** — verified by diffing the whole 2,077-line query log
 of the reported design before and after: byte-identical, MXP, MXE and Zsource included. The pursuit
 queries run at the declared 50 Ω source with mA-scale currents, four orders above the tolerance.
+
+## A tuner on a net no nonlinear device touches (Model Composer MC-11 review, 2026-10-19)
+
+**Was refused, now runs.** `PrepareContext` required each tuner's DUT net to be a nonlinear interface node, because Pout
+(−½·Re(V·conj(INl))) and the bias currents (−INl at DC) are read from the device's interface current. A composed FET's
+terminals sit behind its own linear network, so every `lp`/`lpp` of one was refused.
+
+- Such a net joins the HB interface as an extra node (`HbEngine.ExtraInterfaceNodes` → `HbLinearExtractor`'s existing
+  `extraInterfaceNodes`). Its nonlinear current is zero; the solve is unchanged; `V`, `__LoadNodeIdx`/`__SrcNodeIdx` and
+  the pursuit's Zsource keep working because the node has an interface index.
+- **The current into the load** is then the load tuner's own: Z_Port branch (n_block→n_ref, i.e. through the DC block
+  away from n_dut) plus the choke branch (n_dut→n_bias), from the HB linear back-solver — `ComputeLoadCurrent`, the load
+  side of `ComputeSourceInputCurrent`. `TunerModel.LoadZPortBranchIndex` is new. The gate bias current is
+  −`ISrcIn[0]`, the source tuner's choke current.
+- **The canonical case is untouched bit for bit**: `ComputeLoadCurrent` returns −INl[load] there and the FOMs take the
+  same arithmetic (−½·Re(V·conj(x)) ≡ ½·Re(V·conj(−x)) exactly in IEEE). `ComputeFoms` keeps its INl overload for
+  harmonicaRF's `PinSearch` and gains one taking the load current.
+- The only refusal left is a tuner whose DUT side is ground.
+

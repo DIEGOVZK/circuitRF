@@ -84,9 +84,10 @@ section, `summary.txt`, the testbenches), its options kept in `Steps.Report`:
   surface, the Data Display's performance summary), and the **region of convergence** — the share of a disc of loads
   about the class's fundamental load where HB converged to that compression.
 
-A loadpull of a composed FET is one HB power sweep per load: `LoadpullEngine` refuses a tuner on a net no nonlinear
-device touches, and a `ComposedFet`'s terminals sit behind its network. Reading Pout through that network is valid — the
-network is part of the model (owner, paraphrased) — and moving the engine onto it is a follow-up.
+`LoadpullEngine` (the `lp` and `lpp` verbs) load-pulls a composed FET: its tuners sit on nets behind the model's network,
+and Pout is read from the load tuner's own branch currents. Reading Pout through that network is valid — the network is
+part of the model (owner, paraphrased). The report's PA modes run one HB power sweep per load on a fixed drive ladder, so
+the region of convergence is measured the same way at every load.
 
 ## 3. Not in this phase
 The export, validation and report UI (MC-15); the CLI spelling (MC-13).

@@ -382,12 +382,12 @@ src/Engine/Loadpull/GamReader.cs|[.gam line {lineNum}] Cannot parse '{s}' as a n
 src/Engine/Loadpull/GamReader.cs|[.gam line {lineNum}] Empty complex literal.
 src/Engine/Loadpull/GamReader.cs|[.gam line {lineNum}] Expected 'mag angle' (two columns), got: '{line}'
 src/Engine/Loadpull/GamReader.cs|[.gam line {lineNum}] Expected 'real imag' (two columns), got: '{line}'
-src/Engine/Loadpull/LoadpullEngine.cs|LoadTuner '{p.LoadTunerName}' DUT node (node {loadDutNode}, net 
+src/Engine/Loadpull/LoadpullEngine.cs|LoadTuner '{p.LoadTunerName}' is connected to ground on its DUT side; it terminates nothing.
 src/Engine/Loadpull/LoadpullEngine.cs|LoadpullAnalysis '{lpa.Name}': Grid file not found: '{lpa.GridPath}'
 src/Engine/Loadpull/LoadpullEngine.cs|LoadpullAnalysis '{lpa.Name}': Grid= path is required.
 src/Engine/Loadpull/LoadpullEngine.cs|LoadpullAnalysis: LoadTuner= is required.
 src/Engine/Loadpull/LoadpullEngine.cs|LoadpullAnalysis: SourceTuner= is required.
-src/Engine/Loadpull/LoadpullEngine.cs|SourceTuner '{p.SourceTunerName}' DUT node (node {srcDutNode}, net 
+src/Engine/Loadpull/LoadpullEngine.cs|SourceTuner '{p.SourceTunerName}' is connected to ground on its DUT side; it drives nothing.
 src/Engine/Loadpull/LoadpullEngine.cs|{role}={instanceName}: expected TunerModel, got {ec.Model.GetType().Name}.
 src/Engine/Loadpull/LoadpullEngine.cs|{role}={instanceName}: no Tuner named '{instanceName}'. Available: [{avail}]
 src/Engine/MeasurementEvaluator.cs|Measurement '{m.Name}' produced an unsupported value kind: {result.Kind}

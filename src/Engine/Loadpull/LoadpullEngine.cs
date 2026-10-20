@@ -180,11 +180,20 @@ public sealed class LoadpullEngine
         public string[]        NodeNames      { get; }
         public HbAnalysisParams  HbParams     { get; }
         public AnalysisSettings  SolveSettings{ get; }
+        /// <summary>No nonlinear device touches the load tuner's DUT net (a composed FET, whose terminals sit
+        /// behind its own linear network): Pout and the drain bias current come from the tuner's own branch
+        /// currents, since the interface current there is zero.</summary>
+        public bool              LoadOffDevice { get; }
+        /// <summary>The same for the source tuner's DUT net: the gate bias current comes from its branches.</summary>
+        public bool              SrcOffDevice  { get; }
 
         public PursuitContext(TunerModel load, TunerModel src, TunerModel swept,
             int loadIfIdx, int srcIfIdx, int k, int[] ifNodes, string[] nodeNames,
-            HbAnalysisParams hbParams, AnalysisSettings solveSettings)
+            HbAnalysisParams hbParams, AnalysisSettings solveSettings,
+            bool loadOffDevice = false, bool srcOffDevice = false)
         {
+            LoadOffDevice  = loadOffDevice;
+            SrcOffDevice   = srcOffDevice;
             LoadModel      = load;
             SrcModel       = src;
             SweptModel     = swept;
@@ -235,7 +244,17 @@ public sealed class LoadpullEngine
         int loadDutNode = loadEc.Nodes.Length > 0 ? loadEc.Nodes[0] : 0;
         int srcDutNode  = srcEc.Nodes.Length  > 0 ? srcEc.Nodes[0]  : 0;
 
-        var tempExtractor = new HbLinearExtractor(_netlist, _lpSettings);
+        // A tuner on a net no nonlinear device touches — a ComposedFet's terminals always sit behind its own
+        // linear network — joins the HB interface as an extra node: V there is then solved and reported
+        // like any interface node, its nonlinear current is zero, and Pout and the bias currents are read
+        // from the tuner's own branches instead (ComputeLoadCurrent, ComputeSourceInputCurrent). A tuner
+        // on a device terminal, the canonical case, takes the interface-current path exactly as before.
+        var nonlinear     = _netlist.NonlinearNodes.ToHashSet();
+        bool loadOff      = loadDutNode > 0 && !nonlinear.Contains(loadDutNode);
+        bool srcOff       = srcDutNode  > 0 && !nonlinear.Contains(srcDutNode);
+        int[] extra       = [.. new[] { (loadOff, loadDutNode), (srcOff, srcDutNode) }.Where(x => x.Item1).Select(x => x.Item2)];
+        _hbEngine.ExtraInterfaceNodes = extra;
+        var tempExtractor = new HbLinearExtractor(_netlist, _lpSettings, extra.Length > 0 ? extra : null);
         int[] ifNodes     = tempExtractor.InterfaceNodes;
         var nodeNames     = ifNodes.Select(n =>
             n < _netlist.Nodes.Count ? _netlist.Nodes.NameOf(n) : $"node{n}").ToArray();
@@ -244,12 +263,10 @@ public sealed class LoadpullEngine
 
         if (loadIfIdx < 0)
             throw new InvalidOperationException(
-                $"LoadTuner '{p.LoadTunerName}' DUT node (node {loadDutNode}, net " +
-                $"'{_netlist.Nodes.NameOf(loadDutNode)}') is not a nonlinear interface node.");
+                $"LoadTuner '{p.LoadTunerName}' is connected to ground on its DUT side; it terminates nothing.");
         if (srcIfIdx < 0)
             throw new InvalidOperationException(
-                $"SourceTuner '{p.SourceTunerName}' DUT node (node {srcDutNode}, net " +
-                $"'{_netlist.Nodes.NameOf(srcDutNode)}') is not a nonlinear interface node.");
+                $"SourceTuner '{p.SourceTunerName}' is connected to ground on its DUT side; it drives nothing.");
 
         int K = p.MaxHarmonic;
         var hbParams = new HbAnalysisParams(
@@ -279,7 +296,7 @@ public sealed class LoadpullEngine
 
         var sweptModel = p.SweepLoad ? loadModel : srcModel;
         return new PursuitContext(loadModel, srcModel, sweptModel,
-            loadIfIdx, srcIfIdx, K, ifNodes, nodeNames, hbParams, solveSettings);
+            loadIfIdx, srcIfIdx, K, ifNodes, nodeNames, hbParams, solveSettings, loadOff, srcOff);
     }
 
     // ── Engine entry point ───────────────────────────────────────────────────
@@ -601,13 +618,14 @@ public sealed class LoadpullEngine
             // True current the source delivers into the DUT input node (includes any passives the user
             // wired at the gate, not just INl[gate]). Drives Zin / Zsource / Pin_delivered.
             Complex[] iSrcIn = ComputeSourceInputCurrent(sr, ctx);
+            Complex[] iLoadIn = ComputeLoadCurrent(sr, ctx);
 
-            var foms  = ComputeFoms(sr.V, iSrcIn, sr.INl, ctx.LoadIfIdx, ctx.SrcIfIdx, pavlW, ctx.K);
+            var foms  = ComputeFoms(sr.V, iSrcIn, iLoadIn, ctx.LoadIfIdx, ctx.SrcIfIdx, pavlW, ctx.K);
 
             double vLoad = ctx.LoadIfIdx >= 0 && sr.V.GetLength(1) > 0 ? sr.V[ctx.LoadIfIdx, 0].Real : 0;
-            double iLoad = ctx.LoadIfIdx >= 0 && sr.INl.GetLength(1) > 0 ? -sr.INl[ctx.LoadIfIdx, 0].Real : 0;
+            double iLoad = iLoadIn.Length > 0 ? iLoadIn[0].Real : 0;
             double vSrc  = ctx.SrcIfIdx  >= 0 && sr.V.GetLength(1) > 0 ? sr.V[ctx.SrcIfIdx,  0].Real : 0;
-            double iSrc2 = ctx.SrcIfIdx  >= 0 && sr.INl.GetLength(1) > 0 ? -sr.INl[ctx.SrcIfIdx, 0].Real : 0;
+            double iSrc2 = BiasCurrentSrc(sr, ctx, iSrcIn);
 
             var step = new PinStepResult(
                 pavlDbm, isTickle,
@@ -769,12 +787,13 @@ public sealed class LoadpullEngine
 
         var sr = _hbEngine.RunSinglePoint(ctx.HbParams, warm, ctx.SolveSettings);
         Complex[] iSrcIn = ComputeSourceInputCurrent(sr, ctx);
-        var foms = ComputeFoms(sr.V, iSrcIn, sr.INl, ctx.LoadIfIdx, ctx.SrcIfIdx, pavlW, ctx.K);
+        Complex[] iLoadIn = ComputeLoadCurrent(sr, ctx);
+        var foms = ComputeFoms(sr.V, iSrcIn, iLoadIn, ctx.LoadIfIdx, ctx.SrcIfIdx, pavlW, ctx.K);
 
         double vLoad = ctx.LoadIfIdx >= 0 && sr.V.GetLength(1) > 0 ? sr.V[ctx.LoadIfIdx, 0].Real : 0;
-        double iLoad = ctx.LoadIfIdx >= 0 && sr.INl.GetLength(1) > 0 ? -sr.INl[ctx.LoadIfIdx, 0].Real : 0;
+        double iLoad = iLoadIn.Length > 0 ? iLoadIn[0].Real : 0;
         double vSrc  = ctx.SrcIfIdx  >= 0 && sr.V.GetLength(1) > 0 ? sr.V[ctx.SrcIfIdx,  0].Real : 0;
-        double iSrc2 = ctx.SrcIfIdx  >= 0 && sr.INl.GetLength(1) > 0 ? -sr.INl[ctx.SrcIfIdx, 0].Real : 0;
+        double iSrc2 = BiasCurrentSrc(sr, ctx, iSrcIn);
 
         return new PinStepResult(
             pavlDbm, isTickle, sr.V, sr.INl, iSrcIn,
@@ -903,18 +922,34 @@ public sealed class LoadpullEngine
         int loadIdx, int srcIdx,
         double pavlW, int K)
     {
+        // By KCL at a load net carrying only the tuner and the device, the current into the load is −INl.
+        var iLoadIn = new Complex[iNl.GetLength(1)];
+        if (loadIdx >= 0)
+            for (int k = 0; k < iLoadIn.Length; k++) iLoadIn[k] = -iNl[loadIdx, k];
+        return ComputeFoms(v, iSrcIn, iLoadIn, loadIdx, srcIdx, pavlW, K);
+    }
+
+    /// <summary>
+    /// The same FOMs from the current flowing INTO the load (<paramref name="iLoadIn"/>, per harmonic) —
+    /// what the engine passes when it reads that current from the load tuner's own branches.
+    /// </summary>
+    public static FomResult ComputeFoms(
+        Complex[,] v, Complex[] iSrcIn, Complex[] iLoadIn,
+        int loadIdx, int srcIdx,
+        double pavlW, int K)
+    {
         if (K < 1 || v.GetLength(1) < 2)
             return new FomResult(pavlW, 0, 0, double.NegativeInfinity, double.NegativeInfinity);
 
         var vLoad = loadIdx >= 0 ? v[loadIdx,   1] : Complex.Zero;
-        var iLoad = loadIdx >= 0 ? iNl[loadIdx, 1] : Complex.Zero;
+        var iLoad = loadIdx >= 0 && iLoadIn.Length > 1 ? iLoadIn[1] : Complex.Zero;
         var vSrc  = srcIdx  >= 0 ? v[srcIdx,    1] : Complex.Zero;
         // Pin_delivered uses the true current INTO the DUT input node (source-delivered), not the
         // device's INl[gate] — they differ when passives are wired at the gate. ISrcIn[1] reduces to
         // INl[src,1] in the canonical case, so Hero references are unchanged.
         var iSrc  = iSrcIn.Length > 1 ? iSrcIn[1] : Complex.Zero;
 
-        double pout         = -0.5 * (vLoad * Complex.Conjugate(iLoad)).Real;
+        double pout         = 0.5 * (vLoad * Complex.Conjugate(iLoad)).Real;
         double pinDelivered =  0.5 * (vSrc  * Complex.Conjugate(iSrc)).Real;
 
         double gtDb = pavlW > 1e-30         ? RatioToDb(pout / pavlW)         : double.NegativeInfinity;
@@ -958,6 +993,47 @@ public sealed class LoadpullEngine
             for (int k = 0; k <= K && k < sr.INl.GetLength(1); k++)
                 iin[k] = sr.INl[ctx.SrcIfIdx, k];
         return iin;
+    }
+
+    /// <summary>
+    /// The current flowing from the load tuner's DUT net INTO the load, per harmonic. Canonically (a device
+    /// terminal on that net) it is −INl[load] by KCL — the shipped definition, unchanged. With no nonlinear
+    /// device on the net (<see cref="PursuitContext.LoadOffDevice"/>) INl there is zero, and the current is
+    /// the load tuner's own: its Z_Port branch (through the DC block) plus its choke, both flowing away from
+    /// n_dut, recovered from the HB linear back-solver. Pout read here includes whatever linear network sits
+    /// between the device and the tuner — for a composed FET, its own extrinsic network, which is part of
+    /// the model.
+    /// </summary>
+    private static Complex[] ComputeLoadCurrent(HbEngine.SinglePointResult sr, PursuitContext ctx)
+    {
+        int K    = sr.V.GetLength(1) - 1;
+        var iout = new Complex[K + 1];
+        int zb = ctx.LoadModel.LoadZPortBranchIndex, cb = ctx.LoadModel.ChokeBranchIndex;
+        if (ctx.LoadOffDevice)
+        {
+            if (sr.BackSolver is null || zb < 0 || cb < 0) return iout;
+            for (int k = 0; k <= K; k++)
+            {
+                var x = sr.BackSolver.GetSolution(k, 0);
+                iout[k] = (zb < x.Length ? x[zb] : Complex.Zero) + (cb < x.Length ? x[cb] : Complex.Zero);
+            }
+            return iout;
+        }
+        if (ctx.LoadIfIdx >= 0)
+            for (int k = 0; k <= K && k < sr.INl.GetLength(1); k++)
+                iout[k] = -sr.INl[ctx.LoadIfIdx, k];
+        return iout;
+    }
+
+    /// <summary>
+    /// <see cref="PinStepResult.BiasCurrentSrcA"/>: −INl[src, 0] canonically; with no device on the source
+    /// net, minus the DC current the source tuner delivers into it (its choke current, by
+    /// <see cref="ComputeSourceInputCurrent"/>'s KCL).
+    /// </summary>
+    private static double BiasCurrentSrc(HbEngine.SinglePointResult sr, PursuitContext ctx, Complex[] iSrcIn)
+    {
+        if (ctx.SrcOffDevice) return iSrcIn.Length > 0 ? -iSrcIn[0].Real : 0;
+        return ctx.SrcIfIdx >= 0 && sr.INl.GetLength(1) > 0 ? -sr.INl[ctx.SrcIfIdx, 0].Real : 0;
     }
 
     // ── Tuner lookup ─────────────────────────────────────────────────────────

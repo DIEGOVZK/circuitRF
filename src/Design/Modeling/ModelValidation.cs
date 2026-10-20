@@ -10,7 +10,8 @@
 //                 quiescent junction temperature (MC-10's mapping, MC-9's heating). A circuit's DC solve cannot hold a
 //                 trap state, so this one is evaluated at the core, on the intrinsic data MC-4 computed.
 //   Large signal  a power sweep (Pout, gain, PAE, DE, drain current against input power) and a two-tone sweep (carrier,
-//                 IM3, IM5) by HB with the data's terminations; a loadpull file run as a loadpull over its own loads.
+//                 IM3, IM5) by HB with the data's terminations; a loadpull file run through the loadpull engine over its own
+//                 loads, the model interpolated to each measured drive.
 //
 // Every item but the pulsed one generates an ordinary .cnl testbench and runs it through the function its verb calls
 // (SParameterEngine, NonlinearDcEngine, CircuitEvaluation for HB and loadpull). Results are DataSets with measured and
@@ -163,6 +164,17 @@ public static class ModelValidation
         cmcPath = Path.GetFullPath(cmcPath);
         var doc = CmcFile.Read(cmcPath);
         settings ??= Settings(doc);
+        var (model, data, work) = Prepare(cmcPath, doc, cmodelPath, rc);
+        return Run(cmcPath, doc, data, model, settings, work, rc);
+    }
+
+    /// <summary>
+    /// What a run needs before its items: the document's data, the work folder, and the model's path — <paramref name="cmodelPath"/>,
+    /// or the current state exported into the work folder when it is null.
+    /// </summary>
+    internal static (string Model, IReadOnlyDictionary<string, NormalisedData> Data, string Work) Prepare(
+        string cmcPath, CmcDocument doc, string? cmodelPath, RunControl? rc)
+    {
         // The cache opens first: a rebuild swaps its whole folder, and would take a work folder made before it along.
         var data = new CmcCache(cmcPath).Open(doc, rc).Data;
         string work = Path.Combine(CmcCache.FolderFor(cmcPath), CacheFolder);
@@ -175,7 +187,7 @@ public static class ModelValidation
             CmodelFile.Write(model with { Symbol = null }, buffer);
             File.WriteAllBytes(cmodelPath, buffer.ToArray());
         }
-        return Run(cmcPath, doc, data, Path.GetFullPath(cmodelPath), settings, work, rc);
+        return (Path.GetFullPath(cmodelPath), data, work);
     }
 
     /// <summary>
@@ -279,6 +291,7 @@ public static class ModelValidation
         var (vgs, vds, intrinsic) = DevicePlane(ctx, set, nd);
         double[] f = nd.FrequenciesHz!;
         var points = Enumerable.Range(0, nd.Count).Where(k => !nd.Points[k].Excluded).ToArray();
+        if (points.Length == 0) throw new ModelingException(set.Name, "every bias point is excluded.");
         ctx.Rc?.BeginStage($"Validating S of {set.Name}", points.Length);
 
         int nf = f.Length;
@@ -331,9 +344,9 @@ public static class ModelValidation
         ds.Add("Vgs", new DataCube([point], [.. nd.Points.Select(p => p.Vgs)]));
         ds.Add("Vds", new DataCube([point], [.. nd.Points.Select(p => p.Vds)]));
         string line = $"S {set.Name}: |ΔS| median {G(median)}, 95 % {G(p95)} {Mark(pass)}";
-        var p0 = nd.Points[points.Length > 0 ? points[0] : 0];
+        int k0 = points[0];
         return new ValidationItem(set.Name, ValidationKind.SParams, pass, line, ds,
-            ValidationBench.SParams(set.Name, device, AmbientOf(set, p0), vgs[0], vds[0], f, nd.Z0));
+            ValidationBench.SParams(set.Name, device, AmbientOf(set, nd.Points[k0]), vgs[k0], vds[k0], f, nd.Z0));
     }
 
     // ── DC I–V ────────────────────────────────────────────────────────────────
@@ -430,14 +443,18 @@ public static class ModelValidation
     }
 
     /// <summary>Runs a generated HB testbench through the run service; its HB result.</summary>
-    private static DataSet RunHb(Context ctx, string cnl)
+    private static DataSet RunHb(Context ctx, string cnl) => Evaluate(ctx, cnl, "HB", "V");
+
+    /// <summary>Runs a generated testbench through the run service (what its verb calls); the result holding
+    /// <paramref name="cube"/>.</summary>
+    private static DataSet Evaluate(Context ctx, string cnl, string what, string cube)
     {
         var r = CircuitEvaluation.Evaluate(PreparedCircuit.FromText(cnl, ctx.Work, ctx.Work),
                                            new CircuitEvaluationRequest { Measurements = false, Control = ctx.Rc?.Child() });
         if (r.Status == RunStatus.Cancelled) throw new OperationCanceledException();
-        if (r.Status != RunStatus.Success) throw new ModelingException("HB", r.StatusMessage);
-        return r.Results.FirstOrDefault(x => x.Data.Contains("V"))?.Data
-               ?? throw new ModelingException("HB", "the run produced no spectra.");
+        if (r.Status != RunStatus.Success) throw new ModelingException(what, r.StatusMessage);
+        return r.Results.FirstOrDefault(x => x.Data.Contains(cube))?.Data
+               ?? throw new ModelingException(what, $"the run produced no {cube}.");
     }
 
     /// <summary>
@@ -584,45 +601,70 @@ public static class ModelValidation
         }
         catch (Exception ex) when (ex is FormatException or IOException or InvalidDataException)
         { throw new ModelingException(set.Sources[0], $"it is not a readable loadpull file ({ex.Message})."); }
+        if (!meas.Contains("GammaLoad") || !meas.Contains("PavlDbm"))
+            throw new ModelingException(set.Sources[0], "it carries no load grid or drive levels.");
+        var (one, fFile) = OneFrequency(meas, c.FrequencyHz, set.Name);
+        meas = one;
 
-        double f0 = c.FrequencyHz ?? (meas.Contains("ZSource") ? meas["ZSource"].Axes[0].Values[0]
-                    : throw new ModelingException(set.Name, "the frequency is not stated and the file does not carry one."));
+        double f0 = c.FrequencyHz ?? fFile ?? throw new ModelingException(set.Name, "the frequency is not stated and the file does not carry one.");
         var zSource = c.SourceZ ?? (meas.Contains("ZSource") ? meas["ZSource"].ComplexValues[0] : 50);
         double vgs = c.Vgs ?? OperatingPoint(meas, "BiasVSrc") ?? throw new ModelingException(set.Name, "the gate bias is not stated.");
         double vds = c.Vds ?? OperatingPoint(meas, "BiasVLoad") ?? throw new ModelingException(set.Name, "the drain bias is not stated.");
-        var gamma = meas["GammaLoad"];
+        var gamma = meas["GammaLoad"].ComplexValues;
         var pavl = meas["PavlDbm"].RealValues;
-        int nGrid = gamma.Axes[0].Length, nPin = pavl.Length / nGrid;
+        int nGrid = gamma.Length, nPin = pavl.Length / nGrid;
+        var zl = meas.Contains("ZLoad") ? meas["ZLoad"].ComplexValues : [.. gamma.Select(g => 50 * (1 + g) / (1 - g))];
         var finite = pavl.Where(double.IsFinite).ToArray();
-        double lo = finite.Min(), hi = finite.Max(), step = nPin > 1 ? (hi - lo) / (nPin - 1) : 1;
+        if (finite.Length == 0) throw new ModelingException(set.Name, "no drive level is stated.");
+        // The model's ladder steps by the smallest gap between the measured drives, so a regular measured grid (a tickle
+        // below it included) is hit exactly and only an irregular one is interpolated; at most 200 rungs.
+        double[] levels = [.. finite.Select(v => Math.Round(v, 6)).Distinct().Order()];
+        double lo = levels[0], hi = levels[^1];
+        double gap = levels.Length > 1 ? levels.Zip(levels.Skip(1), (a, b) => b - a).Min() : 1;
+        double step = Math.Max(Math.Max(gap, 0.1), (hi - lo) / 199);
 
-        var grid = Enumerable.Range(0, nGrid).Select(k => gamma.ComplexValues[k * (gamma.ComplexValues.Length / nGrid)]).ToList();
-        double[] ladder = [.. Enumerable.Range(0, (int)Math.Round((hi - lo) / Math.Max(step, 0.1)) + 1).Select(k => lo + k * Math.Max(step, 0.1))];
-        var model = LoadSweep(ctx, set.Name, set.Conditions.AmbientC ?? 25, f0, vgs, vds, zSource, c.SourceHarmonics, c.LoadHarmonics,
-                              grid, ladder, null, out string cnl);
+        // The model load-pulled over the file's own loads, through the loadpull engine `circuitrf lp` runs: the grid is a
+        // .gam beside the generated testbench, which names it by its full path so the testbench runs unchanged anywhere.
+        string gam = Path.Combine(ctx.Work, $"{Safe(set.Name)}.gam");
+        File.WriteAllLines(gam, ["# impedance Z0=50 re_im", .. zl.Select(z => $"{ValidationBench.R(z.Real)} {ValidationBench.R(z.Imaginary)}")]);
+        string cnl = ValidationBench.Loadpull(set.Name, ctx.Device(false, "g", "d"), set.Conditions.AmbientC ?? 25, f0, vgs, vds,
+                                              zSource, c.SourceHarmonics, c.LoadHarmonics, gam, lo, step, hi, ctx.Settings.MaxHarmonic);
+        ctx.Rc?.BeginStage($"Validating loadpull {set.Name}", 1);
+        var model = Evaluate(ctx, cnl, "loadpull", "StopCode");
+        ctx.Rc?.TickStage();
 
-        // Each measured (load, drive) against the model's at the same load and the nearest drive.
+        // Each measured (load, drive) against the model at the same load, interpolated to the same drive.
         var mPout = Watts(meas); var mPae = meas.Contains("PAE") ? meas["PAE"].RealValues : null;
         var sPavl = model["PavlDbm"].RealValues; var sPout = Watts(model); var sPae = model.Contains("PAE") ? model["PAE"].RealValues : null;
+        var sConv = model["Converged"].RealValues; var sTickle = model.Contains("IsTickle") ? model["IsTickle"].RealValues : null;
         int sPin = sPavl.Length / nGrid;
         var dPout = new List<(double, double)>(); var dPae = new List<(double, double)>();
         var outModel = Enumerable.Repeat(double.NaN, nGrid * nPin).ToArray();
+        var paeModel = Enumerable.Repeat(double.NaN, nGrid * nPin).ToArray();
         for (int g = 0; g < nGrid; g++)
+        {
+            var ladder = Enumerable.Range(g * sPin, sPin)
+                .Where(j => sConv[j] == 1 && (sTickle is null || sTickle[j] != 1) && double.IsFinite(sPavl[j]) && sPout[j] > 0)
+                .OrderBy(j => sPavl[j]).ToArray();
+            if (ladder.Length == 0) continue;
+            double[] x = [.. ladder.Select(j => sPavl[j])];
+            double[] yPout = [.. ladder.Select(j => Dbm(sPout[j]))];
+            double[]? yPae = sPae is null ? null : [.. ladder.Select(j => sPae[j])];
             for (int k = 0; k < nPin; k++)
             {
-                double p = pavl[g * nPin + k];
-                if (!double.IsFinite(p) || !double.IsFinite(mPout[g * nPin + k])) continue;
-                int best = -1;
-                for (int j = 0; j < sPin; j++)
-                    if (double.IsFinite(sPavl[g * sPin + j]) && sPout[g * sPin + j] > 0
-                        && (best < 0 || Math.Abs(sPavl[g * sPin + j] - p) < Math.Abs(sPavl[g * sPin + best] - p))) best = j;
-                if (best < 0 || Math.Abs(sPavl[g * sPin + best] - p) > 0.05) continue;
-                outModel[g * nPin + k] = Dbm(sPout[g * sPin + best]);
-                dPout.Add((Dbm(mPout[g * nPin + k]), outModel[g * nPin + k]));
-                if (mPae is not null && sPae is not null && double.IsFinite(mPae[g * nPin + k]))
-                    dPae.Add((mPae[g * nPin + k], sPae[g * sPin + best]));
+                int i = g * nPin + k;
+                double p = pavl[i];
+                if (!double.IsFinite(p) || !(mPout[i] > 0)) continue;
+                outModel[i] = Interpolate(x, yPout, p);
+                if (!double.IsFinite(outModel[i])) continue;
+                dPout.Add((Dbm(mPout[i]), outModel[i]));
+                if (yPae is not null)
+                {
+                    paeModel[i] = Interpolate(x, yPae, p);
+                    if (mPae is not null && double.IsFinite(mPae[i]) && double.IsFinite(paeModel[i])) dPae.Add((mPae[i], paeModel[i]));
+                }
             }
-        ctx.Rc?.TickStage();
+        }
         if (dPout.Count == 0) throw new ModelingException(set.Name, "no measured point has a converged model point at its drive.");
         double ePout = Math.Sqrt(dPout.Average(x => (x.Item1 - x.Item2) * (x.Item1 - x.Item2)));
         double? ePae = dPae.Count > 0 ? Math.Sqrt(dPae.Average(x => (x.Item1 - x.Item2) * (x.Item1 - x.Item2))) : null;
@@ -631,13 +673,57 @@ public static class ModelValidation
         var gridAx = new Axis("gridPoint", [.. Enumerable.Range(0, nGrid).Select(i => (double)i)]);
         var pinAx = new Axis("pinStep", [.. Enumerable.Range(0, nPin).Select(i => (double)i)]);
         var ds = new DataSet();
-        ds.Add("GammaLoad", new DataCube([gridAx], [.. Enumerable.Range(0, nGrid).Select(k => gamma.ComplexValues[k * (gamma.ComplexValues.Length / nGrid)])]));
+        ds.Add("GammaLoad", new DataCube([gridAx], gamma));
         ds.Add("PavlDbm", new DataCube([gridAx, pinAx], pavl));
         ds.Add("Pout.meas", new DataCube([gridAx, pinAx], [.. mPout.Select(Dbm)]));
         ds.Add("Pout.model", new DataCube([gridAx, pinAx], outModel));
+        if (mPae is not null) ds.Add("PAE.meas", new DataCube([gridAx, pinAx], mPae));
+        if (sPae is not null) ds.Add("PAE.model", new DataCube([gridAx, pinAx], paeModel));
         string line = $"Loadpull {set.Name}: Pout RMS {G(ePout)} dB" + (ePae is { } e ? $" · PAE RMS {G(e)} pp" : "") +
                       $" over {dPout.Count} point(s) {Mark(pass)}";
         return new ValidationItem(set.Name, ValidationKind.Loadpull, pass, line, ds, cnl);
+    }
+
+    /// <summary>
+    /// A loadpull file's DataSet at one frequency: a multi-frequency file (every cube on a leading <c>freq</c> axis) sliced
+    /// at <paramref name="hz"/> — refused when it holds several and none is named, or not the one named — and the
+    /// frequency the file states, if it states one.
+    /// </summary>
+    private static (DataSet Data, double? Hz) OneFrequency(DataSet meas, double? hz, string set)
+    {
+        var g = meas["GammaLoad"];
+        if (g.Rank < 2 || g.Axes[0].Name != "freq")
+        {
+            double? f = meas.Contains("__Freq") ? meas["__Freq"].RealValues[0]
+                      : meas.Contains("ZSource") ? meas["ZSource"].Axes[0].Values[0] : null;
+            return (meas, f);
+        }
+        double[] freqs = g.Axes[0].Values;
+        int fi;
+        if (hz is { } want)
+        {
+            fi = Array.FindIndex(freqs, v => Math.Abs(v - want) <= 1e-6 * want);
+            if (fi < 0) throw new ModelingException(set, $"the file holds no data at {G(want / 1e9)} GHz; it holds {string.Join(", ", freqs.Select(v => G(v / 1e9)))} GHz.");
+        }
+        else if (freqs.Length == 1) fi = 0;
+        else throw new ModelingException(set, $"the file holds {freqs.Length} frequencies ({string.Join(", ", freqs.Select(v => G(v / 1e9)))} GHz); state FrequencyHz.");
+        var one = new DataSet();
+        foreach (var (name, cube) in meas.Cubes)
+            one.Add(name, cube.Rank > 0 && cube.Axes[0].Name == "freq" ? cube.At("freq", fi) : cube);
+        return (one, freqs[fi]);
+    }
+
+    /// <summary>Linear interpolation of <paramref name="y"/> over ascending <paramref name="x"/> at <paramref name="at"/>; within
+    /// 0.05 dB of an end, that end's value; NaN beyond.</summary>
+    internal static double Interpolate(double[] x, double[] y, double at)
+    {
+        if (x.Length == 0 || at < x[0] - 0.05 || at > x[^1] + 0.05) return double.NaN;
+        if (at <= x[0]) return y[0];
+        if (at >= x[^1]) return y[^1];
+        int j = Array.FindIndex(x, v => v >= at);
+        if (x[j] == at || x[j] == x[j - 1]) return y[j];
+        double t = (at - x[j - 1]) / (x[j] - x[j - 1]);
+        return y[j - 1] + t * (y[j] - y[j - 1]);
     }
 
     /// <summary>
@@ -646,13 +732,13 @@ public static class ModelValidation
     /// Pout_W, Pout_dBm, Gt_dB, Gp_dB, Efficiency and PAE in %, Pdc_W, PavlDbm, the bias, Converged; GammaLoad, ZLoad,
     /// StopCode).
     ///
-    /// <para><b>Not the loadpull engine, because it refuses this device.</b> <c>LoadpullEngine</c> reads Pout and Pin from
-    /// the nonlinear interface current at the tuners' nets, so it requires each tuner on a net a nonlinear device touches.
-    /// A composed FET's terminals sit behind its extrinsic network, so no ComposedFet can be load-pulled by it. Each load
-    /// is instead one HB power sweep through the HB run service — the power-sweep testbench with that load — measured by
-    /// probes at the device's terminals, which is exact whatever sits between. The drive is the whole ladder (an HB sweep
-    /// cannot stop early); with <paramref name="compression"/> a point is cut, as the engine's drive-up stops, one step past
-    /// the gain falling that far below its running maximum.</para>
+    /// <para><b>A fixed ladder, not the loadpull engine's drive-up</b> — the report's region of convergence is the share of
+    /// loads where HB converged on one and the same drive ladder, and the engine's continuation and cold retries would
+    /// rescue loads that ladder does not reach. Each load is one HB power sweep through the HB run service — the
+    /// power-sweep testbench with that load — measured by probes at the device's terminals. The drive is the whole ladder
+    /// (an HB sweep cannot stop early); with <paramref name="compression"/> a point is cut, as the engine's drive-up stops,
+    /// one step past the gain falling that far below its running maximum. Validation against a loadpull FILE runs the
+    /// engine itself (<c>circuitrf lp</c>).</para>
     /// </summary>
     internal static DataSet LoadSweep(Context ctx, string set, double ambientC, double f0, double vgs, double vds, Complex sourceZ,
                                       IReadOnlyList<Complex> sourceHarmonics, IReadOnlyList<Complex> loadHarmonics,

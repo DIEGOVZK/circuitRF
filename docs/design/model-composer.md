@@ -1029,7 +1029,7 @@ Every item but the pulsed one is a generated `.cnl` (`ValidationBench`) run thro
 | Pulsed I–V | none: a DC solve cannot hold a trap state | the channel current at each point's MC-10 trap state and quiescent junction temperature, on MC-4's intrinsic data (`CurrentFit.Gather`) |
 | Power sweep | `P1Tone` behind the stated source terminations and a gate tee, a `Tuner` load with its tee, probes at both device terminals, `parametric_sweep` over `Pin` wrapping `hb` | Pout (dBm), gain, PAE, DE, Id, Ig from the probes; RMS ΔPout (or Δgain) and ΔPAE (or ΔDE) |
 | Two-tone | `PnTone`, two tones about the centre | carrier, IM3 (2f1 − f2), IM5 (3f1 − 2f2) by frequency on the mix axis |
-| Loadpull file | one power sweep per measured load (§14.5) | ΔPout and ΔPAE at each measured (load, drive) against the model's at the nearest drive within 0.05 dB |
+| Loadpull file | a loadpull over the file's own loads through the loadpull engine (§14.5) | ΔPout and ΔPAE at each measured (load, drive) against the model's at that load, interpolated to that drive |
 
 Biases run in parallel; a cancelled run throws and reports nothing. Items carry `.meas`/`.model` cubes on shared axes.
 
@@ -1039,18 +1039,26 @@ frequency, spacing, bias, `SourceZ`/`LoadZ` and their harmonic lists (a harmonic
 that one; a loadpull file is `Format: loadpull` through RfCore's `.spl`/`.lpcwave` readers. The cache never imports a
 large-signal set. The data is compared at the device plane: pads are not re-embedded for large signal.
 
-### 14.5 Why a loadpull here is a set of power sweeps
+### 14.5 Loadpull of a composed FET
 
-`LoadpullEngine` reads Pout and Pin from the nonlinear interface current at each tuner's net, and refuses a tuner on a
-net no nonlinear device touches. A `ComposedFet`'s terminals sit behind its extrinsic network, so **no composed FET can
-be load-pulled by the engine (or the `lp` verb)**. Extending the engine — the load tuner's own branch current from the
-linear back-solver, as `ComputeSourceInputCurrent` already does for the source — is the fix, and is left for a phase that
-can re-gate the Hero 3/3B goldens; reading Pout through the model's network is valid, since the network is part of the
-model. `ModelValidation.LoadSweep` runs one HB power sweep per load through
-the HB run service, measured by probes at the device terminals — exact whatever sits between — and writes the loadpull
-DataSet under the canonical names a measured file carries (`Pout_dBm`, `Gt_dB`, `Efficiency`, `PAE` in %, …), so RfCore's
-`LoadpullSurface` (the Data Display's performance summary) reads it unchanged. Compression is measured from the running
-gain maximum, harmonicaRF's rule, and a point is cut one step past it as the engine's drive-up stops.
+A `ComposedFet`'s terminals sit behind its extrinsic network, so no nonlinear device touches the nets its tuners sit on.
+`LoadpullEngine` takes such a tuner net into the HB interface as an extra node and reads Pout and the bias currents from
+the tuners' own branch currents (the load tuner's Z_Port and choke, the source tuner's Z_Port and choke) through the
+linear back-solver; a tuner on a device terminal reads the interface current exactly as before. Pout is therefore the
+power into the load, read through the model's network — which is part of the model. So the `lp` and `lpp` verbs run a
+composed FET like any other device.
+
+Validation against a loadpull file generates an `lp` testbench over the file's own loads (the grid written as a `.gam`
+beside it) and runs it through the loadpull engine; the model's drive ladder steps by the smallest gap between the
+measured drives, so a regular measured grid is hit exactly and only an irregular one is interpolated. A multi-frequency
+file is compared at the stated `FrequencyHz`.
+
+The report's PA modes run `ModelValidation.LoadSweep` instead: one HB power sweep per load on one fixed drive ladder, so
+its region of convergence is measured the same way at every load (the engine's continuation and cold retries would rescue
+loads that ladder does not reach). It writes the loadpull DataSet under the canonical names a measured file carries
+(`Pout_dBm`, `Gt_dB`, `Efficiency`, `PAE` in %, …), so RfCore's `LoadpullSurface` (the Data Display's performance
+summary) reads it unchanged. Compression is measured from the running gain maximum, harmonicaRF's rule, and a point is
+cut one step past it as the engine's drive-up stops.
 
 ### 14.6 The Model Validation Report (R-mc11-6)
 
