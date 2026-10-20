@@ -639,8 +639,52 @@ fourth for the thermal node of a self-heating model) are offered — and the `.c
 A step whose result predates the data or the network blocks Export with one line naming it; **Run stale** re-runs the
 stale steps in order.
 
+A placed model can have parts of itself switched off per instance, to see what each costs the circuit:
+[Switching parts of the model off](#switches).
+
 A passive document exports as a cell: its name, the library or workspace folder it goes in, and the fitted values as
 its parameters.
+
+## Switching parts of the model off {#switches}
+
+Six instance switches turn one effect off on one `ComposedFet`, so you can see what it costs the circuit in gain,
+efficiency or linearity:
+
+| Switch | Default | What changes |
+|---|---|---|
+| `Charge` | `true` | `false`: the intrinsic device has no capacitance at all. The network's capacitors stay. |
+| `LinearC` | `false` | `true`: the intrinsic capacitances are held at their values at the bias point, so they do not change with drive. |
+| `GateLag` | `true` | `false`: gate-lag traps follow the voltage instantly. |
+| `DrainLag` | `true` | `false`: drain-lag traps follow the voltage instantly. |
+| `SelfHeating` | `true` | `false`: the device stays at the run's `temp`; pin 4, if wired, sees no rise. |
+| `Dispersion` | `true` | `false`: the drain carries its DC current at every frequency. |
+
+`Charge=false` wins over `LinearC`. **Nothing refits**: the `.cmodel` is untouched, and a switch changes only how that
+one instance evaluates it. A switch naming a part the model does not have — `GateLag=false` on a model with no gate-lag
+trap — changes nothing and says so, so one schematic can hold different models.
+
+**The bias point** is the instance's quiescent DC operating point: the intrinsic `vgs` and `vds` of the circuit's own DC
+solution with every RF source at zero, with the junction temperature and trap states that solution has. Every analysis
+solves it first, and solves it again when a sweep moves the bias. With `LinearC=true` the charge is the tangent there,
+its temperature and trap inputs held too, so the capacitance is constant; the currents stay nonlinear. S-parameters at
+the bias point are therefore identical either way, and a power sweep differs only once the drive is large.
+
+**No gate lag** means the trap state takes, at every instant, the value it would have at DC at those voltages. That trap
+then no longer tells RF from DC: the drain current under drive is the DC I–V surface in that respect, and a threshold
+shift from that trap is zero. Its node is not created.
+
+Each switch is an ordinary parameter, so it can be bound to a variable and swept. To compare two runs on one plot:
+
+```
+gl = 1
+ComposedFet:X1  g d s  File="gan_8x125.cmodel"  GateLag=gl
+analysis HB1 type=hb Tone=2 GHz MaxHarm=5
+analysis SW1 type=parametric_sweep Var=gl Values=1,0 Inner=HB1
+```
+
+In the schematic they are the **Model switches** group of the instance's parameters. An instance with any switch off
+carries one line under it naming what is off — `linear C · no gate lag · isothermal` — and every run that uses it adds
+one note to Messages. `circuitrf explain` reports each instance's switches.
 
 ## Plots {#plots}
 

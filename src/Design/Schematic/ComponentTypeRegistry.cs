@@ -1,6 +1,7 @@
 using System.Linq;
 using System.Text.RegularExpressions;
 using CircuitRF.Core.Devices;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Matching;
 using CircuitRF.Core.Systems;
 using CircuitRF.WBond;
@@ -1356,8 +1357,18 @@ public static class ComponentTypeRegistry
                   + "and each network element scale from it by the rule the model records.",
         "Symbol" => "The symbol drawn: a library symbol's name or a .csym path relative to the .cmodel. "
                   + "Blank is the model's own. Its pins 1, 2 and 3 are g, d and s.",
+        ComposedSwitches.ChargeName      => "Off: no intrinsic charge at all. The network's capacitors stay.",
+        ComposedSwitches.LinearCName     => "On: the intrinsic charge is linearised at the quiescent DC bias point.",
+        ComposedSwitches.GateLagName     => "Off: gate-lag traps follow the voltage, with no lag.",
+        ComposedSwitches.DrainLagName    => "Off: drain-lag traps follow the voltage, with no lag.",
+        ComposedSwitches.SelfHeatingName => "Off: evaluated at the run's temperature, with no self-heating.",
+        ComposedSwitches.DispersionName  => "Off: the drain carries its DC current at every frequency.",
         _        => "",
     };
+
+    /// <summary>A composed FET's switches as a picker (brief-modelcomposer-21). Every BooleanParameter spelling
+    /// works in a netlist; the picker offers the two the parameter is seeded with.</summary>
+    private static readonly string[] ComposedSwitchOptions = ["true", "false"];
 
     /// <summary>TLIN's two forms (brief-artsch-2). A placed TLIN carries the angle form's rows; the
     /// physical form's keys are named here because no row of a fresh instance shows them.</summary>
@@ -2282,11 +2293,15 @@ public static class ComponentTypeRegistry
             // true as well, so a schematic saved before this existed behaves identically.
             // A composed FET: the .cmodel, the finger count (blank = the model's own N0) and the symbol
             // (blank = the model's own). Symbol is artwork and never reaches the engine.
+            // The six instance switches (brief-modelcomposer-21) follow, seeded at their defaults — the model as fitted —
+            // and never drawn; extraction writes one only when it is not the default.
             case SymbolKind.ComposedFet:
                 return [
                     new("File",   "",     "", true,  UnitDimension.None),
                     new("N",      "",     "", true,  UnitDimension.None),
                     new("Symbol", "",     "", false, UnitDimension.None),
+                    .. ComposedSwitches.Names.Select(n => new DefaultParam(
+                        n, ComposedSwitches.DefaultOf(n) ? "true" : "false", "", false, UnitDimension.None)),
                 ];
 
             case SymbolKind.VerilogA:
@@ -3656,6 +3671,9 @@ public static class ComponentTypeRegistry
         // A via's capacitance switch: the same two words, turned into 1/0 at extraction
         // (ViaSubstrateInjection.FlagExpression), since a bare word in an expression is a name.
         (SymbolKind.Via or SymbolKind.ViaGnd, "IncludeC")                                => ShowBiasOptions,
+        // A composed FET's instance switches (brief-modelcomposer-21): yes or no. A switch bound to an expression keeps a
+        // text box (ParameterRowViewModel), since a picker cannot hold one.
+        (SymbolKind.ComposedFet, _) when ComposedSwitches.IsSwitch(paramName)                => ComposedSwitchOptions,
         _ => null,
     };
 

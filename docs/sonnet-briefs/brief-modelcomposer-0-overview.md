@@ -1,4 +1,4 @@
-# Brief series — Model Composer: nonlinear FET and passive model extraction (MC-1 … MC-20)
+# Brief series — Model Composer: nonlinear FET and passive model extraction (MC-1 … MC-24)
 
 **Status:** written, not started · **Date:** 2026-10-19 · **Decisions:** locked (§2), owner-reviewed
 **Scope source:** owner request of 2026-10-19 (paraphrased in §0)
@@ -52,6 +52,15 @@ Owner answers on 2026-10-19 (paraphrased):
 - The owner supplied a stock GaN extrinsic network (D5).
 - [P1] is the series' primary reference: where a method choice is open, the briefs follow the approach it
   describes.
+
+Owner request of 2026-10-20 (paraphrased), briefs MC-21 … MC-24:
+- A placed `.cmodel` gets per-instance flags that turn pieces of the model off: no charge, charge linearised at the
+  bias point, one capacitance (Cgs, Cdg or Cds) linear while the others stay nonlinear, no gate lag, no drain lag.
+  The purpose is for a designer to toggle impairments on and off, see what each one does to their design, and debug
+  a circuit with them.
+- harmonicaRF takes a `.cmodel` as its DUT, offers the same flags, and reads current and voltage at the model's
+  intrinsic plane, which is the point of harmonicaRF. Its loadline offers either the intrinsic or the extrinsic I–V.
+- The user page for the `.cmodel` explains the new options.
 
 ### 0.1 References
 
@@ -115,6 +124,10 @@ Z. Wang, Y. Guo, "A physics-informed neural network-based scalable model for GaN
 | MC-18 | `brief-modelcomposer-18-model-from-dc-alone.md` | Typed (or zero) linear charges: a model from DC I–V alone | MC-17 |
 | MC-19 | `brief-modelcomposer-19-traps-without-pulsed-data.md` | The threshold-shift trap coupling: traps with no pulsed data, strengths typed or fitted from multi-bias S | MC-10, MC-16 |
 | MC-20 | `brief-modelcomposer-20-capacitance-tables.md` | A simulator's capacitance table (matrix or circuit set) feeds the charges | MC-8, MC-16 |
+| MC-21 | `brief-modelcomposer-21-instance-switches.md` | Instance switches on a placed `ComposedFet` — no charge, charge linearised at the bias point, no gate lag, no drain lag, isothermal, no dispersion — and the bias-point freeze | MC-9, MC-10, MC-16 |
+| MC-22 | `brief-modelcomposer-22-branch-linear-charges.md` | Linear Cgs, Cdg, Cds, Cm one at a time, by a charge-conserving branch construction exact at the bias point | MC-21 |
+| MC-23 | `brief-modelcomposer-23-harmonicarf-dut.md` | A `.cmodel` as harmonicaRF's DUT, read at its core's intrinsic plane with no mapping; the switches live | MC-21 (MC-22) |
+| MC-24 | `brief-modelcomposer-24-loadline-planes.md` | harmonicaRF's loadline and DCIV family at the intrinsic or the extrinsic plane, for every DUT kind | MC-23 for the composed case |
 
 MC-1/MC-2, MC-3/MC-4/MC-5 and MC-6 are three independent tracks. MC-7 and MC-8 can run side by side.
 

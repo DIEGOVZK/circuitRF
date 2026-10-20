@@ -1,5 +1,6 @@
 using CircuitRF.Core.Design;
 using CircuitRF.Core.Expressions;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Devices.External;
 using CircuitRF.Core.Netlist;
 using CircuitRF.Core.Netlist.Spice;
@@ -2213,8 +2214,11 @@ public static class NetExtractor
                                                       model.SchematicDirectory) is { } symbolWarning)
                 warningsOut.Add(symbolWarning);
 
+            // A switch at its default is left out (brief-modelcomposer-21 R-mc21-6), so a schematic that never touched one
+            // extracts exactly as before the switches existed.
             var cfOverrides = comp.Parameters
                 .Where(p => p.Name != ComposedFetSymbolProvider.SymbolParameter && !string.IsNullOrWhiteSpace(p.Expression))
+                .Where(p => !ComposedSwitches.IsSwitch(p.Name) || !ComposedSwitches.StatesDefault(p.Name, p.Expression))
                 .Select(p => p.Name == ComposedFetSymbolProvider.FileParameter
                     ? new ParameterAssignment(p.Name, QuotedPath(p.Expression), null)
                     : new ParameterAssignment(p.Name, p.Expression,

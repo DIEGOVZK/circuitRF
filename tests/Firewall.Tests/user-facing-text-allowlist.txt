@@ -1269,6 +1269,9 @@ src/Core/Devices/ComponentModelFactory.cs|'{file}' cannot be used: {ex.Message}
 src/Core/Devices/ComponentModelFactory.cs|N={(double.IsNaN(n) ? nv.ToString() : n.ToString(
 src/Core/Devices/ComponentModelFactory.cs|a ComposedFet elaborates as a cell — its network and its ComposedCore — and is never 
 src/Core/Devices/ComponentModelFactory.cs|no .cmodel file is specified; set 'File'.
+src/Core/Devices/Composed/ComposedCoreModel.cs|'{Label}': LinearC=true linearises the intrinsic charge at the bias point, and the bias point was 
+src/Core/Devices/Composed/ComposedSwitches.cs|'{name}' is not a ComposedFet switch.
+src/Core/Devices/Composed/Traps/TrapModel.cs|trap state {States[state]} has no DC gradient; its model defines no shift coupling.
 src/Core/Devices/Composed/ComposedCoreProgram.cs|input '{inputs[k]}' has no seed in this model.
 src/Core/Devices/Composed/CubicBSpline.cs|a spline axis needs at least two sites.
 src/Core/Devices/Composed/GuidedExtrapolation.cs|'{name}' is not an input.
@@ -1280,7 +1283,7 @@ src/Core/Devices/Composed/RuntimeEvaluators.cs|an ANN's output layer has one neu
 src/Core/Devices/Composed/RuntimeEvaluators.cs|layer {k + 1}'s weights are not {outputs} × {_widths[k]}.
 src/Core/Devices/Composed/RuntimeEvaluators.cs|the coefficients hold {coefficients.Length} values; the grid needs {size}.
 src/Core/Elaboration/Elaborator.cs|{who}: '{file}' cannot be read — {ex.Message}
-src/Core/Elaboration/Elaborator.cs|{who}: '{ov.Name}' is not a parameter of a ComposedFet; it takes File, N and m.
+src/Core/Elaboration/Elaborator.cs|{who}: '{ov.Name}' is not a parameter of a ComposedFet; it takes File, N, m, 
 src/Core/Elaboration/Elaborator.cs|{who}: a fourth net is the thermal node t, and '{Path.GetFileName(file)}' does not self-heat; 
 src/Core/Elaboration/Elaborator.cs|{who}: expected 3 nets (g d s), or 4 with the thermal node t; got {inst.NetBindings.Count}.
 src/Core/Elaboration/Elaborator.cs|{who}: its 'File' parameter names a folder, not a .cmodel file: '{file}'.

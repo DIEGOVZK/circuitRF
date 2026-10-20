@@ -628,7 +628,7 @@ public static class ComponentModelFactory
     /// <summary>
     /// The core of a composed FET: the <c>.cmodel</c> its <c>File</c> names (an absolute path once the
     /// elaborator has resolved it), loaded through <see cref="Composed.ComposedModelCache"/>, at
-    /// <c>N</c> fingers (default <c>N0</c>).
+    /// <c>N</c> fingers (default <c>N0</c>), with the instance switches its ComposedFet stated (brief-modelcomposer-21).
     /// </summary>
     private static Composed.ComposedCoreModel CreateComposedCoreModel(
         IReadOnlyDictionary<string, Value> parameters, double ambientC)
@@ -647,7 +647,7 @@ public static class ComponentModelFactory
         int n = loaded.N0;
         if (parameters.TryGetValue("N", out var nv))
             n = ComposedFingerCount(nv);
-        return new Composed.ComposedCoreModel(loaded, n, ambientC);
+        return new Composed.ComposedCoreModel(loaded, n, ambientC, Composed.ComposedSwitches.Read(parameters));
     }
 
     /// <summary>

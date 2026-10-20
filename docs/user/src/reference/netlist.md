@@ -336,7 +336,8 @@ each part beside its pin count.
 #### Yes-and-no parameters {#w-booleans}
 
 A parameter that is a switch — `BiasTee`, `RefPin`, `RefNode`, `IncludeCapacitance`, `GroundPlane`,
-`OpVars` — accepts `on`/`true`/`yes`/`1` and `off`/`false`/`no`/`0`, in any case. **Anything else is
+`OpVars`, and a `ComposedFet`'s `Charge`, `LinearC`, `GateLag`, `DrainLag`, `SelfHeating` and `Dispersion`
+([Switching parts of the model off](model-composer.html#switches)) — accepts `on`/`true`/`yes`/`1` and `off`/`false`/`no`/`0`, in any case. **Anything else is
 refused by name.** Before 1.0 `BiasTee` accepted the literal `on` and nothing else, so `BiasTee=true`
 was read as *off* without a word.
 

@@ -843,7 +843,8 @@ public sealed class Elaborator
             // X1.rg is a component path and V(X1.gi) an intrinsic voltage like in any sub-cell.
             if (inst.Reference.Equals(ComponentModelFactory.ComposedFetTypeName, StringComparison.OrdinalIgnoreCase))
             {
-                var composed = ComposedFetCell(inst, childPath, currentScope);
+                var composed = ComposedFetCell(inst, childPath, currentScope, out var switches, out var loadedModel);
+                NoteComposedSwitches(childPath, switches, loadedModel, netlist);
                 var portMap  = new Dictionary<string, string>(StringComparer.Ordinal);
                 for (int i = 0; i < composed.Ports.Count; i++)
                     portMap[composed.Ports[i]] = ResolveNet(inst.NetBindings[i]);
@@ -1132,6 +1133,8 @@ public sealed class Elaborator
                     }
                     if (core.HasThermalNode) { pins.Add(resolvedNodes[3]); pins.Add(0); }
                     resolvedNodes = pins.ToArray();
+                    int dot = childPath.LastIndexOf('.');
+                    core.Label = dot > 0 ? childPath[..dot] : childPath;
                     WarnComposedTemperature(core, netlist);
                 }
 
@@ -2046,18 +2049,20 @@ public sealed class Elaborator
 
     /// <summary>The cell each distinct (<c>.cmodel</c>, <c>N</c>, <c>m</c>) elaborates as, built once
     /// per elaboration. Never added to a library, the palette or a file.</summary>
-    private readonly Dictionary<(string Path, long Stamp, int N, double M, bool ThermalPin, double AmbientC), Cell> _composedCells = [];
+    private readonly Dictionary<(string Path, long Stamp, int N, double M, bool ThermalPin, double AmbientC, ComposedSwitches Switches), Cell> _composedCells = [];
 
-    /// <summary>What a ComposedFet line may carry. <c>Symbol</c> is the schematic's alone and is read by
-    /// nothing here.</summary>
-    private static readonly string[] ComposedParams = ["File", "N", MultiplierParamName, "M", "Symbol"];
+    /// <summary>What a ComposedFet line may carry: its model, size and multiplier, and the instance switches
+    /// (brief-modelcomposer-21). <c>Symbol</c> is the schematic's alone and is read by nothing here.</summary>
+    private static readonly string[] ComposedParams =
+        ["File", "N", MultiplierParamName, "M", "Symbol", .. ComposedSwitches.Names];
 
     /// <summary>
     /// The in-memory cell one <c>ComposedFet</c> instance elaborates as (R-mc1-5): its <c>.cmodel</c>
     /// loaded through the cache, its network scaled to <c>N</c> fingers (R-mc1-7), and the
     /// <c>ComposedCore</c> on <c>gi di si</c>. Every refusal names the instance.
     /// </summary>
-    private Cell ComposedFetCell(Instance inst, string childPath, Scope parentScope)
+    private Cell ComposedFetCell(Instance inst, string childPath, Scope parentScope,
+                                 out ComposedSwitches switches, out LoadedComposedModel loaded)
     {
         string who = $"ComposedFet '{childPath}'";
 
@@ -2068,7 +2073,11 @@ public sealed class Elaborator
         foreach (var ov in inst.Overrides)
             if (!ComposedParams.Contains(ov.Name, StringComparer.Ordinal))
                 throw new InvalidOperationException(
-                    $"{who}: '{ov.Name}' is not a parameter of a ComposedFet; it takes File, N and m.");
+                    $"{who}: '{ov.Name}' is not a parameter of a ComposedFet; it takes File, N, m, " +
+                    "Charge, LinearC, GateLag, DrainLag, SelfHeating and Dispersion.");
+
+        try { switches = ComposedSwitches.Read(inst.Overrides, ov => EvalOverride(inst, ov, parentScope)); }
+        catch (InvalidOperationException ex) { throw new InvalidOperationException($"{who}: {ex.Message}"); }
 
         var fileOv = inst.Overrides.FirstOrDefault(o => o.Name == "File");
         string file = fileOv is null ? "" : Unquote(fileOv.Expression.Trim());
@@ -2080,7 +2089,6 @@ public sealed class Elaborator
         if (!File.Exists(file))
             throw new FileNotFoundException($"{who}: model file not found: '{file}'.", file);
 
-        LoadedComposedModel loaded;
         try { loaded = ComposedModelCache.Load(file); }
         catch (CmodelFormatException ex)
         {
@@ -2117,7 +2125,7 @@ public sealed class Elaborator
                     childPath);
 
         long stamp = File.GetLastWriteTimeUtc(file).Ticks;
-        if (_composedCells.TryGetValue((file, stamp, n, m, thermalPin, _ambientC), out var cached)) return cached;
+        if (_composedCells.TryGetValue((file, stamp, n, m, thermalPin, _ambientC, switches), out var cached)) return cached;
 
         var coreParams = new List<ParameterAssignment>
         {
@@ -2125,6 +2133,8 @@ public sealed class Elaborator
             new("N", n.ToString(CultureInfo.InvariantCulture)),
         };
         if (m != 1.0) coreParams.Add(new(MultiplierParamName, ComposedNetworkTemplate.Literal(m)));
+        // The core carries the switches, so each core instance is built with them.
+        foreach (var (name, value) in switches.Write()) coreParams.Add(new(name, value));
         var thermal = loaded.Model.Thermal;
         IEnumerable<string> coreNets = thermal is null
             ? ComposedNetworkTemplate.IntrinsicNets
@@ -2137,8 +2147,30 @@ public sealed class Elaborator
         double ambient = t.Mode == TemperatureMode.Range ? Math.Clamp(_ambientC, t.Tmin, t.Tmax) : _ambientC;
         var cell = loaded.Network.Synthesize(
             $"ComposedFet({Path.GetFileName(file)},N={n})", n, loaded.N0, m, core, thermal, ambient, thermalPin);
-        _composedCells[(file, stamp, n, m, thermalPin, _ambientC)] = cell;
+        _composedCells[(file, stamp, n, m, thermalPin, _ambientC, switches)] = cell;
         return cell;
+    }
+
+    /// <summary>
+    /// What a switched instance says in every run that elaborates it (R-mc21-7): one note naming what is off, so an
+    /// impairment switched off and forgotten is never invisible — and, for a switch naming a part the model does not have,
+    /// that it changes nothing (R-mc21-2), so one schematic can carry several models.
+    /// </summary>
+    private static void NoteComposedSwitches(string path, ComposedSwitches s, LoadedComposedModel loaded, ElaboratedNetlist netlist)
+    {
+        if (s.IsDefault) return;
+        netlist.AddNoteOnce($"composed-switches:{path}", $"{path}: {s.Sentence()}.");
+
+        string name = Path.GetFileName(loaded.Path);
+        var traps = loaded.Program.Traps;
+        bool HasLag(int sign) => traps is not null && Enumerable.Range(0, traps.States.Count).Any(k => Math.Sign(traps.CaptureSign(k)) == sign);
+        void Inert(string key, string what) =>
+            netlist.AddNoteOnce($"composed-switch-inert:{path}:{key}", $"{path}: '{name}' {what}; {key}=false changes nothing.");
+
+        if (!s.GateLag && !HasLag(-1))                 Inert(ComposedSwitches.GateLagName, "has no gate-lag trap state");
+        if (!s.DrainLag && !HasLag(+1))                Inert(ComposedSwitches.DrainLagName, "has no drain-lag trap state");
+        if (!s.SelfHeating && loaded.Model.Thermal is null) Inert(ComposedSwitches.SelfHeatingName, "does not self-heat");
+        if (!s.Dispersion && loaded.Program.IdRF is null)   Inert(ComposedSwitches.DispersionName, "has no DC/RF dispersion");
     }
 
     /// <summary>
@@ -2175,6 +2207,8 @@ public sealed class Elaborator
         foreach (var ov in inst.Overrides)
             result[ov.Name] = ov.Name.Equals("File", StringComparison.OrdinalIgnoreCase)
                 ? new Value(ResolveSnpFilePath(Unquote(ov.Expression.Trim())))
+                // A switch's bare spelling is a value, not a name to look up.
+                : ComposedSwitches.IsSwitch(ov.Name) && ComposedSwitches.Spelling(ov.Expression) is { } b ? new Value(b)
                 : EvalOverride(inst, ov, parentScope);
         return result;
     }

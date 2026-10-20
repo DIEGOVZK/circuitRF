@@ -1,4 +1,5 @@
 using CircuitRF.Core.Devices;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Design;
 using CircuitRF.Core.Elaboration;
 using CircuitRF.Core.Stability;
@@ -227,6 +228,7 @@ internal static class Explain
                 Workspace(path, walks);
                 if (kind is DocumentKind.Netlist or DocumentKind.Schematic) CircuitTechnology(path, kind, walks);
                 if (kind is DocumentKind.Netlist or DocumentKind.Schematic) PhysicalLines(path, kind, walks);
+                if (kind is DocumentKind.Netlist or DocumentKind.Schematic) ComposedSwitchSteps(path, kind, walks);
                 if (kind is DocumentKind.Schematic) ArtworkSource(path, walks);
                 if (kind is DocumentKind.Schematic) ImageSourceBlock(path, walks);
                 break;
@@ -1639,6 +1641,29 @@ internal static class Explain
                 $"2π·F·L·√Eeff/c₀ with L = {(line.LengthMeters * 1e3).ToString("G6", System.Globalization.CultureInfo.InvariantCulture)} mm, "
               + $"Eeff = {line.Eeff.ToString("G6", System.Globalization.CultureInfo.InvariantCulture)}"
               + (line.ReferenceFrequencyHz > 0 ? "" : "; the line states no F, so at 1 GHz")));
+        }
+    }
+
+    /// <summary>
+    /// Each composed FET's instance switches (brief-modelcomposer-21 R-mc21-7): what the instance evaluates of its model,
+    /// as written — a switch bound to an expression is shown as its expression — and, for a linearised charge, where it is
+    /// frozen. Nothing here refits or evaluates; the elaborator reads the same text through <see cref="ComposedSwitches"/>.
+    /// </summary>
+    private static void ComposedSwitchSteps(string path, DocumentKind kind, List<ResolutionStepJson> walks)
+    {
+        if (CircuitSource.Read(path, kind) is not var (lib, tb)) return;
+        var placed = tb.Instances.Select(i => (Where: i.InstanceName, Inst: i))
+            .Concat(lib.Cells.SelectMany(c => c.Instances.Select(i => (Where: $"{c.Name}/{i.InstanceName}", Inst: i))))
+            .Where(p => p.Inst.Reference.Equals(ComponentModelFactory.ComposedFetTypeName, StringComparison.OrdinalIgnoreCase));
+        foreach (var (where, inst) in placed)
+        {
+            string? Raw(string name) => inst.Overrides.FirstOrDefault(o => o.Name == name)?.Expression;
+            string text = ComposedSwitches.Annotate(Raw);
+            bool linear = ComposedSwitches.Spelling(Raw(ComposedSwitches.LinearCName) ?? "") == true
+                       && ComposedSwitches.Spelling(Raw(ComposedSwitches.ChargeName) ?? "") != false;
+            walks.Add(new ResolutionStepJson($"switches {where}", path, text.Length > 0 ? text : "as fitted",
+                linear ? "its switches; the intrinsic charge is frozen at the quiescent DC operating point, which every analysis solves first"
+                       : "its switches; nothing refits the model"));
         }
     }
 

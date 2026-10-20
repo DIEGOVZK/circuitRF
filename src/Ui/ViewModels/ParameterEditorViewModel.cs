@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RfCore;
 using CircuitRF.Core.Devices;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Devices.External;
 using CircuitRF.Core.Design;
 using CircuitRF.Core.Devices.Microstrip;
@@ -809,6 +810,16 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
 
     public ObservableCollection<ParameterRowViewModel> Rows { get; } = [];
 
+    /// <summary>A composed FET's instance switches (brief-modelcomposer-21), in their own collapsible group under the
+    /// ordinary rows — the same row view models, so each commits exactly as any other row does.</summary>
+    public ObservableCollection<ParameterRowViewModel> SwitchRows { get; } = [];
+
+    public bool ShowModelSwitches => SwitchRows.Count > 0;
+
+    /// <summary>Whether the Model switches group is open. Collapsed by default: the switches are a debugging view, and an
+    /// instance with one off says so on the schematic either way.</summary>
+    [ObservableProperty] private bool _modelSwitchesExpanded;
+
     // ── Embedded host: bind to selection ──────────────────────────────────────
 
     /// <summary>
@@ -867,6 +878,8 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
             _target = null;
             IsEmptyState = true;
             Rows.Clear();
+            SwitchRows.Clear();
+            OnPropertyChanged(nameof(ShowModelSwitches));
             OnPropertyChanged(nameof(AllowsAddParameter));
             OnPropertyChanged(nameof(ShowAddSddEquation));
             NotifyMklopfState();
@@ -899,10 +912,12 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
         //
         // (See AdoptCellDeclaredParameters below for why a cell-ref component is topped up first.)
         Rows.Clear();
+        SwitchRows.Clear();
         if (_schematicVm is not null && comp.Symbol != SymbolKind.Snp)
         {
             AdoptCellDeclaredParameters(comp);
             if (comp.Symbol == SymbolKind.SpiceModel) AdoptSpiceModelDeclaredParameters(comp);
+            if (comp.Symbol == SymbolKind.ComposedFet) AdoptComposedFetSwitches(comp);
 
             var built = new List<ParameterRowViewModel>();
             foreach (var param in comp.Parameters)
@@ -952,6 +967,11 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
                     row.ExpressionPlaceholder = WBondPlaceholderFor(param.Name);
                     ConfigureWBondTemperatureRow(row);
                 }
+                if (comp.Symbol == SymbolKind.ComposedFet && ComposedSwitches.IsSwitch(param.Name))
+                {
+                    SwitchRows.Add(row);
+                    continue;
+                }
                 built.Add(row);
             }
 
@@ -986,6 +1006,7 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
 
         _isRefreshing = false;
 
+        OnPropertyChanged(nameof(ShowModelSwitches));
         OnPropertyChanged(nameof(IsSnp));
         OnPropertyChanged(nameof(IsSpiceModel));
         OnPropertyChanged(nameof(IsWBond));
@@ -1031,6 +1052,28 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
         var defaults = ComponentTypeRegistry.DefaultParameters(SymbolKind.Snp, comp.PortCount);
         foreach (var d in defaults)
         {
+            if (comp.Parameters.Any(p => p.Name.Equals(d.Name, StringComparison.Ordinal))) continue;
+            comp.Parameters.Add(new EditableParameter
+            {
+                Name            = d.Name,
+                Expression      = d.Expression,
+                Unit            = d.Unit,
+                Dimension       = d.Dimension,
+                ShowOnSchematic = d.ShowOnSchematic,
+            });
+        }
+    }
+
+    /// <summary>
+    /// Gives a composed FET placed before its switches existed (brief-modelcomposer-21) the six switch rows, at their
+    /// defaults — the instance it already is. Same rule as <see cref="AdoptDefaultSnpParameters"/>: no undo entry, and an
+    /// existing value is never touched.
+    /// </summary>
+    private static void AdoptComposedFetSwitches(EditableComponent comp)
+    {
+        foreach (var d in ComponentTypeRegistry.DefaultParameters(SymbolKind.ComposedFet, comp.PortCount))
+        {
+            if (!ComposedSwitches.IsSwitch(d.Name)) continue;
             if (comp.Parameters.Any(p => p.Name.Equals(d.Name, StringComparison.Ordinal))) continue;
             comp.Parameters.Add(new EditableParameter
             {
@@ -1852,8 +1895,9 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
         // untouched params), so a same-count rename would silently leave a row's label AND value
         // bound to an object no longer in the model at all.
         var visible = VisibleParams(_target);
-        if (Rows.Count != visible.Count ||
-            !Rows.Select(r => r.Name).SequenceEqual(visible.Select(p => p.Name)))
+        var rows    = Rows.Concat(SwitchRows).ToList();   // a composed FET's switches are rows too, in their own group
+        if (rows.Count != visible.Count ||
+            !rows.Select(r => r.Name).SequenceEqual(visible.Select(p => p.Name)))
         {
             SetTarget(_target);
             return;
@@ -1870,12 +1914,20 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
         // would rebuild on every change for any component whose rows get reordered.
         var live = new HashSet<EditableParameter>(visible, ReferenceEqualityComparer.Instance
                                                            as IEqualityComparer<EditableParameter>);
-        foreach (var row in Rows)
+        foreach (var row in rows)
             if (!live.Contains(row.BoundParameter))
             {
                 SetTarget(_target);
                 return;
             }
+
+        // A switch that became an expression (or stopped being one) changes between picker and text box.
+        if (SwitchRows.Any(r => r.IsChoiceParam != (string.IsNullOrWhiteSpace(r.BoundParameter.Expression)
+                                                    || ComposedSwitches.Spelling(r.BoundParameter.Expression) is not null)))
+        {
+            SetTarget(_target);
+            return;
+        }
 
         RefreshFromModel();
         UpdateCanRemoveTopGroup();
@@ -1908,7 +1960,7 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
         ShowInstanceName   = _target.ShowInstanceName;
         ModelsExistingArtwork = _target.FromArtwork;
         OnPropertyChanged(nameof(ShowModelsExistingArtwork));
-        foreach (var row in Rows)
+        foreach (var row in Rows.Concat(SwitchRows))
             row.RefreshFromModel();
         _isRefreshing = false;
         // A READOUT of the instance, so it follows every change to it — including an undo of a

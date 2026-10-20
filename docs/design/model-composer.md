@@ -1629,3 +1629,46 @@ the brief's, with the measurements, in
 flow on a local device folder when present and reports, asserting only that it completes. `ExampleWorkspaceLoadsTests`
 copies the example (new timestamps, as File ▸ New ▸ Examples gives) and checks every document, every step fresh, and
 the benches.
+
+## 23. Instance switches and the bias-point freeze (MC-21)
+
+**`ComposedSwitches`** (`src/Core/Devices/Composed/`) is the one reader and writer of the six switches — `Charge`,
+`LinearC`, `GateLag`, `DrainLag`, `SelfHeating`, `Dispersion`, read by `BooleanParameter`, a bare spelling taken as written
+before anything is evaluated. The elaborator reads them off the `ComposedFet` line, keys `_composedCells` on them, and
+writes the non-default ones onto the synthesised `ComposedCore`, so each core is built with them; `NetExtractor` writes a
+switch only when it is not the default, the schematic's annotation and `explain` go through `Annotate`, and the parameter
+editor's picker is the registry's. A non-default instance adds one note per run (`X1: linear C at the bias point, no gate
+lag.`), and a switch naming a part the model lacks adds one saying it changes nothing.
+
+**What each does to the core.**
+- `Charge=false`: rows 0 and 1 of `q` and `dc` are zero. The dispersion and trap nodes' own charges are not intrinsic
+  charge and stay.
+- `SelfHeating=false`: `T` is the clamped ambient, the T lane maps to no column, and the thermal port carries no power. The
+  port stays, so the cell's `Rth ∥ Cth` and a bound pin 4 are unchanged and sit at 0 K.
+- `Dispersion=false`: `_dispersive` is false, so no `x` node and the drain conducts `Id` (the DC current). A drift charge
+  still reads `IdRF`, as fitted: the switch changes the drain, not the charge.
+- **No lag** (`GateLag`/`DrainLag=false`) removes the states of that `CaptureSign` (−1 gate, +1 drain). A removed state's
+  seed is `DcValue(k, vgs, vds, T)` at the instantaneous intrinsic voltages; after the constituents are evaluated, its lane's
+  gradient folds into `vgs`, `vds` and `T` through `DcValue`'s gradient overload and is cleared, and its node is not minted
+  (`InternalStateNodeCount` counts kept states). Under `Shift` the shift term is then `c·(φ − φ_DC) = 0` and its
+  derivatives cancel exactly through the fold. `CaptureEmission` and `Custom` (whose DC expression's dual gives it) both
+  supply the overload; for a model that does not, the core uses a central difference of `DcValue` (relative steps 1e-6 in
+  the voltages, 1e-4 in `T`), detected once at construction.
+
+**The freeze.** `LinearC=true` makes the core an `IBiasFrozen` that needs a bias point. `BiasFreeze.Ensure`
+(`src/Engine`) solves `NonlinearDcEngine` and hands each such model its port voltages at the solution; the core evaluates
+its charge there as fitted and stores `q(v_Q)` and the 2×2 `C(v_Q)` (scaled, transcapacitance kept) in one immutable
+record. After that, `q = q(v_Q) + C(v_Q)·(v − v_Q)` and `dc` is that constant matrix, with no temperature or trap column.
+A repeat freeze at the same port voltages changes nothing; a moved DC solution re-freezes (`FreezeCount`). A design with
+no linear-charge instance returns at once with no DC solve.
+
+Callers: `SParameterEngine`'s preparation (`Apply`, at the operating point it already solved, or 0 V when that did not
+converge), `HbEngine.Run` and `RunSinglePoint` — warm-started or not, so loadpull, pursuit, sweeps, the optimizer and
+the validation bench all go through them — and harmonicaRF's own HB solve. `BiasFreezeTests` scans `src/Engine` and
+`src/Harmonica`: every file calling an HB Newton solver or `StampLinearized` must freeze, and so must each public `Run*`
+method of `HbEngine`.
+
+**The unfrozen refusal.** A linear-charge core asked for its charge before any freeze throws
+`ComposedEvaluationException` naming the instance. The DC engine reads no charge and says so explicitly:
+`NonlinearDcEngine.Run` opens a `ChargeReading.NotRead()` scope, inside which the unfrozen core returns its currents
+without refusing.

@@ -652,6 +652,10 @@ public static class SParameterEngine
             }
         }
 
+        // A linearised composed-FET charge is frozen at the same operating point the devices linearise about
+        // (brief-modelcomposer-21 R-mc21-3) — null there means 0 V, as BuildBias reads it.
+        if (hasNonlinear) BiasFreeze.Apply(netlist, dcNodeVoltages ?? new double[Math.Max(0, netlist.Nodes.Count - 1)]);
+
         // Resolve each control-using SDD's referenced branch index against THIS (S-param) assembly.
         // Must happen before the frequency loop — the SDD reads ControlBranchIndices when it stamps.
         ResolveSParamControlBranches(netlist, freqsHz, allPortsResistive, ports, N, dcNodeVoltages, settings);

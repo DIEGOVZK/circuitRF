@@ -437,6 +437,8 @@ public sealed class HbEngine
     /// </summary>
     public HbRunResult Run(HbAnalysisParams p, Complex[,]? warmStart = null)
     {
+        // Before any evaluation reads charge, warm-started or not (brief-modelcomposer-21 R-mc21-3).
+        BiasFreeze.Ensure(_netlist, _settings);
         // TWO OR MORE tones go to the APFT lattice path. Two tones used to be routed to the
         // rectangular-FFT path instead; AnalysisSettings.HbTwoToneOnLattice (default TRUE since
         // 2026-08-30) is the switch back, and that setting carries the measurements the default
@@ -1747,6 +1749,8 @@ public sealed class HbEngine
         Complex[,]?       warmStart        = null,
         AnalysisSettings? settingsOverride  = null)
     {
+        // Before any evaluation reads charge, warm-started or not (brief-modelcomposer-21 R-mc21-3).
+        BiasFreeze.Ensure(_netlist, settingsOverride ?? _settings);
         int    K      = p.MaxHarmonic;
         double f0     = p.ToneHz;
         int    gridN  = HbFft.GridSize(K, p.FFTOverSample);
@@ -1940,6 +1944,7 @@ public sealed class HbEngine
         double           sweepVal,
         bool             useControlJacobian = true)
     {
+        BiasFreeze.Ensure(_netlist, _settings);   // the Jacobian reads charge (brief-modelcomposer-21)
         // Set sweep state so I_src(k) reflects the right drive level.
         if (p.SweepVarName is not null)
             UpdateSweepPoint(p.SweepVarName, sweepVal);

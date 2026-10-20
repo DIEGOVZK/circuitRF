@@ -776,6 +776,13 @@ public sealed class EditableComponent
     /// <para>R-fp2-5b: NOT the whole reference string and not the density. <c>smt:0402@N</c> is
     /// machine spelling on a human drawing.</para>
     /// </summary>
+    /// <summary>A composed FET's switch annotation — <c>linear C · no gate lag</c> — or empty at the defaults and for every
+    /// other kind (brief-modelcomposer-21 R-mc21-7).</summary>
+    public string SwitchesLabelText()
+        => Symbol != SymbolKind.ComposedFet ? ""
+         : CircuitRF.Core.Devices.Composed.ComposedSwitches.Annotate(
+               name => Parameters.FirstOrDefault(p => p.Name == name)?.Expression);
+
     public string FootprintLabelText()
     {
         if (!ShowFootprintLabel) return "";
@@ -1171,6 +1178,10 @@ public sealed class EditableComponent
         // parameter-label offset in every .csch ever written by one row.
         string footprintLabel = FootprintLabelText();
         if (footprintLabel.Length > 0) labels.Add(footprintLabel);
+        // A composed FET with a part of its model switched off says so, always (brief-modelcomposer-21 R-mc21-7) — appended
+        // last for the footprint's reason, and drawn whatever its rows' ShowOnSchematic says.
+        string switchesLabel = SwitchesLabelText();
+        if (switchesLabel.Length > 0) labels.Add(switchesLabel);
 
         var bb = GetBoundingBox();
         var (glyphMinX, glyphMinY, glyphMaxX, glyphMaxY) = cellRefPrimitives is not null

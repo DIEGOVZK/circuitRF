@@ -3063,3 +3063,16 @@ problem always did, and the offset from that one value. Problems whose values va
   under-determined one read past the end of R — an `IndexOutOfRangeException`, which the order loop's
   `ArithmeticException` catch does not take. Noisy data never meets the 1e-3 tolerance and walks to order 12, so an
   11-point block ended its analysis there. `VectorFit.MaxOrder(nf)` caps the search and `Fit` refuses beyond it.
+
+- **A sweep over a composed-FET switch could not stack** (brief-modelcomposer-21, 2026-10-20). `DrainLag=dl` swept
+  over `1,0` changes the core's port count — a removed trap state mints no node — and HB's `I` cube carries one branch
+  per device port, so the two points' branch axes were 6 and 4 long and `DataCube.PrependAxis` refused the stack. The V
+  and INl node axes were unaffected (minted state nodes are `__`-prefixed and excluded). `DataSet.StackSweepAxis` now
+  aligns cubes that differ only along LABELLED axes onto the union of their labels, NaN where a point has no such entry
+  (`DataCube.AlignLabelledAxes`); cubes that already agree are passed through untouched, and a differing numeric axis or
+  a repeated label is still refused, so every sweep that stacked before stacks bit-identically.
+- **`BiasFreeze` is free unless a model asks for it.** It scans the netlist for an `IBiasFrozen` that needs a bias
+  point before solving anything, so the extra DC solve it adds to each HB entry exists only for a design with a
+  `LinearC=true` instance. Loadpull calls `RunSinglePoint` per termination and drive step, so such a design pays one DC
+  solve per point there; nothing caches it, because a bias changed in place (harmonicaRF's `VdcOverride`) is exactly
+  what must re-freeze and only a fresh DC solve can see it.

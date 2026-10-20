@@ -49,8 +49,18 @@ namespace CircuitRF.Core.Devices.Composed;
 /// synthesised cell's <c>Rth ∥ Cth</c> to ground closes [P1] eq. 6.67. It is not a minted unknown: the cell owns the
 /// net, which is what lets an instance's fourth pin be it. <c>P</c> is the scaled (whole-device) power, and
 /// <c>Rth</c> scales by <c>N0/N</c>, so ΔT does not depend on <c>N</c>.</para>
+///
+/// <para><b>Instance switches</b> (brief-modelcomposer-21, <see cref="ComposedSwitches"/>) change how THIS instance evaluates
+/// the model, never the model. <c>Charge=false</c> zeroes both intrinsic charges. <c>LinearC=true</c> replaces them by
+/// their tangent at the bias point the engine froze (<see cref="IBiasFrozen"/>): <c>q(v) = q(v_Q) + C(v_Q)·(v − v_Q)</c>, the
+/// temperature and trap inputs held at the frozen values; unfrozen, the core refuses to return a charge outside a DC
+/// solve (<see cref="ChargeReading"/>). <c>GateLag=false</c> / <c>DrainLag=false</c> remove the states of that capture
+/// direction (<see cref="TrapDynamics.CaptureSign"/>): each takes its DC value at the instantaneous voltages, its lane's
+/// gradient folds through <see cref="TrapDynamics.DcValue(int, double, double, double, Span{double})"/>, and its node is
+/// not minted. <c>SelfHeating=false</c> evaluates at the ambient and drives no power into the thermal port, which stays,
+/// so a bound pin 4 still connects. <c>Dispersion=false</c> conducts <c>IdDC</c> and mints no dispersion node.</para>
 /// </summary>
-public sealed class ComposedCoreModel : ComponentModel
+public sealed class ComposedCoreModel : ComponentModel, IBiasFrozen
 {
     private readonly ComposedCoreProgram _p;
     private readonly double _scale;
@@ -59,9 +69,15 @@ public sealed class ComposedCoreModel : ComponentModel
     private readonly bool   _exchange;
     private readonly bool   _dispersive;
     private readonly double _tau;
-    private readonly bool   _thermal;
+    private readonly bool   _thermal;     // the thermal port exists (the model self-heats)
+    private readonly bool   _heats;       // ... and this instance lets it (SelfHeating)
     private readonly TrapDynamics? _traps;
-    private readonly int    _trapCount;
+    private readonly int    _allTraps;    // the model's enabled states
+    private readonly int    _trapCount;   // the states this instance keeps as nodes
+    private readonly int[]  _kept;        // node j holds state _kept[j]
+    private readonly int[]  _nodeOf;      // state k's node, or −1 when its lag is switched off
+    private readonly bool   _dcGradient;  // the dynamics supply DcValue's gradient overload
+    private Frozen? _frozen;
 
     /// <summary>The model this core evaluates.</summary>
     public LoadedComposedModel Loaded { get; }
@@ -69,22 +85,43 @@ public sealed class ComposedCoreModel : ComponentModel
     /// <summary>The instance's finger count.</summary>
     public int N { get; }
 
+    /// <summary>The switches this instance evaluates the model with.</summary>
+    public ComposedSwitches Switches { get; }
+
+    /// <summary>The ComposedFet instance this core belongs to, for a refusal; set by the elaborator.</summary>
+    public string Label { get; internal set; } = "";
+
     /// <summary>The temperature the constituents are evaluated at, °C — the run's ambient clamped to
     /// the model's range, or the model's own <c>T0</c> for a single-temperature model.</summary>
     public double TemperatureC => _temperatureC;
 
-    public ComposedCoreModel(LoadedComposedModel loaded, int n, double ambientC)
+    public ComposedCoreModel(LoadedComposedModel loaded, int n, double ambientC, ComposedSwitches? switches = null)
     {
-        Loaded = loaded;
-        N      = n;
+        Loaded   = loaded;
+        N        = n;
+        Switches = switches ?? ComposedSwitches.Default;
         _p     = loaded.Program;
         _scale = (double)n / loaded.N0;
         _exchange = _p.Symmetry == DrainSourceSymmetry.Exchange;
         _tau = _p.DispersionTau ?? 0.0;
-        _dispersive = _p.IdRF is not null;
+        _dispersive = _p.IdRF is not null && Switches.Dispersion;
         _thermal = loaded.Model.Thermal is not null;
+        _heats = _thermal && Switches.SelfHeating;
         _traps = _p.Traps;
-        _trapCount = _traps?.States.Count ?? 0;
+        _allTraps = _traps?.States.Count ?? 0;
+
+        _nodeOf = new int[_allTraps];
+        var kept = new List<int>(_allTraps);
+        for (int k = 0; k < _allTraps; k++)
+        {
+            bool gate = _traps!.CaptureSign(k) < 0;
+            bool keep = gate ? Switches.GateLag : Switches.DrainLag;
+            _nodeOf[k] = keep ? kept.Count : -1;
+            if (keep) kept.Add(k);
+        }
+        _kept = [.. kept];
+        _trapCount = _kept.Length;
+        _dcGradient = _trapCount < _allTraps && SuppliesDcGradient(_traps!);
 
         var t = loaded.Model.Temperature;
         _hasT = t.Mode == TemperatureMode.Range;
@@ -94,11 +131,12 @@ public sealed class ComposedCoreModel : ComponentModel
     public override int       PortCount => 2 + InternalStateNodeCount + (_thermal ? 1 : 0);
     public override ModelKind Kind      => ModelKind.Nonlinear;
 
-    /// <summary>Internal state nodes the elaborator mints: one, <c>x</c>, for a dispersive model; one per enabled trap state
-    /// for a model with traps (the two are never combined).</summary>
+    /// <summary>Internal state nodes the elaborator mints: one, <c>x</c>, for a dispersive model; one per trap state the
+    /// instance keeps for a model with traps (the two are never combined). A switched-off part mints none.</summary>
     public int InternalStateNodeCount => _dispersive ? 1 : _trapCount;
 
-    /// <summary>Whether the model self-heats: the core then takes a fourth net, the thermal node, as its last port.</summary>
+    /// <summary>Whether the model self-heats: the core then takes a fourth net, the thermal node, as its last port —
+    /// under <c>SelfHeating=false</c> too, where it drives no power into it.</summary>
     public bool HasThermalNode => _thermal;
 
     /// <summary>The thermal node's port, or −1.</summary>
@@ -106,7 +144,7 @@ public sealed class ComposedCoreModel : ComponentModel
 
     public override string[] TerminalNames =>
         [ "gi", "si", "di", "si", .. (_dispersive ? (string[])["x", "0"] : []),
-          .. (_traps?.States ?? []).SelectMany(s => (string[])[s, "0"]), .. (_thermal ? (string[])["t", "0"] : []) ];
+          .. _kept.SelectMany(k => (string[])[_traps!.States[k], "0"]), .. (_thermal ? (string[])["t", "0"] : []) ];
 
     public override void Stamp(IMnaContext mna, ElaboratedComponent c, double omega) { }
 
@@ -134,6 +172,36 @@ public sealed class ComposedCoreModel : ComponentModel
             return list;
         }
     }
+
+    // ── The bias point (R-mc21-3) ────────────────────────────────────────────
+
+    /// <summary>The intrinsic charge at the frozen point and its 2×2 capacitance, scaled, plus the port voltages it was
+    /// frozen at — one immutable object, swapped in whole.</summary>
+    private sealed record Frozen(double[] At, double Qg, double Qd, double Cgg, double Cgd, double Cdg, double Cdd);
+
+    /// <summary>Only a linearised charge needs one.</summary>
+    public bool NeedsBiasPoint => Switches.LinearCharge;
+
+    /// <summary>Whether the charge has been frozen (a linear-charge instance only).</summary>
+    public bool IsFrozen => _frozen is not null;
+
+    public bool FreezeAt(ReadOnlySpan<double> portVoltages)
+    {
+        if (!NeedsBiasPoint) return false;
+        if (_frozen is { } f && portVoltages.SequenceEqual(f.At)) return false;
+
+        int n = PortCount;
+        Span<double> ri = stackalloc double[MaxPorts], rq = stackalloc double[MaxPorts],
+                     rg = stackalloc double[MaxPorts * MaxPorts], rc = stackalloc double[MaxPorts * MaxPorts];
+        Span<double> state = stackalloc double[TrapDynamics.MaxStates];
+        for (int k = 0; k < _trapCount; k++) state[k] = portVoltages[2 + k];
+        Core(portVoltages[0], portVoltages[1], _dispersive ? portVoltages[2] : 0.0, state,
+             _thermal ? portVoltages[ThermalPort] : 0.0, ri, rq, rg, rc, frozenCharge: false);
+        _frozen = new Frozen(portVoltages.ToArray(), rq[0], rq[1], rc[0], rc[1], rc[n], rc[n + 1]);
+        return true;
+    }
+
+    // ── Evaluation ───────────────────────────────────────────────────────────
 
     public override NonlinearResult Evaluate(in PortVoltages v)
     {
@@ -200,7 +268,8 @@ public sealed class ComposedCoreModel : ComponentModel
     }
 
     /// <summary>
-    /// One operating point: port currents <c>i</c>, charges <c>q</c>, and their Jacobians row-major.
+    /// One operating point: port currents <c>i</c>, charges <c>q</c>, and their Jacobians row-major. <paramref name="state"/>
+    /// holds the KEPT trap states, in node order.
     ///
     /// <para><b>Drain–source exchange</b> (R-mc2-4). With <see cref="DrainSourceSymmetry.Exchange"/> and
     /// <c>vds &lt; 0</c>, the constituents are evaluated at the image point <c>(vgs − vds, −vds)</c>
@@ -208,21 +277,29 @@ public sealed class ComposedCoreModel : ComponentModel
     /// exchange ([P1] eq. 6.64), <c>Qg</c> carries over and <c>Qd = −Qg′ − Qd′</c> (the image's source
     /// charge, [P1] eq. 6.63 in charge form). Each gradient maps through the image's Jacobian:
     /// <c>∂/∂vgs = ∂′/∂vgs′</c>, <c>∂/∂vds = −∂′/∂vgs′ − ∂′/∂vds′</c>.</para>
+    ///
+    /// <para><paramref name="frozenCharge"/> false evaluates the charge as fitted whatever <c>LinearC</c> says — the freeze
+    /// itself reads it so.</para>
     /// </summary>
     private void Core(double vgs, double vds, double x, ReadOnlySpan<double> state, double dT,
-                      Span<double> i, Span<double> q, Span<double> dg, Span<double> dc)
+                      Span<double> i, Span<double> q, Span<double> dg, Span<double> dc, bool frozenCharge = true)
     {
         int n = PortCount;
         i[..n].Clear(); q[..n].Clear(); dg[..(n * n)].Clear(); dc[..(n * n)].Clear();
 
         bool image = _exchange && vds < 0;
         int width = _p.Width;
-        double temperature = _temperatureC + dT;
+        double temperature = _temperatureC + (_heats ? dT : 0.0);
         Span<double> seeds = stackalloc double[RuntimeEvaluator.MaxInputs];
         seeds[0] = image ? vgs - vds : vgs;
         seeds[1] = image ? -vds : vds;
         if (_hasT) seeds[2] = temperature;
-        for (int k = 0; k < _trapCount; k++) seeds[_p.TrapLane + k] = state[k];
+        int trapLane = _p.TrapLane;
+        // A state whose lag is switched off is its DC value at the instantaneous voltages (R-mc21-4); its gradient by
+        // (vgs, vds, T) is what its lane folds through below.
+        Span<double> dcGrad = stackalloc double[3 * TrapDynamics.MaxStates];
+        for (int k = 0; k < _allTraps; k++)
+            seeds[trapLane + k] = _nodeOf[k] >= 0 ? state[_nodeOf[k]] : DcState(k, vgs, vds, temperature, dcGrad.Slice(3 * k, 3));
         var s = seeds[..width];
 
         const int W = RuntimeEvaluator.MaxInputs;
@@ -237,12 +314,23 @@ public sealed class ComposedCoreModel : ComponentModel
         double idRf = _dispersive ? _p.Eval(_p.IdRF!, "IdRF", s, gRf) : 0.0;
         if (_p.Drift is { } drift)
         {
-            // The drift charge reads the unshifted current: no charge takes a shift coupling (MC-19 R-mc19-1).
+            // The drift charge reads the unshifted current: no charge takes a shift coupling (MC-19 R-mc19-1). It reads the
+            // model's own channel whatever Dispersion says — the switch changes the drain, not the charge.
             Span<double> gD = stackalloc double[W];
-            double idD = _dispersive || _p.Shift is not null ? _p.DriftChannel(s, gD) : id;
-            if (!_dispersive && _p.Shift is null) gId.CopyTo(gD);
+            bool own = _p.IdRF is not null || _p.Shift is not null;
+            double idD = own ? _p.DriftChannel(s, gD) : id;
+            if (!own) gId.CopyTo(gD);
             drift.Evaluate(s[0], s[1], idD, gD, _p.Width, out qg, gQg, out qd, gQd);
         }
+
+        if (_trapCount < _allTraps)
+            for (int k = 0; k < _allTraps; k++)
+                if (_nodeOf[k] < 0)
+                {
+                    var d = dcGrad.Slice(3 * k, 3);
+                    int lane = trapLane + k;
+                    Fold(gId, lane, d); Fold(gGs, lane, d); Fold(gGd, lane, d); Fold(gQg, lane, d); Fold(gQd, lane, d);
+                }
 
         if (image)
         {
@@ -261,11 +349,13 @@ public sealed class ComposedCoreModel : ComponentModel
         }
 
         double k0 = _scale;
-        // The voltage lanes are columns 0 and 1; the T lane is the thermal port's column when the model self-heats, and
-        // no column otherwise (T is then the run's constant); trap lane k is state port 2 + k.
+        // The voltage lanes are columns 0 and 1; the T lane is the thermal port's column when the model self-heats and
+        // the instance lets it, and no column otherwise (T is then the run's constant); a kept trap state's lane is its
+        // node's port, a removed one's has been folded away.
         int th = ThermalPort;
-        int trapLane = _p.TrapLane;
-        int Col(int lane) => lane < 2 ? lane : lane >= trapLane && _trapCount > 0 ? 2 + lane - trapLane : _thermal ? th : -1;
+        int Col(int lane) => lane < 2 ? lane
+                           : lane >= trapLane && _allTraps > 0 ? (_nodeOf[lane - trapLane] is >= 0 and var j ? 2 + j : -1)
+                           : _heats ? th : -1;
         int lanes = width;
 
         i[0] = k0 * (igGs + igGd);
@@ -304,24 +394,49 @@ public sealed class ComposedCoreModel : ComponentModel
             dc[2 * n + 2] = _tau;
         }
 
-        // The trap nodes (MC-10): each state's own current and charge, read at the intrinsic voltages and the device temperature.
+        // The trap nodes (MC-10): each kept state's own current and charge, read at the intrinsic voltages and the device
+        // temperature.
         if (_traps is { } traps)
         {
             Span<double> gi = stackalloc double[4], gq = stackalloc double[4];
-            for (int k = 0; k < _trapCount; k++)
+            for (int j = 0; j < _trapCount; j++)
             {
-                int sp = 2 + k, row = sp * n;
-                i[sp] = traps.Evaluate(k, state[k], vgs, vds, temperature, gi, out q[sp], gq);
+                int k = _kept[j];
+                int sp = 2 + j, row = sp * n;
+                i[sp] = traps.Evaluate(k, state[j], vgs, vds, temperature, gi, out q[sp], gq);
                 if (!double.IsFinite(i[sp]) || !double.IsFinite(q[sp]) || !double.IsFinite(gi[0]))
                     throw new ComposedEvaluationException(string.Create(System.Globalization.CultureInfo.InvariantCulture,
-                        $"'{Loaded.Model.Traps!.Model}' trap state {traps.States[k]} is not finite at vgs={vgs:G6}, vds={vds:G6}, {traps.States[k]}={state[k]:G6}."));
+                        $"'{Loaded.Model.Traps!.Model}' trap state {traps.States[k]} is not finite at vgs={vgs:G6}, vds={vds:G6}, {traps.States[k]}={state[j]:G6}."));
                 dg[row + sp] = gi[0]; dg[row] = gi[1]; dg[row + 1] = gi[2];
                 dc[row + sp] = gq[0]; dc[row] = gq[1]; dc[row + 1] = gq[2];
-                if (_thermal) { dg[row + th] = gi[3]; dc[row + th] = gq[3]; }
+                if (_heats) { dg[row + th] = gi[3]; dc[row + th] = gq[3]; }
             }
         }
 
+        // The intrinsic charge as the instance's switches have it (R-mc21-1, R-mc21-3).
+        if (!Switches.Charge)
+        {
+            q[0] = q[1] = 0;
+            dc[..(2 * n)].Clear();
+        }
+        else if (Switches.LinearC && frozenCharge)
+        {
+            if (_frozen is { } f)
+            {
+                double d0 = vgs - f.At[0], d1 = vds - f.At[1];
+                q[0] = f.Qg + f.Cgg * d0 + f.Cgd * d1;
+                q[1] = f.Qd + f.Cdg * d0 + f.Cdd * d1;
+                dc[..(2 * n)].Clear();
+                dc[0] = f.Cgg; dc[1] = f.Cgd; dc[n] = f.Cdg; dc[n + 1] = f.Cdd;
+            }
+            else if (!ChargeReading.Unread)
+                throw new ComposedEvaluationException(
+                    $"'{Label}': LinearC=true linearises the intrinsic charge at the bias point, and the bias point was " +
+                    "never set — nothing froze the quiescent DC operating point before the charge was read.");
+        }
+
         if (!_thermal) return;
+        if (!_heats) return;   // isothermal: the port stays, carrying no power
 
         // [P1] eq. 6.67: the dissipated power, in its terminal form, flows into the thermal node; its port carries −P.
         double p = i[0] * vgs + i[1] * vds;
@@ -331,6 +446,35 @@ public sealed class ComposedCoreModel : ComponentModel
             double dp = dg[col] * vgs + dg[n + col] * vds + (col == 0 ? i[0] : col == 1 ? i[1] : 0.0);
             dg[th * n + col] = -dp;
         }
+    }
+
+    /// <summary>A removed state's DC value at the instantaneous point, its gradient by <c>(vgs, vds, T)</c> into
+    /// <paramref name="grad"/>: the dynamics' own overload, or a central difference of the value when they supply none.</summary>
+    private double DcState(int k, double vgs, double vds, double t, Span<double> grad)
+    {
+        if (_dcGradient) return _traps!.DcValue(k, vgs, vds, t, grad);
+        double v = _traps!.DcValue(k, vgs, vds, t);
+        double hg = 1e-6 * Math.Max(1, Math.Abs(vgs)), hd = 1e-6 * Math.Max(1, Math.Abs(vds)), ht = 1e-4 * Math.Max(1, Math.Abs(t));
+        grad[0] = (_traps.DcValue(k, vgs + hg, vds, t) - _traps.DcValue(k, vgs - hg, vds, t)) / (2 * hg);
+        grad[1] = (_traps.DcValue(k, vgs, vds + hd, t) - _traps.DcValue(k, vgs, vds - hd, t)) / (2 * hd);
+        grad[2] = (_traps.DcValue(k, vgs, vds, t + ht) - _traps.DcValue(k, vgs, vds, t - ht)) / (2 * ht);
+        return v;
+    }
+
+    /// <summary>The chain rule for a removed lane: <c>∂/∂vgs += ∂/∂φ·∂φ/∂vgs</c>, likewise vds and T, then the lane is gone.</summary>
+    private void Fold(Span<double> g, int lane, ReadOnlySpan<double> d)
+    {
+        g[0] += g[lane] * d[0];
+        g[1] += g[lane] * d[1];
+        if (_hasT) g[2] += g[lane] * d[2];
+        g[lane] = 0;
+    }
+
+    private static bool SuppliesDcGradient(TrapDynamics traps)
+    {
+        Span<double> g = stackalloc double[3];
+        try { traps.DcValue(0, 0, 0, 25, g); return true; }
+        catch (NotSupportedException) { return false; }
     }
 
     /// <summary>The most ports a core has: two intrinsic, the state nodes (one dispersion node, or up to four trap states),

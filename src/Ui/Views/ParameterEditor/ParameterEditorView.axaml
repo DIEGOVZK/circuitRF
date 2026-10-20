@@ -693,6 +693,49 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
+                <!-- A composed FET's instance switches (brief-modelcomposer-21): collapsed under File/N/Symbol, since they
+                     are a debugging view and a switched instance already says so on the schematic. Each is a true/false
+                     picker; a switch bound to an expression keeps a text box, which a picker could not show. -->
+                <Expander Classes="compact" Header="Model switches"
+                          IsExpanded="{Binding ModelSwitchesExpanded}"
+                          IsVisible="{Binding ShowModelSwitches}"
+                          HorizontalAlignment="Stretch" Margin="4,4,4,0">
+                    <ItemsControl ItemsSource="{Binding SwitchRows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ParameterRowViewModel">
+                                <Grid Margin="0,2">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition SharedSizeGroup="ParamName" Width="Auto" MinWidth="40"/>
+                                        <ColumnDefinition Width="*" MinWidth="50"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0"
+                                               Text="{Binding StagedName}"
+                                               FontSize="11"
+                                               Margin="2,0,8,0"
+                                               VerticalAlignment="Center"
+                                               ToolTip.Tip="{Binding NameTooltip}"/>
+                                    <ComboBox Grid.Column="1"
+                                              ItemsSource="{Binding ChoiceOptions}"
+                                              SelectedItem="{Binding SelectedChoice}"
+                                              IsVisible="{Binding IsChoiceParam}"
+                                              FontSize="11"
+                                              Padding="4,3"
+                                              HorizontalAlignment="Stretch"
+                                              VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1"
+                                             Text="{Binding StagedExpression}"
+                                             IsVisible="{Binding !IsChoiceParam}"
+                                             FontSize="11"
+                                             Padding="4,3"
+                                             VerticalAlignment="Center"
+                                             LostFocus="OnParamExprLostFocus"
+                                             KeyDown="OnParamExprKeyDown"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Expander>
+
                 <!-- ══ Microstrip technology ═════════════════════════════════════════════
                      BELOW the generic rows (owner, 2026-09-06), so it sits under SignalLayer and
                      GroundReference — the three together are "which conductors, on which stackup",

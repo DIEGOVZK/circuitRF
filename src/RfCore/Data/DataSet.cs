@@ -205,7 +205,9 @@ namespace RfCore.Data
                 var cubes = new DataCube[datasets.Count];
                 for (int n = 0; n < datasets.Count; n++)
                     cubes[n] = datasets[n][key];
-                result.Add(key, DataCube.PrependAxis(sweepAxis, cubes));
+                // A swept switch can change which device ports exist (brief-modelcomposer-21): the branch axis is then
+                // aligned by label rather than refused.
+                result.Add(key, DataCube.PrependAxis(sweepAxis, DataCube.AlignLabelledAxes(cubes)));
             }
             return result;
         }

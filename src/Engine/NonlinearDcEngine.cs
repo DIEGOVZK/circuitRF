@@ -196,6 +196,9 @@ public sealed class NonlinearDcEngine
 
     public static DcResult Run(ElaboratedNetlist netlist, AnalysisSettings? settings = null)
     {
+        // A DC solution reads no charge, so a model that refuses to return one before its bias point is frozen
+        // (brief-modelcomposer-21 R-mc21-3) answers here — which is also how the freeze finds that point.
+        using var unread = ChargeReading.NotRead();
         _runs++;
         var s      = settings ?? AnalysisSettings.Default;
         var direct = new NonlinearDcEngine(netlist, s);

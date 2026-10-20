@@ -120,5 +120,16 @@ public sealed class CustomTraps : TrapModelDefinition
             Span<double> grad = stackalloc double[4];
             return dc[state].EvalDualInto(seeds, grad, label);
         }
+
+        /// <summary>The DC expression's own dual gradient, by <c>(vgs, vds, T)</c> — what a lag switched off on an instance
+        /// differentiates through (brief-modelcomposer-21 R-mc21-4).</summary>
+        public override double DcValue(int state, double vgs, double vds, double t, Span<double> grad)
+        {
+            Span<double> seeds = [0, vgs, vds, t];
+            Span<double> g = stackalloc double[4];
+            double v = dc[state].EvalDualInto(seeds, g, label);
+            grad[0] = g[1]; grad[1] = g[2]; grad[2] = g[3];
+            return v;
+        }
     }
 }

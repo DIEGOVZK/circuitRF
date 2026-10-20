@@ -682,6 +682,77 @@ namespace RfCore.Data
         // ---- Stacking -------------------------------------------
 
         /// <summary>
+        /// Cubes that differ only along LABELLED axes — a sweep point whose circuit has one more or one fewer device port
+        /// on the branch axis — re-gridded onto the union of their labels, in first-seen order, with NaN where a point has
+        /// no such entry: a quantity that does not exist at a point is not a number there. Returns the cubes unchanged when
+        /// they already agree, or when a differing axis is numeric or repeats a label, which
+        /// <see cref="PrependAxis"/> then refuses as before.
+        /// </summary>
+        internal static IReadOnlyList<DataCube> AlignLabelledAxes(IReadOnlyList<DataCube> cubes)
+        {
+            var first = cubes[0];
+            if (cubes.Any(c => c.Rank != first.Rank || c.DataKind != first.DataKind)) return cubes;
+
+            var union = new Axis[first.Rank];
+            bool regrid = false;
+            for (int d = 0; d < first.Rank; d++)
+            {
+                var f = first.Axes[d];
+                bool same = cubes.All(c => c.Axes[d].Length == f.Length
+                    && (c.Axes[d].Labels is not { } l ? f.Labels is null : f.Labels is { } fl && l.SequenceEqual(fl)));
+                if (same) { union[d] = f; continue; }
+                if (cubes.Any(c => c.Axes[d].Labels is not { } l || l.Distinct().Count() != l.Length)) return cubes;
+
+                var labels = new List<string>();
+                var seen   = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var c in cubes)
+                    foreach (string l in c.Axes[d].Labels!)
+                        if (seen.Add(l)) labels.Add(l);
+                union[d] = new Axis(f.Name, [.. Enumerable.Range(0, labels.Count).Select(i => (double)i)], f.Unit, [.. labels]);
+                regrid = true;
+            }
+            return regrid ? [.. cubes.Select(c => c.Regrid(union))] : cubes;
+        }
+
+        /// <summary>This cube on <paramref name="target"/>'s axes, matched by label where they differ; NaN where it has none.</summary>
+        private DataCube Regrid(Axis[] target)
+        {
+            int rank = target.Length;
+            var map = new int[rank][];
+            for (int d = 0; d < rank; d++)
+            {
+                map[d] = new int[target[d].Length];
+                if (ReferenceEquals(target[d], Axes[d]) || target[d].Labels is null)
+                {
+                    for (int k = 0; k < map[d].Length; k++) map[d][k] = k;
+                    continue;
+                }
+                var own = new Dictionary<string, int>(StringComparer.Ordinal);
+                for (int k = 0; k < Axes[d].Length; k++) own[Axes[d].Labels![k]] = k;
+                for (int k = 0; k < map[d].Length; k++) map[d][k] = own.TryGetValue(target[d].Labels![k], out int i) ? i : -1;
+            }
+
+            int[] strides = ComputeStrides(target);
+            int total = rank == 0 ? 1 : strides[0] * target[0].Length;
+            var complex = DataKind == DataKind.Complex ? new Complex[total] : null;
+            var real    = DataKind == DataKind.Real    ? new double[total]  : null;
+            for (int t = 0; t < total; t++)
+            {
+                int src = 0, rest = t;
+                for (int d = 0; d < rank && src >= 0; d++)
+                {
+                    int k = rest / strides[d];
+                    rest %= strides[d];
+                    src = map[d][k] < 0 ? -1 : src + map[d][k] * _strides[d];
+                }
+                if (complex is not null) complex[t] = src < 0 ? new Complex(double.NaN, double.NaN) : _complexData![src];
+                else                     real![t]    = src < 0 ? double.NaN : _realData![src];
+            }
+            return complex is not null ? new DataCube(target, complex, noCopy: true) { Unit = Unit }
+                                       : new DataCube(target, real!, noCopy: true) { Unit = Unit };
+        }
+
+        /// <summary>
         /// Stack <paramref name="cubes"/> along a new prepended axis.
         /// All cubes must have the same shape (rank + axis lengths) and DataKind.
         /// <paramref name="newAxis"/>.Length must equal cubes.Count.

@@ -298,6 +298,9 @@ public sealed class HarmonicaContext
         else
             SeedFromRealDc(v, N);
 
+        // A linearised composed-FET charge needs its bias point before the solve reads charge (brief-modelcomposer-21);
+        // re-solved each call, so a bias changed in place re-freezes. Free for a design with none.
+        CircuitRF.Engine.BiasFreeze.Ensure(_netlist, _settings);
         var result = HbNewton.Solve(v, yNN, iSrc, _model.Settings.FrequencyHz, K, N,
                                     _netlist, _interface.DeviceNodes, gridN, _settings,
                                     _model.Settings.Tol, _model.Settings.Lambda,
