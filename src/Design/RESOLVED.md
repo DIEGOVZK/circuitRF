@@ -20999,7 +20999,10 @@ for the currents to be fitted again. `AdjointExtra` also rebuilt `PointsWithT` (
 its bytes unchanged — a copy, a checkout, File ▸ New ▸ Examples. The rewrite builds a fresh folder and swapped it in
 carrying only `intrinsic/` across, so `current/` and `charge/` — the fitted arrays, which only a fit can rebuild — were
 deleted, and the document's steps still read as fitted. MC-11 met the same thing as `validate/` vanishing and worked
-around it. Every subfolder is carried across now. Gate: `CmcCacheTests.ATouchedSource_KeepsEveryStepsFolder`.
+around it. Every subfolder is carried across now. Gate: `CmcCacheTests.ATouchedSource_KeepsEveryStepsFolder`. Carrying them made a
+failed swap destructive: the subfolders are moved into the temporary folder before the old one is retired, and the
+failure path deleted that folder — with a file held open on Windows, the fits went with it. A failed swap now moves the
+old folder and every carried subfolder back first, and keeps the temporary folder if anything could not be moved.
 
 **Check Charge Conservation could not run on a model with traps.** Check (c) asks harmonic balance for 1e-12 A, which
 resolves a spurious DC far below the threshold on a charge-based device; a trap or dispersion node's 1 mF capacitance

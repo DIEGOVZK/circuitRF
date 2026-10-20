@@ -13,6 +13,7 @@ keywords: model extraction, device modeling, FET model, GaN HEMT, extrinsic netw
 <li><a href="#what">What it does</a></li>
 <li><a href="#steps">The steps</a></li>
 <li><a href="#kinds">Data kinds and their conditions</a></li>
+<li><a href="#preparing">Preparing the data</a></li>
 <li><a href="#planes">Reference planes</a></li>
 <li><a href="#six-pin">The six-pin network</a></li>
 <li><a href="#defaults">Methods and their defaults</a></li>
@@ -113,6 +114,110 @@ step that needs one names it when it is missing.
 | `SoakTime`, `Compliance` | How long the bias was held, and the instrument's current limits |
 | `LargeSignal` | For a large-signal set: what it measured, the frequency, the bias and the terminations |
 | `Note` | Free text, kept with the set |
+
+## Preparing the data {#preparing}
+
+The data can come from a lab bench or from another simulator. What matters is that the right data arrives; the file
+layout is secondary.
+
+### What a model needs {#needs}
+
+| Data | Needed | What it gives the model |
+|---|---|---|
+| I–V: DC, or a simulator's DC currents; 4 points or more, varying both Vgs and Vds | **Required** | `Id` and `Ig`. With no gate current in the data, `Ig` is zero |
+| S or Y at 4 biases or more | **Required** | `Qg` and `Qd`. A few biases around one operating point, fitted with an equation charge, give near-constant capacitances: a linear charge model. Biases across the I–V plane give nonlinear charges |
+| S at Vds = 0 V, pinched off and with the gate forward-biased | Optional | The cold-FET network fit |
+| Open and short pad dummies | When measured at the probe tips | Removal of the pads |
+| Any set at two or more temperatures | Optional | `T` as an input: the model follows the run's `temp`, and self-heating becomes available |
+| Pulsed I–V at two or more chuck temperatures, from a quiescent point that dissipates nothing, plus DC I–V at the same biases | Optional | An extracted Rth. Without this data, type Rth |
+| S or Y down to the thermal roll-off of `Re Y22` (typically kHz to MHz) | Optional | A fitted τth |
+| Pulsed I–V from two or more quiescent drain voltages | Optional | Drain lag |
+| Pulsed I–V from two or more quiescent gate voltages | Optional | Gate lag |
+| A double pulse | Optional | The clearest trap data |
+| Pulsed I–V from one quiescent point | Optional | One trap level, with a warning |
+| Pulsed S | Optional | A trap-dependent `Qd` |
+| Power sweeps, two-tone sweeps, loadpull | Optional | Validation only |
+
+Trap states are trained from pulsed I–V, so a model built without pulsed data has none. Its generic alternative is
+**DC/RF dispersion**, which needs only the DC I–V and the multi-bias S.
+
+### Bias ranges and steps {#ranges}
+
+| | Measured | Simulated |
+|---|---|---|
+| Vgs | From about 1 V below pinch-off to forward gate conduction | Wider costs nothing: from 2 V below pinch-off to well into forward conduction |
+| Vds | From 0 V to the peak drain swing (about 2.5 × the supply for class AB, more for switching classes), staying inside the safe operating area | The same range, within the source model's valid range |
+| High-power corner | Pulsed I–V, where DC would overheat the device | DC, with self-heating off |
+| I–V step | 0.1 V in Vgs (0.05 V near threshold); 0.25–0.5 V in Vds below the knee, 1–2 V above it | A uniform 0.05–0.1 V grid |
+| S biases | 100 or more: every 0.25–0.5 V in Vgs and 1–2 V in Vds, plus the two cold points | The same bias grid as the I–V |
+| Frequencies | 20–50, from 0.1–0.5 GHz to at least three times the operating frequency | One low frequency (1 GHz, say) for an intrinsic table; a span when the data includes parasitics |
+
+The model is continued linearly beyond its data, so cover the whole swing the circuit will make. The charges are
+read between a tenth and a half of the top frequency. The default ANNs want a few hundred points or more, and a fit
+reports when its data is thin for its network.
+
+### From another simulator {#from-simulator}
+
+| Data | Analysis to run | What to save |
+|---|---|---|
+| I–V | DC, with Vgs swept inside a Vds sweep | The terminal voltages and the gate and drain currents; optionally the internal intrinsic voltages (`vgsi`, `vdsi`), which the composer checks against its own |
+| S or Y | S-parameter (small-signal) analysis at every bias of the DC sweep | Y or S of the two-port: gate port 1, drain port 2, source grounded; the DC currents at each bias |
+| Temperature | Both of the above at two or more `temp` values | One set per temperature, or a `T` array |
+| Pulsed I–V | Transient: hold the quiescent bias until the trap and thermal states settle, step to the pulse bias, and sample the currents at the sample delay | One set per quiescent point, stating `Quiescent`, `PulseWidth` and `SampleDelay` |
+| Large signal | Harmonic balance: power sweep, two-tone or loadpull | Validation only |
+
+In the source simulator:
+
+- **Turn self-heating off** (Rth = 0) for the DC and S runs. Keep the temperature dependence: the `temp` runs need
+  it. To have self-heating in the model, type the source model's Rth and Cth on the Thermal step.
+- **Turn traps and dispersion off**, unless they are to be modelled from pulsed transients or as DC/RF dispersion. A
+  DC sweep with traps on and an S analysis with the traps frozen disagree.
+- **Choose the plane.** Export the core alone, or its internal node voltages, as `ReferencePlane=intrinsic`, with no
+  network. Or export at the terminals as `device`, with a six-pin network holding the source model's parasitic values.
+- **Keep to the model's valid range.** A model that clamps its inputs outside that range gives flat data there.
+
+### File formats {#import-formats}
+
+**Measured data** is read as the instruments write it:
+
+- **S-parameters**: Touchstone files from the network analyser (RI, MA or DB), one per bias, with the bias in the file
+  name or in the comment lines. A `--pattern` reads it.
+- **I–V**: CSV or TSV from the source-measure unit or the pulsed I–V system. Columns are mapped by their header names;
+  any common delimiter works, lines starting `#`, `!` or `%` are skipped, and units are given per column or per cell
+  (`12 mA`).
+
+**Simulated data** is read most easily as a MATLAB `.mat` file (v5, v7 or v7.3). It can be written by MATLAB or by
+Python (`scipy.io.savemat`, h5py). Name the arrays as you like and map them: `vgs` and `vds` (one value per point, or
+the two axes of a grid), `id`, `ig`, `T`, `vgsi`, `vdsi`, `freq`, and `Y` or `S` shaped `[point, freq, 2, 2]`
+(`[vgs, vds, freq, 2, 2]` on a grid). Currents are positive into the terminal.
+
+```python
+import scipy.io as sio
+# vgs (nG,), vds (nD,) in V; id, ig (nG, nD) in A; freq (nF,) in Hz; Y (nG, nD, nF, 2, 2) in S
+sio.savemat("tables.mat", {"vgs": vgs, "vds": vds, "id": id, "ig": ig, "freq": freq, "Y": Y})
+```
+
+```
+circuitrf model import fet.cmc tables.mat --as SimulatedTables --map vgs=vgs --map vds=vds --map id=id --map ig=ig --map freq=freq --map Y=Y --condition ReferencePlane=intrinsic --condition AmbientC=25
+```
+
+A `.npy` here means circuitRF's own structured `.npy`, as its exports write it. A single array saved with
+`numpy.save` is not read; save a `.mat` from Python instead. Touchstone files and a CSV, which most simulators can
+write, work too.
+
+If your tool writes the right data in a layout none of these read, send a sample: the importer is extended to read
+what tools actually write.
+
+### Checklist {#checklist}
+
+- The I–V covers the circuit's whole Vgs and Vds swing, gate forward conduction included.
+- S or Y is at 4 biases or more, and at a hundred or more for nonlinear charges.
+- Currents are positive into the terminal, and every column has its unit.
+- Every set states its reference plane and ambient temperature.
+- Measured: the compliance limits are stated, so points at the limit are flagged.
+- Simulated: self-heating is off, and traps are off unless they are modelled.
+- Pulsed sets state their quiescent point (and pre-pulse), pulse width and sample delay.
+- N0 and W0 are those of the device the data came from.
 
 ## Reference planes {#planes}
 

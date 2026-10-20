@@ -255,6 +255,8 @@ public sealed class CmcCache
                                  IReadOnlyList<SetEntry>? oldIndex)
     {
         string tmp = Folder + ".tmp-" + Guid.NewGuid().ToString("N")[..8];
+        string? retired = null;
+        var carried = new List<string>();
         try
         {
             Directory.CreateDirectory(tmp);
@@ -270,7 +272,6 @@ public sealed class CmcCache
             }
             File.WriteAllBytes(Path.Combine(tmp, IndexFile), IndexBytes(entries));
 
-            string? retired = null;
             if (Directory.Exists(Folder))
             {
                 // Every subfolder is carried across: the intrinsic results (keyed by the data they came from, so they stay
@@ -278,17 +279,36 @@ public sealed class CmcCache
                 // and charge steps, which nothing can rebuild but a fit. A source whose timestamp moved with its bytes
                 // unchanged — a copy, a checkout — rewrites the index, and that once deleted every fit.
                 foreach (string sub in Directory.GetDirectories(Folder))
-                    Directory.Move(sub, Path.Combine(tmp, Path.GetFileName(sub)));
+                {
+                    string name = Path.GetFileName(sub);
+                    Directory.Move(sub, Path.Combine(tmp, name));
+                    carried.Add(name);
+                }
                 retired = Folder + ".old-" + Guid.NewGuid().ToString("N")[..8];
                 Directory.Move(Folder, retired);
             }
             Directory.Move(tmp, Folder);
-            if (retired is not null) try { Directory.Delete(retired, recursive: true); } catch (IOException) { }
         }
         catch
         {
-            try { if (Directory.Exists(tmp)) Directory.Delete(tmp, recursive: true); } catch (IOException) { }
+            // A carried subfolder's only copy is in tmp now, so a swap that failed part-way (a file held open on Windows)
+            // puts the old cache back before tmp goes; tmp is kept if anything could not be moved back.
+            bool restored = true;
+            try
+            {
+                if (retired is not null && Directory.Exists(retired) && !Directory.Exists(Folder)) Directory.Move(retired, Folder);
+                foreach (string name in carried)
+                {
+                    string from = Path.Combine(tmp, name), to = Path.Combine(Folder, name);
+                    if (Directory.Exists(from) && Directory.Exists(Folder) && !Directory.Exists(to)) Directory.Move(from, to);
+                    restored &= !Directory.Exists(from);
+                }
+            }
+            catch (Exception x) when (x is IOException or UnauthorizedAccessException) { restored = false; }
+            if (restored) try { if (Directory.Exists(tmp)) Directory.Delete(tmp, recursive: true); } catch (IOException) { }
             throw;
         }
+        if (retired is not null)
+            try { Directory.Delete(retired, recursive: true); } catch (Exception x) when (x is IOException or UnauthorizedAccessException) { }
     }
 }

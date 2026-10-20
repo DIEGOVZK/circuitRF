@@ -1,4 +1,4 @@
-# Brief series — Model Composer: nonlinear FET and passive model extraction (MC-1 … MC-16)
+# Brief series — Model Composer: nonlinear FET and passive model extraction (MC-1 … MC-20)
 
 **Status:** written, not started · **Date:** 2026-10-19 · **Decisions:** locked (§2), owner-reviewed
 **Scope source:** owner request of 2026-10-19 (paraphrased in §0)
@@ -111,6 +111,10 @@ Z. Wang, Y. Guo, "A physics-informed neural network-based scalable model for GaN
 | MC-14 | `brief-modelcomposer-14-window-and-data-steps.md` | The window: lifecycle, toolbar, panels, background tasks; Data, Pads and Network steps; passive Data and Topology | MC-13 |
 | MC-15 | `brief-modelcomposer-15-model-steps-and-plots.md` | Current, Charge, Thermal, Traps, Check, Validate and Export steps; every comparison plot | MC-14 |
 | MC-16 | `brief-modelcomposer-16-example-docs-acceptance.md` | A `Model Composer` example workspace, the user pages, the series acceptance run, the design note's final state | all |
+| MC-17 | `brief-modelcomposer-17-linear-charges.md` | The `Linear` charge template and a per-method minimum: a model from S at one bias | MC-8, MC-16 |
+| MC-18 | `brief-modelcomposer-18-model-from-dc-alone.md` | Typed (or zero) linear charges: a model from DC I–V alone | MC-17 |
+| MC-19 | `brief-modelcomposer-19-traps-without-pulsed-data.md` | The threshold-shift trap coupling: traps with no pulsed data, strengths typed or fitted from multi-bias S | MC-10, MC-16 |
+| MC-20 | `brief-modelcomposer-20-capacitance-tables.md` | A simulator's capacitance table (matrix or circuit set) feeds the charges | MC-8, MC-16 |
 
 MC-1/MC-2, MC-3/MC-4/MC-5 and MC-6 are three independent tracks. MC-7 and MC-8 can run side by side.
 
