@@ -62,6 +62,26 @@ public sealed record CharmAppearance
     public bool? ShowPowerSweepTimeDomain { get; init; }
 
     /// <summary>
+    /// brief-modelcomposer-24 R-mc24-5 — which plane the loadline panel shows, <c>"extrinsic"</c> or <c>"intrinsic"</c>.
+    /// Null — every document written before this brief, and every one left at the default — is intrinsic; so is any
+    /// other spelling, since a view preference is never a reason to refuse a file. See <see cref="LoadlinePlaneOf"/>.
+    /// </summary>
+    public string? LoadlinePlane { get; init; }
+
+    /// <summary>The stored plane, read: <c>"extrinsic"</c> is the extrinsic plane and anything else the intrinsic one.</summary>
+    public LoadlinePlane LoadlinePlaneOf
+        => string.Equals(LoadlinePlane, ExtrinsicPlaneName, StringComparison.OrdinalIgnoreCase)
+            ? Harmonica.LoadlinePlane.Extrinsic
+            : Harmonica.LoadlinePlane.Intrinsic;
+
+    /// <summary>The value <see cref="LoadlinePlane"/> stores for a plane — null for the default, so a document nobody
+    /// toggled re-serialises unchanged.</summary>
+    public static string? LoadlinePlaneValue(LoadlinePlane plane)
+        => plane == Harmonica.LoadlinePlane.Extrinsic ? ExtrinsicPlaneName : null;
+
+    private const string ExtrinsicPlaneName = "extrinsic";
+
+    /// <summary>
     /// R-h9c-7 (R1C §5) — the readout strip's per-row Z/Γ format, keyed by
     /// <c>HarmonicaReadout.FormatKey</c> ("S1.Z", "L2.Gamma", "MXP.Zin", …), each value either
     /// <c>"RealImaginary"</c> or <c>"MagnitudeAngle"</c>. Display-only — the same shape of setting as
@@ -79,6 +99,7 @@ public sealed record CharmAppearance
         => Light.Count == 0 && Dark.Count == 0
         && IsoAlphaFloor is null && IsoAlphaExponent is null && ShowIsoLineLabels is null
         && ShowGridPoints is null && ShowDiagnosticsOverlay is null && ShowPowerSweepTimeDomain is null
+        && LoadlinePlane is null
         && ReadoutFormats.Count == 0;
 
     public static readonly CharmAppearance Default = new();

@@ -568,7 +568,8 @@ Principal cubes (single-tone, `harmonic` axis 0…K):
 | `I` | `[terminal, harmonic]` | branch/terminal currents |
 | `Vds_intr`, `Vgs_intr` | `[harmonic]` | intrinsic voltages |
 | `Ids_intr`, `Igs_intr` | `[harmonic]` | intrinsic **conduction** currents |
-| `Vds_intr_t`, `Ids_intr_t` | `[tsample]` | the loadline, time domain |
+| `Vds_intr_t`, `Ids_intr_t` | `[tsample]` | the loadline, time domain, intrinsic plane (conduction only); absent when the intrinsic plane is not located |
+| `Vds_ext_t`, `Ids_ext_t` | `[tsample]` | the loadline, time domain, at the DUT's own terminals (total terminal current); always present (§7.3) |
 | `Gamma_ext`, `Z_ext` | `[side, harmonic]` | the marker terminations as set |
 | `Gamma_intr`, `Z_intr` | `[side, harmonic]` | the glyph values (load: §4.5.1 ratio; source: §4.5.3 diagonal) |
 | `Zs_conv` | `[harmonic, harmonic]` | the full source-side harmonic-conversion impedance matrix (§4.5.3) |
@@ -879,7 +880,38 @@ drag.
 **Plane toggle** (owner-confirmed): the DCIV family and the loadline move together between
 **intrinsic** and **extrinsic** — one toggle, not two, so the two curves are always in the same plane
 and cannot be misleadingly superimposed. A **persistent subtle indicator** on the panel states which
-plane is shown; it is never absent.
+plane is shown; it is never absent, and the axis titles name it as well (`Vds,i` / `Ids,i` against
+`Vds` / `Id`). The plane is a view preference of the document (`.charm` appearance block,
+`LoadlinePlane`); absent means intrinsic.
+
+- **Intrinsic** is §4.5: the device's own ports, conduction current only.
+- **Extrinsic** is the DUT's own terminals — the package plane of §4.1, inside any `LumpedPackage` and
+  embedding (brief-modelcomposer-24). Voltage `V(drain) − V(source)` there; current the **total**
+  drain-terminal current — conduction, displacement and whatever the DUT's own network carries. For a
+  `.cmodel` that is the plane its measurements were taken at. For a native FET, an SDD with no
+  capacitance, or a diode the two planes coincide in voltage and the currents differ by `jωq`
+  (§4.5 consequence 1). The alternative reading — the termination plane, beyond the package and
+  embedding — was not taken; it is what a load-pull system measures with no de-embedding.
+- **How the terminals are recovered.** §6.2's interface keeps only the device-facing nodes and the two
+  termination planes, so a second netlist is elaborated with a zero-volt `IProbe` in series with the
+  DUT's gate and drain, and every terminal quantity is a linear function of the converged device
+  injection and each plane's delivered current (`ExtrinsicPlane`). One row of that netlist's inverse per
+  quantity and harmonic is extracted once per structure; a frame is a product per harmonic, never a
+  solve. The probes are NOT in the netlist the HB loop solves — a different matrix reorders the sparse
+  factorisation and moves the last bits of every answer — and each plane carries a reference `Z0` to
+  ground in the probe netlist (compensated exactly by superposition), because an open plane behind a
+  1 H choke makes the recovery a difference of two ~10 GΩ-scaled terms.
+- **The extrinsic loadline** is synthesised from the recovered harmonics by the same direct sum as the
+  intrinsic one (R-h9b-13), so its current carries harmonics 0…K only. The intrinsic curve evaluates the
+  device pointwise and carries the current's higher harmonics as well.
+- **The extrinsic DCIV family.** Where the planes coincide at DC (no internal network: a native FET, an
+  SDD, a diode, an external model read at its own pins) it IS the intrinsic family, computed once.
+  Otherwise (a `.cmodel`, or an external model whose intrinsic plane has been named) it is solved by
+  `NonlinearDcEngine` on a two-source bench of the DUT alone, warm-started along Vds from the previous
+  point, with the DC engine's source ramp as the fallback — the ramp is what crosses a breakdown knee.
+  Traps, dispersion and self-heating sit at the DC values the model gives them. A point that does not
+  converge is a gap, never interpolated. Both families are tier C per plane and both ride on every
+  frame, so the toggle is a relabel of data in hand: it adds no solve.
 
 ### 7.4 The power-sweep plot
 

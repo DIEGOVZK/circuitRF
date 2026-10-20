@@ -224,6 +224,7 @@ public sealed class HarmonicaContext
         _drainSupply = FindSupply(HarmonicaNetlist.DrainSupply);
 
         _dutDevice = null;
+        _extrinsic = null;
         IntrinsicPorts = IntrinsicPortMap.For(
             _model.Dut, DutDevice.Model, _model.Embedding.Package);
 
@@ -302,6 +303,44 @@ public sealed class HarmonicaContext
     /// intrinsic panels draw empty rather than at a guessed plane — R-h8-3.
     /// </summary>
     public IntrinsicPortMap IntrinsicPorts { get; private set; } = IntrinsicPortMap.TwoPort;
+
+    // ── brief-modelcomposer-24 — the DUT's own terminals ─────────────────────
+
+    private ExtrinsicPlane? _extrinsic;
+
+    /// <summary>How many times this context has elaborated its probe netlist — once per structure, and only once
+    /// something asks for the extrinsic plane.</summary>
+    public int ExtrinsicBuildCount { get; private set; }
+
+    /// <summary>The recovery of the DUT's terminals (R-mc24-2), built on first use and dropped by a rebuild.</summary>
+    public ExtrinsicPlane Extrinsic
+    {
+        get
+        {
+            if (_extrinsic is null)
+            {
+                ExtrinsicBuildCount++;
+                _extrinsic = ExtrinsicPlane.Build(_model, _settings, _netlist, _interface.DeviceNodes);
+            }
+            return _extrinsic;
+        }
+    }
+
+    /// <summary>
+    /// The DUT's terminals at <paramref name="point"/>: <paramref name="planeVolts"/>/<paramref name="deliveredCurrent"/>
+    /// are <see cref="InterfaceNetwork.PlaneState"/> at the same point. The bias is the one this context applies.
+    /// </summary>
+    public ExtrinsicPlane.TerminalSpectra ExtrinsicTerminals(OperatingPoint point, Complex[,] planeVolts,
+                                                             Complex[,] deliveredCurrent)
+        => Extrinsic.Recover(point, planeVolts, deliveredCurrent, _model.Bias.Vgs ?? 0.0, _model.Bias.Vds);
+
+    /// <summary>The same, closing the terminations itself — for a caller that has not already asked for the plane state.</summary>
+    public ExtrinsicPlane.TerminalSpectra ExtrinsicTerminals(OperatingPoint point, TerminationSet terminations)
+    {
+        var (planeV, delivered) = _interface.PlaneState(terminations, DriveVolts(terminations, point.PavlDbm),
+                                                        point.INlTotal, _model.Settings.DcBlockFarads);
+        return ExtrinsicTerminals(point, planeV, delivered);
+    }
 
     // ── solving ───────────────────────────────────────────────────────────────
 

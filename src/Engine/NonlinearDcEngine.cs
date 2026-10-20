@@ -194,14 +194,21 @@ public sealed class NonlinearDcEngine
     /// <inheritdoc cref="_runs"/>
     public static void ResetRuns() => _runs = 0;
 
-    public static DcResult Run(ElaboratedNetlist netlist, AnalysisSettings? settings = null)
+    /// <param name="initialNodeVoltages">
+    /// A warm start for the direct attempt — a neighbouring point's <see cref="DcResult.NodeVoltages"/>, so a sweep
+    /// walks its curve by continuation (brief-modelcomposer-24 R-mc24-4). Null, the default, is the cold start every
+    /// caller had before. The ramp, when the direct attempt fails, still starts cold: its first step is at a fraction of
+    /// the sources, where a full-bias guess is the wrong point to start from.
+    /// </param>
+    public static DcResult Run(ElaboratedNetlist netlist, AnalysisSettings? settings = null,
+                               double[]? initialNodeVoltages = null)
     {
         // A DC solution reads no charge, so a model that refuses to return one before its bias point is frozen
         // (brief-modelcomposer-21 R-mc21-3) answers here — which is also how the freeze finds that point.
         using var unread = ChargeReading.NotRead();
         _runs++;
         var s      = settings ?? AnalysisSettings.Default;
-        var direct = new NonlinearDcEngine(netlist, s);
+        var direct = new NonlinearDcEngine(netlist, s) { _initialNodeVoltages = initialNodeVoltages };
 
         if (direct.UnreferencedThermalRows.Count == 0) return direct.Solve();
 
@@ -295,6 +302,9 @@ public sealed class NonlinearDcEngine
     /// still overturn the failure; <see cref="EmitDeferredFailureReport"/> releases it if not.
     /// </summary>
     private bool _deferFailureReport;
+
+    /// <summary>The direct attempt's starting node voltages, or null for a cold start — see <see cref="Run"/>.</summary>
+    private double[]? _initialNodeVoltages;
     private string? _deferredFailureReport;
 
     private NonlinearDcEngine(ElaboratedNetlist nl, AnalysisSettings settings,
@@ -950,7 +960,9 @@ public sealed class NonlinearDcEngine
     /// </summary>
     private DcResult SolveDirect(bool throwOnFailure)
     {
-        double[] x = new double[_systemSize];   // cold start: all zero
+        double[] x = new double[_systemSize];   // cold start: all zero, unless the caller handed a warm one
+        if (_initialNodeVoltages is { } warm)
+            Array.Copy(warm, x, Math.Min(warm.Length, _nodeCount));
         var      trace = new ConvergenceTrace();
 
         var (ok, iters, xNew, stepTrace) = NewtonAtFrac(x, 1.0);

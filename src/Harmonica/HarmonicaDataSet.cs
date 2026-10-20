@@ -140,7 +140,7 @@ public static class HarmonicaDataSet
                                               map.SourcePort);
 
         var port = new Axis("port", [.. Enumerable.Range(0, spectra.PortCount).Select(i => (double)i)], "",
-                            dut.Model.TerminalNames);
+                            PortLabels(dut.Model.TerminalNames, spectra.PortCount));
 
         ds.Add("V_intr",    Cube2(spectra.portVoltages,       port, harmonic));
         ds.Add("I_intr",    Cube2(spectra.portCurrents,       port, harmonic));
@@ -206,6 +206,13 @@ public static class HarmonicaDataSet
         ds.Add("Iin",    Cube2(planeI, side, harmonic));
         ds.Add("Zin",    Cube2(zin,    side, harmonic));
 
+        // brief-modelcomposer-24 R-mc24-3 — the loadline at the DUT's own terminals: V(drain) − V(source) against the
+        // TOTAL drain-terminal current, recovered from this same point (ExtrinsicPlane). Always present: it needs no
+        // intrinsic map, so an external DUT nobody has mapped still has one.
+        var (vdsExt, idExt) = ExtrinsicPlane.Loadline(ctx.ExtrinsicTerminals(point, planeV, planeI), loadlineSamples);
+        ds.Add("Vds_ext_t", new DataCube([tsample], vdsExt));
+        ds.Add("Ids_ext_t", new DataCube([tsample], idExt));
+
         // brief-modelcomposer-23 R-mc23-6 — the quiescent bias at the intrinsic plane, beside the applied one: a composed
         // DUT's extrinsic Rg/Rd/Rs move it off the package-plane Vgs/Vdd.
         var (vgsi, vdsi) = ctx.IntrinsicDcBias;
@@ -218,6 +225,16 @@ public static class HarmonicaDataSet
 
         return ds;
     }
+
+    /// <summary>
+    /// One label per port. A model whose ports are node PAIRS lists both nodes of each (a composed core's <c>gi si di si
+    /// …</c>), which is twice the port count and was refused by the axis — every composed DUT's DataSet threw here; each
+    /// port is labelled by its + node instead. Any other length publishes the port numbers alone.
+    /// </summary>
+    private static string[]? PortLabels(string[] names, int ports)
+        => names.Length == ports     ? names
+         : names.Length == 2 * ports ? [.. Enumerable.Range(0, ports).Select(q => names[2 * q])]
+         : null;
 
     private static Complex Finite(Complex z)
         => double.IsFinite(z.Real) && double.IsFinite(z.Imaginary) ? z : new Complex(double.NaN, double.NaN);

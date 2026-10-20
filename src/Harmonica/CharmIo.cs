@@ -907,6 +907,7 @@ public static class CharmIo
             ShowGridPoints           = a.ShowGridPoints,
             ShowDiagnosticsOverlay   = a.ShowDiagnosticsOverlay,
             ShowPowerSweepTimeDomain = a.ShowPowerSweepTimeDomain,
+            LoadlinePlane            = a.LoadlinePlane,
             ReadoutFormats           = Sorted(a.ReadoutFormats),
         };
 
@@ -934,6 +935,7 @@ public static class CharmIo
                 ShowGridPoints           = b.ShowGridPoints,
                 ShowDiagnosticsOverlay   = b.ShowDiagnosticsOverlay,
                 ShowPowerSweepTimeDomain = b.ShowPowerSweepTimeDomain,
+                LoadlinePlane            = b.LoadlinePlane,
                 ReadoutFormats    = b.ReadoutFormats is null
                     ? new Dictionary<string, string>(StringComparer.Ordinal)
                     : new Dictionary<string, string>(b.ReadoutFormats, StringComparer.Ordinal),
@@ -949,6 +951,7 @@ public static class CharmIo
         public bool?   ShowGridPoints           { get; set; }
         public bool?   ShowDiagnosticsOverlay   { get; set; }
         public bool?   ShowPowerSweepTimeDomain { get; set; }
+        public string? LoadlinePlane            { get; set; }
         public Dictionary<string, string>? ReadoutFormats { get; set; }
     }
 }

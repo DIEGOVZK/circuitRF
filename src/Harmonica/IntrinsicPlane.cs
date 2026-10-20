@@ -205,7 +205,7 @@ public static class IntrinsicPlane
     /// inverse for any <paramref name="sampleCount"/>, not an interpolation of
     /// <see cref="HbFft.Inverse"/>'s own fixed-N result.
     /// </summary>
-    private static double[] ResampleSpectrum(Complex[] spec, int k, int sampleCount)
+    internal static double[] ResampleSpectrum(Complex[] spec, int k, int sampleCount)
     {
         var x = new double[sampleCount];
         for (int t = 0; t < sampleCount; t++)

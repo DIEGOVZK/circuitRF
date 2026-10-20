@@ -452,8 +452,9 @@ public sealed class HarmonicaPowerSweepAndDcivTests(ITestOutputHelper output)
         var plot = HarmonicaPanelRenderer.BuildTimeDomainPlot(d, theme);
         Assert.Equal("Time Domain", plot.Title);
         Assert.Equal("Time (ns)", plot.XLabel);
-        Assert.Equal("Vds (V)",   plot.YLabel);
-        Assert.Equal("Ids (A)",   plot.Y2Label);
+        // brief-modelcomposer-24 R-mc24-5 — the titles name the plane the waveforms are read at (intrinsic here).
+        Assert.Equal("Vds,i (V)", plot.YLabel);
+        Assert.Equal("Ids,i (A)", plot.Y2Label);
         Assert.Equal(2, plot.Traces.Count);
 
         var vdsTrace = plot.Traces[0];

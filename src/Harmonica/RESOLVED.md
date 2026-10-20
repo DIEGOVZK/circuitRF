@@ -803,3 +803,58 @@ the context's settings and the seed solved it under the defaults; the two differ
 
 **Not built: dragging a placed ComposedFet from a schematic onto the window.** The schematic canvas has no
 drag-out gesture for a placed instance. A `.cmodel` file dropped on the window does set the DUT.
+
+## brief-modelcomposer-24 — the loadline at the intrinsic or the extrinsic plane (2026-10-20)
+
+**The probes are not in the netlist harmonicaRF solves.** R-mc24-2 recommends an `IProbe` in series with the DUT's
+gate and drain, and its own gate is that adding them changes no published cube bit for bit. Both cannot hold in one
+netlist: a zero-volt branch changes no answer, but it is another node and another branch, the sparse ordering moves,
+and the solve's last bits move with it. So `HarmonicaNetlist.Build(…, terminalProbes: true)` is a SECOND netlist that
+`ExtrinsicPlane` elaborates lazily, once per structure, and the solve netlist is byte-identical to before. Each
+terminal quantity is `Q₀ + Σ r_Q·I_nl − Σ r_Q·I_del`, one row of the probe netlist's inverse per quantity and harmonic
+(`HbLinearExtractor.ControlSensitivityRow`), so a frame is a product per harmonic: measured 2.7 ms to build on the
+`synthetic-gan` DUT and 19 µs per frame to recover. Against a full `HbEngine` solve of the probed, stamped netlist:
+1.8e-11 on `Vds,ext` and 5.9e-11 on `Id,ext`, relative.
+
+**An open termination plane made the recovery a difference of two huge terms.** With the default 1 H bias choke a plane
+reaches the rest of the circuit through ~10 GΩ at the fundamental, so `G⁻¹` is enormous there: on a bare native FET the
+recovered drain voltage was 4e-3 relative off. The composed fixtures' 1 µH choke hid it. Fix: the probe netlist
+carries `R = Z0` from each plane to ground, and each plane is injected with its delivered current plus `V_plane/Z0`, the
+current that resistor draws at the plane voltage `PlaneState` already gives. Same circuit by superposition; 4e-3 →
+2e-11.
+
+**At DC the two planes differ by `Idc · InductanceRegR` on a bare device, and that is the regularisation, not physics.**
+`HbLinearExtractor.ExtractImpedance(0)` adds `InductanceRegR` (1 µΩ) in series with each choke when regularisation is
+`Always` (harmonicaRF's default); the full-network stamp `ControlSensitivityRow`/`SolveFullNetwork` read does not. So
+the HB unknown's DC drain voltage sits ~1e-7 V below the recovered one on a native FET at ~0.1 A. The gate bounds DC by
+that drop and holds every RF harmonic to 1e-9.
+
+**A comparison at the recovered terminals needs the solve driven to its floor.** The recovery reads the linear network at
+the point the Newton loop stopped, so a residual left at the default tolerance (~1e-8 A) shows up as ~1e-8 of Vds.
+
+**The two loadlines are not the same curve on a bare device in compression, and cannot be.** The intrinsic loadline
+evaluates `i(v(t))` pointwise at every sample, so its current carries the harmonics above K; the extrinsic current is
+known only per harmonic and is band-limited to 0…K (R-mc24-3 asks for exactly that). Measured on a native FET at
+10 dBm, K = 3: 1.5% of peak current. With charge off the two agree to 1e-9 as K-harmonic loops; with charge on the
+spectra differ by exactly `jωq` per harmonic.
+
+**`HarmonicaDataSet.Build` threw for every composed DUT, from MC-23 on.** `ComposedCoreModel.TerminalNames` lists its
+ports as node PAIRS (`gi si di si …`, eight names for four ports) and the `port` axis refused a label count that did not
+match. Nothing published a frame for a `.cmodel` DUT. Each port is now labelled by its + node.
+
+**The extrinsic DCIV bench needs the DC engine's source ramp, and a tolerance above the residual floor.** Measured on
+`synthetic-gan` over the default window (16 × 120 points): above Vdg ≈ 26 V the model is in gate–drain breakdown and
+Newton from the previous point cannot cross the knee, even at 1/8 V sub-steps (1,309–1,538 gaps whatever the sub-step
+depth or tolerance); the ramp crosses it, and the warm start then carries the rest of the curve in 3–5 iterations.
+At `NonlinearAbsTol = 1e-12` every point fell through to a ramp that could not meet the floor either (~1e-9 A with a
+trap node, ~1e-7 A in breakdown): 230 s and 1,498 gaps. At 1e-9 A, 50 iterations a step, ramp on failure: 2.0 s and 7
+gaps, about the intrinsic composed family's 2.9 s. `NonlinearDcEngine.Run` gained an optional warm start for this;
+null is the cold start every other caller has.
+
+**The default DCIV window is far past this model's breakdown.** Vds 0…120 V was chosen for the shipped SDD; the
+4 × 125 µm example breaks down near 26 V Vdg, so most of the default extrinsic family is breakdown current. Not changed
+here — a per-DUT default window would be a decision of its own.
+
+**Open for the owner** (brief §5): extrinsic is the DUT's own terminals, as chosen; the termination-plane reading
+(beyond package and embedding — what a load-pull system measures with no de-embedding) was not built. A DCIV family at
+the operating trap state and temperature is the natural GaN follow-on and is not started.

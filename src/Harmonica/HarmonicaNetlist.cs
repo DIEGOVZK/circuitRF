@@ -50,6 +50,20 @@ public sealed class HarmonicaNetlist
     public const string Dut = "DUT";
 
     /// <summary>
+    /// brief-modelcomposer-24 R-mc24-2 — the zero-volt probes in series with the DUT's gate and drain, and the DUT-side
+    /// nets they leave behind. Present only in the netlist <see cref="ExtrinsicPlane"/> recovers the DUT's terminals from
+    /// (<see cref="Build"/>'s <c>terminalProbes</c>) and in the DCIV bench, never in the netlist harmonicaRF solves.
+    /// </summary>
+    public const string GateProbe  = "IPG";
+    public const string DrainProbe = "IPD";
+    public const string DutGateNode  = "n_gdut";
+    public const string DutDrainNode = "n_ddut";
+
+    /// <summary>The DCIV bench's two supplies (<see cref="DcivBench"/>).</summary>
+    public const string BenchGateSupply  = "VGB";
+    public const string BenchDrainSupply = "VDB";
+
+    /// <summary>
     /// The ideal bias choke and DC block (§4.4). One henry is open at RF and a short at DC; one
     /// farad is the dual. Both are the values <c>TunerModel</c> already uses for the same job, so
     /// harmonicaRF's bias tee and the loadpull engine's are the same circuit.
@@ -72,7 +86,13 @@ public sealed class HarmonicaNetlist
     /// Builds the open-port netlist. <paramref name="terminationText"/> is appended verbatim and is
     /// how a caller stamps the terminations for a comparison run — the product never passes one.
     /// </summary>
-    public static HarmonicaNetlist Build(CircuitModel model, string? terminationText = null)
+    /// <param name="terminalProbes">
+    /// brief-modelcomposer-24 R-mc24-2 — an <c>IProbe</c> in series with the DUT's gate and drain, at its own terminals
+    /// (inside the package and the embedding). They are zero-volt branches and change no answer, but they are a different
+    /// matrix, and a different sparse ordering moves the last bits of every solve; so the netlist harmonicaRF SOLVES never
+    /// carries them, and <see cref="ExtrinsicPlane"/> reads its terminals off this one.
+    /// </param>
+    public static HarmonicaNetlist Build(CircuitModel model, string? terminationText = null, bool terminalProbes = false)
     {
         var sb = new StringBuilder();
 
@@ -136,6 +156,47 @@ public sealed class HarmonicaNetlist
 
         sb.AppendLine();
 
+        if (terminalProbes)
+        {
+            sb.AppendLine($"IProbe:{GateProbe}  {gate} {DutGateNode}");
+            sb.AppendLine($"IProbe:{DrainProbe}  {drain} {DutDrainNode}");
+            sb.AppendLine();
+            gate  = DutGateNode;
+            drain = DutDrainNode;
+        }
+
+        AppendDut(sb, model, gate, drain, sourceTerminal);
+
+        if (terminationText is not null)
+        {
+            sb.AppendLine();
+            sb.AppendLine(terminationText);
+        }
+
+        return new HarmonicaNetlist(sb.ToString(), model);
+    }
+
+    /// <summary>
+    /// brief-modelcomposer-24 R-mc24-4 — the extrinsic DCIV family's bench: the DUT alone, its source grounded, a supply
+    /// at its gate and one at its drain, each through the probe <see cref="Build"/>'s <c>terminalProbes</c> uses. No
+    /// package and no embedding: the extrinsic plane is the DUT's OWN terminals, inside both.
+    /// </summary>
+    public static string DcivBench(CircuitModel model)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("; harmonicaRF — generated, the extrinsic DCIV bench: the DUT alone between two supplies.");
+        sb.AppendLine($"Vdc:{BenchGateSupply}  n_gbench 0  Vdc=0");
+        sb.AppendLine($"IProbe:{GateProbe}  n_gbench {DutGateNode}");
+        sb.AppendLine($"Vdc:{BenchDrainSupply}  n_dbench 0  Vdc=0");
+        sb.AppendLine($"IProbe:{DrainProbe}  n_dbench {DutDrainNode}");
+        sb.AppendLine();
+        AppendDut(sb, model, DutGateNode, DutDrainNode, "0");
+        return sb.ToString();
+    }
+
+    /// <summary>The DUT and what belongs to it: an SDD's scope variables, the instance line, and an SDD's own Cgs/Cdg/Cds.</summary>
+    private static void AppendDut(StringBuilder sb, CircuitModel model, string gate, string drain, string sourceTerminal)
+    {
         // R7B §3.5 — an SDD's Parameters carry both its equations and its scope variables, keyed
         // identically (name → expression text). Equations stay on the instance line as before;
         // variables become top-level GLOBAL lines instead, because CnlReader's instance-line parser
@@ -194,14 +255,6 @@ public sealed class HarmonicaNetlist
                 AppendCapacitance(sb, "CDS", drain, sourceTerminal, caps.Cds);
             }
         }
-
-        if (terminationText is not null)
-        {
-            sb.AppendLine();
-            sb.AppendLine(terminationText);
-        }
-
-        return new HarmonicaNetlist(sb.ToString(), model);
     }
 
     /// <summary>

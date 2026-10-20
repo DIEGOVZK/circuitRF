@@ -31,13 +31,16 @@ namespace CircuitRF.Ui.Harmonica;
 /// </summary>
 public sealed class HarmonicaSolver
 {
-    private readonly Lock                 _dcivGate = new();
-    private DcivFamily.Key?               _dcivKey;
-    private IReadOnlyList<DcivCurve>      _dciv = [];
+    /// <summary>Tier C for both planes (brief-modelcomposer-24 R-mc24-4) — see <see cref="DcivFamilyCache"/>.</summary>
+    private readonly DcivFamilyCache _dciv = new();
 
-    /// <summary>How many times the DCIV family has actually been computed. Tier C's own gate —
-    /// a counter rather than a clock, per this repo's convention.</summary>
-    public int DcivComputeCount { get; private set; }
+    /// <summary>How many times a DCIV family has actually been computed, both planes together. Tier C's own gate —
+    /// a counter rather than a clock, per this repo's convention. A plane that coincides with the intrinsic one at DC
+    /// (every kind but a <c>.cmodel</c> or a mapped external model) costs nothing and counts nothing.</summary>
+    public int DcivComputeCount => _dciv.ComputeCount;
+
+    /// <summary>The same, for one plane.</summary>
+    public int DcivComputeCountFor(LoadlinePlane plane) => _dciv.ComputeCountFor(plane);
 
     /// <summary>How many HB solves the last <see cref="Solve"/> cost, everything included.</summary>
     public int LastSolveCount { get; private set; }
@@ -320,23 +323,17 @@ public sealed class HarmonicaSolver
             ApplyIntrinsicGlyphs(published, markers);
         }
 
-        // ── tier C: the DCIV family, computed once and held ───────────────────
+        // ── tier C: the DCIV family at both planes, each computed once and held ──
         // The cache is guarded because ONE solver is shared across every pool worker, deliberately:
         // tier C depends only on the model, so computing it once per WORKER would be N times the
-        // work for the same answer and would break Tier 6's "computed once across a drag".
-        var dcivKey = DcivFamily.ResolvedKey(ctx.Model);
-        lock (_dcivGate)
-        {
-            if (_dcivKey != dcivKey)
-            {
-                _dciv    = DcivFamily.Compute(ctx, dcivKey);
-                _dcivKey = dcivKey;
-                DcivComputeCount++;
-            }
-        }
+        // work for the same answer and would break Tier 6's "computed once across a drag". Both
+        // planes ride on every frame (brief-modelcomposer-24 R-mc24-5), so the plane toggle is a
+        // relabel of data in hand and never a solve.
+        var dcivIntrinsic = _dciv.Get(ctx, LoadlinePlane.Intrinsic);
+        var dcivExtrinsic = _dciv.Get(ctx, LoadlinePlane.Extrinsic);
 
         // ── the panels ────────────────────────────────────────────────────────
-        var loadline = BuildLoadline(ctx, at, opt.IntrinsicPlane);
+        var loadline = BuildLoadline(ctx, at, published, dcivIntrinsic, dcivExtrinsic, opt.IntrinsicPlane);
         var power    = BuildPowerSweep(sweep, cursor, opt.EfficiencyMetric, s0.PinStartDbm, s0.PinMaxDbm);
 
         // R-h9b-4 — both rows are built HERE, in one place, so the two charts cannot disagree about
@@ -513,7 +510,9 @@ public sealed class HarmonicaSolver
 
     // ── §7.3 — the loadline panel ────────────────────────────────────────────
 
-    private LoadlinePanelData BuildLoadline(HarmonicaContext ctx, PinStep? at, bool intrinsic)
+    private static LoadlinePanelData BuildLoadline(HarmonicaContext ctx, PinStep? at, DataSet? published,
+                                                   IReadOnlyList<DcivCurve> dcivIntrinsic,
+                                                   IReadOnlyList<DcivCurve> dcivExtrinsic, bool intrinsic)
     {
         double[] vds = [], ids = [];
         // R-h8-3 — an intrinsic plane nobody has located draws NO loadline. Empty is honest; a curve
@@ -532,11 +531,25 @@ public sealed class HarmonicaSolver
             ids = [.. i, i.Length > 0 ? i[0] : 0.0];
         }
 
+        // brief-modelcomposer-24 R-mc24-3 — the extrinsic loadline needs no intrinsic map, so it is drawn for every DUT.
+        // It is READ from the published DataSet built at this same point, never evaluated a second time.
+        double[] vdsExt = [], idsExt = [];
+        if (published is not null && published.Contains("Vds_ext_t") && published.Contains("Ids_ext_t"))
+        {
+            var v = published["Vds_ext_t"].RealValues;
+            var i = published["Ids_ext_t"].RealValues;
+            vdsExt = [.. v, v.Length > 0 ? v[0] : 0.0];
+            idsExt = [.. i, i.Length > 0 ? i[0] : 0.0];
+        }
+
         return new LoadlinePanelData
         {
-            Dciv = [.. _dciv.Select(c => new LoadlinePanelData.Curve(c.Vgs, c.Vds, c.Ids))],
+            Dciv = [.. dcivIntrinsic.Select(c => new LoadlinePanelData.Curve(c.Vgs, c.Vds, c.Ids))],
             LoadlineVds = vds,
             LoadlineIds = ids,
+            ExtrinsicDciv = [.. dcivExtrinsic.Select(c => new LoadlinePanelData.Curve(c.Vgs, c.Vds, c.Ids))],
+            ExtrinsicLoadlineVds = vdsExt,
+            ExtrinsicLoadlineIds = idsExt,
             Intrinsic   = intrinsic,
             FrequencyHz = ctx.Model.Settings.FrequencyHz,
         };

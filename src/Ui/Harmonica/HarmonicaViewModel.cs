@@ -335,7 +335,7 @@ public sealed partial class HarmonicaViewModel : ObservableObject
         var next = s;
 
         if ((s.DcivAutoscale || s.DcivXMin is null)
-            && (frame.Loadline.Dciv.Count > 0 || frame.Loadline.LoadlineVds.Length > 1))
+            && (frame.Loadline.ShownDciv.Count > 0 || frame.Loadline.ShownVds.Length > 1))
         {
             var w = NaturalDcivWindow(frame, s, theme);
             if (w.Width > 0 && w.Height > 0 &&
@@ -366,7 +366,7 @@ public sealed partial class HarmonicaViewModel : ObservableObject
             }
         }
 
-        if ((s.TimeDomainAutoscale || s.TimeDomainXMin is null) && frame.Loadline.LoadlineVds.Length > 1)
+        if ((s.TimeDomainAutoscale || s.TimeDomainXMin is null) && frame.Loadline.ShownVds.Length > 1)
         {
             var (w, w2) = NaturalTimeDomainWindow(frame, s, theme);
             if (w.Width > 0 && w.Height > 0 &&
@@ -394,7 +394,13 @@ public sealed partial class HarmonicaViewModel : ObservableObject
     {
         // §7.3 — the toggle moves the DCIV family and the loadline TOGETHER, so the two curves are
         // always in the same plane and cannot be misleadingly superimposed. One flag, both curves.
+        // brief-modelcomposer-24 R-mc24-5/6 — both planes are already on the frame, so this is a relabel and
+        // never a solve; the plane is a view preference of the document, so it is kept in its appearance.
         Frame = Frame with { Loadline = Frame.Loadline with { Intrinsic = value } };
+        Appearance = Appearance with
+        {
+            LoadlinePlane = CharmAppearance.LoadlinePlaneValue(value ? LoadlinePlane.Intrinsic : LoadlinePlane.Extrinsic),
+        };
         DirtyChanged?.Invoke();
     }
 
@@ -2322,6 +2328,8 @@ public sealed partial class HarmonicaViewModel : ObservableObject
         ShowDiagnosticsOverlay = c.Appearance.ShowDiagnosticsOverlay ?? false;
         // brief-harmonicarf-r6d §4 — same "kept in step with the persisted appearance on load" rule.
         ShowPowerSweepTimeDomain = c.Appearance.ShowPowerSweepTimeDomain ?? false;
+        // brief-modelcomposer-24 R-mc24-5 — the same rule for the loadline plane; a document without it opens intrinsic.
+        IntrinsicPlane = c.Appearance.LoadlinePlaneOf == LoadlinePlane.Intrinsic;
 
         Model = c.Model;
         _ctx  = null;                                   // structure may have changed entirely

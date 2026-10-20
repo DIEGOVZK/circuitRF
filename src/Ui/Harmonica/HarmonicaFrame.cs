@@ -265,21 +265,41 @@ public sealed record LoadlinePanelData
     /// <summary>One DCIV curve: a Vgs value and its Ids(Vds) trace.</summary>
     public sealed record Curve(double Vgs, double[] Vds, double[] Ids);
 
+    /// <summary>The INTRINSIC DCIV family.</summary>
     public IReadOnlyList<Curve> Dciv { get; init; } = [];
 
-    /// <summary>The loadline itself, closed over one RF cycle.</summary>
+    /// <summary>The INTRINSIC loadline, closed over one RF cycle. Empty when the intrinsic plane is not located.</summary>
     public double[] LoadlineVds { get; init; } = [];
     public double[] LoadlineIds { get; init; } = [];
+
+    /// <summary>brief-modelcomposer-24 — the DCIV family at the DUT's own terminals.</summary>
+    public IReadOnlyList<Curve> ExtrinsicDciv { get; init; } = [];
+
+    /// <summary>brief-modelcomposer-24 — the loadline at the DUT's own terminals, closed over one RF cycle:
+    /// <c>V(drain) − V(source)</c> against the TOTAL drain-terminal current.</summary>
+    public double[] ExtrinsicLoadlineVds { get; init; } = [];
+    public double[] ExtrinsicLoadlineIds { get; init; } = [];
 
     /// <summary>
     /// §7.3's plane toggle. <b>One toggle, not two</b> — the DCIV family and the loadline move
     /// together, so the two curves are always in the same plane and cannot be misleadingly
     /// superimposed. The indicator that states which plane is shown is <b>persistent, never
-    /// absent</b>.
+    /// absent</b>. Both planes ride on the frame, so the toggle changes what is SHOWN, never what
+    /// was solved (brief-modelcomposer-24 R-mc24-6).
     /// </summary>
     public bool Intrinsic { get; init; } = true;
 
     public string PlaneLabel => Intrinsic ? "intrinsic" : "extrinsic";
+
+    /// <summary>The family and the loadline of the plane shown — what every panel draws.</summary>
+    public IReadOnlyList<Curve> ShownDciv => Intrinsic ? Dciv : ExtrinsicDciv;
+    public double[] ShownVds => Intrinsic ? LoadlineVds : ExtrinsicLoadlineVds;
+    public double[] ShownIds => Intrinsic ? LoadlineIds : ExtrinsicLoadlineIds;
+
+    /// <summary>R-mc24-5 — the axis titles name the plane: <c>Vds,i</c>/<c>Ids,i</c> at the device's own ports,
+    /// <c>Vds</c>/<c>Id</c> at the DUT's terminals.</summary>
+    public string VoltageTitle => Intrinsic ? "Vds,i (V)" : "Vds (V)";
+    public string CurrentTitle => Intrinsic ? "Ids,i (A)" : "Id (A)";
 
     /// <summary>
     /// brief-harmonicarf-r6d §5 — the fundamental this loadline was closed over one cycle of, carried

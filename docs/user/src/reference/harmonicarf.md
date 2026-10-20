@@ -142,7 +142,22 @@ Four panels and a strip:
 - **The loadline plot** — the device's DCIV family with the time-domain loadline superimposed, live
   during a drag. **One plane toggle moves both curves together** between intrinsic and extrinsic, so the
   two can never be misleadingly superimposed, and a persistent indicator on the panel says which plane
-  you are looking at.
+  you are looking at. The axis titles name it too: `Vds,i` / `Ids,i` at the intrinsic plane, `Vds` /
+  `Id` at the extrinsic one. The plane is saved with the document; a new document starts intrinsic.
+  - **Intrinsic** is the current generator itself: the voltage at the device's own ports and the
+    **conduction** current only. This is the loadline to read against knee and breakdown.
+  - **Extrinsic** is the DUT's own terminals — inside the package and any embedding, outside everything
+    the DUT holds. The voltage is `V(drain) − V(source)` there, and the current is the **total**
+    terminal current: conduction plus the current charging the device's capacitances plus whatever its
+    own network carries. That is why the extrinsic loop opens up wherever charge or a parasitic network
+    is present, even on a bare device. For a Model Composer model this is the plane its measurements
+    were taken at, so the extrinsic family is the one to compare with measured I–V.
+  - The extrinsic plane is always available, including for an external model whose intrinsic plane has
+    not been named. Its DCIV family is solved at the terminals through the DUT's own network; a point
+    that does not converge is left as a gap in the curve.
+  - The extrinsic loadline is built from the solved harmonics, so its current carries harmonics
+    0…K only. The intrinsic curve is evaluated directly from the device and also shows the current's
+    higher harmonics, so on a bare device in compression the two loops can differ slightly in shape.
 - **The power sweep** — gain on the left axis, efficiency on the right, against output power. The
   **X-axis unit cycles when you click it**: Pout (dBm) → Pout (W) → available Pin (dBm) → available Pin
   (W). It carries the **operating-point cursor**, the drive level at which the intrinsic glyphs, the

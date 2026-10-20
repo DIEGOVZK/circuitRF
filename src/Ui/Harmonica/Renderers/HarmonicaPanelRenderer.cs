@@ -988,20 +988,21 @@ public static class HarmonicaPanelRenderer
             ShowWatermark = false,
             // brief-harmonicarf-r6d §3.
             CustomTitleOn = true, CustomTitle = "Loadline", CustomTitleBold = true,
-            CustomXLabelOn = true, CustomXLabel = "Vds (V)",
-            CustomYLabelOn = true, CustomYLabel = "Ids (A)",
+            // brief-modelcomposer-24 R-mc24-5 — the titles name the plane as well as the indicator does.
+            CustomXLabelOn = true, CustomXLabel = d.VoltageTitle,
+            CustomYLabelOn = true, CustomYLabel = d.CurrentTitle,
         };
         // Matches the Smith panels' own row-1 title height — see RectTitleFontSizeLabel's own remarks.
         plot.Axes.FontSizeLabel = RectTitleFontSizeLabel;
 
-        foreach (var c in d.Dciv)
-        {
-            var t = NewRectTrace(c.Vds, c.Ids, theme.DcivFamily, width: 0.8);
-            plot.Traces.Add(t);
-        }
+        // A point the extrinsic bench did not converge at is a GAP (R-mc24-4): each run of finite points is its own
+        // trace, so the curve breaks there rather than joining across it.
+        foreach (var c in d.ShownDciv)
+            foreach (var (vds, ids) in FiniteRuns(c.Vds, c.Ids))
+                plot.Traces.Add(NewRectTrace(vds, ids, theme.DcivFamily, width: 0.8));
 
-        if (d.LoadlineVds.Length > 1)
-            plot.Traces.Add(NewRectTrace(d.LoadlineVds, d.LoadlineIds, theme.Loadline, width: 1.8));
+        if (d.ShownVds.Length > 1)
+            plot.Traces.Add(NewRectTrace(d.ShownVds, d.ShownIds, theme.Loadline, width: 1.8));
 
         AutoScale(plot);
         // brief-harmonicarf-r6e §2.4 — applied last: an explicit stored limit overrides AutoScale's
@@ -1012,6 +1013,20 @@ public static class HarmonicaPanelRenderer
         // power-sweep panel's own secondary-axis margin. Pinned to the same shape either draws.
         plot.Axes.Viewport = PowerSweepShapedViewport();
         return plot;
+    }
+
+    /// <summary>The maximal runs of points whose current is finite, each with at least two points.</summary>
+    private static IEnumerable<(double[] X, double[] Y)> FiniteRuns(double[] x, double[] y)
+    {
+        int n = Math.Min(x.Length, y.Length), start = -1;
+        for (int i = 0; i <= n; i++)
+        {
+            bool ok = i < n && double.IsFinite(y[i]);
+            if (ok && start < 0) start = i;
+            if (ok || start < 0) continue;
+            if (i - start >= 2) yield return (x[start..i], y[start..i]);
+            start = -1;
+        }
     }
 
     /// <summary>
@@ -1349,7 +1364,7 @@ public static class HarmonicaPanelRenderer
                                            LoadlinePanelData d, HarmonicaRenderTheme theme, bool darkMode,
                                            HarmonicaSettings? settings = null)
     {
-        if (d.LoadlineVds.Length < 2 || d.LoadlineIds.Length < 2)
+        if (d.ShownVds.Length < 2 || d.ShownIds.Length < 2)
         {
             DrawTimeDomainEmptyNote(canvas, size, theme);
             return;
@@ -1383,13 +1398,15 @@ public static class HarmonicaPanelRenderer
             ShowWatermark = false,
             CustomTitleOn = true, CustomTitle = "Time Domain", CustomTitleBold = true,
             CustomXLabelOn = true, CustomXLabel = "Time (ns)",
-            CustomYLabelOn = true, CustomYLabel = "Vds (V)",
-            CustomY2LabelOn = true, CustomY2Label = "Ids (A)",
+            // brief-modelcomposer-24 — the same waveforms the loadline panel draws, so the same plane and the same names.
+            CustomYLabelOn = true, CustomYLabel = d.VoltageTitle,
+            CustomY2LabelOn = true, CustomY2Label = d.CurrentTitle,
         };
         // Matches the Smith panels' own row-1 title height — see RectTitleFontSizeLabel's own remarks.
         plot.Axes.FontSizeLabel = RectTitleFontSizeLabel;
 
-        int n = d.LoadlineVds.Length;
+        double[] shownVds = d.ShownVds, shownIds = d.ShownIds;
+        int n = shownVds.Length;
         if (n > 1 && d.FrequencyHz > 0)
         {
             double periodNs = 1e9 / d.FrequencyHz;
@@ -1407,8 +1424,8 @@ public static class HarmonicaPanelRenderer
             {
                 t[i] = (double)i / cycleSamples * periodNs;
                 int src = i % cycleSamples;
-                vds[i] = d.LoadlineVds[src];
-                ids[i] = d.LoadlineIds[src];
+                vds[i] = shownVds[src];
+                ids[i] = shownIds[src];
             }
 
             plot.Traces.Add(NewRectTrace(t, vds, theme.GainTrace, width: 1.6));

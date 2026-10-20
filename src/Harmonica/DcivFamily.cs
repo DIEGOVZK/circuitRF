@@ -1,6 +1,9 @@
 using CircuitRF.Core;
+using CircuitRF.Core.Devices;
 using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Elaboration;
+using CircuitRF.Core.Netlist;
+using CircuitRF.Engine;
 
 namespace CircuitRF.Harmonica;
 
@@ -33,9 +36,12 @@ public static class DcivFamily
     /// </summary>
     /// <param name="StructuralKey">The model's own structural identity — DUT, parameters, embedding, and for a composed DUT
     /// its file, <c>N</c> and its switches (brief-modelcomposer-23 R-mc23-5), so a toggle redraws the family.</param>
+    /// <param name="Plane">brief-modelcomposer-24 R-mc24-4 — which plane the family is drawn at. Still tier C: one
+    /// family per key, computed once and held.</param>
     public readonly record struct Key(
         string StructuralKey, double VgsMin, double VgsMax, int VgsSteps,
-        double VdsMin, double VdsMax, int VdsSteps, int DrainPort);
+        double VdsMin, double VdsMax, int VdsSteps, int DrainPort,
+        LoadlinePlane Plane = LoadlinePlane.Intrinsic);
 
     /// <summary>
     /// R-h9r2-14 — the default sweep: a FIXED window, Vgs −5 … 2.5 V in 16 steps and Vds 0 … 120 V in
@@ -85,6 +91,38 @@ public static class DcivFamily
     /// else <see cref="DefaultKey"/>.</summary>
     public static Key ResolvedKey(CircuitModel model) => OverrideOf(model) ?? DefaultKey(model);
 
+    /// <summary>The same sweep, at <paramref name="plane"/>.</summary>
+    public static Key ResolvedKey(CircuitModel model, LoadlinePlane plane) => ResolvedKey(model) with { Plane = plane };
+
+    /// <summary>
+    /// brief-modelcomposer-24 R-mc24-4 — whether the DUT's terminals and its device's own ports are the same plane at DC,
+    /// so the extrinsic family IS the intrinsic one and costs nothing. True for every kind with no internal network: a
+    /// native FET, an SDD (its Cgs/Cdg/Cds are open at DC and Rgs is in series with Cgs), a diode, and an external model
+    /// read at its own pins. False for a <c>.cmodel</c>, whose Rg/Rd/Rs sit between the two, and for an external model whose
+    /// intrinsic plane has been named, which says its intrinsic nodes are internal ones.
+    /// </summary>
+    public static bool PlanesCoincideAtDc(DutSpec dut)
+        => dut.Kind switch
+        {
+            DutKind.Composed => false,
+            DutKind.External => dut.IntrinsicMapping is null,
+            _                => true,
+        };
+
+    /// <summary>
+    /// The settings the extrinsic bench solves with: the DC engine's own source-stepping fallback, a tolerance three
+    /// decades tighter than its default 1e-6 A, and 50 Newton iterations a step rather than 150.
+    ///
+    /// <para><b>Measured on the <c>synthetic-gan</c> example over the default window (16 × 120 points), and every number
+    /// is load-bearing.</b> Above Vdg ≈ 26 V that model is in gate–drain breakdown, and Newton from the previous point
+    /// cannot cross the knee — at any Vds sub-step tried, down to 1/8 V — while the source ramp can, after which the warm
+    /// start carries the rest of the curve in 3–5 iterations. So the ramp stays: without it 1,538 of the 1,920 points are
+    /// gaps. A tolerance below the residual floor (~1e-9 A with a trap node, ~1e-7 A deep in breakdown) is worse than
+    /// none: at 1e-12 every point fell through to a ramp that could not meet it either, 230 s for 1,498 gaps. With these,
+    /// 1.8 s and 7 gaps.</para>
+    /// </summary>
+    public static AnalysisSettings ExtrinsicBenchSettings => new() { NonlinearAbsTol = 1e-9, NonlinearMaxIter = 50 };
+
     /// <summary>
     /// Validates a candidate override BEFORE it is written — R-h9b-12's "a robust validator so that a
     /// DCIV trace is always shown". min &lt; max on both axes, steps ≥ 2 on both, everything finite.
@@ -101,6 +139,9 @@ public static class DcivFamily
     /// </summary>
     public static IReadOnlyList<DcivCurve> Compute(HarmonicaContext ctx, Key key)
     {
+        if (key.Plane == LoadlinePlane.Extrinsic && !PlanesCoincideAtDc(ctx.Model.Dut))
+            return ComputeExtrinsic(ctx.Model, key);
+
         var dut = ctx.DutDevice;
         if (dut.Model is ComposedCoreModel core) return ComputeComposed(ctx, dut, core, key);
         int ports = dut.Model.PortCount;
@@ -139,6 +180,57 @@ public static class DcivFamily
     }
 
     /// <summary>
+    /// brief-modelcomposer-24 R-mc24-4 — DC I–V at the DUT's own terminals: <see cref="HarmonicaNetlist.DcivBench"/> (the
+    /// DUT alone between a gate and a drain supply) solved by <see cref="NonlinearDcEngine"/> at each point, so the
+    /// self-heating, the trap states and the dispersion node sit at the DC values the model itself gives them, through its
+    /// own network. Each point starts from the previous one along Vds; each curve's first from the previous curve's first.
+    /// A point the solve does not converge at is a GAP (NaN) — never an interpolated value.
+    /// </summary>
+    private static IReadOnlyList<DcivCurve> ComputeExtrinsic(CircuitModel model, Key key)
+    {
+        var (lib, tb) = new CnlReader().Read(HarmonicaNetlist.DcivBench(model));
+        using var nl = new Elaborator(lib).Elaborate(tb);
+        var gate  = (VdcModel)nl.Components.Single(c => c.InstancePath == HarmonicaNetlist.BenchGateSupply).Model;
+        var drain = (VdcModel)nl.Components.Single(c => c.InstancePath == HarmonicaNetlist.BenchDrainSupply).Model;
+        var settings = ExtrinsicBenchSettings;
+
+        var vds = new double[key.VdsSteps];
+        for (int i = 0; i < key.VdsSteps; i++)
+            vds[i] = key.VdsMin + (key.VdsMax - key.VdsMin) * i / (key.VdsSteps - 1);
+
+        var curves = new List<DcivCurve>(key.VgsSteps);
+        double[]? curveStart = null;
+        for (int g = 0; g < key.VgsSteps; g++)
+        {
+            double vgs = key.VgsMin + (key.VgsMax - key.VgsMin) * g / (key.VgsSteps - 1);
+            var ids = new double[key.VdsSteps];
+            double[]? seed = curveStart;
+            for (int i = 0; i < key.VdsSteps; i++)
+            {
+                gate.SetVdc(vgs);
+                drain.SetVdc(vds[i]);
+                ids[i] = double.NaN;
+                try
+                {
+                    var dc = NonlinearDcEngine.Run(nl, settings, seed);
+                    if (dc.Converged && dc.ProbeCurrents.TryGetValue(HarmonicaNetlist.DrainProbe, out double id))
+                    {
+                        ids[i] = id;
+                        seed = dc.NodeVoltages;
+                        if (i == 0) curveStart = seed;
+                    }
+                }
+                catch (Exception)
+                {
+                    // A refusal at one point is that point's gap; the walk carries on from the last good one.
+                }
+            }
+            curves.Add(new DcivCurve(vgs, vds, ids));
+        }
+        return curves;
+    }
+
+    /// <summary>
     /// brief-modelcomposer-23 R-mc23-5 — the intrinsic DC I–V of a composed core: each point at its own DC state
     /// (<see cref="ComposedDcPoint"/> — dispersion at <c>IdDC − IdRF</c>, traps at their DC values, the junction at its
     /// self-heated temperature), so the family is the DC surface the loadline is drawn against rather than the device
@@ -169,6 +261,51 @@ public static class DcivFamily
                 curves.Add(new DcivCurve(vgs, vds, ids));
             }
         }
+        return curves;
+    }
+}
+
+/// <summary>
+/// brief-modelcomposer-24 R-mc24-4/5 — tier C for both planes: each plane's family computed once per key and held. Where the
+/// planes coincide at DC (<see cref="DcivFamily.PlanesCoincideAtDc"/>) the extrinsic family IS the intrinsic one, handed
+/// back with no computation and no count.
+///
+/// <para><b>One cache, shared across every pool worker, deliberately</b> — the same rule <c>HarmonicaSolver</c> already held
+/// for the one-plane family: the family depends only on the model, so computing it per worker would be N times the work
+/// for the same answer. Guarded for that reason.</para>
+/// </summary>
+public sealed class DcivFamilyCache
+{
+    private readonly Lock _gate = new();
+    private readonly Dictionary<LoadlinePlane, (DcivFamily.Key Key, IReadOnlyList<DcivCurve> Curves)> _held = [];
+    private readonly int[] _counts = new int[2];
+
+    /// <summary>How many families have actually been computed, both planes together.</summary>
+    public int ComputeCount { get { lock (_gate) return _counts[0] + _counts[1]; } }
+
+    /// <summary>How many families have actually been computed at <paramref name="plane"/>.</summary>
+    public int ComputeCountFor(LoadlinePlane plane) { lock (_gate) return _counts[(int)plane]; }
+
+    /// <summary>The family at <paramref name="plane"/> for <paramref name="ctx"/>'s model, computed only when its key moved.</summary>
+    public IReadOnlyList<DcivCurve> Get(HarmonicaContext ctx, LoadlinePlane plane)
+    {
+        lock (_gate) return GetLocked(ctx, plane);
+    }
+
+    private IReadOnlyList<DcivCurve> GetLocked(HarmonicaContext ctx, LoadlinePlane plane)
+    {
+        var key = DcivFamily.ResolvedKey(ctx.Model, plane);
+        if (_held.TryGetValue(plane, out var held) && held.Key == key) return held.Curves;
+
+        IReadOnlyList<DcivCurve> curves;
+        if (plane == LoadlinePlane.Extrinsic && DcivFamily.PlanesCoincideAtDc(ctx.Model.Dut))
+            curves = GetLocked(ctx, LoadlinePlane.Intrinsic);
+        else
+        {
+            curves = DcivFamily.Compute(ctx, key);
+            _counts[(int)plane]++;
+        }
+        _held[plane] = (key, curves);
         return curves;
     }
 }

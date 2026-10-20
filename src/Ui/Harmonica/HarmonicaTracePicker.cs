@@ -113,8 +113,11 @@ public static class HarmonicaTracePicker
             "Zin"        => "extrinsic input impedance from the TRUE delivered current (§4.5.4).",
             "V"          => "user-facing node voltage spectra, DC included.",
             "I_intr"     => "intrinsic conduction currents per device port.",
-            "Vds_intr_t" => "the time-domain loadline's drain voltage.",
-            "Ids_intr_t" => "the time-domain loadline's drain current.",
+            "Vds_intr_t" => "the time-domain loadline's drain voltage, intrinsic (the device's own ports).",
+            "Ids_intr_t" => "the time-domain loadline's drain current, intrinsic — conduction only.",
+            "Vds_ext_t"  => "the time-domain loadline's drain voltage at the DUT's own terminals, V(drain) − V(source).",
+            "Ids_ext_t"  => "the time-domain loadline's drain current at the DUT's own terminals — the TOTAL terminal " +
+                            "current: conduction, displacement and the DUT's own network.",
             _            => "",
         };
         return what.Length > 0 ? $"[{axes}] — {what}" : $"[{axes}]";
