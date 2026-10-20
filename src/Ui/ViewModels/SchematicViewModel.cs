@@ -14,6 +14,7 @@ using CircuitRF.Ui.Messages;
 using CircuitRF.Ui.Renderers;
 using CircuitRF.WBond;
 using CircuitRF.Ui.Schematic;
+using CircuitRF.Ui.Theming;
 
 namespace CircuitRF.Ui.ViewModels;
 
@@ -3930,6 +3931,10 @@ public sealed partial class SchematicViewModel : ObservableObject
         foreach (var dp in ComponentTypeRegistry.DefaultParameters(kind, resolvedPortCount))
             comp.Parameters.Add(new EditableParameter
                 { Name = dp.Name, Expression = dp.Expression, Unit = dp.Unit, ShowOnSchematic = dp.ShowOnSchematic, Dimension = dp.Dimension });
+
+        // The registry states a part's F/Freq rows in GHz; a new one reads in the preferred unit
+        // (Settings ▸ General ▸ Units), the same frequency.
+        PreferredUnits.ApplyToNewFrequencyRows(comp.Parameters, PreferredUnits.Frequency);
 
         // Microstrip built-ins default their Length parameters (W/L/W1-W4) to a fixed mm baseline
         // in the registry. Rewrite them for the placing workspace's technology: widths synthesised

@@ -36,6 +36,7 @@ using CircuitRF.Design.Layout.Em;
 using CircuitRF.Design.Layout.Recognition;
 using CircuitRF.Design.Layout.Recognition.Silkscreen;
 using CircuitRF.Engine;
+using CircuitRF.Ui.Theming;
 using CircuitRF.Ui.Tuning;
 
 namespace CircuitRF.Ui.Recognition;
@@ -78,6 +79,7 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
     private readonly Action<Action> _post;
     private readonly TimeSpan _debounce;
     private readonly FrequencySpec _basis;
+    private readonly (string Coeff, string Unit) _startShown, _stopShown;
     private readonly Dictionary<string, Dictionary<string, string>> _edits = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<PartsTableRowViewModel> _rows = [];
     private CancellationTokenSource? _cts;
@@ -94,8 +96,12 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
         _debounce = debounce ?? TimeSpan.FromMilliseconds(300);
         _basis = RecognitionSweep.Basis(emSetup);
         _newCellName = "";
-        _startText = $"{_basis.StartExpr} {_basis.StartUnit}";
-        _stopText = $"{_basis.StopExpr} {_basis.StopUnit}";
+        // Shown in the preferred frequency unit (Settings ▸ General ▸ Units), the same frequencies: a
+        // field still reading its shown basis is unstated, exactly as one reading the basis itself is.
+        _startShown = PreferredUnits.NewFrequency(_basis.StartExpr, _basis.StartUnit);
+        _stopShown = PreferredUnits.NewFrequency(_basis.StopExpr, _basis.StopUnit);
+        _startText = $"{_startShown.Coeff} {_startShown.Unit}";
+        _stopText = $"{_stopShown.Coeff} {_stopShown.Unit}";
         _pointsText = (_basis.NumPoints ?? RecognitionEmitOptions.DefaultSweep.NumPoints!.Value).ToString(CultureInfo.InvariantCulture);
         _coplanarFactorText = RecognitionOptions.DefaultCoplanarGapFactor.ToString(CultureInfo.InvariantCulture);
     }
@@ -368,7 +374,7 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
     /// <summary>The emit options: the sweep composed as the CLI composes its flags — a field left at the basis is unstated.</summary>
     public RecognitionEmitOptions BuildEmit()
     {
-        var start = RecognitionSweep.Parse(StartText) is { } s && !(s.Text == _basis.StartExpr && s.Unit == _basis.StartUnit) ? s : (RecognitionFrequency?)null;
+        var start = RecognitionSweep.Parse(StartText) is { } s && !IsBasis(s, _basis.StartExpr, _basis.StartUnit, _startShown) ? s : (RecognitionFrequency?)null;
         int? npts = int.TryParse(PointsText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n)
                     && n != (_basis.NumPoints ?? RecognitionEmitOptions.DefaultSweep.NumPoints) ? n : null;
         return new RecognitionEmitOptions { Sweep = RecognitionSweep.Compose(EmSetupForSweep, start, StatedStop(), npts), Digits = Digits,
@@ -379,7 +385,10 @@ public abstract partial class RecognitionSessionViewModel : ObservableObject
     protected virtual EmSetup? EmSetupForSweep => null;
 
     private RecognitionFrequency? StatedStop() =>
-        RecognitionSweep.Parse(StopText) is { } e && !(e.Text == _basis.StopExpr && e.Unit == _basis.StopUnit) ? e : null;
+        RecognitionSweep.Parse(StopText) is { } e && !IsBasis(e, _basis.StopExpr, _basis.StopUnit, _stopShown) ? e : null;
+
+    private static bool IsBasis(RecognitionFrequency f, string expr, string unit, (string Coeff, string Unit) shown) =>
+        (f.Text == expr && f.Unit == unit) || (f.Text == shown.Coeff && f.Unit == shown.Unit);
 
     // ── the parts table (R-as8-3) ────────────────────────────────────────────────────────────────────
 

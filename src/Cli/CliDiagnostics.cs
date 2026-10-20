@@ -703,6 +703,15 @@ internal static class CliDiagnostics
         "No technology named '{id}'. The available technologies are: {known}. "
         + "Use --tech none for a workspace with no technology.", ("id", id), ("known", known));
 
+    public static Diagnostic NewUnknownLengthUnit(string unit) => Diagnostic.Create(
+        "new.length-unit.unknown", DiagnosticSeverity.Error,
+        "No length unit named '{unit}'. The length units are: um, mm, mil.", ("unit", unit));
+
+    public static Diagnostic NewLengthUnitWithoutTechnology() => Diagnostic.Create(
+        "new.length-unit.no-technology", DiagnosticSeverity.Error,
+        "--length-unit sets the unit of the workspace's technology, and --tech none creates none. "
+        + "Name a technology, or leave --length-unit out.");
+
     public static Diagnostic NewParentNotFound(string path) => Diagnostic.Create(
         "new.parent.not-found", DiagnosticSeverity.Error,
         "No such directory: {path}", ("path", path));

@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using CircuitRF.Design.Layout;
 using CircuitRF.Design.Revision;
 
@@ -86,13 +89,16 @@ public static class WorkspaceCreate
         return CopyTechnology(workspaceDir, entry, TechnologyCatalog.LibraryFiles(entry));
     }
 
-    /// <summary>The entry's own raw bytes into <c>tech/</c>, and each library it names where the copy's reference says.</summary>
-    private static string CopyTechnology(string workspaceDir, TechnologyCatalogEntry entry, IReadOnlyList<(string Reference, string Json)> libraries)
+    /// <summary>The entry's own raw bytes into <c>tech/</c>, and each library it names where the copy's reference says.
+    /// A <paramref name="displayUnit"/> replaces the copy's <c>DefaultDisplayUnit</c> and nothing else.</summary>
+    private static string CopyTechnology(string workspaceDir, TechnologyCatalogEntry entry,
+                                         IReadOnlyList<(string Reference, string Json)> libraries, LayoutUnit? displayUnit = null)
     {
         var techDir = Path.Combine(workspaceDir, "tech");
         Directory.CreateDirectory(techDir);
         string techPath = Path.Combine(techDir, entry.Id + ".ctech");
-        File.WriteAllText(techPath, TechnologyCatalog.LoadRawJson(entry));
+        string raw = TechnologyCatalog.LoadRawJson(entry);
+        File.WriteAllText(techPath, displayUnit is { } u ? WithDisplayUnit(raw, u) : raw);
         // Each named library lands where the copied .ctech's own reference says, so the copy
         // resolves from disk exactly as the original did. From here on it is the workspace's own
         // file: a later release's library never reaches it (R-em3d53-8d).
@@ -105,6 +111,23 @@ public static class WorkspaceCreate
         return techPath;
     }
 
+    private static readonly Regex DisplayUnitProperty =
+        new(@"(""DefaultDisplayUnit""\s*:\s*)""[^""]*""", RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// <paramref name="json"/> (a <c>.ctech</c>) with its <c>DefaultDisplayUnit</c> set to
+    /// <paramref name="unit"/>. The one value is replaced in place, so every other byte of the copy is
+    /// the shipped file's own; a technology that states no unit gains the property, re-serialized.
+    /// </summary>
+    internal static string WithDisplayUnit(string json, LayoutUnit unit)
+    {
+        if (JsonNode.Parse(json) is not JsonObject root) return json;
+        if (root.ContainsKey("DefaultDisplayUnit") && DisplayUnitProperty.IsMatch(json))
+            return DisplayUnitProperty.Replace(json, $"$1\"{unit}\"", 1);
+        root["DefaultDisplayUnit"] = unit.ToString();
+        return root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
+    }
+
     /// <summary>
     /// Creates the workspace: the directory, the optional technology copy, and the <c>.cws</c>.
     /// </summary>
@@ -112,13 +135,19 @@ public static class WorkspaceCreate
     /// A <see cref="TechnologyCatalog"/> id — shipped or user-installed — or null for a workspace
     /// with no technology. Unknown ids throw (R-aut3-5).
     /// </param>
+    /// <param name="displayUnit">
+    /// brief-dfr22-1 R-dfr22-1-3: the length unit the copied technology is written with — the GUI's
+    /// preferred length unit, the CLI's <c>--length-unit</c> — or null for the technology's own. A
+    /// preference is an ARGUMENT here: nothing below the firewall reads one. Ignored with no technology.
+    /// </param>
     /// <exception cref="IOException">
     /// R-aut3-6: the target already exists. <see cref="WorkspaceLock"/>'s own header explains what is
     /// at stake when two things believe they own one <c>.cws</c> — so this neither overwrites nor
     /// merges, and the guard is here rather than only in each caller's pre-flight so that no route
     /// into workspace creation can skip it.
     /// </exception>
-    public static WorkspaceCreateResult Create(string parentDir, string name, string? technologyId)
+    public static WorkspaceCreateResult Create(string parentDir, string name, string? technologyId,
+                                               LayoutUnit? displayUnit = null)
     {
         string workspaceDir = Path.Combine(parentDir, name);
         if (Directory.Exists(workspaceDir))
@@ -139,7 +168,7 @@ public static class WorkspaceCreate
         string? techPath = null;
         if (entry is not null)
         {
-            techPath = CopyTechnology(workspaceDir, entry, libraries);
+            techPath = CopyTechnology(workspaceDir, entry, libraries, displayUnit);
             cws.DefaultTechRef = Path.GetRelativePath(workspaceDir, techPath);
         }
 

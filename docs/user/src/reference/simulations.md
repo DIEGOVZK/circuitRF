@@ -30,6 +30,8 @@ keywords: analysis, sweep, DC, S-parameters, harmonic balance, HB, loadpull, loa
 leaving it blank uses the schematic's own name. This is what the
 <a href="data-display.html">Data Display</a> plots and what <code>.npy</code> / <code>.mat</code> export
 produces. Full detail: <a href="npy-export.html#where">Where results live</a>.</p>
+<p>A new analysis shows its frequencies in the preferred unit from
+<a href="settings.html#general">Settings ▸ General ▸ Units</a>; a unit the analysis or the schematic already states wins.</p>
 </div>
 
 ## DC (operating point) {#dc}

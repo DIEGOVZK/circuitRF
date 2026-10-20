@@ -204,6 +204,20 @@ public sealed class AppPreferences
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public RulerSizeMode? DefaultRulerSizeMode { get; set; }
 
+    // brief-dfr22-1 R-dfr22-1-1: the length and frequency unit circuitRF chooses for something NEW — a
+    // workspace's technology, a layout, an analysis, a plot, a placed part's F row. Null is Automatic,
+    // the behaviour before these existed. Stored by NAME ("Mil", "GHz"), unlike the ordinal enums
+    // above, and read through PreferredUnits, where an unknown name is Automatic. Per USER for
+    // CheckDrcOnExport's own reason; nothing below the firewall reads them — each takes the unit as
+    // an argument.
+    [JsonPropertyName("preferred_length_unit")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PreferredLengthUnit { get; set; }
+
+    [JsonPropertyName("preferred_frequency_unit")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? PreferredFrequencyUnit { get; set; }
+
     // The Instances panel's "Include sub-cells". Null means the default, which is OFF: the top level
     // is what the canvas shows, and a search that reads every cell below it is the one the user asks
     // for. Per USER for CheckDrcOnExport's own reason — a working habit, not a property of a design.

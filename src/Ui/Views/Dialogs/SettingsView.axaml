@@ -6,7 +6,7 @@
         x:Class="CircuitRF.Ui.Views.Dialogs.SettingsView"
         Title="circuitRF Settings"
         Width="720"
-        Height="540"
+        Height="640"
         MinWidth="720"
         MinHeight="440"
         WindowStartupLocation="CenterOwner"
@@ -252,6 +252,27 @@
                                                ToolTip.Tip="The size mode a ruler starts in when it is placed. Fixed: its readout is the same size on screen at every zoom. Scaled: its readout is a height in the layout and grows and shrinks with the artwork. Rulers already placed keep their own mode."/>
                                 </StackPanel>
                             </StackPanel>
+                        </Grid>
+
+                        <!-- Units — brief-dfr22-1. The unit circuitRF chooses for something NEW; index 0 is
+                             Automatic (null in preferences.json, the behaviour before these existed), and the
+                             rest are PreferredUnits' choices in order, stored by NAME. -->
+                        <TextBlock Text="Units" FontSize="11" FontWeight="SemiBold"
+                                   Opacity="0.55" Margin="0,20,0,6"/>
+                        <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Length:"
+                                       VerticalAlignment="Center" FontSize="12"/>
+                            <ComboBox  Grid.Row="0" Grid.Column="1" Name="PreferredLengthUnitCombo"
+                                       FontSize="12" MinWidth="180" HorizontalAlignment="Left"
+                                       SelectionChanged="OnPreferredLengthUnitChanged"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Frequency:"
+                                       VerticalAlignment="Center" FontSize="12"/>
+                            <ComboBox  Grid.Row="1" Grid.Column="1" Name="PreferredFrequencyUnitCombo"
+                                       FontSize="12" MinWidth="180" HorizontalAlignment="Left"
+                                       SelectionChanged="OnPreferredFrequencyUnitChanged"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" FontSize="11" Opacity="0.7"
+                                       TextWrapping="Wrap"
+                                       Text="Used for new workspaces, layouts, analyses and plots; any document can still choose its own."/>
                         </Grid>
 
                         <!-- Messages section -->

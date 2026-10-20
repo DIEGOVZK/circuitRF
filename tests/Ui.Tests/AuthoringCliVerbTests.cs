@@ -106,6 +106,25 @@ public sealed class AuthoringCliVerbTests : IDisposable
     }
 
     /// <summary>
+    /// brief-dfr22-1: <c>--length-unit</c> is the flag spelling of the GUI's preferred length unit, and
+    /// the verb only parses it — the copy it writes is the in-process call's, byte for byte, on a
+    /// technology whose own unit (µm) differs, so the flag demonstrably changed something.
+    /// </summary>
+    [Fact]
+    public void NewWorkspace_LengthUnit_WritesTheSameBytesAsTheCallTheGuiMakes()
+    {
+        const string mmic = "mmic-GaAs_2LM_100um";
+        string viaCli = Path.Combine(Dir("cli-unit"), "Amp");
+        var run = RunCli("new", "workspace", viaCli, "--tech", mmic, "--length-unit", "mil");
+        Assert.Equal(0, run.ExitCode);
+
+        var viaCapability = WorkspaceCreate.Create(Dir("gui-unit"), "Amp", mmic, LayoutUnit.Mil);
+
+        AssertSameBytes(viaCapability.TechPath!, Path.Combine(viaCli, "tech", mmic + ".ctech"));
+        Assert.Equal(LayoutUnit.Mil, TechPersistence.LoadFromFile(viaCapability.TechPath!).DefaultDisplayUnit);
+    }
+
+    /// <summary>
     /// R-aut3-4: the technology copy is the shipped entry's OWN RAW BYTES, never a re-serialization
     /// through <c>TechPersistence</c> on the way — which would produce a different file. Pinned
     /// against the embedded resource itself rather than against a second write, because "the two

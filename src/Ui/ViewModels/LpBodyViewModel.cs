@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using CircuitRF.Core.Design;
 using CircuitRF.Ui.Schematic;
+using CircuitRF.Ui.Theming;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -105,6 +106,9 @@ public sealed partial class LpBodyViewModel : ObservableObject
     {
         _model = model;
         _workspaceRoot = workspaceRoot;
+        // A new analysis's 1 GHz tone, in the preferred unit when there is one (brief-dfr22-1).
+        (_toneCoeff, _toneUnit) = PreferredUnits.NewFrequency(_toneCoeff, _toneUnit);
+        _prevToneUnit = _toneUnit;
         TunerInstanceNames = model.Components
             .Where(c => c.Symbol is SymbolKind.Tuner or SymbolKind.SourceTuner or SymbolKind.LoadTuner)
             .Select(c => c.InstanceName)

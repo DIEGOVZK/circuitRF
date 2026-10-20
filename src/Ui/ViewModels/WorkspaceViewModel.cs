@@ -1530,7 +1530,10 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
             // are WorkspaceCreate's, and `circuitrf new workspace` calls the same function. What
             // stays here is the dialog above and the shell work below: cache resets, the dock
             // layout, the tree, the launch action.
-            cwsPath = WorkspaceCreate.Create(result.ParentDir, result.Name, result.TechnologyId).CwsPath;
+            // brief-dfr22-1 R-dfr22-1-3: the preferred length unit is written into the copied
+            // technology, which is how every new layout and placed line in it follows the preference.
+            cwsPath = WorkspaceCreate.Create(result.ParentDir, result.Name, result.TechnologyId,
+                                             PreferredUnits.Length).CwsPath;
 
             // Update tracked location to the chosen parent (seeds the next New Workspace dialog).
             _lastWorkspaceParentDir = result.ParentDir;
@@ -4614,7 +4617,9 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         var model = new LayoutView
         {
             DbuPerMicron = LayoutUnits.DefaultDbuPerMicron,
-            DisplayUnit  = tech?.DefaultDisplayUnit ?? LayoutUnit.Um,
+            // A new layout opens in the preferred length unit (Settings ▸ General ▸ Units), else the
+            // technology's own (brief-dfr22-1).
+            DisplayUnit  = PreferredUnits.Length ?? tech?.DefaultDisplayUnit ?? LayoutUnit.Um,
             SnapDbu      = tech?.DefaultSnapDbu ?? 1000,
             AngleMode    = AngleMode.AnyAngle,
             TechRef      = null,
@@ -16038,7 +16043,7 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
         for (int i = 0; i < metrics.Count; i++)
         {
             var target = i == 0 ? leftPlot : dataDisplay.AddPlot(
-                plotType, FreqUnit.GHz, left: left0 + w + gap, top: top0, width: w, height: h);
+                plotType, left: left0 + w + gap, top: top0, width: w, height: h);
 
             if (i == 0)
             {

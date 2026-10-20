@@ -17,6 +17,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using RfCore;
 using SkiaSharp;
 using CircuitRF.Ui.DataDisplay;
+using CircuitRF.Ui.Theming;
 
 namespace CircuitRF.Ui.DataDisplay.ViewModels;
 
@@ -480,7 +481,7 @@ public partial class DataDisplayViewModel : ViewModelBase, IDisposable
         // leaves nothing to deselect — the indentation said one thing and the compiler read another.
         if (addEmptyPlot)
         {
-            AddPlot(PlotType.Smith, FreqUnit.GHz);
+            AddPlot(PlotType.Smith);
             if (!selectEmptyPlot)
                 SelectOnly((PlotContainerViewModel?) null);
         }
@@ -598,7 +599,7 @@ public partial class DataDisplayViewModel : ViewModelBase, IDisposable
 
     public PlotContainerViewModel AddPlot(
         PlotType plotType  = PlotType.Smith,
-        FreqUnit freqUnit  = FreqUnit.GHz,
+        FreqUnit? freqUnit = null,
         double   left      = -1,
         double   top       = -1,
         double   width     = -1,
@@ -641,7 +642,9 @@ public partial class DataDisplayViewModel : ViewModelBase, IDisposable
             t = top  >= 0 ? top  : py;
         }
 
-        var plot      = new Plot(plotType, freqUnit);
+        // A new plot's frequency axis and its markers' readouts open in the preferred unit
+        // (brief-dfr22-1); a plot restored from a .cdd passes its own saved unit.
+        var plot      = new Plot(plotType, freqUnit ?? PreferredUnits.PlotFrequencyUnit);
         var plotVm    = new PlotViewModel(plot);
         var inspector = new PlotInspectorViewModel(plot, () => { }, Library);
 

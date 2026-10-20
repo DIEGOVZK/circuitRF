@@ -800,6 +800,9 @@ public sealed class CliStructuredOutputTests(ITestOutputHelper output) : IDispos
         "new.args.unknown-noun",
         "new.args.unknown-option",
         "new.cell.exists",
+        // brief-dfr22-1: `new workspace --length-unit` — an unknown unit, and a unit with no technology to carry it.
+        "new.length-unit.no-technology",
+        "new.length-unit.unknown",
         "new.name.invalid",
         // AUT-11 R-aut11-4: `create` makes a missing parent rather than refusing, and says so.
         "new.parent.created",

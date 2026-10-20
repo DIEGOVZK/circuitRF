@@ -109,7 +109,7 @@ public sealed class NewWorkspaceTechnologyPickerTests
         Assert.True(methodEnd > methodStart, "could not find the end of NewWorkspace");
         string body = src[methodStart..methodEnd];
 
-        Assert.Contains("WorkspaceCreate.Create(result.ParentDir, result.Name, result.TechnologyId)", body);
+        Assert.Contains("WorkspaceCreate.Create(result.ParentDir, result.Name, result.TechnologyId,", body);
         Assert.DoesNotContain("StarterTechnologies", body);
         Assert.DoesNotContain("NewWorkspaceTechChoice", body);
     }

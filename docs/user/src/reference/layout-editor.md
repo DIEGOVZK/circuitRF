@@ -68,7 +68,8 @@ rather than of one cell:
 - the **substrate stackup**: dielectric and conductor layers with thickness, ε<sub>r</sub>, tanδ, σ, µ<sub>r</sub>;
 - the mapping from a drawing layer to a stackup conductor;
 - interchange mappings — GDSII layer/datatype ↔ DXF layer name ↔ Gerber file suffix;
-- the **default display unit and snap grid** for layouts created against it;
+- the **default display unit and snap grid** for layouts created against it (a preferred length unit in
+  [Settings ▸ General ▸ Units](settings.html#general) is used instead, and is written into a new workspace's copy);
 - the **DRC rules**.
 
 Technologies live in a `tech/` folder at the workspace root, and the workspace records which is the

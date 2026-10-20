@@ -1521,7 +1521,7 @@ per line, so a script can consume them directly:
 
 ## `new` — a workspace or a cell {#new}
 
-<pre><code class="cmd"><span class="prompt">$ </span>circuitrf new workspace &lt;dir&gt; [--name N] [--tech &lt;id&gt;|none]
+<pre><code class="cmd"><span class="prompt">$ </span>circuitrf new workspace &lt;dir&gt; [--name N] [--tech &lt;id&gt;|none] [--length-unit um|mm|mil]
 <span class="prompt">$ </span>circuitrf new cell &lt;workspace&gt; &lt;cellName&gt; [--views schematic,symbol,layout]</code></pre>
 
 These create the **first correct document** — the thing that is awkward to write by hand because the
@@ -1540,6 +1540,9 @@ the application created.
 <span class="output">/home/you/designs/Amp/Stage1
 /home/you/designs/Amp/Stage1/schematic/Stage1.csch
 /home/you/designs/Amp/Stage1/symbol/Stage1.csym</span></code></pre>
+
+`--length-unit` writes the copied technology's display unit — what a preferred length unit in **Settings ▸ General
+▸ Units** does for **File ▸ New Workspace**. Left out, the technology keeps its own.
 
 **The paths it creates are the result**, on stdout, because what you do next is almost always read or
 rewrite one of them.

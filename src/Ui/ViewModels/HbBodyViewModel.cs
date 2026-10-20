@@ -9,6 +9,7 @@ using CircuitRF.Core.Design;
 using CircuitRF.Engine;
 using CircuitRF.Engine.HarmonicBalance;
 using CircuitRF.Ui.Schematic;
+using CircuitRF.Ui.Theming;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -153,7 +154,7 @@ public sealed partial class HbBodyViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SmallSignalPreview))]
-    private string _ssUnit = "GHz";
+    private string _ssUnit = PreferredUnits.Frequency ?? "GHz";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SmallSignalPreview))]
@@ -223,7 +224,7 @@ public sealed partial class HbBodyViewModel : ObservableObject
     {
         _model = model;
         Tones.CollectionChanged += OnTonesChanged;
-        AddToneInternal(new HbToneRowViewModel(model, "1", "GHz"));
+        AddToneInternal(NewDefaultTone(model));
     }
     // Field initializers set the remaining defaults. Previews are empty for bare-number
     // defaults — no need to call property setters in the constructor.
@@ -246,6 +247,13 @@ public sealed partial class HbBodyViewModel : ObservableObject
     }
 
     // ── Tone-list plumbing ────────────────────────────────────────────────────
+
+    /// <summary>A new analysis's tone, 1 GHz — in the preferred unit when there is one (brief-dfr22-1).</summary>
+    private static HbToneRowViewModel NewDefaultTone(SchematicEditModel model)
+    {
+        var (coeff, unit) = PreferredUnits.NewFrequency("1", "GHz");
+        return new HbToneRowViewModel(model, coeff, unit);
+    }
 
     private void OnTonesChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
@@ -293,7 +301,7 @@ public sealed partial class HbBodyViewModel : ObservableObject
     private void EnsureToneCount(int count)
     {
         if (Tones.Count == 0 && count > 0)
-            AddToneInternal(new HbToneRowViewModel(_model, "1", "GHz"));
+            AddToneInternal(NewDefaultTone(_model));
         while (Tones.Count < count)
             AddToneInternal(new HbToneRowViewModel(_model, NextToneSeed(), Tones[0].Unit));
     }
@@ -404,7 +412,7 @@ public sealed partial class HbBodyViewModel : ObservableObject
         Tones.Clear();
         foreach (var (expr, unit) in tones)
             AddToneInternal(new HbToneRowViewModel(_model, expr, unit));
-        if (Tones.Count == 0) AddToneInternal(new HbToneRowViewModel(_model, "1", "GHz"));
+        if (Tones.Count == 0) AddToneInternal(NewDefaultTone(_model));
     }
 
     private static bool TryReadFreq(EditableComponent pn, int i, out string expr, out string unit)

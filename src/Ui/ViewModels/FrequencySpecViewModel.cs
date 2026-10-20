@@ -2,6 +2,7 @@ using System;
 using System.Globalization;
 using CircuitRF.Core.Design;
 using CircuitRF.Ui.Schematic;
+using CircuitRF.Ui.Theming;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -117,8 +118,15 @@ public sealed partial class FrequencySpecViewModel : ObservableObject
                 _numPointsExpr = (seed.NumPoints ?? 101).ToString(CultureInfo.InvariantCulture);
             }
         }
-        // Default case: field initializers set 1 GHz start, 10 GHz stop, 101 pts.
-        // _prevXUnit fields are already set to match by field initializers.
+        // Default case: field initializers set 1 GHz start, 10 GHz stop, 101 pts — shown in the
+        // preferred unit when there is one (brief-dfr22-1), the same frequencies.
+        else
+        {
+            (_startCoeff, _startUnit) = PreferredUnits.NewFrequency(_startCoeff, _startUnit);
+            (_stopCoeff,  _stopUnit)  = PreferredUnits.NewFrequency(_stopCoeff,  _stopUnit);
+            (_stepCoeff,  _stepUnit)  = PreferredUnits.NewFrequency(_stepCoeff,  _stepUnit);
+            _prevStartUnit = _startUnit; _prevStopUnit = _stopUnit; _prevStepUnit = _stepUnit;
+        }
     }
 
     // ── Preview side-effects ───────────────────────────────────────────────────

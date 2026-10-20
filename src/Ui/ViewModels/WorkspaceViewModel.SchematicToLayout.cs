@@ -10,6 +10,7 @@ using CircuitRF.Ui.Commands.Schematic;
 using CircuitRF.Ui.Recognition;
 using CircuitRF.Ui.Messages;
 using CircuitRF.Ui.Schematic;
+using CircuitRF.Ui.Theming;
 using CircuitRF.Ui.WBond;
 using CircuitRF.Ui.ViewModels.Dock;
 
@@ -179,7 +180,7 @@ public partial class WorkspaceViewModel
             {
                 TechRef      = techRef,
                 DbuPerMicron = LayoutUnits.DefaultDbuPerMicron,
-                DisplayUnit  = techRes.Tech?.DefaultDisplayUnit ?? LayoutUnit.Um,
+                DisplayUnit  = PreferredUnits.Length ?? techRes.Tech?.DefaultDisplayUnit ?? LayoutUnit.Um,
                 SnapDbu      = techRes.Tech?.DefaultSnapDbu ?? 1000,
                 AngleMode    = AngleMode.AnyAngle,
             };

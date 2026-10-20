@@ -196,6 +196,15 @@ public partial class SettingsView : Window
             DefaultRulerSizeModeCombo.ItemsSource   = new[] { "Fixed", "Scaled" };
             DefaultRulerSizeModeCombo.SelectedIndex = (int)(prefs.DefaultRulerSizeMode ?? RulerSizeMode.Fixed);
 
+            // brief-dfr22-1: index 0 is Automatic (null); the rest are PreferredUnits' choices, stored by name.
+            PreferredLengthUnitCombo.ItemsSource = new[] { "Automatic" }
+                .Concat(PreferredUnits.LengthChoices.Select(LayoutUnits.Suffix)).ToArray();
+            PreferredLengthUnitCombo.SelectedIndex = PreferredUnits.ParseLength(prefs.PreferredLengthUnit) is { } lu
+                ? 1 + PreferredUnits.LengthChoices.ToList().IndexOf(lu) : 0;
+            PreferredFrequencyUnitCombo.ItemsSource = new[] { "Automatic" }.Concat(PreferredUnits.FrequencyChoices).ToArray();
+            PreferredFrequencyUnitCombo.SelectedIndex = PreferredUnits.ParseFrequency(prefs.PreferredFrequencyUnit) is { } fu
+                ? 1 + PreferredUnits.FrequencyChoices.ToList().IndexOf(fu) : 0;
+
             MsgTimestampCombo.ItemsSource   = new[] { "Time", "Date + Time", "Hidden" };
             MsgTimestampCombo.SelectedIndex = (int)(prefs.MessageTimestamp ?? MessageTimestampMode.Time);
 
@@ -315,6 +324,22 @@ public partial class SettingsView : Window
         if (_updatingGeneral || DefaultRulerSizeModeCombo.SelectedIndex < 0) return;
         var mode = (RulerSizeMode)DefaultRulerSizeModeCombo.SelectedIndex;
         AppPreferencesIo.Update(p => p.DefaultRulerSizeMode = mode);
+    }
+
+    private void OnPreferredLengthUnitChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingGeneral || PreferredLengthUnitCombo.SelectedIndex < 0) return;
+        int i = PreferredLengthUnitCombo.SelectedIndex;
+        string? name = i == 0 ? null : PreferredUnits.LengthChoices[i - 1].ToString();
+        AppPreferencesIo.Update(p => p.PreferredLengthUnit = name);
+    }
+
+    private void OnPreferredFrequencyUnitChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_updatingGeneral || PreferredFrequencyUnitCombo.SelectedIndex < 0) return;
+        int i = PreferredFrequencyUnitCombo.SelectedIndex;
+        string? name = i == 0 ? null : PreferredUnits.FrequencyChoices[i - 1];
+        AppPreferencesIo.Update(p => p.PreferredFrequencyUnit = name);
     }
 
     private void OnWireClearanceChanged(object? sender, NumericUpDownValueChangedEventArgs e)

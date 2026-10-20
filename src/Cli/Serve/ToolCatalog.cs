@@ -660,6 +660,7 @@ internal static class ToolCatalog
                     [
                         new("name", "--name", OptKind.Str,  "The workspace name."),
                         new("tech", "--tech", OptKind.Str,  "A technology id, or none. Default: the one the New Workspace dialog pre-selects."),
+                        new("lengthUnit", "--length-unit", OptKind.Str, "um, mm or mil: the copied technology's display unit. Default: the technology's own."),
                     ],
                     "A workspace, with a technology copied in."),
                 new("cell", ["new", "cell"],

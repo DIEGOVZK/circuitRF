@@ -138,6 +138,17 @@ reports each layer it coalesced either way.
 ruler's readout is the same size on screen at every zoom; a Scaled one is a height in the layout and grows and
 shrinks with the artwork. Rulers already placed keep their own mode, which the Properties panel changes.
 
+### Units
+
+**Length** and **Frequency**, *Automatic* by default, are the units circuitRF uses for anything new. A preferred
+length unit is written into the technology a new workspace copies, so its layouts and newly placed lines (MLIN,
+CPWG, SLIN…) read in it, and a new layout opens in it. A preferred frequency unit is what new analyses, new Data
+Display plots and their markers, the Match Designer's band edges, a placed part's frequency rows and the sweep
+fields of **Create Schematic from Artwork** show. Either one changes only how a value is shown: no stored number
+and no result changes, an existing workspace, layout or schematic keeps the units it already has, and any of them
+can still choose its own. *Automatic* takes the technology's unit for length and, for frequency, the unit that
+suits each value.
+
 ### Messages
 
 **Timestamps** — how the Messages panel stamps each line: *Time*, *Date + Time*, or *Hidden*. This one

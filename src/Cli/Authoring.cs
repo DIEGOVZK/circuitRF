@@ -68,7 +68,7 @@ public static class Authoring
     /// </summary>
     private static int NewWorkspace(string[] args)
     {
-        string? dir = null, name = null, tech = null;
+        string? dir = null, name = null, tech = null, lengthUnitText = null;
         bool techStated = false;
 
         for (int i = 0; i < args.Length; i++)
@@ -77,6 +77,7 @@ public static class Authoring
             {
                 case "--name" when i + 1 < args.Length: name = args[++i]; break;
                 case "--tech" when i + 1 < args.Length: tech = args[++i]; techStated = true; break;
+                case "--length-unit" when i + 1 < args.Length: lengthUnitText = args[++i]; break;
                 default:
                     if (args[i].StartsWith('-')) { JsonRun.Report(CliDiagnostics.NewUnknownOption(args[i])); return NewUsage(); }
                     if (dir is not null) { JsonRun.Report(CliDiagnostics.NewMultipleDirectories()); return NewUsage(); }
@@ -122,6 +123,23 @@ public static class Authoring
             return JsonRun.Fail(CliDiagnostics.NewUnknownTechnology(
                 techId, string.Join(", ", TechnologyCatalog.All.Select(e => e.Id))));
 
+        // brief-dfr22-1 R-dfr22-1-3: the unit the copied technology is written with — the flag spelling of
+        // the GUI's preferred length unit. Absent is the technology's own, which is what the dialog does
+        // when the preference is Automatic. Parsed and passed; WorkspaceCreate writes it.
+        LayoutUnit? lengthUnit = null;
+        if (lengthUnitText is not null)
+        {
+            lengthUnit = lengthUnitText.ToLowerInvariant() switch
+            {
+                "um" or "µm" => LayoutUnit.Um,
+                "mm"         => LayoutUnit.Mm,
+                "mil"        => LayoutUnit.Mil,
+                _            => null,
+            };
+            if (lengthUnit is null) return JsonRun.Fail(CliDiagnostics.NewUnknownLengthUnit(lengthUnitText));
+            if (techId is null) return JsonRun.Fail(CliDiagnostics.NewLengthUnitWithoutTechnology());
+        }
+
         // R-aut11-4: a missing PARENT is created, rather than refused. The refusal it replaces was
         // defensible and it was discovered by hitting it — `create` under a path whose parent does
         // not exist failed with "No such directory", and a client with no file tools of its own had
@@ -149,7 +167,7 @@ public static class Authoring
 
         try
         {
-            var created = WorkspaceCreate.Create(parentDir, wsName, techId);
+            var created = WorkspaceCreate.Create(parentDir, wsName, techId, lengthUnit);
 
             // R-aut1-3 / the brief's §1: a caller's next step is usually to read or rewrite one of
             // these, so the PATHS are the result and they go to stdout.
@@ -695,7 +713,7 @@ public static class Authoring
 
     private static int NewUsage()
     {
-        Console.Error.WriteLine("Usage: circuitrf new workspace <dir> [--name N] [--tech <id>|none]");
+        Console.Error.WriteLine("Usage: circuitrf new workspace <dir> [--name N] [--tech <id>|none] [--length-unit um|mm|mil]");
         Console.Error.WriteLine("       circuitrf new cell <workspace-or-dir> <cellName> [--views schematic,symbol,layout,3d]");
         return 1;
     }

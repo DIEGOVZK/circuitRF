@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using CircuitRF.Core.Matching;
 using CircuitRF.Engine.Matching;
 using CircuitRF.Ui.Schematic;
+using CircuitRF.Ui.Theming;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace CircuitRF.Ui.Matching;
@@ -43,8 +44,9 @@ public sealed partial class MatchDesignerSettings : ObservableObject
     /// <summary>Display unit for resistances.</summary>
     [ObservableProperty] private string _resistanceUnit = "Ω";
 
-    /// <summary>Display unit for the band edges.</summary>
-    [ObservableProperty] private string _frequencyUnit = "GHz";
+    /// <summary>Display unit for the band edges — the preferred frequency unit (Settings ▸ General ▸
+    /// Units), else GHz.</summary>
+    [ObservableProperty] private string _frequencyUnit = PreferredUnits.Frequency ?? "GHz";
 
     /// <summary>
     /// Significant digits in the NETWORK READOUT — the ladder preview's labels and the value grid
