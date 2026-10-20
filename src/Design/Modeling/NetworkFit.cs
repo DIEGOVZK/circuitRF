@@ -247,21 +247,26 @@ internal sealed class NetworkFitProblem
         // Which points (R-mc5-1).
         bool cold = settings.Method != NetworkFitMethod.MultiBias || settings.Weights.Cold > 0;
         bool needCold = settings.Method != NetworkFitMethod.MultiBias;
-        var pinch = Choose(points, settings.PinchOff, IsPinchedOff, lowest: true);
-        var forward = Choose(points, settings.Forward, IsForward, lowest: false);
+        // A cold point the fit does not use is not looked for: a named one (an earlier fit's choice) whose data set has
+        // gone is no refusal when its term is weighted out.
+        var pinch = cold ? Choose(points, settings.PinchOff, IsPinchedOff, lowest: true) : null;
+        var forward = cold ? Choose(points, settings.Forward, IsForward, lowest: false) : null;
         if (needCold && pinch is null)
             throw new ModelingException("Cold-FET", "it needs a pinch-off point: S at Vds = 0 V with Vgs below threshold; none of the data is one.");
         if (needCold && forward is null)
             throw new ModelingException("Cold-FET", "it needs a forward-gate point: S at Vds = 0 V with the gate forward-biased; none of the data is one.");
         if (cold && !needCold && (pinch is null || forward is null))
-            notes.Add($"No {(pinch is null ? "pinch-off" : "forward-gate")} point at Vds = 0 V; the cold term uses what there is.");
-        if (!cold) (pinch, forward) = (null, null);
+            notes.Add(pinch is null && forward is null
+                ? "No pinch-off or forward-gate point at Vds = 0 V; the cold term is left out."
+                : $"No {(pinch is null ? "pinch-off" : "forward-gate")} point at Vds = 0 V; the cold term uses what there is.");
         if (forward is not null && settings.ForwardVariant == ForwardVariant.Moderate && settings.ChannelResistance is null)
             throw new ModelingException("Network.Fit.ChannelResistance", "the moderate forward variant needs the channel resistance, from another test structure.");
 
         var active = settings.Method == NetworkFitMethod.ColdFet ? [] : ChooseActive(points, settings.Active);
         if (settings.Method != NetworkFitMethod.ColdFet && active.Length == 0)
             throw new ModelingException("Multi-bias", "it needs S at an active bias point (Vds above 0 V); none of the data is one.");
+        if (settings.Method == NetworkFitMethod.MultiBias && settings.Weights is { Flatness: 0, SmallSignal: 0 } && pinch is null && forward is null)
+            throw new ModelingException("Network.Fit.Weights", "only the cold term is weighted, and the data holds no cold point; the cost would measure nothing.");
 
         var resolved = settings with
         {
@@ -533,8 +538,13 @@ internal sealed class NetworkFitProblem
             (values, spreads) = MultiBias(values, terms, rc);
         }
         rc?.ThrowIfCancellationRequested();
+        double cost = Cost(values, terms);
+        // Every trial point failed — the network cannot be solved anywhere the search went — so there is no solution to
+        // report on, and a cost of +∞ is no number the document can hold.
+        if (!double.IsFinite(cost))
+            throw new ModelingException("Network", "the network could not be solved at any trial point; check its schematic and its variables' ranges.");
         var report = Identify(values, spreads, terms);
-        return new NetworkFitResult(_v.Named(_v.Compose(values)), report, _settings, _settings.Method, Cost(values, terms),
+        return new NetworkFitResult(_v.Named(_v.Compose(values)), report, _settings, _settings.Method, cost,
                                     _notes, _counter.Count);
     }
 
@@ -559,9 +569,9 @@ internal sealed class NetworkFitProblem
             if (moved < 1e-7) break;
         }
         // The alternation zig-zags along a valley two steps share — the moderate core's R1 against Rg — so it ends with
-        // both cold terms polished together over every element.
+        // both cold terms polished together over every free variable, a unit-less one (neither step's) included.
         rc?.BeginStage("Cold-FET: both points", 0, "evaluation(s)");
-        return Polish(values, [.. caps, .. series], FitTerms.Cold, rc).Free;
+        return Polish(values, Lsq(FitTerms.Cold).All, FitTerms.Cold, rc).Free;
     }
 
     /// <summary>R-mc5-1.2, R-mc5-3: per start a seeded global search over every free variable, polished by

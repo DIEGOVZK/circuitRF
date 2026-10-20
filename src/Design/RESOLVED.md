@@ -20774,6 +20774,22 @@ in memory as `o["Starts"] = 4`, though the same text parsed from a file converts
 de-embedded `Cds` of a 0.1 pF point spread by 2.1 % across the band. A gate on flatness compares with the true
 network on the same data, never with a fixed level.
 
+### MC-5 review (2026-10-20)
+
+- **Cold-FET direct never fitted a unit-less free variable.** The alternation splits the free variables into
+  capacitances and series elements by `NetworkElementKind`, and the closing joint polish took the same two lists — so a
+  free `Other` variable stayed at its start yet was reported, and written, as fitted. The closing polish now spans every
+  free variable.
+- **A cold point the fit did not use was still looked for.** `Apply` writes the chosen cold points into `Fit`, so a
+  later fit with the cold term weighted out (`Weights.Cold = 0`) still resolved the named points and refused when their
+  data set had gone. They are looked up only when the cold term is in the cost.
+- **A fit whose every trial point failed surfaced as a bare `ArithmeticException`** from the identifiability report's
+  first residual, and its cost of +∞ is a number the JSON writer refuses. It is now a refusal naming the network.
+- **A multi-bias cost could measure nothing**: flatness and small-signal weighted out, and no cold point in the data,
+  left only the coupling penalty — every value "fitted" at its start. Refused, naming `Network.Fit.Weights`.
+- **The multi-start spread was recorded but shown nowhere** (R-mc5-4 puts it beside the standard error). The `model
+  explain` value line and the window's value tooltip carry it now.
+
 ## Model Composer MC-7: the current constituents (2026-10-19)
 
 **A gate current cannot be fitted by weighting a linear-output network.** Weighting each point by `1/max(|Ig|, I0)²`

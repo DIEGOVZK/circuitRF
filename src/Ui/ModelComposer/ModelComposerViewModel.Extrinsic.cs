@@ -347,6 +347,7 @@ public sealed partial class ModelComposerViewModel
             if (result?.Variables.TryGetValue(row.Name, out var fitted) == true && !s.Lock && s.Tie is null)
             {
                 error = "±" + ModelValueFormat.Eng(fitted.StdError, unit);
+                if (fitted.Spread > 0) tip = $"Spread across the starts: {ModelValueFormat.Eng(fitted.Spread, unit)}.";
                 double value = s.Value ?? v.Value;
                 poor = value != 0 && fitted.StdError / Math.Abs(value) > Fit.PoorRelativeError;
                 if (fitted.AtBound is { } b) { poor = true; tip = $"At its {b.ToLowerInvariant()} bound."; }

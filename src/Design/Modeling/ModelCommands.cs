@@ -503,6 +503,8 @@ public static partial class ModelCommands
             {
                 double rel = value != 0 && double.IsFinite(r.StdError) ? Math.Abs(r.StdError / value) : double.PositiveInfinity;
                 text += double.IsFinite(r.StdError) ? $" ± {(unit.Length > 0 ? ConservationCheck.Si(r.StdError, unit) : G(r.StdError))}" : ", error not computable";
+                // R-mc5-4: the multi-start spread beside the standard error (a single start has none).
+                if (r.Spread > 0) text += $", spread {(unit.Length > 0 ? ConservationCheck.Si(r.Spread, unit) : G(r.Spread))} across the starts";
                 if (r.AtBound is { } bound) text += $", at its {bound.ToLowerInvariant()} bound";
                 if (rel > poor) text += ", poorly determined";
             }

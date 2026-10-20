@@ -48,4 +48,27 @@ public sealed class NetworkFitCancelTests
         Assert.Equal(before, File.ReadAllBytes(cmc));
         Assert.Equal((double?)7, CmcExtrinsic.Network(CmcFile.Read(cmc)).Variables["rg"].Value);
     }
+
+    /// <summary>
+    /// A cold point an earlier fit chose stays named in the document; with the cold term weighted out it is not looked
+    /// for, so its data set having gone is no refusal.
+    /// </summary>
+    [Fact]
+    public void NamedColdPoint_WithTheColdTermWeightedOut_IsNotLookedFor()
+    {
+        double[] freqs = [.. Enumerable.Range(1, 20).Select(i => i * 2e9)];
+        var data = new Dictionary<string, NormalisedData>
+        {
+            ["bias"] = SyntheticFetData.Biased(ComposedTestModels.GanNetwork, "gan", freqs, 0, SyntheticFetData.ActivePoints),
+        };
+        var fit = new NetworkFitSettings
+        {
+            Starts = 1, Budget = 10, Weights = new NetworkFitWeights(Cold: 0),
+            PinchOff = new PointRef("cold", "gone"), Forward = new PointRef("cold", "gone too"),
+        };
+        var (cmc, doc) = SyntheticFetData.Document("gan-two-shell", fit, new Dictionary<string, double> { ["rg"] = 7 });
+
+        var r = NetworkFit.Run(cmc, doc, data);
+        Assert.Equal(new PointRef("cold", "gone"), r.Settings.PinchOff);
+    }
 }
