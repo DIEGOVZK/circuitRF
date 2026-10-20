@@ -31,6 +31,14 @@ namespace CircuitRF.Core.Devices.Composed;
 /// above 1/τ, <c>x</c> cannot follow and the small-signal drain current is <c>IdRF</c>'s. Both currents
 /// are taken in the terminal frame (after the drain–source image), so <c>x</c> means the same on either
 /// side of <c>vds = 0</c>. The node is unscaled — <c>N/N0</c> multiplies the drain current it feeds.</para>
+///
+/// <para><b>Self-heating</b> (MC-9 R-mc9-2, [P1] §6.6.2) adds a fourth net, the thermal node, as the last port
+/// <c>(t, 0)</c>: its voltage is the temperature rise ΔT and every constituent is evaluated at
+/// <c>T = temp + ΔT</c>. The port carries <c>−P</c>, the dissipated power <c>Id·vds + IgGs·vgs + IgGd·vgd</c>
+/// ([P1] eq. 6.67) in its terminal form <c>ig·vgs + id·vds</c>, so the power flows INTO the node, where the
+/// synthesised cell's <c>Rth ∥ Cth</c> to ground closes [P1] eq. 6.67. It is not a minted unknown: the cell owns the
+/// net, which is what lets an instance's fourth pin be it. <c>P</c> is the scaled (whole-device) power, and
+/// <c>Rth</c> scales by <c>N0/N</c>, so ΔT does not depend on <c>N</c>.</para>
 /// </summary>
 public sealed class ComposedCoreModel : ComponentModel
 {
@@ -41,6 +49,7 @@ public sealed class ComposedCoreModel : ComponentModel
     private readonly bool   _exchange;
     private readonly bool   _dispersive;
     private readonly double _tau;
+    private readonly bool   _thermal;
 
     /// <summary>The model this core evaluates.</summary>
     public LoadedComposedModel Loaded { get; }
@@ -61,19 +70,27 @@ public sealed class ComposedCoreModel : ComponentModel
         _exchange = _p.Symmetry == DrainSourceSymmetry.Exchange;
         _tau = _p.DispersionTau ?? 0.0;
         _dispersive = _p.IdRF is not null;
+        _thermal = loaded.Model.Thermal is not null;
 
         var t = loaded.Model.Temperature;
         _hasT = t.Mode == TemperatureMode.Range;
         _temperatureC = _hasT ? Math.Clamp(ambientC, t.Tmin, t.Tmax) : t.T0;
     }
 
-    public override int       PortCount => 2 + InternalStateNodeCount;
+    public override int       PortCount => 2 + InternalStateNodeCount + (_thermal ? 1 : 0);
     public override ModelKind Kind      => ModelKind.Nonlinear;
 
-    /// <summary>Internal state nodes (thermal, trap, dispersion): one, <c>x</c>, for a dispersive model.</summary>
+    /// <summary>Internal state nodes the elaborator mints (trap, dispersion): one, <c>x</c>, for a dispersive model.</summary>
     public int InternalStateNodeCount => _dispersive ? 1 : 0;
 
-    public override string[] TerminalNames => _dispersive ? ["gi", "si", "di", "si", "x", "0"] : ["gi", "si", "di", "si"];
+    /// <summary>Whether the model self-heats: the core then takes a fourth net, the thermal node, as its last port.</summary>
+    public bool HasThermalNode => _thermal;
+
+    /// <summary>The thermal node's port, or −1.</summary>
+    public int ThermalPort => _thermal ? 2 + InternalStateNodeCount : -1;
+
+    public override string[] TerminalNames =>
+        [ "gi", "si", "di", "si", .. (_dispersive ? (string[])["x", "0"] : []), .. (_thermal ? (string[])["t", "0"] : []) ];
 
     public override void Stamp(IMnaContext mna, ElaboratedComponent c, double omega) { }
 
@@ -83,7 +100,22 @@ public sealed class ComposedCoreModel : ComponentModel
 
     /// <summary>With dispersion the drain's dependence on <c>x</c> is the other controlled source: zeroing
     /// both leaves the drain a conductance.</summary>
-    public override IReadOnlyList<(int P, int Q)> ControlledConductances => _dispersive ? [(1, 0), (1, 2)] : [(1, 0)];
+    /// <summary>The thermal coupling is a controlled source both ways — the currents' dependence on ΔT, and the power
+    /// the voltages drive into the thermal node — so passivated, the thermal node is decoupled.</summary>
+    public override IReadOnlyList<(int P, int Q)> ControlledConductances
+    {
+        get
+        {
+            var list = new List<(int, int)> { (1, 0) };
+            if (_dispersive) list.Add((1, 2));
+            if (_thermal)
+            {
+                int th = ThermalPort;
+                for (int p = 0; p < PortCount; p++) { list.Add((p, th)); if (p != th) list.Add((th, p)); }
+            }
+            return list;
+        }
+    }
 
     public override NonlinearResult Evaluate(in PortVoltages v)
     {
@@ -103,9 +135,9 @@ public sealed class ComposedCoreModel : ComponentModel
     protected override void EvaluateInto(in PortVoltages v, double[] i, double[] q, double[,] dg, double[,] dc)
     {
         int n = PortCount;
-        Span<double> ri = stackalloc double[3], rq = stackalloc double[3],
-                     rg = stackalloc double[9], rc = stackalloc double[9];
-        Core(v[0], v[1], _dispersive ? v[2] : 0.0, ri, rq, rg, rc);
+        Span<double> ri = stackalloc double[MaxPorts], rq = stackalloc double[MaxPorts],
+                     rg = stackalloc double[MaxPorts * MaxPorts], rc = stackalloc double[MaxPorts * MaxPorts];
+        Core(v[0], v[1], _dispersive ? v[2] : 0.0, _thermal ? v[ThermalPort] : 0.0, ri, rq, rg, rc);
         for (int p = 0; p < n; p++)
         {
             i[p] = ri[p];
@@ -125,12 +157,13 @@ public sealed class ComposedCoreModel : ComponentModel
         int n = PortCount;
         into.EnsureShape(n, 0, sampleCount);
         into.ResetTerms();
-        Span<double> ri = stackalloc double[3], rq = stackalloc double[3],
-                     rg = stackalloc double[9], rc = stackalloc double[9];
+        Span<double> ri = stackalloc double[MaxPorts], rq = stackalloc double[MaxPorts],
+                     rg = stackalloc double[MaxPorts * MaxPorts], rc = stackalloc double[MaxPorts * MaxPorts];
+        int th = ThermalPort;
         for (int t = 0; t < sampleCount; t++)
         {
             Core(portVoltages[t], portVoltages[sampleCount + t], _dispersive ? portVoltages[2 * sampleCount + t] : 0.0,
-                 ri, rq, rg, rc);
+                 _thermal ? portVoltages[th * sampleCount + t] : 0.0, ri, rq, rg, rc);
             for (int p = 0; p < n; p++)
             {
                 into.I[into.PortBase(p) + t] = ri[p];
@@ -154,13 +187,16 @@ public sealed class ComposedCoreModel : ComponentModel
     /// charge, [P1] eq. 6.63 in charge form). Each gradient maps through the image's Jacobian:
     /// <c>∂/∂vgs = ∂′/∂vgs′</c>, <c>∂/∂vds = −∂′/∂vgs′ − ∂′/∂vds′</c>.</para>
     /// </summary>
-    private void Core(double vgs, double vds, double x, Span<double> i, Span<double> q, Span<double> dg, Span<double> dc)
+    private void Core(double vgs, double vds, double x, double dT, Span<double> i, Span<double> q, Span<double> dg, Span<double> dc)
     {
+        int n = PortCount;
+        i[..n].Clear(); q[..n].Clear(); dg[..(n * n)].Clear(); dc[..(n * n)].Clear();
+
         bool image = _exchange && vds < 0;
         Span<double> seeds = stackalloc double[3];
         seeds[0] = image ? vgs - vds : vgs;
         seeds[1] = image ? -vds : vds;
-        seeds[2] = _temperatureC;
+        seeds[2] = _temperatureC + dT;
         var s = seeds[.._p.Width];
 
         Span<double> gId = stackalloc double[3], gGs = stackalloc double[3], gGd = stackalloc double[3],
@@ -180,7 +216,7 @@ public sealed class ComposedCoreModel : ComponentModel
             FromImage(gId); FromImage(gGs); FromImage(gGd); FromImage(gQg); FromImage(gQd); FromImage(gRf);
             id = -id;
             idRf = -idRf;
-            for (int k = 0; k < 2; k++)
+            for (int k = 0; k < 3; k++)   // the T lane maps as the voltages do: the image changes no temperature
             {
                 gId[k] = -gId[k];
                 gRf[k] = -gRf[k];
@@ -192,40 +228,58 @@ public sealed class ComposedCoreModel : ComponentModel
         }
 
         double k0 = _scale;
-        int n = PortCount;
+        // The voltage lanes are columns 0 and 1; the T lane, when the model self-heats, is the thermal port's column.
+        int th = ThermalPort;
+        int lanes = _thermal ? 3 : 2;
+        int Col(int lane) => lane < 2 ? lane : th;
+
         i[0] = k0 * (igGs + igGd);
         q[0] = k0 * qg;
         q[1] = k0 * qd;
-        for (int col = 0; col < 2; col++)
+        for (int lane = 0; lane < lanes; lane++)
         {
-            dg[col]     = k0 * (gGs[col] + gGd[col]);
-            dc[col]     = k0 * gQg[col];
-            dc[n + col] = k0 * gQd[col];
+            int col = Col(lane);
+            dg[col]     = k0 * (gGs[lane] + gGd[lane]);
+            dc[col]     = k0 * gQg[lane];
+            dc[n + col] = k0 * gQd[lane];
         }
 
         if (!_dispersive)
         {
             i[1] = k0 * (id - igGd);
-            for (int col = 0; col < 2; col++) dg[n + col] = k0 * (gId[col] - gGd[col]);
-            return;
+            for (int lane = 0; lane < lanes; lane++) dg[n + Col(lane)] = k0 * (gId[lane] - gGd[lane]);
+        }
+        else
+        {
+            // [P1] eq. 6.52 through the state node: the drain follows IdRF + x, and x relaxes to IdDC − IdRF with τ.
+            i[1] = k0 * (idRf + x - igGd);
+            i[2] = x - (id - idRf);
+            q[2] = _tau * x;
+            for (int lane = 0; lane < lanes; lane++)
+            {
+                int col = Col(lane);
+                dg[n + col]     = k0 * (gRf[lane] - gGd[lane]);
+                dg[2 * n + col] = -(gId[lane] - gRf[lane]);
+            }
+            dg[n + 2] = k0;
+            dg[2 * n + 2] = 1.0;
+            dc[2 * n + 2] = _tau;
         }
 
-        // [P1] eq. 6.52 through the state node: the drain follows IdRF + x, and x relaxes to IdDC − IdRF with τ.
-        i[1] = k0 * (idRf + x - igGd);
-        i[2] = x - (id - idRf);
-        q[2] = _tau * x;
-        for (int col = 0; col < 2; col++)
+        if (!_thermal) return;
+
+        // [P1] eq. 6.67: the dissipated power, in its terminal form, flows into the thermal node; its port carries −P.
+        double p = i[0] * vgs + i[1] * vds;
+        i[th] = -p;
+        for (int col = 0; col < n; col++)
         {
-            dg[n + col]     = k0 * (gRf[col] - gGd[col]);
-            dg[2 * n + col] = -(gId[col] - gRf[col]);
-            dc[2 * n + col] = 0.0;
-            dc[col * n + 2] = 0.0;
-            dg[col * n + 2] = 0.0;
+            double dp = dg[col] * vgs + dg[n + col] * vds + (col == 0 ? i[0] : col == 1 ? i[1] : 0.0);
+            dg[th * n + col] = -dp;
         }
-        dg[n + 2] = k0;
-        dg[2 * n + 2] = 1.0;
-        dc[2 * n + 2] = _tau;
     }
+
+    /// <summary>The most ports a core has: two intrinsic, the dispersion node, the thermal node.</summary>
+    private const int MaxPorts = 4;
 
     private static void FromImage(Span<double> g) => g[1] = -g[0] - g[1];
 }

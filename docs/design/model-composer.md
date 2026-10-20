@@ -5,7 +5,8 @@ MC-2 built (table and ANN constituents, guided extrapolation, drain–source sym
 MC-3 built (the `.cmc` document, data sets, importers, the cache, data hygiene);
 MC-4 built (pads, the six-pin network, de-embedding, intrinsic re-referencing and quantities);
 MC-5 built (the extrinsic fit); MC-6 built (the ANN trainer); MC-7 built (the current constituents and the
-DC/RF dispersion) ·
+DC/RF dispersion); MC-8 built (the charge constituents and Check Charge Conservation); MC-9 built (temperature
+as an input, the thermal node, Rth extraction, the single-temperature model) ·
 **Source:** `docs/sonnet-briefs/brief-modelcomposer-0-overview.md` (decisions D1–D16) and the phase briefs
 `brief-modelcomposer-1` … `-16` · **Primary reference:** [P1] J. C. Pedro, D. E. Root, J. Xu, L. C. Nunes,
 *Nonlinear Circuit Simulation and Modeling*, Cambridge University Press, 2018.
@@ -88,8 +89,13 @@ line can carry.
 ```
 
 `Temperature` is `{ "Mode": "Range", "Tmin": …, "Tmax": … }` for a ranged model. `Symbol` is omitted for
-the standard FET symbol. `Thermal` (MC-9) and `Traps` (MC-10) are absent until their phases; a file
-carrying `Thermal` is refused by field until then, and `Traps.Model` must name a known model (`None` today).
+the standard FET symbol. `Traps` (MC-10) is absent until its phase, and `Traps.Model` must name a known model
+(`None` today).
+
+**`Thermal` (MC-9)**, after `Temperature`, makes the model self-heat (§12.2): `{ "Rth": 60, "Cth": 1.7e-8 }` for one
+pole, or `{ "Ladder": [ { "Rth": …, "Cth": … }, … ] }` for a Foster ladder of up to five, in K/W and J/K at the base
+periphery; `RthSlope` (K/W per K) with `Tref` (°C) when the thermal resistance varies with the ambient. Absent: no
+thermal node.
 
 **Table and ANN constituents (MC-2)** name arrays instead of carrying expressions, and store the domain
 they were trained over. `Core.Symmetry` and the top-level `Extrapolation` appear only when used:
@@ -155,6 +161,10 @@ Every refusal is a `CmodelFormatException` whose message begins with the field: 
   not strictly increasing, coefficients that do not match the grid, a domain reaching outside the grid,
   a negative `Smoothing`, an `Activation`. An ANN: no hidden layer or more than four, more than 64 neurons
   in one, an output layer wider than one, a zero input scale, a `Smoothing`.
+- `Thermal`: on a `Single` model ("self-heating needs a model over a temperature range"); both `Rth`/`Cth` and a
+  `Ladder`, or neither; an unknown key; a pole count outside 1–5; an `Rth` or `Cth` that is not positive; an
+  `RthSlope` that makes the thermal resistance non-positive inside `[Tmin, Tmax]`; a network element named `Rth`,
+  `Cth` (`Rth1` … for a ladder) or a net named `t` (`t_1` …), the names the synthesised cell gives the thermal network.
 - `Extrapolation.Gx`: missing for a table or ANN current, present for an equation current or an unknown
   key, or not a positive number. `Core.Symmetry`: anything but `None`/`Exchange`.
 - `Transform`: on an equation or a charge; a `Kind` other than `Asinh`; a `Scale` that is not a positive current.
@@ -169,8 +179,9 @@ Every refusal is a `CmodelFormatException` whose message begins with the field: 
 
 `Elaborator.ComposedFetCell` intercepts a `ComposedFet` line before the primitive branch:
 
-1. Three nets, or a refusal (a fourth is the thermal node, refused until a model has one). Parameters
-   `File`, `N`, `m` (or `M`) and `Symbol` (artwork, ignored); anything else is refused by name.
+1. Three nets, or four when the model self-heats — the fourth is the thermal node `t` (§12.2); four on a model
+   without `Thermal` is refused naming the file. Parameters `File`, `N`, `m` (or `M`) and `Symbol` (artwork,
+   ignored); anything else is refused by name.
 2. `File` resolves exactly as an SnP's (`BaseDirectory`, workspace-relative), with the same named
    refusals: none given, a folder, not found; an unreadable model names the validator's field.
 3. The model loads through `ComposedModelCache` — keyed by full path, size and modification time,
@@ -179,7 +190,8 @@ Every refusal is a `CmodelFormatException` whose message begins with the field: 
    every network variable resolved, multiplied by its rule's factor, and every element parameter that
    evaluates to a real number written into the instance **as that number**. Pins 1–3 keep the network's
    names and become the cell's ports; pins 4–6 become `gi`, `di`, `si`. One `ComposedCore:core gi di si
-   File="<absolute>" N=<N>` is added.
+   File="<absolute>" N=<N>` is added — `gi di si t` for a self-heating model, with the thermal network's R and C
+   from `t` to ground (§12.2), `t` the cell's fourth port when the instance binds a fourth net.
 5. The cell flattens through `FlattenCell` like any sub-cell, so paths and probes are ordinary
    (`X1.rg`, `V(X1.gi)`, `X1.core`). It is never added to a library, the palette or a file.
 
@@ -206,6 +218,12 @@ the FET family's arrangement and the elaborator's same three-to-four net expansi
   signal is `IdRF`'s. Both currents are taken in the terminal frame, after the drain–source image, so `x` means the
   same on either side of `vds = 0`. `x` is unscaled; `N/N0` multiplies the drain current it feeds.
   `ControlledConductances` adds `(1, 2)`: zeroing it with `gm` leaves the drain a conductance.
+- **Self-heating (MC-9).** A model with `Thermal` takes a fourth net, the thermal node, as its last port `(t, 0)` —
+  a net of the cell, not a minted node, because the cell's `Rth ∥ Cth` and an instance's fourth pin attach to it.
+  Every constituent is evaluated at `T = temp + ΔT`, `ΔT` the node's voltage, and the T lane's derivatives become
+  that column of `dg` and `dc`. The port carries `−P`, `P = ig·vgs + id·vds` from the (scaled) terminal currents
+  ([P1] eq. 6.67), with `∂P/∂v` from the same Jacobian. Every entry of the thermal row and column is a controlled
+  conductance, so the passivated device is thermally decoupled.
 - `ComposedCore` is also a `.cnl` token in its own right — the intrinsic device alone.
 - A table or ANN payload compiles to a `RuntimeFunction`: its inputs gathered from the seed lanes, the
   evaluator run inside its `GuidedExtrapolation`, its gradient scattered back (zero in a lane it does not
@@ -221,11 +239,17 @@ anything else is refused with a sentence saying `N` is a finger count.
 mutuals are branch elements, which the device multiplier refuses, so their values (`L`, `M`) are divided
 by `m` instead; every other element, and the core, carries `m` and the engine's multiplier applies it.
 
+**The thermal network (MC-9)** scales like any other element: `Rth × N0/N`, `Cth × N/N0` (D9), and both carry `m`. The
+core's power scales by `N/N0` and by `m`, so `ΔT` depends on neither.
+
 ### 4.4 Temperature (R-mc1-8, D8)
 
 A `Single` model evaluates with no `T`; a run whose `temp` differs from `T0` gets one warning per model
 file per run, naming both. A `Range` model evaluates at `temp` clamped to `[Tmin, Tmax]`, with one warning
-when it clamps. Both go through the netlist's own warning channel (`AddWarningOnce`).
+when it clamps. Both go through the netlist's own warning channel (`AddWarningOnce`). A self-heating model
+adds `ΔT` to the clamped ambient; the junction temperature itself is not clamped, so beyond the training interval a
+table or ANN is continued by its guided extrapolation and an equation is global. An `RthSlope` is taken at the
+clamped ambient.
 
 ### 4.5 The symbol (R-mc1-9)
 
@@ -603,9 +627,9 @@ out of `Train`, so the caller keeps whatever network it had (D13).
 ### 9.1 Training points (R-mc7-1)
 
 The intrinsic points (`Vgsi`, `Vdsi`) of the chosen sets — by default every `DcIv`, `PulsedIv` and
-`SimulatedTables` set — excluded points removed. One temperature (set `AmbientC` and per-point `T`, within 0.01 °C)
-and one trap state (all DC, or all pulsed from one `Quiescent` and one `PrePulse`); a mix is refused naming the
-condition. A point with no drain current is left out, one with no gate current is left out of `Ig` only; with no
+`SimulatedTables` set — excluded points removed. One trap state (all DC, or all pulsed from one `Quiescent` and one
+`PrePulse`); a mix is refused naming the condition. Temperatures (set `AmbientC` and per-point `T`, within 0.01 °C)
+may differ: two or more make `T` an input (§12.1). A point with no drain current is left out, one with no gate current is left out of `Ig` only; with no
 gate current at all `Ig` is the equation `0`.
 
 **The gate split.** `Sign`: for `vds ≥ 0` a positive (forward) gate current is all `IgGs`, a negative one all `IgGd`
@@ -685,7 +709,8 @@ fixed — MC-15's 1-D plots). Settings and record: `ChargeFitSettings`, `ChargeF
 
 ### 10.1 Training data (R-mc8-1)
 
-Every set with intrinsic S (or those named), one temperature and one trap state as for the currents. At each point,
+Every set with intrinsic S (or those named), one trap state as for the currents; two or more temperatures make `T` an
+input of an ANN charge (§12.1). At each point,
 `C11 … C22` averaged over the flatness band with flagged frequencies left out. A point whose worse **diagonal**
 flatness (`C11` or `C22` — the diagonals never cross zero, so theirs is always defined) exceeds `FlatnessLimit`
 (0.1) weighs `(limit/flatness)²`, and the report counts them. Both charges are zero at the anchor: `(0, 0)` or the
@@ -763,7 +788,86 @@ part returns a number and, where it has one, a map; `RunFile`/`Run` do all three
 - The composer's model is run as a `ComposedFet` of a temporary `.cmodel` whose network joins each pin to its
   intrinsic one through 1 µΩ (`ChargeFit.IntrinsicNetwork`), with zero currents until the current step has run.
 
-## 12. Where it lives
+## 12. Temperature and self-heating (MC-9)
+
+`ThermalFit` (with `TemperaturePlan`, `ThermalHeating`), `ThermalFitSettings` (with `ThermalFitRecord`); the
+`.cmc` block is `Steps.Thermal`.
+
+### 12.1 Temperature as an input (R-mc9-1, R-mc9-4)
+
+`ThermalFit.Plan` takes the distinct ambient temperatures (within 0.01 °C) of every I–V and S set. **One**: the
+model is `Single` at `T0`, no constituent reads `T`, self-heating is unavailable and the reason is the only text —
+"one temperature" — and a run at another `temp` warns once (§4.4). **Two or more**: the current step's points carry
+`T` and every table or ANN constituent gains it as a third input — an ANN's third input, a table's third axis (spline
+in `T` too, sites every `TemperatureStep`, 25 °C by default; such a table re-grids through a network, the RBF being
+two-dimensional), and an equation may read `T`. A template's `TemperatureCoefficients` names parameters made linear
+in temperature, `p → (p + p_T·(T − Tnom))`, `p_T` free from 0 within the parameter's own range over the data's span,
+`Tnom` the lowest temperature, locked. The domain's `Box` holds `T`'s training interval;
+`ThermalFit.ModelTemperature` gives the `Range` covering it and every ambient.
+
+What `T` is for each point:
+
+| Data | `T` |
+|---|---|
+| pulsed, from a quiescent bias that dissipates nothing (or states no current) | the chuck temperature |
+| pulsed, from a dissipating quiescent bias | chuck + `Rth·Pq` once `Rth` is known; until then the chuck, with one line |
+| DC, self-heating modelled | the junction temperature `Tamb + Rth(Tamb)·P`, `P = ig·vgsi + id·vdsi` |
+| DC, self-heating not modelled | `Tamb`, with one line: the DC heating is embedded statically |
+
+The charges gain `T` only when their S data spans two or more temperatures ([X10] eqs. 1.1, 1.5), each S point at its
+ambient (its DC junction temperature with self-heating); otherwise one line says they are temperature-independent.
+Only an ANN charge takes `T` (one line names a Table, Equation or drift charge fitted over every temperature's points
+instead). The adjoint problem then has three inputs: the capacitances constrain `∂Q/∂v`, and the charge's zero holds
+at the anchor bias at **every** temperature — `∂Q/∂T = 0` at nine temperatures along it plus the value at the middle —
+because a charge moving with `T` there would carry a displacement current `dQ/dT·dT/dt` nobody measured.
+
+With self-heating an ANN `Id` trains by MC-6's combined mode: the I–V values at each point's `Tj`, and every
+SParams point's band-averaged RF `Gm`/`Gds` as `∂Id/∂vgs`, `∂Id/∂vds` at `(vgs, vds, Tj)`, `Tj` frozen at the point's DC
+value ([X03] §IV-C, [X10] §VI) — so one function gives both of [P1] eq. 6.69's output conductances. A Table or
+Equation `Id` trains on the values only, with one line. The Gm/Gds-against-DC-slopes report is skipped (a self-heated
+DC slope includes the heating); without self-heating it compares each temperature's points among themselves.
+
+### 12.2 The thermal node (R-mc9-2)
+
+The convention is the compact-model one for an exposed thermal terminal: the node whose voltage is `ΔT` carries the
+power, and the model's own network goes from it to thermal ground — [P1] Fig. 6.32's `Rth ∥ Cth` from `Tj` to `T0`;
+[R11] ch. 7's fourth terminal "loaded by the thermal impedance"; [T20] §4.3's lumped network on the model's thermal
+node. So **a network on pin 4 sits in parallel with the model's own** (`Rth ∥ Rext` at DC): the brief's gate asked
+for "series", and the owner chose the convention the references and the industry use.
+
+`ComposedNetworkTemplate.Synthesize` adds `R:Rth t 0` and `C:Cth t 0` (one pole), or a Foster ladder `t —(Rth1 ∥ Cth1)—
+t_1 — … —(Rthn ∥ Cthn)— 0`, values scaled by D9 and `RthAt(temp)/Rth`. With four nets `t` is the cell's fourth port;
+with three it is an internal net, still probed as `V(X1.t)`. A ladder's impedance is `Σ Ri/(1 + jωRiCi)`.
+
+### 12.3 Rth (R-mc9-3)
+
+`ThermalFit.Run` with `SelfHeating` and no typed `Rth`:
+
+1. **The isothermal model.** `CurrentFit.IsothermalId` trains `Id(vgs, vds, T)` on the pulsed sets (default: every
+   PulsedIv set whose quiescent bias does not dissipate; a dissipating one named is refused) by `Isothermal` (default:
+   the current step's `Id` method); fewer than two chuck temperatures is a refusal that says to type `Rth`.
+2. **Each DC point's junction temperature** — the `T` at which that model gives the point's channel current
+   (`id + IgGd` by the current step's gate split): a 5 K scan from 50 K below the ambient to 500 K above, then
+   bisection to 1 mK at the first sign change. No root: unresolved, counted.
+3. Points below `MinPower` (0.1) of the largest DC power are left out and counted — their rise is not resolvable
+   against the isothermal model's error.
+4. **The fit**: `Tj − Tamb = Rth·P` through the origin, or (`RthModel: Linear`) `(Rth + slope·(Tamb − Tref))·P`,
+   `Tref` the lowest DC ambient. The record keeps the RMS residual in K and relative to the RMS rise, the counts, and
+   the vgs, vds and power spans of the points used.
+
+A typed `Rth` skips all of it, and the current step "de-heats" the DC data by putting each point at its `Tj` — which
+needs two or more ambients for `T` to be an input at all.
+
+**The dynamics** are one of: `Cth`; `TauTh` (`Cth = τ/Rth`); a `Ladder` of `{ Fraction, Tau }` (`Ri = f·Rth`,
+`Ci = τ/Ri`, fractions adding to 1); or `FitTau` — one `τ` for every S point's `Re Y22(f) = a + b/(1 + (2πfτ)²)`, each
+point's `a` and `b` solved exactly per trial `τ`, searched in log `τ` (a 61-point scan, then golden section). `FitTau` is
+refused while `Steps.Traps.Settings.Model` names a trap model: in GaN that roll-off also holds trap time constants,
+measured near equilibrium ([N22] §III). `ThermalFit.TauFitNote` is the window's tooltip for it. Without any of them
+the record has no poles, one line says so, and `ThermalFit.Network` gives no thermal network.
+
+Every long part takes the `RunControl`; `FitFile` writes the document only when the run completes (D13).
+
+## 13. Where it lives
 
 | Path | What |
 |---|---|
@@ -784,8 +888,10 @@ part returns a number and, where it has one, a map; `RunFile`/`Run` do all three
 | `src/Design/Modeling/` | MC-8: `ChargeFit` (with `ChargeData`), `ChargeFitSettings` (with `ChargeFitRecord`), `ChargeTemplates`, `ConservationCheck` (with `DeviceCapacitance`) |
 | `src/Engine/Modeling/LineIntegral.cs` | MC-8: `LineIntegral` (paths A and B onto a grid), `CurlMetric` |
 | `src/Core/Devices/Composed/` | MC-8: `DriftCharges` (with `BoxContinuation`); `ComposedCoreProgram.Channel` and `.Charges` |
+| `src/Core/Devices/Composed/` | MC-9: `ModelThermal`, `ThermalPole` (records); the thermal port in `ComposedCoreModel`; the thermal network in `ComposedNetworkTemplate.Synthesize` |
+| `src/Design/Modeling/` | MC-9: `ThermalFit` (with `TemperaturePlan`, `ThermalHeating`), `ThermalFitSettings` (with `ThermalFitRecord`); `T` through `CurrentFit`, `EquationFit` and `ChargeFit` |
 
-## 13. Gates (MC-1 … MC-8)
+## 14. Gates (MC-1 … MC-9)
 
 `tests/Core.Tests/Composed/CmodelFormatTests`; `tests/Engine.Tests/Composed/` — `ComposedFetEquivalenceTests`
 (against an SDD with the same expressions in the same network: DC to 1e-12, S at three biases to 1e-9, HB
@@ -861,3 +967,14 @@ whole `Run` on it reads 1.5 % in (a) on a rectilinear grid, ~1e-13 in (b) and 0 
 Levenberg–Marquardt from its own start, recovers all thirteen parameters of capacitances written by hand from
 Angelov's published form; a drift fit with no currents is refused). `SyntheticFetData.BiasedS` simulates multi-bias S through
 ideal bias tees; `SDocument` de-embeds it through the stock network or not at all.
+
+MC-9: `tests/Engine.Tests/Composed/ThermalPinTests` (a four-pin instance: `V(t) = Rth·P` to 1e-6 from the currents in
+`rg` and `rd`; an external R and C on pin 4 give `(Rth ∥ Rext)·P`; three nets probe the same node as `X1.t`; `N = 2·N0`
+halves `Rth` and doubles `Cth`); `tests/Ui.Tests/ModelComposer/` — `RthExtractionTests` (pulsed I–V at 25, 100 and
+175 °C and self-heated DC at 25 and 100 °C of a 60 K/W truth: the default ANN isothermal `Id` gives 59.6 K/W, gated at
+±3 %; DC only with `Rth` typed de-heats to the isothermal truth within 3e-10, against 13 % with the points left at the
+ambient), `ElectrothermalModelTests` (that DC data and an equation `Id` through the thermal node: the self-heated DC
+current within 0.5 % along vgs = 0.4 V, its negative DC output conductance kept; `Re Y22` at 1 GHz, far above the
+~160 kHz corner, within 2 % of the truth's isothermal `Gds` at its junction temperature), `SingleTemperatureStepTests`
+(one temperature: no `T` input, self-heating refused with "one temperature", the model `Mode: Single` at `T0`). The
+truth is `SyntheticFetData.ThermalCell` — an SDD at its intrinsic plane whose third port is the thermal node.

@@ -2,8 +2,8 @@
 // squares, searched by the optimizer registry's own algorithms over the unit box — a global search (CMA-ES or
 // differential evolution) when asked for, then Levenberg–Marquardt — exactly as the network fit drives them (MC-5).
 //
-// The expression compiles ONCE, with vgs, vds and every free parameter as seed lanes of the SDD's dual-number program,
-// so a trial point is an evaluation and never a recompile; locked parameters are its constants.
+// The expression compiles ONCE, with vgs, vds (and T, MC-9) and every free parameter as seed lanes of the SDD's
+// dual-number program, so a trial point is an evaluation and never a recompile; locked parameters are its constants.
 
 using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Expressions;
@@ -15,34 +15,42 @@ namespace CircuitRF.Design.Modeling;
 /// <summary>A fitted equation: every parameter's value, and the weighted cost it reached.</summary>
 public sealed record EquationFitResult(IReadOnlyList<KeyValuePair<string, double>> Values, double Cost);
 
-/// <summary>One expression and the points it is fitted to: rows of (vgs, vds), targets, weights. With
-/// <paramref name="Derivative"/> the targets are the expression's partial derivative by that input (0 = vgs, 1 = vds)
-/// — how a charge equation is fitted to capacitances (MC-8).</summary>
+/// <summary>One expression and the points it is fitted to: rows of the fit's inputs (vgs, vds, and T when the fit has
+/// it), targets, weights. With <paramref name="Derivative"/> the targets are the expression's partial derivative by that
+/// input (0 = vgs, 1 = vds) — how a charge equation is fitted to capacitances (MC-8).</summary>
 internal sealed record EquationTerm(string Expression, double[][] X, double[] Y, double[] W, int? Derivative = null);
 
 internal sealed class EquationFit
 {
-    /// <summary>Two lanes go to vgs and vds; the rest may be free parameters.</summary>
-    public const int MaxFree = 14;
+    /// <summary>Two lanes go to vgs and vds; the rest may be free parameters (one fewer with T).</summary>
+    public const int MaxFree = Dual.MaxN - 2;
+
+    /// <summary>The inputs of a fit that has no temperature.</summary>
+    internal static readonly IReadOnlyList<string> VoltageInputs = [ComposedCoreProgram.Vgs, ComposedCoreProgram.Vds];
 
     private readonly (CompiledSddExpr Expr, EquationTerm Term, double[] SqrtW, double Scale)[] _terms;
     private readonly string _label;
     private readonly FitCoordinate[] _free;
     private readonly IReadOnlyList<TemplateParameter> _parameters;
+    private readonly int _d;
 
     /// <summary>Every term shares the parameters: the two gate branches of one constituent carry one parameter list.
     /// Each term's cost is its own weighted mean square relative to its largest target, so neither swamps the other.</summary>
-    private EquationFit(IReadOnlyList<EquationTerm> terms, IReadOnlyList<TemplateParameter> parameters, string label)
+    private EquationFit(IReadOnlyList<EquationTerm> terms, IReadOnlyList<TemplateParameter> parameters, string label,
+                        IReadOnlyList<string> inputs)
     {
         _label = label;
         _parameters = parameters;
+        _d = inputs.Count;
         var free = parameters.Where(p => !p.Lock).ToList();
-        if (free.Count > MaxFree)
-            throw new ModelingException(label, $"{free.Count} free parameters; an equation fit takes at most {MaxFree}.");
+        int maxFree = Dual.MaxN - _d;
+        if (free.Count > maxFree)
+            throw new ModelingException(label, $"{free.Count} free parameters; an equation fit takes at most {maxFree}.");
         _free = [.. free.Select((p, i) => new FitCoordinate(i, p.Name, NetworkElementKind.Other, p.Min, p.Max,
                                                            p.Min > 0 && p.Max >= 100 * p.Min))];
         var constants = parameters.Where(p => p.Lock).ToDictionary(p => p.Name, p => p.Start, StringComparer.Ordinal);
-        var known = new HashSet<string>(parameters.Select(p => p.Name), StringComparer.Ordinal) { "vgs", "vds", "pi", "e" };
+        var known = new HashSet<string>(parameters.Select(p => p.Name).Concat(inputs), StringComparer.Ordinal) { "pi", "e" };
+        string named = string.Join(", ", inputs);
         _terms = new (CompiledSddExpr, EquationTerm, double[], double)[terms.Count];
         for (int t = 0; t < terms.Count; t++)
         {
@@ -52,9 +60,9 @@ internal sealed class EquationFit
             catch (Exception ex) { throw new ModelingException(label, $"'{term.Expression}' does not parse: {ex.Message}"); }
             foreach (string r in AstWalker.CollectRefs(ast))
                 if (!known.Contains(r))
-                    throw new ModelingException(label, $"'{r}' is neither vgs, vds nor one of its parameters.");
+                    throw new ModelingException(label, $"'{r}' is neither one of {named} nor one of its parameters.");
             double sw = term.W.Sum();
-            _terms[t] = (CompiledSddExpr.CompileNamed(ast, ["vgs", "vds", .. free.Select(p => p.Name)], constants, label),
+            _terms[t] = (CompiledSddExpr.CompileNamed(ast, [.. inputs, .. free.Select(p => p.Name)], constants, label),
                          term, [.. term.W.Select(v => sw > 0 ? Math.Sqrt(v / sw) : 0)],
                          Math.Max(term.Y.Select(Math.Abs).DefaultIfEmpty(0).Max(), 1e-300));
         }
@@ -66,8 +74,9 @@ internal sealed class EquationFit
     /// <see cref="OperationCanceledException"/> when cancelled.
     /// </summary>
     public static EquationFitResult Fit(IReadOnlyList<EquationTerm> terms, IReadOnlyList<TemplateParameter> parameters,
-                                        string algorithm, ulong seed, string label, RunControl? rc)
-        => new EquationFit(terms, parameters, label).Run(algorithm, seed, rc);
+                                        string algorithm, ulong seed, string label, RunControl? rc,
+                                        IReadOnlyList<string>? inputs = null)
+        => new EquationFit(terms, parameters, label, inputs ?? VoltageInputs).Run(algorithm, seed, rc);
 
     private EquationFitResult Run(string algorithm, ulong seed, RunControl? rc)
     {
@@ -125,22 +134,21 @@ internal sealed class EquationFit
 
     private Evaluation Evaluate(double[] u)
     {
-        Span<double> seeds = stackalloc double[2 + MaxFree];
-        Span<double> grad = stackalloc double[2 + MaxFree];
-        int n = _free.Length;
-        for (int j = 0; j < n; j++) seeds[2 + j] = _free[j].Decode(u[j]);
+        Span<double> seeds = stackalloc double[Dual.MaxN];
+        Span<double> grad = stackalloc double[Dual.MaxN];
+        int n = _free.Length, d = _d;
+        for (int j = 0; j < n; j++) seeds[d + j] = _free[j].Decode(u[j]);
         var r = new double[_terms.Sum(t => t.Term.Y.Length)];
         double cost = 0;
         int i = 0;
         foreach (var (expr, term, sqrtW, scale) in _terms)
             for (int k = 0; k < term.Y.Length; k++, i++)
             {
-                seeds[0] = term.X[k][0];
-                seeds[1] = term.X[k][1];
+                for (int i0 = 0; i0 < d; i0++) seeds[i0] = term.X[k][i0];
                 double f;
-                try { f = expr.EvalDualInto(seeds[..(2 + n)], grad, _label); }
+                try { f = expr.EvalDualInto(seeds[..(d + n)], grad, _label); }
                 catch (ArithmeticException) { return new Evaluation(1e300, Failed: true); }
-                if (term.Derivative is { } d) f = grad[d];
+                if (term.Derivative is { } lane) f = grad[lane];
                 if (!double.IsFinite(f)) return new Evaluation(1e300, Failed: true);
                 r[i] = sqrtW[k] * (f - term.Y[k]) / scale;
                 cost += r[i] * r[i];
@@ -159,6 +167,22 @@ internal sealed class EquationFit
             Span<double> s = [vgs, vds];
             Span<double> g = stackalloc double[2];
             double f = expr.EvalDualInto(s, g, label);
+            return (f, g[0], g[1]);
+        };
+    }
+
+    /// <summary>The fitted equation over <paramref name="inputs"/> — a point is one value per input — with its gradient by
+    /// vgs and vds.</summary>
+    public static Func<double[], (double F, double Dg, double Dd)> Function(string expression,
+        IReadOnlyList<KeyValuePair<string, double>> values, string label, IReadOnlyList<string> inputs)
+    {
+        var expr = CompiledSddExpr.CompileNamed(Parser.Parse(expression), inputs,
+                                                values.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal), label);
+        int d = inputs.Count;
+        return p =>
+        {
+            Span<double> g = stackalloc double[d];
+            double f = expr.EvalDualInto(p.AsSpan(0, d), g, label);
             return (f, g[0], g[1]);
         };
     }

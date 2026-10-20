@@ -1922,6 +1922,17 @@ by its rule — fixed, per finger, or inversely per finger. `m` places whole dev
 A model extracted at one temperature is used as it is at any other, with one warning naming both. A
 model over a temperature range follows `temp`, held to that range.
 
+A self-heating model has a thermal node, `X1.t`, whose voltage is the device's temperature rise in kelvin;
+its currents and charges follow `temp` plus that rise. On a four-pin symbol, pin 4 is that node:
+
+```
+ComposedFet:X1  g d s t  File="gan_8x125.cmodel"
+R:RSINK  t 0  R=20
+```
+
+The model's own thermal resistance already runs from `t` to ground, so what you attach there sits in
+parallel with it.
+
 The glyph is the model's own symbol, which the `Symbol` row changes per instance; pins 1, 2 and 3 are
 `g`, `d` and `s`. A symbol that cannot be found draws as the standard FET, with one warning.
 

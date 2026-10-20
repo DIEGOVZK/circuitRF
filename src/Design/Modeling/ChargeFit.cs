@@ -2,8 +2,9 @@
 // overview D4, D7, D13).
 //
 //   1. The training data are C11, C12 (Qg's row) and C21, C22 (Qd's) at each intrinsic S point, averaged over MC-4's
-//      flatness band with flagged frequencies left out; a point whose diagonal flatness is poor weighs less. One
-//      temperature and one trap state, as for the currents.
+//      flatness band with flagged frequencies left out; a point whose diagonal flatness is poor weighs less. One trap
+//      state, as for the currents. With S data at two or more temperatures an ANN charge takes T as an input (MC-9
+//      R-mc9-1, [X10] eqs. 1.1 and 1.5), each point at its ambient — its junction temperature with self-heating.
 //   2. Both charges are zero at the anchor — the arbitrary constant of [P1] §6.3.4.
 //   3. Each charge is an ANN trained on its two partial derivatives by the adjoint method (the default, [P1] §6.3.6), a
 //      table from the line integrals of [P1] eqs. 6.30/6.31 over an interpolant of the capacitances, or an equation
@@ -39,7 +40,25 @@ public sealed class ChargeData
     public required double[] C22 { get; init; }
     public required double[] Weight { get; init; }
     public required TrainingDomain Domain { get; init; }
+    /// <summary>The lowest temperature of the points, °C — their only one when <see cref="T"/> is null.</summary>
     public double TemperatureC { get; init; } = 25;
+    /// <summary>Each point's temperature, °C, when the points span two or more (MC-9); null at one temperature.</summary>
+    public double[]? T { get; init; }
+
+    public bool HasT => T is not null;
+
+    /// <summary><c>vgs, vds</c>, and <c>T</c> when the points span temperatures.</summary>
+    public IReadOnlyList<string> Inputs => HasT ? [ComposedCoreProgram.Vgs, ComposedCoreProgram.Vds, ComposedCoreProgram.T] : ChargeFit.VoltageInputs;
+
+    /// <summary>The same points with their temperatures dropped — what a temperature-independent charge is fitted to.</summary>
+    public ChargeData Isothermal() => !HasT ? this : new()
+    {
+        X = X, C11 = C11, C12 = C12, C21 = C21, C22 = C22, Weight = Weight, TemperatureC = TemperatureC,
+        Domain = Domain with { Box = [] },
+    };
+
+    /// <summary>The span of <see cref="T"/>, °C.</summary>
+    public (double Lo, double Hi) TSpan => HasT ? (T!.Min(), T!.Max()) : (TemperatureC, TemperatureC);
 
     /// <summary>Data at scattered points, every point weighing one unless <paramref name="weight"/> says otherwise.</summary>
     public static ChargeData Of(IReadOnlyList<(double Vgs, double Vds)> x, double[] c11, double[] c12, double[] c21,
@@ -53,6 +72,12 @@ public sealed class ChargeData
     public (double[] C1, double[] C2) Row(bool gate) => gate ? (C11, C12) : (C21, C22);
 
     internal double[][] Points => [.. X.Select(p => new[] { p.Vgs, p.Vds })];
+
+    /// <summary>Each point over <see cref="Inputs"/>.</summary>
+    internal double[][] PointsWithT => HasT ? [.. X.Select((p, k) => new[] { p.Vgs, p.Vds, T![k] })] : Points;
+
+    /// <summary>The temperature a point's capacitances were measured at, °C.</summary>
+    internal double TemperatureOf(int k) => T?[k] ?? TemperatureC;
 }
 
 public static class ChargeFit
@@ -61,6 +86,7 @@ public static class ChargeFit
     public const string CacheFolder = "charge";
 
     private static readonly IReadOnlyList<string> Inputs = [ComposedCoreProgram.Vgs, ComposedCoreProgram.Vds];
+    internal static IReadOnlyList<string> VoltageInputs => Inputs;
 
     /// <summary>
     /// A network that joins each extrinsic pin to its intrinsic one through 1 µΩ: what a model built from the steps
@@ -155,7 +181,14 @@ public static class ChargeFit
             : doc.DataSets.Where(s => intrinsic.Sets.TryGetValue(s.Name, out var d) && d.Contains("C11")).ToList();
         if (chosen.Count == 0)
             throw new ModelingException(StepName, "there is no S-parameter data set to take the capacitances from.");
-        double t = CurrentFit.OneCondition(chosen, data, StepName);
+        CurrentFit.TrapCondition(chosen, StepName);
+        var temps = CurrentFit.Temperatures(chosen, data);
+        double t = temps.Count > 0 ? temps[0] : 25.0;
+        bool hasT = temps.Count >= 2;
+        if (!hasT && ThermalFit.Plan(doc, data).HasTemperatureInput)
+            report.Add("the charges are temperature-independent: the S data is at one temperature.");
+        var heating = ThermalFit.Heating(doc);
+        var tk = new List<double>();
 
         int iC11 = Index("C11"), iC22 = Index("C22");
         var x = new List<(double, double)>();
@@ -169,6 +202,8 @@ public static class ChargeFit
             double[] f = ds["C11"].Axes[1].Values, band = ds["Band"].RealValues, flagged = ds["Flagged"].RealValues;
             double[] vgs = ds["Vgsi"].RealValues, vds = ds["Vdsi"].RealValues, ex = ds["Excluded"].RealValues;
             double[] flat = ds["Flatness"].RealValues;
+            double[] igc = ds["Ig"].RealValues, idc = ds["Id"].RealValues;
+            var pts = data.TryGetValue(set.Name, out var nd) && nd.Points.Count == vgs.Length ? nd.Points : null;
             double[][] cij = [ds["C11"].RealValues, ds["C12"].RealValues, ds["C21"].RealValues, ds["C22"].RealValues];
             int nf = f.Length, nq = IntrinsicQuantities.Names.Count;
             for (int p = 0; p < vgs.Length; p++)
@@ -183,6 +218,11 @@ public static class ChargeFit
                     count++;
                 }
                 if (count == 0) continue;
+                double tAmb = CurrentFit.AmbientOf(set, pts?[p]);
+                // With self-heating a CW S point sits at its DC junction temperature ([X10] makes the charges functions of Tj).
+                tk.Add(hasT && heating.SelfHeating && !double.IsNaN(idc[p])
+                    ? tAmb + heating.RthAt(tAmb) * CurrentFit.Power(vgs[p], vds[p], double.IsNaN(igc[p]) ? 0 : igc[p], idc[p])
+                    : tAmb);
                 x.Add((vgs[p], vds[p]));
                 for (int i = 0; i < 4; i++) c[i].Add(sum[i] / count);
                 double worst = Math.Max(Finite(flat[p * nq + iC11]), Finite(flat[p * nq + iC22]));
@@ -193,7 +233,13 @@ public static class ChargeFit
         }
         if (poor > 0) report.Add($"{poor} point(s) with flatness above {G(100 * settings.FlatnessLimit)} % down-weighted by (limit/flatness)².");
         if (x.Count < 4) throw new ModelingException(StepName, $"{x.Count} usable S point(s); a charge fit needs at least 4.");
-        return ChargeData.Of(x, [.. c[0]], [.. c[1]], [.. c[2]], [.. c[3]], [.. w], t);
+        var cd = ChargeData.Of(x, [.. c[0]], [.. c[1]], [.. c[2]], [.. c[3]], [.. w], t);
+        if (!hasT) return cd;
+        return new ChargeData
+        {
+            X = cd.X, C11 = cd.C11, C12 = cd.C12, C21 = cd.C21, C22 = cd.C22, Weight = cd.Weight, TemperatureC = t, T = [.. tk],
+            Domain = cd.Domain with { Box = [new(ComposedCoreProgram.T, (tk.Min(), tk.Max()))] },
+        };
 
         static int Index(string name) => IntrinsicQuantities.Names.ToList().IndexOf(name);
         static double Finite(double v) => double.IsFinite(v) ? v : 0;
@@ -252,15 +298,24 @@ public static class ChargeFit
         var paths = new Dictionary<string, double>(StringComparer.Ordinal);
         Constituent qg, qd;
         double? cdsSpread = null;
+        // T is an input of an ANN charge only; any other method is fitted temperature-independent over every point.
+        ChargeData For(string what)
+        {
+            if (!data.HasT) return data;
+            report.Add($"{what} is temperature-independent: only an ANN charge takes T; it is fitted over every temperature's points.");
+            return data.Isothermal();
+        }
         if (settings.Drift is { } drift)
         {
             if (current is null) throw new ModelingException(StepName, "the drift charge reads the fitted Id; fit the currents first.");
-            (qg, qd, cdsSpread) = FitDrift(data, settings, drift, current, anchor, arrays, report, rc);
+            (qg, qd, cdsSpread) = FitDrift(For("the drift charge"), settings, drift, current, anchor, arrays, report, rc);
         }
         else
         {
-            qg = FitOne("Qg", true, settings.Qg, data, settings, anchor, arrays, paths, report, rc);
-            qd = FitOne("Qd", false, settings.Qd, data, settings, anchor, arrays, paths, report, rc);
+            qg = FitOne("Qg", true, settings.Qg, settings.Qg.Method == ChargeMethod.ANN ? data : For($"Qg ({settings.Qg.Method})"),
+                        settings, anchor, arrays, paths, report, rc);
+            qd = FitOne("Qd", false, settings.Qd, settings.Qd.Method == ChargeMethod.ANN ? data : For($"Qd ({settings.Qd.Method})"),
+                        settings, anchor, arrays, paths, report, rc);
         }
 
         var program = ComposedCoreProgram.Compile(Model(qg, qd, arrays, current, data.TemperatureC), "charge fit");
@@ -287,23 +342,50 @@ public static class ChargeFit
             {
                 // The adjoint method ([P1] §6.3.6, [X03]): ∂Q/∂vgs → Ci1 and ∂Q/∂vds → Ci2, with Q = 0 at the anchor.
                 rc?.BeginStage($"Training {name}");
-                var trained = AnnTrainer.Train(new AnnTrainingProblem(2)
+                var problem = data.HasT ? AdjointWithT(data, c1, c2, anchor) : new AnnTrainingProblem(2)
                 {
                     Derivatives = new AnnDerivativeData(data.Points, [0, 1], [.. c1.Select((v, k) => new[] { v, c2[k] })],
                                                         [.. data.Weight.Select(w => new[] { w, w })]),
                     Anchor = new AnnAnchor([anchor.Vgs, anchor.Vds], 0),
-                }, AnnSettings(s.Hidden, s.Activation, s.MaxIterations, settings, settings.HeldOutFraction), rc);
+                };
+                var trained = AnnTrainer.Train(problem, AnnSettings(s.Hidden, s.Activation, s.MaxIterations, settings, settings.HeldOutFraction), rc);
                 foreach (string warning in trained.Warnings) report.Add($"{name}: {warning}");
                 if (trained.Derivatives is { HeldOutCount: > 0 } e)
                     report.Add($"{name}: held-out ∂Q/∂v error {G(100 * e.HeldOutRelative)} % over {e.HeldOutCount} point(s).");
                 foreach (var (k, v) in trained.Arrays(name)) arrays[k] = v;
-                return Constituent.Ann(name, Inputs, data.Domain, s.Activation);
+                return Constituent.Ann(name, data.Inputs, data.Domain, s.Activation);
             }
             case ChargeMethod.Table:
                 return FitTable(name, s, c1, c2, data, settings, anchor, arrays, paths, report, rc);
             default:
                 return FitEquation(name, gate, s, c1, c2, data, settings, anchor, rc);
         }
+    }
+
+    /// <summary>
+    /// The adjoint problem with T a third input (MC-9). The capacitances constrain ∂Q/∂v at each point's temperature; the
+    /// charge's zero is fixed at the anchor bias for EVERY temperature, by ∂Q/∂T = 0 at nine temperatures along it and the
+    /// value 0 at the middle one — a charge that moved with T at the anchor would carry a displacement current dQ/dT·dT/dt
+    /// the data never measured.
+    /// </summary>
+    private static AnnTrainingProblem AdjointWithT(ChargeData data, double[] c1, double[] c2, (double Vgs, double Vds) anchor)
+    {
+        var x = data.PointsWithT.ToList();
+        var targets = c1.Select((v, k) => new[] { v, c2[k], 0.0 }).ToList();
+        var weights = data.Weight.Select(w => new[] { w, w, 0.0 }).ToList();
+        var (lo, hi) = data.TSpan;
+        double mean = data.Weight.Average();
+        for (int k = 0; k <= 8; k++)
+        {
+            x.Add([anchor.Vgs, anchor.Vds, lo + (hi - lo) * k / 8.0]);
+            targets.Add([0.0, 0.0, 0.0]);
+            weights.Add([0.0, 0.0, mean]);
+        }
+        return new AnnTrainingProblem(3)
+        {
+            Derivatives = new AnnDerivativeData(x, [0, 1, 2], targets, weights),
+            Anchor = new AnnAnchor([anchor.Vgs, anchor.Vds, 0.5 * (lo + hi)], 0),
+        };
     }
 
     private static AnnTrainingSettings AnnSettings(IReadOnlyList<int> hidden, AnnActivation activation, int iterations,
@@ -512,9 +594,9 @@ public static class ChargeFit
         var program = ComposedCoreProgram.Compile(Model(zero, zero, new Dictionary<string, DataCube>(), current, temperatureC), "current fit");
         return (vgs, vds) =>
         {
-            Span<double> s = [vgs, vds];
-            Span<double> g = stackalloc double[2];
-            double id = program.Channel(s, g);
+            Span<double> s = [vgs, vds, temperatureC];
+            Span<double> g = stackalloc double[3];
+            double id = program.Channel(s[..program.Width], g);
             return (id, g[0], g[1]);
         };
     }
@@ -545,7 +627,7 @@ public static class ChargeFit
         return new ComposedModel
         {
             BasePeriphery = new BasePeriphery(1, "1 um"),
-            Temperature = ModelTemperature.Single(temperatureC),
+            Temperature = TemperatureOf([id, ig, qg, qd, idRf], temperatureC),
             Network = new ExtrinsicNetwork(IntrinsicNetwork, []),
             Core = new CoreConstituents(id, ig, qg, qd, idRf) { Dispersion = dispersion },
             Extrapolation = extrapolation,
@@ -553,15 +635,31 @@ public static class ChargeFit
         };
     }
 
+    /// <summary>
+    /// <c>Single</c> at <paramref name="t0"/> when no constituent reads T; otherwise <c>Range</c> over every training
+    /// interval of T — or, when only equations read it, a range wide enough never to clamp.
+    /// </summary>
+    internal static ModelTemperature TemperatureOf(IEnumerable<Constituent?> constituents, double t0)
+    {
+        var withT = constituents.Where(c => c is not null && c.Inputs.Contains(ComposedCoreProgram.T)).ToList();
+        if (withT.Count == 0) return ModelTemperature.Single(t0);
+        double lo = double.PositiveInfinity, hi = double.NegativeInfinity;
+        foreach (var c in withT)
+            if (c!.Domain?.Box.FirstOrDefault(b => b.Key == ComposedCoreProgram.T) is { Key: not null } b)
+                (lo, hi) = (Math.Min(lo, b.Value.Lo), Math.Max(hi, b.Value.Hi));
+        return lo < hi ? ModelTemperature.Range(lo, hi) : ModelTemperature.Range(-273.15, 1000);
+    }
+
     /// <summary>A fitted step's model, as <see cref="Model(Constituent, Constituent, IReadOnlyDictionary{string, DataCube}, CurrentFitResult?, double)"/>.</summary>
     public static ComposedModel Model(ChargeFitResult charges, CurrentFitResult? current, double temperatureC = 25) =>
         Model(charges.Record.Qg, charges.Record.Qd, charges.Arrays, current, temperatureC);
 
     /// <summary>The capacitance matrix of a model's charges at a point: <c>(C11, C12, C21, C22)</c>.</summary>
-    public static (double C11, double C12, double C21, double C22) Capacitances(ComposedCoreProgram program, double vgs, double vds)
+    public static (double C11, double C12, double C21, double C22) Capacitances(ComposedCoreProgram program, double vgs, double vds,
+                                                                                double temperatureC = 25)
     {
         Span<double> s = stackalloc double[3];
-        s[0] = vgs; s[1] = vds; s[2] = 25;
+        s[0] = vgs; s[1] = vds; s[2] = temperatureC;
         Span<double> gg = stackalloc double[3], gd = stackalloc double[3];
         program.Charges(s[..program.Width], gg, gd);
         return (gg[0], gg[1], gd[0], gd[1]);
@@ -573,7 +671,7 @@ public static class ChargeFit
         var sums = new double[4];
         foreach (var (k, p) in data.X.Select((p, k) => (k, p)))
         {
-            var (c11, c12, c21, c22) = Capacitances(program, p.Vgs, p.Vds);
+            var (c11, c12, c21, c22) = Capacitances(program, p.Vgs, p.Vds, data.TemperatureOf(k));
             double[] model = [c11, c12, c21, c22];
             for (int i = 0; i < 4; i++) sums[i] += Math.Pow(model[i] - measured[i][k], 2);
         }

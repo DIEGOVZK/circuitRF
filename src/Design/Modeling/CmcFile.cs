@@ -5,7 +5,8 @@
 // STRICT ON NAMES. An unknown key anywhere is a refusal naming it: a misspelt condition that was silently
 // dropped would leave a data set measured under conditions nobody stated, and the step that needed it would
 // report it missing with the typo still sitting in the file. Pads and Network are kept as JSON and carried
-// verbatim, but validated through CmcExtrinsic (MC-4), their one reader; Steps is opaque except Steps.Current (MC-7).
+// verbatim, but validated through CmcExtrinsic (MC-4), their one reader; Steps is opaque except Steps.Current (MC-7),
+// Steps.Charge (MC-8) and Steps.Thermal (MC-9).
 
 using System.Globalization;
 using System.Text;
@@ -299,6 +300,7 @@ public static class CmcFile
         // MC-7's step: its settings and record are parsed, so a misspelt key is refused here too.
         CurrentFit.Validate(d);
         ChargeFit.Validate(d);
+        ThermalFit.Validate(d);
     }
 
     private static bool IsPulsed(DataSetKind k) => k is DataSetKind.PulsedIv or DataSetKind.PulsedSParams;

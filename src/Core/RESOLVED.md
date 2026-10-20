@@ -3627,3 +3627,25 @@ Design note: `docs/design/model-composer.md` §4.7–§4.11. Findings worth keep
 - **Two DC operating points reached by different Newton paths agree only to the solve's tolerance.**
   The default `NonlinearAbsTol` is 1e-6 A; behind 10 Ω that is ~1e-5 V, far looser than a 1e-9
   comparison. Gates that compare two different solves tighten it (1e-12) rather than the comparison.
+
+## brief-modelcomposer-9 — the thermal node of a composed FET (2026-10-19)
+
+Design note: `docs/design/model-composer.md` §4.1–§4.4 and §12. Findings worth keeping:
+
+- **Pin 4 is the junction node, and what attaches there is in PARALLEL with the model's Rth.** The brief said pin 4
+  "is the thermal node" and "exposes ΔT", and its gate asked for an external network to act "as a series thermal
+  resistance should" — which cannot both hold with one pin and a ground. The owner asked for what the references
+  and the industry do: [P1] Fig. 6.32 puts `Rth ∥ Cth` from `Tj` to the ambient, [R11] ch. 7 says the model needs a
+  fourth terminal loaded by the thermal impedance, [T20] §4.3 connects a lumped network's top node to the model's
+  exposed thermal node, and compact models keep their own Rth/Cth from that node to thermal ground. The gate
+  (`ThermalPinTests`) checks `Rth ∥ Rext`.
+- **The thermal node is a CELL net, not a minted state node.** The dispersion node `x` is minted by the elaborator
+  (`__composed_<path>_x0`) because nothing outside the core touches it; the thermal node carries the cell's own
+  `Rth`/`Cth` and, on a four-pin instance, the caller's net, so it is the core's fourth NET (`gi di si t`) and its
+  last port. `InternalStateNodeCount` stays the count of minted nodes.
+- **`InstanceNetContract` fixes a model's net count before any expansion**, so a model whose net count depends on
+  its file must answer from the model (`core.HasThermalNode ? 4 : 3`). The elaborator's own length-guarded
+  expansion never saw the fourth net: the contract refused the line first, naming 3.
+- **The T lane maps through the drain–source image like a voltage lane** (the current negates, the gate branches
+  swap, `Qd → −Qg − Qd`) and lands in the thermal port's column of `dg`/`dc`; the port's own row is `−∂P/∂v` with
+  `P = i·v` from the already-scaled terminal currents, so the scaling and the image are both inherited for free.

@@ -388,4 +388,147 @@ public static class SyntheticFetData
         Conditions = new DataConditions { ReferencePlane = plane, BiasPathOhms = path },
         Import = new ImportSettings { Format = ImportSettings.Touchstone, Pattern = "{vgs}_{vds}", PatternSource = "name" },
     };
+
+    // ── MC-9: an electrothermal device ────────────────────────────────────────
+
+    /// <summary>The truth's thermal resistance, K/W; its time constant, s; and its drain current's temperature coefficient,
+    /// per K.</summary>
+    public const double TruthRth = 60, TruthTau = 1e-6, TruthKt = 0.004;
+
+    /// <summary><see cref="ComposedTestModels"/>' drain current, made to fall linearly with the junction temperature T.</summary>
+    public const string IdThermalEq = "beta*(1-kT*(T-25))*(ln(1+exp((vgs-Vto)/Vs))*Vs)^2*(1+lambda*vds)*tanh(alpha*vds)";
+
+    /// <summary>The thermal grid: below forward gate conduction at the intrinsic plane, up to ~1.3 W at 10 V.</summary>
+    public static readonly double[] ThermalVgs = [-1.6, -1.2, -0.8, -0.4, 0.0, 0.2, 0.4];
+    public static readonly double[] ThermalVds = [0.5, 1, 2, 3, 4, 5, 6, 8, 10];
+
+    /// <summary>The truth's drain current at a junction temperature, in closed form.</summary>
+    public static double TruthId(double vgs, double vds, double t)
+    {
+        var p = ComposedTestModels.IdParams.ToDictionary(x => x.Name, x => x.Value);
+        double f = Math.Log(1 + Math.Exp((vgs - p["Vto"]) / p["Vs"])) * p["Vs"];
+        return p["beta"] * (1 - TruthKt * (t - 25)) * f * f * (1 + p["lambda"] * vds) * Math.Tanh(p["alpha"] * vds);
+    }
+
+    private static string Sdd(string eq, string t) =>
+        System.Text.RegularExpressions.Regex.Replace(
+            System.Text.RegularExpressions.Regex.Replace(
+                System.Text.RegularExpressions.Regex.Replace(eq, @"\bvgs\b", "_v1"), @"\bvds\b", "_v2"), @"\bT\b", t);
+
+    /// <summary>
+    /// The truth as a cell on (g d s), at the intrinsic plane: the diode gate of <see cref="ComposedTestModels"/>, its
+    /// charges, and <see cref="IdThermalEq"/>. Self-heated, a third SDD port is the thermal node — its current is minus the
+    /// dissipated power, into <see cref="TruthRth"/> ∥ Cth — and T is <c>Tamb + ΔT</c>; isothermal (a pulse from a quiescent
+    /// bias that dissipates nothing), T is <c>Tamb</c>.
+    /// </summary>
+    private static string ThermalCell(bool selfHeated)
+    {
+        string t = selfHeated ? "(Tamb+_v3)" : "Tamb";
+        string ig = $"({Sdd(ComposedTestModels.IgGsEq, t)})+({Sdd(ComposedTestModels.IgGdEq, t)})";
+        string id = $"({Sdd(IdThermalEq, t)})-({Sdd(ComposedTestModels.IgGdEq, t)})";
+        string q = $"I[1,1]={Sdd(ComposedTestModels.QgEq, t)} I[2,1]={Sdd(ComposedTestModels.QdEq, t)}";
+        return selfHeated
+            ? "define truth (g d s)\n" +
+              $"SDD:core g s d s t 0 I[1,0]={ig} I[2,0]={id} I[3,0]=-(({ig})*_v1+({id})*_v2) {q}\n" +
+              $"R:RTH t 0 R={R(TruthRth)}\nC:CTH t 0 C={R(TruthTau / TruthRth)}\nend\n"
+            : "define truth (g d s)\n" + $"SDD:core g s d s I[1,0]={ig} I[2,0]={id} {q}\nend\n";
+    }
+
+    private static string ThermalGlobals(double ambientC) =>
+        ComposedTestModels.SddGlobals + $"kT = {R(TruthKt)}\nTamb = {R(ambientC)}\n";
+
+    /// <summary>
+    /// DC I–V of the truth at every (vgs, vds) of the two lists, at <paramref name="ambientC"/> — self-heated (DC), or
+    /// isothermal at the chuck temperature (pulsed). The device's terminals are its intrinsic plane. With
+    /// <paramref name="junction"/>, each point's junction temperature is returned through it.
+    /// </summary>
+    public static NormalisedData ThermalIv(double[] vgsList, double[] vdsList, double ambientC, bool selfHeated,
+                                           List<double>? junction = null)
+    {
+        var points = new List<BiasPoint>();
+        foreach (double vgs in vgsList)
+            foreach (double vds in vdsList)
+            {
+                string cnl = ThermalGlobals(ambientC) + ThermalCell(selfHeated) +
+                             $"Vdc:VG vg 0 V={R(vgs)}\nIProbe:IPG vg g\ntruth:X1 g d 0\nIProbe:IPD vd d\nVdc:VD vd 0 V={R(vds)}\n";
+                var (lib, tb) = new CnlReader().Read(cnl);
+                using var nl = new Elaborator(lib).Elaborate(tb);
+                var dc = NonlinearDcEngine.Run(nl);
+                Assert.True(dc.Converged);
+                if (junction is not null)
+                {
+                    var (rows, names) = nl.Nodes.ResultRows(excludeInternal: false);
+                    int k = Array.IndexOf(names, "X1.t");
+                    junction.Add(ambientC + (selfHeated ? dc.NodeVoltages[rows[k] - 1] : 0));
+                }
+                points.Add(new BiasPoint($"Vgs{R(vgs)}_Vds{R(vds)}", vgs, vds, dc.ProbeCurrents["IPG"], dc.ProbeCurrents["IPD"])
+                           { AmbientC = ambientC });
+            }
+        return new NormalisedData { Points = points };
+    }
+
+    /// <summary>One I–V data set of the thermal document: DC (self-heated) or pulsed from a quiescent bias at pinch-off that
+    /// dissipates nothing (isothermal at its chuck temperature).</summary>
+    public static (CmcDataSet Set, NormalisedData Data) ThermalSet(string name, bool pulsed, double ambientC) =>
+        (new CmcDataSet
+        {
+            Name = name, Kind = pulsed ? DataSetKind.PulsedIv : DataSetKind.DcIv, Sources = [name + ".csv"],
+            Conditions = new DataConditions
+            {
+                ReferencePlane = ReferencePlane.Intrinsic, AmbientC = ambientC,
+                Quiescent = pulsed ? new QuiescentBias(-3, 0) : null, PulseWidth = pulsed ? 1e-6 : null,
+            },
+            Import = new ImportSettings
+            {
+                Format = ImportSettings.Csv,
+                Columns = [new("Vgs", "vgs", "V"), new("Vds", "vds", "V"), new("Ig", "ig", "A"), new("Id", "id", "A")],
+            },
+        }, ThermalIv(ThermalVgs, ThermalVds, ambientC, selfHeated: !pulsed));
+
+    /// <summary>A document holding these sets at the intrinsic plane, and its intrinsic data.</summary>
+    public static (CmcDocument Doc, Dictionary<string, NormalisedData> Data, IntrinsicResult Intrinsic) ThermalDocument(
+        params (CmcDataSet Set, NormalisedData Data)[] sets)
+    {
+        string dir = Directory.CreateTempSubdirectory("crf-mc9-").FullName;
+        var doc = new CmcDocument { Kind = CmcKind.Active, DataSets = [.. sets.Select(s => s.Set)] };
+        var data = new Dictionary<string, NormalisedData>(StringComparer.Ordinal);
+        var intrinsic = new Dictionary<string, DataSet>(StringComparer.Ordinal);
+        foreach (var (set, d) in sets)
+        {
+            data[set.Name] = d;
+            intrinsic[set.Name] = IntrinsicExtraction.Compute(set, d, PadDeembedding.Load(PadsSettings.None, dir), null, null, null, []);
+        }
+        return (doc, data, new IntrinsicResult(intrinsic, []));
+    }
+
+    /// <summary>The user's own expression for the truth's drain current, its parameters starting 10–20 % off and free.</summary>
+    public static CurrentConstituentSettings ThermalIdEquation => new()
+    {
+        Method = CurrentMethod.Equation,
+        Expression = IdThermalEq,
+        Parameters = new Dictionary<string, EquationParameterSettings>(StringComparer.Ordinal)
+        {
+            ["beta"]   = new(0.046, 0.01, 0.1),
+            ["kT"]     = new(0.0033, 0, 0.02),
+            ["Vto"]    = new(-1.0, -2, 0),
+            ["Vs"]     = new(0.17, 0.05, 0.5),
+            ["lambda"] = new(0.025, 0, 0.1),
+            ["alpha"]  = new(2.1, 0.5, 5),
+        },
+        Algorithm = "lm",
+    };
+
+    /// <summary>The diode gate as the user's own expressions, its two parameters free.</summary>
+    public static CurrentConstituentSettings ThermalIgEquation => new()
+    {
+        Method = CurrentMethod.Equation,
+        IgGs = ComposedTestModels.IgGsEq,
+        IgGd = ComposedTestModels.IgGdEq,
+        Parameters = new Dictionary<string, EquationParameterSettings>(StringComparer.Ordinal)
+        {
+            ["Isg"] = new(2e-12, 1e-14, 1e-10),
+            ["Vtg"] = new(0.04, 0.02, 0.06),
+        },
+        Algorithm = "lm",
+    };
 }

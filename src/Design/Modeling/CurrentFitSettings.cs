@@ -44,6 +44,8 @@ public sealed record EquationParameterSettings(double? Value = null, double? Min
 public sealed record CurrentConstituentSettings
 {
     public const double DefaultGridStep = 0.1;
+    /// <summary>A table's temperature axis spacing, °C (MC-9), when T is an input.</summary>
+    public const double DefaultTemperatureStep = 25;
     /// <summary>L-BFGS iterations per start: relative weighting makes the problem stiff, and 2000 measured short of
     /// converged on a 2 × 8 network over ~170 points (5.6 % worst held-out error, against 0.6 % at 6000).</summary>
     public const int DefaultMaxIterations = 6000;
@@ -62,6 +64,11 @@ public sealed record CurrentConstituentSettings
     public RegridSource Regrid { get; init; } = RegridSource.ANN;
     /// <summary>Table: the spline's smoothing weight λ (R-mc2-1).</summary>
     public double Smoothing { get; init; }
+    /// <summary>Table, with T an input (MC-9): the temperature axis's spacing, °C.</summary>
+    public double TemperatureStep { get; init; } = DefaultTemperatureStep;
+    /// <summary>Equation, with T an input (MC-9 R-mc9-1): the template parameters made linear in temperature, each
+    /// <c>p</c> becoming <c>p + p_T·(T − Tnom)</c>.</summary>
+    public IReadOnlyList<string> TemperatureCoefficients { get; init; } = [];
 
     /// <summary>Equation: a template's name (<see cref="CurrentTemplates"/>), or null for the user's own expressions.</summary>
     public string? Template { get; init; }
@@ -79,8 +86,8 @@ public sealed record CurrentConstituentSettings
     public static readonly IReadOnlyList<string> Algorithms = ["cmaes", "de", "lm"];
 
     private static readonly string[] Keys =
-        ["Method", "Hidden", "Activation", "MaxIterations", "GridStep", "Regrid", "Smoothing", "Template", "Expression", "IgGs", "IgGd",
-         "Parameters", "Algorithm"];
+        ["Method", "Hidden", "Activation", "MaxIterations", "GridStep", "Regrid", "Smoothing", "TemperatureStep", "Template", "Expression",
+         "IgGs", "IgGd", "Parameters", "TemperatureCoefficients", "Algorithm"];
     private static readonly string[] ParameterKeys = ["Value", "Min", "Max", "Lock"];
 
     public static CurrentConstituentSettings Parse(JsonNode node, string f)
@@ -108,6 +115,8 @@ public sealed record CurrentConstituentSettings
             GridStep = Num(o, "GridStep", $"{f}.GridStep") ?? DefaultGridStep,
             Regrid = Enum<RegridSource>(o, "Regrid", f) ?? RegridSource.ANN,
             Smoothing = Num(o, "Smoothing", $"{f}.Smoothing") ?? 0,
+            TemperatureStep = Num(o, "TemperatureStep", $"{f}.TemperatureStep") ?? DefaultTemperatureStep,
+            TemperatureCoefficients = o["TemperatureCoefficients"] is { } tc ? Words(tc, $"{f}.TemperatureCoefficients") : [],
             Template = Str(o, "Template", $"{f}.Template", required: false),
             Expression = Str(o, "Expression", $"{f}.Expression", required: false),
             IgGs = Str(o, "IgGs", $"{f}.IgGs", required: false),
@@ -118,6 +127,7 @@ public sealed record CurrentConstituentSettings
         if (s.MaxIterations < 1) throw new CmcFormatException($"{f}.MaxIterations", "it is below 1.");
         if (!(s.GridStep > 0)) throw new CmcFormatException($"{f}.GridStep", "it is not a positive step in volts.");
         if (s.Smoothing < 0) throw new CmcFormatException($"{f}.Smoothing", "it is negative.");
+        if (!(s.TemperatureStep > 0)) throw new CmcFormatException($"{f}.TemperatureStep", "it is not a positive step in °C.");
         if (!Algorithms.Contains(s.Algorithm))
             throw new CmcFormatException($"{f}.Algorithm", $"'{s.Algorithm}' is not {string.Join(", ", Algorithms)}.");
         return s;
@@ -133,6 +143,7 @@ public sealed record CurrentConstituentSettings
         if (GridStep != DefaultGridStep) o["GridStep"] = GridStep;
         if (Regrid != RegridSource.ANN) o["Regrid"] = Regrid.ToString();
         if (Smoothing != 0) o["Smoothing"] = Smoothing;
+        if (TemperatureStep != DefaultTemperatureStep) o["TemperatureStep"] = TemperatureStep;
         if (Template is not null) o["Template"] = Template;
         if (Expression is not null) o["Expression"] = Expression;
         if (IgGs is not null) o["IgGs"] = IgGs;
@@ -151,9 +162,18 @@ public sealed record CurrentConstituentSettings
             }
             o["Parameters"] = po;
         }
+        if (TemperatureCoefficients.Count > 0)
+            o["TemperatureCoefficients"] = new JsonArray([.. TemperatureCoefficients.Select(n => (JsonNode)n)]);
         if (Algorithm != DefaultAlgorithm) o["Algorithm"] = Algorithm;
         return o;
     }
+
+    /// <summary>A list of names: parameter names, not data sets.</summary>
+    internal static IReadOnlyList<string> Words(JsonNode n, string f) =>
+        n is JsonArray a
+            ? [.. a.Select((x, i) => x is JsonValue v && v.TryGetValue<string>(out var w) && w.Length > 0 ? w
+                                     : throw new CmcFormatException($"{f}[{i}]", "it is not a name."))]
+            : throw new CmcFormatException(f, "it is not a list of names.");
 
     internal static IReadOnlyList<int> HiddenOf(JsonNode n, string f)
     {

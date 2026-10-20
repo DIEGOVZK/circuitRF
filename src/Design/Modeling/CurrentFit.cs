@@ -2,13 +2,18 @@
 // (brief-modelcomposer-7 R-mc7-1 … R-mc7-5; overview D4, D6, D13).
 //
 //   1. The training points are the intrinsic points of the chosen I–V sets (MC-4 R-mc4-4), excluded points removed. One
-//      temperature and one quiescent point (MC-9 and MC-10 lift those); a mix is refused naming what differs.
+//      quiescent point (MC-10 lifts that); a mix is refused naming what differs. At two or more ambient temperatures T
+//      is an input (MC-9 R-mc9-1): each point at its chuck temperature, a DC point at its junction temperature
+//      Tamb + Rth·P when self-heating is modelled, a point pulsed from a dissipating quiescent bias at Tamb + Rth·Pq.
 //   2. The gate current is split into its two branches (GateSplit), and the channel current is the drain terminal's plus
 //      the gate–drain branch, which leaves through the drain.
 //   3. Each current is an ANN (MC-6 value training), a table (re-gridded through an ANN or an RBF, then MC-2's spline) or
 //      an equation (a template or the user's own, its parameters fitted by the optimizer registry's algorithms).
 //   4. The training domain's hull becomes each table or ANN's Domain, and G_x its extrapolation conductance (MC-2).
 //   5. Optionally IdRF ([P1] eq. 6.52): derivative training on the intrinsic RF Gm and Gds, anchored to IdDC.
+//   6. With self-heating, an ANN Id trains by MC-6's combined mode: the I–V values at each point's Tj, and the RF Gm/Gds
+//      as its derivatives at the Tj frozen at each S point's DC value ([X03] §IV-C, [X10] §VI) — so one function gives
+//      both the DC and the RF output conductance of [P1] eq. 6.69.
 //
 // The result goes to the .cmc's Steps.Current; arrays to <name>.cmc-cache/current/. Cancelled, nothing is written.
 
@@ -35,7 +40,8 @@ public static class CurrentFit
     public const string StepName = "Current";
     public const string CacheFolder = "current";
 
-    private static readonly IReadOnlyList<string> Inputs = [ComposedCoreProgram.Vgs, ComposedCoreProgram.Vds];
+    private static readonly IReadOnlyList<string> Inputs = EquationFit.VoltageInputs;
+    private static readonly IReadOnlyList<string> InputsWithT = [ComposedCoreProgram.Vgs, ComposedCoreProgram.Vds, ComposedCoreProgram.T];
 
     // ── The document ──────────────────────────────────────────────────────────
 
@@ -171,7 +177,8 @@ public static class CurrentFit
     {
         rc?.ThrowIfCancellationRequested();
         var report = new List<string>();
-        var iv = Gather(doc, data, intrinsic, settings, report);
+        var heating = ThermalFit.Heating(doc);
+        var iv = Gather(doc, data, intrinsic, settings, report, heating);
         var arrays = new Dictionary<string, DataCube>(StringComparer.Ordinal);
         var gx = new Dictionary<string, double>(StringComparer.Ordinal);
         var errors = new Dictionary<string, FitErrorRecord>(StringComparer.Ordinal);
@@ -179,8 +186,14 @@ public static class CurrentFit
         // Id (R-mc7-2): relative weighting with a floor.
         double idMax = iv.Id.Max(Math.Abs);
         double[] idW = [.. iv.Id.Select(y => Weight(y, settings.IdFloor * idMax))];
+        AnnDerivativeData? rf = null;
+        if (iv.SelfHeated)
+        {
+            if (settings.Id.Method == CurrentMethod.ANN) rf = RfDerivatives(doc, data, intrinsic, settings, heating, report);
+            else report.Add($"Id: a {settings.Id.Method} trains on I–V values only; the RF Gm and Gds are not used.");
+        }
         var idFit = FitPayloads("Id", settings.Id,
-            [new("Id", iv.Id, idW, Own(0, 1))], iv, settings, report, rc);
+            [new("Id", iv.Id, idW, Own(0, 1))], iv, settings, report, rc, rf);
         var idConstituent = idFit.Constituent;
 
         // Ig: log-magnitude weighting, each branch on its own split target.
@@ -215,7 +228,7 @@ public static class CurrentFit
             }
 
         // The report (R-mc7-5): the fitted Gm and Gds against the data's own DC derivatives.
-        var conductance = Conductances(iv, idFit.Payloads[0].Eval);
+        var conductance = Conductances(iv, idFit.Payloads[0].Eval, report);
         SymmetryRecord? symmetry = settings.Symmetry == DrainSourceSymmetry.Exchange
             ? Jumps(iv, idFit.Payloads[0].Eval, igFit?.Payloads[0].Eval, igFit?.Payloads[1].Eval)
             : null;
@@ -226,13 +239,13 @@ public static class CurrentFit
         (double, double)? reference = null;
         if (settings.Dispersion is { } disp)
         {
-            var rf = Dispersion(doc, intrinsic, settings, disp, iv, idFit.Payloads[0].Eval, report, rc);
-            idRf = rf.Constituent;
-            foreach (var (k, v) in rf.Payload.Arrays) arrays[k] = v;
-            gx["IdRF"] = rf.Payload.Gx!.Value;
-            errors["IdRF"] = rf.Payload.Error;
-            eq649 = rf.Eq649;
-            reference = rf.Reference;
+            var dsp = Dispersion(doc, intrinsic, settings, disp, iv, idFit.Payloads[0].Eval, report, rc);
+            idRf = dsp.Constituent;
+            foreach (var (k, v) in dsp.Payload.Arrays) arrays[k] = v;
+            gx["IdRF"] = dsp.Payload.Gx!.Value;
+            errors["IdRF"] = dsp.Payload.Error;
+            eq649 = dsp.Eq649;
+            reference = dsp.Reference;
         }
 
         string key = arrays.Count > 0 ? ArraysKey(arrays, out _) : "";
@@ -251,8 +264,11 @@ public static class CurrentFit
         return m > 0 ? 1.0 / (m * m) : 1.0;
     }
 
-    /// <summary>A current's own branch voltage, <c>a·vgs + b·vds</c> (MC-2's G_x term).</summary>
+    /// <summary>A current's own branch voltage, <c>a·vgs + b·vds</c> (MC-2's G_x term); padded with zeros over any further
+    /// input by <see cref="OwnOver"/>.</summary>
     private static double[] Own(double vgs, double vds) => [vgs, vds];
+
+    private static double[] OwnOver(double[] own, int inputs) => [.. own, .. new double[inputs - own.Length]];
 
     // ── Training points (R-mc7-1) ─────────────────────────────────────────────
 
@@ -267,21 +283,46 @@ public static class CurrentFit
         /// <summary>The points that carry a gate current, by index into the gate arrays — the Ig fit's own points.</summary>
         public required IvPoints ForGate { get; init; }
         public required TrainingDomain Domain { get; init; }
+        /// <summary>The lowest temperature in the data (the only one at one temperature), °C.</summary>
         public double TemperatureC { get; init; } = 25;
+        /// <summary><c>vgs, vds</c>, and <c>T</c> at two or more temperatures — each row of <see cref="X"/> is one value of each.</summary>
+        public IReadOnlyList<string> Inputs { get; init; } = EquationFit.VoltageInputs;
+        /// <summary>Each point's ambient (chuck) temperature, °C.</summary>
+        public double[] Ambient { get; init; } = [];
+        /// <summary>Whether the DC points sit at their junction temperatures (self-heating modelled).</summary>
+        public bool SelfHeated { get; init; }
+
+        public bool HasT => Inputs.Count == 3;
+
+        /// <summary>A point of this fit's inputs at a bias: at <paramref name="t"/> when T is an input.</summary>
+        public double[] At(double vgs, double vds, double t) => HasT ? [vgs, vds, t] : [vgs, vds];
+
+        /// <summary>The middle of the temperature span, °C.</summary>
+        public double MidT => Domain.Box.FirstOrDefault(b => b.Key == ComposedCoreProgram.T) is { Key: not null } b
+            ? 0.5 * (b.Value.Lo + b.Value.Hi) : TemperatureC;
     }
 
     internal static IvPoints Gather(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data, IntrinsicResult intrinsic,
-                                    CurrentFitSettings settings, List<string> report)
+                                    CurrentFitSettings settings, List<string> report, ThermalHeating? heating = null)
     {
+        heating ??= ThermalHeating.None;
         var chosen = settings.DataSets.Count > 0
             ? [.. settings.DataSets.Select(n => doc.DataSets.FirstOrDefault(s => s.Name == n)
                                                ?? throw new ModelingException(n, "the current step names it, and the document has no such data set."))]
             : doc.DataSets.Where(s => s.Kind is DataSetKind.DcIv or DataSetKind.PulsedIv or DataSetKind.SimulatedTables).ToList();
         if (chosen.Count == 0)
             throw new ModelingException("Current", "there is no I–V data set (DcIv, PulsedIv or SimulatedTables) to fit the currents to.");
-        double t = OneCondition(chosen, data, "Current");
+        TrapCondition(chosen, "Current");
+        var temps = Temperatures(chosen, data);
+        double t = temps.Count > 0 ? temps[0] : 25.0;
+        bool hasT = temps.Count >= 2;
+        bool selfHeating = hasT && heating.SelfHeating;
+        if (selfHeating && heating.Rth is null && chosen.Any(s => s.Kind == DataSetKind.DcIv))
+            throw new ModelingException("Current",
+                "self-heating puts each DC point at its junction temperature, which needs Rth; run the thermal step or type Rth.");
 
         var x = new List<double[]>();
+        var ambient = new List<double>();
         var id = new List<double>();
         var ig = new List<double?>();
         int noId = 0, reverse = 0;
@@ -291,16 +332,33 @@ public static class CurrentFit
                 throw new ModelingException(set.Name, "it has no intrinsic data; de-embed it first.");
             double[] vgs = ds["Vgsi"].RealValues, vds = ds["Vdsi"].RealValues, igs = ds["Ig"].RealValues,
                      ids = ds["Id"].RealValues, ex = ds["Excluded"].RealValues;
+            var points = data.TryGetValue(set.Name, out var d) && d.Points.Count == vgs.Length ? d.Points : null;
+
+            // What T means for this set (R-mc9-1): its chuck temperature; a DC point's junction temperature with
+            // self-heating; a pulse from a dissipating quiescent bias starts Rth·Pq above the chuck once Rth is known.
+            bool dc = set.Kind == DataSetKind.DcIv;
+            double? pq = QuiescentPower(set);
+            if (hasT && pq is > 0 && heating.Rth is null)
+                report.Add($"{set.Name} pulses from a dissipating quiescent bias; its T is the chuck temperature until Rth is known.");
             for (int k = 0; k < vgs.Length; k++)
             {
                 if (ex[k] != 0 || !double.IsFinite(vgs[k]) || !double.IsFinite(vds[k])) continue;
                 if (double.IsNaN(ids[k])) { noId++; continue; }
                 if (settings.Symmetry == DrainSourceSymmetry.Exchange && vds[k] < 0) { reverse++; continue; }
-                x.Add([vgs[k], vds[k]]);
+                double tAmb = AmbientOf(set, points?[k]);
+                double tk = tAmb;
+                if (hasT && dc && selfHeating)
+                    tk = tAmb + heating.RthAt(tAmb) * Power(vgs[k], vds[k], double.IsNaN(igs[k]) ? 0 : igs[k], ids[k]);
+                else if (hasT && pq is > 0 && heating.Rth is not null)
+                    tk = tAmb + heating.RthAt(tAmb) * pq.Value;
+                x.Add(hasT ? [vgs[k], vds[k], tk] : [vgs[k], vds[k]]);
+                ambient.Add(tAmb);
                 id.Add(ids[k]);
                 ig.Add(double.IsNaN(igs[k]) ? null : igs[k]);
             }
         }
+        if (hasT && !selfHeating && chosen.Any(s => s.Kind == DataSetKind.DcIv))
+            report.Add("DC points are at their ambient temperature: their self-heating is embedded statically.");
         if (noId > 0) report.Add($"{noId} point(s) without a drain current left out.");
         if (reverse > 0) report.Add($"{reverse} point(s) at vds < 0 left out: with Exchange the fit reads vds ≥ 0.");
         if (x.Count < 4) throw new ModelingException("Current", $"{x.Count} usable I–V point(s); a current fit needs at least 4.");
@@ -312,51 +370,112 @@ public static class CurrentFit
         for (int k = 0; k < n; k++)
         {
             double g = ig[k] ?? 0.0;
-            bool forward = x[k][1] >= 0;
-            (gs[k], gd[k]) = settings.GateSplit switch
-            {
-                GateSplit.GateSource => (g, 0.0),
-                GateSplit.GateDrain  => (0.0, g),
-                _ => (g >= 0) == forward ? (g, 0.0) : (0.0, g),
-            };
+            gd[k] = GateDrainBranch(g, x[k][1], settings.GateSplit);
+            gs[k] = g - gd[k];
         }
         double[] channel = [.. Enumerable.Range(0, n).Select(k => id[k] + gd[k])];
 
         var gateIdx = Enumerable.Range(0, n).Where(k => ig[k] is not null).ToArray();
         if (gateIdx.Length > 0 && gateIdx.Length < n) report.Add($"{n - gateIdx.Length} point(s) without a gate current left out of Ig.");
         var domain = Hull(x);
+        if (hasT) domain = domain with { Box = [new(ComposedCoreProgram.T, (x.Min(p => p[2]), x.Max(p => p[2])))] };
+        var inputs = hasT ? InputsWithT : Inputs;
         var gate = new IvPoints
         {
             X = [.. gateIdx.Select(k => x[k])], Id = [.. gateIdx.Select(k => channel[k])], Ig = [.. gateIdx.Select(k => ig[k]!.Value)],
             IgGs = [.. gateIdx.Select(k => gs[k])], IgGd = [.. gateIdx.Select(k => gd[k])],
-            ForGate = null!, Domain = domain, TemperatureC = t,
+            ForGate = null!, Domain = domain, TemperatureC = t, Inputs = inputs,
+            Ambient = [.. gateIdx.Select(k => ambient[k])], SelfHeated = selfHeating,
         };
         return new IvPoints
         {
             X = [.. x], Id = channel, Ig = gate.Ig, IgGs = gate.IgGs, IgGd = gate.IgGd, ForGate = gate,
-            Domain = domain, TemperatureC = t,
+            Domain = domain, TemperatureC = t, Inputs = inputs, Ambient = [.. ambient], SelfHeated = selfHeating,
         };
     }
 
+    /// <summary>The share of a gate current <paramref name="ig"/> the gate–drain branch carries, by the split rule.</summary>
+    internal static double GateDrainBranch(double ig, double vds, GateSplit split) => split switch
+    {
+        GateSplit.GateSource => 0.0,
+        GateSplit.GateDrain  => ig,
+        _ => (ig >= 0) == (vds >= 0) ? 0.0 : ig,
+    };
+
     /// <summary>
-    /// One temperature and one quiescent point across the chosen sets, or a refusal naming the condition that differs
-    /// (MC-9 and MC-10 handle the mixes). Returns the temperature, °C (25 when none is stated).
+    /// The isothermal channel current of the named pulsed sets (MC-9 R-mc9-3): Id over (vgs, vds, T), each point at its
+    /// chuck temperature, by <paramref name="method"/> and the current step's other settings — what the Rth search inverts.
+    /// </summary>
+    internal static Func<double[], (double F, double Dg, double Dd)> IsothermalId(
+        CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data, IntrinsicResult intrinsic, IReadOnlyList<string> sets,
+        CurrentConstituentSettings method, List<string> report, RunControl? rc)
+    {
+        var settings = Settings(doc) with { DataSets = sets, Id = method, Dispersion = null };
+        var own = new List<string>();
+        var iv = Gather(doc, data, intrinsic, settings, own, ThermalHeating.None);
+        if (!iv.HasT) throw new ModelingException(ThermalFit.StepName, "the isothermal Id needs pulsed I–V at two or more chuck temperatures.");
+        double idMax = iv.Id.Max(Math.Abs);
+        double[] w = [.. iv.Id.Select(y => Weight(y, settings.IdFloor * idMax))];
+        var fit = FitPayloads("Id", method, [new("Id", iv.Id, w, Own(0, 1))], iv, settings, own, rc);
+        var e = fit.Payloads[0].Error;
+        report.Add($"isothermal Id: held-out error {G(100 * e.HeldOutRelative)} % of its range over {e.HeldOutCount} point(s).");
+        return fit.Payloads[0].Eval;
+    }
+
+    /// <summary>The intrinsic power a bias dissipates, in its terminal form <c>ig·vgs + id·vds</c> ([P1] eq. 6.67) — what
+    /// the core injects into its thermal node.</summary>
+    internal static double Power(double vgs, double vds, double ig, double id) => ig * vgs + id * vds;
+
+    /// <summary>A point's ambient temperature: its own, else its set's, else 25 °C.</summary>
+    internal static double AmbientOf(CmcDataSet set, BiasPoint? point) =>
+        point is { AmbientC: var a } && double.IsFinite(a) ? a : set.Conditions.AmbientC ?? 25.0;
+
+    /// <summary>The power a pulsed set's quiescent bias dissipates, when its currents are stated; null otherwise.</summary>
+    internal static double? QuiescentPower(CmcDataSet set) =>
+        set.Kind is DataSetKind.PulsedIv or DataSetKind.PulsedSParams && set.Conditions.Quiescent is { Id: { } id } q
+            ? id * q.Vds + (q.Ig ?? 0) * q.Vgs
+            : null;
+
+    /// <summary>
+    /// One temperature and one quiescent point across the chosen sets, or a refusal naming the condition that differs.
+    /// Returns the temperature, °C (25 when none is stated).
     /// </summary>
     internal static double OneCondition(IReadOnlyList<CmcDataSet> sets, IReadOnlyDictionary<string, NormalisedData> data, string step)
     {
-        var temps = new List<(string Set, double T)>();
-        foreach (var s in sets)
+        var temps = Temperatures(sets, data);
+        if (temps.Count > 1)
         {
-            if (s.Conditions.AmbientC is { } a) temps.Add((s.Name, a));
-            if (data.TryGetValue(s.Name, out var d))
-                foreach (var p in d.Points) if (!p.Excluded && double.IsFinite(p.AmbientC)) temps.Add((s.Name, p.AmbientC));
+            var at = temps.Select(t => sets.First(s => SetTemperatures(s, data).Any(x => Math.Abs(x - t) <= TemperatureTolerance)).Name).ToList();
+            throw new ModelingException(step,
+                $"the data differs in AmbientC ({G(temps[0])} °C in {at[0]}, {G(temps[^1])} °C in {at[^1]}); one temperature per fit here.");
         }
-        foreach (var other in temps)
-            if (Math.Abs(other.T - temps[0].T) > 0.01)
-                throw new ModelingException(step,
-                    $"the data differs in AmbientC ({G(temps[0].T)} °C in {temps[0].Set}, {G(other.T)} °C in {other.Set}); " +
-                    "one temperature per fit until temperature is an input.");
+        TrapCondition(sets, step);
+        return temps.Count > 0 ? temps[0] : 25.0;
+    }
 
+    /// <summary>Two temperatures within this are one, °C.</summary>
+    internal const double TemperatureTolerance = 0.01;
+
+    /// <summary>The distinct ambient temperatures of the sets' points (each set's own, and any a point states), ascending.</summary>
+    internal static IReadOnlyList<double> Temperatures(IEnumerable<CmcDataSet> sets, IReadOnlyDictionary<string, NormalisedData> data)
+    {
+        var distinct = new List<double>();
+        foreach (double t in sets.SelectMany(s => SetTemperatures(s, data)).Order())
+            if (distinct.Count == 0 || t - distinct[^1] > TemperatureTolerance) distinct.Add(t);
+        return distinct;
+    }
+
+    private static IEnumerable<double> SetTemperatures(CmcDataSet s, IReadOnlyDictionary<string, NormalisedData> data)
+    {
+        if (s.Conditions.AmbientC is { } a) yield return a;
+        if (data.TryGetValue(s.Name, out var d))
+            foreach (var p in d.Points) if (!p.Excluded && double.IsFinite(p.AmbientC)) yield return p.AmbientC;
+    }
+
+    /// <summary>One trap state across the chosen sets — not pulsed and pulsed together, nor two quiescent points or
+    /// pre-pulses — or a refusal naming the condition that differs (MC-10 handles the mixes).</summary>
+    internal static void TrapCondition(IReadOnlyList<CmcDataSet> sets, string step)
+    {
         var pulsed = sets.Where(s => s.Kind is DataSetKind.PulsedIv or DataSetKind.PulsedSParams).ToList();
         if (pulsed.Count > 0 && pulsed.Count < sets.Count)
             throw new ModelingException(step,
@@ -379,7 +498,6 @@ public static class CurrentFit
                 throw new ModelingException(step,
                     $"the data differs in PrePulse ({pulsed[0].Name} and {pulsed[k].Name}); one trap state per fit until traps are modelled.");
         }
-        return temps.Count > 0 ? temps[0].T : 25.0;
     }
 
     /// <summary>The convex hull of the points, as a training domain (R-mc7-3); refused when it encloses no area.</summary>
@@ -406,14 +524,18 @@ public static class CurrentFit
         public RuntimeEvaluator Output(RuntimeEvaluator u) => Transform is { } s ? new AsinhOutput(u, s) : u;
     }
 
-    /// <summary>A fitted payload: its function (value and gradient, extrapolated as the runtime will), arrays, G_x, error.</summary>
-    private sealed record Payload(string Name, Func<double, double, (double F, double Dg, double Dd)> Eval,
+    /// <summary>A fitted payload: its function of a point of the fit's inputs (value and gradient by vgs and vds, extrapolated
+    /// as the runtime will), arrays, G_x, error.</summary>
+    private sealed record Payload(string Name, Func<double[], (double F, double Dg, double Dd)> Eval,
                                   IReadOnlyList<KeyValuePair<string, DataCube>> Arrays, double? Gx, FitErrorRecord Error);
 
     private sealed record PayloadFit(Constituent Constituent, IReadOnlyList<Payload> Payloads);
 
+    /// <summary>One constituent's payloads by its method. <paramref name="rf"/> are derivative targets an ANN trains on beside
+    /// the values (MC-6's combined mode) — the RF Gm/Gds of a self-heating Id.</summary>
     private static PayloadFit FitPayloads(string constituent, CurrentConstituentSettings s, IReadOnlyList<Target> targets,
-                                          IvPoints iv, CurrentFitSettings settings, List<string> report, RunControl? rc)
+                                          IvPoints iv, CurrentFitSettings settings, List<string> report, RunControl? rc,
+                                          AnnDerivativeData? rf = null)
     {
         if (s.Method == CurrentMethod.Equation) return FitEquation(constituent, s, targets, iv, settings, report, rc);
 
@@ -421,13 +543,13 @@ public static class CurrentFit
         foreach (var t in targets)
         {
             rc?.ThrowIfCancellationRequested();
-            payloads.Add(s.Method == CurrentMethod.ANN ? FitAnn(t, s, iv, settings, report, rc) : FitTable(t, s, iv, settings, report, rc));
+            payloads.Add(s.Method == CurrentMethod.ANN ? FitAnn(t, s, iv, settings, report, rc, rf) : FitTable(t, s, iv, settings, report, rc));
         }
         string method = s.Method == CurrentMethod.ANN ? Constituent.AnnMethod : Constituent.TableMethod;
         Constituent c = targets.Count == 1
-            ? s.Method == CurrentMethod.ANN ? Constituent.Ann(targets[0].Name, Inputs, iv.Domain, s.Activation)
-                                            : Constituent.Table(targets[0].Name, Inputs, iv.Domain, s.Smoothing)
-            : Constituent.Gate(method, targets[0].Name, targets[1].Name, Inputs, iv.Domain) with
+            ? s.Method == CurrentMethod.ANN ? Constituent.Ann(targets[0].Name, iv.Inputs, iv.Domain, s.Activation)
+                                            : Constituent.Table(targets[0].Name, iv.Inputs, iv.Domain, s.Smoothing)
+            : Constituent.Gate(method, targets[0].Name, targets[1].Name, iv.Inputs, iv.Domain) with
               {
                   Smoothing = s.Method == CurrentMethod.Table ? s.Smoothing : null,
                   Activation = s.Method == CurrentMethod.ANN ? s.Activation : null,
@@ -442,16 +564,23 @@ public static class CurrentFit
                 HeldOutFraction = heldOut };
 
     private static Payload FitAnn(Target t, CurrentConstituentSettings s, IvPoints iv, CurrentFitSettings settings,
-                                  List<string> report, RunControl? rc)
+                                  List<string> report, RunControl? rc, AnnDerivativeData? rf = null)
     {
         var (held, trainX, trainU, trainW) = Training(t, iv, settings);
         rc?.BeginStage($"Training {t.Name}");
-        var trained = AnnTrainer.Train(new AnnTrainingProblem(2) { Values = new AnnValueData(trainX, trainU, trainW) },
+        var trained = AnnTrainer.Train(new AnnTrainingProblem(iv.Inputs.Count)
+                                       {
+                                           Values = new AnnValueData(trainX, trainU, trainW),
+                                           Derivatives = t.Transform is null ? rf : null,
+                                       },
                                        AnnSettings(s.Hidden, s.Activation, s.MaxIterations, settings, 0.0), rc);
         foreach (string w in trained.Warnings) report.Add($"{t.Name}: {w}");
+        if (rf is not null && trained.Derivatives is { } e)
+            report.Add($"{t.Name}: RF Gm/Gds at the frozen junction temperature, RMS error {G(100 * e.TrainRelative)} % of their range.");
         var f = t.Output(trained.Network);
-        double gx = Gx(f, iv.X, t.Own);
-        var eval = Guided(f, iv.Domain, gx, t.Own);
+        var own = OwnOver(t.Own, iv.Inputs.Count);
+        double gx = Gx(f, iv.X, own);
+        var eval = Guided(f, iv.Domain, iv.Inputs, gx, own);
         return new Payload(t.Name, eval, [.. trained.Arrays(t.Name)], gx, Error(eval, iv.X, t.Y, held));
     }
 
@@ -475,38 +604,73 @@ public static class CurrentFit
         // The G_x term grows with the square of the distance — amps a few volts out — and a spline through it rings
         // back into the cells inside the hull (measured: 7.7 % held-out error, against 1.5 % for the network itself);
         // the runtime adds G_x outside the domain on its own.
-        Func<double, double, double> source;
+        // With T an input (MC-9) the grid gains a temperature axis, spline in T as well; the radial-basis interpolant is
+        // two-dimensional, so such a table re-grids through a network.
+        int d = iv.Inputs.Count;
+        Func<double[], double> source;
         if (s.Regrid == RegridSource.ANN)
         {
             rc?.BeginStage($"Training {t.Name} for its table");
-            var trained = AnnTrainer.Train(new AnnTrainingProblem(2) { Values = new AnnValueData(trainX, trainU, trainW) },
+            var trained = AnnTrainer.Train(new AnnTrainingProblem(d) { Values = new AnnValueData(trainX, trainU, trainW) },
                                            AnnSettings(s.Hidden, s.Activation, s.MaxIterations, settings, 0.0), rc);
-            var linear = new GuidedExtrapolation(trained.Network, iv.Domain, Inputs, 0.0, null);
-            source = (a, b) =>
+            var linear = new GuidedExtrapolation(trained.Network, iv.Domain, iv.Inputs, 0.0, null);
+            source = p =>
             {
-                Span<double> p = [a, b];
-                Span<double> g = stackalloc double[2];
-                return linear.Evaluate(p, g);
+                Span<double> g = stackalloc double[RuntimeEvaluator.MaxInputs];
+                return linear.Evaluate(p, g[..p.Length]);
             };
         }
+        else if (iv.HasT)
+            throw new ModelingException(t.Name, "a table with T as an input re-grids through an ANN; the RBF interpolant is two-dimensional.");
         else
-            source = Regrid.Rbf([.. trainX.Select(p => (p[0], p[1]))], trainU);
+        {
+            var rbf = Regrid.Rbf([.. trainX.Select(p => (p[0], p[1]))], trainU);
+            source = p => rbf(p[0], p[1]);
+        }
 
         rc?.BeginStage($"Re-gridding {t.Name}");
         var poly = iv.Domain.Polygon;
-        double[] vgsSites = Regrid.Axis(poly.Min(p => p.Vgs), poly.Max(p => p.Vgs), s.GridStep);
-        double[] vdsSites = Regrid.Axis(poly.Min(p => p.Vds), poly.Max(p => p.Vds), s.GridStep);
-        double[] values = Regrid.Through(source, vgsSites, vdsSites);
-        IReadOnlyList<double[]> sites = [vgsSites, vdsSites];
+        var siteList = new List<double[]>
+        {
+            Regrid.Axis(poly.Min(p => p.Vgs), poly.Max(p => p.Vgs), s.GridStep),
+            Regrid.Axis(poly.Min(p => p.Vds), poly.Max(p => p.Vds), s.GridStep),
+        };
+        if (iv.HasT)
+        {
+            var (lo, hi) = iv.Domain.Box.First(b => b.Key == ComposedCoreProgram.T).Value;
+            siteList.Add(Regrid.Axis(lo, hi, s.TemperatureStep));
+        }
+        IReadOnlyList<double[]> sites = siteList;
+        double[] values = Grid(source, sites);
         var coefficients = TensorSplineFit.Fit(sites, values, s.Smoothing);
-        var arrays = ComposedArrays.Table(t.Name, Inputs, sites, values, coefficients).ToList();
+        var arrays = ComposedArrays.Table(t.Name, iv.Inputs, sites, values, coefficients).ToList();
 
         if (s.GridStep / 2 > settings.SmallestSwing)
             report.Add($"{t.Name}: table step {G(s.GridStep)} V: low-level IM below ~{G(s.GridStep / 2)} V swing unreliable.");
         var f = t.Output(new TableEvaluator(sites, coefficients));
-        double gx = Gx(f, iv.X, t.Own);
-        var eval = Guided(f, iv.Domain, gx, t.Own);
+        var own = OwnOver(t.Own, d);
+        double gx = Gx(f, iv.X, own);
+        var eval = Guided(f, iv.Domain, iv.Inputs, gx, own);
         return new Payload(t.Name, eval, arrays, gx, Error(eval, iv.X, t.Y, held));
+    }
+
+    /// <summary><paramref name="f"/> at every site of the grid, row-major, the last axis fastest.</summary>
+    private static double[] Grid(Func<double[], double> f, IReadOnlyList<double[]> sites)
+    {
+        int total = sites.Aggregate(1, (a, x) => a * x.Length);
+        var values = new double[total];
+        var p = new double[sites.Count];
+        for (int flat = 0; flat < total; flat++)
+        {
+            int rest = flat;
+            for (int k = sites.Count - 1; k >= 0; k--)
+            {
+                p[k] = sites[k][rest % sites[k].Length];
+                rest /= sites[k].Length;
+            }
+            values[flat] = f(p);
+        }
+        return values;
     }
 
     private static PayloadFit FitEquation(string constituent, CurrentConstituentSettings s, IReadOnlyList<Target> targets,
@@ -524,6 +688,8 @@ public static class CurrentFit
             expressions = gate ? [tpl.IgGs!, tpl.IgGd!] : [tpl.Id!];
             parameters = tpl.Parameters(new TemplateData([.. iv.X.Select(p => p[0])], [.. iv.X.Select(p => p[1])],
                                                          gate ? iv.Ig : iv.Id, iv.TemperatureC));
+            if (s.TemperatureCoefficients.Count > 0)
+                (expressions, parameters) = WithTemperatureCoefficients(constituent, expressions, parameters, s.TemperatureCoefficients, iv);
             if (gate)    // the two branches share one list, so each branch's own parameters are named for it
             {
                 expressions = [Rename(expressions[0], "Gs", parameters), Rename(expressions[1], "Gd", parameters)];
@@ -538,6 +704,8 @@ public static class CurrentFit
                    s.IgGd ?? throw new ModelingException(constituent, "an Ig equation names a template or both IgGs and IgGd.")]
                 : [s.Expression ?? throw new ModelingException(constituent, "an Id equation names a template or an Expression.")];
             parameters = [];
+            if (s.TemperatureCoefficients.Count > 0)
+                throw new ModelingException(constituent, "temperature coefficients apply to a template; write T into your own expression.");
         }
         parameters = Overrides(constituent, parameters, s.Parameters);
 
@@ -545,17 +713,47 @@ public static class CurrentFit
         var terms = targets.Select((t, i) => new EquationTerm(expressions[i],
             [.. iv.X.Where((_, k) => !held[k])], [.. t.Y.Where((_, k) => !held[k])], [.. t.W.Where((_, k) => !held[k])])).ToList();
         rc?.BeginStage($"Fitting {constituent}", 0, "evaluation(s)");
-        var fit = EquationFit.Fit(terms, parameters, s.Algorithm, settings.Seed, constituent, rc);
+        var fit = EquationFit.Fit(terms, parameters, s.Algorithm, settings.Seed, constituent, rc, iv.Inputs);
 
         var payloads = targets.Select((t, i) =>
         {
-            var f = EquationFit.Function(expressions[i], fit.Values, constituent);
+            var f = EquationFit.Function(expressions[i], fit.Values, constituent, iv.Inputs);
             return new Payload(t.Name, f, [], null, Error(f, iv.X, t.Y, held));
         }).ToList();
         var pairs = fit.Values.Select(kv => (kv.Key, kv.Value)).ToArray();
-        var c = gate ? Constituent.GateEquations(expressions[0], expressions[1], Inputs, pairs)
-                     : Constituent.Equation(expressions[0], Inputs, pairs);
+        var c = gate ? Constituent.GateEquations(expressions[0], expressions[1], iv.Inputs, pairs)
+                     : Constituent.Equation(expressions[0], iv.Inputs, pairs);
         return new PayloadFit(c, payloads);
+    }
+
+    /// <summary>The name of the reference temperature of a template's temperature coefficients.</summary>
+    internal const string Tnom = "Tnom";
+
+    /// <summary>
+    /// A template's named parameters made linear in temperature (R-mc9-1): each <c>p</c> becomes
+    /// <c>(p + p_T·(T − Tnom))</c>, <c>p_T</c> a free parameter starting at 0 and bounded by the parameter's own range
+    /// over the data's temperature span, <c>Tnom</c> the data's lowest temperature, locked.
+    /// </summary>
+    private static (string[] Expressions, IReadOnlyList<TemplateParameter> Parameters) WithTemperatureCoefficients(
+        string constituent, string[] expressions, IReadOnlyList<TemplateParameter> parameters, IReadOnlyList<string> names, IvPoints iv)
+    {
+        if (!iv.HasT)
+            throw new ModelingException(constituent, "the data is at one temperature, so there is no temperature coefficient to fit.");
+        var (lo, hi) = iv.Domain.Box.First(b => b.Key == ComposedCoreProgram.T).Value;
+        double span = Math.Max(hi - lo, 1.0);
+        var list = parameters.ToList();
+        foreach (string name in names)
+        {
+            var p = list.FirstOrDefault(x => x.Name == name)
+                    ?? throw new ModelingException(constituent, $"'{name}' is not a parameter of the template; its parameters are {string.Join(", ", parameters.Select(x => x.Name))}.");
+            double reach = (p.Max - p.Min) / span;
+            if (!(reach > 0) || !double.IsFinite(reach)) reach = Math.Max(Math.Abs(p.Start), 1e-12) / span;
+            list.Add(new TemplateParameter(name + "_T", 0.0, -reach, reach));
+            expressions = [.. expressions.Select(e => System.Text.RegularExpressions.Regex.Replace(
+                e, $@"\b{name}\b", $"({name}+{name}_T*(T-{Tnom}))"))];
+        }
+        list.Add(new TemplateParameter(Tnom, iv.TemperatureC, iv.TemperatureC, iv.TemperatureC, Lock: true));
+        return (expressions, list);
     }
 
     /// <summary>A template's free parameters renamed with a branch suffix in its expression.</summary>
@@ -594,17 +792,19 @@ public static class CurrentFit
     /// <summary>The held-out points of a table or equation fit, by <see cref="HeldOutSplit"/> — spread over the domain.</summary>
     private static bool[] Split(double[][] x, double[] y, CurrentFitSettings s)
     {
-        double gLo = x.Min(p => p[0]), gHi = x.Max(p => p[0]), dLo = x.Min(p => p[1]), dHi = x.Max(p => p[1]);
-        double[][] hat = [.. x.Select(p => new[] { Norm(p[0], gLo, gHi), Norm(p[1], dLo, dHi) })];
+        int d = x[0].Length;
+        var lo = new double[d]; var hi = new double[d];
+        for (int i = 0; i < d; i++) { lo[i] = x.Min(p => p[i]); hi[i] = x.Max(p => p[i]); }
+        double[][] hat = [.. x.Select(p => Enumerable.Range(0, d).Select(i => Norm(p[i], lo[i], hi[i])).ToArray())];
         return HeldOutSplit.Select(hat, [.. y.Select(v => new[] { v })], s.HeldOutFraction, SplitMix64.Mix(s.Seed));
     }
 
     private static double Norm(double v, double lo, double hi) => hi > lo ? 2 * (v - lo) / (hi - lo) - 1 : 0;
 
-    private static FitErrorRecord Error(Func<double, double, (double F, double Dg, double Dd)> f, double[][] x, double[] y, bool[] held)
+    private static FitErrorRecord Error(Func<double[], (double F, double Dg, double Dd)> f, double[][] x, double[] y, bool[] held)
     {
         var train = new List<double>(); var hold = new List<double>();
-        for (int k = 0; k < x.Length; k++) (held[k] ? hold : train).Add(f(x[k][0], x[k][1]).F - y[k]);
+        for (int k = 0; k < x.Length; k++) (held[k] ? hold : train).Add(f(x[k]).F - y[k]);
         static double Rms(List<double> r) => r.Count == 0 ? 0 : Math.Sqrt(r.Sum(e => e * e) / r.Count);
         double range = y.Max() - y.Min();
         double scale = range > 0 ? range : 1;
@@ -614,43 +814,57 @@ public static class CurrentFit
     /// <summary>MC-2's default G_x: ten times the largest own-branch conductance over the training points, never zero.</summary>
     private static double Gx(RuntimeEvaluator f, IEnumerable<double[]> x, double[] own)
     {
-        Span<double> g = stackalloc double[2];
+        Span<double> g = stackalloc double[RuntimeEvaluator.MaxInputs];
         double largest = 0;
         foreach (var p in x)
         {
-            f.Evaluate(p, g);
+            f.Evaluate(p, g[..p.Length]);
             largest = Math.Max(largest, Math.Abs(g[0] * own[0] + g[1] * own[1]));
         }
         return GuidedExtrapolation.DefaultGx(Math.Max(largest, 1e-12));
     }
 
-    private static Func<double, double, (double F, double Dg, double Dd)> Guided(RuntimeEvaluator f, TrainingDomain domain,
-                                                                                 double gx, double[] own)
+    private static Func<double[], (double F, double Dg, double Dd)> Guided(RuntimeEvaluator f, TrainingDomain domain,
+                                                                           IReadOnlyList<string> inputs, double gx, double[] own)
     {
-        var guided = new GuidedExtrapolation(f, domain, Inputs, gx, own);
-        return (vgs, vds) =>
+        var guided = new GuidedExtrapolation(f, domain, inputs, gx, own);
+        return p =>
         {
-            Span<double> p = [vgs, vds];
-            Span<double> g = stackalloc double[2];
-            double v = guided.Evaluate(p, g);
+            Span<double> g = stackalloc double[RuntimeEvaluator.MaxInputs];
+            double v = guided.Evaluate(p, g[..p.Length]);
             return (v, g[0], g[1]);
         };
     }
 
     // ── The report (R-mc7-3, R-mc7-5) ─────────────────────────────────────────
 
-    /// <summary>The fitted Id's Gm and Gds against the data's DC derivatives at every point.</summary>
-    private static ConductanceRecord? Conductances(IvPoints iv, Func<double, double, (double F, double Dg, double Dd)> f)
+    /// <summary>The fitted Id's Gm and Gds against the data's DC derivatives at every point — each temperature's points on
+    /// their own. Not with self-heating: a self-heated DC derivative includes the heating that the isothermal Gds does not.</summary>
+    private static ConductanceRecord? Conductances(IvPoints iv, Func<double[], (double F, double Dg, double Dd)> f, List<string> report)
     {
+        if (iv.SelfHeated)
+        {
+            report.Add("Id: Gm and Gds are not compared with the DC data's own slopes, which include its self-heating.");
+            return null;
+        }
         if (iv.X.Length < 7) return null;
-        var data = LocalGradients.Of([.. iv.X.Select(p => (p[0], p[1]))], iv.Id);
+        var data = new (double Dx, double Dy)[iv.X.Length];
+        var groups = iv.HasT
+            ? Enumerable.Range(0, iv.X.Length).GroupBy(k => Math.Round(iv.Ambient[k] / TemperatureTolerance)).Select(g => g.ToArray())
+            : [Enumerable.Range(0, iv.X.Length).ToArray()];
+        foreach (var idx in groups)
+        {
+            if (idx.Length < 7) { foreach (int k in idx) data[k] = (double.NaN, double.NaN); continue; }
+            var local = LocalGradients.Of([.. idx.Select(k => (iv.X[k][0], iv.X[k][1]))], [.. idx.Select(k => iv.Id[k])]);
+            for (int j = 0; j < idx.Length; j++) data[idx[j]] = local[j];
+        }
         double sgm = 0, sgds = 0, rgm = 0, rgds = 0;
         int n = 0;
         for (int k = 0; k < iv.X.Length; k++)
         {
             var (dg, dd) = data[k];
             if (!double.IsFinite(dg) || !double.IsFinite(dd)) continue;
-            var m = f(iv.X[k][0], iv.X[k][1]);
+            var m = f(iv.X[k]);
             sgm += (m.Dg - dg) * (m.Dg - dg); sgds += (m.Dd - dd) * (m.Dd - dd);
             rgm += dg * dg; rgds += dd * dd;
             n++;
@@ -661,19 +875,19 @@ public static class CurrentFit
     }
 
     /// <summary>With Exchange, the jumps at vds = 0 over the domain's vgs: Id's value and vds-slope, and the gate–source branch.</summary>
-    private static SymmetryRecord Jumps(IvPoints iv, Func<double, double, (double F, double Dg, double Dd)> id,
-                                        Func<double, double, (double F, double Dg, double Dd)>? igGs,
-                                        Func<double, double, (double F, double Dg, double Dd)>? igGd)
+    private static SymmetryRecord Jumps(IvPoints iv, Func<double[], (double F, double Dg, double Dd)> id,
+                                        Func<double[], (double F, double Dg, double Dd)>? igGs,
+                                        Func<double[], (double F, double Dg, double Dd)>? igGd)
     {
         double lo = iv.Domain.Polygon.Min(p => p.Vgs), hi = iv.Domain.Polygon.Max(p => p.Vgs);
         double value = 0, slope = 0, gate = 0;
         for (int k = 0; k <= 100; k++)
         {
-            double vgs = lo + (hi - lo) * k / 100.0;
-            var m = id(vgs, 0);
+            var at = iv.At(lo + (hi - lo) * k / 100.0, 0, iv.MidT);
+            var m = id(at);
             value = Math.Max(value, Math.Abs(2 * m.F));
             slope = Math.Max(slope, Math.Abs(m.Dg));
-            if (igGs is not null && igGd is not null) gate = Math.Max(gate, Math.Abs(igGs(vgs, 0).F - igGd(vgs, 0).F));
+            if (igGs is not null && igGd is not null) gate = Math.Max(gate, Math.Abs(igGs(at).F - igGd(at).F));
         }
         return new SymmetryRecord(value, slope, gate);
     }
@@ -684,7 +898,7 @@ public static class CurrentFit
 
     private static DispersionFit Dispersion(CmcDocument doc, IntrinsicResult intrinsic, CurrentFitSettings settings,
                                             DispersionFitSettings disp, IvPoints iv,
-                                            Func<double, double, (double F, double Dg, double Dd)> idDc,
+                                            Func<double[], (double F, double Dg, double Dd)> idDc,
                                             List<string> report, RunControl? rc)
     {
         var sets = disp.DataSets.Count > 0
@@ -722,7 +936,9 @@ public static class CurrentFit
 
         var domain = Hull(x);
         (double Vgs, double Vds) reference = disp.Reference ?? Middle(x);
-        double anchor = idDc(reference.Vgs, reference.Vds).F;
+        // IdRF is a function of the voltages; with T an input of IdDC it is anchored at the S data's temperature.
+        double tS = sets.Select(s => s.Conditions.AmbientC).FirstOrDefault(a => a is not null) ?? iv.TemperatureC;
+        double anchor = idDc(iv.At(reference.Vgs, reference.Vds, tS)).F;
 
         rc?.BeginStage("Training IdRF");
         var trained = AnnTrainer.Train(new AnnTrainingProblem(2)
@@ -734,7 +950,8 @@ public static class CurrentFit
         foreach (string w in trained.Warnings) report.Add($"IdRF: {w}");
         double gx = Gx(trained.Network, x, Own(0, 1));
         var e = trained.Derivatives!;
-        var payload = new Payload("IdRF", Guided(trained.Network, domain, gx, Own(0, 1)), [.. trained.Arrays("IdRF")], gx,
+        var rfEval = Guided(trained.Network, domain, Inputs, gx, Own(0, 1));
+        var payload = new Payload("IdRF", p => rfEval([p[0], p[1]]), [.. trained.Arrays("IdRF")], gx,
                                   new FitErrorRecord(e.TrainCount, e.TrainRms, e.TrainRelative, e.HeldOutCount, e.HeldOutRms, e.HeldOutRelative));
 
         // [P1] eq. 6.49: RF conductances come from one current only if ∂Gm/∂vds = ∂Gds/∂vgs. Differencing measured
@@ -753,6 +970,50 @@ public static class CurrentFit
         double? eq649 = size > 0 ? Math.Sqrt(miss / size) : null;
         if (eq649 is { } r649) report.Add($"IdRF: eq. 6.49 residual {G(100 * r649)} %.");
         return new DispersionFit(Constituent.Ann("IdRF", Inputs, domain), payload, eq649, reference);
+    }
+
+    /// <summary>
+    /// The RF conductances a self-heating Id trains on (R-mc9-1): at every S point of the document's S-parameter sets,
+    /// <c>Gm</c> and <c>Gds</c> averaged over the flatness band, at <c>(vgs, vds, Tj)</c> with <c>Tj = Tamb + Rth·P</c> from
+    /// the point's DC currents — the junction temperature is frozen at its DC value, because the S stimulus is far above
+    /// the thermal corner. Null when there are none.
+    /// </summary>
+    private static AnnDerivativeData? RfDerivatives(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data,
+                                                    IntrinsicResult intrinsic, CurrentFitSettings settings, ThermalHeating heating,
+                                                    List<string> report)
+    {
+        if (heating.Rth is null) return null;
+        var x = new List<double[]>();
+        var targets = new List<double[]>();
+        foreach (var set in doc.DataSets.Where(s => s.Kind == DataSetKind.SParams))
+        {
+            if (!intrinsic.Sets.TryGetValue(set.Name, out var ds) || !ds.Contains("Gm")) continue;
+            double[] f = ds["Gm"].Axes[1].Values, band = ds["Band"].RealValues;
+            double[] gm = ds["Gm"].RealValues, gds = ds["Gds"].RealValues, flagged = ds["Flagged"].RealValues;
+            double[] vgs = ds["Vgsi"].RealValues, vds = ds["Vdsi"].RealValues, ex = ds["Excluded"].RealValues;
+            double[] ig = ds["Ig"].RealValues, id = ds["Id"].RealValues;
+            var points = data.TryGetValue(set.Name, out var d) && d.Points.Count == vgs.Length ? d.Points : null;
+            int nf = f.Length;
+            for (int p = 0; p < vgs.Length; p++)
+            {
+                if (ex[p] != 0 || double.IsNaN(id[p])) continue;
+                if (settings.Symmetry == DrainSourceSymmetry.Exchange && vds[p] < 0) continue;
+                double sg = 0, sd = 0; int c = 0;
+                for (int k = 0; k < nf; k++)
+                {
+                    if (f[k] < band[0] || f[k] > band[1] || flagged[p * nf + k] != 0) continue;
+                    sg += gm[p * nf + k]; sd += gds[p * nf + k]; c++;
+                }
+                if (c == 0) continue;
+                double tAmb = AmbientOf(set, points?[p]);
+                double tj = tAmb + heating.RthAt(tAmb) * Power(vgs[p], vds[p], double.IsNaN(ig[p]) ? 0 : ig[p], id[p]);
+                x.Add([vgs[p], vds[p], tj]);
+                targets.Add([sg / c, sd / c]);
+            }
+        }
+        if (x.Count == 0) return null;
+        report.Add($"Id: trained on the I–V values and on the RF Gm/Gds of {x.Count} S point(s) at their junction temperatures.");
+        return new AnnDerivativeData(x, [0, 1], targets);
     }
 
     /// <summary>The point nearest the middle of the points' span.</summary>

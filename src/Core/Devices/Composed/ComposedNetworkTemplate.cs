@@ -25,6 +25,10 @@ public sealed class ComposedNetworkTemplate
     /// <summary>The instance name of the nonlinear core inside the synthesised cell.</summary>
     public const string CoreInstanceName = "core";
 
+    /// <summary>The thermal node of a self-heating model (MC-9): its voltage is the temperature rise ΔT, K. It is the
+    /// cell's fourth port when the instance binds a fourth net, so <c>V(X1.t)</c> probes ΔT either way.</summary>
+    public const string ThermalNet = "t";
+
     private readonly Cell _cell;
     private readonly IReadOnlyList<(string Name, double Value, string Rule)> _variables;
 
@@ -33,6 +37,31 @@ public sealed class ComposedNetworkTemplate
 
     /// <summary>Every network variable, its resolved value and its rule.</summary>
     public IReadOnlyList<(string Name, double Value, string Rule)> Variables => _variables;
+
+    /// <summary>Whether the network has an element of this name.</summary>
+    public bool HasElement(string name) => _cell.Instances.Any(i => i.InstanceName == name);
+
+    /// <summary>Whether a network element is bound to a net of this name.</summary>
+    public bool HasNet(string net) => _cell.Instances.Any(i => i.NetBindings.Contains(net));
+
+    /// <summary>The elements the thermal network adds: <c>Rth</c>, <c>Cth</c> for one pole, <c>Rth1</c>, <c>Cth1</c>, … for a
+    /// ladder.</summary>
+    public static IEnumerable<string> ThermalElementNames(ModelThermal thermal)
+    {
+        int n = thermal.Poles.Count;
+        for (int k = 1; k <= n; k++)
+        {
+            yield return n == 1 ? "Rth" : $"Rth{k}";
+            yield return n == 1 ? "Cth" : $"Cth{k}";
+        }
+    }
+
+    /// <summary>The nets the thermal network adds: <c>t</c>, and a ladder's inner nodes <c>t_1</c> … <c>t_(n−1)</c>.</summary>
+    public static IEnumerable<string> ThermalNetNames(ModelThermal thermal)
+    {
+        yield return ThermalNet;
+        for (int k = 1; k < thermal.Poles.Count; k++) yield return $"{ThermalNet}_{k}";
+    }
 
     private ComposedNetworkTemplate(Cell cell, IReadOnlyList<(string, double, string)> variables)
     {
@@ -139,8 +168,16 @@ public sealed class ComposedNetworkTemplate
     /// multiplier refuses (two inductors in parallel cannot be stamped as one branch twice), so their
     /// values are divided instead; every other element carries it as its <c>m</c>, where the engine's
     /// own multiplier applies it — and refuses it, by name, on any other branch element.</para>
+    ///
+    /// <para><b>The thermal network</b> (MC-9 R-mc9-2), when <paramref name="thermal"/> is given: ordinary R and C from
+    /// the thermal node <see cref="ThermalNet"/> to ground — one pole <c>Rth ∥ Cth</c> ([P1] Fig. 6.32), or a Foster
+    /// ladder of parallel RC sections in series — so <c>Rth</c> takes <c>N0/N</c>, <c>Cth</c> <c>N/N0</c>, and both the
+    /// multiplier. A resistance varying with the ambient is taken at <paramref name="ambientC"/>. With
+    /// <paramref name="thermalPin"/> the thermal node is the cell's fourth port: whatever the instance attaches there sits
+    /// in parallel with the model's own network, as on a compact model's exposed thermal node.</para>
     /// </summary>
-    public Cell Synthesize(string cellName, int n, int n0, double multiplicity, Instance core)
+    public Cell Synthesize(string cellName, int n, int n0, double multiplicity, Instance core,
+                           ModelThermal? thermal = null, double ambientC = 25, bool thermalPin = false)
     {
         var scaled = new Scope("network-scaled");
         foreach (var (name, value, rule) in _variables)
@@ -179,6 +216,29 @@ public sealed class ComposedNetworkTemplate
 
             cell.Instances.Add(new Instance(inst.InstanceName, inst.Reference, nets, overrides)
                                { RefNetBinding = inst.RefNetBinding is { } r ? MapNet(r) : null });
+        }
+
+        if (thermal is not null)
+        {
+            if (thermalPin) cell.Ports.Add(ThermalNet);
+            double rFactor = thermal.RthAt(ambientC) / thermal.Rth * PeripheryScaling.Factor(PeripheryScaling.PerFingerInverse, n, n0);
+            double cFactor = PeripheryScaling.Factor(PeripheryScaling.PerFinger, n, n0);
+            var names = ThermalElementNames(thermal).ToList();
+            int poles = thermal.Poles.Count;
+            for (int k = 0; k < poles; k++)
+            {
+                string a = k == 0 ? ThermalNet : $"{ThermalNet}_{k}";
+                string b = k == poles - 1 ? "0" : $"{ThermalNet}_{k + 1}";
+                cell.Instances.Add(Element(names[2 * k], "R", a, b, "R", thermal.Poles[k].Rth * rFactor));
+                cell.Instances.Add(Element(names[2 * k + 1], "C", a, b, "C", thermal.Poles[k].Cth * cFactor));
+            }
+
+            Instance Element(string name, string type, string a, string b, string parameter, double value)
+            {
+                var overrides = new List<ParameterAssignment> { new(parameter, Literal(value)) };
+                if (multiplicity != 1.0) overrides.Add(new(Elaboration.Elaborator.MultiplierParamName, Literal(multiplicity)));
+                return new Instance(name, type, [a, b], overrides);
+            }
         }
 
         cell.Instances.Add(core);

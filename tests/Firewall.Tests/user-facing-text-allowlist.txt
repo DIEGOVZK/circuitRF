@@ -1281,8 +1281,8 @@ src/Core/Devices/Composed/RuntimeEvaluators.cs|layer {k + 1}'s weights are not {
 src/Core/Devices/Composed/RuntimeEvaluators.cs|the coefficients hold {coefficients.Length} values; the grid needs {size}.
 src/Core/Elaboration/Elaborator.cs|{who}: '{file}' cannot be read — {ex.Message}
 src/Core/Elaboration/Elaborator.cs|{who}: '{ov.Name}' is not a parameter of a ComposedFet; it takes File, N and m.
-src/Core/Elaboration/Elaborator.cs|{who}: a fourth net is the thermal node t, and a model in this circuitRF has none; 
-src/Core/Elaboration/Elaborator.cs|{who}: expected 3 nets (g d s); got {inst.NetBindings.Count}.
+src/Core/Elaboration/Elaborator.cs|{who}: a fourth net is the thermal node t, and '{Path.GetFileName(file)}' does not self-heat; 
+src/Core/Elaboration/Elaborator.cs|{who}: expected 3 nets (g d s), or 4 with the thermal node t; got {inst.NetBindings.Count}.
 src/Core/Elaboration/Elaborator.cs|{who}: its 'File' parameter names a folder, not a .cmodel file: '{file}'.
 src/Core/Elaboration/Elaborator.cs|{who}: model file not found: '{file}'.
 src/Core/Elaboration/Elaborator.cs|{who}: no model file is specified; set 'File' to a .cmodel file.

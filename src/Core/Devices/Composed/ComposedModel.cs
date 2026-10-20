@@ -29,6 +29,10 @@ public sealed record ComposedModel
 
     public required ModelTemperature Temperature { get; init; }
 
+    /// <summary>Self-heating (MC-9): the thermal network on the core's thermal node. Null: no thermal node. Only a
+    /// <see cref="TemperatureMode.Range"/> model can carry one.</summary>
+    public ModelThermal? Thermal { get; init; }
+
     public required ExtrinsicNetwork Network { get; init; }
 
     public required CoreConstituents Core { get; init; }
@@ -64,6 +68,38 @@ public sealed record ModelTemperature(TemperatureMode Mode, double T0, double Tm
     public static ModelTemperature Single(double t0)               => new(TemperatureMode.Single, t0, t0, t0);
     public static ModelTemperature Range(double tmin, double tmax) => new(TemperatureMode.Range, double.NaN, tmin, tmax);
 }
+
+/// <summary>
+/// <c>Thermal</c> (brief-modelcomposer-9 R-mc9-2): the thermal network from the core's thermal node — whose voltage is
+/// the temperature rise ΔT in kelvin, and into which the core injects its dissipated power — to thermal ground, at the
+/// base periphery. One pole is [P1] Fig. 6.32's <c>Rth ∥ Cth</c>; more is a Foster ladder, a chain of parallel RC
+/// sections whose impedance is <c>Σ Ri/(1 + jω·Ri·Ci)</c>. The synthesised cell holds them as ordinary R and C, so
+/// <c>Rth</c> scales by <c>N0/N</c> and <c>Cth</c> by <c>N/N0</c> (D9). With <see cref="RthSlope"/> the thermal
+/// resistance varies linearly with the ambient ([R11] §2.8): every R is scaled by <c>RthAt(temp)/Rth</c>.
+/// </summary>
+public sealed record ModelThermal(IReadOnlyList<ThermalPole> Poles)
+{
+    /// <summary>The most poles a ladder may have.</summary>
+    public const int MaxPoles = 5;
+
+    /// <summary>The change of the total <see cref="Rth"/> per kelvin of ambient, K/W per K; 0 = constant.</summary>
+    public double RthSlope { get; init; }
+
+    /// <summary>The ambient at which the poles' resistances hold, °C.</summary>
+    public double Tref { get; init; } = 25;
+
+    /// <summary>The DC thermal resistance, K/W: the sum of the poles'.</summary>
+    public double Rth => Poles.Sum(p => p.Rth);
+
+    /// <summary>The DC thermal resistance at an ambient of <paramref name="ambientC"/>, K/W.</summary>
+    public double RthAt(double ambientC) => Rth + RthSlope * (ambientC - Tref);
+
+    /// <summary>One pole: [P1] Fig. 6.32.</summary>
+    public static ModelThermal Single(double rth, double cth) => new([new ThermalPole(rth, cth)]);
+}
+
+/// <summary>One parallel RC section of the thermal network: K/W and J/K, at the base periphery.</summary>
+public sealed record ThermalPole(double Rth, double Cth);
 
 /// <summary>
 /// The extrinsic network (D5): <c>.cnl</c> text holding one <c>define</c> block with exactly six

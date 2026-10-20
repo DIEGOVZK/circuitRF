@@ -117,8 +117,7 @@ public static class CmodelFile
         if (version < 1)
             throw new CmodelFormatException("FormatVersion", $"{version} is not a format version.");
 
-        if (root.TryGetProperty("Thermal", out _))
-            throw new CmodelFormatException("Thermal", "this circuitRF does not read this field yet.");
+        ModelThermal? thermal = root.TryGetProperty("Thermal", out var th) ? ParseThermal(th) : null;
 
         ModelExtrapolation? extrapolation = null;
         if (root.TryGetProperty("Extrapolation", out var ex))
@@ -234,12 +233,53 @@ public static class CmodelFile
             BasePeriphery = new BasePeriphery(Int(bp, "Fingers", "BasePeriphery.Fingers"),
                                               Str(bp, "UnitWidth", "BasePeriphery.UnitWidth")),
             Temperature   = temperature,
+            Thermal       = thermal,
             Network       = new ExtrinsicNetwork(Str(net, "Netlist", "Network.Netlist"), scaling),
             Core          = new CoreConstituents(One("Id"), One("Ig"), One("Qg"), One("Qd"), idRf)
                             { Symmetry = symmetry, Dispersion = dispersion },
             Extrapolation = extrapolation,
             Symbol        = symbol,
             Provenance    = provenance,
+        };
+    }
+
+    private static readonly string[] ThermalKeys = ["Rth", "Cth", "Ladder", "RthSlope", "Tref"];
+
+    /// <summary><c>Thermal</c>: one pole as <c>Rth</c>/<c>Cth</c>, or a <c>Ladder</c> of them; optionally <c>RthSlope</c> and
+    /// <c>Tref</c>. Ranges are the validator's.</summary>
+    private static ModelThermal ParseThermal(JsonElement t)
+    {
+        if (t.ValueKind != JsonValueKind.Object) throw new CmodelFormatException("Thermal", "it is not an object.");
+        foreach (var p in t.EnumerateObject())
+            if (!ThermalKeys.Contains(p.Name, StringComparer.Ordinal))
+                throw new CmodelFormatException($"Thermal.{p.Name}",
+                    $"it is not a field of Thermal; the fields are {string.Join(", ", ThermalKeys)}.");
+
+        bool single = t.TryGetProperty("Rth", out _) || t.TryGetProperty("Cth", out _);
+        bool ladder = t.TryGetProperty("Ladder", out var l);
+        if (single == ladder)
+            throw new CmodelFormatException("Thermal", "it carries either Rth and Cth (one pole) or a Ladder, not both and not neither.");
+
+        var poles = new List<ThermalPole>();
+        if (single) poles.Add(new ThermalPole(Num(t, "Rth", "Thermal.Rth"), Num(t, "Cth", "Thermal.Cth")));
+        else
+        {
+            if (l.ValueKind != JsonValueKind.Array) throw new CmodelFormatException("Thermal.Ladder", "it is not a list of poles.");
+            int k = 0;
+            foreach (var pole in l.EnumerateArray())
+            {
+                string f = $"Thermal.Ladder[{k++}]";
+                if (pole.ValueKind != JsonValueKind.Object) throw new CmodelFormatException(f, "it is not an object of Rth and Cth.");
+                foreach (var p in pole.EnumerateObject())
+                    if (p.Name is not ("Rth" or "Cth"))
+                        throw new CmodelFormatException($"{f}.{p.Name}", "it is not a field of a pole; the fields are Rth and Cth.");
+                poles.Add(new ThermalPole(Num(pole, "Rth", $"{f}.Rth"), Num(pole, "Cth", $"{f}.Cth")));
+            }
+        }
+        return new ModelThermal(poles)
+        {
+            RthSlope = t.TryGetProperty("RthSlope", out _) ? Num(t, "RthSlope", "Thermal.RthSlope") : 0.0,
+            Tref     = t.TryGetProperty("Tref", out _) ? Num(t, "Tref", "Thermal.Tref") : 25.0,
         };
     }
 
@@ -379,11 +419,25 @@ public static class CmodelFile
         if (t.Mode == TemperatureMode.Range && !(double.IsFinite(t.Tmin) && double.IsFinite(t.Tmax) && t.Tmin < t.Tmax))
             throw new CmodelFormatException("Temperature", "Tmin must be below Tmax.");
 
+        ValidateThermal(m);
+
         foreach (var r in m.Network.Scaling)
             if (!PeripheryScaling.IsKnown(r.Rule))
                 throw new CmodelFormatException($"Network.Scaling.{r.Variable}",
                     $"'{r.Rule}' is not a known scaling rule; the known rules are {string.Join(", ", PeripheryScaling.Known)}.");
-        ComposedNetworkTemplate.Build(m.Network);
+        var network = ComposedNetworkTemplate.Build(m.Network);
+        if (m.Thermal is { } thermal)
+        {
+            // The names the synthesised cell gives the thermal network must not already mean something in the network.
+            foreach (string element in ComposedNetworkTemplate.ThermalElementNames(thermal))
+                if (network.HasElement(element))
+                    throw new CmodelFormatException("Network.Netlist",
+                        $"an element is named '{element}', which names the thermal network of a self-heating model.");
+            foreach (string net in ComposedNetworkTemplate.ThermalNetNames(thermal))
+                if (network.HasNet(net))
+                    throw new CmodelFormatException("Network.Netlist",
+                        $"a net is named '{net}', which names the thermal network of a self-heating model.");
+        }
 
         var inputs = new HashSet<string>(StringComparer.Ordinal) { ComposedCoreProgram.Vgs, ComposedCoreProgram.Vds };
         if (t.Mode == TemperatureMode.Range) inputs.Add(ComposedCoreProgram.T);
@@ -621,6 +675,35 @@ public static class CmodelFile
         }
     }
 
+    /// <summary>A thermal network: on a ranged model only (D8), one to five poles of positive R and C, and a thermal
+    /// resistance that stays positive over the model's temperature range.</summary>
+    private static void ValidateThermal(ComposedModel m)
+    {
+        if (m.Thermal is not { } th) return;
+        if (m.Temperature.Mode != TemperatureMode.Range)
+            throw new CmodelFormatException("Thermal",
+                "self-heating needs a model over a temperature range; this one is valid at one temperature.");
+        if (th.Poles.Count is < 1 or > ModelThermal.MaxPoles)
+            throw new CmodelFormatException("Thermal.Ladder",
+                $"{th.Poles.Count} pole(s); a thermal network has 1 to {ModelThermal.MaxPoles}.");
+        bool ladder = th.Poles.Count > 1;
+        for (int k = 0; k < th.Poles.Count; k++)
+        {
+            string f = ladder ? $"Thermal.Ladder[{k}]" : "Thermal";
+            if (!(double.IsFinite(th.Poles[k].Rth) && th.Poles[k].Rth > 0))
+                throw new CmodelFormatException($"{f}.Rth", "it is not a positive thermal resistance in K/W.");
+            if (!(double.IsFinite(th.Poles[k].Cth) && th.Poles[k].Cth > 0))
+                throw new CmodelFormatException($"{f}.Cth", "it is not a positive thermal capacitance in J/K.");
+        }
+        if (!double.IsFinite(th.RthSlope))
+            throw new CmodelFormatException("Thermal.RthSlope", "it is not a number of K/W per K.");
+        if (!double.IsFinite(th.Tref))
+            throw new CmodelFormatException("Thermal.Tref", "it is not a temperature.");
+        if (!(th.RthAt(m.Temperature.Tmin) > 0 && th.RthAt(m.Temperature.Tmax) > 0))
+            throw new CmodelFormatException("Thermal.RthSlope",
+                "it makes the thermal resistance zero or negative inside the model's temperature range.");
+    }
+
     /// <summary><c>IdRF</c> and <c>Core.Dispersion</c> come together: one without the other has no meaning.</summary>
     private static void ValidateDispersion(ComposedModel m)
     {
@@ -733,6 +816,34 @@ public static class CmodelFile
                 w.WriteNumber("Tmax", m.Temperature.Tmax);
             }
             w.WriteEndObject();
+
+            if (m.Thermal is { } th)
+            {
+                w.WriteStartObject("Thermal");
+                if (th.Poles.Count == 1)
+                {
+                    w.WriteNumber("Rth", th.Poles[0].Rth);
+                    w.WriteNumber("Cth", th.Poles[0].Cth);
+                }
+                else
+                {
+                    w.WriteStartArray("Ladder");
+                    foreach (var pole in th.Poles)
+                    {
+                        w.WriteStartObject();
+                        w.WriteNumber("Rth", pole.Rth);
+                        w.WriteNumber("Cth", pole.Cth);
+                        w.WriteEndObject();
+                    }
+                    w.WriteEndArray();
+                }
+                if (th.RthSlope != 0)
+                {
+                    w.WriteNumber("RthSlope", th.RthSlope);
+                    w.WriteNumber("Tref", th.Tref);
+                }
+                w.WriteEndObject();
+            }
 
             w.WriteStartObject("Network");
             w.WriteString("Netlist", m.Network.Netlist);

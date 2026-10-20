@@ -1115,9 +1115,11 @@ public sealed class Elaborator
                 // ComposedCore: three nets (gi, di, si) onto two ports sharing the source, exactly as
                 // the FET family — then one ground-referenced pair per internal state node, minted as
                 // ordinary unknowns for the reason every internal node here is (HB sees its harmonics).
-                if (model is ComposedCoreModel core && resolvedNodes.Length == 3)
+                // A self-heating core's fourth net is its thermal node, the last port, (t, 0) — a net of the cell, not
+                // a minted one, because the cell's Rth ∥ Cth (and an instance's fourth pin) attach to it.
+                if (model is ComposedCoreModel core)
                 {
-                    var pins = new List<int>(4 + 2 * core.InternalStateNodeCount)
+                    var pins = new List<int>(6 + 2 * core.InternalStateNodeCount)
                     {
                         resolvedNodes[0], resolvedNodes[2],   // gate, source
                         resolvedNodes[1], resolvedNodes[2],   // drain, source
@@ -1127,9 +1129,11 @@ public sealed class Elaborator
                         pins.Add(netlist.Nodes.GetOrAssign($"__composed_{childPath}_x{k}"));
                         pins.Add(0);
                     }
+                    if (core.HasThermalNode) { pins.Add(resolvedNodes[3]); pins.Add(0); }
                     resolvedNodes = pins.ToArray();
                     WarnComposedTemperature(core, netlist);
                 }
+
 
                 // ExtDevice: the provider reports currents per NODE, so every node becomes its own
                 // ground-referenced port — [n, 0] per node — and the internal nodes are minted here
@@ -2034,7 +2038,7 @@ public sealed class Elaborator
 
     /// <summary>The cell each distinct (<c>.cmodel</c>, <c>N</c>, <c>m</c>) elaborates as, built once
     /// per elaboration. Never added to a library, the palette or a file.</summary>
-    private readonly Dictionary<(string Path, long Stamp, int N, double M), Cell> _composedCells = [];
+    private readonly Dictionary<(string Path, long Stamp, int N, double M, bool ThermalPin, double AmbientC), Cell> _composedCells = [];
 
     /// <summary>What a ComposedFet line may carry. <c>Symbol</c> is the schematic's alone and is read by
     /// nothing here.</summary>
@@ -2049,13 +2053,9 @@ public sealed class Elaborator
     {
         string who = $"ComposedFet '{childPath}'";
 
-        if (inst.NetBindings.Count == 4)
+        if (inst.NetBindings.Count is not (3 or 4))
             throw new InvalidOperationException(
-                $"{who}: a fourth net is the thermal node t, and a model in this circuitRF has none; " +
-                "bind three nets, g d s.");
-        if (inst.NetBindings.Count != 3)
-            throw new InvalidOperationException(
-                $"{who}: expected 3 nets (g d s); got {inst.NetBindings.Count}.");
+                $"{who}: expected 3 nets (g d s), or 4 with the thermal node t; got {inst.NetBindings.Count}.");
 
         foreach (var ov in inst.Overrides)
             if (!ComposedParams.Contains(ov.Name, StringComparer.Ordinal))
@@ -2087,6 +2087,13 @@ public sealed class Elaborator
             throw new InvalidOperationException($"{who}: '{file}' cannot be read — {ex.Message}");
         }
 
+        // The fourth net is the thermal node (MC-9 R-mc9-2), so it exists only on a model that self-heats.
+        bool thermalPin = inst.NetBindings.Count == 4;
+        if (thermalPin && loaded.Model.Thermal is null)
+            throw new InvalidOperationException(
+                $"{who}: a fourth net is the thermal node t, and '{Path.GetFileName(file)}' does not self-heat; " +
+                "bind three nets, g d s.");
+
         int n = loaded.N0;
         if (inst.Overrides.FirstOrDefault(o => o.Name == "N") is { } nOv)
         {
@@ -2102,7 +2109,7 @@ public sealed class Elaborator
                     childPath);
 
         long stamp = File.GetLastWriteTimeUtc(file).Ticks;
-        if (_composedCells.TryGetValue((file, stamp, n, m), out var cached)) return cached;
+        if (_composedCells.TryGetValue((file, stamp, n, m, thermalPin, _ambientC), out var cached)) return cached;
 
         var coreParams = new List<ParameterAssignment>
         {
@@ -2110,12 +2117,19 @@ public sealed class Elaborator
             new("N", n.ToString(CultureInfo.InvariantCulture)),
         };
         if (m != 1.0) coreParams.Add(new(MultiplierParamName, ComposedNetworkTemplate.Literal(m)));
+        var thermal = loaded.Model.Thermal;
+        IEnumerable<string> coreNets = thermal is null
+            ? ComposedNetworkTemplate.IntrinsicNets
+            : [.. ComposedNetworkTemplate.IntrinsicNets, ComposedNetworkTemplate.ThermalNet];
         var core = new Instance(ComposedNetworkTemplate.CoreInstanceName,
-            ComponentModelFactory.ComposedCoreTypeName, ComposedNetworkTemplate.IntrinsicNets, coreParams);
+            ComponentModelFactory.ComposedCoreTypeName, coreNets, coreParams);
 
+        // A thermal resistance that varies with the ambient is taken at the ambient the core is evaluated at.
+        var t = loaded.Model.Temperature;
+        double ambient = t.Mode == TemperatureMode.Range ? Math.Clamp(_ambientC, t.Tmin, t.Tmax) : _ambientC;
         var cell = loaded.Network.Synthesize(
-            $"ComposedFet({Path.GetFileName(file)},N={n})", n, loaded.N0, m, core);
-        _composedCells[(file, stamp, n, m)] = cell;
+            $"ComposedFet({Path.GetFileName(file)},N={n})", n, loaded.N0, m, core, thermal, ambient, thermalPin);
+        _composedCells[(file, stamp, n, m, thermalPin, _ambientC)] = cell;
         return cell;
     }
 

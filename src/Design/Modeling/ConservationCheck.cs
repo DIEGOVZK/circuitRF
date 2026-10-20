@@ -276,7 +276,7 @@ public static class ConservationCheck
         var model = ChargeFit.Model(charges, current, data.TemperatureC);
         var program = ComposedCoreProgram.Compile(model, "check");
         var poly = data.Domain.Polygon;
-        var b = Model((g, d) => ChargeFit.Capacitances(program, g, d),
+        var b = Model((g, d) => ChargeFit.Capacitances(program, g, d, data.TemperatureC),
                       (poly.Min(p => p.Vgs), poly.Max(p => p.Vgs), poly.Min(p => p.Vds), poly.Max(p => p.Vds)),
                       DefaultStep, (g, d) => ChargeFit.Inside(poly, (g, d)), rc);
         lines.Add($"model: curl {Pct(b.GateRms)} (Qg), {Pct(b.DrainRms)} (Qd)");
