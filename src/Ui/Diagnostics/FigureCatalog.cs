@@ -942,6 +942,38 @@ public static class FigureCatalog
           + "too narrow and is marked railed, with Widen beside it; neither goal is met at the best "
           + "point the run could reach inside that range."),
 
+        // ── Model Composer ──────────────────────────────────────────────────────
+        // Every one on the shipped synthetic-gan example, opened from a copy (DocModelComposerFixtures). The window at its
+        // own declared size; each panel at the width its column gets in that window, except Values, which is wider than
+        // its column's default so the whole table shows rather than the start of a sideways scroll.
+
+        new("model-composer-window", DocModelComposerFixtures.Window, 1199, 741,
+            WindowFrame.Titled("Model Composer · gan_4x125.cmc"),
+            "The Model Composer on the shipped synthetic GaN example: the step rail and the Data step's data sets on the "
+          + "left, the measured output family in the centre, the extrinsic network and its values on the right, and "
+          + "the status strip saying what the opened document holds."),
+
+        new("model-composer-steps", DocModelComposerFixtures.StepsPanel, 290, 560, null,
+            "The Steps panel on the Current step. Every finished step is ticked; under the rail, the method picker "
+          + "for each current and the step's own settings."),
+
+        new("model-composer-bias-plane-lasso", DocModelComposerFixtures.BiasPlaneLasso, 760, 560, null,
+            "Removing points from the bias plane. The lasso lamp is lit and Breakdown is chosen as the reason; the "
+          + "dashed loop is being drawn round the pinched-off points at the highest drain voltages, and releasing it "
+          + "excludes every point inside. The three points marked × were excluded the same way a moment earlier, for "
+          + "Compliance."),
+
+        new("model-composer-values", DocModelComposerFixtures.ValuesPanel, 620, 440, null,
+            "The Values panel after the network fit: each value with its lock, its bounds, its tie, its scaling rule "
+          + "and its standard error."),
+
+        new("model-report-dialog", DocModelComposerFixtures.ReportDialog, 600, 1130,
+            WindowFrame.Titled("Model Validation Report"),
+            "The Model Validation Report dialog on the example: which sections to write; the S biases as a grid laid "
+          + "out like the bias plane, three of them ticked along Vds = 10 V; the C–V voltages, two ticked and none "
+          + "for Vgs; the PA classes with their frequency, bias and terminations, each empty field showing the value "
+          + "it will take; and the load disc, the drive ladder and the compression."),
+
         new("match-form-glyphs", DocMatchFixtures.FormGlyphs, 780, 150, null,
             "The five Match glyphs. A slash across a wave means that part of the spectrum is blocked; "
           + "two or three smaller bandpass groups mean two or three bands."),

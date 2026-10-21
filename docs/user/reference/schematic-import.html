@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>circuitRF — Importing a schematic</title>
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/circuitrf-docs.css">
+<!--
+  GENERATED FILE - do not edit. Edit the Markdown source named below and re-run:
+      dotnet run [project tools/DocGen] [flag out] docs/user
+  (XML comments cannot contain a double hyphen; the flags are ordinary ones.)
+  Source: docs/user/src/reference/schematic-import.md
+-->
+</head>
+<body>
+
+<header class="doc-header">
+  <a class="brand" href="../index.html"><img class="logo" src="../assets/img/favicon.svg" alt="circuitRF"><span class="wordmark">circuitRF</span></a>
+  <a class="doc-kind" href="index.html">Reference Guide</a>
+  <div class="doc-search" data-crf-search data-root="../" hidden>
+    <input type="search" class="search-input" autocomplete="off" spellcheck="false"
+           aria-label="Search the documentation" placeholder="Search docs"
+           role="combobox" aria-expanded="false" aria-autocomplete="list">
+    <div class="search-panel" role="listbox" hidden></div>
+  </div>
+</header>
+<hr class="doc-headrule">
+
+<main class="page">
+  <div class="page-top">
+    <p class="breadcrumb"><a href="../index.html">Docs</a> › <a href="index.html">Reference</a> › Importing a schematic</p>
+    <nav class="page-nav-top" aria-label="Previous and next page">
+      <a class="prev" href="spice-import.html" title="Previous: Importing a SPICE Model"><span class="arrow">‹</span><span class="name">Importing a SPICE Model</span></a>
+      <a class="next" href="system-components.html" title="Next: System Components"><span class="name">System Components</span><span class="arrow">›</span></a>
+    </nav>
+  </div>
+
+  <h1>Importing a schematic</h1>
+  <p class="lede">A schematic drawn in another editor, read as a new cell with its own schematic, or dropped straight into one you have open — its resistors, capacitors and inductors as circuitRF&#39;s own parts, everything else as the source&#39;s own symbol, and its connectivity checked every time.</p>
+
+<nav class="toc">
+<h2>On this page</h2>
+<ol>
+<li><a href="#formats">What can be imported</a></li>
+<li><a href="#ways-in">Three ways in</a></li>
+<li><a href="#parts">What each part becomes</a></li>
+<li><a href="#symbol-cells">Symbol cells, and why they do not simulate yet</a></li>
+<li><a href="#ports">Ports</a></li>
+<li><a href="#pages">Pages, sheets and the drawing</a></li>
+<li><a href="#check">The connectivity check</a></li>
+<li><a href="#refused">When a file is refused</a></li>
+<li><a href="#cli">From the command line</a></li>
+</ol>
+</nav>
+<h2 id="formats">What can be imported</h2>
+<table>
+<thead>
+<tr>
+<th>Format</th>
+<th>Files</th>
+<th>What is read</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.kicad_sch</code></td>
+<td><code>.kicad_sch</code></td>
+<td>the sheet and every sheet it places; the file carries its own symbols, so nothing else is looked up</td>
+</tr>
+<tr>
+<td>EDIF 2.0.0</td>
+<td><code>.edf</code>, <code>.edn</code>, <code>.edif</code></td>
+<td>the pages, the symbols, and the nets the file declares</td>
+</tr>
+<tr>
+<td>binary <code>.DSN</code> design</td>
+<td><code>.dsn</code></td>
+<td>versions 2.0 and 3.2 of the compound-file design format, hierarchy included in 3.2, and the nets the file declares</td>
+</tr>
+</tbody>
+</table>
+<p>A file is recognised by what is in it, not by its name. A <code>.dsn</code> that is a kit symbol or a board-routing file is
+not mistaken for a design.</p>
+<h2 id="ways-in">Three ways in</h2>
+<p><strong>File ▸ Import ▸ Schematic…</strong> makes a new cell. The dialog reads the file as soon as you pick it and shows:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Source</td>
+<td>the file, its format and version, and its pages or sheets</td>
+</tr>
+<tr>
+<td>Into folder</td>
+<td>where the cell goes; the workspace, or the folder you started from</td>
+</tr>
+<tr>
+<td>Cell name</td>
+<td>the file's name, until you change it</td>
+</tr>
+<tr>
+<td>Code page</td>
+<td>EDIF and binary <code>.DSN</code> only: how text that is not UTF-8 is decoded (1252 unless you say otherwise)</td>
+</tr>
+<tr>
+<td>Parts</td>
+<td>every part — <strong>Ref</strong>, <strong>Symbol</strong>, <strong>Value</strong>, what it <strong>Becomes</strong> — and a <strong>Symbol cell</strong> box to keep one as the source's symbol</td>
+</tr>
+<tr>
+<td>Ports</td>
+<td>each connector and global port the design draws, with a box to make it a circuitRF Port</td>
+</tr>
+</tbody>
+</table>
+<p>Below them is the schematic the import will write, and its connectivity verdict. Nothing is written until you press
+<strong>Import</strong>.</p>
+<p><strong>Drop the file onto an open schematic</strong> and the circuit is built there, its top-left corner at the drop point, as
+one undo step, with no dialog: every part goes where the table below sends it, and no Port is made. Instance names,
+net labels and variables the schematic already uses are renamed. Any symbol cells are written beside that schematic's
+cell. Save the schematic first: an unsaved one has nowhere to put them.</p>
+<p><strong>Drop it onto a folder or the workspace in the project tree</strong> and the dialog opens, importing into that folder.</p>
+<p>A picture dropped on a schematic is placed as a picture. Only a schematic file becomes circuitry.</p>
+<h2 id="parts">What each part becomes</h2>
+<p>A part becomes one of circuitRF's own components only where the source makes it certain:</p>
+<table>
+<thead>
+<tr>
+<th>Becomes</th>
+<th>When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>R</strong>, <strong>C</strong>, <strong>L</strong></td>
+<td>a two-pin part whose symbol is named as one (<code>R</code>, <code>RES</code>, <code>RESISTOR</code>, <code>C</code>, <code>CAP</code>, <code>CAPACITOR</code>, <code>CP</code>, <code>L</code>, <code>IND</code>, <code>INDUCTOR</code>, alone or followed by <code>_</code> or a space and more) <strong>and</strong> whose reference starts with exactly that letter</td>
+</tr>
+<tr>
+<td>R, C or L with its footprint</td>
+<td>a symbol named after its land pattern, such as <code>R-0603</code> or <code>C-1210</code></td>
+</tr>
+<tr>
+<td><strong>ground</strong></td>
+<td>a ground symbol, and any net named <code>GND</code>, <code>GROUND</code>, <code>EARTH</code> or <code>0</code></td>
+</tr>
+</tbody>
+</table>
+<p>Everything else comes in as the source's own symbol: a <strong>symbol cell</strong>. A reference such as <code>RB1</code> is not <code>R</code>, so that
+part stays a symbol cell even though its symbol is a resistor. To keep any R, L or C as its symbol, tick its
+<strong>Symbol cell</strong> box.</p>
+<p><strong>Values</strong> are read as written — <code>10k</code>, <code>4k7</code>, <code>2R2</code>, <code>100nF</code>, <code>1.5 nH</code> — and a rating after a slash is ignored:
+<code>100nF/10V</code> is 100 nF. A value that does not read as the part's quantity, a word or a bare number with no unit or
+multiplier, becomes a global variable named <code>&lt;Ref&gt;_&lt;parameter&gt;</code> (<code>R1_R</code>), with the source's text in the import's
+report. Its default is 1 kΩ, 1 nF or 1 nH; for a part marked not fitted it is an open — 1 GΩ, 0.01 pF or 1 H. Set the
+variable to the value you meant.</p>
+<p><strong>A supply rail is a net, never a source.</strong> <code>+5V</code> stays a net named <code>+5V</code>; circuitRF adds no supply for it.</p>
+<h2 id="symbol-cells">Symbol cells, and why they do not simulate yet</h2>
+<p>Each distinct symbol becomes one cell, holding the source's drawing as its symbol, in a folder beside the new cell
+named after the file: <code>amp.kicad_sch</code> puts them in <code>amp_parts/</code>. A part with several units, such as a dual op-amp,
+becomes one cell per unit. Import the same file again, or a second design that uses the same symbol, and an identical
+cell is reused; a different cell of the same name is refused, naming both.</p>
+<p><strong>A symbol cell has no model.</strong> It is the source's picture of a transistor or an IC with nothing behind its pins, so
+<code>check</code> reports it and a simulation refuses to run until you give it one: a schematic of its own, an S-parameter file,
+or a model. circuitRF does not invent electrical behaviour the source did not state.</p>
+<h2 id="ports">Ports</h2>
+<p>Nothing becomes a circuitRF Port unless you say so, because which connector is an RF port is your decision. Tick one in
+the <strong>Ports</strong> list and:</p>
+<ul>
+<li><strong>a connector</strong> becomes a Term where it was drawn — its first pin off ground the signal, the next its reference — and
+no symbol cell is made for it;</li>
+<li><strong>a net</strong> gets a Term to ground beside the drawing.</li>
+</ul>
+<p>Ports are numbered in the order the list shows them. With at least one, the import adds an S-parameter analysis, <code>SP1</code>,
+from 100 MHz to 6 GHz, which you can change like any other. See <a href="pins-ports-terms.html">Pin, Port and Term</a>.</p>
+<h2 id="pages">Pages, sheets and the drawing</h2>
+<ul>
+<li><strong>Several pages</strong> become one schematic, the pages laid side by side in order. An off-page connector becomes a net
+label of the same name, which is how the pages stay connected.</li>
+<li><strong>A hierarchical design</strong> becomes one cell per distinct sheet, each with its schematic and a rectangle symbol whose
+pins are the sheet's ports, placed by its parent. A sheet used twice is one cell placed twice. Ground is shared by
+every cell; any other global net used on more than one sheet is not joined across cells, and the report names it.</li>
+<li><strong>The drawing is the source's.</strong> Every part keeps its position and orientation and every wire its own segments. A
+design drawn on a finer grid than 100 mils keeps its points exactly, and the schematic's connection grid is set to
+match. A part whose pins sit at a different spacing from circuitRF's own symbol is joined to the source's wire with
+one short bend.</li>
+<li><strong>Labels</strong> go where the source shows them: a part's name where it shows the reference, and its value where it shows
+the value, each reading from the same end. A field the source hides is hidden. circuitRF's labels are always level, so
+a part whose source writes a label up the page — usually an upright resistor's value — keeps circuitRF's own layout.</li>
+<li><strong>Free text and lines</strong> come across. Title blocks, page borders, pictures and simulation attachments do not; a
+footprint property is kept on the part.</li>
+<li><strong>Buses</strong>: each member connects through its own label, as it does in the source. A bus that crosses into a sheet is
+not expanded, and the report lists it.</li>
+</ul>
+<h2 id="check">The connectivity check</h2>
+<p>Every import compares the circuit it built with the source: which pins are joined to which. When the format declares
+its nets (EDIF and the binary <code>.DSN</code>) it is compared with those as well as with the drawing.</p>
+<p><strong>Matched</strong> means every pin is joined to exactly the pins the source joins it to. Otherwise the report names the pins
+— <em>joined in the source, split in the import</em>, or the other way round — and the cell is still written, so you can see
+where. When a file's declared nets disagree with its own drawing, the report says that instead: the file contradicts
+itself, and no import can settle which is right.</p>
+<p>The report goes to Messages — the parts mapped, the cells written or reused, anything left out and why, and the
+verdict. A drop reports in one line, with <strong>Details…</strong> for the rest.</p>
+<h2 id="refused">When a file is refused</h2>
+<p>A refused import writes nothing. The reasons you may see:</p>
+<ul>
+<li>the cell name is taken, or not a valid name;</li>
+<li>a symbol cell of the same name already exists and differs;</li>
+<li>a binary <code>.DSN</code> design in a version circuitRF does not read, or one that draws nothing. <strong>Export it as EDIF 2.0.0</strong>
+from the editor that made it, and import that file instead;</li>
+<li>an EDIF file in a version other than 2.0.0.</li>
+</ul>
+<h2 id="cli">From the command line</h2>
+<pre><code class="cmd"><span class="prompt">$ </span>circuitrf import schematic &lt;file&gt; --into &lt;workspace-or-dir&gt; [--cell N] [--port &lt;ref-or-net&gt;]...
+                                  [--symbol-cell &lt;ref&gt;]... [--codepage N] [--list]</code></pre>
+<p>The same import the dialog runs, with the dialog's defaults: the cell is named after the file and no Port is made.
+<code>--port</code> names each one, a connector's reference or a net's name, in port order; <code>--symbol-cell</code> keeps a part as its
+symbol; <code>--list</code> prints the pages, the parts and the port candidates and writes nothing.</p>
+<pre><code class="cmd"><span class="prompt">$ </span>circuitrf import schematic matching.kicad_sch --into ~/designs/Amp --port J1 --port J2
+<span class="output">/home/you/designs/Amp/matching
+/home/you/designs/Amp/matching/schematic/matching.csch</span></code></pre>
+<p>The paths written are printed on stdout; the report goes to stderr. <strong>It exits 1 when the connectivity check is not
+matched</strong>, with the cell written, so a script does not mistake a mismatch for success. See <a href="cli.html#import-schematic">the CLI</a>.
+An agent connected over MCP imports with the <code>import</code> tool, <code>what=schematic</code>.</p>
+
+<nav class="page-nav">
+  <a class="prev" href="spice-import.html"><span class="dir">Previous</span><span class="name">Importing a SPICE Model</span></a>
+  <a class="next" href="system-components.html"><span class="dir">Next</span><span class="name">System Components</span></a>
+</nav>
+</main>
+
+<footer class="doc-footer">
+  <img src="../assets/img/circuitRF-mark.svg" alt="">
+  <span>circuitRF — RF circuit simulator</span>
+  <span class="spacer"></span>
+  <a href="../index.html">Documentation home</a>
+</footer>
+
+<script src="../assets/js/search-index.js" defer></script>
+<script src="../assets/js/docs-search.js" defer></script>
+</body>
+</html>

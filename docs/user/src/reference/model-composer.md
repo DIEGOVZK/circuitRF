@@ -484,6 +484,8 @@ imported, it reloads that data, and **Import…** is on the ▾ and beside the d
 
 ## The window {#window}
 
+{{ui: model-composer-window}}
+
 | Part | What it holds |
 |---|---|
 | Toolbar | Open, Save, Save As · Undo, Redo · the four panel lamps · Check Charge Conservation, Model Validation Report · Run ▾, Cancel · Help |
@@ -563,6 +565,21 @@ choosing another tab frames that tab's data. A point of another data set selects
 or drag a lasso around several. Points already excluded are included again. Choose **Valid** instead to make every
 point the click or lasso takes valid again, excluded or not. Each click or lasso is one undo step.
 
+{{ui: model-composer-bias-plane-lasso}}
+
+To take a group of points out of the fit:
+
+1. On the Data step, choose the **Bias plane** tab (the grid of dots).
+2. Light the lasso lamp, the third button under the tabs. The reason list beside it is enabled.
+3. Choose why the points are going: Outlier, Oscillation, Compliance, Drift, Breakdown or Other. The reason is kept with
+   each point in the `.cmc`.
+4. Drag a loop round the points. Releasing the button closes the loop and excludes every point inside it; each is
+   drawn with a ×. A single click excludes the nearest point.
+5. Turn the lasso lamp off again to go back to moving the cursor with a click.
+
+Every fit after that leaves the excluded points out. To put one back, lasso or click it again, or choose **Valid** and
+lasso a whole region. **Undo** takes back one lasso at a time.
+
 **Base periphery.** N0 (fingers) and W0 (unit gate width, with its unit, e.g. `125 um`) of the measured device. Export
 needs them; until they are set the Data step shows the one warning that says so.
 
@@ -577,6 +594,8 @@ before (dashed) and after (solid) the pads come off.
 folder button opens a six-pin `.csch`; the pencil opens the network in the schematic editor. **Copy** puts the network
 on the clipboard as a schematic selection that pastes into any schematic; **Paste** takes a selection from a schematic
 as the network. A network whose pins are not numbered 1 to 6, each once, is refused in one line, and nothing is written.
+
+{{ui: model-composer-values}}
 
 **The values table.** Every value is editable: type a value with or without its unit (`39.5 pH`, `39.5p`), tick
 the lock to hold it, set a minimum and a maximum, tie it to another value (`rd` or `rd × 1.2`), and choose its scaling
@@ -618,6 +637,8 @@ Restarts, the seed and the held-out percentage belong to the step. After a fit t
 `Id: ANN 2×8 · held-out 0.8 % · domain 412 pts`.
 
 ## The Current step {#current}
+
+{{ui: model-composer-steps}}
 
 Pickers for `Id` and `Ig` — an equation `Ig` is two expressions, `IgGs` and `IgGd` — and **DC/RF dispersion**, the
 simpler alternative to self-heating and traps.
@@ -722,10 +743,24 @@ it in the file manager.
 
 ## The Model Validation Report {#report}
 
-**Model Validation Report…** (toolbar, or the Validate step) opens a dialog with every option of the report: the
-sections, the S biases, the fixed voltages of the C–V families, the PA classes, the frequency, bias, R_opt and the
-source's fundamental and 2f0 terminations, the load disc (radius, rings, spokes), the drive ladder and the compression.
-Each opens on the value stored in the document or its default; **Apply** stores them.
+**Model Validation Report…** (toolbar, or the Validate step) opens a dialog with every option of the report. Each
+opens on the value stored in the document or its default; **Apply** stores them.
+
+{{ui: model-report-dialog}}
+
+| Option | What it sets |
+|---|---|
+| Sections | Which sections the report writes: DC I–V, Thermal, Charge, C–V, S and the PA classes. Leaving one out skips its runs too, and the PA classes are the slow one |
+| S compared at these biases | The biases whose S-parameters are compared, model against data. None ticked: the lowest, middle and highest current |
+| C–V curves at Vds, at Vgs | The fixed voltage of each C–V curve. None chosen: five spread over the data |
+| PA classes | Which classes (B, J, J\*, F, F⁻¹) are loadpulled with the model, and at what frequency and bias |
+| R_opt, Source Z, Source 2f0 | The optimum load resistance and the source's fundamental and second-harmonic terminations. Empty: from the knee, a conjugate match, and a short |
+| Radius, rings, spokes | The disc of loads round each class's optimum: its reflection-coefficient radius, and how finely it is sampled |
+| Drive start, step, max | The input-power ladder each load is driven up, in dBm |
+| Compression | How far into compression each load is driven before its performance is read, in dB |
+
+**Generate** stores the options as **Apply** does, then runs and writes the report; **Export PDF…** writes it as one
+PDF. Closing the dialog without either leaves the document's options as they were.
 
 The choices are the data's own values. The S biases are boxes laid out as the bias plane, Vds across and Vgs down;
 hover over one for its bias, tick the ones to compare. A very irregular plan, which would need more than 2,500 boxes,

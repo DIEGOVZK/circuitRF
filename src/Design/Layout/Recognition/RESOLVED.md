@@ -567,3 +567,13 @@ Three findings on the eval board and the stub-match test layout the designer sen
   are not in that set) is now artwork only.
 - **The stub layout's lines were 57× too long** — not recognition's fault: see the E-at-F entry in
   `src/Ui/RESOLVED.md`. Recognition then saw three lines that did not meet.
+
+## The Artwork to Schematic example lost its unknown L1 to the not-fitted rule (2026-10-20)
+
+Round 22's rule (a BOM lists what is fitted, so a two-pad pattern it has no row for is Open) silently removed L1 from
+the shipped example: its BOM left L1 out on purpose to make it the unknown part, so `Board_model` came out with no L1,
+no `L1_L` and an empty Tuning panel, and AN-02's tuning walkthrough could not be followed. Nothing failed but the AN-02
+doc fixture. Owner decision: keep the rule and fix the example. L1 now has a BOM row with an EMPTY value
+(`L1,,smt:0402,L`), which reads as fitted with an unknown value. `ArtworkToSchematicExampleAuthoring` writes it that
+way. A side effect visible in the `recognize` table: every part's kind now comes from the BOM's description
+(`kind=bom`), not its designator.

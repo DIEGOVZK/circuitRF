@@ -40,7 +40,7 @@ plane under a 254 µm laminate.
 | `fab/Board/Board.drl` | Excellon drill file: one 0.3 mm hole, the via |
 | `fab/Board/Board.gbrjob` | Job file: names the three Gerber files and what each one is. It states no stackup. |
 | `fab/Board.pos` | Placement file: where C1, L1 and R1 sit and how they are turned |
-| `fab/Board-bom.csv` | Bill of materials: C1 and R1. **It has no row for L1, on purpose** — a real BOM is often incomplete. |
+| `fab/Board-bom.csv` | Bill of materials: C1, L1 and R1. **L1's row has no value, on purpose** — a real BOM is often incomplete. |
 
 The workspace also holds **Board**, which is this same file set already imported with its stackup corrected, and
 **Board design**, the schematic the board was drawn from. Keep Board design closed until
@@ -296,7 +296,7 @@ The report strip under the table says what was read: ground on the bottom plane,
 [The report](../reference/artwork-to-schematic.html#report) says what each line of it means, and
 [what is recognised](../reference/artwork-to-schematic.html#recognised) says what is not.
 
-**2. Review the parts table.** C1 and R1 take their values from the BOM. L1's kind comes from its designator and
+**2. Review the parts table.** C1 and R1 take their values from the BOM. L1's kind comes from the BOM's description and
 its case from the land pattern, but nothing states its value, so it becomes the global variable **`L1_L`**,
 starting at 1 µH — a shunt inductor large enough to be invisible, so the first simulation shows the lines alone.
 Select a row and its pads are marked on the layout:
@@ -400,9 +400,9 @@ Ground is the largest copper on the reference conductor 'Bottom' at (14000, 2342
 1 line ends on nothing a part, a via or a port lands on, and is left open (there is no open-end model): (11550, 7450) µm.
 
 Refdes,Kind,Connection,Case,Value,Variable,Model,ModelFile,PartNumber,X,Y,Evidence,Confidence,Notes
-C1,C,series,0402,2.2 pF,,Ideal,,,7825 µm,11350 µm,refdes=placement;kind=refdes;case=land;value=bom,high,
-L1,L,shunt,0402,,L1_L,Ideal,,,7425 µm,14025 µm,refdes=placement;kind=refdes;case=land,medium,
-R1,R,series,0603,10 Ohm,,Ideal,,,7825 µm,17725 µm,refdes=placement;kind=refdes;case=land;value=bom,high,
+C1,C,series,0402,2.2 pF,,Ideal,,,7825 µm,11350 µm,refdes=placement;kind=bom;case=land;value=bom,high,
+L1,L,shunt,0402,,L1_L,Ideal,,,7425 µm,14025 µm,refdes=placement;kind=bom;case=land,high,
+R1,R,series,0603,10 Ohm,,Ideal,,,7825 µm,17725 µm,refdes=placement;kind=bom;case=land;value=bom,high,
 </pre>
 
 `--into new:Board_model` writes the schematic, as **Create** does. The parts table is the same CSV the dialog's

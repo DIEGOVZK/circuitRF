@@ -146,7 +146,7 @@ one, as a phantom's layers do; two surfaces that cross rather than nest are name
 name, and is set in Properties per mesh. A tetrahedral mesh (<code>.node</code>/<code>.ele</code>) is <strong>voxelized</strong> at a size you choose, each
 voxel the region of the tetrahedron holding its centre, and kept as a <code>.nii.gz</code> beside the 3D view: from then on it is a
 voxel body.</p>
-<h2 id="headless">Headless</h2>
+<h2 id="headless">From the command line</h2>
 <pre><code class="cmd"><span class="prompt">$ </span>circuitrf import voxels head.nii.gz --into model/3d/model.c3d --labels head.csv --report
 <span class="prompt">$ </span>circuitrf import voxels head.raw --into model/3d/model.c3d --dims 256,256,180 --type uint8 --voxel 1mm --material 0=air
 <span class="prompt">$ </span>circuitrf import surfaces tissues/ --into model/3d/model.c3d --unit mm --material "skull=Bone (cortical)"</code></pre>

@@ -471,7 +471,8 @@ public static class DocAppNoteGerberFixtures
         var tool = new TuningTool();
         tool.Panel.SetActiveSchematic(Schematic(run.SchematicPath!), Path.GetFileName(run.SchematicPath!));
         var row = tool.Panel.Rows.FirstOrDefault(r => r.Key == "L1_L")
-            ?? throw new InvalidOperationException("The Tuning panel lists no L1_L for Board_model.");
+            ?? throw new InvalidOperationException("The Tuning panel lists no L1_L for Board_model; it lists "
+                                                 + (tool.Panel.Rows.Count == 0 ? "nothing" : string.Join(", ", tool.Panel.Rows.Select(r => r.Key))) + ".");
         row.MinText = "1n";
         row.CommitMinText();
         row.ValueBoxText = "8.2n";

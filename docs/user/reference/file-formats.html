@@ -95,6 +95,8 @@ visually until you draw one.</p>
       <tr><td><code>.charm</code></td><td>harmonicaRF document — the DUT, the source and load termination planes at every harmonic, the package, the display configuration and the markers. See <a href="harmonicarf.html">harmonicaRF</a>.</td></tr>
       <tr><td><code>.wBond</code></td><td>wBond design — bondwire geometry: the wires, their arrays and profiles, the substrate and the solver settings. Self-contained and shareable. See <a href="wbond.html">wBond</a>.</td></tr>
       <tr><td><code>.crail</code></td><td>railRF document — the rails, their sources, loads and reference, the parts and the part library they resolve against, the target and the band. See <a href="railrf.html">railRF</a>.</td></tr>
+      <tr><td><code>.cmodel</code></td><td>Composed FET model — a nonlinear transistor model placed as a <code>ComposedFET</code>: its extrinsic network, its current and charge constituents, the finger count and gate width it was measured at, the temperatures it is valid at, its symbol and where it came from. A ZIP holding a readable <code>model.json</code> and any arrays as <code>.npy</code>. See <a href="cmodel.html">Writing a .cmodel</a>.</td></tr>
+      <tr><td><code>.cmc</code></td><td>Model Composer document — the data a model is built from and the conditions it was measured under, from which a <code>.cmodel</code> is exported. JSON text; its data stays in the files it names, with a cache beside it in <code>&lt;name&gt;.cmc-cache/</code>. See <a href="#cmc">The Model Composer document</a>.</td></tr>
       <tr><td><code>.csmith</code></td><td>Smith Chart document — a generator impedance over frequency and an ordered cascade of two-pin elements, plus what the chart is normalized to, the overlays, the markers and the constant-Q setting. Numbers are in base SI. See <a href="smith-chart.html">Smith Chart</a>.</td></tr>
     </tbody>
   </table>
@@ -171,6 +173,461 @@ the <code>.c3d</code>; the source it came from is only remembered.</li>
 <li><strong>Without the kernel</strong> a 3D view holding any of these — even disabled — is not opened, and <code>check</code>
 reports one error per object; see <a href="drawing-in-3d.html#operations">The 3D Editor</a>.</li>
 </ul>
+<h2 id="cmodel">The composed FET model</h2>
+<p>A <code>.cmodel</code> is a ZIP container. <code>model.json</code> is the model itself, readable as text; <code>arrays/&lt;name&gt;.npy</code> holds any
+array it needs (a table, a network's weights), in circuitRF's own <code>.npy</code> layout. It holds the extrinsic network, the four
+constituents <code>Id</code>, <code>Ig</code>, <code>Qg</code> and <code>Qd</code> (each an equation, a table or an ANN), the periphery and temperatures it
+describes, and optionally self-heating, traps and dispersion. The Model Composer writes it, and so can a script of your
+own: <a href="cmodel.html">Writing a .cmodel</a> gives every field, the arrays' layout, and complete Python and MATLAB scripts.
+<code>circuitrf check</code> reads a <code>.cmodel</code> and names the field of anything it refuses.</p>
+<h2 id="cmc">The Model Composer document</h2>
+<p>A <code>.cmc</code> is JSON text. It names the data a model is built from and the conditions each set was measured
+under; it never holds the data itself. Numbers are in base SI — volts, amps, seconds, ohms, hertz —
+except temperatures, in °C.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FormatVersion</code></td>
+<td><code>1</code>. A file from a newer circuitRF is refused, saying so.</td>
+</tr>
+<tr>
+<td><code>Kind</code></td>
+<td><code>Active</code> (a FET) or <code>Passive</code> (an N-port).</td>
+</tr>
+<tr>
+<td><code>BasePeriphery</code></td>
+<td><code>Fingers</code> and <code>UnitWidth</code> (<code>&quot;125 um&quot;</code>) of the measured device. <code>Active</code> only.</td>
+</tr>
+<tr>
+<td><code>DataSets</code></td>
+<td>Each with a <code>Name</code>, a <code>Kind</code>, its <code>Sources</code>, its <code>Conditions</code>, its <code>Import</code> settings and any <code>Exclusions</code>.</td>
+</tr>
+<tr>
+<td><code>Pads</code></td>
+<td>How the probe pads are removed — see below. Absent when the data is at the device plane.</td>
+</tr>
+<tr>
+<td><code>Network</code></td>
+<td>The six-pin extrinsic network and its variables' settings — see below. Absent when the data is intrinsic.</td>
+</tr>
+<tr>
+<td><code>Steps</code></td>
+<td>Each model step's settings and result: <code>Current</code>, <code>Charge</code>, <code>Thermal</code> and <code>Traps</code> below. A step not described here is kept as written.</td>
+</tr>
+<tr>
+<td><code>Panels</code></td>
+<td><code>Hidden</code>: the window panels switched off. Absent when every panel shows.</td>
+</tr>
+</tbody>
+</table>
+<p>A data set's <code>Kind</code> is <code>DcIv</code>, <code>PulsedIv</code>, <code>SParams</code> (CW multi-bias), <code>PulsedSParams</code>, <code>SimulatedTables</code>
+(currents and Y, S or C on a bias grid, from another simulator), <code>LargeSignal</code> (validation only) or
+<code>PassiveSParams</code>. Its <code>Sources</code> are paths relative to the <code>.cmc</code>.</p>
+<table>
+<thead>
+<tr>
+<th><code>Conditions</code> field</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>AmbientC</code></td>
+<td>The chuck temperature, °C.</td>
+</tr>
+<tr>
+<td><code>ReferencePlane</code></td>
+<td>Where the bias voltages were measured: <code>instrument</code>, <code>probe</code>, <code>device</code> or <code>intrinsic</code>. <code>BiasPathOhms</code> (<code>Gate</code>, <code>Drain</code>, <code>Source</code>) goes with <code>instrument</code>.</td>
+</tr>
+<tr>
+<td><code>PulseWidth</code>, <code>Period</code>, <code>SampleDelay</code></td>
+<td>Pulsed sets: the pulse, its repetition and when in the pulse the sample is taken, in seconds.</td>
+</tr>
+<tr>
+<td><code>Quiescent</code></td>
+<td>Pulsed sets: <code>Vgs</code>, <code>Vds</code> and optionally <code>Ig</code>, <code>Id</code> of the bias the pulses start from.</td>
+</tr>
+<tr>
+<td><code>PrePulse</code></td>
+<td>Double-pulse sets: <code>Vgs</code>, <code>Vds</code>, <code>Width</code>, <code>Gap</code> (from its end to the measuring pulse) and optionally <code>Id</code>. A pre-pulse whose current dissipates is a warning: its heating is not modelled.</td>
+</tr>
+<tr>
+<td><code>TrapState</code></td>
+<td>Pulsed sets: <code>auto</code>, <code>setting</code> or <code>extreme</code>.</td>
+</tr>
+<tr>
+<td><code>SoakTime</code>, <code>Compliance</code>, <code>Note</code></td>
+<td>The soak before measuring, the instrument's current limits (<code>Gate</code>, <code>Drain</code>, in A) and a note.</td>
+</tr>
+</tbody>
+</table>
+<p><code>Import</code> says how the sources were read, so a re-import is exact:</p>
+<ul>
+<li><code>touchstone</code> — one file per bias. <code>Pattern</code> reads the bias from the file name (<code>PatternSource</code>
+<code>name</code>) or its comment lines (<code>comment</code>): literal text with the fields <code>{vgs}</code>, <code>{vds}</code>, <code>{T}</code>, <code>{id}</code>
+and <code>{ig}</code>, each optionally with its unit, <code>{id:mA}</code>. A space matches any run of spaces and <code>*</code>
+matches anything. <code>Vgs{vgs}_Vds{vds}</code> reads <code>Vgs-1.5_Vds10.s2p</code>. A <code>PassiveSParams</code> set needs no
+pattern; a family over a geometry value reads it with <code>{geometry}</code>: <code>spiral_{geometry}t</code> reads
+<code>spiral_2.5t.s2p</code>, and <code>{geometry:um}</code> a length in micrometres.</li>
+<li><code>csv</code> — CSV or TSV. <code>Columns</code> maps a column (its header, or its number from 1 with <code>&quot;Header&quot;: false</code>)
+to <code>vgs</code>, <code>vds</code>, <code>ig</code>, <code>id</code>, <code>T</code>, <code>vgsi</code> or <code>vdsi</code>, with the <code>Unit</code> its numbers are in. A cell that
+carries its own unit (<code>12 mA</code>) uses it.</li>
+<li><code>npy</code>, <code>mat</code> — named arrays in circuitRF's <code>.npy</code> or a MATLAB <code>.mat</code> (version 5 or 7.3). <code>Arrays</code> maps
+the quantities above, <code>freq</code>, a 2-port table <code>S</code> or <code>Y</code>, and the capacitances to array names; a struct's field is
+<code>s.field</code>. The bias arrays are one value per point, or the two axes of a grid. A Y table is converted
+to S at <code>Z0</code> (default 50 Ω); <code>FrequencyHz</code> gives a table with no frequency array its frequency.
+A <code>SimulatedTables</code> set's capacitances, in farads, are either the matrix <code>C</code> shaped <code>[point, 2, 2]</code>, with
+<code>Cij = ∂Qi/∂vj</code> (gate 1, drain 2, so <code>C12 = −Cgd</code>), or the circuit set <code>cgs</code>, <code>cgd</code> and <code>cds</code> together, and
+optionally <code>cm</code>, one value per point; not both. Either is read at the <code>intrinsic</code> reference plane only.</li>
+</ul>
+<p><code>Exclusions</code> lists the points left out of every fit — <code>Point</code>, a point's id, and the <code>Reason</code>. A
+Touchstone point's id is its file; a CSV row's is <code>&lt;file&gt;:&lt;line&gt;</code>; an array point's is <code>&lt;file&gt;#&lt;index&gt;</code>.</p>
+<p><code>Pads</code> has a <code>Kind</code> and the files that kind needs, relative to the <code>.cmc</code>:</p>
+<ul>
+<li><code>OpenShort</code> — <code>Open</code> and <code>Short</code>, the open and short dummy structures as 2-port Touchstone files.</li>
+<li><code>TwoPorts</code> — <code>Gate</code> and <code>Drain</code>, a Touchstone 2-port per side, port 1 at the probe and port 2 facing
+the device.</li>
+<li><code>Network</code> — <code>Gate</code> and <code>Drain</code>, a schematic per side with pin 1 at the probe and pin 2 facing the
+device, returning through ground. Series resistance in one also drops the bias voltage.</li>
+</ul>
+<p>A pad file must cover the data's frequencies; one that does not is refused, naming both ranges.</p>
+<p><code>Network</code> holds:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Schematic</code></td>
+<td>The network, a <code>.csch</code> with exactly six pins: 1, 2, 3 the extrinsic gate, drain and source, 4, 5, 6 the intrinsic ones. Its VAR block's variables are its element values.</td>
+</tr>
+<tr>
+<td><code>Variables</code></td>
+<td>Per variable: <code>Min</code>, <code>Max</code>, <code>Lock</code> (<code>true</code> holds it at its value), <code>Tie</code> (<code>To</code> another variable, times <code>Factor</code>), <code>Scaling</code> (<code>fixed</code>, <code>perFinger</code> or <code>perFingerInverse</code>) and <code>Value</code>, the value in use in base SI — typed and locked for a fixed value, or written by a fit. Absent: the schematic's own value.</td>
+</tr>
+<tr>
+<td><code>FlatnessBand</code></td>
+<td><code>[low, high]</code> in Hz: the band the frequency flatness of the intrinsic elements is measured over. Absent: 1/10 to 1/2 of the data's highest frequency.</td>
+</tr>
+<tr>
+<td><code>Fit</code></td>
+<td>How the network is fitted — see below. Every field is optional.</td>
+</tr>
+<tr>
+<td><code>Result</code></td>
+<td>What the last fit found: <code>Method</code>, <code>Cost</code>, per fitted variable its <code>StdError</code>, <code>Spread</code> across the starts and <code>AtBound</code> (<code>Min</code> or <code>Max</code>), the <code>Report</code> lines, and a <code>Digest</code> of the values. Written by the fit.</td>
+</tr>
+</tbody>
+</table>
+<p><code>Fit</code> holds:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Method</code></td>
+<td><code>MultiBias</code> (the default), <code>ColdFet</code>, or <code>ColdFetThenMultiBias</code> — the cold-FET values as the start of the multi-bias fit.</td>
+</tr>
+<tr>
+<td><code>PinchOff</code>, <code>Forward</code></td>
+<td>The cold points, each <code>{ &quot;Set&quot;, &quot;Point&quot; }</code>. Absent: chosen at Vds = 0 V — the lowest Vgs that is pinched off, and the highest with the gate conducting. A cold-FET method without one stops, naming the bias it needs.</td>
+</tr>
+<tr>
+<td><code>ForwardVariant</code></td>
+<td><code>Extreme</code> (the default: the device collapsed to a node by strong forward gate current) or <code>Moderate</code> (a gentler forward bias, with the channel resistance).</td>
+</tr>
+<tr>
+<td><code>ChannelResistance</code></td>
+<td>Ω, for <code>Moderate</code>: the channel resistance, from another test structure.</td>
+</tr>
+<tr>
+<td><code>ColdBand</code></td>
+<td><code>[low, high]</code> in Hz for the cold points. Absent: every frequency.</td>
+</tr>
+<tr>
+<td><code>Active</code></td>
+<td>The active points of the multi-bias fit, a list of <code>{ &quot;Set&quot;, &quot;Point&quot; }</code>. Absent: one off, one on, one near the knee and one in saturation, chosen from the data and written here after a fit.</td>
+</tr>
+<tr>
+<td><code>Weights</code></td>
+<td><code>Flatness</code> (1), <code>Cold</code> (1) and <code>SmallSignal</code> (0): the frequency flatness of the intrinsic elements at the active points, the cold-FET models at the cold points, and S against a fitted small-signal circuit.</td>
+</tr>
+<tr>
+<td><code>Starts</code>, <code>Seed</code>, <code>Algorithm</code>, <code>Budget</code></td>
+<td>The global search: 4 seeded starts (seed 1) of <code>cmaes</code> or <code>de</code>, each spending <code>Budget</code> evaluations (200 per variable) before a gradient polish. The same seed gives the same values.</td>
+</tr>
+<tr>
+<td><code>PoorRelativeError</code>, <code>PoorCorrelation</code></td>
+<td>A value whose relative error exceeds the first (0.2), or whose correlation with another exceeds the second (0.95), is reported as poorly determined, with a lock or a tie suggested.</td>
+</tr>
+</tbody>
+</table>
+<p>R, L and C values stay at or above zero by default, a mutual's coupling stays below 1, and a value that ends on a
+bound is reported as at that bound.</p>
+<p>A stock network — GaN two-shell, classic single shell or series only — is copied beside the <code>.cmc</code> when
+chosen and is then an ordinary schematic. An R, L, C or mutual value starts with <code>Min</code> 0 and <code>Max</code> 100 times
+its starting value.</p>
+<p><code>Steps.Current</code> is the drain and gate currents' step: <code>Settings</code>, the <code>Result</code> of the last fit, and <code>Network</code>, a
+digest of the network values the fit was made through (a later network fit makes it stale). <code>Settings</code> holds:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DataSets</code></td>
+<td>The I–V sets to fit to. Absent: every <code>DcIv</code>, <code>PulsedIv</code> and <code>SimulatedTables</code> set. If pulsed they must share one <code>Quiescent</code> and <code>PrePulse</code>, unless <code>Traps</code> models trapping; a mix is refused, naming what differs. With traps each point takes the trap state <code>Steps.Traps</code> maps it to, as further inputs of <code>Id</code>. At two or more temperatures the currents take the temperature <code>T</code> as an input: each point at its chuck temperature, a DC point at its junction temperature when <code>Thermal</code> models self-heating.</td>
+</tr>
+<tr>
+<td><code>Id</code>, <code>Ig</code></td>
+<td>Each <code>Method</code> (<code>ANN</code>, the default, <code>Table</code> or <code>Equation</code>) and that method's settings: <code>Hidden</code> (<code>[8, 8]</code>), <code>Activation</code> and <code>MaxIterations</code> (6000) for a network; <code>GridStep</code> (0.1 V), <code>Regrid</code> (<code>ANN</code>, or <code>RBF</code> through the points themselves), <code>Smoothing</code> and, with <code>T</code> an input, <code>TemperatureStep</code> (25 °C, which needs <code>Regrid: ANN</code>) and with traps <code>TrapStep</code> (1 V) for a table; <code>Template</code> or the user's own <code>Expression</code> (<code>Id</code>) or <code>IgGs</code> and <code>IgGd</code> (<code>Ig</code>), with <code>Parameters</code> (<code>Value</code>, <code>Min</code>, <code>Max</code>, <code>Lock</code> each), <code>TemperatureCoefficients</code> (template parameters made linear in <code>T</code>; absent is the template's current scale with data at two or more temperatures, <code>[]</code> is none) and <code>Algorithm</code> (<code>cmaes</code>, <code>de</code> or <code>lm</code>) for an equation. The templates are <code>Angelov</code>, <code>CurticeQuadratic</code>, <code>CurticeCubic</code>, <code>Statz</code> and <code>Materka</code> for <code>Id</code>, and <code>Diode</code> for <code>Ig</code>.</td>
+</tr>
+<tr>
+<td><code>IdFloor</code></td>
+<td>0.1: <code>Id</code> is fitted to each point's own value down to this fraction of the largest current, and to that floor below it.</td>
+</tr>
+<tr>
+<td><code>IgFloor</code></td>
+<td>1e-4: <code>Ig</code> is fitted to the same ratio everywhere above this fraction of the largest gate current (<code>I0</code> of its <code>Transform</code>).</td>
+</tr>
+<tr>
+<td><code>GateSplit</code></td>
+<td><code>Sign</code> (the default): at <code>vds ≥ 0</code> a forward gate current is the gate–source branch and a reverse one the gate–drain branch, the other way round at <code>vds &lt; 0</code>. <code>GateSource</code> or <code>GateDrain</code> puts all of it in one branch.</td>
+</tr>
+<tr>
+<td><code>Symmetry</code></td>
+<td><code>Exchange</code>: fit <code>vds ≥ 0</code> only, for a model with drain–source symmetry.</td>
+</tr>
+<tr>
+<td><code>SmallestSwing</code></td>
+<td>0.05 V: a table whose step is more than twice this warns that low-level intermodulation is unreliable.</td>
+</tr>
+<tr>
+<td><code>Seed</code>, <code>Restarts</code>, <code>HeldOutFraction</code></td>
+<td>1, 3 and 0.1: the same seed gives the same model; each network is trained from that many starts; that fraction of the points, spread over the domain, is never trained on and reports the error.</td>
+</tr>
+<tr>
+<td><code>Dispersion</code></td>
+<td>Present to fit <code>IdRF</code>: <code>Tau</code> (1e-6 s), <code>DataSets</code> (absent: every S-parameter set), <code>Reference</code> (<code>[vgs, vds]</code> where <code>IdRF</code> equals <code>Id</code>; absent: the S point nearest the middle) and <code>Hidden</code>.</td>
+</tr>
+</tbody>
+</table>
+<p><code>Result</code> holds the fitted constituents exactly as the <code>.cmodel</code> will (<code>Constituents</code>), their <code>Gx</code>, <code>Tau</code>, and
+<code>Arrays</code> — the name of the cache file holding their arrays — then per current the training and held-out RMS
+error, absolute and relative to the range (<code>Errors</code>), <code>Conductance</code> (the fitted Gm and Gds against the data's
+own DC derivatives), <code>Symmetry</code> (with <code>Exchange</code>: the value, slope and gate jumps at <code>vds = 0</code>), <code>Eq649</code> (the
+share of the RF conductances no single current reproduces), <code>Reference</code>, with traps the <code>Traps</code> block exactly as the
+<code>.cmodel</code> will carry it and <code>DcIv</code> (the DC I–V's RMS error at its DC trap states: <code>Count</code>, <code>Rms</code>, <code>Relative</code>), and the
+<code>Report</code> lines.</p>
+<p><code>Steps.Charge</code> is the gate and drain charges' step, with the same three fields. The charges are fitted to the
+intrinsic capacitances of the S-parameter sets, averaged over the <code>FlatnessBand</code>. A document with no S data has none to
+fit: the step writes <code>Linear</code> charges from <code>Typed</code> instead. <code>Settings</code> holds:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DataSets</code></td>
+<td>The S-parameter sets to fit to. Absent: every set with S data. One trap state, as for the currents, unless <code>Traps</code> models trapping: then an <code>ANN</code> <code>Qd</code> takes the trap states when pulsed S-parameters give each a level, and <code>Qg</code> never does. At two or more temperatures an <code>ANN</code> charge takes <code>T</code> as an input; any other method is fitted temperature-independent.</td>
+</tr>
+<tr>
+<td><code>Qg</code>, <code>Qd</code></td>
+<td>Each <code>Method</code> (<code>ANN</code>, the default, <code>Table</code> or <code>Equation</code>) and that method's settings: <code>Hidden</code> (<code>[8, 8]</code>), <code>Activation</code> and <code>MaxIterations</code> (3000) for a network, trained on the charge's two capacitances; <code>GridStep</code> (0.1 V), <code>Interpolant</code> (<code>ANN</code>, or <code>RBF</code> through the points themselves), <code>Path</code> (<code>A</code>, <code>B</code> or <code>Mean</code>, the default) and <code>Smoothing</code> for a table integrated from the capacitances; <code>Template</code> (<code>Depletion</code>, <code>Angelov</code> or <code>Linear</code>) or the user's own <code>Expression</code>, with <code>Parameters</code> and <code>Algorithm</code>, for an equation.</td>
+</tr>
+<tr>
+<td><code>Anchor</code></td>
+<td><code>[vgs, vds]</code> where both charges are zero. Absent: <code>[0, 0]</code>, or the data point nearest it when it lies outside the data.</td>
+</tr>
+<tr>
+<td><code>FlatnessLimit</code></td>
+<td>0.1: a point whose <code>C11</code> or <code>C22</code> varies across the band by more than this fraction of its mean counts for less.</td>
+</tr>
+<tr>
+<td><code>Seed</code>, <code>Restarts</code>, <code>HeldOutFraction</code></td>
+<td>1, 3 and 0.1, as for the currents.</td>
+</tr>
+<tr>
+<td><code>Drift</code></td>
+<td>Present to fit the drift decomposition instead of <code>Qg</code> and <code>Qd</code>'s methods: <code>Lambda</code> (0), <code>VdsZero</code> (0.05 V — the points this close to <code>vds = 0</code> fit the depletion charges), <code>Hidden</code> and <code>MaxIterations</code>. Needs the current step: the drift charge reads its <code>Id</code>.</td>
+</tr>
+<tr>
+<td><code>Typed</code></td>
+<td>Constant capacitances in farads for a document with no S data: <code>Cgs</code>, <code>Cgd</code>, <code>Cds</code> and <code>Cm</code>, each 0 when absent. <code>Cgs</code>, <code>Cgd</code> and <code>Cds</code> are never negative; <code>Cm</code>, a transcapacitance, may be. A datasheet gives <code>Cgd = Crss</code>, <code>Cgs = Ciss − Crss</code> and <code>Cds = Coss − Crss</code>. They become <code>C11 = Cgs + Cgd</code>, <code>C12 = −Cgd</code>, <code>C21 = Cm − Cgd</code> and <code>C22 = Cds + Cgd</code> of the <code>Linear</code> charges. Absent with no S data: all four are 0. Present beside S data: the step refuses, since typing would discard the data.</td>
+</tr>
+</tbody>
+</table>
+<p><code>Result</code> holds <code>Constituents</code> (<code>Qg</code> and <code>Qd</code> exactly as the <code>.cmodel</code> will), <code>Arrays</code>, <code>Anchor</code>, <code>Errors</code> (per
+capacitance <code>C11</code>, <code>C12</code>, <code>C21</code>, <code>C22</code>: the RMS error of the fitted charge's derivative, and that as a fraction of
+the capacitance's range), <code>PathDifference</code> (a table's two integration paths' RMS difference as a fraction of the
+charge's range), <code>CdsSpread</code> (with <code>Drift</code>: how much <code>Cds</code> varies across <code>vgs</code> at a fixed <code>vds</code>, which <code>QDS</code> cannot
+follow), with a trapped <code>Qd</code> the <code>Traps</code> block, <code>Points</code> (the number of S biases the charges were fitted to), <code>Typed</code>
+(the four capacitances the charges were written from, when there was no S data), and the <code>Report</code> lines.</p>
+<p><code>Steps.Thermal</code> is temperature and self-heating: <code>Settings</code> and the <code>Result</code> of the last run. With the data at one
+temperature the model is valid at that temperature only and self-heating is unavailable. <code>Settings</code> holds:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SelfHeating</code></td>
+<td><code>true</code> to give the model a thermal node, and to put each DC point at its junction temperature. Needs two or more temperatures.</td>
+</tr>
+<tr>
+<td><code>Rth</code></td>
+<td>A typed thermal resistance in °C/W. Absent: extracted from pulsed I–V at two or more chuck temperatures and DC I–V at the same biases.</td>
+</tr>
+<tr>
+<td><code>RthModel</code></td>
+<td><code>Constant</code> (the default) or <code>Linear</code>: an extracted thermal resistance that varies linearly with the ambient.</td>
+</tr>
+<tr>
+<td><code>Cth</code>, <code>TauTh</code>, <code>Ladder</code>, <code>FitTau</code></td>
+<td>At most one: a thermal capacitance in J/°C; a thermal time constant in s; a ladder of <code>{ &quot;Fraction&quot;, &quot;Tau&quot; }</code> poles whose fractions of <code>Rth</code> add up to 1; or <code>true</code> to fit the time constant to the low-frequency roll-off of the S data's Re Y22, which is refused while traps are modelled.</td>
+</tr>
+<tr>
+<td><code>PulsedSets</code>, <code>DcSets</code></td>
+<td>The sets the extraction reads. Absent: every <code>PulsedIv</code> set whose quiescent bias dissipates nothing, and every <code>DcIv</code> set.</td>
+</tr>
+<tr>
+<td><code>MinPower</code></td>
+<td>0.1: DC points dissipating less than this fraction of the largest DC power are left out of the extraction.</td>
+</tr>
+<tr>
+<td><code>Isothermal</code></td>
+<td>How the isothermal drain current is built, with the same fields as the current step's <code>Id</code>. Absent: the current step's own.</td>
+</tr>
+<tr>
+<td><code>TauSets</code></td>
+<td>The S-parameter sets <code>FitTau</code> reads. Absent: every <code>SParams</code> set.</td>
+</tr>
+</tbody>
+</table>
+<p><code>Result</code> holds <code>Temperatures</code> (the data's), <code>Rth</code>, <code>RthSlope</code> and <code>Tref</code>, <code>RthSource</code> (<code>Extracted</code> or <code>Typed</code>),
+<code>Poles</code> (the thermal network's <code>Rth</code> and <code>Cth</code>, absent until its dynamics are set), <code>TauTh</code>, <code>Extraction</code> (the fit's
+residual in K and relative to the temperature rise, the points used, those left out for low power and those
+unresolved, and the vgs, vds and power ranges of the points used), <code>TauFit</code> and the <code>Report</code> lines.</p>
+<p><code>Steps.Traps</code> is trapping: <code>Settings</code> and the <code>Result</code> of the last run. The <code>Trained</code> coupling needs pulsed I–V; the
+<code>Shift</code> coupling does not, and maps no data to trap states. A pulsed set's trap state
+is set by its <code>PrePulse</code> level when it has one, else its <code>Quiescent</code> bias. A point pulsed toward that bias — no lower
+in <code>vgs</code> for gate-lag, no higher in <code>vds</code> for drain-lag — is at that bias's trap state; one pulsed beyond it is placed
+by the set's <code>TrapState</code>: <code>auto</code> (the default) uses it to check the model only, <code>setting</code> puts it at the bias's trap
+state, <code>extreme</code> at the pulse's own. DC points are at their DC state. A state trained from one trap level is used
+with a warning; one with none cannot be enabled. <code>Settings</code> holds:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Model</code></td>
+<td><code>None</code> (the default), <code>CaptureEmission</code> or <code>Custom</code>.</td>
+</tr>
+<tr>
+<td><code>Coupling</code></td>
+<td><code>Trained</code> (the default) or <code>Shift</code>. Under <code>Shift</code> the current step fits a trap-free <code>Id</code> to the DC I–V and this step fits the strengths.</td>
+</tr>
+<tr>
+<td><code>States</code></td>
+<td>The enabled states. Absent: drain-lag (<code>phi2</code>) for <code>CaptureEmission</code>, every state with expressions for <code>Custom</code>.</td>
+</tr>
+<tr>
+<td><code>Emission</code></td>
+<td><code>Constant</code> (the default) or <code>ThermallyActivated</code>, which needs each enabled state's <code>Ea</code>. <code>CaptureEmission</code> only.</td>
+</tr>
+<tr>
+<td><code>Parameters</code></td>
+<td>The model's parameters, as the <code>.cmodel</code> names them. Absent ones take their defaults: capture 10 ns, emission 1 ms, <code>Xref</code> 1 V, <code>Vc</code> 50 mV, <code>Tref</code> 25 °C. Under <code>Shift</code>, a <code>ShiftDrain</code> or <code>ShiftGate</code> here is typed and is not fitted.</td>
+</tr>
+<tr>
+<td><code>Expressions</code></td>
+<td><code>Custom</code>: per state, <code>{ &quot;Dynamics&quot;: …, &quot;Dc&quot;: … }</code>.</td>
+</tr>
+<tr>
+<td><code>DcIv</code></td>
+<td><code>Target</code> (the default): the DC I–V trains the model. <code>Validation</code>: it is held out, and only checks it.</td>
+</tr>
+</tbody>
+</table>
+<p><code>Result</code> holds <code>Levels</code> (per state, the trap-setting levels in the data, V), <code>Beyond</code> (per state, the pulsed points
+beyond their bias used only to check the model) and the <code>Report</code> lines. Under <code>Shift</code> it holds <code>Coupling: &quot;Shift&quot;</code>,
+<code>Strengths</code> (per strength, <code>{ &quot;Value&quot;, &quot;Error&quot; }</code> in V/V; a typed strength has no <code>Error</code>) and <code>Residual</code> (<code>Points</code>, the
+number of S biases fitted, and <code>Gm</code> and <code>Gds</code>, the RMS residuals in S of <code>gm_RF = (1 − ShiftGate)·gm</code> and
+<code>gds_RF = gds + ShiftDrain·gm</code>) instead of <code>Levels</code> and <code>Beyond</code>.</p>
+<p><code>Steps.Passive</code> is a <code>Passive</code> document's model: <code>Settings</code> and the <code>Result</code> of the last fit. <code>Settings</code> holds:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Set</code></td>
+<td>The passive data set. Absent: the document's only one.</td>
+</tr>
+<tr>
+<td><code>Block</code></td>
+<td>The block one fit reads, by its source. Absent: the set's only one. Not with <code>Family</code>.</td>
+</tr>
+<tr>
+<td><code>Topology</code></td>
+<td>A library topology — <code>series-rlc</code>, <code>parallel-rlc</code>, <code>inductor-skin</code>, <code>capacitor-esr-esl</code>, <code>resistor-parasitics</code>, <code>pi</code>, <code>tee</code>, <code>bond-wire</code>, <code>via</code>, <code>spiral</code>, <code>mim</code>, <code>tline-pads</code> — or a <code>.csch</code> relative to the <code>.cmc</code> whose pins 1…N are the ports.</td>
+</tr>
+<tr>
+<td><code>Variables</code></td>
+<td>Per variable <code>Min</code>, <code>Max</code>, <code>Lock</code>, <code>Tie</code> and <code>Value</code>, as the network block has them. Bounds default to 0 … 1000× the starting value.</td>
+</tr>
+<tr>
+<td><code>Fit</code></td>
+<td><code>Weighting</code> (<code>Uniform</code>, or <code>Band</code> with <code>Band</code> in Hz and <code>Emphasis</code>, default 10), <code>Starts</code> (2), <code>Seed</code> (1), <code>Algorithm</code> (<code>cmaes</code> or <code>de</code>), <code>Budget</code>, <code>ProposalBudget</code> (40 per variable), <code>PoorRelativeError</code> (0.2), <code>PoorCorrelation</code> (0.95).</td>
+</tr>
+<tr>
+<td><code>Family</code></td>
+<td>Fit every block as one model over a geometry: <code>Geometry</code> (the parameter's name, e.g. <code>turns</code>), <code>Form</code> (<code>Auto</code>, <code>Constant</code>, <code>Linear</code>, <code>Quadratic</code>, <code>Cubic</code> or <code>Rational</code>), <code>Monotone</code>, <code>HeldOut</code> (the geometry checked and not trained on; absent: the middle one).</td>
+</tr>
+<tr>
+<td><code>Export</code></td>
+<td><code>Cell</code>, <code>Library</code> (a folder relative to the <code>.cmc</code>) and an optional <code>Symbol</code> (<code>.csym</code>); absent symbol: a box with N pins.</td>
+</tr>
+</tbody>
+</table>
+<p><code>Result</code> holds the <code>Topology</code>, the fitted <code>Values</code> (base SI), <code>Cost</code>, <code>RmsDeltaS</code> and <code>Aic</code>, a family's laws
+(<code>Family</code>: the geometry's range, the held-out geometry and its |ΔS|, and per variable its <code>Form</code> and <code>Coefficients</code> in
+the normalised geometry <code>(g − Mid)/Half</code>), and the <code>Report</code> lines. The exported cell's parameters are the variables,
+defaulting to the fitted values; a family's are the geometry first and every element as an expression of it, with a
+warning when a schematic sets the geometry outside the range the family was fitted over.</p>
+<p>The data read from the sources is cached in <code>&lt;name&gt;.cmc-cache/</code>. When a source changes it is read
+again; when one goes missing the cached copy is used, with a warning. A step's arrays are cached there
+too, and a missing one is fitted again. The cache can be deleted at any time. <code>circuitrf check</code> reads a
+<code>.cmc</code> and names the field of anything it refuses.</p>
 <h2 id="hierarchy">Workspace › Library › Cell</h2>
 <p>The conceptual hierarchy maps to folders of the small files above — never one monolithic blob.</p>
 <h3 id="cell-a-folder-of-views">Cell = a folder of views</h3>

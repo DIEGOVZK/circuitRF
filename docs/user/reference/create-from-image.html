@@ -1643,6 +1643,10 @@ calibrate it; a third replaces the older of the two. This also corrects an axis 
 values you give replace what was read. Each value is written into the plot's <strong>x axis</strong> or <strong>y axis</strong> row as a pixel
 position and its value, <code>120px=1GHz,900px=5GHz</code>, and the row can be typed directly in that form. A logarithmic axis is
 read as one from its labels.</p>
+<p><strong>A y axis on the right.</strong> Many datasheets draw two quantities against one frequency axis — dB(S21) against the
+left axis and its phase against the right, or gain and noise figure. The right axis is read from its own labels, and the
+plot's row gains <strong>y2 axis (right)</strong>, which waits and is typed or clicked exactly as the y row is: a label clicked right
+of the plot gives a y2 value. A plot with an axis on the right only reads it as its <strong>y axis</strong>, and says <em>(right)</em>.</p>
 <p>The right column has three panes, each scrolling on its own; drag the grip between two panes to give one more room.
 <strong>Plots</strong> is at the top: choosing a plot lists its traces in <strong>Traces</strong> below and shows its picture, and choosing a
 trace on the canvas chooses its plot. <strong>Output</strong> at the bottom holds the matrix, the output grid and the report.</p>
@@ -1650,6 +1654,12 @@ trace on the canvas chooses its plot. <strong>Output</strong> at the bottom hold
 <strong>quantity</strong> say what it is — S21 in dB, S11 as phase, a chart's complex value, VSWR, return loss and so on
 — taken from a legend entry in its colour, a label along it, the y axis's title or the plot's title, and the dot
 says how sure that is. A curve nothing names is <strong>Unassigned</strong>, and the Touchstone waits for you to say which entry it is.</p>
+<p>On a plot with a y axis on both sides, <strong>Axis</strong> says which one a curve is read against, <strong>Left</strong> or <strong>Right</strong>; its
+tooltip says why. It is taken from a mark in the curve's legend entry, from an axis title or labels printed in the
+curve's colour, or from the curve's quantity matching one axis title — a phase curve against <code>Phase (deg)</code>. When
+nothing says, the left is assumed and an amber dot beside Axis asks you to check it. On the picture a curve read
+against the right axis is labelled <code>→ R</code>. Choosing an axis is undone with <strong>Undo</strong> like any assignment, and in Simple
+view it moves every piece of the curve.</p>
 <p><strong>Ports</strong>, in the Traces heading, is how many ports the file has, 1 to 4. Left empty it is the highest port any trace
 names, at least 2, shown faintly in the box. The entry lists offer S11 up to that many ports. Lowering it clears no
 assignment: a trace already given an entry beyond it shows <code>S41 · beyond 2 ports</code> and the Touchstone waits until the
@@ -1662,6 +1672,31 @@ be a curve (a legend sample) is listed last, dimmed. <strong>Detailed</strong> l
 in either view stays in the other, and a Simple row whose pieces differ shows <em>mixed</em>. Pieces given the same entry and
 quantity are joined into one curve before the Touchstone is made, and the report names them:
 <code>joined S21 db: T37 + T39 + T42 + T50</code>.</p>
+<p><strong>Fit.</strong> A curve read off a picture steps by one pixel's worth of value and carries the wobble of the pen's edge.
+<strong>Fit</strong> under a curve's row smooths it: <strong>Linear</strong>, <strong>Exponential</strong>, <strong>Polynomial</strong> (with its degree, 1 to 8, 3 when
+left empty) or <strong>Spline</strong>. The fitted curve replaces what was read in the Touchstone. It is fitted in the units the curve
+is drawn in — dB, degrees — against frequency in the axis's unit, or its logarithm on a logarithmic axis. A
+<strong>Spline</strong> follows the curve as closely as one pixel unless you type how far it may stand from it, in the curve's own
+units (<code>0.05</code>). Pieces joined into one curve share one fit, so in Simple view the fit is set on the colour row. A Smith
+or polar curve is not fitted.</p>
+<p>Under a fitted row is its equation with the unit of its variable, <code>-0.51 + 0.012*f - 0.00041*f^2 · f in GHz</code> (a spline
+says <code>spline · 412 knots</code>), and how far it stands from what was read, <code>RMS 0.012 dB (0.3 px)</code>. Under about half a pixel
+it follows the drawing; several pixels means another model fits better. <strong>Copy</strong> puts the equation on the clipboard, in
+the form a variable or a parameter takes. On the picture the fit is drawn thin and dashed over its curve, so a fit that
+misses shows at once. An exponential that cannot describe the curve says so and leaves the curve as read. Choosing a
+fit is undone with <strong>Undo</strong>.</p>
+<p><strong>Reading a value off a curve.</strong> Hold the pointer near a traced curve and a crosshair snaps to it, with what the curve
+reads there beside it: <code>T3 · 2.437 GHz · −12.31 dB</code>, or on a Smith chart <code>T3 · Γ 0.41 ∠ −63° · 2.40 GHz</code> (<em>no
+frequency</em> until the trace has one). The readout follows the curve itself, between the points read, and gives no more
+digits than one pixel of the picture resolves. With a fit set it adds the fit's value, <code>fit −12.29 dB</code>.</p>
+<p><strong>Points.</strong> The <strong>Point</strong> tool, beside the box tools, pins a point where you click on a curve; it stays on until
+<strong>Escape</strong> or the button is clicked again, and a click away from every curve is refused. Each point is a numbered dot on
+the picture and a row under <strong>Points</strong>, <code>P1 · T3 · 2.437 GHz · −12.31 dB</code>. <strong>✕</strong> removes one, as does clicking its dot
+and pressing <strong>Delete</strong>. To read a curve at an exact frequency, select its row, type the frequency in the box under
+<strong>Points</strong> (<code>2.4 GHz</code>, as an axis row takes it) and press <strong>Pin</strong> or Enter: the value there is pinned, worked out between
+the curve's two nearest points read. A frequency outside the curve's range is refused. <strong>Copy</strong> puts every point on the
+clipboard as tab-separated columns — point, trace, x, x unit, y, y unit — ready to paste into a spreadsheet.
+Points belong to the dialog: reading the picture again keeps them on their curves, and nothing writes them to a file.</p>
 <p><strong>Frequency along a Smith or polar trace.</strong> A chart has no frequency axis. It comes from markers on the trace whose
 readouts show their frequency, or from a rectangular plot of the same entry in the session, matched point by point; with
 neither, the trace's <strong>Start</strong> and <strong>Stop</strong> are highlighted and wait for you. Between known frequencies they are spread
@@ -1708,7 +1743,9 @@ its header records each picture's name, how every trace was read and every fill 
 pictures beside the file</strong>, each picture is copied beside it as <code>&lt;name&gt;.source.png</code>. The new file opens in the Data
 Display, and its passivity, reciprocity and causality check goes to Messages.</p>
 <p><strong>CSV</strong> writes the curves exactly as read, in each plot's own units, and never waits: any plot digitises, S-parameters
-or not — a temperature against time comes out just as well.</p>
+or not — a temperature against time comes out just as well. Its <code>y_axis</code> column says which y axis each
+rectangular curve was read against, and its last column, <code>y_fit</code>, holds a fitted curve's fit at each point beside the
+value read.</p>
 <table>
 <thead>
 <tr>

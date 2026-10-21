@@ -15,8 +15,9 @@ is an open stub, then a series 2.2 pF capacitor (0402), a shunt inductor (0402) 
 and a series 10 Ω resistor (0603), and leaves at the top edge. Two copper layers on a 254 µm laminate, the bottom
 layer a solid ground plane.
 
-**The bill of materials has no row for L1, on purpose.** A real BOM is often incomplete, and an unknown value is what
-the recognition turns into a variable for you to tune.
+**The bill of materials gives no value for L1, on purpose.** A real BOM is often incomplete, and an unknown value is
+what the recognition turns into a variable for you to tune. L1 still has its row: a part the BOM does not list at all
+is read as not fitted.
 
 ---
 
@@ -49,7 +50,7 @@ line leaves the board, seven `MLIN`s, a bend and a tee, and one open line end �
 | R1 | R | series | 0603 | 10 Ohm |
 
 Select a row and its pads are marked on the layout. C1 and R1 take their values from the BOM. L1's kind comes from
-its designator and its case from the land pattern, but nothing states its value, so it becomes the global variable
+the BOM's description and its case from the land pattern, but nothing states its value, so it becomes the global variable
 **`L1_L`**, starting at 1 µH — a shunt inductor large enough to be invisible, so the first simulation shows the lines
 alone. You could type a value into the cell now; leave it empty to tune it in step 5.
 

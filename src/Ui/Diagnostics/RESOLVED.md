@@ -702,3 +702,20 @@ process can do this**; sibling radios should not carry one.
 "Checking…" in the light variant and the found path in the dark — and the committed figure bakes in
 the generating machine's gmsh path. `workspace-overview`'s light and dark variants draw different
 documents (the dark one has the layout editor in front; 179 vs 137 text runs), as committed.
+
+## Model Composer figures; a literal `{{` in a code block stops the run (2026-10-20)
+
+**DocGen has no escape for a literal double brace.** The placeholder pass only expands `{{kind: arg}}`,
+then fails the page if any `{{…}}` survives into the HTML — and the check runs on the rendered page, so
+a fenced code block is no shelter. `cmodel.md`'s Octave example wrote `struct('Inputs', {{'vgs', 'vds'}})`
+and stopped every page run. The example now names the cell array (`vv = {'vgs', 'vds'}`) and passes
+`{vv}`, which `jsonencode` turns into the same JSON (checked in Octave). Write any such code the same
+way rather than adding an escape to the pipeline.
+
+**A Model Composer panel lifted out of its window must take the window's styles with it.** The panes,
+cards, tool buttons and lit lamps are `ModelComposerWindow`'s `Window.Styles`, not the panels' own;
+`DocModelComposerFixtures.Styled` moves them from a throwaway window onto the panel's host. **The
+example opens from a copy of the WHOLE workspace**, not its folder: `synthetic-gan`'s network is a
+schematic in the sibling `GaNTwoShell` cell, and with only the folder copied the document opened with
+no network and an empty Values table. The lasso is captured mid-drag (`DragBegin` and `DragTo`, never
+`DragEnd`), since its loop is drawn only while the drag is held.

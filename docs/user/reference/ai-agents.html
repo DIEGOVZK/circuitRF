@@ -47,6 +47,7 @@
 <li><a href="#brief">What to tell it</a></li>
 <li><a href="#topics">The reference topics it should read</a></li>
 <li><a href="#flow">The design flow that works</a></li>
+<li><a href="#model">Building a device model from data</a></li>
 <li><a href="#em">EM runs: check the cost first</a></li>
 <li><a href="#traps">Where agents go wrong</a></li>
 <li><a href="#safety">Keeping its work reversible</a></li>
@@ -209,6 +210,11 @@ usually needs them:</p>
 <td>before the first <code>.cem</code></td>
 <td>solver, mesh, ports and sweep</td>
 </tr>
+<tr>
+<td><code>cmodel</code></td>
+<td>before writing a FET model without the Model Composer</td>
+<td>every field of a <code>.cmodel</code>, the arrays' layout, and complete Python and MATLAB scripts</td>
+</tr>
 </tbody>
 </table>
 <p><strong>Start from <code>component-index</code>, then ask for one type at a time.</strong> <code>reference components</code> with no
@@ -268,6 +274,37 @@ runs; <code>design=ccf</code> on the few that matter fits a curved model, and <c
 model's best point with a simulation.</li>
 </ol>
 <p>The <em>Yield, Corners and Centering</em> example is a working copy of each of these steps.</p>
+<h2 id="model">Building a device model from data</h2>
+<p>The <code>model</code> tool is the <a href="model-composer.html">Model Composer</a> without the window. Each <code>noun</code> is one of the window's
+runs and calls the same function, so a document an agent builds opens in the window exactly as it left it.</p>
+<ol>
+<li><code>reference</code> with topic <code>cmc</code> gives the document's format, including every step's settings. Read it first.</li>
+<li><code>model</code> with <code>noun=new</code>, <code>kind=active</code>, a stock <code>network</code> (<code>gan-two-shell</code>) or a six-pin <code>.csch</code>, and <code>fingers</code> and
+<code>unitWidth</code> for the measured device's periphery, creates the <code>.cmc</code>.</li>
+<li><code>model</code> with <code>noun=import</code> adds one data set per call. Give the kind with <code>as</code>, the bias pattern of a Touchstone
+folder with <code>pattern</code>, and what each CSV column holds with <code>map</code> (<code>Vgs=vgs:V</code>). State every condition the data was
+measured under with <code>condition</code>: <code>ReferencePlane</code>, <code>AmbientC</code>, and for a pulsed set its <code>Quiescent</code> (and <code>PrePulse</code>)
+bias and timing. A condition left out is a guess a later step makes for you, or a refusal.</li>
+<li><code>model</code> with <code>noun=deembed</code> removes the pads and the network and reports each set's intrinsic range. Data that does
+not reach the voltages the circuit will see should be noted here.</li>
+<li>Write the settings the fit needs into the <code>.cmc</code> with your own file tools: which network values are free, self-heating
+and Rth, the trap model. Then run <code>check</code> on the <code>.cmc</code>, which refuses a misspelt key by name.</li>
+<li><code>model</code> with <code>noun=fit</code> and <code>step=all</code> fits every step in order. It writes its results into the <code>.cmc</code>. The report
+lines give each constituent's held-out error and every warning.</li>
+<li><code>model</code> with <code>noun=check-charge</code> checks charge conservation (exit 3 above the threshold). <code>noun=validate</code> compares
+the model with every data set at the plane it was measured at (exit 3 when a tolerance is missed).</li>
+<li><code>model</code> with <code>noun=export</code> and <code>output</code> writes the <code>.cmodel</code>. Place it in a netlist as
+<code>ComposedFET:X1 g d 0 File=fet.cmodel N=8</code> and <code>run</code> it like any other device.</li>
+</ol>
+<p>A model that does not come from data — equations from a paper, a table another simulator wrote, a network trained in
+another framework — needs no <code>.cmc</code>. <code>reference</code> with topic <code>cmodel</code> gives the file and scripts that write it; the agent
+runs its script with its own tools and then calls <code>check</code> on the <code>.cmodel</code>.</p>
+<p><code>model</code> with <code>noun=explain</code> says, at any point, what the document holds: each data set and its plane, each step as fresh,
+stale or absent, each network value with its error, and the trap levels each state was trained from. It fits nothing.</p>
+<p><strong>Where agents go wrong here.</strong> They guess a condition rather than ask for it: the reference plane and the pulse's
+quiescent point change the answer, and neither can be read from the numbers. They take a model whose data stops at the
+bias point to large signal: outside the data a model is extrapolated, and a gate swinging past the last measured <code>Vgs</code>
+is not the device. They also report the fit's training error as accuracy. <code>validate</code> is the comparison to quote.</p>
 <h2 id="em">EM runs: check the cost first</h2>
 <p>An EM run is the one step that can take hours. Before starting one, the agent should run <code>check</code> on
 the <code>.cem</code> and read its mesh budget: the number of unknowns, the solver's ceiling, and the mesher's

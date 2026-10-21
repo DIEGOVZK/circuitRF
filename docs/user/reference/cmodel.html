@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>circuitRF — Writing a .cmodel</title>
+<link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/css/circuitrf-docs.css">
+<!--
+  GENERATED FILE - do not edit. Edit the Markdown source named below and re-run:
+      dotnet run [project tools/DocGen] [flag out] docs/user
+  (XML comments cannot contain a double hyphen; the flags are ordinary ones.)
+  Source: docs/user/src/reference/cmodel.md
+-->
+</head>
+<body>
+
+<header class="doc-header">
+  <a class="brand" href="../index.html"><img class="logo" src="../assets/img/favicon.svg" alt="circuitRF"><span class="wordmark">circuitRF</span></a>
+  <a class="doc-kind" href="index.html">Reference Guide</a>
+  <div class="doc-search" data-crf-search data-root="../" hidden>
+    <input type="search" class="search-input" autocomplete="off" spellcheck="false"
+           aria-label="Search the documentation" placeholder="Search docs"
+           role="combobox" aria-expanded="false" aria-autocomplete="list">
+    <div class="search-panel" role="listbox" hidden></div>
+  </div>
+</header>
+<hr class="doc-headrule">
+
+<main class="page">
+  <div class="page-top">
+    <p class="breadcrumb"><a href="../index.html">Docs</a> › <a href="index.html">Reference</a> › Writing a .cmodel</p>
+    <nav class="page-nav-top" aria-label="Previous and next page">
+      <a class="prev" href="model-composer.html" title="Previous: Model Composer"><span class="arrow">‹</span><span class="name">Model Composer</span></a>
+      <a class="next" href="match.html" title="Next: The Match Component"><span class="name">The Match Component</span><span class="arrow">›</span></a>
+    </nav>
+  </div>
+
+  <h1>Writing a .cmodel</h1>
+  <p class="lede">The composed FET model file, field by field, with complete scripts that write one — so a model from equations, a table or a neural network you trained elsewhere runs as a ComposedFET without the Model Composer.</p>
+
+<nav class="toc">
+<h2>On this page</h2>
+<ol>
+<li><a href="#what">What a .cmodel is</a></li>
+<li><a href="#example">A complete model in one script</a></li>
+<li><a href="#reading">How circuitRF reads it</a></li>
+<li><a href="#container">The container</a></li>
+<li><a href="#fields">model.json, field by field</a></li>
+<li><a href="#core">The core: terminals, signs and units</a></li>
+<li><a href="#equation">Equation constituents</a></li>
+<li><a href="#network">The extrinsic network</a></li>
+<li><a href="#npy">Arrays: the .npy entries</a></li>
+<li><a href="#table">Table constituents</a></li>
+<li><a href="#ann">ANN constituents</a></li>
+<li><a href="#domain">Training domain and extrapolation</a></li>
+<li><a href="#optional">Temperature, self-heating, traps and dispersion</a></li>
+<li><a href="#checking">Checking and running it</a></li>
+<li><a href="#agents">For an AI agent</a></li>
+<li><a href="#pitfalls">Tips and pitfalls</a></li>
+</ol>
+</nav>
+<h2 id="what">What a .cmodel is</h2>
+<p>A <code>.cmodel</code> is a nonlinear FET model that a <a href="components.html#composedfet"><code>ComposedFET</code></a> places in a circuit. It holds
+an extrinsic network of ordinary R, L, C and mutual elements, and a nonlinear core on the network's intrinsic gate,
+drain and source. The core has four <strong>constituents</strong>: the drain current <code>Id</code>, the gate current <code>Ig</code>, and the gate and
+drain charges <code>Qg</code> and <code>Qd</code>. Each constituent is one of three methods:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>What the file holds</th>
+<th>Needs arrays</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Equation</code></td>
+<td>An expression in <code>vgs</code>, <code>vds</code> (and <code>T</code>) with named constants</td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>Table</code></td>
+<td>Values on a grid and the coefficients of a cubic spline through them</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>ANN</code></td>
+<td>The weights of a small feed-forward network</td>
+<td>Yes</td>
+</tr>
+</tbody>
+</table>
+<p>The <a href="model-composer.html">Model Composer</a> writes a <code>.cmodel</code> from measured or simulated data. Anything else can write
+one too: a Python or MATLAB script, a fitting tool of your own, or an AI agent. The methods can be mixed, so a model
+with a tabulated drain current and equation charges is ordinary. <strong>An all-equation model is the shortest route</strong>: it is
+one JSON file inside a ZIP, with no arrays.</p>
+<h2 id="example">A complete model in one script</h2>
+<p>This Python script writes <code>fet.cmodel</code>: a four-finger device with an equation for every constituent and a
+series-and-pad network. It needs only the standard library.</p>
+<pre><code class="language-python">import json, zipfile
+
+network = &quot;&quot;&quot;define extrinsic (G D S gi di si)
+  parameters Lg=50p H  Ld=50p H  Ls=5p H  Rg=4 Ohm  Rd=8 Ohm  Rs=6 Ohm  Cpg=20f F  Cpd=20f F
+  C:CPG  G 0  C=Cpg
+  C:CPD  D 0  C=Cpd
+  L:LG   G g1  L=Lg
+  R:RG   g1 gi R=Rg
+  L:LD   D d1  L=Ld
+  R:RD   d1 di R=Rd
+  L:LS   S s1  L=Ls
+  R:RS   s1 si R=Rs
+end extrinsic
+&quot;&quot;&quot;
+
+model = {
+  &quot;FormatVersion&quot;: 1,
+  &quot;Kind&quot;: &quot;Fet&quot;,
+  &quot;Terminals&quot;: [&quot;G&quot;, &quot;D&quot;, &quot;S&quot;],
+  &quot;BasePeriphery&quot;: {&quot;Fingers&quot;: 4, &quot;UnitWidth&quot;: &quot;100 um&quot;},
+  &quot;Temperature&quot;: {&quot;Mode&quot;: &quot;Single&quot;, &quot;T0&quot;: 25},
+  &quot;Network&quot;: {
+    &quot;Netlist&quot;: network,
+    &quot;Scaling&quot;: {&quot;Rg&quot;: &quot;perFingerInverse&quot;, &quot;Rd&quot;: &quot;perFingerInverse&quot;, &quot;Rs&quot;: &quot;perFingerInverse&quot;}
+  },
+  &quot;Core&quot;: {
+    &quot;Constituents&quot;: {
+      &quot;Id&quot;: {
+        &quot;Method&quot;: &quot;Equation&quot;,
+        &quot;Inputs&quot;: [&quot;vgs&quot;, &quot;vds&quot;],
+        &quot;Expression&quot;: &quot;Ipk*(1+tanh(P1*(vgs-Vpk)))*tanh(alpha*vds)*(1+lambda*vds)&quot;,
+        &quot;Parameters&quot;: {&quot;Ipk&quot;: 0.08, &quot;P1&quot;: 2.0, &quot;Vpk&quot;: -1.2, &quot;alpha&quot;: 1.5, &quot;lambda&quot;: 0.02}
+      },
+      &quot;Ig&quot;: {
+        &quot;Method&quot;: &quot;Equation&quot;,
+        &quot;Inputs&quot;: [&quot;vgs&quot;, &quot;vds&quot;],
+        &quot;IgGs&quot;: &quot;Ij*(exp(min(vgs,Vmax)/Vt)-1)&quot;,
+        &quot;IgGd&quot;: &quot;Ij*(exp(min(vgs-vds,Vmax)/Vt)-1)&quot;,
+        &quot;Parameters&quot;: {&quot;Ij&quot;: 1e-9, &quot;Vt&quot;: 0.08, &quot;Vmax&quot;: 1.5}
+      },
+      &quot;Qg&quot;: {
+        &quot;Method&quot;: &quot;Equation&quot;,
+        &quot;Inputs&quot;: [&quot;vgs&quot;, &quot;vds&quot;],
+        &quot;Expression&quot;: &quot;Cgs0*vgs + Cgs1*Vw*log(cosh((vgs-Vpk)/Vw)) + Cgd0*(vgs-vds)&quot;,
+        &quot;Parameters&quot;: {&quot;Cgs0&quot;: 0.1e-12, &quot;Cgs1&quot;: 0.3e-12, &quot;Vw&quot;: 0.5, &quot;Vpk&quot;: -1.2, &quot;Cgd0&quot;: 0.03e-12}
+      },
+      &quot;Qd&quot;: {
+        &quot;Method&quot;: &quot;Equation&quot;,
+        &quot;Inputs&quot;: [&quot;vgs&quot;, &quot;vds&quot;],
+        &quot;Expression&quot;: &quot;Cgd0*(vds-vgs) + Cds0*vds&quot;,
+        &quot;Parameters&quot;: {&quot;Cgd0&quot;: 0.03e-12, &quot;Cds0&quot;: 0.05e-12}
+      }
+    }
+  }
+}
+
+with zipfile.ZipFile(&quot;fet.cmodel&quot;, &quot;w&quot;, zipfile.ZIP_DEFLATED) as z:
+    z.writestr(&quot;model.json&quot;, json.dumps(model, indent=2))
+</code></pre>
+<p><code>circuitrf check fet.cmodel</code> reads it exactly as a placed device will:</p>
+<pre><code class="language-text">note: fet.cmodel: a composed FET model of 4 finger(s) × 100 um, valid at 25 °C only.
+1 document(s) checked: 0 error(s), 0 warning(s), 1 note(s).
+</code></pre>
+<p>Place it in a netlist beside the <code>.cmodel</code> and run it:</p>
+<pre><code class="language-netlist">temp = 25
+VGS = -1
+VDS = 5
+Vdc:VG  g 0  Vdc=VGS V
+IProbe:ID  dd d
+Vdc:VD  dd 0  Vdc=VDS V
+ComposedFET:X1  g d 0  File=&quot;fet.cmodel&quot;  N=4
+analysis DC1 type=dc
+measure Id_A = DC1.I(&quot;ID&quot;)
+</code></pre>
+<p><code>circuitrf dc bench.cnl</code> reports <code>Id_A = 0.0599156</code>. The intrinsic voltages are <code>X1.gi</code>, <code>X1.di</code> and <code>X1.si</code>, and with
+<code>N=8</code> the same file is an eight-finger device. A harmonic-balance or loadpull bench uses it the same way.</p>
+<h2 id="reading">How circuitRF reads it</h2>
+<p>A <code>.cmodel</code> is read once per file and shared by every instance placed on it. It is read again when its size or
+modification time changes, so a script can rewrite it between runs.</p>
+<ol>
+<li><strong>The container.</strong> The file must be a ZIP holding <code>model.json</code> at its root.</li>
+<li><strong><code>model.json</code></strong> is parsed as JSON. Each required field is read by name, and a missing or mistyped one is refused
+with a sentence that starts with the field's path: <code>Core.Constituents.Id.Method: 'Spline' is not a known method; the known methods are Equation, Table, ANN, Drift.</code></li>
+<li><strong>The arrays.</strong> Every <code>arrays/&lt;name&gt;.npy</code> entry is read as one named array, plain or in circuitRF's own layout. A
+folder entry is skipped.</li>
+<li><strong>Validation.</strong> Every rule on this page is checked: each constituent's inputs and payload, each equation's names,
+each table's grid against its coefficients, each ANN's layer sizes, the training domains, the extrinsic
+network and its scaling rules. The first rule broken is the one refused.</li>
+<li><strong>The network</strong> is parsed as <code>.cnl</code> text, and each of its variables is evaluated to a number.</li>
+<li><strong>Per instance</strong>, the device is built as a small circuit: the network's elements with their values scaled to the
+instance's <code>N</code>, and the core on the intrinsic nets <code>gi</code>, <code>di</code>, <code>si</code>. The core's currents and charges are
+multiplied by <code>N/N0</code>.</li>
+</ol>
+<p><code>circuitrf check</code> and a placed <code>ComposedFET</code> call the same reader, so a file that <code>check</code> passes is a file that loads,
+and the refusal sentence is the same in both.</p>
+<p><strong>Fields that are not part of the format are ignored, not refused</strong>, at the top level and inside <code>BasePeriphery</code>,
+<code>Temperature</code>, <code>Network</code> and <code>Core</code>. A misspelt optional block (<code>Thermals</code>, <code>Core.Dispersion</code> spelt <code>Dispertion</code>) is
+read as absent. Inside <code>Thermal</code>, <code>Traps</code>, <code>Extrapolation</code>, a <code>Domain</code> or a <code>Transform</code>, an unknown field is refused
+by name, and inside a constituent an unknown field is read as a payload key and refused.</p>
+<h2 id="container">The container</h2>
+<pre><code class="language-text">fet.cmodel                      a ZIP archive
+├── model.json                  the model, UTF-8 JSON
+└── arrays/                     only for Table and ANN constituents
+    ├── Id.vgs.npy
+    ├── Id.vds.npy
+    ├── Id.values.npy
+    ├── Id.coefficients.npy
+    └── …
+</code></pre>
+<ul>
+<li><code>model.json</code> sits at the archive's root. An archive made by zipping a <em>folder</em> often stores
+<code>fet/model.json</code>, which is refused as <code>the container holds no model.json</code>.</li>
+<li>Each array is its own entry, <code>arrays/&lt;name&gt;.npy</code>, and <code>&lt;name&gt;</code> is the name the constituent refers to (<code>Id.values</code>).</li>
+<li>Entries other than <code>model.json</code> and <code>arrays/*.npy</code> are ignored. Compression and entry dates do not matter.</li>
+</ul>
+<h2 id="fields">model.json, field by field</h2>
+<p>Numbers are in base SI units — volts, amps, coulombs, siemens, seconds, ohms — except temperatures, which are in °C.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FormatVersion</code></td>
+<td><code>1</code>. A file from a newer circuitRF is refused, saying so.</td>
+</tr>
+<tr>
+<td><code>Kind</code>, <code>Terminals</code></td>
+<td><code>Fet</code>; <code>G</code>, <code>D</code>, <code>S</code> — the symbol's pins 1, 2 and 3. Both are required and take exactly these values.</td>
+</tr>
+<tr>
+<td><code>BasePeriphery</code></td>
+<td><code>Fingers</code> (N0) and <code>UnitWidth</code> (<code>&quot;125 um&quot;</code>, a number, a space and a length unit) of the device the constituents describe.</td>
+</tr>
+<tr>
+<td><code>Temperature</code></td>
+<td><code>{ &quot;Mode&quot;: &quot;Single&quot;, &quot;T0&quot;: 25 }</code> — valid at one temperature, with no temperature input — or <code>{ &quot;Mode&quot;: &quot;Range&quot;, &quot;Tmin&quot;: …, &quot;Tmax&quot;: … }</code>, in °C.</td>
+</tr>
+<tr>
+<td><code>Thermal</code></td>
+<td>Self-heating, on a <code>Range</code> model only: <code>{ &quot;Rth&quot;: …, &quot;Cth&quot;: … }</code> in °C/W and J/°C, or a <code>Ladder</code> of up to five such poles, at the base periphery; optionally <code>RthSlope</code> (°C/W per °C) and <code>Tref</code> (°C) for a thermal resistance that varies with the ambient. The device then has a thermal node <code>t</code> whose voltage is the temperature rise, into which it puts its dissipated power, with <code>Rth ∥ Cth</code> (or the ladder) from it to ground; every constituent is evaluated at the run's temperature plus that rise. A symbol's pin 4 is that node, so a heatsink network attached there is in parallel with the model's own. <code>Rth</code> scales by N0/N and <code>Cth</code> by N/N0.</td>
+</tr>
+<tr>
+<td><code>Traps</code></td>
+<td>Trapping: <code>Model</code> (<code>CaptureEmission</code>, <code>Custom</code>, or another installed model), <code>States</code> (the enabled ones: <code>phi1</code> gate-lag, <code>phi2</code> drain-lag), the model's <code>Parameters</code> and the <code>Levels</code> each state was trained at, in volts. Each state is a node of the device whose voltage is the state; the states are inputs of <code>Id</code> and <code>Qd</code>, never of <code>Ig</code> or <code>Qg</code>. <code>Coupling</code> is <code>Trained</code> (the default, never written) or <code>Shift</code>: under <code>Shift</code>, <code>Id</code> takes no state and is evaluated at a shifted gate voltage, <code>Id(vgs − ΔV, vds, T)</code> with <code>ΔV = ShiftDrain·(phi2 − vds) + ShiftGate·(vgs − phi1)</code> over the enabled states, so it equals the trap-free current at every DC bias; <code>ShiftDrain</code> and <code>ShiftGate</code> (V/V) are then in <code>Parameters</code>, one per enabled state. <code>Shift</code> is refused for a model other than <code>CaptureEmission</code>, with an <code>Id</code> that takes a trap state, and with a strength that is missing or not finite. <code>CaptureEmission</code>'s parameters are <code>TauCapt1</code>/<code>TauCapt2</code> and <code>TauEmit1</code>/<code>TauEmit2</code> (s), <code>Xref</code> and <code>Vc</code> (V), and with thermally activated emission <code>Ea1</code>/<code>Ea2</code> (eV) and <code>Tref</code> (°C). A <code>Custom</code> model adds <code>Expressions</code>: per state its <code>Dynamics</code> (dphi/dt, in V/s) and <code>Dc</code> (its DC value) over the state, <code>vgs</code>, <code>vds</code>, <code>T</code> (°C) and its parameters — the <code>Dc</code> without the state itself; the <code>Dc</code> must be a fixed point of the <code>Dynamics</code>. Absent: no traps. Not combined with <code>Core.Dispersion</code> or <code>Core.Symmetry: Exchange</code>.</td>
+</tr>
+<tr>
+<td><code>Network</code></td>
+<td><code>Netlist</code>: <code>.cnl</code> text holding one <code>define</code> block with exactly six pins — extrinsic gate, drain, source, then intrinsic gate, drain, source — and its element values as variables. <code>Scaling</code>: each variable's rule, <code>fixed</code> (the default), <code>perFinger</code> or <code>perFingerInverse</code>. See <a href="#network">The extrinsic network</a>.</td>
+</tr>
+<tr>
+<td><code>Core.Constituents</code></td>
+<td><code>Id</code>, <code>Ig</code>, <code>Qg</code> and <code>Qd</code>, each <code>{ &quot;Method&quot;, &quot;Inputs&quot;, … }</code>, the method one of <code>Equation</code>, <code>Table</code> or <code>ANN</code> (and <code>Drift</code> for the two charges). An <code>Equation</code> carries <code>Expression</code> and <code>Parameters</code> (named constants). A <code>Table</code> names its arrays in <code>Table</code> — a grid of values and the coefficients of the smooth spline through them — and records its <code>Smoothing</code>. An <code>ANN</code> names its arrays in <code>Network</code> and its hidden layers' <code>Activation</code>, <code>Tanh</code> or <code>Sigmoid</code>. <code>Ig</code> carries two of whichever its method uses, <code>IgGs</code> and <code>IgGd</code>. Inputs are <code>vgs</code> and <code>vds</code> in volts, <code>T</code> in °C for a <code>Range</code> model, and the trap states in volts for a model with <code>Traps</code>. Currents are in A, charges in C. An optional <code>IdRF</code> is the drain current at RF, with <code>Core.Dispersion</code>.</td>
+</tr>
+<tr>
+<td><code>Transform</code> (Table, ANN current)</td>
+<td><code>{ &quot;Kind&quot;: &quot;Asinh&quot;, &quot;Scale&quot;: I0 }</code>: the arrays hold <code>u</code>, and the current is <code>I0·sinh(u)</code> — straight through zero within ±I0 and logarithmic beyond, so a current spanning many decades is held to the same ratio throughout.</td>
+</tr>
+<tr>
+<td><code>Drift</code> (<code>Qg</code>, <code>Qd</code>)</td>
+<td>The charges as a gate–source and a gate–drain depletion charge, a drain–source charge, and a drift charge that depends on the gate–drain voltage and the drain current: <code>Qg = QGS + QGD + Qdrift</code>, <code>Qd = −QGD − (1 − Lambda)·Qdrift + QDS</code>. Both charges are <code>Drift</code> or neither. <code>Qg</code> names the networks <code>QGS</code>, <code>QGD</code> and <code>Qdrift</code>, <code>Qd</code> names <code>QGD</code>, <code>Qdrift</code> and <code>QDS</code> and carries <code>Parameters: { &quot;Lambda&quot;: … }</code>, between 0 and 1. The <code>Domain</code>'s <code>Box</code> holds each network's training interval: <code>QGS</code>, <code>QGD</code>, <code>QDS</code>, <code>Qdrift.vgd</code> and <code>Qdrift.Id</code>.</td>
+</tr>
+<tr>
+<td><code>Core.Dispersion</code></td>
+<td><code>{ &quot;Tau&quot;: τ }</code>, in seconds, present exactly when <code>IdRF</code> is: the drain current follows <code>Id</code> at DC and <code>IdRF</code> well above 1/(2πτ), moving between them as one pole.</td>
+</tr>
+<tr>
+<td><code>Domain</code> (Table, ANN)</td>
+<td>Where the constituent was trained: <code>Polygon</code>, a convex list of <code>[vgs, vds]</code> vertices, and <code>Box</code>, an interval per other input. Outside it the constituent is continued in a straight line from the nearest point of the domain; a current also gains a conductance that grows with the distance.</td>
+</tr>
+<tr>
+<td><code>Core.Symmetry</code></td>
+<td><code>Exchange</code>: the constituents describe <code>vds ≥ 0</code>, and a negative <code>vds</code> is the same device with drain and source exchanged. Absent for an asymmetric device.</td>
+</tr>
+<tr>
+<td><code>Extrapolation</code></td>
+<td><code>Gx</code>: for each table or ANN current (<code>Id</code>, <code>IgGs</code>, <code>IgGd</code>, <code>IdRF</code>), the conductance in S that current gains outside its domain.</td>
+</tr>
+<tr>
+<td><code>Symbol</code></td>
+<td>A library symbol's name, or a <code>.csym</code> path relative to the <code>.cmodel</code>. Absent: the standard FET symbol.</td>
+</tr>
+<tr>
+<td><code>Provenance</code></td>
+<td>Optional, and not read by the simulator: <code>Created</code>, <code>CircuitRfVersion</code>, <code>Sources</code> (<code>Path</code>, <code>Sha256</code>) and <code>SettingsDigest</code>; with linear charges, <code>Charges</code> (<code>Qg, Qd: Linear from 1 bias point(s)</code>, or with typed ones <code>Qg, Qd: typed (Cgs 300 fF, Cgd 50 fF, Cds 80 fF, Cm 0 F)</code>). A script that records where its model came from here makes it traceable.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="core">The core: terminals, signs and units</h2>
+<p>The core sits between the intrinsic nets. Its two voltages are <code>vgs</code> (gate to source) and <code>vds</code> (drain to source), in
+volts.</p>
+<table>
+<thead>
+<tr>
+<th>Constituent</th>
+<th>Payload keys</th>
+<th>Means</th>
+<th>Sign</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Id</code></td>
+<td>one</td>
+<td>The channel current, A</td>
+<td>Positive flowing into the drain and out of the source</td>
+</tr>
+<tr>
+<td><code>Ig</code></td>
+<td><code>IgGs</code>, <code>IgGd</code></td>
+<td>The gate–source and gate–drain conduction currents, A</td>
+<td>Positive flowing into the gate; <code>IgGd</code> leaves through the drain, so the drain terminal carries <code>Id − IgGd</code></td>
+</tr>
+<tr>
+<td><code>Qg</code></td>
+<td>one</td>
+<td>The charge at the gate, C</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>Qd</code></td>
+<td>one</td>
+<td>The charge at the drain, C</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p>The source charge is <code>−Qg − Qd</code>, so the model conserves charge by construction. <strong>Write charges, not capacitances.</strong>
+The capacitances are the charges' derivatives, which circuitRF takes for you:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>by <code>vgs</code></th>
+<th>by <code>vds</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Qg</code></td>
+<td><code>∂Qg/∂vgs = Cgs + Cgd</code></td>
+<td><code>∂Qg/∂vds = −Cgd</code></td>
+</tr>
+<tr>
+<td><code>Qd</code></td>
+<td><code>∂Qd/∂vgs = Cm − Cgd</code></td>
+<td><code>∂Qd/∂vds = Cgd + Cds</code></td>
+</tr>
+</tbody>
+</table>
+<p>Constant <code>Cgs</code>, <code>Cgd</code> and <code>Cds</code> are <code>Qg = Cgs·vgs + Cgd·(vgs − vds)</code> and <code>Qd = Cds·vds − Cgd·(vgs − vds)</code>, which is
+what the example writes. <code>Cm</code>, a transcapacitance, is allowed and kept; it makes <code>∂Qd/∂vgs</code> differ from <code>∂Qg/∂vds</code>.</p>
+<p><strong>Every constituent describes the base periphery</strong>: the device of <code>BasePeriphery.Fingers</code> fingers. An instance's <code>N</code>
+multiplies all four by <code>N/N0</code>. Write the currents and charges of the device you measured or simulated, not of one
+finger.</p>
+<h2 id="equation">Equation constituents</h2>
+<pre><code class="language-json">&quot;Id&quot;: {
+  &quot;Method&quot;: &quot;Equation&quot;,
+  &quot;Inputs&quot;: [&quot;vgs&quot;, &quot;vds&quot;],
+  &quot;Expression&quot;: &quot;Ipk*(1+tanh(P1*(vgs-Vpk)))*tanh(alpha*vds)*(1+lambda*vds)&quot;,
+  &quot;Parameters&quot;: {&quot;Ipk&quot;: 0.08, &quot;P1&quot;: 2.0, &quot;Vpk&quot;: -1.2, &quot;alpha&quot;: 1.5, &quot;lambda&quot;: 0.02}
+}
+</code></pre>
+<ul>
+<li><strong>The payload key</strong> is <code>Expression</code> for <code>Id</code>, <code>Qg</code>, <code>Qd</code> and <code>IdRF</code>, and the pair <code>IgGs</code>, <code>IgGd</code> for <code>Ig</code>. Both of
+<code>Ig</code>'s are required; write <code>&quot;0&quot;</code> for a branch the device does not have.</li>
+<li><strong><code>Inputs</code></strong> names the voltages the expression may read: <code>vgs</code>, <code>vds</code>, and <code>T</code> (°C) on a <code>Range</code> model. An
+expression may read only its inputs, its <code>Parameters</code>, <code>pi</code> and <code>e</code>. Any other name is refused, naming it.</li>
+<li><strong><code>Parameters</code></strong> are named numbers, and may be left out when there are none. A parameter may not share an input's
+name.</li>
+<li><strong>The language</strong> is circuitRF's <a href="expressions.html#constants">expression language</a>: <code>+ − * / ^</code>, <code>exp</code>, <code>log</code>,
+<code>sqrt</code>, <code>tanh</code>, <code>cosh</code>, <code>sinh</code>, <code>atan</code>, <code>min</code>, <code>max</code>, <code>abs</code>, <code>if(cond, a, b)</code> and the rest of the real functions.
+Derivatives are exact, by automatic differentiation, so nothing needs a hand-written Jacobian.</li>
+<li><strong>An equation is global</strong>: it has no training domain and is never extrapolated, so it is evaluated at whatever
+voltage the circuit reaches. An exponential that is harmless at the bias point overflows when harmonic balance swings
+the gate several volts. Limit its argument, as the example does with <code>min(vgs, Vmax)</code>.</li>
+</ul>
+<h2 id="network">The extrinsic network</h2>
+<p><code>Network.Netlist</code> is <code>.cnl</code> text — the <a href="netlist.html">netlist format</a> — holding one <code>define</code> block:</p>
+<pre><code class="language-netlist">define extrinsic (G D S gi di si)
+  parameters Lg=50p H  Rg=4 Ohm  Cpg=20f F
+  C:CPG  G 0  C=Cpg
+  L:LG   G g1  L=Lg
+  R:RG   g1 gi R=Rg
+  …
+end extrinsic
+</code></pre>
+<ul>
+<li><strong>Six pins, in order</strong>: the extrinsic gate, drain and source, then the intrinsic gate, drain and source. The block's
+name and the pin names are yours; inside the device the last three are always called <code>gi</code>, <code>di</code> and <code>si</code>. A pin
+named <code>0</code> is refused, and <code>0</code> inside the block is ground.</li>
+<li><strong>Values are variables.</strong> Each element value refers to a variable of the block's <code>parameters</code> line, or of a variable
+line inside it, or is a number with its unit (<code>Ls=5p H</code>). Every variable must evaluate to a finite real number.</li>
+<li><strong><code>Scaling</code></strong> gives a variable's rule by its name: <code>fixed</code> (the default), <code>perFinger</code> (× N/N0) or <code>perFingerInverse</code>
+(× N0/N). The usual choice is series resistances <code>perFingerInverse</code>, intrinsic capacitances <code>perFinger</code>, and pad
+capacitances and inductances <code>fixed</code>. A rule naming no variable is refused.</li>
+<li><strong>Use R, L, C and <code>Mutual</code>.</strong> With <code>m</code> on the instance, inductors and mutuals are divided by it and every other
+element carries it as its device multiplier, which the engine refuses on a branch element such as a source.</li>
+<li><strong>Reserved names.</strong> An internal net may not be called <code>gi</code>, <code>di</code> or <code>si</code> unless it is one of pins 4–6, and the first
+three pins may not have those names. No element may be called <code>core</code>. With self-heating, no element may be called
+<code>Rth</code> or <code>Cth</code> (<code>Rth1</code>, <code>Cth1</code>, … for a ladder) and no net <code>t</code> (<code>t_1</code>, … for a ladder).</li>
+<li><strong>A network with nothing in it</strong> still needs a path from each extrinsic pin to its intrinsic one. A resistor of a few
+milliohms is the usual stand-in.</li>
+</ul>
+<h2 id="npy">Arrays: the .npy entries</h2>
+<p><code>Table</code> and <code>ANN</code> constituents keep their numbers in <code>arrays/&lt;name&gt;.npy</code>, one array per entry, where <code>&lt;name&gt;</code> is the name
+the constituent gives it. Each entry is a NumPy <code>.npy</code> file in either of two layouts.</p>
+<p><strong>A plain array</strong> — what <code>np.save</code> writes, and what a MATLAB <code>.npy</code> writer writes:</p>
+<table>
+<thead>
+<tr>
+<th>Rule</th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Type</td>
+<td><code>float64</code> or <code>float32</code>, little-endian (<code>&lt;f8</code>, <code>&lt;f4</code>). Write <code>float64</code>: spline coefficients lose accuracy in <code>float32</code></td>
+</tr>
+<tr>
+<td>Order</td>
+<td>Either. A file that says <code>fortran_order: True</code> (column-major, as MATLAB holds arrays) is read in that order</td>
+</tr>
+<tr>
+<td>Shape</td>
+<td>The array's. A list may be any shape with one dimension longer than 1 (<code>(n,)</code>, <code>(1, n)</code>, <code>(n, 1)</code>), and a single number may be 0-d</td>
+</tr>
+<tr>
+<td>Axes</td>
+<td>None are stored, so a table names its sites in arrays of their own (<a href="#table">Table constituents</a>)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>circuitRF's own layout</strong> — what the Model Composer writes, the layout of its <a href="npy-export.html">result files</a>: a
+structured array of one record, with one field holding the array and a <code>__meta__</code> field holding JSON that names its
+axes and their values:</p>
+<pre><code class="language-text">{'descr': [('Id.W1', '&lt;f8', (8, 2)), ('__meta__', '|S180')], 'fortran_order': False, 'shape': (1,), }
+</code></pre>
+<pre><code class="language-json">{&quot;format_version&quot;: 2, &quot;groups&quot;: [&quot;&quot;],
+ &quot;Id.W1&quot;: {&quot;group&quot;: &quot;&quot;, &quot;cube&quot;: &quot;Id.W1&quot;, &quot;kind&quot;: &quot;Real&quot;,
+           &quot;axes&quot;: [{&quot;name&quot;: &quot;output&quot;, &quot;unit&quot;: &quot;&quot;, &quot;values&quot;: [0, 1, 2, 3, 4, 5, 6, 7]},
+                    {&quot;name&quot;: &quot;input&quot;,  &quot;unit&quot;: &quot;&quot;, &quot;values&quot;: [0, 1]}]}}
+</code></pre>
+<p>The data field and the <code>cube</code> are named as the entry is, its data is row-major <code>&lt;f8</code>, and <code>axes</code> has one entry per
+dimension with <code>values</code> as long as that dimension. There is no reason to write this layout by hand; a plain array says
+the same with less.</p>
+<p><strong>In Python</strong>, <code>np.save</code> into the archive:</p>
+<pre><code class="language-python">import io
+import numpy as np
+
+def npy(a):
+    &quot;&quot;&quot;The bytes of a plain .npy holding a, as float64.&quot;&quot;&quot;
+    buf = io.BytesIO()
+    np.save(buf, np.asarray(a, dtype=float))
+    return buf.getvalue()
+</code></pre>
+<p><strong>In MATLAB</strong> (R2016b or later) or GNU Octave, save this as <code>crf_npy.m</code>. It writes the array as MATLAB holds it,
+column-major, and says so in the header:</p>
+<pre><code class="language-matlab">function crf_npy(file, a)
+% Write a real array as a plain .npy: float64, in MATLAB's own column-major order.
+a = double(a);
+if isvector(a), shp = sprintf('(%d,)', numel(a));
+else, shp = ['(' strjoin(arrayfun(@num2str, size(a), 'UniformOutput', false), ', ') ')']; end
+header = sprintf('{''descr'': ''&lt;f8'', ''fortran_order'': True, ''shape'': %s, }', shp);
+header = [header repmat(' ', 1, mod(-(10 + numel(header) + 1), 64)) newline];
+f = fopen(file, 'w', 'ieee-le');
+fwrite(f, [uint8(147) uint8('NUMPY') uint8([1 0])], 'uint8');
+fwrite(f, numel(header), 'uint16');
+fwrite(f, header, 'char');
+fwrite(f, a, 'double');
+fclose(f);
+end
+</code></pre>
+<h2 id="table">Table constituents</h2>
+<pre><code class="language-json">&quot;Id&quot;: {
+  &quot;Method&quot;: &quot;Table&quot;,
+  &quot;Inputs&quot;: [&quot;vgs&quot;, &quot;vds&quot;],
+  &quot;Table&quot;: &quot;Id&quot;,
+  &quot;Smoothing&quot;: 0,
+  &quot;Domain&quot;: {&quot;Polygon&quot;: [[-4, 0], [1, 0], [1, 12], [-4, 12]]}
+}
+</code></pre>
+<p><code>&quot;Table&quot;: &quot;Id&quot;</code> names the arrays <code>Id.values</code>, <code>Id.coefficients</code>, and one list of sites per input, <code>Id.vgs</code> and
+<code>Id.vds</code>. (<code>Ig</code> names two tables, one in <code>IgGs</code> and one in <code>IgGd</code>.)</p>
+<ul>
+<li><strong><code>&lt;name&gt;.&lt;input&gt;</code></strong> is that input's grid sites: strictly increasing, at least two. A table in circuitRF's own layout
+may leave these out and carry the sites as the values of <code>&lt;name&gt;.values</code>' axes, each axis named after its input.</li>
+<li><strong><code>&lt;name&gt;.values</code></strong> is the grid: one dimension per input, in <code>Inputs</code> order, as long as that input's sites, every
+value finite. Evaluation uses the sites; the values are a record of what the spline passes through.</li>
+<li><strong><code>&lt;name&gt;.coefficients</code></strong> is what is evaluated: the coefficients of a tensor-product cubic B-spline, one per site
+along each axis, in the same order.</li>
+<li><strong>The knots are not stored.</strong> circuitRF derives them from the sites <code>x[0] … x[n−1]</code>: four copies of <code>x[0]</code>, the
+interior sites <code>x[2] … x[n−3]</code>, then four copies of <code>x[n−1]</code>. This is the <strong>not-a-knot</strong> cubic spline, and with
+<code>Smoothing</code> 0 its coefficients are the ones that interpolate the values. Use at least four sites per axis; with two
+or three the axis is one cubic piece with four coefficients.</li>
+<li><strong><code>Smoothing</code></strong> is a record of the weight a smoothing fit used, 0 for interpolation. It does not change the
+evaluation.</li>
+<li>A Table must have <code>vgs</code> and <code>vds</code> among its inputs, a <code>Domain</code> inside its grid, and a <code>Gx</code> (see
+<a href="#domain">Training domain</a>).</li>
+</ul>
+<p><strong>In Python</strong>, SciPy's <code>make_interp_spline</code> uses the same knots. This replaces the example's equation drain current with
+a table of it and writes <code>fet_table.cmodel</code>, continuing the script above with <code>npy</code> defined:</p>
+<pre><code class="language-python">from scipy.interpolate import make_interp_spline
+
+def Id(vgs, vds):
+    return 0.08*(1+np.tanh(2.0*(vgs+1.2)))*np.tanh(1.5*vds)*(1+0.02*vds)
+
+vgs = np.arange(-4.0, 1.0001, 0.1)
+vds = np.arange(0.0, 12.0001, 0.25)
+V = Id(vgs[:, None], vds[None, :])           # V[i, j] = Id(vgs[i], vds[j]): axes in Inputs order
+
+# Interpolate along vgs, then along vds. make_interp_spline puts the interpolated axis first.
+C = make_interp_spline(vds, make_interp_spline(vgs, V, k=3).c.T, k=3).c.T
+
+model[&quot;Core&quot;][&quot;Constituents&quot;][&quot;Id&quot;] = {
+    &quot;Method&quot;: &quot;Table&quot;, &quot;Inputs&quot;: [&quot;vgs&quot;, &quot;vds&quot;], &quot;Table&quot;: &quot;Id&quot;, &quot;Smoothing&quot;: 0,
+    &quot;Domain&quot;: {&quot;Polygon&quot;: [[-4, 0], [1, 0], [1, 12], [-4, 12]]},
+}
+model[&quot;Extrapolation&quot;] = {&quot;Gx&quot;: {&quot;Id&quot;: 1e-3}}
+
+with zipfile.ZipFile(&quot;fet_table.cmodel&quot;, &quot;w&quot;, zipfile.ZIP_DEFLATED) as z:
+    z.writestr(&quot;model.json&quot;, json.dumps(model, indent=2))
+    z.writestr(&quot;arrays/Id.vgs.npy&quot;, npy(vgs))
+    z.writestr(&quot;arrays/Id.vds.npy&quot;, npy(vds))
+    z.writestr(&quot;arrays/Id.values.npy&quot;, npy(V))
+    z.writestr(&quot;arrays/Id.coefficients.npy&quot;, npy(C))
+</code></pre>
+<p>Between the grid lines the table agrees with the equation it was sampled from to about 5×10⁻⁵ of the current on this
+0.1 V grid.</p>
+<p><strong>In MATLAB</strong>, the coefficients are a linear solve against the spline's collocation matrix. Save this as
+<code>crf_spline_coefs.m</code>; it needs no toolbox.</p>
+<pre><code class="language-matlab">function c = crf_spline_coefs(x, y)
+% The B-spline coefficients of circuitRF's not-a-knot cubic through (x, y), along y's FIRST
+% dimension. x: n &gt;= 4 strictly increasing sites. c has y's size.
+x = x(:); n = numel(x);
+t = [repmat(x(1), 4, 1); x(3:n-2); repmat(x(n), 4, 1)];       % the knots
+B = zeros(n);
+for i = 1:n
+  s = find(t(1:end-1) &lt;= x(i) &amp; x(i) &lt; t(2:end), 1, 'last');   % knot span of x(i)
+  if isempty(s), s = n; end                                     % the last site
+  N = zeros(1, 4); N(1) = 1;                                    % Cox-de Boor, degree 3
+  for d = 1:3
+    saved = 0;
+    for r = 1:d
+      left = x(i) - t(s - d + r); right = t(s + r) - x(i);
+      tmp = N(r) / (right + left);
+      N(r) = saved + right * tmp; saved = left * tmp;
+    end
+    N(d + 1) = saved;
+  end
+  B(i, s-3:s) = N;
+end
+c = reshape(B \ reshape(y, n, []), size(y));
+end
+</code></pre>
+<p>A script that writes the same <code>fet_table.cmodel</code>, with the other three constituents as equations:</p>
+<pre><code class="language-matlab">Id = @(vgs, vds) 0.08*(1+tanh(2*(vgs+1.2))).*tanh(1.5*vds).*(1+0.02*vds);
+vgs = -4:0.1:1;  vds = 0:0.25:12;
+V = Id(vgs', vds);                        % V(i,j) = Id(vgs(i), vds(j)): axes in Inputs order
+C = crf_spline_coefs(vgs, V);             % along vgs ...
+C = crf_spline_coefs(vds, C')';           % ... then along vds
+
+out = tempname; mkdir(out); mkdir(fullfile(out, 'arrays'));
+crf_npy(fullfile(out, 'arrays', 'Id.vgs.npy'), vgs);
+crf_npy(fullfile(out, 'arrays', 'Id.vds.npy'), vds);
+crf_npy(fullfile(out, 'arrays', 'Id.values.npy'), V);
+crf_npy(fullfile(out, 'arrays', 'Id.coefficients.npy'), C);
+
+m.FormatVersion = 1;
+m.Kind = 'Fet';
+m.Terminals = {'G', 'D', 'S'};
+m.BasePeriphery = struct('Fingers', 4, 'UnitWidth', '100 um');
+m.Temperature = struct('Mode', 'Single', 'T0', 25);
+m.Network.Netlist = sprintf([ ...
+  'define extrinsic (G D S gi di si)\n' ...
+  '  parameters Lg=50p H  Ld=50p H  Ls=5p H  Rg=4 Ohm  Rd=8 Ohm  Rs=6 Ohm  Cpg=20f F  Cpd=20f F\n' ...
+  '  C:CPG  G 0  C=Cpg\n  C:CPD  D 0  C=Cpd\n' ...
+  '  L:LG   G g1  L=Lg\n  R:RG   g1 gi R=Rg\n' ...
+  '  L:LD   D d1  L=Ld\n  R:RD   d1 di R=Rd\n' ...
+  '  L:LS   S s1  L=Ls\n  R:RS   s1 si R=Rs\n' ...
+  'end extrinsic\n']);
+m.Network.Scaling = struct('Rg', 'perFingerInverse', 'Rd', 'perFingerInverse', 'Rs', 'perFingerInverse');
+vv = {'vgs', 'vds'};                                   % the inputs, a cell array
+c.Id = struct('Method', 'Table', 'Inputs', {vv}, 'Table', 'Id', 'Smoothing', 0, ...
+              'Domain', struct('Polygon', [-4 0; 1 0; 1 12; -4 12]));
+c.Ig = struct('Method', 'Equation', 'Inputs', {vv}, ...
+              'IgGs', 'Ij*(exp(min(vgs,Vmax)/Vt)-1)', 'IgGd', 'Ij*(exp(min(vgs-vds,Vmax)/Vt)-1)', ...
+              'Parameters', struct('Ij', 1e-9, 'Vt', 0.08, 'Vmax', 1.5));
+c.Qg = struct('Method', 'Equation', 'Inputs', {vv}, ...
+              'Expression', 'Cgs0*vgs + Cgs1*Vw*log(cosh((vgs-Vpk)/Vw)) + Cgd0*(vgs-vds)', ...
+              'Parameters', struct('Cgs0', 0.1e-12, 'Cgs1', 0.3e-12, 'Vw', 0.5, 'Vpk', -1.2, 'Cgd0', 0.03e-12));
+c.Qd = struct('Method', 'Equation', 'Inputs', {vv}, ...
+              'Expression', 'Cgd0*(vds-vgs) + Cds0*vds', ...
+              'Parameters', struct('Cgd0', 0.03e-12, 'Cds0', 0.05e-12));
+m.Core.Constituents = c;
+m.Extrapolation.Gx = struct('Id', 1e-3);
+
+f = fopen(fullfile(out, 'model.json'), 'w'); fwrite(f, jsonencode(m), 'char'); fclose(f);
+zip('fet_table.zip', {'model.json', 'arrays'}, out);   % zip always names the archive .zip ...
+movefile('fet_table.zip', 'fet_table.cmodel');        % ... so rename it afterwards
+rmdir(out, 's');
+</code></pre>
+<p>Inputs and other lists are written as cell arrays, wrapped once more in braces inside <code>struct</code> (<code>{vv}</code>), so <code>jsonencode</code>
+writes JSON lists; a one-element list needs the same, or it is written as a bare value.</p>
+<h2 id="ann">ANN constituents</h2>
+<pre><code class="language-json">&quot;Id&quot;: {
+  &quot;Method&quot;: &quot;ANN&quot;,
+  &quot;Inputs&quot;: [&quot;vgs&quot;, &quot;vds&quot;],
+  &quot;Network&quot;: &quot;Id&quot;,
+  &quot;Activation&quot;: &quot;Tanh&quot;,
+  &quot;Domain&quot;: {&quot;Polygon&quot;: [[-4, 0], [1, 0], [1, 12], [-4, 12]]}
+}
+</code></pre>
+<p><code>&quot;Network&quot;: &quot;Id&quot;</code> names the arrays of one feed-forward network with a single output:</p>
+<table>
+<thead>
+<tr>
+<th>Array</th>
+<th>Shape</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Id.inputOffset</code>, <code>Id.inputScale</code></td>
+<td>one value per input, in <code>Inputs</code> order</td>
+<td><code>x̂ = (x − inputOffset) · inputScale</code>; no scale may be zero</td>
+</tr>
+<tr>
+<td><code>Id.W1</code> … <code>Id.WL</code></td>
+<td><code>outputs × inputs</code> of that layer</td>
+<td>Layer <code>k</code>: <code>a = σ(Wk · a + bk)</code>; the last layer <code>L</code> is linear and has one output</td>
+</tr>
+<tr>
+<td><code>Id.b1</code> … <code>Id.bL</code></td>
+<td>that layer's outputs</td>
+<td>Its bias</td>
+</tr>
+<tr>
+<td><code>Id.outputOffset</code>, <code>Id.outputScale</code></td>
+<td>one value each</td>
+<td><code>y = outputOffset + outputScale · ŷ</code></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><code>σ</code> is <code>Activation</code>, <code>Tanh</code> or <code>Sigmoid</code>, on every hidden layer.</li>
+<li>There are 1 to 4 hidden layers, so 2 to 5 weight matrices, numbered from 1 without gaps; each hidden layer has at most
+64 neurons, and there are at most 7 inputs.</li>
+<li>A network trained in another framework transfers directly. Frameworks differ in how they store a dense layer's
+weights: one stored <code>inputs × outputs</code> is transposed before it is written. Fold any input or output normalisation the
+training used into the offsets and scales.</li>
+</ul>
+<pre><code class="language-python">for k, (W, b) in enumerate(layers, 1):          # layers = [(W1, b1), (W2, b2), (W3, b3)]
+    z.writestr(f&quot;arrays/Id.W{k}.npy&quot;, npy(W))
+    z.writestr(f&quot;arrays/Id.b{k}.npy&quot;, npy(b))
+for name, v in {&quot;inputOffset&quot;: in_off, &quot;inputScale&quot;: in_scale,
+                &quot;outputOffset&quot;: out_off, &quot;outputScale&quot;: out_scale}.items():
+    z.writestr(f&quot;arrays/Id.{name}.npy&quot;, npy(v))
+</code></pre>
+<h2 id="domain">Training domain and extrapolation</h2>
+<p>A Table or ANN constituent is trustworthy only where it was trained, so it carries that region and circuitRF continues
+it in a straight line outside it.</p>
+<ul>
+<li><strong><code>Domain.Polygon</code></strong> is the region in the <code>(vgs, vds)</code> plane, a list of <code>[vgs, vds]</code> vertices. It must be convex,
+with at least three vertices and some area, in either winding order. A Table's polygon must lie inside its grid.</li>
+<li><strong><code>Domain.Box</code></strong> holds <code>[lo, hi]</code> for each input other than <code>vgs</code> and <code>vds</code> — <code>T</code> on a <code>Range</code> model, a trap state —
+and must have one for every such input.</li>
+<li><strong><code>Extrapolation.Gx</code></strong> gives, for each Table or ANN <em>current</em> payload (<code>Id</code>, <code>IgGs</code>, <code>IgGd</code>, <code>IdRF</code>), the conductance
+in S that current gains in proportion to the distance outside the domain. Each such current needs one, and an
+<code>Equation</code> current must not have one. Charges have none.</li>
+<li><strong><code>Transform</code></strong> on a Table or ANN current, <code>{&quot;Kind&quot;: &quot;Asinh&quot;, &quot;Scale&quot;: I0}</code>, says the arrays hold <code>u</code> and the current
+is <code>I0·sinh(u)</code>. Fit a gate current that spans many decades in <code>u = asinh(I/I0)</code>.</li>
+</ul>
+<h2 id="optional">Temperature, self-heating, traps and dispersion</h2>
+<p>These are optional and are fields of <code>model.json</code> (see <a href="#fields">the table</a>). What they model is described in the
+Model Composer chapter:</p>
+<ul>
+<li><strong>A temperature range</strong> (<code>&quot;Mode&quot;: &quot;Range&quot;</code>) adds the input <code>T</code>, in °C, which every constituent may read. A run's
+<code>temp</code> is held to <code>Tmin … Tmax</code>. A <code>Single</code> model is used as it is at any <code>temp</code>, with one warning naming both
+temperatures — set <code>temp</code> in the bench to <code>T0</code> to run it at its own temperature. See
+<a href="model-composer.html#temperature">Temperature</a>.</li>
+<li><strong>Self-heating</strong> (<code>Thermal</code>) needs a <code>Range</code> model. See <a href="model-composer.html#temperature">Temperature</a>.</li>
+<li><strong>Traps</strong> (<code>Traps</code>) add the states <code>phi1</code> and <code>phi2</code> as inputs of <code>Id</code> and <code>Qd</code>. See
+<a href="model-composer.html#trap-data">Traps</a>.</li>
+<li><strong>Dispersion</strong> (<code>IdRF</code> and <code>Core.Dispersion</code>) is a second drain current that applies above <code>1/(2πτ)</code>.</li>
+<li><strong><code>Core.Symmetry: Exchange</code></strong> lets constituents written for <code>vds ≥ 0</code> serve negative <code>vds</code> too.</li>
+</ul>
+<h2 id="checking">Checking and running it</h2>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Command line</th>
+<th>Over MCP</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Is the file well formed?</td>
+<td><code>circuitrf check fet.cmodel</code></td>
+<td><code>check path=fet.cmodel</code></td>
+</tr>
+<tr>
+<td>Does a bench that places it resolve?</td>
+<td><code>circuitrf check bench.cnl</code></td>
+<td><code>check path=bench.cnl</code></td>
+</tr>
+<tr>
+<td>Run it</td>
+<td><code>circuitrf dc bench.cnl</code>, <code>hb</code>, <code>lp</code>, <code>sparam</code></td>
+<td><code>run analysis=dc path=bench.cnl</code></td>
+</tr>
+<tr>
+<td>Do the charges conserve charge in large signal?</td>
+<td><code>circuitrf model check-charge bench.cnl --device X1 --bias -1.2,5</code></td>
+<td><code>model noun=check-charge path=bench.cnl device=X1 bias=-1.2,5</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>--bias</code> is <code>vgs,vds</code> at the intrinsic plane. <code>check-charge</code> drives the device in harmonic balance and reports any DC
+the charges create; it exits 3 above the threshold. A model written as charge functions passes by construction, so a
+failure means a charge does not read the voltages the core gives it.</p>
+<p>A <code>.cmodel</code> written elsewhere runs wherever one from the Model Composer does: as a <code>ComposedFET</code> in any schematic or
+netlist, and as <a href="harmonicarf.html">harmonicaRF</a>'s device.</p>
+<h2 id="agents">For an AI agent</h2>
+<p>The MCP server's <code>reference</code> tool serves this page as the topic <code>cmodel</code>. No MCP tool writes a file of your text, so
+an agent writes the model with its own tools:</p>
+<ol>
+<li><code>reference topic=cmodel</code> — this page.</li>
+<li>Write a script that builds <code>model.json</code> (and any arrays) and zips it, as in <a href="#example">the example</a>, and run it
+with the agent's own shell.</li>
+<li><code>check path=&lt;f.cmodel&gt;</code> — 0 errors, or one sentence naming the field to fix.</li>
+<li>Write a bench <code>.cnl</code> placing <code>ComposedFET:X1 g d s File=&quot;&lt;f.cmodel&gt;&quot;</code>, <code>check</code> it, and <code>run</code> it.</li>
+<li>For a model with nonlinear charges, <code>model noun=check-charge path=&lt;bench.cnl&gt; device=X1 bias=&lt;vgs&gt;,&lt;vds&gt;</code>.</li>
+</ol>
+<p>To build a model from measured data instead, use the <code>model</code> tool, whose steps write a <code>.cmodel</code> for you; the
+<code>reference</code> topic <code>cmc</code> describes its document.</p>
+<h2 id="pitfalls">Tips and pitfalls</h2>
+<ul>
+<li><strong>Start from equations.</strong> Get an all-equation model through <code>check</code> and a DC run, then replace one constituent at a
+time with a Table or ANN. A refusal then names a field of the part just changed.</li>
+<li><strong>Run a DC point before anything else.</strong> Compare <code>Id</code> at one bias with your own evaluation of the same constituent at
+the intrinsic voltages <code>X1.gi − X1.si</code> and <code>X1.di − X1.si</code>. A sign, a unit or an axis order that is wrong shows here,
+in one number.</li>
+<li><strong>Constituents describe <code>BasePeriphery</code>.</strong> A model written for one finger with <code>Fingers: 4</code> is four times too small
+at <code>N=4</code>.</li>
+<li><strong>Charges, not capacitances.</strong> <code>Qg = Cgs(vgs)·vgs</code> is not the charge of a capacitance <code>Cgs(vgs)</code>: the derivative adds
+<code>vgs·Cgs′(vgs)</code>. Integrate the capacitance. The sign table in <a href="#core">The core</a> gives each derivative.</li>
+<li><strong>Bound every exponential.</strong> An <code>Equation</code> is evaluated wherever the circuit goes. Limit the argument with <code>min</code>, or
+continue it with <code>if</code>, before harmonic balance takes the gate to a voltage the data never reached.</li>
+<li><strong>Spell the optional blocks exactly.</strong> <code>Thermal</code>, <code>Traps</code>, <code>Extrapolation</code>, <code>Symbol</code> and <code>Core.Dispersion</code> that are
+misspelt are read as absent, without a word. Names are case-sensitive throughout, inputs included: <code>vgs</code>, not <code>Vgs</code>.</li>
+<li><strong><code>model.json</code> at the archive's root</strong>, and each array under <code>arrays/</code> with the name the constituent gives it.
+Zipping a folder rather than its contents moves <code>model.json</code> down a level.</li>
+<li><strong>MATLAB's <code>zip</code> adds <code>.zip</code></strong> to an archive name that does not end in it; write <code>fet.zip</code> and rename it.</li>
+<li><strong>Say the order you wrote.</strong> A <code>.npy</code> header's <code>fortran_order</code> must match the bytes: MATLAB's are column-major, and a
+header that claims row-major transposes every matrix silently. <code>crf_npy</code> writes <code>True</code>.</li>
+<li><strong>Write float64.</strong> A <code>float32</code> array is read, but a table's coefficients lose the accuracy that makes it smooth.</li>
+<li><strong>Table axes follow <code>Inputs</code>.</strong> <code>values</code> and <code>coefficients</code> have their dimensions in the order <code>Inputs</code> lists, and a
+plain table needs its sites as <code>&lt;name&gt;.&lt;input&gt;</code> lists.</li>
+<li><strong>Use the not-a-knot knots.</strong> Coefficients from another spline (natural, clamped, or a smoothing spline with its own
+knots) have the right count and the wrong values. Interpolate with the knots in <a href="#table">Table constituents</a>.</li>
+<li><strong>Keep the domain wider than the drive.</strong> Outside the domain a Table or ANN current is a straight line plus <code>Gx</code>, not
+the device. Train over the voltages the circuit will reach, swing included.</li>
+<li><strong>Set <code>temp</code> for a <code>Single</code> model.</strong> A bench's default temperature is 26.85 °C (300 K), so a model valid at 25 °C
+runs there with a warning naming both temperatures. <code>temp = 25</code> in the bench runs it at its own temperature, and
+<code>check</code> then reports that ambient instead.</li>
+<li><strong>Write <code>Provenance</code>.</strong> It is optional and not simulated, but <code>Created</code> and <code>Sources</code> with each source's SHA-256 say
+later where a model came from.</li>
+</ul>
+
+<nav class="page-nav">
+  <a class="prev" href="model-composer.html"><span class="dir">Previous</span><span class="name">Model Composer</span></a>
+  <a class="next" href="match.html"><span class="dir">Next</span><span class="name">The Match Component</span></a>
+</nav>
+</main>
+
+<footer class="doc-footer">
+  <img src="../assets/img/circuitRF-mark.svg" alt="">
+  <span>circuitRF — RF circuit simulator</span>
+  <span class="spacer"></span>
+  <a href="../index.html">Documentation home</a>
+</footer>
+
+<script src="../assets/js/search-index.js" defer></script>
+<script src="../assets/js/docs-search.js" defer></script>
+</body>
+</html>

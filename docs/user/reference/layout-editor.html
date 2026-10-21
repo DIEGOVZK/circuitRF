@@ -261,7 +261,8 @@ rather than of one cell:</p>
 <li>the <strong>substrate stackup</strong>: dielectric and conductor layers with thickness, ε<sub>r</sub>, tanδ, σ, µ<sub>r</sub>;</li>
 <li>the mapping from a drawing layer to a stackup conductor;</li>
 <li>interchange mappings — GDSII layer/datatype ↔ DXF layer name ↔ Gerber file suffix;</li>
-<li>the <strong>default display unit and snap grid</strong> for layouts created against it;</li>
+<li>the <strong>default display unit and snap grid</strong> for layouts created against it (a preferred length unit in
+<a href="settings.html#general">Settings ▸ General ▸ Units</a> is used instead, and is written into a new workspace's copy);</li>
 <li>the <strong>DRC rules</strong>.</li>
 </ul>
 <p>Technologies live in a <code>tech/</code> folder at the workspace root, and the workspace records which is the
@@ -453,6 +454,9 @@ filled outlines.</p>
 descending, then <em>ascending area</em> — so a small shape sitting on a large one is reachable, which is the
 case that actually matters. The status bar shows where you are: <code>Rect · M2 · 2 of 5</code>. Alt-click is the
 explicit &quot;next candidate&quot; for anyone who expects it.</p>
+<p><strong>A placed part is in the cycle too, and a part lying on a shape comes before that shape.</strong> Press on a
+line sitting on a ground plane and the first press picks the line; a second press at the same point picks
+the plane. A part that is not inside the shape under the press comes after the shapes.</p>
 <p>With exactly one shape selected you get handles: square handles on vertices, round handles at polygon
 edge midpoints. Hit priority is strict — <strong>vertex handle, then edge handle, then edge line, then shape
 interior</strong> — because getting that order wrong makes vertex dragging feel broken.</p>
@@ -548,8 +552,10 @@ rather than stored (see <a href="pcells.html">PCells</a>).</li>
 <li>Components with no layout view at all — VAR, MEAS, Ground, and any un-laid-out cell — are <strong>reported
 to Messages and skipped</strong>, not silently omitted.</li>
 <li>Instances are placed in a packed, non-overlapping arrangement, roughly following schematic order.</li>
-<li>Net names are carried onto instance pins, and a <strong>ratsnest</strong> is drawn: thin straight lines on a
-system layer between pins sharing a net. That is the guide that makes manual routing tractable.</li>
+<li>A <strong>ratsnest</strong> is shown: thin straight lines between pins that share a net and are not yet joined by
+copper, each net drawn as the shortest set of lines that connects it. It follows a part as you drag
+it, and a net's lines disappear once copper joins its pins. It is drawn over the layout, never into
+it — nothing is selectable, saved or exported. <strong>View ▸ Show Ratsnest</strong> turns it on and off.</li>
 </ol>
 <div class="callout warn">
 <span class="label">There is no auto-router, and there is not going to be one</span>
@@ -561,7 +567,8 @@ beside it, on the side away from the part, tied to the pad with a short trace an
 ground plane its layer returns through. On a two-layer board that is Bottom Copper. The ground plane
 itself is <strong>poured</strong>: on every ground layer the microstrip lines and those vias return through,
 inner or outer alike, five substrate heights beyond what it covers, or filling the board outline when
-one is drawn. Every via that passes <em>through</em> a poured plane gets a clearance; a ground via is joined
+one is drawn. <strong>Design ▸ Ground Pour Margin…</strong> sets how many substrate heights the pour reaches for the
+workspace; the next Update Layout or Draw Ground Pour redraws the pour with it. Every via that passes <em>through</em> a poured plane gets a clearance; a ground via is joined
 to it. One Update Layout on a two-layer board with an MLIN and two shunt parts leaves the parts'
 ground pads drilled to a poured Bottom Copper, and LVS reads them on the ground net.</p>
 <p>The vias and the pour are <strong>generated copper</strong>, and each run redraws them from where the parts are
@@ -799,6 +806,19 @@ quadratic showing through, and it is why it is opt-in.</li>
 </ul>
 <p>Turning either toggle recomputes the marker at the <strong>last known cursor position immediately</strong> — you do
 not have to jiggle the mouse to see the mode change take effect.</p>
+<h3 id="dragging-a-part-by-its-body">Dragging a part by its body</h3>
+<p>A drag started anywhere on a part or shape, not only on a snap marker, snaps what you are dragging
+to what it comes to rest against:</p>
+<ul>
+<li><strong>A pin onto a pin.</strong> When one of the dragged part's pins comes within the capture radius of
+another part's pin or of a port, the drag lands the two exactly on each other. This is how a line is
+dropped onto a tee with no gap.</li>
+<li><strong>An edge onto an edge.</strong> Otherwise, when an outline edge of the selection comes within the capture
+radius of a parallel edge facing it on the same layer, the drag closes the gap (or removes the
+overlap) across the edge. Along the edge, the position stays the pointer's, on the grid.</li>
+</ul>
+<p>The marker shows where the contact is. Turn geometry snap off with <kbd>S</kbd> or <kbd>F3</kbd> to
+place a part freely.</p>
 <h2 id="ruler">The Ruler</h2>
 <p><strong>Ruler</strong> (<code>D</code>, or the ruler button on the toolbar) places a two-point measurement <em>inside</em> the layout:
 a line between two points with the distance between them drawn at its midpoint. Click once to set the
@@ -1886,6 +1906,12 @@ than about ten times the distance to the nearest other copper layer is not read 
 <p>Each trace is cut once per width along its length, and each cut is the quasi-static solve
 <a href="#trace-impedance">Trace impedance</a> describes: the reference is found from the copper, and every
 other conductor near the trace is held at ground.</p>
+<p><strong>Junctions are reviewed too.</strong> Where traces meet, and where a placed tee or cross sits whose arms are
+too short to be traces, each arm is cut across where it leaves the junction and solved at its own width
+the same way. A junction is a <strong>tee</strong> (three arms), a <strong>cross</strong> (four) or <strong>plain</strong>, and each arm
+passes, warns or fails against the target as a trace does. The panel lists the junctions under the
+traces, the canvas marks each one with a square in its worst arm's Z0 colour, and the verdict line
+counts them: <em>PASS — 3 traces and 1 junction reviewed, …</em>.</p>
 <h3 id="impedance-findings">What it flags</h3>
 <p>Every trace is <strong>PASS</strong>, <strong>WARN</strong> or <strong>FAIL</strong>. Each finding is a warning or a fail, and a trace takes
 the worst of its findings: <em>look at this</em> is kept apart from <em>this is wrong</em>. Each is numbered on the
@@ -1978,8 +2004,9 @@ return path. The colour scale marks the pass band, and the warning band's edges 
 ticks. A trace outside the scope is plain grey copper — no colour, no label, no marker.</li>
 <li><strong>A table per layer</strong>: each trace's start and end, what each end is, its length and width, its line
 <strong>type</strong>, Z0 min, max and average, the share of its length inside the band, its reference layers,
-PASS, WARN or FAIL, and then the numbered findings in full, each with its severity — or
-<strong>ACCEPTED</strong> and its reason.</li>
+PASS, WARN or FAIL; then the layer's <strong>junctions</strong>, one row per arm with its trace, width, Z0 and
+result; and then the numbered findings in full, each with its severity — or <strong>ACCEPTED</strong> and its
+reason.</li>
 <li><strong>Accepted findings</strong>, when there are any: each accepted finding with its trace, its text, the reason
 and the date, and any acceptance that matched nothing in this run. An accepted finding is also still
 on its layer's map, <strong>grey with a check</strong> where its number would be.</li>

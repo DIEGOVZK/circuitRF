@@ -354,7 +354,9 @@ each part beside its pin count.</p>
   </div>
 <h4 id="w-booleans">Yes-and-no parameters</h4>
 <p>A parameter that is a switch — <code>BiasTee</code>, <code>RefPin</code>, <code>RefNode</code>, <code>IncludeCapacitance</code>, <code>GroundPlane</code>,
-<code>OpVars</code> — accepts <code>on</code>/<code>true</code>/<code>yes</code>/<code>1</code> and <code>off</code>/<code>false</code>/<code>no</code>/<code>0</code>, in any case. <strong>Anything else is
+<code>OpVars</code>, and a <code>ComposedFET</code>'s <code>Charge</code>, <code>LinearC</code>, <code>LinearCgs</code>, <code>LinearCdg</code>, <code>LinearCds</code>, <code>LinearCm</code>, <code>GateLag</code>,
+<code>DrainLag</code>, <code>SelfHeating</code> and <code>Dispersion</code>
+(<a href="model-composer.html#switches">Switching parts of the model off</a>) — accepts <code>on</code>/<code>true</code>/<code>yes</code>/<code>1</code> and <code>off</code>/<code>false</code>/<code>no</code>/<code>0</code>, in any case. <strong>Anything else is
 refused by name.</strong> Before 1.0 <code>BiasTee</code> accepted the literal <code>on</code> and nothing else, so <code>BiasTee=true</code>
 was read as <em>off</em> without a word.</p>
 <h3 id="w-measures">6 · Measurements</h3>

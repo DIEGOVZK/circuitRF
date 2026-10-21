@@ -175,7 +175,7 @@ public static class DocAntennaFixtures
         };
 
         var crop = FigureCrop.Around(
-            panel, 560, 2400,
+            panel, 560, 3600,
             c => c.GetVisualDescendants().OfType<CheckBox>().Where(b => b.Name == "RadiationPatternCheck"),
             pad: 10,
             describeWhatIsMissing:

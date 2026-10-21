@@ -51,7 +51,7 @@ said, with a count, in the [report](#report).
 drill files, a placement file and a bill of materials in its `fab` folder, already imported as the cell **Board**.
 A microstrip line enters at the left edge, turns through a 90° bend, passes a tee with an open stub, a series
 capacitor C1, a shunt inductor L1 to a ground via, and a series resistor R1, and leaves at the top edge. The bill of
-materials has no row for L1, on purpose. Beside it, **Board design** is the schematic the board was drawn from.
+materials gives no value for L1, on purpose. Beside it, **Board design** is the schematic the board was drawn from.
 
 1. Open **Board**'s layout. Its technology is the one the import wrote beside it, with the fabricator's stackup
    typed in on the **Stackup** tab &mdash; a Gerber set carries no stackup, and every line's impedance comes from it.
@@ -119,6 +119,10 @@ is how you model one section of a board without any EM. Ground is always read fr
 - the file **File ▸ Export ▸ Bill of materials…** writes, from a layout or [from a schematic](#bom-export);
 - a circuitRF schematic (`.csch`) or netlist (`.cnl`, or a netlist saved under any other name), read as the circuit
   it is: every resistor, capacitor, inductor and ferrite bead with its value and footprint.
+
+A bill of materials lists what is fitted. With one named, a two-pad land pattern it has no row for is read as not
+fitted (Open), unless a placed part in the layout says what it is. A part that is fitted but whose value is unknown
+keeps its row with the value left empty, and becomes a variable to tune.
 
 A kind the bill of materials states beats the one a designator implies: a ferrite bead `FB1` listed as `R` with
 `0.01 Ohm` is a resistor of that value. A part you placed on the board keeps its own kind.

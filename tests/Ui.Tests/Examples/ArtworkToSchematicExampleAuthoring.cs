@@ -57,7 +57,8 @@ public sealed class ArtworkToSchematicExampleAuthoring
             string pos = Path.Combine(fab, "Board.pos"), bom = Path.Combine(fab, "Board-bom.csv");
             ArtworkRoundTripBoards.WriteFab(cellDir, clay, tech, gerbers, pos, bom, unionCopper: true);
             KeepRows(pos, "C1", "L1", "R1");
-            KeepRows(bom, "C1", "R1");
+            KeepRows(bom, "C1", "L1", "R1");
+            BlankValue(bom, "L1");
 
             // Back in as a user's board: the workspace, its artwork cell, and the design it came from.
             ArtworkRoundTripBoards.ImportBoard(gerbers, ws, ArtworkRoundTripBoards.TwoLayer());
@@ -71,6 +72,22 @@ public sealed class ArtworkToSchematicExampleAuthoring
         {
             try { Directory.Delete(scratch, true); } catch { /* best effort */ }
         }
+    }
+
+    /// <summary>
+    /// Empties the BOM's Value cell for <paramref name="refdes"/>: the part is listed, so it is fitted, but its value is
+    /// unknown. A part the BOM leaves out altogether is read as not fitted (designer round 22), so the example's unknown
+    /// L1 needs its row.
+    /// </summary>
+    private static void BlankValue(string path, string refdes)
+    {
+        var lines = File.ReadAllLines(path);
+        int at = Array.FindIndex(lines, l => l.Split(',')[0] == refdes);
+        Assert.True(at >= 0, $"{path} has no {refdes} row");
+        var cells = lines[at].Split(',');
+        cells[1] = "";
+        lines[at] = string.Join(',', cells);
+        File.WriteAllLines(path, lines);
     }
 
     /// <summary>Keeps a companion file's comment lines, its header and the rows for <paramref name="refdes"/>.</summary>
