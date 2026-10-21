@@ -71,14 +71,14 @@ public partial class PlotsPanelView : UserControl
 
     private void OnTabClick(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { Content: string tab } && _vm is not null) _vm.SelectedPlotTab = tab;
+        if (sender is Button { Tag: string tab } && _vm is not null) _vm.SelectedPlotTab = tab;
     }
 
     private void SyncTabs()
     {
         if (_vm is null) return;
         foreach (var b in TabStrip.GetVisualDescendants().OfType<Button>())
-            b.Classes.Set("ToolActive", b.Content as string == _vm.SelectedPlotTab);
+            b.Classes.Set("ToolActive", b.Tag as string == _vm.SelectedPlotTab);
     }
 
     private void SyncTheme()

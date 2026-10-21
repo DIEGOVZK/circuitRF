@@ -1000,7 +1000,15 @@ public static class SchematicRenderer
 
             if (!isConnected)
             {
-                if (port.Optional) continue;
+                // An optional pin left open is not a fault, so it is not red — but it is a pin, so it is drawn: an open
+                // box in the connected colour (a ComposedFET's thermal pin).
+                if (port.Optional)
+                {
+                    using var open = new SKPaint { Color = connPaint.Color, Style = SKPaintStyle.Stroke, IsAntialias = true,
+                                                   StrokeWidth = (float)Math.Max(1.0, zoom * 6) };
+                    canvas.DrawRect(SKRect.Create(px - boxHalf, py - boxHalf, boxHalf * 2, boxHalf * 2), open);
+                    continue;
+                }
                 canvas.DrawRect(SKRect.Create(px - boxHalf, py - boxHalf, boxHalf * 2, boxHalf * 2), unconnPaint);
             }
             else

@@ -351,20 +351,25 @@ namespace RfCore.Loadpull
 
             if (!final.IsValid) final = measuredBox;
 
-            // Round to nice grid for Z-plane (SPLData: RoundFactor = xSpan/5)
-            if (fit.Plane == SurfacePlane.Z)
-            {
-                double xSpan      = final.SpanRe;
-                double roundFactor = xSpan > 0 ? xSpan / 5.0 : 1.0;
-                final = new ViewBox(
-                    Math.Round(final.MinRe / roundFactor) * roundFactor,
-                    Math.Round(final.MaxRe / roundFactor) * roundFactor,
-                    Math.Round(final.MinIm / roundFactor) * roundFactor,
-                    Math.Round(final.MaxIm / roundFactor) * roundFactor);
-                if (!final.IsValid) final = measuredBox;
-            }
+            // Round to nice grid for Z-plane (SPLData: RoundFactor = xSpan/5) — OUTWARD, then clipped to the data again.
+            // Rounding to nearest pulled an edge inward by up to half a step, past the MXP it was built around: a GaN
+            // bench's MXP at 36 Ω sat on a box rounded up to 39 Ω, drawn half off the plot.
+            if (fit.Plane == SurfacePlane.Z) final = RoundOutward(final, measuredBox);
 
             return final;
+        }
+
+        /// <summary>The Z-plane box on a nice grid of a fifth of its width, rounded outward and clipped to the data.</summary>
+        internal static ViewBox RoundOutward(ViewBox box, ViewBox measured)
+        {
+            double xSpan       = box.SpanRe;
+            double roundFactor = xSpan > 0 ? xSpan / 5.0 : 1.0;
+            var rounded = new ViewBox(
+                Math.Max(Math.Floor(box.MinRe / roundFactor) * roundFactor, measured.MinRe),
+                Math.Min(Math.Ceiling(box.MaxRe / roundFactor) * roundFactor, measured.MaxRe),
+                Math.Max(Math.Floor(box.MinIm / roundFactor) * roundFactor, measured.MinIm),
+                Math.Min(Math.Ceiling(box.MaxIm / roundFactor) * roundFactor, measured.MaxIm));
+            return rounded.IsValid ? rounded : measured;
         }
 
         // ── Resample ─────────────────────────────────────────────────────────

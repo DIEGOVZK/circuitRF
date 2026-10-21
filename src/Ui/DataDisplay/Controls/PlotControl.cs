@@ -146,6 +146,20 @@ namespace CircuitRF.Ui.DataDisplay.Controls
             set => SetValue(CanEditPlotPropertiesProperty, value);
         }
 
+        public static readonly StyledProperty<bool> CanEditAxesLabelsProperty =
+            AvaloniaProperty.Register<PlotControl, bool>(nameof(CanEditAxesLabels), defaultValue: true);
+
+        /// <summary>
+        /// When false, the context menu's <b>Axes Labels…</b> is shown disabled and a double-tap on the title or an axis
+        /// label opens nothing — for a host that writes the labels itself on every rebuild (the Model Composer), where an
+        /// edit would be gone at the next one.
+        /// </summary>
+        public bool CanEditAxesLabels
+        {
+            get => GetValue(CanEditAxesLabelsProperty);
+            set => SetValue(CanEditAxesLabelsProperty, value);
+        }
+
         // ============================================================
         //  Events
         // ============================================================
@@ -251,6 +265,7 @@ namespace CircuitRF.Ui.DataDisplay.Controls
         // lifetime, so the tick has to be re-read on every open rather than set once at build time.
         private MaterialIcon _iconAdmittance = new MaterialIcon();
         private MenuItem?    _admittanceMenuItem;
+        private MenuItem?    _axesLabelsMenuItem;
 
         // Marker symbol drag state
         private Marker? _draggingMarker;
@@ -524,6 +539,8 @@ namespace CircuitRF.Ui.DataDisplay.Controls
             icon = new MaterialIcon { Kind = MaterialIconKind.Alphabetical };
             var item3 = new MenuItem { Header = "Axes Labels…", Icon = icon };
             item3.Click += OnMenuActionThree;
+            _axesLabelsMenuItem = item3;
+            ApplyMenuAvailability();
 
             // THE ADMITTANCE GRID, below Axes Labels… (owner instruction, 2026-09-19). It is a
             // property of the PLOT and not of this window, so it is here rather than in the Smith
@@ -677,7 +694,8 @@ namespace CircuitRF.Ui.DataDisplay.Controls
         protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
         {
             base.OnPropertyChanged(change);
-            if (change.Property == CanDeletePlotProperty || change.Property == CanEditPlotPropertiesProperty)
+            if (change.Property == CanDeletePlotProperty || change.Property == CanEditPlotPropertiesProperty
+                || change.Property == CanEditAxesLabelsProperty)
                 ApplyMenuAvailability();
         }
 
@@ -704,6 +722,7 @@ namespace CircuitRF.Ui.DataDisplay.Controls
         private void ApplyMenuAvailability()
         {
             Set(_plotPropertiesMenuItem, CanEditPlotProperties);
+            Set(_axesLabelsMenuItem, CanEditAxesLabels);
             Set(_deletePlotMenuItem, CanDeletePlot);
 
             // —— THE THREE A 3D PATTERN HAS NOTHING FOR ——
@@ -852,7 +871,7 @@ namespace CircuitRF.Ui.DataDisplay.Controls
 
         private void ShowAxesLabelsFlyout()
         {
-            if (_plot is null) return;
+            if (_plot is null || !CanEditAxesLabels) return;
 
             _labelsflyout?.Hide();
 

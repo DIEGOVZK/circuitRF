@@ -87,16 +87,21 @@ public sealed record ElementLaw(string Variable, FamilyForm Form, double[] Coeff
         return v;
     }
 
-    /// <summary>The law as an expression of <paramref name="geometry"/> (itself an expression).</summary>
-    public string Expression(string geometry)
+    /// <summary>The law as an expression of <paramref name="geometry"/> (itself an expression), in units of
+    /// <paramref name="scale"/> — 1e-9 writes an inductance law in nH. <paramref name="normalised"/> names a variable that
+    /// already holds (geometry − Mid) / Half, in place of writing it out.</summary>
+    public string Expression(string geometry, double scale = 1, string? normalised = null)
     {
-        string x = Half == 0 ? "0" : $"((({geometry})-{R(Mid)})/{R(Half)})";
+        string x = Half == 0 ? "0" : normalised ?? Normalised(geometry);
         if (Form == FamilyForm.Rational)
-            return $"({R(Coefficients[0])}{Term(Coefficients[1], x, 1)})/(1{Term(Coefficients[2], x, 1)})";
-        var sb = new System.Text.StringBuilder(R(Coefficients[0]));
-        for (int k = 1; k < Coefficients.Length; k++) sb.Append(Term(Coefficients[k], x, k));
+            return $"({R(Coefficients[0] / scale)}{Term(Coefficients[1] / scale, x, 1)})/(1{Term(Coefficients[2], x, 1)})";
+        var sb = new System.Text.StringBuilder(R(Coefficients[0] / scale));
+        for (int k = 1; k < Coefficients.Length; k++) sb.Append(Term(Coefficients[k] / scale, x, k));
         return sb.ToString();
     }
+
+    /// <summary>(geometry − Mid) / Half, the variable every law is a polynomial or rational function of.</summary>
+    public string Normalised(string geometry) => $"((({geometry})-{R(Mid)})/{R(Half)})";
 
     private static string Term(double c, string x, int power) =>
         (c < 0 ? "-" : "+") + R(Math.Abs(c)) + "*" + (power == 1 ? x : $"{x}^{power}");

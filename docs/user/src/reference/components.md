@@ -1926,7 +1926,9 @@ model over a temperature range follows `temp`, held to that range.
 
 A self-heating model has a thermal node, `X1.t`, whose voltage is the device's temperature rise in °C;
 its currents and charges follow `temp` plus that rise. Pin 4 is that node. On the standard symbol it is the
-lead on the right, starting at a small open circle; it appears only when the model self-heats:
+lead on the right marked **T**, starting at a small open circle; it appears only when the model self-heats.
+Unwired, its end shows an open box instead of the red unconnected marker: the pin is there, and leaving it
+open is a valid choice.
 
 ```
 ComposedFET:X1  g d s t  File="gan_8x125.cmodel"

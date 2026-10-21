@@ -23,10 +23,11 @@ public sealed class ModelComposerCheckStepTests
 
         Assert.NotEmpty(ran);
         Assert.DoesNotContain(ui, ran);
-        string expected = ConservationCheck.Summary(ConservationCheck.RunFile(cmc, new LargeSignalSettings()));
-        Assert.Equal(expected, vm.CheckLines[0]);
-        Assert.StartsWith("Data gate ", expected);
-        Assert.Contains(" · HB ", expected);
+        var expected = ConservationCheck.SummaryLines(ConservationCheck.RunFile(cmc, new LargeSignalSettings()));
+        Assert.Equal(expected, vm.CheckLines.Take(expected.Count));
+        Assert.StartsWith("Data gate ", expected[0]);
+        Assert.StartsWith("Data drain ", expected[1]);
+        Assert.StartsWith("HB ", expected[^1]);
         Assert.NotNull(vm.CheckPlots!.Data["Spectrum.f"]);
     }
 }

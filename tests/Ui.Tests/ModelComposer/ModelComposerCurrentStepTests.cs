@@ -56,6 +56,19 @@ public sealed class ModelComposerCurrentStepTests
         vm.SelectedPlotTab = ModelComposerViewModel.DomainTab;
         Assert.Contains(vm.RectPlot.Traces, x => x.CubeName == "domain" && x.Properties.LineEnabled);
 
+        // The Model tab evaluates the fit over the toolbar's sweep, one curve per vgs step, in place of the cursor lists.
+        vm.SelectedPlotTab = ModelComposerViewModel.ModelVdsTab;
+        Assert.True(vm.ShowSweep);
+        Assert.False(vm.ShowVgsCursor || vm.ShowVdsCursor);
+        vm.SweepVgsStart = "-1";
+        vm.SweepVgsStop = "0";
+        vm.SweepVgsStep = "0.5";
+        var fitted = vm.RectPlot.Traces.Where(x => !x.CubeName!.EndsWith(" beyond", StringComparison.Ordinal)).ToList();
+        Assert.Equal(["vgs -1 V", "vgs -0.5 V", "vgs 0 V"], fitted.Select(x => x.CubeName));
+        Assert.All(fitted, x => Assert.True(x.CubeXValues!.Count >= 101));
+        // What lies beyond the training domain is dashed and frames nothing.
+        Assert.All(vm.RectPlot.Traces.Except(fitted), x => Assert.True(x.ExcludeFromAutoscale && x.Properties.LineType == CircuitRF.Render.DataDisplay.LineType.Dashed));
+
         // One family, one colour: every member of the overlay is drawn in the same blue.
         vm.SelectedPlotTab = ModelComposerViewModel.OutputTab;
         Assert.Single(vm.RectPlot.Traces.Select(x => x.Properties.LineColorIndex).Distinct());

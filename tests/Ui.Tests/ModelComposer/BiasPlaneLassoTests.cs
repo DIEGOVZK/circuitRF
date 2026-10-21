@@ -9,7 +9,8 @@ namespace CircuitRF.Ui.Tests.ModelComposer;
 /// <summary>
 /// brief-modelcomposer-14 R-mc14-6: with the lasso armed, a click on a bias-plane point excludes it — driven through the
 /// overlay exactly as <c>PlotControl</c> drives it (hit test, begin, the press point, release) — and the plot draws it
-/// excluded at once, not only after the data's reload. A second click on it includes it again.
+/// excluded at once, not only after the data's reload. A second click on it includes it again. The overlay is the
+/// container's by the time the tab's change is announced, which is when the plots panel hands it to its PlotControl.
 /// </summary>
 public sealed class BiasPlaneLassoTests
 {
@@ -33,7 +34,12 @@ public sealed class BiasPlaneLassoTests
     {
         var vm = await ComposerFixture.Open(ModelComposerCurrentStepTests.Document());
         vm.SelectedStep = vm.Steps.First(s => s.Name == "Data");
+        // The plots panel hands the container's overlay to its PlotControl when the tab changes: it must be the lasso by
+        // then, or the control is left without one and a click on the plot reaches nothing.
+        object? handedOver = null;
+        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(vm.SelectedPlotTab)) handedOver = vm.RectContainer.Overlay; };
         vm.SelectedPlotTab = ModelComposerViewModel.BiasPlaneTab;
+        Assert.Same(vm.BiasPlaneLasso, handedOver);
         vm.ExcludeArmed = true;
 
         // The data's reload after the edit is held until the plot has been looked at.

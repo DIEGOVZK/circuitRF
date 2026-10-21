@@ -21184,3 +21184,23 @@ read; it imports with connectivity matching both its drawing and its declared ne
   add), which changes nothing for a fresh result.
 - **`RecognitionScope` compared its rings by reference** (a record over `long[]`), so an input rebuilt from the same
   selection never equalled the preview's. It compares point for point now.
+
+## Model Composer review 2 — traps None and Shift, family cells (2026-10-20)
+
+- **Traps = None refused to run.** `TrapFit.FitFile` re-trains the currents after the trap step, and with no traps
+  `CurrentFit` refused DC and pulsed sets together ("one trap state per fit until traps are modelled"). With no trap
+  model the pulsed sets beside DC are now left out and reported — the shift coupling already did exactly this — since
+  DC is the state a trap-free model describes. Gate: `TrappedModelFitTests.WithNoTraps_PulsedSetsBesideDc_AreLeftOut`.
+- **Shift refused currents trained with traps** and sent the user to the Current step and back. `FitFile` now re-trains
+  them trap-free first (same digest, both stamped).
+- **A trap-model change staled nothing**, so Export wrote the currents' old trap block. `CmcStamps.StaleSteps` adds
+  Traps whenever `TrapFit.CurrentsDisagree`; `Describe` names the trap model as a cause.
+- **ANN progress named no network.** `AnnTrainer` overwrote the caller's "Training Ig" stage with "Training the
+  network, start n of 3"; it now keeps the caller's stage (any earlier ", start n of m" stripped).
+- **Family cells exported every element value as a hidden cell parameter**, in base SI (`6.67E-09 H`). The geometry is
+  now the only parameter and the VAR block stays on the schematic, its first row `x` = the normalised geometry and every
+  law a polynomial in `x`, each in the unit that puts its mid-range value between 1 and 1000 (`ElementLaw.Expression`'s
+  `scale`); a single fit's parameters use the same units. Coefficients keep every digit, so placed-and-simulated S still
+  matches the fit to 1e-12 (`PassiveCellExportTests`).
+- **Check percentages** below 0.01 % read `< 0.01 %` (`ConservationCheck.Pct`); `SummaryLines` gives the Check step a
+  row per result.

@@ -102,6 +102,16 @@ public sealed class TrappedModelFitTests(ITestOutputHelper output)
         Assert.True(PulsedError(Evaluator(fit), 10) < 0.01, "pulsed from 10 V");
     }
 
+    // Choosing no traps is choosing the DC model: pulsed sets beside DC are left out, and said so, not a refusal.
+    [Fact]
+    public void WithNoTraps_PulsedSetsBesideDc_AreLeftOut()
+    {
+        var (doc, data, intrinsic) = Document(null, Dc(), Pulsed("q10", 10));
+        var fit = CurrentFit.Run(doc, data, intrinsic, Fit with { Id = new CurrentConstituentSettings { MaxIterations = 200 } });
+        Assert.Single(fit.Record.Report, l => l.StartsWith("No traps are modelled", StringComparison.Ordinal) && l.Contains("q10"));
+        Assert.Null(fit.Record.Traps);
+    }
+
     [Fact]
     public void WithNoPulsedData_TheStepIsUnavailable_AndTheModelHasNoTraps()
     {

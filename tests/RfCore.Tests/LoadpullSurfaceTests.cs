@@ -115,6 +115,18 @@ public class LoadpullSurfaceTests
         Assert.Equal("Hz",   sfc.LeadingAxisUnit);
     }
 
+    // The Z-plane view box is rounded OUTWARD: rounding to nearest moved a GaN bench's left edge from 30.8 Ω (MXP / 1.3)
+    // up to 39 Ω, past the MXP at 36 Ω.
+    [Fact]
+    public void RecommendedBox_ZPlaneRounding_NeverCutsInward()
+    {
+        var box      = new ViewBox(30.8, 128.3, -5.2, 96.0);
+        var measured = new ViewBox(26.1, 233.1, -80.4, 157.3);
+        var r = LoadpullSurface.RoundOutward(box, measured);
+        Assert.True(r.MinRe <= box.MinRe && r.MaxRe >= box.MaxRe && r.MinIm <= box.MinIm && r.MaxIm >= box.MaxIm, r.ToString());
+        Assert.True(r.MinRe >= measured.MinRe && r.MaxIm <= measured.MaxIm, r.ToString());
+    }
+
     // ── Z-plane contour coverage: MeasuredBox encloses the MXP/MXE auto-zoom ──
     // Regression: a Rect (Z-plane) contour must resample over the FULL measured data extent so
     // iso-lines render wherever data exists — not only within RecommendedBox's MXP/MXE zoom (which

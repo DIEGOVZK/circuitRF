@@ -244,11 +244,16 @@ public static class AnnTrainer
         int bestStart = 0;
         Lbfgs.Outcome? bestOutcome = null;
         int starts = Math.Max(1, settings.Restarts);
+        // The caller's own stage names what is trained ("Training Ig"); kept, so a fit training several networks in turn
+        // says which one each start belongs to.
+        string what = rc?.Stage is { Length: > 0 } named
+            ? System.Text.RegularExpressions.Regex.Replace(named, @", start \d+ of \d+$", "")   // a previous network's start
+            : "Training the network";
 
         for (int start = 0; start < starts; start++)
         {
             var p = objective.Initial(new SplitMix64(seeds.NextULong()));
-            rc?.BeginStage(starts == 1 ? "Training the network" : $"Training the network, start {start + 1} of {starts}",
+            rc?.BeginStage(starts == 1 ? what : $"{what}, start {start + 1} of {starts}",
                            settings.MaxIterations, "iteration(s)");
 
             double[]? kept = null;

@@ -957,3 +957,12 @@ Gates: `tests/Ui.Tests/Sar/OpenEmsHdf5Tests.cs`, `DiscMaterialWriterTests.cs`. D
 - **Order convention:** everything comes back C order over MATLAB's logical shape. A v7.3 dataset carrying
   `MATLAB_class` has its HDF5 dimensions reversed and is transposed like v5; a dataset without one (`MatWriter`'s,
   h5py's) is taken as stored. Without that split one of the two writers' 3 × 4 matrices reads back as 4 × 3.
+
+## The Z-plane auto-view box cut off the MXP it was built around (2026-10-20)
+
+`LoadpullSurface.RecommendedBox` rounds a Z-plane box to a grid of a fifth of its width with `Math.Round`, which moves
+each edge to the NEAREST grid line — inward by up to half a step. On the Model Composer's GaN loadpull the MXP sat at
+about 36 Ω, the box built around it started at 30.8 Ω (VSWR 1.3), and rounding moved that to 39 Ω: the contour fill,
+and the Rect plot autoscaled to it, ended past the MXP, which drew half off the plot's edge. Edges now round outward
+and are clipped to the measured extent again (`RoundOutward`). Gate: `LoadpullSurfaceTests.RecommendedBox_ZPlaneRounding_NeverCutsInward`.
+A `.cdd` saved before the fix keeps its stored window; deleting it lets the next run re-create the display.

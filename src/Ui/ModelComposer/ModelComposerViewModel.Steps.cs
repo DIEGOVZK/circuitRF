@@ -416,6 +416,8 @@ public sealed partial class ModelComposerViewModel
     [ObservableProperty] private string _trapCoupling = ModelTraps.Trained;
     /// <summary>Why only the shift coupling is offered; empty when both are.</summary>
     [ObservableProperty] private string _trapCouplingNote = "";
+    /// <summary>With no trap model, what Run does — re-train the currents without traps, or nothing; empty with a model.</summary>
+    [ObservableProperty] private string _trapRunNote = "";
     public bool IsShiftCoupling => TrapCoupling == ModelTraps.Shift && HasTrapModel;
     public bool HasTrapModel => TrapModel is not null && TrapModel != ModelTraps.None;
     /// <summary>The shift coupling's strengths (R-mc19-6): lock, value and, after a fit, ±.</summary>
@@ -438,6 +440,10 @@ public sealed partial class ModelComposerViewModel
         TrapCouplingNote = pulsed ? "" : TrapFit.ShiftOnly;
         OnPropertyChanged(nameof(IsShiftCoupling));
         RebuildPlotTabs();
+        TrapRunNote = s.Modelled ? ""
+            : CurrentFit.Record(Document)?.Traps is not null
+                ? "No traps: the currents were trained with them, so Run re-trains Id and Ig without, on the DC data."
+                : "No traps: nothing to fit. The currents are trap-free.";
         if (!s.Modelled) return;
         ModelTraps? block = null;
         try { block = TrapFit.Block(s); }
@@ -566,7 +572,8 @@ public sealed partial class ModelComposerViewModel
 
     // ── Check (R-mc15-6) ─────────────────────────────────────────────────────
 
-    /// <summary>The check's result, one line per part: data, model, HB; then the transcapacitance as information.</summary>
+    /// <summary>The check's result, one row per part: the data's gate, its drain, the model, HB; then the transcapacitance as
+    /// information.</summary>
     public ObservableCollection<string> CheckLines { get; } = [];
 
     /// <summary>The last check's plot data — the maps and the spectrum.</summary>
@@ -602,10 +609,11 @@ public sealed partial class ModelComposerViewModel
             CheckReport = report;
             CheckPlots = plots;
             CheckLines.Clear();
-            CheckLines.Add(ConservationCheck.Summary(report));
+            foreach (string line in ConservationCheck.SummaryLines(report)) CheckLines.Add(line);
             foreach (string line in report.Lines.Where(l => l.StartsWith("transcapacitance", StringComparison.Ordinal))) CheckLines.Add(line);
             if (ConservationCheck.Exceeds(report)) Warn(ConservationCheck.Summary(report));
             else Info(ConservationCheck.Summary(report));
+            UpdateStepStates();
             RebuildPlots();
         });
     }
@@ -710,6 +718,7 @@ public sealed partial class ModelComposerViewModel
                     ? result
                     : new ValidationResult(result.ModelPath, [.. Validation.Items.Where(i => i.Set != set), .. result.Items], result.Notes);
                 RefreshValidation();
+                UpdateStepStates();
                 RebuildPlotTabs();
                 int failed = result.Items.Count(i => !i.Passed);
                 if (failed > 0) Warn($"{failed} of {result.Items.Count} item(s) outside their tolerances.");
@@ -764,7 +773,7 @@ public sealed partial class ModelComposerViewModel
 
     private void RefreshExport()
     {
-        var stale = Loaded.Stale;
+        var stale = StaleSteps;
         ExportBlocked = stale.Count == 0 ? "" : $"{string.Join(", ", stale)} {(stale.Count == 1 ? "is" : "are")} stale; run {(stale.Count == 1 ? "it" : "them")} first.";
         RunStaleCommand.NotifyCanExecuteChanged();
         if (IsPassive)
@@ -864,13 +873,13 @@ public sealed partial class ModelComposerViewModel
     [RelayCommand(CanExecute = nameof(HasStale))]
     private Task RunStale() => RunStaleAsync();
 
-    private bool HasStale() => Loaded.Stale.Count > 0;
+    private bool HasStale() => StaleSteps.Count > 0;
 
     /// <summary>Run stale (R-mc15-8): re-runs each stale step through <see cref="ModelCommands.Fit"/>, in the order a full fit
     /// runs them, as one task.</summary>
     public Task<bool> RunStaleAsync()
     {
-        var stale = Loaded.Stale.Select(s => s.ToLowerInvariant()).ToHashSet();
+        var stale = StaleSteps.Select(s => s.ToLowerInvariant()).ToHashSet();
         var steps = ModelCommands.Steps.Where(stale.Contains).ToList();
         if (steps.Count == 0) { Info("Nothing is stale."); return Task.FromResult(false); }
         return RunOnFile("Running stale steps", (path, rc) =>

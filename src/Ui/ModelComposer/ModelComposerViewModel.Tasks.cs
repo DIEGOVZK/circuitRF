@@ -189,11 +189,32 @@ public sealed partial class ModelComposerViewModel
             });
     }
 
-    /// <summary>The open's own line: a re-import or a warning, else nothing to say.</summary>
+    /// <summary>The open's own line: a re-import or a warning, else nothing to say. The first open of a document says what
+    /// it holds — its data, the steps already done, the exported model — so a finished .cmc reads as finished.</summary>
     private void SayLoaded()
     {
-        if (Loaded.Warnings.Count > 0) Warn(Loaded.Warnings[0]);
+        string? opened = _saidOpened ? null : OpenedSummary();
+        _saidOpened = true;
+        // Opening, the summary leads and the data's first remark follows it as a note: it describes the data, which the
+        // opened document already accounts for, and a warning-coloured line would read as the open having failed.
+        if (opened is not null) Info(Loaded.Warnings.Count > 0 ? $"{opened} Note: {Loaded.Warnings[0]}" : opened);
+        else if (Loaded.Warnings.Count > 0) Warn(Loaded.Warnings[0]);
         else if (Loaded.Status.Count > 0) Info(Loaded.Status[^1]);
+    }
+
+    private bool _saidOpened;
+
+    /// <summary>"9 data sets open · done: Network, Current, … · gan_4x125.cmodel is exported; Run re-runs a step." — the
+    /// rail's own marks, as one line.</summary>
+    private string OpenedSummary()
+    {
+        var done = Steps.Where(s => s.IsDone && s.Name != "Data").Select(s => s.Name).ToList();
+        var stale = Steps.Where(s => s.IsStale).Select(s => s.Name).ToList();
+        string data = $"{Loaded.Data.Count} data set{(Loaded.Data.Count == 1 ? "" : "s")} open";
+        if (Loaded.Data.Count == 0) return Document.DataSets.Count == 0 ? "No data yet: Import… on the Data step brings in the first set." : $"{data}.";
+        string line = done.Count > 0 ? $"{data} · done: {string.Join(", ", done)}" : $"{data}; no step is fitted yet";
+        if (stale.Count > 0) line += $" · stale: {string.Join(", ", stale)}";
+        return line + ".";
     }
 
     /// <summary>After an edit: a change the data or its de-embedding depends on re-opens it.</summary>
@@ -290,10 +311,12 @@ public sealed partial class ModelComposerViewModel
     /// <summary>The selected step's runs, the first of which the Run button itself runs.</summary>
     public IReadOnlyList<RunItem> RunItems => StepName switch
     {
-        "Data" => [new("Import…", "import"), new("Reload", "reload")],
+        // A document that holds data opens it again; one that holds none has nothing to run but an import.
+        "Data" => Document.DataSets.Count > 0 ? [new("Reload the data", "reload"), new("Import…", "import")] : [new("Import…", "import"), new("Reload", "reload")],
         "Pads" => [new("De-embed", "deembed")],
         "Network" => [new("Fit", "fit"), new("De-embed", "deembed")],
-        "Current" or "Charge" or "Traps" or "Fit" => [new("Fit", "fit")],
+        "Traps" => TrapRunItems(),
+        "Current" or "Charge" or "Fit" => [new("Fit", "fit")],
         "Thermal" => [new("Extract", "fit")],
         "Check" => [new("Check charge conservation", "check")],
         "Validate" => [new("Validate all", "validate"), new("Show testbench", "testbench")],
@@ -301,6 +324,31 @@ public sealed partial class ModelComposerViewModel
         "Topology" => [new("Propose", "propose"), new("Analyse", "analyse")],
         _ => [],
     };
+
+    /// <summary>
+    /// The Traps step's run. With no trap model there is nothing to fit — unless the currents were trained with one, which
+    /// they would go on carrying into the export, so the run re-trains them without.
+    /// </summary>
+    private IReadOnlyList<RunItem> TrapRunItems()
+    {
+        try
+        {
+            if (TrapFit.Settings(Document).Modelled) return [new("Fit", "fit")];
+            return CurrentFit.Record(Document)?.Traps is not null ? [new("Re-train the currents without traps", "fit")] : [];
+        }
+        catch (CmcFormatException) { return [new("Fit", "fit")]; }
+    }
+
+    /// <summary>The Run button's tooltip: what it runs, or that the step has nothing to run.</summary>
+    public string RunTip => RunItems.FirstOrDefault() is { } first ? $"Run: {first.Label}" : "Nothing to run in this step";
+
+    /// <summary>The Run button's runs and tooltip follow the step and the document.</summary>
+    private void NotifyRunItems()
+    {
+        OnPropertyChanged(nameof(RunItems));
+        OnPropertyChanged(nameof(RunTip));
+        RunCommand.NotifyCanExecuteChanged();
+    }
 
     [RelayCommand(CanExecute = nameof(CanRun))]
     private Task Run(string? key) => RunKey(key ?? RunItems.FirstOrDefault()?.Key);

@@ -321,6 +321,17 @@ public class CnlReaderTests
         Assert.Equal("dB(S(2,1))", m.Expression);
     }
 
+    [Fact]
+    public void Measure_TrailingOperandIsNotAUnit()
+    {
+        // "Pin" after "-" is the expression's last operand; "dB" after a complete expression is a unit.
+        var (_, tb) = new CnlReader().Read("measure Gt = Pout_dBm - Pin\nmeasure G = dB(S(2,1)) dB\n");
+        Assert.Equal("Pout_dBm - Pin", tb.Measurements[0].Expression);
+        Assert.Null(tb.Measurements[0].Unit);
+        Assert.Equal("dB(S(2,1))", tb.Measurements[1].Expression);
+        Assert.Equal("dB", tb.Measurements[1].Unit);
+    }
+
     // ── Unit-token phantom-node fix (brief-unit-token-phantom-nodes) ──────────
 
     [Fact]

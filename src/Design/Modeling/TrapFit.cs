@@ -115,6 +115,19 @@ public static partial class TrapFit
     public static string? Unavailable(CmcDocument doc) =>
         Settings(doc).Shifted || HasPulsedIv(doc) ? null : NoPulsedData;
 
+    /// <summary>
+    /// The trap model the Traps step names against the one the currents were trained with: choosing another (None
+    /// included) leaves the trained currents carrying the old one, which Export would write, until the step runs. Read
+    /// from the document alone, so the window asks it after every edit.
+    /// </summary>
+    public static bool CurrentsDisagree(CmcDocument doc)
+    {
+        if (doc.Kind != CmcKind.Active || CurrentFit.Record(doc) is not { } current) return false;
+        var traps = Settings(doc);
+        string? wanted = traps.Modelled && !traps.Shifted ? traps.Model : null;
+        return current.Traps?.Model != wanted;
+    }
+
     /// <summary>The one line the step shows when there is no pulsed I–V, so only the shift coupling is offered (R-mc19-2).</summary>
     public const string ShiftOnly = "Shift only: trained traps need pulsed I–V; without it the states shift the threshold, with strengths typed or fitted from multi-bias S.";
 
@@ -130,11 +143,27 @@ public static partial class TrapFit
         var intrinsic = new IntrinsicExtraction(cmcPath).Run(doc, data, rc: rc);
         if (Settings(doc).Shifted)
         {
-            // R-mc19-5: the strengths alone; Id₀ is the current step's, left as it is.
-            var shifted = Run(doc, data, intrinsic, Settings(doc), rc, CurrentFit.Load(cmcPath, doc));
+            // R-mc19-5: the strengths alone; Id₀ is the current step's, left as it is — unless the currents were trained
+            // with trap states as inputs, which a shift has no use for: then they are re-trained trap-free first, here,
+            // rather than refused with a sentence sending the user to another step and back.
+            var loaded = CurrentFit.Load(cmcPath, doc);
+            CurrentFitResult? retrained = null;
+            if (loaded?.Record.Traps is not null)
+            {
+                retrained = CurrentFit.Run(doc, data, intrinsic, CurrentFit.Settings(doc), rc);
+                loaded = retrained;
+            }
+            var shifted = Run(doc, data, intrinsic, Settings(doc), rc, loaded);
             rc?.ThrowIfCancellationRequested();
-            CmcFile.Write(cmcPath, CmcStamps.Stamp(Apply(doc, shifted), StepName, CmcStamps.DataDigest(cmcPath, doc)));
-            return (shifted, null);
+            string shiftDigest = CmcStamps.DataDigest(cmcPath, doc);
+            var written = CmcStamps.Stamp(Apply(doc, shifted), StepName, shiftDigest);
+            if (retrained is not null)
+            {
+                CurrentFit.WriteArrays(cmcPath, CurrentFit.CacheFolder, retrained.Record.Arrays, retrained.Arrays);
+                written = CmcStamps.Stamp(CurrentFit.Apply(written, retrained), CurrentFit.StepName, shiftDigest);
+            }
+            CmcFile.Write(cmcPath, written);
+            return (shifted, retrained);
         }
         var traps = Run(doc, data, intrinsic, Settings(doc), rc);
         doc = Apply(doc, traps);

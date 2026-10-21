@@ -19,6 +19,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Design.Modeling;
 using CircuitRF.Design.Modeling.Passive;
 using CircuitRF.Ui.Views.Dialogs;
@@ -172,14 +173,13 @@ public sealed partial class ModelComposerViewModel : ObservableObject, IDisposab
             if (value is not null) value.IsSelected = true;
             OnPropertyChanged();
             OnPropertyChanged(nameof(StepName));
-            OnPropertyChanged(nameof(RunItems));
+            NotifyRunItems();
             NotifyStepPanels();
             NotifyModelSteps();
             if (value is not null) SetView(Document.View with { Step = value.Name });
             RebuildPlotTabs();
             RequestStepPlots();
             RebuildPlots();
-            RunCommand.NotifyCanExecuteChanged();
         }
     }
 
@@ -234,7 +234,7 @@ public sealed partial class ModelComposerViewModel : ObservableObject, IDisposab
         bool pulsed = Document.DataSets.Any(s => s.Kind is DataSetKind.PulsedIv or DataSetKind.PulsedSParams);
         bool passiveData = Document.DataSets.Any(s => s.Kind == DataSetKind.PassiveSParams);
         bool topology = PassiveStep.Settings(Document).Topology is not null;
-        var stale = Loaded.Stale;
+        var stale = StaleSteps;
         foreach (var step in Steps)
         {
             string reason = step.Name switch
@@ -255,8 +255,56 @@ public sealed partial class ModelComposerViewModel : ObservableObject, IDisposab
             step.Reason = reason;
             step.IsEnabled = reason.Length == 0;
             step.IsStale = stale.Any(s => string.Equals(s, step.Name, StringComparison.OrdinalIgnoreCase));
+            step.IsDone = step.IsEnabled && !step.IsStale && IsDone(step.Name);
         }
         if (SelectedStep is { IsEnabled: false }) SelectedStep = Steps[0];
+        NotifyRunItems();
+    }
+
+    /// <summary>The stale steps: the last open's (data and network moved under a fit), and Traps whenever the trap model now
+    /// chosen is not the one the currents were trained with — an edit, which no open follows.</summary>
+    public IReadOnlyList<string> StaleSteps
+    {
+        get
+        {
+            bool traps;
+            try { traps = TrapFit.CurrentsDisagree(Document); }
+            catch (CmcFormatException) { traps = false; }
+            return traps && !Loaded.Stale.Contains(TrapFit.StepName) ? [.. Loaded.Stale, TrapFit.StepName] : Loaded.Stale;
+        }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="step"/> holds its result: data imported, pads stated, a fit recorded, the model or cell
+    /// exported — the document's own record, so a <c>.cmc</c> opened with its work done says so on the rail. Check and
+    /// Validate keep no record in the document; they are done once run in this window.
+    /// </summary>
+    private bool IsDone(string step)
+    {
+        try
+        {
+            return step switch
+            {
+                "Data" => Document.DataSets.Count > 0,
+                "Pads" => Document.Pads is not null,
+                "Network" => CmcExtrinsic.Network(Document).Result is not null,
+                "Current" => CurrentFit.Record(Document) is not null,
+                "Charge" => ChargeFit.Record(Document) is not null,
+                "Thermal" => ThermalFit.Record(Document) is not null,
+                "Traps" => TrapFit.Record(Document) is not null
+                           || !TrapFit.Settings(Document).Modelled && CurrentFit.Record(Document) is { Traps: null },
+                "Check" => CheckReport is not null,
+                "Validate" => Validation is not null,
+                "Export" when IsActive => (ExportPath.Length > 0 ? ExportPath : DocumentPath is { } p ? Path.ChangeExtension(p, CmodelFile.Extension) : "")
+                                          is { Length: > 0 } model && File.Exists(model),
+                "Export" => PassiveStep.Settings(Document).Export is { } e && DocumentFolder is { } dir
+                            && Directory.Exists(Path.GetFullPath(Path.Combine(dir, e.Library, e.Cell))),
+                "Topology" => PassiveStep.Settings(Document).Topology is not null,
+                "Fit" => PassiveStep.Record(Document) is not null,
+                _ => false,
+            };
+        }
+        catch (Exception ex) when (ex is CmcFormatException or ModelingException) { return false; }
     }
 
     // ── panels (R-mc14-2): lamps persisted in the .cmc ───────────────────────

@@ -35,7 +35,7 @@ public sealed partial class ModelComposerViewModel
     /// </summary>
     private IReadOnlyList<string>? ModelStepTabs() => StepName switch
     {
-        "Current" => [OutputTab, TransferTab, ErrorTab, GmTab, GdsTab, DomainTab],
+        "Current" => [OutputTab, TransferTab, ModelVdsTab, ModelVgsTab, ErrorTab, GmTab, GdsTab, DomainTab],
         "Charge" => [CvGateTab, CvDrainTab, QgTab, QdTab, DQgTab, DQdTab],
         "Thermal" => StepPlots is { Step: "Thermal" } tp && !tp.Data.Contains("P") ? [DcIvTab] : [TjTab, DcIvTab],
         "Traps" => TrapFit.Settings(Document) is { Modelled: true, Shifted: true } ? [GmTab, GdsTab] : [PulsedTab, DcIvTab],
@@ -123,6 +123,7 @@ public sealed partial class ModelComposerViewModel
                 if (key != _stepPlotsKey) return;
                 StepPlots = (StepPlotData?)r;
                 StepPlotBuilds++;
+                DefaultSweep();
                 OnPropertyChanged(nameof(StepPlots));
                 RebuildPlotTabs();
                 RebuildPlots();
@@ -240,13 +241,18 @@ public sealed partial class ModelComposerViewModel
                 Labels(plot, "Vds (V)", "Gds (mS)");
                 break;
             }
+            case ModelVdsTab or ModelVgsTab:
+                ModelSweepPlot(plot, sp, sweepDrain: SelectedPlotTab == ModelVdsTab);
+                break;
             case DomainTab:
             {
                 plot.CustomTitle = "Training domain";
                 foreach (string s in sp.Sets)
                 {
                     double[] g = R(ds, $"{s}.Vgsi"), d = R(ds, $"{s}.Vdsi");
-                    plot.Traces.Add(Scatter(s, [.. d.Zip(g)], 0, MarkerType.Circle, 5));
+                    var t = Scatter(s, [.. d.Zip(g)], FamilyColour, MarkerType.Circle, SmallMarker);
+                    t.Properties.Custom = false;
+                    plot.Traces.Add(t);
                 }
                 if (ds.Contains("Domain.vgs"))
                     plot.Traces.Add(Xy("domain", R(ds, "Domain.vds"), R(ds, "Domain.vgs"), "Vds", "V", 3, line: true, marker: null));
@@ -277,8 +283,8 @@ public sealed partial class ModelComposerViewModel
         if (StepPlots is not { Step: "Charge" } sp) return;
         switch (SelectedPlotTab)
         {
-            case CvGateTab: CvSlice(plot, sp, sweepGate: true); break;
-            case CvDrainTab: CvSlice(plot, sp, sweepGate: false); break;
+            case CvGateTab: CvSweep(plot, sp, sweepGate: true); break;
+            case CvDrainTab: CvSweep(plot, sp, sweepGate: false); break;
             case QgTab: ChargeSurface(plot, sp.Data, "Qg.model", "Qg (model)"); break;
             case QdTab: ChargeSurface(plot, sp.Data, "Qd.model", "Qd (model)"); break;
             case DQgTab: Surface(plot, sp.Data, "dQg", "Qg − line integral, % of range"); break;
@@ -286,29 +292,7 @@ public sealed partial class ModelComposerViewModel
         }
     }
 
-    /// <summary>The 1-D C–V slice at the cursor's fixed voltage (R-mc15-3): measured symbols, model lines.</summary>
-    private void CvSlice(Plot plot, StepPlotData sp, bool sweepGate)
-    {
-        double fixedValue = (sweepGate ? SelectedVds?.Value : SelectedVgs?.Value) ?? 0;
-        if (sp.Slice(sweepGate, fixedValue) is not { } ds) return;
-        LastSlice = (sweepGate, fixedValue, ds);
-        string swept = sweepGate ? "vgs" : "vds", fixedName = sweepGate ? "Vds" : "Vgs";
-        plot.CustomTitle = $"C–V against {swept} · {fixedName} {ModelValueFormat.G(fixedValue)} V";
-        IReadOnlyList<string> names = CvQuantity == "Circuit set" ? ["Cgs", "Cgd", "Cds", "Cm"] : [CvQuantity];
-        double[] xm = R(ds, "x.meas");
-        int c = 0;
-        foreach (string n in names)
-        {
-            var model = ds[$"{n}.model"];
-            plot.Traces.Add(Xy($"{n} model", model.Axes[0].Values, [.. model.RealValues.Select(v => v * 1e15)], swept, "V", c, line: true, marker: null));
-            if (xm.Length > 0)
-                plot.Traces.Add(Xy(n, xm, [.. R(ds, $"{n}.meas").Select(v => v * 1e15)], swept, "V", c, line: false, marker: MarkerType.Circle));
-            c++;
-        }
-        Labels(plot, $"{swept} (V)", "C (fF)");
-    }
-
-    /// <summary>The last 1-D C–V slice drawn: which voltage it swept, the fixed value, and its data — for the gate.</summary>
+    /// <summary>The first 1-D C–V slice of the last drawn: which voltage it swept, the fixed value, and its data — for the gate.</summary>
     public (bool SweepGate, double Fixed, DataSet Data)? LastSlice { get; private set; }
 
     /// <summary>A charge surface or a ΔQ map as a contour over (vds, vgs).</summary>
@@ -576,13 +560,42 @@ public sealed partial class ModelComposerViewModel
     }
 
     /// <summary>
+    /// The traces the selected tab shows, as cubes of the tab's group: each against its own x axis, real or complex as it
+    /// was drawn. Contours are left out — their grids are the step's plot data, which is sent instead whenever there is any.
+    /// </summary>
+    internal DataSet ShownDataSet()
+    {
+        var ds = new DataSet();
+        var plot = IsSmithTab ? SmithPlot : RectPlot;
+        string group = Name(SelectedPlotTab);
+        foreach (var t in plot.Traces)
+        {
+            if (t.IsContourTrace || t.CubeXValues is not { Count: > 0 } x) continue;
+            var axis = new Axis(t.CubeXAxisName is { Length: > 0 } a ? a : "x", [.. x], t.CubeXUnit ?? "");
+            DataCube? cube = t.CubeComplex is { } c && c.Count == x.Count ? new DataCube([axis], [.. c])
+                           : t.CubeReal is { } r && r.Count == x.Count ? new DataCube([axis], [.. r])
+                           : null;
+            if (cube is null) continue;
+            string stem = $"{group}.{Name(t.CubeName ?? "trace")}", name = stem;
+            for (int k = 2; ds.Contains(name); k++) name = $"{stem}_{k}";
+            ds.Add(name, cube);
+        }
+        return ds;
+
+        static string Name(string s) => string.Concat(s.Select(ch => char.IsLetterOrDigit(ch) ? ch : ch == '-' ? 'm' : '_')).Trim('_');
+    }
+
+    /// <summary>
     /// Open in Data Display (R-mc15-9): the selected plot's DataSet written into the document's cache beside a display that
     /// selects it, and that display opened in the workspace.
     /// </summary>
     [RelayCommand]
     private void OpenInDataDisplay()
     {
-        if (PlotDataSet is not { } ds || ds.Cubes.Count == 0 || DocumentPath is not { } path) { Warn("Nothing to send; run the step first."); return; }
+        if (DocumentPath is not { } path) { Warn("Save the document first; the plot's data is written beside it."); return; }
+        // A step with no plot data of its own (Data, Pads, Network) sends what its plot shows.
+        var ds = PlotDataSet is { Cubes.Count: > 0 } stepData ? stepData : ShownDataSet();
+        if (ds.Cubes.Count == 0) { Warn(StepPlots is null && ModelStepTabs() is not null ? "Nothing to send; run the step first." : "Nothing to send; this plot is empty."); return; }
         try
         {
             string folder = System.IO.Path.Combine(CmcCache.FolderFor(path), "plots");

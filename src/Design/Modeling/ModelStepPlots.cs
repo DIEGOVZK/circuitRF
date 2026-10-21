@@ -44,19 +44,61 @@ public sealed class StepPlotData
     internal ComposedCoreProgram? Program { get; init; }
     internal ChargeData? Charges { get; init; }
 
+    /// <summary>The Current step's fitted currents, compiled with zero charges — what <see cref="CurrentSweep"/> evaluates.</summary>
+    internal ComposedCoreProgram? CurrentProgram { get; init; }
+
+    /// <summary>The currents' training domain, intrinsic — beyond it the model is continued, not fitted.</summary>
+    internal IReadOnlyList<(double Vgs, double Vds)>? CurrentDomain { get; init; }
+
+    /// <summary>The span of the voltages the step's data covers, intrinsic: the default of the window's model sweep.</summary>
+    public (double VgsLo, double VgsHi, double VdsLo, double VdsHi)? DataSpan { get; init; }
+
+    /// <summary>
+    /// The fitted channel current on a grid of intrinsic voltages (the window's model sweep): one row per value of
+    /// <paramref name="family"/>, each along <paramref name="points"/> values from <paramref name="lo"/> to
+    /// <paramref name="hi"/> of the other voltage — vds when <paramref name="sweepDrain"/>, else vgs — at
+    /// <paramref name="temperatureC"/>, every trap state at its DC value and no self-heating. A cube <c>Id</c> over
+    /// (family, swept), and <c>Inside</c> beside it, 1 where the bias lies in the training domain and 0 where the model is
+    /// only continued; null without a fitted current.
+    /// </summary>
+    public DataSet? CurrentSweep(IReadOnlyList<double> family, double lo, double hi, int points, bool sweepDrain, double temperatureC)
+    {
+        if (CurrentProgram is not { } program || family.Count == 0 || points < 2) return null;
+        var x = Enumerable.Range(0, points).Select(k => lo + (hi - lo) * k / (points - 1)).ToArray();
+        var id = new double[family.Count * points];
+        var inside = new double[family.Count * points];
+        for (int f = 0; f < family.Count; f++)
+            for (int k = 0; k < points; k++)
+            {
+                var (vgs, vds) = sweepDrain ? (family[f], x[k]) : (x[k], family[f]);
+                id[f * points + k] = ModelStepPlots.ChannelAt(program, vgs, vds, temperatureC);
+                inside[f * points + k] = CurrentDomain is not { Count: > 2 } d || ChargeFit.Inside(d, (vgs, vds)) ? 1 : 0;
+            }
+        var familyAxis = new Axis(sweepDrain ? ComposedCoreProgram.Vgs : ComposedCoreProgram.Vds, [.. family], "V");
+        var sweptAxis = new Axis(sweepDrain ? ComposedCoreProgram.Vds : ComposedCoreProgram.Vgs, x, "V");
+        var ds = new DataSet();
+        ds.Add("Id", new DataCube([familyAxis, sweptAxis], id));
+        ds.Add("Inside", new DataCube([familyAxis, sweptAxis], inside));
+        return ds;
+    }
+
     /// <summary>
     /// The 1-D C–V slice (R-mc15-3): every <c>Cij</c> and the circuit set <c>Cgs Cgd Cds Cm</c> of the model along
     /// <c>vgs</c> at <c>vds = fixedValue</c> (<paramref name="sweepGate"/>) or along <c>vds</c> at <c>vgs = fixedValue</c>, over
     /// the data's span, with the measured points whose fixed voltage lies within half the data's spacing of it. Null
     /// without a fitted charge.
     /// </summary>
-    public DataSet? Slice(bool sweepGate, double fixedValue)
+    public DataSet? Slice(bool sweepGate, double fixedValue) => Slice(sweepGate, fixedValue, null);
+
+    /// <summary>The same slice over <paramref name="span"/> of the swept voltage (the window's model sweep) in place of the
+    /// data's, at <paramref name="points"/> values.</summary>
+    public DataSet? Slice(bool sweepGate, double fixedValue, (double Lo, double Hi)? span, int points = 101)
     {
         if (Program is not { } program || Charges is not { } data) return null;
         var swept = data.X.Select(p => sweepGate ? p.Vgs : p.Vds).ToArray();
         var fixedOf = data.X.Select(p => sweepGate ? p.Vds : p.Vgs).ToArray();
-        var (lo, hi) = ChargeFit.SliceSpan(swept);
-        var model = ChargeFit.Slice(program, sweepGate, fixedValue, lo, hi);
+        var (lo, hi) = span ?? ChargeFit.SliceSpan(swept);
+        var model = ChargeFit.Slice(program, sweepGate, fixedValue, lo, hi, Math.Max(2, points));
         var ds = new DataSet();
         foreach (var (name, cube) in model.Cubes) ds.Add($"{name}.model", cube);
         var m = ChargeFitRecord.Capacitances.Select(c => model[c].RealValues).ToArray();
@@ -175,7 +217,11 @@ public static class ModelStepPlots
                 ds.Add($"{set.Name}.Gds.rfmodel", new DataCube([axis], [.. model.Select(m => m.Gds)]));
             }
         }
-        return new StepPlotData { Step = "Current", Data = ds, Notes = notes, Sets = sets };
+        (double, double, double, double)? span = current.Record.Id.Domain is { Polygon.Count: > 2 } box
+            ? (box.Polygon.Min(p => p.Vgs), box.Polygon.Max(p => p.Vgs), box.Polygon.Min(p => p.Vds), box.Polygon.Max(p => p.Vds))
+            : null;
+        return new StepPlotData { Step = "Current", Data = ds, Notes = notes, Sets = sets, CurrentProgram = program, DataSpan = span,
+                                  CurrentDomain = current.Record.Id.Domain?.Polygon };
     }
 
     /// <summary>The fitted currents compiled with zero charges: the DC model (<paramref name="dc"/>, IdRF left out) or the RF one.</summary>
@@ -186,6 +232,9 @@ public static class ModelStepPlots
         double t0 = temperatures.Count > 0 ? temperatures[0] : 25;
         return ComposedCoreProgram.Compile(ChargeFit.Model(zero, zero, new Dictionary<string, DataCube>(), c, t0), "plots");
     }
+
+    /// <summary>The channel current at one intrinsic bias, every trap state at its DC value.</summary>
+    internal static double ChannelAt(ComposedCoreProgram program, double vgs, double vds, double t) => Evaluate(program, vgs, vds, t, null).Id;
 
     private static (double Id, double Gm, double Gds) Evaluate(ComposedCoreProgram program, double vgs, double vds, double t, double[]? states)
     {
@@ -300,7 +349,10 @@ public static class ModelStepPlots
         var axis = new Axis("point", [.. Enumerable.Range(0, cd.X.Count).Select(i => (double)i)]);
         ds.Add("Vgsi", new DataCube([axis], [.. cd.X.Select(p => p.Vgs)]));
         ds.Add("Vdsi", new DataCube([axis], [.. cd.X.Select(p => p.Vds)]));
-        return new StepPlotData { Step = "Charge", Data = ds, Notes = notes, Program = program, Charges = cd };
+        (double, double, double, double)? chargeSpan = cd.X.Count > 0
+            ? (cd.X.Min(p => p.Vgs), cd.X.Max(p => p.Vgs), cd.X.Min(p => p.Vds), cd.X.Max(p => p.Vds))
+            : null;
+        return new StepPlotData { Step = "Charge", Data = ds, Notes = notes, Program = program, Charges = cd, DataSpan = chargeSpan };
     }
 
     // ── Thermal (R-mc15-4) ────────────────────────────────────────────────────

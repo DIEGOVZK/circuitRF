@@ -92,11 +92,12 @@ public static class CmcStamps
                 if (node is JsonObject o && o[DataKey] is JsonValue v && v.TryGetValue<string>(out var d) && d != Data()
                     && !stale.Contains(name))
                     stale.Add(name);
+        if (TrapFit.CurrentsDisagree(doc) && !stale.Contains(TrapFit.StepName)) stale.Add(TrapFit.StepName);
         return stale;
     }
 
     /// <summary>One line per stale step, naming what moved under it.</summary>
     public static string Describe(IReadOnlyList<string> stale) =>
-        stale.Count == 1 ? $"{stale[0]} was fitted before the network or the data last changed; run it again."
-                         : $"{string.Join(", ", stale)} were fitted before the network or the data last changed; run them again.";
+        stale.Count == 1 ? $"{stale[0]} was fitted before the network, the data or the trap model last changed; run it again."
+                         : $"{string.Join(", ", stale)} were fitted before the network, the data or the trap model last changed; run them again.";
 }

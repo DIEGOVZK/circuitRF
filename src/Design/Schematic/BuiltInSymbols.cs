@@ -698,13 +698,15 @@ public static class BuiltInSymbols
     // ── Composed FET — the FET glyph and a fourth, THERMAL pin ────────────────
     // Pins: gate (-200,0) LEFT, drain (0,-200) TOP, source (0,+200) BOTTOM, as every FET law; and the thermal node t
     // (+200,0) RIGHT. The thermal lead starts at an open circle standing off the body, so it does not read as a fourth
-    // electrical terminal. Left unwired it is no connection at all: the device extracts as g d s and keeps its own
-    // thermal network. Wired, whatever sits there is in parallel with that network.
+    // electrical terminal, and carries a T so it says what it is. Left unwired it is no connection at all: the device
+    // extracts as g d s and keeps its own thermal network, and the pin shows an open box rather than the red unconnected
+    // one. Wired, whatever sits there is in parallel with that network.
 
     private static Symbol BuildComposedFet() => Sym([
         .. JunctionGateFet(nChannel: true, SymbolKind.FetCurtice).Primitives,
         Circ(54, 0, 14),                              // the thermal node
         L(  68,    0,  200,    0),                    // thermal lead
+        Txt("T", 140, -40, fontSize: 50),             // what the lead is
     ], SymbolKind.ComposedFET);
 
     // ── BJT — base bar, collector and emitter arms, arrow on the emitter ──────

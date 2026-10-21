@@ -3735,3 +3735,11 @@ plain `np.save`-style array (`<f8` or `<f4`, either `fortran_order`, any shape, 
 to the structured reader. A plain array has no axis names or values, so a table may give each axis's sites as a list
 `<name>.<input>`; without one the values axis must still be named after its input. ANN vectors accept a `1 × n` or
 `n × 1` shape, since a MATLAB vector is two-dimensional. Gate: `PlainNpyTests`.
+
+## A measure's last operand was read as its unit (2026-10-20)
+
+`CnlReader.TryParseMeasurementLine` lifted any trailing word as the unit, so `measure Gt_dB = Pout_dBm - Pin` read as
+`Pout_dBm -` with unit `Pin`, and failed to evaluate at every sweep point. The netlist→schematic drawing carried it into
+the Model Composer example's `.csch`, where nothing re-read it. A word is now a unit only when the whole text does not
+parse as an expression and the text before the word does — the rule `Units.LiftInlineUnit` already applies to
+variables. Gate: `CnlReaderTests.Measure_TrailingOperandIsNotAUnit`.

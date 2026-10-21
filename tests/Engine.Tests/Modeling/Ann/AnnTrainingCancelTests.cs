@@ -39,10 +39,12 @@ public sealed class AnnTrainingCancelTests
         };
 
         AnnTrainingResult? replaced = null;
+        // The caller's stage names the network; each start keeps that name.
+        rc.BeginStage("Training Ig");
         Assert.ThrowsAny<OperationCanceledException>(() => replaced = AnnTrainer.Train(problem, settings, rc));
         Assert.Null(replaced);
-        Assert.Contains("Training the network, start 1 of 2", stages);
-        Assert.Contains("Training the network, start 2 of 2", stages);
+        Assert.Contains("Training Ig, start 1 of 2", stages);
+        Assert.Contains("Training Ig, start 2 of 2", stages);
         Assert.True(ticks >= 10);
 
         double[] after = [.. network.Weights.SelectMany(w => w.Cast<double>()), .. network.Biases.SelectMany(b => b)];

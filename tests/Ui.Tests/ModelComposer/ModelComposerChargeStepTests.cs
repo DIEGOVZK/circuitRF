@@ -4,13 +4,14 @@ using Xunit;
 namespace CircuitRF.Ui.Tests.ModelComposer;
 
 /// <summary>
-/// brief-modelcomposer-15 R-mc15-3: the 1-D C–V slice is taken at the cursor's fixed voltage and follows it; the ΔQ map is a
-/// contour plot of exactly the charge step's plot data.
+/// brief-modelcomposer-15 R-mc15-3, review 2: the 1-D C–V slices are taken at the model sweep's family values over its span,
+/// and follow it, with the sweep in place of the cursor on the toolbar; the ΔQ map is a contour plot of exactly the charge
+/// step's plot data.
 /// </summary>
 public sealed class ModelComposerChargeStepTests
 {
     [Fact]
-    public async Task TheSlice_FollowsTheCursor_AndTheDeltaQMap_IsAContourOfThePlotData()
+    public async Task TheSlice_FollowsTheSweep_AndTheDeltaQMap_IsAContourOfThePlotData()
     {
         var vm = await ComposerFixture.Open(ExportFixture.Document());
         vm.SelectedStep = vm.Steps.First(s => s.Name == "Charge");
@@ -18,14 +19,21 @@ public sealed class ModelComposerChargeStepTests
         var plots = Assert.IsType<CircuitRF.Design.Modeling.StepPlotData>(vm.StepPlots);
 
         vm.SelectedPlotTab = ModelComposerViewModel.CvGateTab;
-        foreach (var vds in vm.VdsChoices)
+        Assert.True(vm.ShowSweep);
+        Assert.False(vm.ShowVdsCursor);
+        vm.SweepVgsStart = "-2";
+        vm.SweepVgsStop = "0";
+        foreach (string vds in new[] { "1", "5" })
         {
-            vm.SelectedVds = vds;
+            vm.SweepVdsStart = vds;
+            vm.SweepVdsStop = vds;
             var (sweepGate, fixedValue, data) = vm.LastSlice!.Value;
             Assert.True(sweepGate);
-            Assert.Equal(vds.Value, fixedValue);
+            Assert.Equal(double.Parse(vds), fixedValue);
             Assert.Contains(vm.RectPlot.Traces, x => x.CubeName == "Cgs model" && x.Properties.LineEnabled);
-            Assert.Equal(plots.Slice(true, vds.Value)!["Cgs.model"].RealValues, data["Cgs.model"].RealValues);
+            var expected = plots.Slice(true, fixedValue, (-2, 0), 101)!["Cgs.model"];
+            Assert.Equal(expected.RealValues, data["Cgs.model"].RealValues);
+            Assert.Equal(-2, data["Cgs.model"].Axes[0].Values[0]);
         }
 
         vm.SelectedPlotTab = ModelComposerViewModel.DQgTab;

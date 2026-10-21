@@ -74,10 +74,13 @@ public sealed partial class ModelComposerViewModel
         {
             if (value is null || value == _selectedPlotTab || !PlotTabs.Contains(value)) { OnPropertyChanged(); return; }
             _selectedPlotTab = value;
+            // The overlay BEFORE the notification: the plots panel hands the container's overlay to its PlotControl when
+            // the tab changes, and set after, the bias plane's control was always handed the previous tab's — none — so a
+            // click or a lasso there reached nothing.
+            RectContainer.Overlay = IsBiasPlaneTab ? BiasPlaneLasso : null;
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsSmithTab));
             OnPropertyChanged(nameof(IsBiasPlaneTab));
-            RectContainer.Overlay = IsBiasPlaneTab ? BiasPlaneLasso : null;
             RebuildPlots();
         }
     }
@@ -160,6 +163,7 @@ public sealed partial class ModelComposerViewModel
         container.RequestPlotRedraw();
         OnPropertyChanged(nameof(RectPlot));
         OnPropertyChanged(nameof(SmithPlot));
+        NotifyCursorUse();
     }
 
     /// <summary>The data set the plots follow, by kind: the selected one when it holds what the tab needs, else the first that does.</summary>
@@ -201,7 +205,7 @@ public sealed partial class ModelComposerViewModel
 
     /// <summary>
     /// Every bias point of every set: extrinsic ○ where it was measured, intrinsic ● where the network puts it ([P1] Fig.
-    /// 6.5), excluded ×, the hygiene flags ▲, the network fit's points ■ and the cursor ✶. x = Vds, y = Vgs.
+    /// 6.5), excluded ×, the hygiene flags ▲, the network fit's points ■ and the cursor, a green dot. x = Vds, y = Vgs.
     /// </summary>
     private void BiasPlane(Plot plot)
     {
@@ -244,10 +248,14 @@ public sealed partial class ModelComposerViewModel
         if (ext.Count > 0) plot.Traces.Add(Scatter("extrinsic", ext, 1, MarkerType.Circle, 0.8));
         if (intr.Count > 0) plot.Traces.Add(Scatter("intrinsic", intr, 0, MarkerType.Circle, 1.0));
         if (fit.Count > 0) plot.Traces.Add(Scatter("fit points", fit, 4, MarkerType.Square, 1.4));
-        if (flagged.Count > 0) plot.Traces.Add(Scatter("flagged", flagged, 3, MarkerType.TriangleUp, 1.4));
+        if (flagged.Count > 0) plot.Traces.Add(Scatter("flagged", flagged, 2, MarkerType.TriangleUp, 1.4));
         if (excl.Count > 0) plot.Traces.Add(Scatter("excluded", excl, 9, MarkerType.Cross, 1.6));
         if (SelectedVgs is { } cg && SelectedVds is { } cd)
-            plot.Traces.Add(Scatter("cursor", [(cd.Value, cg.Value)], 2, MarkerType.Star, 1.8));
+        {
+            // The cursor: a green dot over the point it selects, a little larger than the points. (A hollow ring would be
+            // drawn only by the markers' dark outline, not in green.)
+            plot.Traces.Add(Scatter("cursor", [(cd.Value, cg.Value)], CursorColour, MarkerType.Circle, 1.7));
+        }
         Labels(plot, "Vds (V)", "Vgs (V)");
     }
 
@@ -346,6 +354,9 @@ public sealed partial class ModelComposerViewModel
 
     /// <summary>The marker size a family's data points are drawn at: present, not prominent.</summary>
     private const double SmallMarker = 0.8;
+
+    /// <summary>The bias cursor's colour on a plane of points — green, the palette's fourth.</summary>
+    private const int CursorColour = 3;
 
     private static double[] Values(DataCube c) => [.. Enumerable.Range(0, c.Axes[0].Values.Length).Select(i => (double)c[i])];
 

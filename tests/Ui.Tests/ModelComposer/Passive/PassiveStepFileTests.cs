@@ -63,7 +63,11 @@ public sealed class PassiveStepFileTests
 
             var export = PassiveStep.ExportFile(cmc);
             Assert.Equal(Path.Combine(root, "lib", "ViaFamily"), export.Cell.CellDir);
-            Assert.Equal(["height", "Rv", "Lv", "Cv"], export.Parameters.Select(p => p.Name).OrderBy(n => n switch { "height" => 0, "Rv" => 1, "Lv" => 2, _ => 3 }));
+            // The geometry is the cell's one parameter; the element values are its schematic's variables, laws of it.
+            Assert.Equal(["height"], export.Parameters.Select(p => p.Name));
+            var block = CircuitRF.Design.Schematic.SchematicPersistence.LoadFromFile(export.Cell.SchematicPath!).model.Components
+                .Single(c => c.Symbol == CircuitRF.Design.Schematic.SymbolKind.Var);
+            Assert.Equal(["x", "Rv", "Lv", "Cv"], block.Parameters.Select(p => p.Name).OrderBy(n => n switch { "x" => 0, "Rv" => 1, "Lv" => 2, _ => 3 }));
         }
         finally { try { Directory.Delete(root, true); } catch (IOException) { } }
     }

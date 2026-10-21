@@ -416,8 +416,8 @@
         },
         {
           "Name": "Gt_dB",
-          "Expression": "Pout_dBm -",
-          "Unit": "Pin",
+          "Expression": "Pout_dBm - Pin",
+          "Unit": "",
           "ShowOnSchematic": true,
           "Dimension": "None"
         },

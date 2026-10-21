@@ -62,7 +62,9 @@ past the last measured Vgs is no longer the device.
 Six spiral inductors of 1.5 … 6.5 turns, as two-port S-parameters from 0.2 to 20 GHz. `spiral.cmc` fits the library's
 `spiral` topology to all six at once, with one law per element value in the turns. Its substrate network under port 2
 is tied to the one under port 1, and the 3.5-turn spiral is held out and predicted. It exports the cell `SpiralFamily`,
-whose parameter is `turns`.
+whose one parameter is `turns`. The element values are variables on the cell's own schematic, each a law of `turns`
+written in nH, fF and Ω: `x` is `turns` normalised to the fitted range, and `Ls`, `Cs`, `Cox1` and the rest are
+polynomials in `x`.
 
 `SpiralFilter` places that cell at **3 turns**, between two measured spirals, in a π low-pass between 50 Ω ports. Set
 `turns` outside 1.5 … 6.5 and the run warns once.

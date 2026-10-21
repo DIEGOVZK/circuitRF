@@ -24,11 +24,15 @@ public sealed partial class ModelStepItem(string name, MaterialIconKind icon) : 
     [ObservableProperty] private string _reason = "";
     [ObservableProperty] private bool _isStale;
     [ObservableProperty] private bool _isSelected;
+    /// <summary>The step has its result in the document (or, for Check and Validate, from this session) and is not stale.</summary>
+    [ObservableProperty] private bool _isDone;
 
-    public string Tip => IsEnabled ? Name : Reason;
+    public string Tip => !IsEnabled ? Reason : IsStale ? $"{Name}: stale, run it again" : IsDone ? $"{Name}: done" : Name;
 
     partial void OnIsEnabledChanged(bool value) => OnPropertyChanged(nameof(Tip));
     partial void OnReasonChanged(string value) => OnPropertyChanged(nameof(Tip));
+    partial void OnIsStaleChanged(bool value) => OnPropertyChanged(nameof(Tip));
+    partial void OnIsDoneChanged(bool value) => OnPropertyChanged(nameof(Tip));
 }
 
 /// <summary>One data set in the list (R-mc14-6). Read-only: a set's conditions are stated when it is imported.

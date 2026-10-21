@@ -277,17 +277,20 @@ public sealed class CnlReader
         if (semi >= 0) rest = rest[..semi].Trim();
 
         // Extract optional trailing unit token — a bare word that follows the expression.
-        // Valid units are single tokens like "dB", "V", "dBm", "%", "GHz", etc.
+        // Valid units are single tokens like "dB", "V", "dBm", "%", "GHz", etc. Only when the
+        // whole text is not already an expression, and the text before the word is: otherwise
+        // "Pout_dBm - Pin" loses its last operand to the unit and leaves "Pout_dBm -".
         string expr = rest;
         string? unit = null;
         int lastSpace = rest.LastIndexOf(' ');
-        if (lastSpace >= 0)
+        if (lastSpace >= 0 && !ParsesAsExpression(rest))
         {
             var candidate = rest[(lastSpace + 1)..];
-            if (IsMeasurementUnit(candidate))
+            var before = rest[..lastSpace].Trim();
+            if (IsMeasurementUnit(candidate) && ParsesAsExpression(before))
             {
                 unit = candidate;
-                expr = rest[..lastSpace].Trim();
+                expr = before;
             }
         }
 
@@ -299,6 +302,12 @@ public sealed class CnlReader
     /// Returns true when <paramref name="s"/> looks like a measurement unit token
     /// (a simple word containing only letters, digits, and '%', starting with a letter or '%').
     /// </summary>
+    private static bool ParsesAsExpression(string s)
+    {
+        try { Parser.Parse(s); return true; }
+        catch (ExpressionException) { return false; }
+    }
+
     private static bool IsMeasurementUnit(string s) =>
         s.Length > 0 &&
         (char.IsLetter(s[0]) || s[0] == '%') &&

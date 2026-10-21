@@ -407,7 +407,19 @@ public static class CurrentFit
             traps = TrapFit.Map(doc, data, intrinsic, trapSettings, chosen, "pulsed I–V");
             report.AddRange(traps.Report);
         }
-        else TrapCondition(chosen, "Current");
+        else
+        {
+            // No traps: one trap state per fit, and DC holds the states at their own equilibrium at every bias — the state
+            // a trap-free model describes. Pulsed sets beside DC are left out, as the shift coupling leaves them, rather
+            // than refused: choosing no traps is choosing the DC model.
+            var dc = chosen.Where(s => s.Kind is not (DataSetKind.PulsedIv or DataSetKind.PulsedSParams)).ToList();
+            if (dc.Count > 0 && dc.Count < chosen.Count)
+            {
+                report.Add($"No traps are modelled, so Id is trained on the DC data: {string.Join(", ", chosen.Except(dc).Select(s => s.Name))} left out.");
+                chosen = dc;
+            }
+            TrapCondition(chosen, "Current");
+        }
         var temps = Temperatures(chosen, data);
         double t = temps.Count > 0 ? temps[0] : 25.0;
         bool hasT = temps.Count >= 2;

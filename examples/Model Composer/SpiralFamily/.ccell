@@ -7,69 +7,6 @@
       "Unit": "",
       "Dimension": "None",
       "ShowOnSchematic": true
-    },
-    {
-      "Name": "Rs",
-      "DefaultExpression": "3.8999992661135217\u002B2.249998487374704*(((validrange(turns,1.5,6.5))-4)/2.5)",
-      "Unit": "Ohm",
-      "Dimension": "Resistance",
-      "ShowOnSchematic": false
-    },
-    {
-      "Name": "Ls",
-      "DefaultExpression": "6.665930526103439E-09\u002B7.508775274350354E-09*(((validrange(turns,1.5,6.5))-4)/2.5)\u002B1.8943344083235307E-09*(((validrange(turns,1.5,6.5))-4)/2.5)^2-8.961370522789025E-11*(((validrange(turns,1.5,6.5))-4)/2.5)^3",
-      "Unit": "H",
-      "Dimension": "Inductance",
-      "ShowOnSchematic": false
-    },
-    {
-      "Name": "Cs",
-      "DefaultExpression": "3.199998989956362E-14\u002B2.0000123798798142E-14*(((validrange(turns,1.5,6.5))-4)/2.5)",
-      "Unit": "F",
-      "Dimension": "Capacitance",
-      "ShowOnSchematic": false
-    },
-    {
-      "Name": "Cox1",
-      "DefaultExpression": "1.9999511956897673E-13\u002B1.7500245058330648E-13*(((validrange(turns,1.5,6.5))-4)/2.5)\u002B3.125795452759602E-14*(((validrange(turns,1.5,6.5))-4)/2.5)^2",
-      "Unit": "F",
-      "Dimension": "Capacitance",
-      "ShowOnSchematic": false
-    },
-    {
-      "Name": "Rsub1",
-      "DefaultExpression": "(374.9992909619216-0.0005462548436980796*(((validrange(turns,1.5,6.5))-4)/2.5))/(1\u002B0.6249911726492119*(((validrange(turns,1.5,6.5))-4)/2.5))",
-      "Unit": "Ohm",
-      "Dimension": "Resistance",
-      "ShowOnSchematic": false
-    },
-    {
-      "Name": "Csub1",
-      "DefaultExpression": "2.399996393216823E-14\u002B1.5000071998328775E-14*(((validrange(turns,1.5,6.5))-4)/2.5)",
-      "Unit": "F",
-      "Dimension": "Capacitance",
-      "ShowOnSchematic": false
-    },
-    {
-      "Name": "Cox2",
-      "DefaultExpression": "1*Cox1",
-      "Unit": "F",
-      "Dimension": "Capacitance",
-      "ShowOnSchematic": false
-    },
-    {
-      "Name": "Rsub2",
-      "DefaultExpression": "1*Rsub1",
-      "Unit": "Ohm",
-      "Dimension": "Resistance",
-      "ShowOnSchematic": false
-    },
-    {
-      "Name": "Csub2",
-      "DefaultExpression": "1*Csub1",
-      "Unit": "F",
-      "Dimension": "Capacitance",
-      "ShowOnSchematic": false
     }
   ],
   "IsTestBench": false,

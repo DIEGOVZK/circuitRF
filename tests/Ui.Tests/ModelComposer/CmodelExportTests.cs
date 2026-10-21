@@ -94,7 +94,7 @@ public sealed class CmodelExportTests(ITestOutputHelper output)
         var doc = CmcFile.Read(stale);
         var set = doc.DataSets[0];
         CmcFile.Write(stale, doc with { DataSets = [set with { Exclusions = [new PointExclusion(set.Sources[0].Split('/')[1][..^4], "probe slipped")] }] });
-        Refused(stale, "Current, Charge were fitted before the network or the data last changed");
+        Refused(stale, "Current, Charge were fitted before the network, the data or the trap model last changed");
     }
 
     // ── harness ──────────────────────────────────────────────────────────────

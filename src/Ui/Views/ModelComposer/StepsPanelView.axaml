@@ -88,6 +88,8 @@
                             <TextBlock Grid.Column="1" Text="{Binding Name}" VerticalAlignment="Center"/>
                             <Ellipse Grid.Column="2" Width="7" Height="7" IsVisible="{Binding IsStale}"
                                      Fill="{DynamicResource CrfWarningBrush}" ToolTip.Tip="Stale"/>
+                            <mi:MaterialIcon Grid.Column="2" Kind="Check" Width="14" Height="14" IsVisible="{Binding IsDone}"
+                                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" ToolTip.Tip="Done"/>
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
@@ -319,6 +321,8 @@
                     <StackPanel IsVisible="{Binding IsTrapsStep}" Spacing="4">
                         <TextBlock Classes="panelhdr" Text="Traps"/>
                         <ComboBox ItemsSource="{Binding TrapModelNames}" SelectedItem="{Binding TrapModel}" HorizontalAlignment="Stretch"/>
+                        <TextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding TrapRunNote}"
+                                   IsVisible="{Binding TrapRunNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <Grid ColumnDefinitions="60,*" IsVisible="{Binding HasTrapModel}">
                             <TextBlock Classes="lbl" Text="Coupling"/>
                             <ComboBox Grid.Column="1" ItemsSource="{Binding TrapCouplings}" SelectedItem="{Binding TrapCoupling}" HorizontalAlignment="Stretch"
@@ -380,10 +384,11 @@
                                 <mi:MaterialIcon Kind="CheckDecagramOutline" Width="16" Height="16"/>
                             </Button>
                         </Grid>
+                        <!-- One result to a row (owner, review 2): the data's gate, its drain, the model, HB. -->
                         <ItemsControl ItemsSource="{Binding CheckLines}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="x:String">
-                                    <TextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding}"/>
+                                    <TextBlock TextWrapping="Wrap" Text="{Binding}" Margin="0,1"/>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>

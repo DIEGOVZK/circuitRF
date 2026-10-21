@@ -5,6 +5,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="using:CircuitRF.Ui.ModelComposer"
+             xmlns:v="using:CircuitRF.Ui.Views.ModelComposer"
              xmlns:ddc="using:CircuitRF.Ui.DataDisplay.Controls"
              xmlns:mi="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              x:Class="CircuitRF.Ui.Views.ModelComposer.PlotsPanelView"
@@ -18,7 +19,10 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="x:String">
-                        <Button Classes="tool" Content="{Binding}" Click="OnTabClick"/>
+                        <!-- The Data step's tabs are glyphs (ModelTabGlyph); the rest their names. -->
+                        <Button Classes="tool" Tag="{Binding}" Click="OnTabClick" MinHeight="24">
+                            <v:ModelTabGlyph Tab="{Binding}"/>
+                        </Button>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -51,9 +55,11 @@
 
             <Panel Grid.Row="2" Margin="0,4,0,0">
                 <ddc:PlotControl Name="RectPlotControl" Plot="{Binding RectPlot}" Library="{Binding PlotHost.Library}"
-                                 CanDeletePlot="False" CanEditPlotProperties="True" IsVisible="{Binding !IsSmithTab}"/>
+                                 CanDeletePlot="False" CanEditPlotProperties="False" CanEditAxesLabels="False"
+                                 IsVisible="{Binding !IsSmithTab}"/>
                 <ddc:PlotControl Name="SmithPlotControl" Plot="{Binding SmithPlot}" Library="{Binding PlotHost.Library}"
-                                 CanDeletePlot="False" CanEditPlotProperties="True" IsVisible="{Binding IsSmithTab}"/>
+                                 CanDeletePlot="False" CanEditPlotProperties="False" CanEditAxesLabels="False"
+                                 IsVisible="{Binding IsSmithTab}"/>
             </Panel>
 
         </Grid>

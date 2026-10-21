@@ -40074,3 +40074,35 @@ the net; dragging one detached a wire; typed text vanished; an MLIN came out 57�
   the arm reviews are a separate `JunctionReviews` list.
 - **The ratsnest is an overlay** (`LayoutEditorViewModel.Ratsnest.cs`): pins and copper groups are re-read once per
   edit — it flattens and partitions — and a drag only offsets the dragged parts' pins.
+
+## Model Composer review 2 (2026-10-20)
+
+**The lasso never reached the plot.** `PlotsPanelView` hands `RectContainer.Overlay` to its `PlotControl` when
+`SelectedPlotTab` changes, and the view model raised that notification BEFORE it assigned the overlay — so entering the
+bias plane handed over the previous tab's overlay (none) and leaving it handed over the lasso. Armed, the lamp lit and
+the plot answered nothing; round 1's fix (drawing exclusions from the document) was real but downstream of this.
+The overlay is now set first. `BiasPlaneLassoTests` drives the lasso directly, which is why it passed throughout; it
+now also asserts the container's overlay at the moment the tab change is announced.
+
+**A Model Composer plot opened an empty Plot Inspector on double-click.** The plots are rebuilt from the document, so
+the panel sets `CanEditPlotProperties="False"` and the new `PlotControl.CanEditAxesLabels="False"` (greys Axes Labels…
+and stops the title/label double-click flyout). Markers, Copy and Export… are unchanged.
+
+**The toolbar's cursor lists did nothing on most tabs.** `CursorSet` takes the data-set list's selection first, so T
+and Q chose nothing whenever a step's set was selected, and `CursorPoint` never read them at all. Each list now shows
+only where the selected tab reads it (`ModelComposerViewModel.CursorUse`), and the Current step's Model tabs and the
+Charge step's C–V tabs show the model sweep (start/stop/step, intrinsic) in the same place
+(`ModelComposerViewModel.Sweep.cs`, evaluated by `StepPlotData.CurrentSweep` / `Slice(…, span, points)`). The current
+model beyond its training domain is continued, not fitted, and ran to ~24 A at the corner of the GaN example's sweep,
+flattening the plot; it is drawn dashed with `ExcludeFromAutoscale`.
+
+**Run on an opened document's Data step opened the import dialog**, and Open in Data Display said "run the step first":
+MC-14's steps have no step plot data (`PlotDataSet` is null there). Run's first item is Reload when the document holds
+data, its tooltip names it (`RunTip`), the rail marks steps whose result the document holds (`ModelStepItem.IsDone`),
+the first open's status line lists them, and Open in Data Display sends the shown curves (`ShownDataSet`) when a step
+has no plot data of its own. The opening summary is Info-level with the data's first remark as a note — as a Warn the
+whole line was red and read as a failed open.
+
+**Traps stale only after a reload.** `Loaded.Stale` comes from the last open; a trap-model edit opens nothing. The window
+reads `StaleSteps` = the open's stale steps plus `TrapFit.CurrentsDisagree(Document)`, live. (`CmcStamps.` is barred from
+the window's folders by `ModelComposerNoLogicTests`, hence the check lives on `TrapFit`.)

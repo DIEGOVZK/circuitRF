@@ -315,13 +315,16 @@ public static class ConservationCheck
     /// The report in one line, each part's number (MC-15 R-mc15-6): <c>Data gate 0.4 % · drain 3.8 % · Model 0.0 % · HB 0.2 µA</c>
     /// — the data's and the model's curl RMS and the large-signal check's spurious DC gate current. A part not run is left out.
     /// </summary>
-    public static string Summary(ConservationReport report)
+    public static string Summary(ConservationReport report) => string.Join(" · ", SummaryLines(report));
+
+    /// <summary>The summary one part to a line — the Check step's rows: the data's gate and drain, the model, HB.</summary>
+    public static IReadOnlyList<string> SummaryLines(ConservationReport report)
     {
         var parts = new List<string>();
-        if (report.Data is { } a) parts.Add($"Data gate {Pct(a.GateRms)} · drain {Pct(a.DrainRms)}");
+        if (report.Data is { } a) { parts.Add($"Data gate {Pct(a.GateRms)}"); parts.Add($"Data drain {Pct(a.DrainRms)}"); }
         if (report.Model is { } b) parts.Add($"Model {Pct(Math.Max(b.GateRms, b.DrainRms))}");
         if (report.LargeSignal is { } c) parts.Add($"HB {Si(Math.Abs(c.Spurious), "A")}");
-        return string.Join(" · ", parts);
+        return parts;
     }
 
     /// <summary>Whether <paramref name="report"/>'s large-signal check is above <paramref name="threshold"/> — D16's failed check.</summary>
@@ -428,7 +431,15 @@ public static class ConservationCheck
 
     private static string R(double v) => v.ToString("R", CultureInfo.InvariantCulture);
 
-    private static string Pct(double v) => (100 * v).ToString("G3", CultureInfo.InvariantCulture) + " %";
+    /// <summary>A fraction as a percentage to two decimals, three significant figures above 10 %; below 0.01 % it is
+    /// "&lt; 0.01 %" — a residual that small is zero for the purpose, and its digits would only be noise.</summary>
+    internal static string Pct(double v)
+    {
+        double p = 100 * Math.Abs(v);
+        if (!double.IsFinite(p)) return "— %";
+        if (p < 0.005) return "< 0.01 %";
+        return (p < 10 ? p.ToString("0.00", CultureInfo.InvariantCulture) : p.ToString("G3", CultureInfo.InvariantCulture)) + " %";
+    }
 
     /// <summary>A value with an SI prefix, three significant figures: <c>12.3 µA</c>.</summary>
     internal static string Si(double v, string unit)

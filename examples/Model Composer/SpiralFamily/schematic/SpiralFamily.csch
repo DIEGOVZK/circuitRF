@@ -252,6 +252,87 @@
       "ShowInstanceName": false
     },
     {
+      "InstanceName": "VAR1",
+      "Symbol": "Var",
+      "X": 0,
+      "Y": -1500,
+      "Rotation": "R0",
+      "MirrorX": false,
+      "Disable": "None",
+      "Parameters": [
+        {
+          "Name": "x",
+          "Expression": "(((validrange(turns,1.5,6.5))-4)/2.5)",
+          "Unit": "",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Rs",
+          "Expression": "3.8999992661135217\u002B2.249998487374704*x",
+          "Unit": "Ohm",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Ls",
+          "Expression": "6.6659305261034385\u002B7.508775274350354*x\u002B1.8943344083235305*x^2-0.08961370522789025*x^3",
+          "Unit": "nH",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Cs",
+          "Expression": "31.99998989956362\u002B20.00012379879814*x",
+          "Unit": "fF",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Cox1",
+          "Expression": "199.99511956897672\u002B175.00245058330648*x\u002B31.257954527596016*x^2",
+          "Unit": "fF",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Rsub1",
+          "Expression": "(374.9992909619216-0.0005462548436980796*x)/(1\u002B0.6249911726492119*x)",
+          "Unit": "Ohm",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Csub1",
+          "Expression": "23.999963932168228\u002B15.000071998328774*x",
+          "Unit": "fF",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Cox2",
+          "Expression": "1*Cox1",
+          "Unit": "fF",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Rsub2",
+          "Expression": "1*Rsub1",
+          "Unit": "Ohm",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        },
+        {
+          "Name": "Csub2",
+          "Expression": "1*Csub1",
+          "Unit": "fF",
+          "ShowOnSchematic": true,
+          "Dimension": "None"
+        }
+      ]
+    },
+    {
       "InstanceName": "",
       "Symbol": "Pin",
       "X": -2200,

@@ -386,9 +386,11 @@ wire, via, spiral, MIM and a line with pads) against the data, or fits a topolog
 with its error.
 
 A family is fitted as one law per value, a polynomial or a rational function of the geometry. The middle geometry is
-held out and predicted, and the result reports its error. Export writes a cell whose parameters are the geometry and the
-fitted values. A family cell takes the geometry as its parameter, and warns once when it is placed outside the fitted
-range.
+held out and predicted, and the result reports its error. Export writes a cell. A single fit's cell takes the fitted
+values as its parameters, each in the unit that keeps it between 1 and 1000 (nH, fF, Ω). A family cell takes the
+geometry as its only parameter: the element values stay variables on the cell's schematic, each a law of the geometry —
+`x` is the geometry normalised to the fitted range and every law a short polynomial or ratio in it — and the cell warns
+once when it is placed outside the fitted range.
 
 ## The example {#example}
 
@@ -415,15 +417,20 @@ anywhere. Each document has one window; opening a document that is already open 
 Closing a window with unsaved work asks whether to save it. A document is reopened where it was left: the same panels,
 the same step, and the same bias cursor.
 
+An opened document needs nothing run to be looked at: its data opens and every step that has a result draws it. The
+step rail marks each finished step ✓, and the status strip says what is there, e.g. `8 data sets open · done: Pads,
+Network, Current, Charge, Thermal, Traps, Export.` **Run** re-runs the selected step; on the Data step, with data already
+imported, it reloads that data, and **Import…** is on the ▾ and beside the data-set list.
+
 ## The window {#window}
 
 | Part | What it holds |
 |---|---|
-| Toolbar | Open, Save, Save As · Undo, Redo · the four panel lamps · the bias cursor (Vgs, Vds, T, Q) · Check Charge Conservation, Model Validation Report · Run ▾, Cancel · Help |
+| Toolbar | Open, Save, Save As · Undo, Redo · the four panel lamps · the bias cursor (Vgs, Vds, T, Q) or the model sweep, whichever the plot reads · Check Charge Conservation, Model Validation Report · Run ▾, Cancel · Help |
 | **Steps** (left) | The step rail, and under it the selected step's settings |
 | **Plots** (centre) | A tab strip and a Data Display plot |
 | **Network** (right, top) | The extrinsic network, drawn by the schematic canvas |
-| **Values** (right, bottom) | The network's values: value, lock, min, max, tie, scaling rule, ± error |
+| **Values** (right, bottom) | The network's values: value, lock, min, max, tie, scaling rule, ± error. Widening the panel widens the name column only; narrower than its columns, the table scrolls sideways |
 | Status strip | One line — a result, a warning or a refusal — and, while something runs, its stage, a progress bar and Cancel |
 
 **Panel lamps.** Each panel has a lamp on the toolbar; a lit lamp means the panel is on screen. Hiding a panel gives its
@@ -432,16 +439,26 @@ splitters between panels drag in both directions.
 
 **The step rail.** Active documents have Data · Pads · Network · Current · Charge · Thermal · Traps · Check · Validate ·
 Export; passive ones have Data · Topology · Fit · Export. A step that cannot run yet is dimmed and its tooltip says what
-it needs. A dot beside a step marks a result computed before the data or the network last changed.
+it needs. A ✓ marks a step whose result the document holds; a dot instead marks a result computed before the data, the
+network or the trap model last changed. Check and Validate keep no result in the document, so they are marked once run.
 
 **The bias cursor.** Vgs, Vds, the ambient temperature and the quiescent point. Each list holds only measured values, so
 the cursor always sits on a measured bias; with a list focused, the arrow keys step it. Every frequency plot is drawn
-at the measured point nearest the cursor.
+at the measured point nearest the cursor. A list shows only on the plot tabs that read it: Vgs and Vds on the frequency
+plots, the bias plane and the Gm, Gds and pulsed slices; T and Q where a step's plot picks a data set by them, which is
+when the data-set list's selection is not one of that step's sets.
+
+**The model sweep.** On the tabs that evaluate a fitted model rather than show data at a measured bias — the Current
+step's Model tabs and the Charge step's C–V tabs — the toolbar holds start, stop and step for `vgs` and for `vds`
+instead. Both are intrinsic, the plane the model is fitted on. One voltage is the x axis and the other steps the
+curves; the x-axis voltage is drawn at its step or at 101 points, whichever is finer. The sweep starts from the step's
+data span and keeps what you type for the rest of the session; it is not saved in the document.
 
 ## Running, progress and Cancel {#tasks}
 
-**Run** runs the selected step's main task; the ▾ beside it lists the step's others. Every run happens off the user
-interface, which stays responsive: the status strip shows the stage and one progress bar, and **Cancel** stops it.
+**Run** runs the selected step's main task, which its tooltip names; the ▾ beside it lists the step's others. Every run
+happens off the user interface, which stays responsive: the status strip shows the stage — which network is training,
+`Training Ig, start 2 of 3` — and one progress bar, and **Cancel** stops it.
 
 - One task runs at a time. Starting another while one runs is refused in the status strip.
 - A cancelled task changes nothing: the previous result stays exactly as it was.
@@ -473,7 +490,7 @@ points the plots and the cursor's lists at it.
 |---|---|
 | Output | Id against Vds, one curve per Vgs; excluded points as × |
 | Transfer | Id against Vgs, one curve per Vds |
-| Bias plane | Every bias point: extrinsic ○, intrinsic ●, excluded ×, hygiene flags ▲, the cursor ✶ |
+| Bias plane | Every bias point: extrinsic ○, intrinsic ●, excluded ×, hygiene flags ▲, the cursor a green dot |
 | S | The four S-parameters in dB at the cursor's bias |
 | Smith | S11 and S22 at the cursor's bias |
 
@@ -537,6 +554,7 @@ simpler alternative to self-heating and traps.
 | Plot tab | Shows |
 |---|---|
 | Output, Transfer | Measured Id (symbols) and the model (lines), one member per measured Vgs or Vds, at the cursor's temperature and quiescent point |
+| Model (vds), Model (vgs) | The fitted Id over the model sweep — along vds with a curve per vgs, or the reverse — at the cursor's temperature, every trap state at its DC value. Beyond the training domain the model's continuation is dashed and left out of the autoscale |
 | Error | Model minus data over the bias plane, in % of the current's range |
 | Gm, Gds | The data's own derivative (symbols) against the model, at the cursor's Vds or Vgs; with dispersion, RF Gm and Gds from the S data as well |
 | Domain | The training points and the outline of the domain beyond which the model extrapolates |
@@ -562,7 +580,7 @@ are refused, since typing would discard the data; **Fit to the S data** clears t
 
 | Plot tab | Shows |
 |---|---|
-| C–V (vgs), C–V (vds) | The model's capacitances along one voltage with the other at the cursor's value, measured points as symbols. The selector beside the tabs picks one `Cij` or the circuit set Cgs, Cgd, Cds, Cm |
+| C–V (vgs), C–V (vds) | The model's capacitances along one voltage over the model sweep's span, a curve per value of the other voltage that the sweep steps, measured points near each as symbols. The selector beside the tabs picks one `Cij` or the circuit set Cgs, Cgd, Cds, Cm |
 | Qg, Qd | The model's charge over (vds, vgs) |
 | ΔQg, ΔQd | The model's charge against the line integral of the measured capacitances, in % of the charge's range |
 
@@ -586,6 +604,11 @@ coupling list holds Shift only, and one line under it says why. Under Shift, eac
 its value and, after a fit, its ± standard error. Typing a value locks it. The step's report gives each strength and the
 RMS residual of both relations.
 
+Choosing a model, or **None**, changes what the currents must be trained with, so the step is marked stale until it
+runs and Export waits for it. **None** with currents trained with traps: Run re-trains `Id` and `Ig` without them, on the
+DC data — the pulsed sets are left out, and the report says so. **None** with trap-free currents: there is nothing to
+run. **Shift** with currents trained with traps: Run re-trains them trap-free first, then fits the strengths.
+
 | Plot tab | Shows |
 |---|---|
 | Pulsed I–V | Trained: per trap-setting level, measured Id against the model at the cursor's Vgs; points pulsed beyond the trap-setting bias are hollow — validation only |
@@ -596,8 +619,9 @@ RMS residual of both relations.
 ## The Check step {#check}
 
 **Check Charge Conservation** — also on the toolbar — checks the data, the fitted model and a large-signal drive. The
-result is one line, e.g. `Data gate 0.4 % · drain 3.8 % · Model 0 % · HB 0.2 µA`, and the transcapacitance as
-information.
+result is one row each — `Data gate 0.40 %`, `Data drain 3.80 %`, `Model < 0.01 %`, `HB 0.2 µA` — and the
+transcapacitance as information. A percentage below 0.01 % reads `< 0.01 %`: a residual that small is zero for this
+purpose.
 
 | Plot tab | Shows |
 |---|---|
@@ -717,8 +741,12 @@ with each DC curve at its own trap state and self-heated temperature.
 
 ## Plots {#plots}
 
-Every plot is a Data Display plot, with its own copy and inspector. Measured traces are symbols and model traces lines.
-The button at the right of the tab strip, **Open in Data Display**, sends the plot's data to a new display.
+Every plot is a Data Display plot. Measured traces are symbols and model traces lines. The plots are drawn from the
+document, so a double-click opens nothing and the menu's Plot Properties… and Axes Labels… are greyed; a double-click on
+a curve still adds a marker, and Copy and Export… are always there. The Data step's tabs are glyphs: Output and
+Transfer a small plot marked `Vds` and `Vgs`, S one marked `S`, the bias plane a grid of points, and Smith the Smith
+glyph. The button at the right of the tab strip, **Open in Data Display**, sends the plot's data to a new display: the
+step's plot data, or on the Data, Pads and Network steps the curves the tab shows.
 
 ## Passive documents: Data and Topology {#passive}
 
