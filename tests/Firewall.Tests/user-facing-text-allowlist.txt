@@ -1283,8 +1283,9 @@ src/Core/Devices/Composed/RuntimeEvaluators.cs|an ANN's output layer has one neu
 src/Core/Devices/Composed/RuntimeEvaluators.cs|layer {k + 1}'s weights are not {outputs} × {_widths[k]}.
 src/Core/Devices/Composed/RuntimeEvaluators.cs|the coefficients hold {coefficients.Length} values; the grid needs {size}.
 src/Core/Elaboration/Elaborator.cs|{who}: '{file}' cannot be read — {ex.Message}
-src/Core/Elaboration/Elaborator.cs|{who}: '{ov.Name}' is not a parameter of a ComposedFET; it takes File, N, m, Rth, Cth, 
+src/Core/Elaboration/Elaborator.cs|{who}: '{ov.Name}' is not a parameter of a ComposedFET; it takes File, N, m, Rth, Cth, Temp, 
 src/Core/Elaboration/Elaborator.cs|'{childPath}': {name}={v} is not a thermal {(name == RthParam ? 
+src/Core/Elaboration/Elaborator.cs|'{childPath}': {TempParam}={v} is not a temperature; give the device's temperature in °C, 
 src/Core/Elaboration/Elaborator.cs|{who}: Rth and Cth set a self-heating model's thermal network, and '{Path.GetFileName(file)}' does not 
 src/Core/Elaboration/Elaborator.cs|{who}: a fourth net is the thermal node t, and '{Path.GetFileName(file)}' does not self-heat; 
 src/Core/Elaboration/Elaborator.cs|{who}: expected 3 nets (g d s), or 4 with the thermal node t; got {inst.NetBindings.Count}.

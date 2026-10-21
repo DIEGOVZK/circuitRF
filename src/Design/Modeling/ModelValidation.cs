@@ -108,11 +108,24 @@ public sealed record ValidationSettings
     }
 }
 
+/// <summary>One measure an item is judged by: its value, the tolerance it passes within, and the unit both are in.</summary>
+public sealed record ValidationMetric(string Name, double Value, double Tolerance, string Unit);
+
 /// <summary>
 /// One item: the data set, what it compared, whether it passed, its one line, its measured-and-model DataSet and the
 /// testbench it ran (empty for the pulsed item, which runs no circuit).
 /// </summary>
-public sealed record ValidationItem(string Set, ValidationKind Kind, bool Passed, string Line, DataSet Data, string Testbench);
+public sealed record ValidationItem(string Set, ValidationKind Kind, bool Passed, string Line, DataSet Data, string Testbench)
+{
+    /// <summary>What the item ran at — bias, terminations, frequency, temperature, self-heating, solver settings — one line
+    /// each, enough to reproduce it.</summary>
+    public IReadOnlyList<string> Conditions { get; init; } = [];
+    /// <summary>The measures it is judged by.</summary>
+    public IReadOnlyList<ValidationMetric> Metrics { get; init; } = [];
+    /// <summary>The points (or drive levels) the solve did not converge at, out of <see cref="Count"/>.</summary>
+    public int Failed { get; init; }
+    public int Count { get; init; }
+}
 
 /// <summary>A validation: the model it ran, every item, and a line for each set that has no item (and why).</summary>
 public sealed record ValidationResult(string ModelPath, IReadOnlyList<ValidationItem> Items, IReadOnlyList<string> Notes)
@@ -264,7 +277,7 @@ public static class ModelValidation
 
     /// <summary>The set's points at the device plane: the bias moved through the bias path and the pads (MC-4's own
     /// re-referencing with no network), and whether the set is stated at the intrinsic plane.</summary>
-    private static (double[] Vgs, double[] Vds, bool Intrinsic) DevicePlane(Context ctx, CmcDataSet set, NormalisedData nd)
+    internal static (double[] Vgs, double[] Vds, bool Intrinsic) DevicePlane(Context ctx, CmcDataSet set, NormalisedData nd)
     {
         var plane = set.Conditions.ReferencePlane ?? ReferencePlane.Probe;
         var pads = PadDeembedding.Load(CmcExtrinsic.Pads(ctx.Doc), ctx.Dir);
@@ -346,8 +359,22 @@ public static class ModelValidation
         ds.Add("Vds", new DataCube([point], [.. nd.Points.Select(p => p.Vds)]));
         string line = $"S {set.Name}: |ΔS| median {G(median)}, 95 % {G(p95)} {Mark(pass)}";
         int k0 = points[0];
+        var ambient = points.Select(k => AmbientOf(set, nd.Points[k])).ToList();
         return new ValidationItem(set.Name, ValidationKind.SParams, pass, line, ds,
-            ValidationBench.SParams(set.Name, device, AmbientOf(set, nd.Points[k0]), vgs[k0], vds[k0], f, nd.Z0));
+            ValidationBench.SParams(set.Name, device, AmbientOf(set, nd.Points[k0]), vgs[k0], vds[k0], f, nd.Z0))
+        {
+            Conditions =
+            [
+                Biases(points.Length, points.Select(k => vgs[k]), points.Select(k => vds[k]), intrinsic ? "intrinsic" : "device"),
+                $"Frequency: {GHz(f[0])} – {GHz(f[^1])} GHz, {f.Length} point(s)",
+                $"Ports: {G(nd.Z0)} Ω, bias through ideal tees (1 H, 1 F)" +
+                (plane is ReferencePlane.Instrument or ReferencePlane.Probe ? $"; the model's S re-embedded in the pads to the {Plane(plane)} plane" : ""),
+                Ambient(ctx, ambient),
+                "Solver: linear S-parameters at the DC operating point of each bias",
+            ],
+            Metrics = [new("|ΔS| median", median, ctx.Tol.SMedian, ""), new("|ΔS| 95th percentile", p95, ctx.Tol.S95, "")],
+            Count = points.Length,
+        };
     }
 
     // ── DC I–V ────────────────────────────────────────────────────────────────
@@ -390,7 +417,17 @@ public static class ModelValidation
         string line = $"DC {set.Name}: Id RMS {Pct(rel)} of range" + (failed > 0 ? $", {failed} point(s) did not converge" : "") + $" {Mark(pass)}";
         int k0 = points[0];
         return new ValidationItem(set.Name, ValidationKind.DcIv, pass, line, ds,
-            ValidationBench.Dc(set.Name, device, AmbientOf(set, nd.Points[k0]), vgs[k0], vds[k0]));
+            ValidationBench.Dc(set.Name, device, AmbientOf(set, nd.Points[k0]), vgs[k0], vds[k0]))
+        {
+            Conditions =
+            [
+                Biases(points.Length, points.Select(k => vgs[k]), points.Select(k => vds[k]), intrinsic ? "intrinsic" : "device"),
+                Ambient(ctx, points.Select(k => AmbientOf(set, nd.Points[k]))),
+                $"Solver: DC Newton, residual tolerance {G(settings.NonlinearAbsTol)}, at most {settings.NonlinearMaxIter} iterations",
+            ],
+            Metrics = [new("Id RMS error", 100 * rel, 100 * ctx.Tol.IvRelative, "% of range")],
+            Failed = failed, Count = points.Length,
+        };
     }
 
     // ── Pulsed I–V ────────────────────────────────────────────────────────────
@@ -424,7 +461,21 @@ public static class ModelValidation
         ds.Add("Id.model", new DataCube([axis], model));
         ctx.Rc?.TickStage();
         string line = $"Pulsed {set.Name}: Id RMS {Pct(rel)} of range over {ip.X.Length} point(s) {Mark(pass)}";
-        return new ValidationItem(set.Name, ValidationKind.PulsedIv, pass, line, ds, "");
+        var c = set.Conditions;
+        var conditions = new List<string>
+        {
+            Biases(ip.X.Length, ip.X.Select(x => x[0]), ip.X.Select(x => x[1]), "intrinsic"),
+            "Evaluated at the model's core, not in a circuit: each point at its mapped trap state and its quiescent junction temperature",
+        };
+        if (c.Quiescent is { } q) conditions.Add($"Quiescent bias: Vgs {G(q.Vgs)} V, Vds {G(q.Vds)} V");
+        if (c.PulseWidth is { } w) conditions.Add($"Pulse: {G(w * 1e6)} µs" + (c.Period is { } per ? $" every {G(per * 1e6)} µs" : ""));
+        conditions.Add(Ambient(ctx, ip.HasT ? ip.X.Select(x => x[2]) : [ip.TemperatureC]));
+        return new ValidationItem(set.Name, ValidationKind.PulsedIv, pass, line, ds, "")
+        {
+            Conditions = conditions,
+            Metrics = [new("Id RMS error", 100 * rel, 100 * ctx.Tol.IvRelative, "% of range")],
+            Count = ip.X.Length,
+        };
     }
 
     // ── Large signal ──────────────────────────────────────────────────────────
@@ -525,18 +576,21 @@ public static class ModelValidation
         Pair("Id", "id", id); Pair("Ig", "ig", ig);
 
         var parts = new List<string>();
+        var metrics = new List<ValidationMetric>();
         bool pass = true;
         if (cols.TryGetValue("pout", out var mp))
         {
             double e = Rms(mp, poutDbm);
             pass &= e <= ctx.Tol.PowerDb;
             parts.Add($"Pout RMS {G(e)} dB");
+            metrics.Add(new("Pout RMS error", e, ctx.Tol.PowerDb, "dB"));
         }
         else if (cols.TryGetValue("gain", out var mg))
         {
             double e = Rms(mg, gain);
             pass &= e <= ctx.Tol.PowerDb;
             parts.Add($"gain RMS {G(e)} dB");
+            metrics.Add(new("Gain RMS error", e, ctx.Tol.PowerDb, "dB"));
         }
         foreach (var (q, model, label) in new[] { ("pae", pae, "PAE"), ("de", de, "DE") })
             if (cols.TryGetValue(q, out var me))
@@ -544,11 +598,17 @@ public static class ModelValidation
                 double e = Rms(me, model);
                 pass &= e <= ctx.Tol.EfficiencyPoints;
                 parts.Add($"{label} RMS {G(e)} pp");
+                metrics.Add(new($"{label} RMS error", e, ctx.Tol.EfficiencyPoints, "pp"));
                 break;
             }
         if (parts.Count == 0) throw new ModelingException(set.Name, "it has no pout, gain, pae or de column to compare.");
         return new ValidationItem(set.Name, ValidationKind.PowerSweep, pass,
-                                  $"Power {set.Name}: {string.Join(" · ", parts)} {Mark(pass)}", ds, cnl);
+                                  $"Power {set.Name}: {string.Join(" · ", parts)} {Mark(pass)}", ds, cnl)
+        {
+            Conditions = LargeSignalConditionsText(ctx, c, pin, t, twoTone: false),
+            Metrics = metrics,
+            Failed = Unconverged(pout), Count = pin.Length,
+        };
     }
 
     private static ValidationItem TwoTone(Context ctx, CmcDataSet set)
@@ -574,6 +634,7 @@ public static class ModelValidation
         var axis = new Axis("Pin", pin, "dBm");
         var ds = new DataSet();
         var parts = new List<string>();
+        var metrics = new List<ValidationMetric>();
         bool pass = true;
         foreach (var (q, model, label) in new[] { ("pout", carrier, "Pout"), ("im3", im3, "IM3"), ("im5", im5, "IM5") })
         {
@@ -583,10 +644,16 @@ public static class ModelValidation
             double e = Rms(meas, model);
             pass &= e <= ctx.Tol.PowerDb;
             parts.Add($"{label} RMS {G(e)} dB");
+            metrics.Add(new($"{label} RMS error", e, ctx.Tol.PowerDb, "dB"));
         }
         if (parts.Count == 0) throw new ModelingException(set.Name, "it has no pout, im3 or im5 column to compare.");
         return new ValidationItem(set.Name, ValidationKind.TwoTone, pass,
-                                  $"Two-tone {set.Name}: {string.Join(" · ", parts)} {Mark(pass)}", ds, cnl);
+                                  $"Two-tone {set.Name}: {string.Join(" · ", parts)} {Mark(pass)}", ds, cnl)
+        {
+            Conditions = LargeSignalConditionsText(ctx, c, pin, t, twoTone: true),
+            Metrics = metrics,
+            Failed = carrier.Count(v => !double.IsFinite(v)), Count = pin.Length,
+        };
     }
 
     private static ValidationItem Loadpull(Context ctx, CmcDataSet set)
@@ -682,7 +749,26 @@ public static class ModelValidation
         if (sPae is not null) ds.Add("PAE.model", new DataCube([gridAx, pinAx], paeModel));
         string line = $"Loadpull {set.Name}: Pout RMS {G(ePout)} dB" + (ePae is { } e ? $" · PAE RMS {G(e)} pp" : "") +
                       $" over {dPout.Count} point(s) {Mark(pass)}";
-        return new ValidationItem(set.Name, ValidationKind.Loadpull, pass, line, ds, cnl);
+        int measured = Enumerable.Range(0, nGrid * nPin).Count(i => double.IsFinite(pavl[i]) && mPout[i] > 0);
+        double ambientC = set.Conditions.AmbientC ?? 25;
+        var gammaAbs = gamma.Select(Complex.Abs).ToArray();
+        var metrics = new List<ValidationMetric> { new("Pout RMS error", ePout, ctx.Tol.PowerDb, "dB") };
+        if (ePae is { } ep) metrics.Add(new("PAE RMS error", ep, ctx.Tol.EfficiencyPoints, "pp"));
+        return new ValidationItem(set.Name, ValidationKind.Loadpull, pass, line, ds, cnl)
+        {
+            Conditions =
+            [
+                $"Frequency: {GHz(f0)} GHz; bias Vgs {G(vgs)} V, Vds {G(vds)} V at the device's terminals",
+                $"Source: {Terminations(zSource, c.SourceHarmonics, ctx.Settings.MaxHarmonic)}",
+                $"Load: the file's {nGrid} load(s), |Γ| {G(gammaAbs.Min())} – {G(gammaAbs.Max())} (50 Ω); " +
+                Terminations(null, c.LoadHarmonics, ctx.Settings.MaxHarmonic),
+                $"Drive: available power {G(lo)} – {G(hi)} dBm in {G(step)} dB steps (the model interpolated to each measured drive)",
+                Ambient(ctx, [ambientC]),
+                $"Solver: the loadpull engine (circuitrf lp); {ValidationBench.HbText(ctx.Settings.MaxHarmonic)}",
+            ],
+            Metrics = metrics,
+            Failed = measured - dPout.Count, Count = measured,
+        };
     }
 
     /// <summary>
@@ -802,6 +888,8 @@ public static class ModelValidation
         ds.Add("ZLoad", new DataCube([gridAxis], zl));
         ds.Add("GammaLoad", new DataCube([gridAxis], [.. gammas]));
         ds.Add("StopCode", new DataCube([gridAxis], stop));
+        // The frequency, on the carrier a loadpull file's reader writes: without it a surface's summary reads 0 GHz.
+        ds.Add("__Freq", new DataCube([new Axis("freq", [f0], "Hz")], [f0]));
         return ds;
     }
 
@@ -814,6 +902,81 @@ public static class ModelValidation
         : ds.Contains("Pout") ? ds["Pout"].RealValues
         : ds.Contains("Pout_dBm") ? [.. ds["Pout_dBm"].RealValues.Select(p => Math.Pow(10, (p - 30) / 10))]
         : throw new ModelingException("loadpull", "the result carries no output power.");
+
+    // ── What a test ran at ────────────────────────────────────────────────────
+
+    /// <summary>The biases a test ran at: <c>Biases: 12 point(s) at the device plane — Vgs …, Vds …</c>.</summary>
+    internal static string Biases(int count, IEnumerable<double> vgs, IEnumerable<double> vds, string plane) =>
+        $"Biases: {count} point(s) at the {plane} plane — Vgs {Values(vgs, "V")}, Vds {Values(vds, "V")}";
+
+    /// <summary>
+    /// The distinct values of a sweep, as a reader reproduces them: every one when there are few (<c>2, 6 V</c>), its span
+    /// and count when there are many (<c>−4 … 0 V, 21 values</c>).
+    /// </summary>
+    internal static string Values(IEnumerable<double> values, string unit)
+    {
+        var v = Snapped(values).Select(x => Math.Round(x, 4) + 0.0).Distinct().Order().ToList();
+        string u = unit.Length > 0 ? " " + unit : "";
+        return v.Count switch
+        {
+            0 => "—",
+            <= 8 => string.Join(", ", v.Select(G)) + u,
+            _ => $"{G(v[0])} … {G(v[^1])}{u}, {v.Count} values",
+        };
+    }
+
+    /// <summary>The ambient a test ran at and how the model heats itself there: Rth at that ambient, or isothermal.</summary>
+    internal static string Ambient(Context ctx, IEnumerable<double> ambientC) => Ambient(ctx.Model.Thermal, ambientC);
+
+    internal static string Ambient(ModelThermal? thermal, IEnumerable<double> ambientC)
+    {
+        var t = ambientC.Where(double.IsFinite).Select(x => Math.Round(x, 2)).Distinct().Order().ToList();
+        string at = $"Ambient: {Values(t, "°C")}; ";
+        if (thermal is null) return at + "isothermal (the model has no self-heating)";
+        string rth = string.Join(", ", (t.Count > 0 ? t : [thermal.Tref]).Take(3).Select(x => $"{G(thermal.RthAt(x))} °C/W at {G(x)} °C"));
+        double cth = thermal.Poles.Sum(p => p.Cth);
+        return at + $"self-heating on, Rth {rth}" + (cth > 0 ? $", Cth {G(cth)} J/°C over {thermal.Poles.Count} pole(s)" : "");
+    }
+
+    internal static string Plane(ReferencePlane plane) => plane.ToString().ToLowerInvariant();
+
+    internal static string GHz(double hz) => G(hz / 1e9);
+
+    /// <summary>A termination as the testbench applies it: <c>Z(f0) 50 Ω; 2f0 short, 3f0 short</c>. Null
+    /// <paramref name="fundamental"/> leaves it out (a loadpull's swept load).</summary>
+    internal static string Terminations(Complex? fundamental, IReadOnlyList<Complex> harmonics, int maxHarm)
+    {
+        var parts = new List<string>();
+        if (fundamental is { } z1) parts.Add($"f0 {Ohms(z1)}");
+        for (int k = 2; k <= maxHarm; k++)
+            parts.Add($"{k}f0 {(k - 2 < harmonics.Count ? Ohms(harmonics[k - 2]) : "short")}");
+        return string.Join(", ", parts);
+    }
+
+    /// <summary>An impedance as a reader types it back: <c>50 Ω</c>, <c>12.5+j8.1 Ω</c>, <c>short</c>, <c>open</c>.</summary>
+    internal static string Ohms(Complex z) =>
+        Complex.Abs(z) <= 1e-3 ? "short" : Complex.Abs(z) >= 1e5 ? "open"
+        : Math.Abs(z.Imaginary) <= 1e-6 * Complex.Abs(z) ? $"{G(z.Real)} Ω"
+        : Math.Abs(z.Real) <= 1e-3 ? $"{(z.Imaginary < 0 ? "−" : "+")}j{G(Math.Abs(z.Imaginary))} Ω"
+        : $"{G(z.Real)}{(z.Imaginary < 0 ? "−" : "+")}j{G(Math.Abs(z.Imaginary))} Ω";
+
+    private static IReadOnlyList<string> LargeSignalConditionsText(Context ctx, LargeSignalConditions c, double[] pin, double ambientC, bool twoTone)
+    {
+        int h = ctx.Settings.MaxHarmonic;
+        return
+        [
+            (twoTone ? $"Frequency: two tones {GHz(c.FrequencyHz!.Value)} GHz ± {G(c.SpacingHz!.Value / 2e6)} MHz"
+                     : $"Frequency: {GHz(c.FrequencyHz!.Value)} GHz") + $"; bias Vgs {G(c.Vgs!.Value)} V, Vds {G(c.Vds!.Value)} V at the device's terminals",
+            $"Source: {Terminations(c.SourceZ ?? 50, c.SourceHarmonics, h)}",
+            $"Load: {Terminations(c.LoadZ ?? 50, c.LoadHarmonics, h)}",
+            $"Drive: available power {Values(pin, "dBm")}" + (twoTone ? " per tone" : ""),
+            Ambient(ctx, [ambientC]),
+            $"Solver: {(twoTone ? ValidationBench.TwoToneText(h) : ValidationBench.HbText(h))}",
+        ];
+    }
+
+    /// <summary>The drive levels a sweep produced no output at — where HB did not converge.</summary>
+    private static int Unconverged(double[] pout) => pout.Count(p => !(p > 0));
 
     // ── Arithmetic ────────────────────────────────────────────────────────────
 
@@ -842,7 +1005,28 @@ public static class ModelValidation
     private static Axis PointAxis(NormalisedData nd) =>
         new("point", [.. Enumerable.Range(0, nd.Count).Select(i => (double)i)], labels: [.. nd.Points.Select(p => p.PointId)]);
 
-    internal static string G(double v) => v.ToString("G3", CultureInfo.InvariantCulture);
+    /// <summary>Three significant figures as a reader writes them: <c>0.848</c>, <c>25.5</c>, <c>1000</c>, <c>4e-7</c>, never
+    /// <c>1E+03</c> or <c>-0</c>.</summary>
+    internal static string G(double v)
+    {
+        if (!double.IsFinite(v)) return v.ToString(CultureInfo.InvariantCulture);
+        double a = Math.Abs(v);
+        if (a < 1e-15) return "0";
+        if (a is >= 1e-3 and < 1e6)
+        {
+            double unit = Math.Pow(10, Math.Floor(Math.Log10(a)) - 2);
+            return (Math.Round(v / unit) * unit + 0.0).ToString("0.######", CultureInfo.InvariantCulture);
+        }
+        return v.ToString("0.##e0", CultureInfo.InvariantCulture);
+    }
+
+    /// <summary><paramref name="values"/> with the ones negligible beside the largest (a solver's 1e-11 V for 0) made 0.</summary>
+    internal static IEnumerable<double> Snapped(IEnumerable<double> values)
+    {
+        var v = values.Where(double.IsFinite).ToList();
+        double scale = v.Count > 0 ? v.Max(Math.Abs) : 0;
+        return v.Select(x => Math.Abs(x) <= 1e-6 * scale ? 0.0 : x);
+    }
     private static string Pct(double v) => (100 * v).ToString("G3", CultureInfo.InvariantCulture) + " %";
     internal static string Mark(bool pass) => pass ? "✓" : "✗";
 }

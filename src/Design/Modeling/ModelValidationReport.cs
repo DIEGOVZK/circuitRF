@@ -21,8 +21,12 @@
 //              MXE) at the stated compression through RfCore's loadpull surface — the Data Display's performance summary —
 //              and the region of the disc where HB converged up to that compression.
 //
+// Ahead of them, Coverage: every data set's bias points at the device plane, and the PA bias — where the model was fitted
+// and checked, for the designer who did not build it. Each section also states the conditions that reproduce it and its
+// scorecard rows; ModelReportCard holds the card those make, with where the model is backed by data and how it was fitted.
+//
 // Everything runs through the run services validation uses; the report writes a folder: report.npy (one group per
-// section), summary.txt, and testbenches/ with the .cnl each section ran. The Data Display document and the
+// section), report.json (the card), summary.txt (the card as text), and testbenches/ with the .cnl each section ran. The Data Display document and the
 // dialog that sets these options belong to the window (MC-15); this is the headless half both the window and the model
 // verb call. A cancelled report writes nothing.
 
@@ -62,8 +66,9 @@ public sealed record ReportOptions
     public IReadOnlyList<PaClass> Modes { get; init; } = [PaClass.B, PaClass.J, PaClass.F, PaClass.FInverse];
     /// <summary>The fundamental, Hz; null: the middle of the S data's frequencies.</summary>
     public double? FrequencyHz { get; init; }
-    /// <summary>The PA bias at the device plane; null: the largest measured vds, and the vgs where the model's drain current
-    /// is 2 % of its largest at that vds (a deep class-AB quiescent point).</summary>
+    /// <summary>The PA bias at the device plane; null: half the largest measured vds — the drain swings to about twice its
+    /// bias, so the swing stays inside the data — and the vgs where the model's drain current is 2 % of Imax at that vds (a
+    /// deep class-AB quiescent point).</summary>
     public double? Vgs { get; init; }
     public double? Vds { get; init; }
     public int MaxHarmonic { get; init; } = 5;
@@ -73,7 +78,8 @@ public sealed record ReportOptions
     /// <summary>The source's 2f0 termination at the extrinsic plane; null: a short. Higher harmonics are shorted.</summary>
     public Complex? Source2f0 { get; init; }
     /// <summary>The optimum load resistance R_opt each class's intrinsic terminations are scaled to (harmonicaRF's presets
-    /// take it as their Z0); null: 2·(vds − vknee)/Imax from the model, vknee taken as a tenth of vds.</summary>
+    /// take it as their Z0); null: 2·(vds − vknee)/Imax, vknee taken as a tenth of vds and Imax the largest drain current in
+    /// the I–V data.</summary>
     public double? RoptOhms { get; init; }
     /// <summary>The loadpull disc, centred on each class's own fundamental load: rings out to <see cref="GammaRadius"/> (in
     /// Γ renormalised to that load), each with <see cref="Spokes"/> points, and its centre.</summary>
@@ -155,12 +161,19 @@ public sealed record ReportOptions
 
 /// <summary>One section of a report: its name, its DataSet, its summary lines, and the testbenches it ran (file name →
 /// text).</summary>
-public sealed record ReportSection(string Name, DataSet Data, IReadOnlyList<string> Lines, IReadOnlyDictionary<string, string> Files);
+public sealed record ReportSection(string Name, DataSet Data, IReadOnlyList<string> Lines, IReadOnlyDictionary<string, string> Files)
+{
+    /// <summary>What the section ran at, enough to reproduce it; a line indented two spaces belongs to the one above.</summary>
+    public IReadOnlyList<string> Conditions { get; init; } = [];
+    /// <summary>Its scorecard rows.</summary>
+    public IReadOnlyList<ScoreRow> Scores { get; init; } = [];
+}
 
-/// <summary>A report: the model it ran and its sections, in order.</summary>
+/// <summary>A report: the model it ran, its sections in order, and its card.</summary>
 public sealed record ModelReport(string ModelPath, IReadOnlyList<ReportSection> Sections)
 {
     public IReadOnlyList<string> Lines => [.. Sections.SelectMany(s => s.Lines)];
+    public ReportCard Card { get; init; } = new();
 }
 
 public static class ModelValidationReport
@@ -212,6 +225,7 @@ public static class ModelValidationReport
         var program = ComposedCoreProgram.Compile(ctx.Model, "report");
 
         var sections = new List<ReportSection>();
+        PaBiasPoint? paBias = null;
         if (options.Dc && validation.Items.Any(i => i.Kind is ValidationKind.DcIv or ValidationKind.PulsedIv))
             sections.Add(FromItems("DC", validation.Items.Where(i => i.Kind is ValidationKind.DcIv or ValidationKind.PulsedIv)));
         if (options.Thermal && ctx.Model.Thermal is { } th && Thermal(ctx.Doc, ctx.Data, ctx.Intrinsic, program, th) is { } thermal)
@@ -235,16 +249,18 @@ public static class ModelValidationReport
                     double[] vgs = Regrid.Axis(poly.Min(p => p.Vgs), poly.Max(p => p.Vgs), ChargeConstituentSettings.DefaultGridStep);
                     double[] vds = Regrid.Axis(poly.Min(p => p.Vds), poly.Max(p => p.Vds), ChargeConstituentSettings.DefaultGridStep);
                     var anchor = ChargeFit.Record(ctx.Doc)?.Anchor ?? ChargeFit.Anchor(charges, ChargeFitSettings.Default, []);
-                    sections.Add(ChargeSurface(program, charges, anchor, vgs, vds, ctx.Rc));
+                    var cs = ChargeSurface(program, charges, anchor, vgs, vds, ctx.Rc);
+                    sections.Add(cs with { Conditions = [ChargeSets(ctx), .. cs.Conditions] });
                 }
-                if (options.CapacitanceSlices) sections.Add(Slices(program, charges, options));
+                if (options.CapacitanceSlices && Slices(program, charges, options) is var cv)
+                    sections.Add(cv with { Conditions = [ChargeSets(ctx), .. cv.Conditions] });
             }
         }
         if (options.SParams && validation.Items.Any(i => i.Kind == ValidationKind.SParams))
             sections.Add(SPicked(validation.Items.Where(i => i.Kind == ValidationKind.SParams), options));
         if (options.PaModes)
         {
-            var bias = PaBias(ctx, program, options);
+            var bias = paBias = PaBias(ctx, program, options);
             int n0 = ctx.Model.BasePeriphery.Fingers;
             var drain = ComposedClassLoads.DrainTwoPort(ComposedNetworkTemplate.Build(ctx.Model.Network), n0, n0, 1.0,
                                                         bias.FrequencyHz, options.MaxHarmonic);
@@ -254,8 +270,85 @@ public static class ModelValidationReport
                 sections.Add(Mode(ctx, program, mode, bias, drain, options));
             }
         }
-        if (validation.Notes.Count > 0) sections.Add(Note("Notes", [.. validation.Notes]));
-        return new ModelReport(validation.ModelPath, sections);
+        if (validation.Notes.Count > 0)
+            sections.Add(Note("Notes", [.. validation.Notes]) with
+            {
+                Scores = [.. validation.Notes.Where(n => n.Contains(" — ", StringComparison.Ordinal))
+                    .Select(n => new ScoreRow("Notes", n[..n.IndexOf(':')], "not checked", Grade.Yellow,
+                                              $"This data could not be compared: {n[(n.IndexOf(" — ", StringComparison.Ordinal) + 3)..]}"))],
+            });
+        var validated = validation.Items.Select(i => i.Set).ToHashSet(StringComparer.Ordinal);
+        sections.Insert(0, Coverage(ctx, paBias, ReportGrades.Roles(ctx, validated)));
+
+        var (validity, methods, simulation, coverage) = ReportGrades.FrontMatter(ctx, validated, options.MaxHarmonic);
+        var card = new ReportCard
+        {
+            Model = cmodelPath is null ? $"the current state of {Path.GetFileName(cmcPath)}" : Path.GetFileName(validation.ModelPath),
+            Document = Path.GetFileName(cmcPath),
+            Scores = [.. sections.SelectMany(s => s.Scores)],
+            Validity = validity, Methods = methods, Simulation = simulation, Coverage = coverage,
+            Sections = [.. sections.Select(s => new SectionText(s.Name, s.Conditions, s.Lines, [.. s.Files.Keys]))],
+        };
+        return new ModelReport(validation.ModelPath, sections) { Card = card };
+    }
+
+    /// <summary>The sets the capacitances came from, as a condition line.</summary>
+    private static string ChargeSets(ModelValidation.Context ctx) =>
+        $"Data sets: {string.Join(", ", ChargeFit.Chosen(ctx.Doc, ctx.Intrinsic, ChargeFit.Settings(ctx.Doc)).Select(s => s.Name))}, " +
+        "their capacitances at the intrinsic plane";
+
+    // ── Coverage ──────────────────────────────────────────────────────────────
+
+    /// <summary>The Coverage section's groups, in the order they are drawn: the cube prefix and what its points are.</summary>
+    public static readonly IReadOnlyList<(string Group, string Meaning)> CoverageGroups =
+    [
+        ("IV fit", "the I–V fit's points (DC and pulsed)"), ("CV fit", "the C–V fit's points (S data)"),
+        ("Checked", "points used only to check the model"), ("Large signal", "large-signal measurements"), ("PA bias", "the PA sections' bias"),
+    ];
+
+    /// <summary>Every data set's bias points at the device plane, as the validation's testbenches apply them, grouped by what
+    /// they were used for, and the PA sections' bias — the picture of where the model was fitted and checked.</summary>
+    private static ReportSection Coverage(ModelValidation.Context ctx, PaBiasPoint? pa, (IReadOnlySet<string> Iv, IReadOnlySet<string> Cv, IReadOnlySet<string> Checked) roles)
+    {
+        var groups = CoverageGroups.ToDictionary(g => g.Group, _ => (Vgs: new List<double>(), Vds: new List<double>()));
+        foreach (var set in ctx.Doc.DataSets)
+        {
+            string? group = roles.Iv.Contains(set.Name) ? "IV fit" : roles.Cv.Contains(set.Name) ? "CV fit"
+                          : roles.Checked.Contains(set.Name) ? (set.Kind == DataSetKind.LargeSignal ? "Large signal" : "Checked") : null;
+            if (group is null) continue;
+            if (set.Conditions.LargeSignal is { Vgs: { } lg, Vds: { } ld })
+            {
+                groups[group].Vgs.Add(lg); groups[group].Vds.Add(ld);
+                continue;
+            }
+            if (!ctx.Data.TryGetValue(set.Name, out var nd) || nd.Count == 0) continue;
+            double[] vgs, vds;
+            try { (vgs, vds, _) = ModelValidation.DevicePlane(ctx, set, nd); }
+            catch (ModelingException) { continue; }
+            foreach (int k in Enumerable.Range(0, nd.Count).Where(k => !nd.Points[k].Excluded && double.IsFinite(vgs[k]) && double.IsFinite(vds[k])))
+            {
+                groups[group].Vgs.Add(vgs[k]); groups[group].Vds.Add(vds[k]);
+            }
+        }
+        if (pa is not null) { groups["PA bias"].Vgs.Add(pa.Vgs); groups["PA bias"].Vds.Add(pa.Vds); }
+        var ds = new DataSet();
+        foreach (var (group, _) in CoverageGroups)
+        {
+            var (vgs, vds) = groups[group];
+            if (vgs.Count == 0) continue;
+            var axis = new Axis("point", [.. Enumerable.Range(0, vgs.Count).Select(i => (double)i)]);
+            ds.Add($"{group}.Vgs", new DataCube([axis], [.. vgs]));
+            ds.Add($"{group}.Vds", new DataCube([axis], [.. vds]));
+        }
+        var conditions = new List<string>
+        {
+            "Every data set's bias points at the device plane, excluded points left out, as the testbenches apply them; " +
+            "the Data table says which sets fitted the model and which checked it",
+            "Markers: " + string.Join("; ", CoverageGroups.Where(g => ds.Contains($"{g.Group}.Vgs"))
+                                                          .Select(g => $"{ReportMarkers.Symbol(g.Group)} {g.Meaning}")),
+        };
+        if (pa is not null) conditions.Add($"PA bias (the PA class sections): Vgs {G(pa.Vgs)} V, Vds {G(pa.Vds)} V");
+        return new ReportSection("Coverage", ds, [], new Dictionary<string, string>()) { Conditions = conditions };
     }
 
     /// <summary>Where a report is written when no folder is named: <c>&lt;name&gt;-report/</c> beside the <c>.cmc</c>.</summary>
@@ -278,7 +371,8 @@ public static class ModelValidationReport
             foreach (var s in report.Sections)
                 foreach (var (name, cube) in s.Data.Cubes) ds.AddToGroup(Group(s.Name), name, cube);
             using (var fs = File.Create(Path.Combine(tmp, "report.npy"))) DataSetExporter.ExportNpy(ds, fs);
-            File.WriteAllText(Path.Combine(tmp, "summary.txt"), string.Join("\n", report.Lines) + "\n");
+            File.WriteAllText(Path.Combine(tmp, "summary.txt"), report.Card.ToText());
+            File.WriteAllText(Path.Combine(tmp, ReportCard.FileName), report.Card.ToJson());
             foreach (var s in report.Sections)
                 foreach (var (name, text) in s.Files) File.WriteAllText(Path.Combine(tmp, "testbenches", name), text);
             if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
@@ -302,13 +396,19 @@ public static class ModelValidationReport
         var ds = new DataSet();
         var lines = new List<string>();
         var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        var conditions = new List<string>();
+        var scores = new List<ScoreRow>();
         foreach (var item in items)
         {
             foreach (var (cube, value) in item.Data.Cubes) ds.Add($"{item.Set}.{cube}", value);
             lines.Add(item.Line);
-            if (item.Testbench.Length > 0) files[$"{Group(name)}.{Group(item.Set)}.cnl"] = item.Testbench;
+            string bench = $"{Group(name)}.{Group(item.Set)}.cnl";
+            if (item.Testbench.Length > 0) files[bench] = item.Testbench;
+            conditions.Add($"'{item.Set}'" + (item.Testbench.Length > 0 ? $" — testbench {bench}" : "") + ":");
+            conditions.AddRange(item.Conditions.Select(c => "  " + c));
+            scores.Add(ReportGrades.Row(name, item));
         }
-        return new ReportSection(name, ds, lines, files);
+        return new ReportSection(name, ds, lines, files) { Conditions = conditions, Scores = scores };
     }
 
     // ── S at the chosen biases ────────────────────────────────────────────────
@@ -357,6 +457,7 @@ public static class ModelValidationReport
         var lines = new List<string>();
         var ds = new DataSet();
         var allP = new List<double>(); var allRise = new List<double>(); var allT = new List<double>();
+        var scores = new List<ScoreRow>();
         foreach (var set in dcSets)
         {
             CurrentFit.IvPoints ip;
@@ -384,9 +485,28 @@ public static class ModelValidationReport
             double rth = idx.Sum(k => allP[k] * allRise[k]) / idx.Sum(k => allP[k] * allP[k]);
             double model = thermal.RthAt(group.Key);
             lines.Add($"Rth at {G(group.Key)} °C: data {G(rth)} °C/W, model {G(model)} °C/W ({G(100 * (model - rth) / rth)} %)");
+            double dev = Math.Abs(model - rth) / rth;
+            var grade = ReportGrades.Banded(dev, ReportGrades.RthGreen, ReportGrades.RthYellow);
+            scores.Add(new ScoreRow("Thermal", $"Rth at {G(group.Key)} °C", $"model {G(model)} °C/W against the data's {G(rth)} °C/W ({G(100 * dev)} %)", grade,
+                grade switch
+                {
+                    Grade.Green => "Self-heating matches the data: the channel temperature, and the current droop it causes, can be trusted.",
+                    Grade.Yellow => "Self-heating is somewhat off: expect the hot-channel current and efficiency at high dissipation to be a little wrong.",
+                    _ => "Self-heating disagrees with the data: currents at high dissipation, and anything thermal, are not reliable.",
+                }));
         }
         if (lines.Count == 0) lines.Add("Thermal: too few heated DC points to estimate Rth from the data.");
-        return new ReportSection("Thermal", ds, lines, new Dictionary<string, string>());
+        return new ReportSection("Thermal", ds, lines, new Dictionary<string, string>())
+        {
+            Conditions =
+            [
+                $"DC sets: {string.Join(", ", dcSets.Select(s => s.Name))}; {allP.Count} point(s) resolved an equivalent junction temperature",
+                "Each DC point's equivalent junction temperature is where the isothermal model carries its measured current; its rise " +
+                "over the ambient against the dissipated power is the data's Rth — fitted over points above 10 % of the largest power",
+                ModelValidation.Ambient(thermal, allT),
+            ],
+            Scores = scores,
+        };
     }
 
     /// <summary>The model's channel current at a temperature, with no self-heating — what the equivalent temperature solves.</summary>
@@ -410,6 +530,7 @@ public static class ModelValidationReport
         var axes = new[] { new Axis("vgs", vgs, "V"), new Axis("vds", vds, "V") };
         var ds = new DataSet();
         var lines = new List<string>();
+        var scores = new List<ScoreRow>();
         foreach (bool gate in (bool[])[true, false])
         {
             var (c1, c2) = data.Row(gate);
@@ -435,9 +556,28 @@ public static class ModelValidationReport
             ds.Add($"{q}.model", new DataCube(axes, model));
             ds.Add($"d{q}", new DataCube(axes, diff));
             double rms = inside.Count > 0 ? Math.Sqrt(inside.Average(k => diff[k] * diff[k])) : double.NaN;
-            lines.Add($"Charge {q}: model against the data's line integral, RMS {G(rms)} % of range, largest {G(inside.Count > 0 ? inside.Max(k => Math.Abs(diff[k])) : double.NaN)} %");
+            double largest = inside.Count > 0 ? inside.Max(k => Math.Abs(diff[k])) : double.NaN;
+            lines.Add($"Charge {q}: model against the data's line integral, RMS {G(rms)} % of range, largest {G(largest)} %");
+            var grade = ReportGrades.Banded(rms, ReportGrades.ChargeGreen, ReportGrades.ChargeYellow);
+            scores.Add(new ScoreRow("Charge", q, $"RMS {G(rms)} % of range, largest {G(largest)} % (Green ≤ {G(ReportGrades.ChargeGreen)} %, Yellow ≤ {G(ReportGrades.ChargeYellow)} %)", grade,
+                grade switch
+                {
+                    Grade.Green => $"{q} follows the measured capacitances: gain roll-off, matching and harmonic content can be trusted.",
+                    Grade.Yellow => $"{q} departs from the measured capacitances in places — see the Charge plots; matching and harmonics there are approximate.",
+                    _ => $"{q} does not follow the measured capacitances: matching, bandwidth and harmonic terminations are not reliable.",
+                }));
         }
-        return new ReportSection("Charge", ds, lines, new Dictionary<string, string>());
+        return new ReportSection("Charge", ds, lines, new Dictionary<string, string>())
+        {
+            Conditions =
+            [
+                $"Grid: Vgs {G(vgs[0])} … {G(vgs[^1])} V, Vds {G(vds[0])} … {G(vds[^1])} V, {G(vgs.Length > 1 ? vgs[1] - vgs[0] : 0)} V steps, intrinsic plane; " +
+                "only points inside the data's hull are compared",
+                $"The data's charge: the line integral of the measured capacitances from Vgs {G(anchor.Vgs)} V, Vds {G(anchor.Vds)} V, where both charges are 0",
+                "The model's charges at 25 °C",
+            ],
+            Scores = scores,
+        };
     }
 
     private static double Charge(ComposedCoreProgram program, double vgs, double vds, bool gate)
@@ -502,7 +642,13 @@ public static class ModelValidationReport
                 ds.Add($"{tag}.{name}.meas", new DataCube([pAxis], [.. pts.Select(k => of(data.C11[k], data.C12[k], data.C21[k], data.C22[k]))]));
             lines.Add($"C–V against {sweptName}: {family.Length} curves at {fixedName} = {string.Join(", ", family.Select(G))} V, {pts.Length} measured point(s)");
         }
-        return new ReportSection("C-V", ds, lines, new Dictionary<string, string>());
+        return new ReportSection("C-V", ds, lines, new Dictionary<string, string>())
+        {
+            Conditions =
+            [
+                "The measured points shown are those within half the family's spacing of each fixed voltage",
+            ],
+        };
     }
 
     /// <summary><paramref name="count"/> of the distinct values, spread from the lowest to the highest.</summary>
@@ -523,10 +669,15 @@ public static class ModelValidationReport
         var sSets = ctx.Doc.DataSets.Where(s => s.Kind == DataSetKind.SParams && ctx.Data.ContainsKey(s.Name)).Select(s => ctx.Data[s.Name]).ToList();
         var points = ctx.Data.Values.SelectMany(d => d.Points).Where(p => !p.Excluded).ToList();
         double f0 = o.FrequencyHz ?? (sSets.Count > 0 ? Median(sSets.SelectMany(d => d.FrequenciesHz ?? [])) : 2e9);
-        double vds = o.Vds ?? (points.Count > 0 ? points.Max(p => p.Vds) : 10);
+        double vds = o.Vds ?? (points.Count > 0 ? 0.5 * points.Max(p => p.Vds) : 10);
         double t = ctx.Model.Temperature.Mode == TemperatureMode.Single ? ctx.Model.Temperature.T0 : 25;
         double gLo = points.Count > 0 ? points.Min(p => p.Vgs) : -5, gHi = points.Count > 0 ? points.Max(p => p.Vgs) : 0;
-        double imax = Math.Abs(Id(program, gHi, vds, t));
+        // Imax from the data, not the model at (the highest vgs, the highest vds): the I–V data never reaches that corner —
+        // the current saturates and the junction heats first — so a network is unconstrained there, and one read 34 A
+        // where the data's largest current was 0.16 A, which made R_opt 1 Ω and every class a −60 dB attenuator.
+        var iv = ctx.Doc.DataSets.Where(s => s.Kind is DataSetKind.DcIv or DataSetKind.PulsedIv or DataSetKind.SimulatedTables && ctx.Data.ContainsKey(s.Name))
+                                 .SelectMany(s => ctx.Data[s.Name].Points).Where(p => !p.Excluded && double.IsFinite(p.Id)).ToList();
+        double imax = iv.Count > 0 ? iv.Max(p => Math.Abs(p.Id)) : Math.Abs(Id(program, gHi, vds, t));
         double vgs = o.Vgs ?? Bisect(v => Math.Abs(Id(program, v, vds, t)) - 0.02 * imax, gLo, gHi);
         double ropt = o.RoptOhms ?? (imax > 0 ? 2 * 0.9 * vds / imax : 50);   // vknee = vds/10
         var zs = o.SourceZ ?? InputMatch(ctx, f0, vgs, vds, ropt, t);
@@ -617,7 +768,8 @@ public static class ModelValidationReport
         var failed = Enumerable.Range(0, stop.Length).Where(k => converged[k] == 0).ToList();
 
         var ds = new DataSet();
-        foreach (var (name, cube) in lp.Cubes) if (!name.StartsWith("__", StringComparison.Ordinal)) ds.Add(name, cube);
+        foreach (var (name, cube) in lp.Cubes)
+            if (!name.StartsWith("__", StringComparison.Ordinal) || name == "__Freq") ds.Add(name, cube);
         var gridAxis = lp["StopCode"].Axes[0];
         ds.Add("Converged", new DataCube([gridAxis], converged));
         var nan = new Complex(double.NaN, double.NaN);
@@ -652,7 +804,51 @@ public static class ModelValidationReport
             $"{At(surface.MaxEfficiency(0, c, SurfacePlane.Gamma)?.Interpolated, "MXE")} · {roc}",
         };
         lines.AddRange(notes.Select(n => $"{label}: {n}"));
-        return new ReportSection(label, ds, lines, files);
+
+        int h = o.MaxHarmonic;
+        var conditions = new List<string>
+        {
+            $"Frequency: {ModelValidation.GHz(b.FrequencyHz)} GHz; bias Vgs {G(b.Vgs)} V, Vds {G(b.Vds)} V at the device's terminals",
+            $"Class load: R_opt {G(b.Ropt)} Ω at the intrinsic plane, carried out through the extrinsic network with the output capacitance " +
+            $"C22 {G(b.C22 * 1e15)} fF linearised at the bias",
+            $"Load (extrinsic): {string.Join(", ", loads.Select((z, k) => $"{(k == 0 ? "f0" : $"{k + 1}f0")} {ModelValidation.Ohms(z)}"))}" +
+            (loads.Length < h ? $", above {loads.Length}f0 short" : ""),
+            $"Source: {ModelValidation.Terminations(b.SourceZ, [o.Source2f0 ?? ValidationBench.Short], h)}",
+            $"Loadpull disc: {grid.Count} loads — the class load and {o.Rings} ring(s) × {o.Spokes} spoke(s) out to |Γ| {G(o.GammaRadius)} about it",
+            $"Drive: available power {G(o.PinStart)} … {G(o.PinMax)} dBm in {G(o.PinStep)} dB steps, each load stopped one step past {G(o.Compression)} dB " +
+            "compression from its running gain maximum",
+            ModelValidation.Ambient(ctx, [b.AmbientC]),
+            $"Solver: {ValidationBench.HbText(h)}; one fixed drive ladder per load, no continuation or cold retries, so the region of " +
+            "convergence is the solver's own",
+        };
+        bool presetFailed = converged[0] != 1;
+        var mxp = surface.MaxPower(0, c, SurfacePlane.Gamma);
+        var grade = presetFailed ? Grade.Red : ReportGrades.Banded(1 - share, 1 - ReportGrades.DiscGreen, 1 - ReportGrades.DiscYellow);
+        if (grade == Grade.Green && mxp is null) grade = Grade.Yellow;
+        string meaning = grade switch
+        {
+            Grade.Green => $"HB converged at the class load and across the disc around it: the model drives to P-{G(o.Compression)}dB reliably here.",
+            Grade.Yellow when mxp is null => $"No load in the disc reached P-{G(o.Compression)}dB within the drive ladder — raise the drive to see compression.",
+            Grade.Yellow => "HB failed at some loads in the disc (red crosses on the region-of-convergence chart): expect convergence trouble there in a design.",
+            _ when presetFailed => "HB did not converge at the class's own load — the model is not usable for this class as set up.",
+            _ => "HB failed across much of the disc: the model's convergence in this class is poor.",
+        };
+        var scores = new List<ScoreRow>
+        {
+            new(label, "HB convergence over the loadpull disc",
+                $"{G(100 * share)} % of {grid.Count} loads" + (presetFailed ? ", not at the class load" : ""), grade, meaning),
+        };
+        // Converging is not amplifying: a class whose best load has no gain says the set-up — or the model at this bias — is
+        // wrong, and the section's numbers are not a prediction a design can use.
+        if (mxp?.Interpolated is { } best)
+        {
+            double gt = surface.MetricAtCoord(0, "Gt_dB", best, c, SurfacePlane.Gamma), pae = surface.MetricAtCoord(0, "PAE", best, c, SurfacePlane.Gamma);
+            if (!(gt > 0) || !(pae > 0))
+                scores.Add(new ScoreRow(label, "PA prediction at MXP", $"Gt {G(gt)} dB, PAE {G(pae)} %", Grade.Red,
+                    $"The model does not amplify at this set-up (R_opt {G(b.Ropt)} Ω, Vgs {G(b.Vgs)} V, Vds {G(b.Vds)} V, {ModelValidation.GHz(b.FrequencyHz)} GHz): " +
+                    "check the report's PA options and the model's current at this bias before using this class's results."));
+        }
+        return new ReportSection(label, ds, lines, files) { Conditions = conditions, Scores = scores };
     }
 
     // ── Arithmetic ────────────────────────────────────────────────────────────
@@ -663,6 +859,6 @@ public static class ModelValidationReport
         return v.Count == 0 ? double.NaN : v[v.Count / 2];
     }
 
-    private static string G(double v) => v.ToString("G3", CultureInfo.InvariantCulture);
+    private static string G(double v) => ModelValidation.G(v);
     private static string Zs(Complex z) => $"{G(z.Real)}{(z.Imaginary < 0 ? "−" : "+")}j{G(Math.Abs(z.Imaginary))}";
 }

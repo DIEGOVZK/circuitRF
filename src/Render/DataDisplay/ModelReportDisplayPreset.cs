@@ -6,6 +6,8 @@
 //  One tab per report section that holds data, over the report's own
 //  `report.npy` (one group per section, ModelValidationReport.Write):
 //
+//    Coverage  every data set's bias points, Vgs against Vds, and the PA
+//              bias — where the model was fitted and checked;
 //    DC        each set's drain current, measured (symbols) against the
 //              model, versus its drain voltage;
 //    Thermal   the junction-temperature rise against dissipated power,
@@ -29,6 +31,10 @@
 //  PlotComposer and PlotDocumentWriter, the functions `render` uses, as
 //  a multi-page document (one page per tab) whose metadata carries no
 //  title — so it does not depend on the name it is written under.
+//  The PDF opens with the report's card (report.json, beside report.npy:
+//  the scorecard, where the model is backed by data, how it was fitted,
+//  the data) and heads each tab's page with the conditions that
+//  reproduce it — ModelReportPages lays that text out.
 //
 //  The window's "Open in Data Display" is WritePlotDocument: a plot's
 //  DataSet as an `.npy` beside a display that selects it.
@@ -70,6 +76,7 @@ public static class ModelReportDisplayPreset
             string g = Group(section.Name);
             var plots = section.Name switch
             {
+                "Coverage" => Coverage(section.Data, g, sourceRef),
                 "DC" => Dc(section.Data, g, sourceRef),
                 "Thermal" => Thermal(g, sourceRef),
                 "Charge" => Charge(section.Data, g, sourceRef),
@@ -120,7 +127,7 @@ public static class ModelReportDisplayPreset
             MarkerBoxTransparentBackground = current.MarkerBoxTransparentBackground,
             AlwaysDisplayDataSourcePrefix = current.AlwaysDisplayDataSourcePrefix,
         };
-        var pages = new List<Action<SkiaSharp.SKCanvas>>();
+        var tabs = new List<(string Name, IReadOnlyList<PlacedPlot> Plots)>();
         foreach (var tab in config.Tabs.Where(t => t.Plots.Count > 0))
         {
             var placed = new List<PlacedPlot>();
@@ -130,9 +137,14 @@ public static class ModelReportDisplayPreset
                 PlotConfigLoader.ResolveDerived(plot, sources);
                 placed.Add(PlotPlacement.Place(plot, pc.Left, pc.Top, pc.Width, pc.Height, pc.FreqUnit, false, _ => null));
             }
-            pages.Add(canvas => PlotComposer.Render(canvas, placed, RenderTheme.Light, settings, page));
+            tabs.Add((tab.Name, placed));
         }
-        if (pages.Count == 0) throw new InvalidDataException($"{Path.GetFileName(cddPath)} has no plot to draw.");
+        if (tabs.Count == 0) throw new InvalidDataException($"{Path.GetFileName(cddPath)} has no plot to draw.");
+        // The card, when the report wrote one: a folder written before it existed still draws its plots.
+        string card = Path.Combine(Path.GetDirectoryName(source)!, ReportCard.FileName);
+        var pages = File.Exists(card)
+            ? ModelReportPages.Build(ReportCard.Read(card), tabs, (canvas, plots, p) => PlotComposer.Render(canvas, plots, RenderTheme.Light, settings, p), page)
+            : [.. tabs.Select(t => (Action<SkiaSharp.SKCanvas>)(canvas => PlotComposer.Render(canvas, t.Plots, RenderTheme.Light, settings, page)))];
         return PlotDocumentWriter.BuildPdfBytes(pages, page);
     }
 
@@ -178,6 +190,24 @@ public static class ModelReportDisplayPreset
     private static string Group(string section) => string.Concat(section.Select(c => char.IsLetterOrDigit(c) ? c : '_'));
 
     // ── Sections ───────────────────────────────────────────────────────────────────────
+
+    private static List<PlotContainerConfig> Coverage(DataSet ds, string g, string src)
+    {
+        var point = new[] { new AxisSlice("point", AxisRole.KeepAsX, 0) };
+        // One trace per group, its marker the one the page's text names (ReportMarkers).
+        var traces = ModelValidationReport.CoverageGroups.Select((x, i) => (x.Group, Colour: i)).Where(x => ds.Contains($"{x.Group}.Vgs"))
+            .Select(x => Trace(src, $"{g}.{x.Group}.Vgs", point, x: $"{g}.{x.Group}.Vds", colour: x.Colour, marker: x.Group switch
+            {
+                "IV fit" => MarkerType.Circle, "CV fit" => MarkerType.Square, "Checked" => MarkerType.Diamond,
+                "Large signal" => MarkerType.TriangleUp, _ => MarkerType.Star,
+            })).ToArray();
+        // Bias grids are dense: the default symbol would merge a column of points into a bar.
+        foreach (var t in traces) t.Properties!.MarkerSize = t.CubeName!.EndsWith("PA bias.Vgs", StringComparison.Ordinal) ? 4 : 2;
+        var plot = Rect("Bias points: fitted and checked (device plane)", "Vds (V)", "Vgs (V)", traces);
+        plot.Width = 2 * W + Gap;
+        plot.Height = 1.4 * H;
+        return [plot];
+    }
 
     private static List<PlotContainerConfig> Dc(DataSet ds, string g, string src)
     {

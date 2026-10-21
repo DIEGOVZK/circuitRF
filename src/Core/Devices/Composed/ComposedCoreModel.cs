@@ -98,9 +98,12 @@ public sealed class ComposedCoreModel : ComponentModel, IBiasFrozen
     /// <summary>The ComposedFET instance this core belongs to, for a refusal; set by the elaborator.</summary>
     public string Label { get; internal set; } = "";
 
-    /// <summary>The temperature the constituents are evaluated at, °C — the run's ambient clamped to
-    /// the model's range, or the model's own <c>T0</c> for a single-temperature model.</summary>
+    /// <summary>The temperature the constituents are evaluated at, °C — the device's (its <c>Temp</c>, else the run's
+    /// ambient) clamped to the model's range, or the model's own <c>T0</c> for a single-temperature model.</summary>
     public double TemperatureC => _temperatureC;
+
+    /// <summary>The temperature this device was asked to run at, °C, before the model's range held it.</summary>
+    public double RequestedC { get; }
 
     public ComposedCoreModel(LoadedComposedModel loaded, int n, double ambientC, ComposedSwitches? switches = null)
     {
@@ -133,6 +136,7 @@ public sealed class ComposedCoreModel : ComponentModel, IBiasFrozen
 
         var t = loaded.Model.Temperature;
         _hasT = t.Mode == TemperatureMode.Range;
+        RequestedC = ambientC;
         _temperatureC = _hasT ? Math.Clamp(ambientC, t.Tmin, t.Tmax) : t.T0;
     }
 

@@ -404,7 +404,10 @@ internal static class Model
         string cdd = ModelReportDisplayPreset.WriteDocument(report, folder);
         written.Add(cdd);
         if (a["--pdf"] is { } pdf) written.Add(ModelReportDisplayPreset.WritePdf(cdd, Path.GetFullPath(pdf)));
-        var items = report.Sections.SelectMany(s => s.Lines.Select(l => new ModelLine("section", s.Name, l))).ToList();
+        var card = report.Card;
+        var items = new List<ModelLine> { new("scorecard", "Overall", card.Overall.ToString()) };
+        items.AddRange(card.Scores.Select(r => new ModelLine("scorecard", $"{r.Section} · {r.Test}", $"{r.Grade}: {r.Result}")));
+        items.AddRange(report.Sections.SelectMany(s => s.Lines.Select(l => new ModelLine("section", s.Name, l))));
         return Report("report", path, items, written: [.. written]);
     }
 

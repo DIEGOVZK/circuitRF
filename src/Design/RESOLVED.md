@@ -21204,3 +21204,19 @@ read; it imports with connectivity matching both its drawing and its declared ne
   matches the fit to 1e-12 (`PassiveCellExportTests`).
 - **Check percentages** below 0.01 % read `< 0.01 %` (`ConservationCheck.Pct`); `SummaryLines` gives the Check step a
   row per result.
+
+## Model Validation Report: scorecard, coverage, conditions — and the PA defaults that made a 1 Ω R_opt (2026-10-20)
+
+- **The report's default R_opt read Imax from the model at (highest measured vgs, highest measured vds)**, a corner no
+  I–V data reaches: the current saturates and the junction heats first. Inside the training hull but far from any
+  point, the shipped GaN example's ANN gave 34 A there (the data's largest current: 0.16 A). R_opt came out 1.04 Ω, and
+  every PA class was a −60 dB attenuator with negative PAE, which still converged everywhere. `PaBias` now takes Imax
+  from the I–V data and defaults vds to half the largest measured vds. The example now reads R_opt 115 Ω, Pout
+  ≈ 23.5 dBm and PAE 40–49 % at 8 GHz. A convex training hull is not a guarantee of data: a network can be wild in its
+  empty corner while every validation passes.
+- **Converged is not amplifying.** A PA class whose MXP has Gt ≤ 0 dB or PAE ≤ 0 adds a Red "PA prediction" row, so
+  a broken set-up can never score Green on convergence alone.
+- **The card carries no clock time** (not even the `.cmodel`'s `Created`): the window's PDF and `model report --pdf`
+  come from two separate runs and must be the same bytes (`ModelReportDialogTests`).
+- **Every generated HB and loadpull testbench now writes `FFTOverSample`, `Tol` and `MaxIter`** at the analysis's own
+  defaults, so the report's stated solver settings and what the testbench reproduces are one fact.

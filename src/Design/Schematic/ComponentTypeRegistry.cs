@@ -1361,6 +1361,8 @@ public static class ComponentTypeRegistry
                   + "Only a model that self-heats has one.",
         "Cth"    => "This device's thermal capacitance, J/°C, at its finger count. Blank is the model's own, scaled to N. "
                   + "With Rth it sets the thermal time constant Rth·Cth.",
+        "Temp"   => "This device's temperature, °C — the baseplate or heatsink it is mounted on. Blank follows the design's "
+                  + "temp. A self-heating model's channel rises above it.",
         ComposedSwitches.ChargeName      => "Off: no intrinsic charge at all. The network's capacitors stay.",
         ComposedSwitches.LinearCName     => "On: the intrinsic charge is linearised at the quiescent DC bias point.",
         ComposedSwitches.LinearCgsName   => "On: Cgs is held at its bias-point value; the other capacitances follow the model.",
@@ -2301,7 +2303,7 @@ public static class ComponentTypeRegistry
             // true as well, so a schematic saved before this existed behaves identically.
             // A composed FET: the .cmodel, the finger count (blank = the model's own N0) and the symbol
             // (blank = the model's own). Symbol is artwork and never reaches the engine. Rth and Cth (blank = the
-            // model's, scaled to N) set this device's own thermal network.
+            // model's, scaled to N) set this device's own thermal network; Temp (blank = the design's temp) its temperature.
             // The ten instance switches (brief-modelcomposer-21, -22) follow, seeded at their defaults — the model as fitted —
             // and never drawn; extraction writes one only when it is not the default.
             case SymbolKind.ComposedFET:
@@ -2311,6 +2313,7 @@ public static class ComponentTypeRegistry
                     new("Symbol", "",     "", false, UnitDimension.None),
                     new("Rth",    "",     "", false, UnitDimension.None),
                     new("Cth",    "",     "", false, UnitDimension.None),
+                    new("Temp",   "",     "", false, UnitDimension.None),
                     .. ComposedSwitches.Names.Select(n => new DefaultParam(
                         n, ComposedSwitches.DefaultOf(n) ? "true" : "false", "", false, UnitDimension.None)),
                 ];

@@ -1177,9 +1177,34 @@ cut one step past it as the engine's drive-up stops.
 
 ### 14.6 The Model Validation Report (R-mc11-6)
 
-`ModelValidationReport.Generate` → `ModelReport` (sections of DataSets, lines and testbenches); `Write` → a folder with
-`report.npy` (one group per section), `summary.txt` and `testbenches/`. The options (`ReportOptions`) live in
+`ModelValidationReport.Generate` → `ModelReport` (sections of DataSets, lines, conditions, scorecard rows and
+testbenches, and the `ReportCard`); `Write` → a folder with `report.npy` (one group per section), `report.json` (the
+card), `summary.txt` (the card as text) and `testbenches/`. The options (`ReportOptions`) live in
 `Steps.Report.Settings`.
+
+The report has two readers — the model's developer and its user, the designer, who may work elsewhere — and the card
+(`ModelReportCard.cs`) is written for the second:
+- **Scorecard** (the PDF's first page): one row per test, Green / Yellow / Red, with what the grade means for a design.
+  A validation item grades its worst measure against the validation's own tolerance (within: Green; within
+  `ReportGrades.WarnFactor` = 2× of it: Yellow; beyond: Red) and, apart, its convergence (none failed: Green; up to 5 %:
+  Yellow; more: Red). Rth is banded at 10 % / 25 %, a charge's RMS at 2 % / 5 % of its range, a PA class's disc
+  convergence at 95 % / 75 % (Red when the class's own load fails). A set validation could not compare is Yellow
+  ("not checked"). The overall grade is the worst row.
+- **Where the model is supported by data**: the drain current's and the charges' training domains (the hull of their
+  training points, intrinsic), the hottest I–V point, the temperature mode, the checked frequency span, whether any
+  large-signal data was compared, and what extrapolation does.
+- **How the model was fitted**: each constituent's method — an equation and its template (named when the document's
+  record holds the same constituent), a table and its grid, an ANN and its hidden layers (read from its weight arrays) —
+  with the fit's held-out error; traps, self-heating, the extrinsic network and how it was fitted.
+- **Data**: every set, what it was used for (I–V fit, C–V fit, checked), its points and its bias values — every value
+  when there are few, the span and count when there are many.
+- **Per test**, the conditions that reproduce it: bias, terminations to the top harmonic, frequency, ambient, Rth at
+  that ambient, and the solver's harmonic count, Newton tolerance, FFT oversample and iteration cap. Every generated HB
+  and loadpull testbench now WRITES those keys (`ValidationBench.HbKeys`, the analysis's own defaults) so the testbench
+  and the report cannot disagree.
+- **Coverage** (the first tab): every set's bias points at the device plane, and the PA bias.
+
+The card carries no clock time, so the window's PDF and the verb's stay the same bytes.
 - **DC**, **S**: the validation's items; S picks out the stated biases (default: lowest, middle, highest |S21| per set).
 - **Thermal** (self-heating model, DC data): each DC point's equivalent junction temperature — where the isothermal model
   carries the measured current ([R11] §2.8) — against its power; the slope per ambient against `RthAt(ambient)`.
@@ -1200,9 +1225,11 @@ cut one step past it as the engine's drive-up stops.
   2f0 is the user's, at the extrinsic plane. The fundamental is load-pulled (§14.5) over a disc about the class's own
   fundamental load (the disc's Möbius automorphism, so every point stays on the chart): performance at that load, at MXP
   and MXE at the stated compression through `LoadpullSurface`, and the share of the disc that converged to that
-  compression — the region of convergence. Defaults: the middle S frequency, the largest measured vds, the vgs at 2 % of
-  the model's largest drain current there, `R_opt = 2·0.9·vds/Imax`, the source the conjugate of the model's input at
-  that load.
+  compression — the region of convergence. Defaults: the middle S frequency, half the largest measured vds (the drain swings
+  to about twice its bias), the vgs where the model's current is 2 % of Imax there, `R_opt = 2·0.9·vds/Imax` with Imax
+  the largest drain current in the I–V DATA, the source the conjugate of the model's input at that load. Imax is never
+  read from the model at (highest vgs, highest vds): the data cannot reach that corner, so a network is unconstrained
+  there.
 
 The Data Display document and the dialog are the window's (MC-15); the `model report` noun is MC-13's.
 

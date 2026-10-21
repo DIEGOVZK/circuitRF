@@ -21,6 +21,27 @@ internal static class ValidationBench
     /// <summary>An open harmonic: far above any device impedance, and finite for the linear solve.</summary>
     internal const double Open = 1e6;
 
+    /// <summary>
+    /// The HB solver settings every generated testbench states — the analysis's own defaults, written out so a reader of the
+    /// report and of the testbench sees what ran, and a change of default never changes what a testbench reproduces.
+    /// </summary>
+    internal const string HbTol = "1e-6";
+    internal const int HbOversample = 1, HbMaxIter = 100;
+
+    /// <summary>The keys that state them.</summary>
+    private static string HbKeys => $"FFTOverSample={HbOversample} Tol={HbTol} MaxIter={HbMaxIter}";
+
+    /// <summary>The settings as the report states them, single-tone (the loadpull engine's too).</summary>
+    internal static string HbText(int maxHarm) =>
+        $"harmonic balance, {maxHarm} harmonics, Newton tolerance {HbTol}, FFT oversample {HbOversample}, at most {HbMaxIter} iterations";
+
+    /// <summary>The settings as the report states them, two tones: the mixing order and the transform's oversampling.</summary>
+    internal static string TwoToneText(int maxHarm) =>
+        $"two-tone harmonic balance, {maxHarm} harmonics per tone, mixing order {TwoToneMixOrder(maxHarm)}, Newton tolerance {HbTol}, " +
+        $"transform oversample {R(CircuitRF.Engine.AnalysisSettings.Default.HbApftOversample)}, at most {HbMaxIter} iterations";
+
+    private static int TwoToneMixOrder(int maxHarm) => Math.Max(5, maxHarm);
+
     internal static string R(double v) => v.ToString("R", CultureInfo.InvariantCulture);
 
     /// <summary>A complex impedance as a value with no spaces (an unquoted value must contain none).</summary>
@@ -80,7 +101,7 @@ internal static class ValidationBench
         sb.Append("C:CG ps g C=1\nVdc:VG vg 0 V=Vgs\nL:LG vg g L=1\nIProbe:IPG g gx\n");
         sb.Append(device);
         sb.Append($"IProbe:IPD dx ld\nTuner:TL ld 0 {Harmonics(c.LoadZ ?? 50, c.LoadHarmonics, maxHarm)} BiasTee=on Vbias=Vds\n\n");
-        sb.Append($"analysis HB1 type=hb Tone=f0 MaxHarm={maxHarm}\n");
+        sb.Append($"analysis HB1 type=hb Tone=f0 MaxHarm={maxHarm} {HbKeys}\n");
         sb.Append($"analysis SW1 type=parametric_sweep Var=Pin Values={string.Join(",", pin.Select(R))} Inner=HB1\n");
         return sb.ToString();
     }
@@ -102,7 +123,7 @@ internal static class ValidationBench
         sb.Append($"Tuner:LOAD d 0 {Harmonics(50, loadHarmonics, maxHarm)} BiasTee=on Vbias=Vds\n\n");
         sb.Append($"analysis LP1 type=loadpull Tone=f0 MaxHarm={maxHarm} LoadTuner=LOAD SourceTuner=SRC Sweep=Load TuneHarm=1 ");
         sb.Append($"Grid=\"{gamPath.Replace('\\', '/')}\" Compression=1000 GainType=Gt ");
-        sb.Append($"PinStart={R(pinStart)} PinStep={R(pinStep)} PinMax={R(pinMax)}\n");
+        sb.Append($"PinStart={R(pinStart)} PinStep={R(pinStep)} PinMax={R(pinMax)} {HbKeys}\n");
         return sb.ToString();
     }
 
@@ -117,7 +138,7 @@ internal static class ValidationBench
         sb.Append("C:CG ps g C=1\nVdc:VG vg 0 V=Vgs\nL:LG vg g L=1\nIProbe:IPG g gx\n");
         sb.Append(device);
         sb.Append($"IProbe:IPD dx ld\nTuner:TL ld 0 {Harmonics(c.LoadZ ?? 50, c.LoadHarmonics, maxHarm)} BiasTee=on Vbias=Vds\n\n");
-        sb.Append($"analysis HB1 type=hb NumFreqs=2 Tone[1]=f1 Tone[2]=f2 MaxHarm={maxHarm} MaxMixOrder={Math.Max(5, maxHarm)}\n");
+        sb.Append($"analysis HB1 type=hb NumFreqs=2 Tone[1]=f1 Tone[2]=f2 MaxHarm={maxHarm} MaxMixOrder={TwoToneMixOrder(maxHarm)} {HbKeys}\n");
         sb.Append($"analysis SW1 type=parametric_sweep Var=Pin Values={string.Join(",", pin.Select(R))} Inner=HB1\n");
         return sb.ToString();
     }

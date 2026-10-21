@@ -61,7 +61,11 @@ public sealed partial class ModelComposerViewModel
             var (report, cdd) = ((ModelReport, string))r!;
             Report = report;
             ReportDocument = cdd;
-            Info($"Report: {ModelReportDisplayPreset.Tabs(report).Count} section(s) · {Path.GetFileName(cdd)}.");
+            var scores = report.Card.Scores;
+            string counts = string.Join(", ", Enum.GetValues<Grade>().Select(g => (g, n: scores.Count(r => r.Grade == g)))
+                                                  .Where(x => x.n > 0).Select(x => $"{x.n} {x.g}"));
+            Info($"Report: overall {report.Card.Overall}" + (counts.Length > 0 ? $" ({counts})" : "") +
+                 $" · {ModelReportDisplayPreset.Tabs(report).Count} section(s) · {Path.GetFileName(cdd)}.");
         });
     }
 

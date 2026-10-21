@@ -2049,17 +2049,24 @@ public sealed class Elaborator
 
     /// <summary>The cell each distinct (<c>.cmodel</c>, <c>N</c>, <c>m</c>) elaborates as, built once
     /// per elaboration. Never added to a library, the palette or a file.</summary>
-    private readonly Dictionary<(string Path, long Stamp, int N, double M, bool ThermalPin, double AmbientC, ComposedSwitches Switches,
+    private readonly Dictionary<(string Path, long Stamp, int N, double M, bool ThermalPin, double DeviceC, ComposedSwitches Switches,
                                  double Rth, double Cth), Cell> _composedCells = [];
 
     /// <summary>What a ComposedFET line may carry: its model, size and multiplier, and the instance switches
     /// (brief-modelcomposer-21). <c>Symbol</c> is the schematic's alone and is read by nothing here.</summary>
     private static readonly string[] ComposedParams =
-        ["File", "N", MultiplierParamName, "M", "Symbol", RthParam, CthParam, .. ComposedSwitches.Names];
+        ["File", "N", MultiplierParamName, "M", "Symbol", RthParam, CthParam, TempParam, .. ComposedSwitches.Names];
 
     /// <summary>A placed device's own thermal resistance (°C/W) and capacitance (J/°C), at its finger count, in place of the
     /// model's scaled ones. Blank is the model's.</summary>
     public const string RthParam = "Rth", CthParam = "Cth";
+
+    /// <summary>
+    /// A placed device's own temperature, °C: the ambient it is held at — a baseplate, a heatsink — in place of the design's
+    /// <c>temp</c>. Blank follows <c>temp</c>. A self-heating model's channel rises above it. There is deliberately no
+    /// <c>Dtemp</c> here: the temperature a designer knows about one transistor is the one it is mounted at.
+    /// </summary>
+    public const string TempParam = "Temp";
 
     /// <summary>
     /// The in-memory cell one <c>ComposedFET</c> instance elaborates as (R-mc1-5): its <c>.cmodel</c>
@@ -2078,7 +2085,7 @@ public sealed class Elaborator
         foreach (var ov in inst.Overrides)
             if (!ComposedParams.Contains(ov.Name, StringComparer.Ordinal))
                 throw new InvalidOperationException(
-                    $"{who}: '{ov.Name}' is not a parameter of a ComposedFET; it takes File, N, m, Rth, Cth, " +
+                    $"{who}: '{ov.Name}' is not a parameter of a ComposedFET; it takes File, N, m, Rth, Cth, Temp, " +
                     string.Join(", ", ComposedSwitches.Names.SkipLast(1)) + " and " + ComposedSwitches.Names[^1] + ".");
 
         try { switches = ComposedSwitches.Read(inst.Overrides, ov => EvalOverride(inst, ov, parentScope)); }
@@ -2148,8 +2155,19 @@ public sealed class Elaborator
             return x;
         }
 
+        double deviceC = _ambientC;
+        if (inst.Overrides.FirstOrDefault(o => o.Name == TempParam) is { } tOv && !string.IsNullOrWhiteSpace(tOv.Expression))
+        {
+            var v = EvalOverride(inst, tOv, parentScope);
+            deviceC = v.Kind == ValueKind.Real ? v.AsReal() : double.NaN;
+            if (!double.IsFinite(deviceC) || deviceC <= -Temperature.KelvinOffset)
+                throw new ParameterRefusalException(
+                    $"'{childPath}': {TempParam}={v} is not a temperature; give the device's temperature in °C, " +
+                    "or leave it blank to follow the design's temp.");
+        }
+
         long stamp = File.GetLastWriteTimeUtc(file).Ticks;
-        var key = (file, stamp, n, m, thermalPin, _ambientC, switches, rth, cth);
+        var key = (file, stamp, n, m, thermalPin, deviceC, switches, rth, cth);
         if (_composedCells.TryGetValue(key, out var cached)) return cached;
 
         var coreParams = new List<ParameterAssignment>
@@ -2157,6 +2175,7 @@ public sealed class Elaborator
             new("File", $"\"{file}\""),
             new("N", n.ToString(CultureInfo.InvariantCulture)),
         };
+        if (deviceC != _ambientC) coreParams.Add(new(TempParam, deviceC.ToString("R", CultureInfo.InvariantCulture)));
         if (m != 1.0) coreParams.Add(new(MultiplierParamName, ComposedNetworkTemplate.Literal(m)));
         // The core carries the switches, so each core instance is built with them.
         foreach (var (name, value) in switches.Write()) coreParams.Add(new(name, value));
@@ -2169,7 +2188,7 @@ public sealed class Elaborator
 
         // A thermal resistance that varies with the ambient is taken at the ambient the core is evaluated at.
         var t = loaded.Model.Temperature;
-        double ambient = t.Mode == TemperatureMode.Range ? Math.Clamp(_ambientC, t.Tmin, t.Tmax) : _ambientC;
+        double ambient = t.Mode == TemperatureMode.Range ? Math.Clamp(deviceC, t.Tmin, t.Tmax) : deviceC;
         var cell = loaded.Network.Synthesize(
             $"ComposedFET({Path.GetFileName(file)},N={n})", n, loaded.N0, m, core, thermal, ambient, thermalPin, rth, cth);
         _composedCells[key] = cell;
@@ -2201,21 +2220,25 @@ public sealed class Elaborator
     {
         var    t    = core.Loaded.Model.Temperature;
         string name = Path.GetFileName(core.Loaded.Path);
-        string ta   = _ambientC.ToString("0.##", CultureInfo.InvariantCulture);
+        double asked = core.RequestedC;
+        string ta   = asked.ToString("0.##", CultureInfo.InvariantCulture);
+        // An instance's own Temp is named as such, so the warning points at the row that set it.
+        string whose = asked == _ambientC ? $"this run's temp is {ta} °C" : $"'{core.Label}' has Temp={ta} °C";
+        string key   = $"cmodel-temp:{core.Loaded.Path}:{ta}";
 
         if (t.Mode == TemperatureMode.Single)
         {
-            if (Math.Abs(_ambientC - t.T0) > 1e-9)
-                netlist.AddWarningOnce($"cmodel-temp:{core.Loaded.Path}",
+            if (Math.Abs(asked - t.T0) > 1e-9)
+                netlist.AddWarningOnce(key,
                     $"'{name}' is a one-temperature model, valid at {t.T0.ToString("0.##", CultureInfo.InvariantCulture)} °C; " +
-                    $"this run's temp is {ta} °C and the model is used as it is.");
+                    $"{whose} and the model is used as it is.");
             return;
         }
 
-        if (_ambientC < t.Tmin || _ambientC > t.Tmax)
-            netlist.AddWarningOnce($"cmodel-temp:{core.Loaded.Path}",
+        if (asked < t.Tmin || asked > t.Tmax)
+            netlist.AddWarningOnce(key,
                 $"'{name}' covers {t.Tmin.ToString("0.##", CultureInfo.InvariantCulture)} to " +
-                $"{t.Tmax.ToString("0.##", CultureInfo.InvariantCulture)} °C; this run's temp is {ta} °C, " +
+                $"{t.Tmax.ToString("0.##", CultureInfo.InvariantCulture)} °C; {whose}, " +
                 $"so the model is evaluated at {core.TemperatureC.ToString("0.##", CultureInfo.InvariantCulture)} °C.");
     }
 

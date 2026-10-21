@@ -1066,7 +1066,7 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
 
     /// <summary>
     /// Gives a composed FET placed before its switches existed (brief-modelcomposer-21) the switch rows, at their
-    /// defaults — the instance it already is — and the blank Rth and Cth rows. Same rule as <see cref="AdoptDefaultSnpParameters"/>: no undo entry, and an
+    /// defaults — the instance it already is — and the blank Rth, Cth and Temp rows. Same rule as <see cref="AdoptDefaultSnpParameters"/>: no undo entry, and an
     /// existing value is never touched.
     /// </summary>
     private static void AdoptComposedFetSwitches(EditableComponent comp)
@@ -1074,7 +1074,7 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
         foreach (var d in ComponentTypeRegistry.DefaultParameters(SymbolKind.ComposedFET, comp.PortCount))
         {
             // The switches and the thermal pair arrived after the first composed FETs were placed.
-            if (!ComposedSwitches.IsSwitch(d.Name) && d.Name is not ("Rth" or "Cth")) continue;
+            if (!ComposedSwitches.IsSwitch(d.Name) && d.Name is not ("Rth" or "Cth" or "Temp")) continue;
             if (comp.Parameters.Any(p => p.Name.Equals(d.Name, StringComparison.Ordinal))) continue;
             comp.Parameters.Add(new EditableParameter
             {

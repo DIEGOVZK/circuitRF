@@ -650,10 +650,31 @@ source's fundamental and 2f0 terminations, the load disc (radius, rings, spokes)
 Each opens on the value stored in the document or its default; **Apply** stores them.
 
 **Generate** writes the report into `<name>-report/` beside the `.cmc`, and its Data Display document,
-`<name>-report.cdd`, beside that folder: one tab per section — I–V families, the ΔQ maps, the C–V families with the fixed
-voltage as the legend, S at the chosen biases, the Rth plot, and per PA class its loadpull contours, its performance
-table and the region where the drive-up converged. **Export PDF…** writes every tab as one page each. `model report
---pdf` writes the same file.
+`<name>-report.cdd`, beside that folder: one tab per section — the bias points of every data set, I–V families, the ΔQ
+maps, the C–V families with the fixed voltage as the legend, S at the chosen biases, the Rth plot, and per PA class its
+loadpull contours, its performance table and the region where the drive-up converged. **Export PDF…** writes the
+report: its summary first, then every tab as a page headed by the conditions that reproduce it. `model report --pdf`
+writes the same file.
+
+The summary is written for whoever uses the model in a design, who may not be whoever built it:
+
+- **Scorecard.** One row per test, each **Green** (very good to excellent), **Yellow** (usable, with something specific
+  the designer should know) or **Red** (does not reasonably match the measurement, or does not converge), and what that
+  means for a design. A comparison with data is Green within the validation's tolerance, Yellow within twice it, and Red
+  beyond; points where the solve failed make it Yellow (up to 5 % of them) or Red. Rth is Green within 10 % of the
+  data's and Yellow within 25 %; a charge within 2 % and 5 % of its range; a PA class when HB converges at its load and
+  over 95 % (Yellow: 75 %) of the disc about it. The overall grade is the worst row.
+- **Where the model is supported by data**: the bias range the currents and charges were trained over, the hottest
+  point in the I–V data, the temperatures, the frequencies checked, whether large-signal data was compared, and what
+  the model does outside that range.
+- **How the model was fitted**: each current and charge as an equation (and which), a table (and its grid) or a neural
+  network (and its layers), with its error on held-out points; traps, self-heating and the extrinsic network.
+- **Data**: every data set, what it was used for, its points and bias values, its temperatures and frequencies.
+
+Each test's page states its bias, source and load terminations at every harmonic, frequency, temperature, Rth, and
+the harmonic count, tolerance, FFT oversample and iteration cap of the simulation, and names its testbench in
+`testbenches/`, which `circuitrf dc`, `sparam`, `hb` or `lp` runs as written. The same text is in `summary.txt`, and
+in `report.json` for a program to read.
 
 ## The Export step {#export}
 

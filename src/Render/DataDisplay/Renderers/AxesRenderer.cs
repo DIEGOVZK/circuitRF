@@ -1416,7 +1416,7 @@ namespace CircuitRF.Render.DataDisplay
             // derived (Trace.ExcludeFromAxisLabels — the Smith Chart tool's dozen). The same filter
             // is in PlotCanvasGeometry.BottomLabelExtraLogical, which sizes the canvas for these
             // rows; the two must agree or the chart carries a band of empty space under it.
-            var nonContourTraces = traces.Where(t => !t.IsContourTrace && !t.ExcludeFromAxisLabels)
+            var nonContourTraces = traces.Where(t => !t.IsContourTrace && !t.ExcludeFromAxisLabels && t.HasFrequencyX)
                                          .ToList();
             if (!hasCustomX && nonContourTraces.Count == 0) return;
 

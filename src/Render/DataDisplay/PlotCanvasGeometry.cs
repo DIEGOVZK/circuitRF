@@ -157,7 +157,7 @@ public static class PlotCanvasGeometry
             // THE SAME FILTER DrawComplexXLabels DRAWS BY (Trace.ExcludeFromAxisLabels) — a canvas
             // made tall for rows nobody draws is a band of empty space under every chart, and one
             // made short for rows that are drawn clips the last sentence.
-            int  labelled   = plot.Traces.Count(t => !t.IsContourTrace && !t.ExcludeFromAxisLabels);
+            int  labelled   = plot.Traces.Count(t => !t.IsContourTrace && !t.ExcludeFromAxisLabels && t.HasFrequencyX);
             int  n          = plot.IsPolarPattern ? Math.Max(1, PatternCaption.Lines(plot).Count)
                             : hasCustomX ? 1 : Math.Max(1, labelled);
 

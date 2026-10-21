@@ -99,12 +99,45 @@ public sealed class ModelValidationReportTests(ITestOutputHelper output)
             Assert.Equal(7, s.Data["StopCode"].RealValues.Length);
             Assert.Contains("MXP Pout", s.Lines[0]);
             Assert.Equal(5, s.Data["ZLoad.extrinsic"].ComplexValues.Length);
+            // The summary table's frequency comes from this carrier; without it the table read 0 GHz.
+            Assert.True(s.Data["__Freq"].RealValues[0] > 0);
         }
 
+        // The card: a graded row per test, the data it covered, how it was fitted, and what each test ran at.
+        var card = report.Card;
+        Assert.Contains(card.Scores, r => r.Test == "S-parameters 'bias'");
+        Assert.Contains(card.Scores, r => r.Section == "Class F" && r.Test.StartsWith("HB convergence", StringComparison.Ordinal));
+        Assert.Equal(card.Scores.Max(r => r.Grade), card.Overall);
+        var bias = Assert.Single(card.Coverage);
+        Assert.Contains("checked", bias.UsedFor);
+        Assert.Equal("-1.5, -0.6, 0 V", bias.Vgs);
+        Assert.Contains(card.Methods, m => m.StartsWith("Drain current Id: equation", StringComparison.Ordinal));
+        Assert.Contains(report.Sections.Single(x => x.Name == "Class F").Conditions, c => c.Contains("FFT oversample 1"));
+        Assert.True(report.Sections[0].Name == "Coverage" && report.Sections[0].Data.Contains("CV fit.Vgs"));
+
         string folder = Path.Combine(Path.GetDirectoryName(cmc)!, "fet.report");
-        var files = ModelValidationReport.Write(report, folder).Select(Path.GetFileName).ToList();
+        var paths = ModelValidationReport.Write(report, folder);
+        var files = paths.Select(Path.GetFileName).ToList();
         Assert.Contains("report.npy", files);
         Assert.Contains("summary.txt", files);
         Assert.Contains("Class_F.cnl", files);
+        Assert.Equal(card.ToJson(), ReportCard.Read(Path.Combine(folder, ReportCard.FileName)).ToJson());
+        // The testbench states the solver settings the report states.
+        Assert.Contains("FFTOverSample=1 Tol=1e-6 MaxIter=100", File.ReadAllText(paths.Single(p => p.EndsWith("Class_F.cnl", StringComparison.Ordinal))));
+    }
+
+    [Theory]
+    [InlineData(0.01, 0.02, Grade.Green)]
+    [InlineData(0.03, 0.02, Grade.Yellow)]
+    [InlineData(0.05, 0.02, Grade.Red)]
+    public void AMeasure_IsGradedAgainstItsTolerance(double value, double tolerance, Grade grade) =>
+        Assert.Equal(grade, ReportGrades.Of(value, tolerance));
+
+    [Fact]
+    public void Convergence_IsYellowForAFewFailures_RedForMany()
+    {
+        Assert.Equal(Grade.Green, ReportGrades.Convergence(0, 100));
+        Assert.Equal(Grade.Yellow, ReportGrades.Convergence(5, 100));
+        Assert.Equal(Grade.Red, ReportGrades.Convergence(6, 100));
     }
 }

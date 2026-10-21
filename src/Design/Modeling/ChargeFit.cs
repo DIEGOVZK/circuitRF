@@ -275,7 +275,7 @@ public static class ChargeFit
     }
 
     /// <summary>The sets the capacitances come from: those the settings name, or every set with intrinsic capacitances.</summary>
-    private static List<CmcDataSet> Chosen(CmcDocument doc, IntrinsicResult intrinsic, ChargeFitSettings settings) =>
+    internal static List<CmcDataSet> Chosen(CmcDocument doc, IntrinsicResult intrinsic, ChargeFitSettings settings) =>
         settings.DataSets.Count > 0
             ? [.. settings.DataSets.Select(n => doc.DataSets.FirstOrDefault(s => s.Name == n)
                                                ?? throw new ModelingException(n, "the charge step names it, and the document has no such data set."))]

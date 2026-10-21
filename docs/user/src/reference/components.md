@@ -1921,11 +1921,17 @@ resolved the way an SnP's is.
 by its rule — fixed, per finger, or inversely per finger. `m` places whole devices in parallel, so
 `m=2 N=8` is two 8-finger devices.
 
-A model extracted at one temperature is used as it is at any other, with one warning naming both. A
-model over a temperature range follows `temp`, held to that range.
+A model over a temperature range follows the design's `temp`, held to that range. `Temp` (°C) holds one device at its
+own temperature instead — the baseplate or heatsink it is mounted on — while the rest of the design stays at `temp`:
+
+```
+ComposedFET:X1  g d s  File="gan_8x125.cmodel"  N=8  Temp=85
+```
+
+A model extracted at one temperature is used as it is at any other, with one warning naming both.
 
 A self-heating model has a thermal node, `X1.t`, whose voltage is the device's temperature rise in °C;
-its currents and charges follow `temp` plus that rise. Pin 4 is that node. On the standard symbol it is the
+its currents and charges follow its temperature (`Temp`, or `temp` when blank) plus that rise. Pin 4 is that node. On the standard symbol it is the
 lead on the right marked **T**, starting at a small open circle; it appears only when the model self-heats.
 Unwired, its end shows an open box instead of the red unconnected marker: the pin is there, and leaving it
 open is a valid choice.

@@ -1459,6 +1459,18 @@ namespace CircuitRF.Render.DataDisplay
 
         // ---- Frequency range --------------------------------------------
 
+        /// <summary>
+        /// Whether this trace's X runs over frequency, so a Smith or polar plot's bottom row — <c>freq (a to b GHz)</c> —
+        /// says something true about it: a network trace, or a cube trace over a frequency (or harmonic) axis. A cube
+        /// traced over anything else — a loadpull's <c>gridPoint</c>, a bias index — has no frequency span, and reading its
+        /// axis values as hertz printed <c>freq (0 to 7.2E-08 GHz)</c> under a region-of-convergence chart.
+        /// <para>Read where <see cref="ExcludeFromAxisLabels"/> is: <c>AxesRenderer.DrawComplexXLabels</c> and
+        /// <c>PlotCanvasGeometry.BottomLabelExtraLogical</c>, which must agree.</para>
+        /// </summary>
+        public bool HasFrequencyX => !IsCubeBound
+            || (XSpec is null && (CubeXUnit is "Hz" or "kHz" or "MHz" or "GHz"
+                                  || string.Equals(CubeXAxisName, HarmonicAxisName, StringComparison.Ordinal)));
+
         public double MinFreq => IsCubeBound
             ? (_cubeXValues?.Length > 0 ? _cubeXValues[0]  : double.NaN)
             : (Data.Frequencies.Length > 0 ? Data.Frequencies.Min() : double.NaN);

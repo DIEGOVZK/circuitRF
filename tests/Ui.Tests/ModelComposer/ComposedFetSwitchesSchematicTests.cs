@@ -34,7 +34,7 @@ public sealed class ComposedFetSwitchesSchematicTests
     public void DefaultSwitches_ExtractByteIdentically_AndANonDefaultOneIsWritten()
     {
         var defaults = ComponentTypeRegistry.DefaultParameters(SymbolKind.ComposedFET, 3)
-            .Where(d => d.Name is not ("File" or "N" or "Symbol" or "Rth" or "Cth")).Select(d => (d.Name, d.Expression)).ToArray();
+            .Where(d => d.Name is not ("File" or "N" or "Symbol" or "Rth" or "Cth" or "Temp")).Select(d => (d.Name, d.Expression)).ToArray();
         Assert.Equal(10, defaults.Length);
 
         string before = Cnl(Fet());
