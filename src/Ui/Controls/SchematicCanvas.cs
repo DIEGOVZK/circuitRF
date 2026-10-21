@@ -68,6 +68,7 @@ public sealed class SchematicCanvas : Control
             if (_editContext is null)
                 _index = value is not null ? new SchematicSpatialIndex(value) : null;
             _needsInitialFit = value is not null && !_viewportEstablished;
+            if (FitOnResize && _followingFit) ZoomToFitInternal(Bounds.Width, Bounds.Height);
             InvalidateVisual();
         }
     }
@@ -232,6 +233,16 @@ public sealed class SchematicCanvas : Control
     /// <summary>Draw the editing grid. A preview turns it off, as the static previews do.</summary>
     public bool ShowGrid { get; set; } = true;
 
+    /// <summary>
+    /// Keep the drawing fitted as the canvas changes size, or its model changes, until the user pans or zooms — a
+    /// docked preview whose panel is resized or re-arranged. Zoom to Fit resumes it. Off for the editor, whose view is
+    /// the user's.
+    /// </summary>
+    public bool FitOnResize { get; set; }
+
+    /// <summary>The view is the fit, and no pan or zoom has moved it since.</summary>
+    private bool _followingFit;
+
     // ── Net-label placement gaps ──────────────────────────────────────────────
     // Offset from the wire's exact coordinate to the stored net-label anchor.
     // Tune these two constants to adjust the visual gap between wire and label.
@@ -337,9 +348,20 @@ public sealed class SchematicCanvas : Control
         {
             MarkViewportEstablished();
             ZoomToFitInternal(Bounds.Width, Bounds.Height);
+            _followingFit = true;
             RememberViewport();
             InvalidateVisual();
         }
+    }
+
+    protected override void OnSizeChanged(SizeChangedEventArgs e)
+    {
+        base.OnSizeChanged(e);
+        if (!FitOnResize || !_followingFit || _model is null) return;
+        ZoomToFitInternal(e.NewSize.Width, e.NewSize.Height);
+        RememberViewport();
+        InvalidateVisual();
+        ViewportChanged?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>This canvas has a view of its own now — fitted or restored — so the one-shot initial
@@ -360,6 +382,7 @@ public sealed class SchematicCanvas : Control
     /// a re-realised canvas should come back to.</summary>
     private void RaiseViewportChanged()
     {
+        _followingFit = false;
         RememberViewport();
         ViewportChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -426,6 +449,7 @@ public sealed class SchematicCanvas : Control
         ZoomToFitInternal(Bounds.Width, Bounds.Height);
         InvalidateVisual();
         RaiseViewportChanged();
+        _followingFit = true;
     }
 
     /// <summary>

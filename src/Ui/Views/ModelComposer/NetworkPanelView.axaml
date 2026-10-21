@@ -37,7 +37,7 @@
             <!-- Clipped: the canvas paints its whole background, and unclipped it painted over the toolbar above it, whose
                  buttons then showed only when hovered. The schematic editor clips its canvas for the same reason. -->
             <ctl:SchematicCanvas Name="Canvas" Grid.Row="1" Margin="0,4,0,0" Model="{Binding NetworkDrawing}" ClipToBounds="True"
-                                 ShowGrid="False" DragDrop.AllowDrop="False" Focusable="True"/>
+                                 ShowGrid="False" FitOnResize="True" DragDrop.AllowDrop="False" Focusable="True"/>
             <SelectableTextBlock Grid.Row="2" Classes="warn" Text="{Binding NetworkRefusal}"
                        IsVisible="{Binding NetworkRefusal, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
         </Grid>
