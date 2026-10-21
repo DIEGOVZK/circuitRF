@@ -55,23 +55,91 @@ internal static class ModelReportPages
             flow.NewPage();
             if (card.Sections.FirstOrDefault(s => s.Name == name) is { } text) Section(flow, text, heading: true);
             else flow.Heading(name);
+            // The plots go under the text when they are drawn nearly as large there as on a page of their own, and on a
+            // page of their own otherwise (owner, review 3: a long section left its plots a strip at the foot of the page).
             float top = flow.Y + 6;
-            if (page.Height - page.Margin - top < 0.5f * page.UsableHeight)
+            var (placed, here) = Arrange(plots, page.UsableWidth, page.Height - page.Margin - top);
+            var (alone, fresh) = Arrange(plots, page.UsableWidth, page.UsableHeight);
+            if (here < OwnPage * fresh)
             {
                 flow.NewPage();
                 top = page.Margin;
+                placed = alone;
             }
             flow.Draw(canvas =>
             {
                 canvas.Save();
                 canvas.ClipRect(new SKRect(0, top - 2, page.Width, page.Height));
                 canvas.Translate(0, top - page.Margin);
-                drawPlots(canvas, plots, new PagePlacement(page.Width, page.Height - top + page.Margin, page.Margin));
+                drawPlots(canvas, placed, new PagePlacement(page.Width, page.Height - top + page.Margin, page.Margin));
                 canvas.Restore();
             });
         }
         return flow.Pages();
     }
+
+    /// <summary>A tab's plots go on a page of their own when the room under its text would draw them smaller than this
+    /// fraction of a whole page's size.</summary>
+    private const float OwnPage = 0.75f;
+
+    /// <summary>The space between plots when they are re-flowed, page points.</summary>
+    private const double PlotGap = 14;
+
+    /// <summary>The widest and the tallest a rectangular plot is drawn, width over height.</summary>
+    private const double WidestAspect = 1.9, TallestAspect = 0.95;
+
+    /// <summary>
+    /// A tab's plots re-flowed into a grid that fills a region of the page, in the number of columns that draws them
+    /// largest, and the linear size they are then drawn at (the root of the mean plot area). Each plot takes its cell's
+    /// shape within <see cref="TallestAspect"/>…<see cref="WidestAspect"/> — a Smith chart or polar plot stays square — so
+    /// the grid fills the region rather than a fixed-shape layout being shrunk until its longer side fits (owner, review 3:
+    /// six DC plots in two columns took half the page). The positions and sizes are in page points, so they draw at scale 1.
+    /// </summary>
+    internal static (IReadOnlyList<PlacedPlot> Plots, float Size) Arrange(IReadOnlyList<PlacedPlot> plots, float width, float height)
+    {
+        if (plots.Count == 0 || width <= 0 || height <= 0) return (plots, 0f);
+        IReadOnlyList<PlacedPlot> best = plots;
+        double bestSize = -1;
+        for (int cols = 1; cols <= plots.Count; cols++)
+        {
+            int rows = (plots.Count + cols - 1) / cols;
+            double cellW = (width - (cols - 1) * PlotGap) / cols, cellH = (height - (rows - 1) * PlotGap) / rows;
+            if (cellW <= 0 || cellH <= 0) continue;
+            var placed = new List<PlacedPlot>(plots.Count);
+            double area = 0;
+            for (int k = 0; k < plots.Count; k++)
+            {
+                var p = plots[k];
+                double w = cellW, h = cellH;
+                if (p.Plot.PlotType.IsComplex()) w = h = Math.Min(cellW, cellH);
+                else if (w / h > WidestAspect) w = h * WidestAspect;
+                else if (w / h < TallestAspect) h = w / TallestAspect;
+                // A table is as tall as its rows — drawn at its width over its authored width, as the composer draws it —
+                // and so, like the charts beside it, sits in the middle of its cell rather than hanging from the top of it
+                // with empty column rules below (owner, review 3).
+                if (p.Plot.PlotType == PlotType.Table && p.LogicalWidth > 0)
+                    h = Math.Min(cellH, TableRenderer.RequiredCanvasHeight(p.Plot, (float)(w / p.LogicalWidth)) + 2);
+                // Centred in its cell, so a narrowed plot does not leave its gap all on one side.
+                double left = k % cols * (cellW + PlotGap) + (cellW - w) / 2, top = k / cols * (cellH + PlotGap) + (cellH - h) / 2;
+                placed.Add(Moved(p, left, top, w, h));
+                area += w * h;
+            }
+            double size = Math.Sqrt(area / plots.Count);
+            if (size > bestSize) { bestSize = size; best = placed; }
+        }
+        return (best, (float)bestSize);
+    }
+
+    private static PlacedPlot Moved(PlacedPlot p, double left, double top, double width, double height) => new()
+    {
+        Plot = p.Plot, ViewLeft = left, ViewTop = top, ViewWidth = width, ViewHeight = height,
+        // A Table's zoom is drawn width over LogicalWidth, so keeping the authored width scales its text with its cell.
+        LogicalWidth = p.LogicalWidth, LabelStripViewWidth = p.LabelStripViewWidth * width / p.ViewWidth,
+        LeftLabelStrips = p.LeftLabelStrips, RightLabelStrips = p.RightLabelStrips,
+        MarkerBoxes = [.. p.MarkerBoxes.Select(b => b with { ViewLeft = left + (b.ViewLeft - p.ViewLeft) * width / p.ViewWidth,
+                                                             ViewTop = top + (b.ViewTop - p.ViewTop) * height / p.ViewHeight })],
+        ShowFilePrefix = p.ShowFilePrefix, AlwaysShowSource = p.AlwaysShowSource, AliasFor = p.AliasFor, Overlay = p.Overlay,
+    };
 
     private static void Front(Flow flow, ReportCard card)
     {

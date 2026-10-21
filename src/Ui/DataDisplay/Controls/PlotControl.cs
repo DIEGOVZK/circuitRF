@@ -2103,7 +2103,7 @@ namespace CircuitRF.Ui.DataDisplay.Controls
                     : tf.PrimaryFromCanvas((float)canvasPt.X, (float)canvasPt.Y);
 
                 var hit = trace.FindNearestTraceData(
-                    new System.Numerics.Vector2((float)wx, (float)wy), tf.XLog);
+                    new System.Numerics.Vector2((float)wx, (float)wy), tf.XLog, tf);
                 if (!hit.HasValue) continue;
 
                 var nearPx = tf.ToCanvas(hit.Value.NearestPoint.X, hit.Value.NearestPoint.Y,
@@ -2185,6 +2185,11 @@ namespace CircuitRF.Ui.DataDisplay.Controls
         // ============================================================
         //  Marker hit-test and drag helpers
         // ============================================================
+
+        /// <summary>Whether a marker's glyph is under <paramref name="screenPt"/> — what an overlay that takes clicks asks
+        /// first, so a press on a marker stays the marker's to select and drag (IPlotOverlay's rule 3 runs the other
+        /// way).</summary>
+        public bool HasMarkerAt(Point screenPt) => HitTestMarker(screenPt).HasValue;
 
         private (Marker Marker, Trace Trace)? HitTestMarker(Point screenPt)
         {
@@ -2455,7 +2460,7 @@ namespace CircuitRF.Ui.DataDisplay.Controls
                 ? tf.SecondaryFromCanvas((float)canvasPt.X, (float)canvasPt.Y)
                 : tf.PrimaryFromCanvas((float)canvasPt.X, (float)canvasPt.Y);
 
-            var snap = trace.SnapToCubeMarker(new System.Numerics.Vector2((float)wx, (float)wy));
+            var snap = trace.SnapToCubeMarker(new System.Numerics.Vector2((float)wx, (float)wy), tf);
             if (snap is null) return false;
 
             // Family curves iterate the spectral axis (Spectrum kind); a single Pin-swept
@@ -2464,7 +2469,7 @@ namespace CircuitRF.Ui.DataDisplay.Controls
             // Exception: on Smith/Polar, single-curve markers store (Re, Im) so draw-time
             // resolution uses 2-D nearest instead of X-only (X-only fails on looping loci).
             int idx    = NextMarkerIndexProvider?.Invoke() ?? (trace.Markers.Count + 1);
-            var posStatic = (trace.IsComplexPlanePlot && !trace.IsFamily)
+            var posStatic = trace.MarkersResolve2D
                 ? snap.Value.Pos
                 : new System.Numerics.Vector2(snap.Value.CubeX, snap.Value.CurveIndex);
             var marker = new Marker(trace, 0.0, false, false, idx, _plot.FreqUnits)
@@ -2851,13 +2856,13 @@ namespace CircuitRF.Ui.DataDisplay.Controls
                 var (wx, wy) = trace.UseSecondaryAxis
                     ? tf.SecondaryFromCanvas((float)canvasPt.X, (float)canvasPt.Y)
                     : tf.PrimaryFromCanvas((float)canvasPt.X, (float)canvasPt.Y);
-                var snap = trace.SnapToCubeMarker(new System.Numerics.Vector2((float)wx, (float)wy));
+                var snap = trace.SnapToCubeMarker(new System.Numerics.Vector2((float)wx, (float)wy), tf);
                 if (snap is null) return;
                 var snappedPx = tf.ToCanvas(snap.Value.Pos.X, snap.Value.Pos.Y, trace.UseSecondaryAxis);
                 if (!clipRect.Contains(snappedPx.X, snappedPx.Y)) return;
                 // Smith/Polar single-curve: store (Re, Im) for 2-D draw-time resolution.
                 // Rect/family: store (CubeX, curveIndex) for X-only resolution.
-                marker.PositionStatic = (trace.IsComplexPlanePlot && !trace.IsFamily)
+                marker.PositionStatic = trace.MarkersResolve2D
                     ? snap.Value.Pos
                     : new System.Numerics.Vector2(snap.Value.CubeX, snap.Value.CurveIndex);
                 return;

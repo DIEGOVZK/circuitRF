@@ -185,7 +185,7 @@ public sealed partial class ModelComposerViewModel
             if (ym.Length == f.Length)
             {
                 var m = Xy(label, [.. pts.Select(k => xs[k])], [.. pts.Select(k => ym[k] * scale)], x, "V", FamilyColour, line: false, marker: MarkerType.Circle);
-                m.Properties.MarkerSize = SmallMarker;
+                m.Properties.MarkerSize = DataMarker;
                 m.Properties.Custom = false;
                 plot.Traces.Add(m);
             }
@@ -250,7 +250,7 @@ public sealed partial class ModelComposerViewModel
                 foreach (string s in sp.Sets)
                 {
                     double[] g = R(ds, $"{s}.Vgsi"), d = R(ds, $"{s}.Vdsi");
-                    var t = Scatter(s, [.. d.Zip(g)], FamilyColour, MarkerType.Circle, SmallMarker);
+                    var t = Scatter(s, [.. d.Zip(g)], FamilyColour, MarkerType.Circle, DataMarker);
                     t.Properties.Custom = false;
                     plot.Traces.Add(t);
                 }
@@ -387,7 +387,7 @@ public sealed partial class ModelComposerViewModel
                 if (beyond.Length > 0)
                 {
                     var t = Xy($"{tag} beyond", [.. beyond.Select(k => bx[k])], [.. beyond.Select(k => bi[k] * 1e3)], "Vds", "V", c, line: false, marker: MarkerType.Circle);
-                    t.Properties.MarkerSize = 7;
+                    t.Properties.MarkerSize = 1.6 * DataMarker;
                     t.Properties.MarkerOpacity = 0;
                     plot.Traces.Add(t);
                 }

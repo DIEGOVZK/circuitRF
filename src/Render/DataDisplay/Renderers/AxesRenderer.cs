@@ -1104,6 +1104,11 @@ namespace CircuitRF.Render.DataDisplay
             public SKRect Y2Label;
         }
 
+        /// <summary>The margin a title is centred in: everything above the axes but a reserved band (Plot.TopBandPx), which
+        /// sits between the title and the axes.</summary>
+        private static float TitleMargin(Plot plot, float vpTop) =>
+            plot.PlotType == PlotType.Rect ? Math.Max(0f, vpTop - (float)plot.TopBandPx) : vpTop;
+
         public static LabelHitRects DrawTitleAndAxisLabels(
             SKCanvas             canvas,
             (double W, double H) canvasSize,
@@ -1159,7 +1164,7 @@ namespace CircuitRF.Render.DataDisplay
                 }
                 float tw = RendererText.MeasureTextWithFallback(title, font, titleFallback);
                 float tx = vpCenterX - tw / 2f;
-                float ty = vpTop / 2f + font.Size * 0.35f;
+                float ty = TitleMargin(plot, vpTop) / 2f + font.Size * 0.35f;
                 RendererText.DrawLeftTextWithFallback(canvas, title, tx, ty, font, titleFallback, paint);
                 rects.Title = new SKRect(tx, ty - font.Size, tx + tw, ty + font.Size * 0.5f);
             }
@@ -1493,7 +1498,7 @@ namespace CircuitRF.Render.DataDisplay
             {
                 float tw = ApproxWidth(plot.Title, titleSzPx);
                 float tx = vpCenterX - tw / 2f;
-                float ty = vpTop / 2f + titleSzPx * 0.35f;
+                float ty = TitleMargin(plot, vpTop) / 2f + titleSzPx * 0.35f;
                 rects.Title = new SKRect(tx, ty - titleSzPx * 1.2f, tx + tw, ty + titleSzPx * 0.5f);
             }
 

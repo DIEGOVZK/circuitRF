@@ -62,4 +62,73 @@ public sealed class CurrentFitEquationTests(ITestOutputHelper output)
         Assert.Equal(CurrentTemplates.Find(CurrentTemplates.Angelov)!.Id, c.Expression("Expression"));
         Assert.Contains("no gate current in the data; Ig is zero.", fit.Record.Report);
     }
+
+    private const double kT = -0.004;
+
+    /// <summary>The Angelov truth at 25 and 125 °C ambients, its current falling 0.4 %/K, as two simulated sets.</summary>
+    private static (CmcDocument Doc, Dictionary<string, NormalisedData> Data, IntrinsicResult Intrinsic) TwoTemperatures()
+    {
+        var data = new Dictionary<string, NormalisedData>();
+        var sets = new List<CmcDataSet>();
+        var intrinsic = new Dictionary<string, RfCore.Data.DataSet>();
+        foreach (double t in (double[])[25, 125])
+        {
+            var points = new List<BiasPoint>();
+            for (double vgs = -2.0; vgs <= 0.401; vgs += 0.2)
+                foreach (double vds in (double[])[0, 0.4, 0.8, 1.6, 3.2, 6.4, 8])
+                    points.Add(new BiasPoint(string.Create(CultureInfo.InvariantCulture, $"{vgs:F1}_{vds}"), vgs, vds, double.NaN,
+                                             (1 + kT * (t - 25)) * Angelov(vgs, vds)));
+            string name = $"sim{t}";
+            var set = new CmcDataSet
+            {
+                Name = name, Kind = DataSetKind.SimulatedTables, Sources = [name + ".npy"],
+                Conditions = new DataConditions { ReferencePlane = ReferencePlane.Intrinsic, AmbientC = t },
+                Import = new ImportSettings { Format = ImportSettings.Npy, Arrays = new Dictionary<string, string> { ["vgs"] = "vgs", ["vds"] = "vds", ["id"] = "id" } },
+            };
+            var iv = new NormalisedData { Points = points };
+            sets.Add(set);
+            data[name] = iv;
+            intrinsic[name] = IntrinsicExtraction.Compute(set, iv, PadDeembedding.Load(PadsSettings.None, "."), null, null, null, []);
+        }
+        return (new CmcDocument { Kind = CmcKind.Active, DataSets = sets }, data, new IntrinsicResult(intrinsic, []));
+    }
+
+    /// <summary>
+    /// Model Composer review 3: data at two temperatures fits a template with its current scale linear in T by default — the
+    /// drain current of a hotter channel is lower, and without the term one law was fitted through both temperatures' points.
+    /// The fitted coefficient is the truth's −0.4 %/K.
+    /// </summary>
+    [Fact]
+    public void ATemplate_OnDataAtTwoTemperatures_FitsItsCurrentScaleLinearInT()
+    {
+        var (doc, data, intrinsic) = TwoTemperatures();
+        var settings = CurrentFitSettings.Default with
+        {
+            Id = new CurrentConstituentSettings { Method = CurrentMethod.Equation, Template = CurrentTemplates.Angelov },
+        };
+        var fit = CurrentFit.Run(doc, data, intrinsic, settings);
+        foreach (string line in fit.Record.Report) output.WriteLine(line);
+
+        var got = fit.Record.Id.Parameters.ToDictionary(kv => kv.Key, kv => kv.Value);
+        output.WriteLine($"Ipk {got["Ipk"]:G6}, Ipk_T {got["Ipk_T"]:G6}");
+        Assert.Equal(kT, got["Ipk_T"] / got["Ipk"], 0.0002);
+        Assert.Contains(fit.Record.Report, l => l.Contains("Ipk is linear in T", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Model Composer review 3: the window's plots gather one set at a time, and one set is at one ambient — so without the
+    /// fit's temperatures T was no input and every DC point sat at the ambient, not at its junction temperature, and the
+    /// model was drawn unheated against heated data. Given them, the one set keeps T.
+    /// </summary>
+    [Fact]
+    public void OneSetGathered_WithTheFitsTemperatures_KeepsTAsAnInput()
+    {
+        var (doc, data, intrinsic) = TwoTemperatures();
+        var one = CurrentFitSettings.Default with { DataSets = ["sim125"] };
+
+        Assert.False(CurrentFit.Gather(doc, data, intrinsic, one, []).HasT);
+        var ip = CurrentFit.Gather(doc, data, intrinsic, one, [], temperatures: [25, 125]);
+        Assert.True(ip.HasT);
+        Assert.All(ip.X, x => Assert.Equal(125, x[2]));
+    }
 }

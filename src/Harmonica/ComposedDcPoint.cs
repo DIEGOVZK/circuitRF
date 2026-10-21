@@ -21,7 +21,7 @@ public static class ComposedDcPoint
     private const int MaxIterations = 60;
 
     /// <summary>
-    /// <c>Rth,DC</c>, K/W: the sum of the model's Foster ladder at the run's ambient (clamped to the model's range as the
+    /// <c>Rth,DC</c>, K/W: the sum of the model's Foster ladder at the device's ambient (clamped to the model's range as the
     /// elaborator clamps it), scaled to <c>N</c> fingers. Zero for a model that does not self-heat.
     /// </summary>
     public static double ThermalResistance(ComposedCoreModel core, double ambientC)

@@ -47,7 +47,9 @@ public sealed partial class ModelComposerViewModel
             p.Axes.FontSizeLabel = TitleFontSizeLabel(p.Axes);
         }
         PlotHost.SelectOnly((PlotContainerViewModel?)null);
-        BiasPlaneLasso = new BiasPlaneLasso(() => _biasPlanePoints, OnLasso);
+        // A removed marker gives its band back; the plot host says so on its content channel, as railRF's capture reads it.
+        PlotHost.ContentChanged += (_, _) => UpdateMarkerBand();
+        BiasPlaneLasso = new BiasPlaneLasso(() => _biasPlanePoints, OnLasso, OnPickBiasPoint, () => _biasPlanePickable);
         RebuildPlotTabs();
     }
 
@@ -119,11 +121,117 @@ public sealed partial class ModelComposerViewModel
 
     private IReadOnlyList<BiasPlanePoint> _biasPlanePoints = [];
 
+    /// <summary>Every point a click can pick: each set's extrinsic and intrinsic point where both are drawn, since either is
+    /// the same bias.</summary>
+    private IReadOnlyList<BiasPlanePoint> _biasPlanePickable = [];
+
+    /// <summary>
+    /// A click on a bias point with the lasso disarmed (owner, review 3): the cursor moves to it — the green dot and the
+    /// toolbar's Vgs and Vds — and the plots follow. A point of another data set selects that set first, since the cursor's
+    /// lists are the selected set's. A double-click is the plot's own marker gesture and is not taken here.
+    /// </summary>
+    private void OnPickBiasPoint(BiasPlanePoint picked) => PostToUi(() =>
+    {
+        if (!Loaded.Data.TryGetValue(picked.Set, out var d) || d.Points.FirstOrDefault(p => p.PointId == picked.Point) is not { } point) return;
+        _cursorOnExtrinsic = Math.Abs(picked.X - point.Vds) < 1e-9 && Math.Abs(picked.Y - point.Vgs) < 1e-9;
+        if (SelectedDataSet?.Name != picked.Set && DataSetRows.FirstOrDefault(r => r.Name == picked.Set) is { } row) SelectedDataSet = row;
+        _syncingCursor = true;
+        try
+        {
+            SelectedVgs = Snap(VgsChoices, point.Vgs);
+            SelectedVds = Snap(VdsChoices, point.Vds);
+        }
+        finally { _syncingCursor = false; }
+        SetView(Document.View with { Cursor = CurrentCursor() });
+        RebuildPlots();
+    });
+
+    /// <summary>Whether the cursor's dot sits on its point's extrinsic circle — the one clicked — rather than its intrinsic one.</summary>
+    private bool _cursorOnExtrinsic;
+
     /// <summary>What a click or lasso on the bias plane took: the network fit's points on the Network step, else exclusions.</summary>
     private void OnLasso(IReadOnlyList<(string Set, string Point)> points) =>
         PostToUi(() => { if (IsNetworkStep) ToggleFitPoints(points); else ToggleExclusion(points); });
 
     // ── building ─────────────────────────────────────────────────────────────
+
+    // ── markers (owner, review 3): first class, so they outlive the rebuilds ──
+
+    /// <summary>
+    /// The markers the user put on each tab's traces, by step, tab and trace name. Every cursor move, edit and reload rebuilds
+    /// the traces, so a marker kept on the trace object alone was gone at the next click. The markers move across as
+    /// OBJECTS — a copy would lose its m-number, its box position and its selection — onto the rebuilt trace of the same
+    /// name, as railRF's results plot carries its own.
+    /// </summary>
+    private readonly Dictionary<string, List<Marker>> _markers = new(StringComparer.Ordinal);
+
+    /// <summary>The step and tab the traces now on the plots were built for.</summary>
+    private string _plottedKey = "";
+
+    private static string MarkerKey(string tabKey, Trace t) => $"{tabKey}|{t.CubeName ?? t.QuantityName}";
+
+    /// <summary>Puts the markers on <paramref name="plot"/>'s traces away under the tab they were built for.</summary>
+    private void StashMarkers(Plot plot)
+    {
+        if (_plottedKey.Length == 0) return;
+        foreach (var t in plot.Traces)
+            _markers[MarkerKey(_plottedKey, t)] = [.. t.Markers];
+    }
+
+    /// <summary>Gives each rebuilt trace the markers its namesake on this tab carried.</summary>
+    private void RestoreMarkers(Plot plot, string key)
+    {
+        foreach (var t in plot.Traces)
+            if (!t.IsAnnotation && _markers.TryGetValue(MarkerKey(key, t), out var kept))
+                foreach (var m in kept) t.Markers.Add(m);
+    }
+
+    /// <summary>The space round an info box in the band, canvas pixels.</summary>
+    private const double BandGap = 6;
+
+    /// <summary>
+    /// A new marker's info box, placed in the band between the title and the axes (owner, review 3) — after the boxes
+    /// already there, left to right from the axes' left edge, starting over at the left when the band is full — rather than
+    /// beside its marker, where it covers the very points being read. On a Smith chart, which has no band, the boxes stack
+    /// down its left side. A box the user drags stays where it is put.
+    /// </summary>
+    public void PlaceNewInfoBox(PlotContainerViewModel container, Marker marker)
+    {
+        if (container.FindMarkerInfoBoxVm(marker) is not { } box) return;
+        var plot = container.PlotVM.Plot;
+        var others = PlotHost.MarkerInfoBoxes.Where(b => b.Container == container && !ReferenceEquals(b.Marker, marker)).ToList();
+        double left, top;
+        if (plot.PlotType == PlotType.Rect)
+        {
+            var v = plot.Axes.Viewport;
+            top = container.Top + v.Y * container.Height + BandGap;
+            double x0 = container.Left + v.X * container.Width, x1 = container.Left + (v.X + v.Width) * container.Width;
+            var inBand = others.Where(b => Math.Abs(b.Marker.InfoBoxPos.Y - top) < 1).ToList();
+            left = inBand.Count == 0 ? x0 : inBand.Max(b => b.Marker.InfoBoxPos.X + b.BoxWidth) + BandGap;
+            if (left + box.BoxWidth > x1) left = x0;
+        }
+        else
+        {
+            left = container.Left + BandGap;
+            top = container.Top + BandGap + others.Sum(b => b.BoxHeight + BandGap);
+        }
+        marker.InfoBoxPos = new PlotPoint(left, top);
+        container.OnPlotChanged(this, EventArgs.Empty);
+        UpdateMarkerBand();
+        container.RequestPlotRedraw();
+    }
+
+    /// <summary>The rectangular plot's band (<see cref="Plot.TopBandPx"/>): one row of info boxes while it has any, none
+    /// otherwise — so the axes take the whole panel until a marker is made.</summary>
+    private void UpdateMarkerBand()
+    {
+        if (RectContainer is null) return;
+        var boxes = PlotHost.MarkerInfoBoxes.Where(b => b.Container == RectContainer).ToList();
+        double band = boxes.Count == 0 ? 0 : boxes.Max(b => b.BoxHeight) + 2 * BandGap;
+        if (Math.Abs(RectPlot.TopBandPx - band) < 0.5) return;
+        RectPlot.TopBandPx = band;
+        RectContainer.RequestPlotRedraw();
+    }
 
     /// <summary>Redraws the selected tab from the loaded data at the cursor.</summary>
     private void RebuildPlots()
@@ -131,11 +239,17 @@ public sealed partial class ModelComposerViewModel
         if (RectContainer is null || IsChoosingKind) return;
         PlotBuilds++;
         var plot = IsSmithTab ? SmithPlot : RectPlot;
-        plot.Traces.Clear();
+        // Both plots are cleared, not just the one drawn: the hidden one's markers would otherwise keep their info boxes
+        // on screen over the plot that replaced it.
+        StashMarkers(RectPlot);
+        StashMarkers(SmithPlot);
+        RectPlot.Traces.Clear();
+        SmithPlot.Traces.Clear();
         plot.CustomTitleOn = true;
         plot.CustomXLabelOn = false;
         plot.CustomYLabelOn = false;
         _biasPlanePoints = [];
+        _biasPlanePickable = [];
         try
         {
             if (!ModelStepPlot(plot))
@@ -156,10 +270,15 @@ public sealed partial class ModelComposerViewModel
             plot.Traces.Clear();
         }
         if (!plot.CustomTitleOn || plot.CustomTitle.Length == 0) plot.CustomTitle = SelectedPlotTab;
+        _plottedKey = $"{StepName}|{SelectedPlotTab}";
+        RestoreMarkers(plot, _plottedKey);
         plot.SetAxesViewport();
         plot.Autoscale(force: true);
         var container = IsSmithTab ? SmithContainer : RectContainer;
+        var hidden = IsSmithTab ? RectContainer : SmithContainer;
+        hidden.OnPlotChanged(this, EventArgs.Empty);
         container.OnPlotChanged(this, EventArgs.Empty);
+        UpdateMarkerBand();
         container.RequestPlotRedraw();
         OnPropertyChanged(nameof(RectPlot));
         OnPropertyChanged(nameof(SmithPlot));
@@ -192,7 +311,7 @@ public sealed partial class ModelComposerViewModel
             var t = Xy($"{(byVgs ? "Vgs" : "Vds")} {ModelValueFormat.G(g.Key)} V",
                        [.. pts.Select(p => byVgs ? p.Vds : p.Vgs)], [.. pts.Select(p => p.Id * 1e3)],
                        byVgs ? "Vds" : "Vgs", "V", FamilyColour, line: true, marker: MarkerType.Circle);
-            t.Properties.MarkerSize = SmallMarker;
+            t.Properties.MarkerSize = DataMarker;
             t.Properties.Custom = false;
             plot.Traces.Add(t);
         }
@@ -210,6 +329,7 @@ public sealed partial class ModelComposerViewModel
     private void BiasPlane(Plot plot)
     {
         var drawn = new List<BiasPlanePoint>();
+        var pickable = new List<BiasPlanePoint>();
         var ext = new List<(double X, double Y)>();
         var intr = new List<(double X, double Y)>();
         var excl = new List<(double X, double Y)>();
@@ -220,6 +340,12 @@ public sealed partial class ModelComposerViewModel
         // behind it is still running — a second click in that gap read the point as still included and put it back.
         var excluded = Document.DataSets.SelectMany(s => s.Exclusions.Select(x => (s.Name, x.Point))).ToHashSet();
         var fitPoints = IsNetworkStep ? FitPoints.Select(r => (r.Set, r.Point)).ToHashSet() : [];
+        var extLabels = new List<string>();
+        var intrLabels = new List<string>();
+        // The cursor is drawn ON the point it selects — the intrinsic one while those show — not at the measured bias.
+        string? cursorSet = CursorSets().Select(x => x.Set.Name).FirstOrDefault();
+        int cursorIndex = cursorSet is not null && Loaded.Data.TryGetValue(cursorSet, out var cd0) ? CursorPoint(cd0) : -1;
+        (double X, double Y)? cursorAt = null;
         foreach (var set in Document.DataSets)
         {
             if (!Loaded.Data.TryGetValue(set.Name, out var d)) continue;
@@ -232,29 +358,37 @@ public sealed partial class ModelComposerViewModel
                 (double X, double Y) e = (p.Vds, p.Vgs);
                 (double X, double Y)? n = vgsi is not null && vdsi is not null && i < vgsi.Length && double.IsFinite(vgsi[i]) ? (vdsi[i], vgsi[i]) : null;
                 if (!double.IsFinite(e.X) || !double.IsFinite(e.Y)) continue;
-                if (ShowExtrinsic) ext.Add(e);
-                if (ShowIntrinsic && n is { } nn) intr.Add(nn);
+                string measured = $"{set.Name} · Vgs {ModelValueFormat.G(p.Vgs)} V, Vds {ModelValueFormat.G(p.Vds)} V";
+                if (ShowExtrinsic) { ext.Add(e); extLabels.Add(set.Name); }
+                if (ShowIntrinsic && n is { } nn) { intr.Add(nn); intrLabels.Add(measured); }
                 var at = ShowIntrinsic && n is { } m ? m : e;
+                if (set.Name == cursorSet && i == cursorIndex) cursorAt = _cursorOnExtrinsic && ShowExtrinsic ? e : at;
                 drawn.Add(new BiasPlanePoint(set.Name, p.PointId, at.X, at.Y));
+                if (ShowExtrinsic) pickable.Add(new BiasPlanePoint(set.Name, p.PointId, e.X, e.Y));
+                if (ShowIntrinsic && n is { } ni) pickable.Add(new BiasPlanePoint(set.Name, p.PointId, ni.X, ni.Y));
                 if (excluded.Contains((set.Name, p.PointId))) excl.Add(at);
                 if (flags.Contains((set.Name, p.PointId))) flagged.Add(at);
                 if (fitPoints.Contains((set.Name, p.PointId))) fit.Add(at);
             }
         }
         _biasPlanePoints = drawn;
+        _biasPlanePickable = pickable;
         plot.CustomTitle = "Bias plane";
-        // Sizes in the Data Display's marker units (a fraction of the plot's size): small enough that a dense bias grid
-        // still reads as points, the cursor's star only a little larger than a point.
-        if (ext.Count > 0) plot.Traces.Add(Scatter("extrinsic", ext, 1, MarkerType.Circle, 0.8));
-        if (intr.Count > 0) plot.Traces.Add(Scatter("intrinsic", intr, 0, MarkerType.Circle, 1.0));
-        if (fit.Count > 0) plot.Traces.Add(Scatter("fit points", fit, 4, MarkerType.Square, 1.4));
-        if (flagged.Count > 0) plot.Traces.Add(Scatter("flagged", flagged, 2, MarkerType.TriangleUp, 1.4));
-        if (excl.Count > 0) plot.Traces.Add(Scatter("excluded", excl, 9, MarkerType.Cross, 1.6));
+        // Sizes in the Data Display's marker units (a fraction of the plot's size): every point at DataMarker, the glyphs
+        // over a point a little larger so the point still shows round them.
+        // The points are point clouds (Trace.IsPointCloud): a marker on one is the point nearest the pointer, read out as
+        // its data set and bias. The overlays on them — fit points, flags, exclusions, the cursor — are annotation, so a
+        // double-click marks the point underneath rather than the glyph over it.
+        if (ext.Count > 0) plot.Traces.Add(Cloud(Scatter("extrinsic", ext, 1, MarkerType.Circle, DataMarker), extLabels, "Vgs"));
+        if (intr.Count > 0) plot.Traces.Add(Cloud(Scatter("intrinsic", intr, 0, MarkerType.Circle, DataMarker, xName: "Vdsi"), intrLabels, "Vgsi"));
+        if (fit.Count > 0) plot.Traces.Add(Overlay(Scatter("fit points", fit, 4, MarkerType.Square, 1.6 * DataMarker)));
+        if (flagged.Count > 0) plot.Traces.Add(Overlay(Scatter("flagged", flagged, 2, MarkerType.TriangleUp, 1.6 * DataMarker)));
+        if (excl.Count > 0) plot.Traces.Add(Overlay(Scatter("excluded", excl, 9, MarkerType.Cross, 1.8 * DataMarker)));
         if (SelectedVgs is { } cg && SelectedVds is { } cd)
         {
             // The cursor: a green dot over the point it selects, a little larger than the points. (A hollow ring would be
             // drawn only by the markers' dark outline, not in green.)
-            plot.Traces.Add(Scatter("cursor", [(cd.Value, cg.Value)], CursorColour, MarkerType.Circle, 1.7));
+            plot.Traces.Add(Overlay(Scatter("cursor", [cursorAt ?? (cd.Value, cg.Value)], CursorColour, MarkerType.Circle, 1.6 * DataMarker)));
         }
         Labels(plot, "Vds (V)", "Vgs (V)");
     }
@@ -352,8 +486,13 @@ public sealed partial class ModelComposerViewModel
     /// Display's red first trace — with every member the same: a family is one quantity drawn several times.</summary>
     private const int FamilyColour = 1;
 
-    /// <summary>The marker size a family's data points are drawn at: present, not prominent.</summary>
-    private const double SmallMarker = 0.8;
+    /// <summary>
+    /// The size every measured point is drawn at, in the Data Display's marker units (a radius of this many
+    /// <c>min(width, height)/200</c>): on the panel's usual 500–600 px a disc of about 7 px, which is what a scatter of
+    /// data needs to read as points over the lines without one point covering the next on a 0.5 V grid (owner, review 3:
+    /// 0.8, a 4 px disc, was too small to see or hit).
+    /// </summary>
+    private const double DataMarker = 1.3;
 
     /// <summary>The bias cursor's colour on a plane of points — green, the palette's fourth.</summary>
     private const int CursorColour = 3;
@@ -376,11 +515,28 @@ public sealed partial class ModelComposerViewModel
         return t;
     }
 
-    private static Trace Scatter(string name, IReadOnlyList<(double X, double Y)> pts, int colour, MarkerType marker, double size)
+    private static Trace Scatter(string name, IReadOnlyList<(double X, double Y)> pts, int colour, MarkerType marker, double size,
+                                 string xName = "Vds")
     {
-        var t = Xy(name, [.. pts.Select(p => p.X)], [.. pts.Select(p => p.Y)], "Vds", "V", colour, line: false, marker: marker);
+        var t = Xy(name, [.. pts.Select(p => p.X)], [.. pts.Select(p => p.Y)], xName, "V", colour, line: false, marker: marker);
         t.Properties.MarkerSize = size;
         t.Properties.Custom = false;
+        return t;
+    }
+
+    /// <summary>A bias plane's points as a point cloud: a marker resolves to the nearest point and reads its label and Y.</summary>
+    private static Trace Cloud(Trace t, IReadOnlyList<string> labels, string yName)
+    {
+        t.IsPointCloud = true;
+        t.PointLabels = labels;
+        t.MarkerValueName = yName;
+        return t;
+    }
+
+    /// <summary>Drawn over the points and not a reading of them: no marker lands on it.</summary>
+    private static Trace Overlay(Trace t)
+    {
+        t.IsAnnotation = true;
         return t;
     }
 
@@ -409,6 +565,7 @@ public sealed partial class ModelComposerViewModel
         {
             props.MarkerEnabled = true;
             props.MarkerType = m;
+            props.MarkerSize = DataMarker;
         }
         props.Custom = false;
         return props;

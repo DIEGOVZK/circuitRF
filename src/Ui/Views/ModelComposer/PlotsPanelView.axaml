@@ -7,6 +7,8 @@
              xmlns:mc="using:CircuitRF.Ui.ModelComposer"
              xmlns:v="using:CircuitRF.Ui.Views.ModelComposer"
              xmlns:ddc="using:CircuitRF.Ui.DataDisplay.Controls"
+             xmlns:ddv="using:CircuitRF.Ui.DataDisplay.ViewModels"
+             xmlns:ddvw="using:CircuitRF.Ui.Views.DataDisplay"
              xmlns:mi="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              x:Class="CircuitRF.Ui.Views.ModelComposer.PlotsPanelView"
              x:DataType="mc:ModelComposerViewModel">
@@ -61,6 +63,31 @@
                                  CanDeletePlot="False" CanEditPlotProperties="False" CanEditAxesLabels="False"
                                  IsVisible="{Binding IsSmithTab}"/>
             </Panel>
+
+            <!-- The markers' info boxes (owner, review 3: a double-click made a marker and its box was nowhere — the plot
+                 host built one and nothing drew it). The Match Designer's and railRF's overlay: over the whole panel, so a
+                 box can be dragged off its curve; a null background, so a click falls through to the plot everywhere but
+                 on a box. PlotsPanelView.SyncContainers keeps each container's rectangle on its plot's, in this layer's
+                 coordinates, which is the space a box is placed and dragged in. -->
+            <ItemsControl Name="MarkerInfoBoxLayer" Grid.Row="0" Grid.RowSpan="3"
+                          ItemsSource="{Binding PlotHost.MarkerInfoBoxes}" Background="{x:Null}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <Canvas Background="{x:Null}"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemContainerTheme>
+                    <ControlTheme TargetType="ContentPresenter">
+                        <Setter Property="Canvas.Left" Value="{ReflectionBinding ViewLeft}"/>
+                        <Setter Property="Canvas.Top"  Value="{ReflectionBinding ViewTop}"/>
+                    </ControlTheme>
+                </ItemsControl.ItemContainerTheme>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="ddv:MarkerInfoBoxViewModel">
+                        <ddvw:MarkerInfoBoxView/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
 
         </Grid>
     </Border>

@@ -178,7 +178,7 @@ public sealed partial class ModelComposerViewModel
                 if (xm.Length > 0)
                 {
                     var m = Xy($"{n}{member}", xm, [.. R(ds, $"{n}.meas").Select(v => v * 1e15)], swept, "V", c, line: false, marker: MarkerType.Circle);
-                    m.Properties.MarkerSize = SmallMarker;
+                    m.Properties.MarkerSize = DataMarker;
                     m.Properties.Custom = false;
                     plot.Traces.Add(m);
                 }

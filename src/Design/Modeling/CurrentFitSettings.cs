@@ -73,8 +73,9 @@ public sealed record CurrentConstituentSettings
     /// <summary>Table, with traps (MC-10): each trap-state axis's spacing, volts.</summary>
     public double TrapStep { get; init; } = DefaultTrapStep;
     /// <summary>Equation, with T an input (MC-9 R-mc9-1): the template parameters made linear in temperature, each
-    /// <c>p</c> becoming <c>p + p_T·(T − Tnom)</c>.</summary>
-    public IReadOnlyList<string> TemperatureCoefficients { get; init; } = [];
+    /// <c>p</c> becoming <c>p + p_T·(T − Tnom)</c>. Null is the template's default — its current scale
+    /// (<see cref="CurrentTemplate.Scale"/>) — and an empty list is none.</summary>
+    public IReadOnlyList<string>? TemperatureCoefficients { get; init; }
 
     /// <summary>Equation: a template's name (<see cref="CurrentTemplates"/>), or null for the user's own expressions.</summary>
     public string? Template { get; init; }
@@ -123,7 +124,7 @@ public sealed record CurrentConstituentSettings
             Smoothing = Num(o, "Smoothing", $"{f}.Smoothing") ?? 0,
             TemperatureStep = Num(o, "TemperatureStep", $"{f}.TemperatureStep") ?? DefaultTemperatureStep,
             TrapStep = Num(o, "TrapStep", $"{f}.TrapStep") ?? DefaultTrapStep,
-            TemperatureCoefficients = o["TemperatureCoefficients"] is { } tc ? Words(tc, $"{f}.TemperatureCoefficients") : [],
+            TemperatureCoefficients = o["TemperatureCoefficients"] is { } tc ? Words(tc, $"{f}.TemperatureCoefficients") : null,
             Template = Str(o, "Template", $"{f}.Template", required: false),
             Expression = Str(o, "Expression", $"{f}.Expression", required: false),
             IgGs = Str(o, "IgGs", $"{f}.IgGs", required: false),
@@ -171,7 +172,7 @@ public sealed record CurrentConstituentSettings
             }
             o["Parameters"] = po;
         }
-        if (TemperatureCoefficients.Count > 0)
+        if (TemperatureCoefficients is not null)
             o["TemperatureCoefficients"] = new JsonArray([.. TemperatureCoefficients.Select(n => (JsonNode)n)]);
         if (Algorithm != DefaultAlgorithm) o["Algorithm"] = Algorithm;
         return o;

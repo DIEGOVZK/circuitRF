@@ -381,9 +381,13 @@ public static class CurrentFit
     /// auto is left out of Id, and so are the DC points when the DC I–V is held out as validation. The gate current takes
     /// no trap input (D10), so it trains on every usable point.
     /// </summary>
+    /// <param name="temperatures">The temperatures the fit saw, for a caller gathering fewer sets than it did — the window's
+    /// plots gather one set at a time, and a set at one ambient would otherwise make <c>T</c> no input and leave every DC
+    /// point at the ambient rather than at its junction temperature, so the model was drawn unheated against heated data.
+    /// Null is the gathered sets' own.</param>
     internal static IvPoints Gather(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data, IntrinsicResult intrinsic,
                                     CurrentFitSettings settings, List<string> report, ThermalHeating? heating = null,
-                                    bool withTraps = true)
+                                    bool withTraps = true, IReadOnlyList<double>? temperatures = null)
     {
         heating ??= ThermalHeating.None;
         var chosen = ChosenIv(doc, settings);
@@ -420,7 +424,7 @@ public static class CurrentFit
             }
             TrapCondition(chosen, "Current");
         }
-        var temps = Temperatures(chosen, data);
+        var temps = temperatures ?? Temperatures(chosen, data);
         double t = temps.Count > 0 ? temps[0] : 25.0;
         bool hasT = temps.Count >= 2;
         bool selfHeating = hasT && heating.SelfHeating;
@@ -835,8 +839,13 @@ public static class CurrentFit
             expressions = gate ? [tpl.IgGs!, tpl.IgGd!] : [tpl.Id!];
             parameters = tpl.Parameters(new TemplateData([.. iv.X.Select(p => p[0])], [.. iv.X.Select(p => p[1])],
                                                          gate ? iv.Ig : iv.Id, iv.TemperatureC));
-            if (s.TemperatureCoefficients.Count > 0)
-                (expressions, parameters) = WithTemperatureCoefficients(constituent, expressions, parameters, s.TemperatureCoefficients, iv);
+            var coefficients = s.TemperatureCoefficients ?? (iv.HasT && tpl.Scale is { } scale ? [scale] : []);
+            if (coefficients.Count > 0)
+            {
+                (expressions, parameters) = WithTemperatureCoefficients(constituent, expressions, parameters, coefficients, iv);
+                if (s.TemperatureCoefficients is null)
+                    report.Add($"{constituent}: {tpl.Scale} is linear in T, the {name} template's default for data at more than one temperature.");
+            }
             if (!gate && iv.Traps is { } traps)
                 (expressions, parameters) = WithTrapTerms(name, expressions[0], parameters, traps);
             if (gate)    // the two branches share one list, so each branch's own parameters are named for it
@@ -853,7 +862,7 @@ public static class CurrentFit
                    s.IgGd ?? throw new ModelingException(constituent, "an Ig equation names a template or both IgGs and IgGd.")]
                 : [s.Expression ?? throw new ModelingException(constituent, "an Id equation names a template or an Expression.")];
             parameters = [];
-            if (s.TemperatureCoefficients.Count > 0)
+            if (s.TemperatureCoefficients is { Count: > 0 })
                 throw new ModelingException(constituent, "temperature coefficients apply to a template; write T into your own expression.");
         }
         parameters = Overrides(constituent, parameters, s.Parameters);

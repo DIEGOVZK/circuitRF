@@ -1,7 +1,8 @@
 // Exclusion on the bias plane (brief-modelcomposer-14 R-mc14-6): a click or a lasso, through PlotControl's overlay seam
-// (IPlotOverlay) so the plot stays the Data Display's own. Armed by the × lamp; disarmed, it answers no hit test and the
-// plot behaves exactly as any other. What the points MEAN — an exclusion, or the network fit's bias points — is the view
-// model's: this only says which points the gesture took.
+// (IPlotOverlay) so the plot stays the Data Display's own. Armed by the lasso lamp. Disarmed, a click on a point picks it
+// for the cursor (owner, review 3) and the overlay answers no other hit test — none at all over a marker, which is the
+// plot's own to select and drag — so the plot otherwise behaves exactly as any other. What the points MEAN — an exclusion,
+// the network fit's bias points, the cursor — is the view model's: this only says which points the gesture took.
 
 using System;
 using System.Collections.Generic;
@@ -16,7 +17,8 @@ namespace CircuitRF.Ui.ModelComposer;
 /// <summary>One point drawn on the bias plane: its data set, its id, and where it is drawn (x = Vds, y = Vgs).</summary>
 public sealed record BiasPlanePoint(string Set, string Point, double X, double Y);
 
-public sealed class BiasPlaneLasso(Func<IReadOnlyList<BiasPlanePoint>> points, Action<IReadOnlyList<(string Set, string Point)>> taken)
+public sealed class BiasPlaneLasso(Func<IReadOnlyList<BiasPlanePoint>> points, Action<IReadOnlyList<(string Set, string Point)>> taken,
+                                    Action<BiasPlanePoint>? picked = null, Func<IReadOnlyList<BiasPlanePoint>>? pickable = null)
     : IPlotOverlay
 {
     /// <summary>How near a click must land to take a point, canvas pixels.</summary>
@@ -25,22 +27,27 @@ public sealed class BiasPlaneLasso(Func<IReadOnlyList<BiasPlanePoint>> points, A
     private static readonly object Handle = new();
     private readonly List<(double X, double Y)> _path = [];
     private TransformSet _tf;
-    private bool _dragging;
+    private bool _dragging, _picking;
 
     /// <summary>True while a click or a drag on the plot takes points.</summary>
     public bool Armed { get; set; }
 
+    /// <summary>Whether a marker's glyph is under a canvas point — the plot's to answer. The press is then the marker's.</summary>
+    public Func<double, double, bool>? MarkerAt { get; set; }
+
     public object? HitTest(double canvasX, double canvasY, TransformSet tf)
     {
-        if (!Armed) return null;
         _tf = tf;
-        return Handle;
+        if (Armed) return Handle;
+        if (picked is null || MarkerAt?.Invoke(canvasX, canvasY) == true) return null;
+        return Nearest((pickable ?? points)(), canvasX, canvasY, tf) is not null ? Handle : null;
     }
 
     public void DragBegin(object handle)
     {
         _path.Clear();
-        _dragging = true;
+        _dragging = Armed;
+        _picking = !Armed;
     }
 
     public void DragTo(Complex world) => _path.Add((world.Real, world.Imaginary));
@@ -48,10 +55,29 @@ public sealed class BiasPlaneLasso(Func<IReadOnlyList<BiasPlanePoint>> points, A
     public void DragEnd(bool cancelled)
     {
         _dragging = false;
-        if (cancelled || _path.Count == 0) { _path.Clear(); return; }
+        if (cancelled || _path.Count == 0) { _path.Clear(); _picking = false; return; }
+        if (_picking)
+        {
+            // A pick is a click: a press that moved off its point is nothing.
+            _picking = false;
+            var canvas = _path.Select(p => _tf.PrimaryToCanvas(p.X, p.Y)).ToList();
+            bool click = canvas.All(c => Dist(c, canvas[0]) <= ClickPixels);
+            var at = click ? Nearest((pickable ?? points)(), canvas[0].X, canvas[0].Y, _tf) : null;
+            _path.Clear();
+            if (at is not null) picked?.Invoke(at);
+            return;
+        }
         var hit = Take(points(), _path, _tf);
         _path.Clear();
         if (hit.Count > 0) taken(hit);
+    }
+
+    /// <summary>The drawn point nearest a canvas point within <see cref="ClickPixels"/>, or null.</summary>
+    private static BiasPlanePoint? Nearest(IReadOnlyList<BiasPlanePoint> candidates, double canvasX, double canvasY, TransformSet tf)
+    {
+        var at = new SKPoint((float)canvasX, (float)canvasY);
+        return candidates.Select(c => (c, d: Dist(tf.PrimaryToCanvas(c.X, c.Y), at)))
+                         .Where(x => x.d <= ClickPixels).OrderBy(x => x.d).FirstOrDefault().c;
     }
 
     /// <summary>

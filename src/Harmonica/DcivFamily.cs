@@ -239,7 +239,9 @@ public static class DcivFamily
     private static IReadOnlyList<DcivCurve> ComputeComposed(HarmonicaContext ctx, ElaboratedComponent dut,
                                                            ComposedCoreModel core, Key key)
     {
-        double rth = ComposedDcPoint.ThermalResistance(core, ctx.Netlist.AmbientC);
+        // At the device's own temperature — its instance Temp where it states one, else the run's temp — as the elaborator
+        // built its thermal network, not at the netlist's ambient.
+        double rth = ComposedDcPoint.ThermalResistance(core, core.RequestedC);
 
         var vds = new double[key.VdsSteps];
         for (int i = 0; i < key.VdsSteps; i++)

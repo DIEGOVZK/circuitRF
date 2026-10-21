@@ -17,9 +17,16 @@ public sealed record TemplateData(double[] Vgs, double[] Vds, double[] Current, 
 
 /// <summary>An equation template: the expression of <c>Id</c>, or of the two gate branches, and its parameters.</summary>
 public sealed record CurrentTemplate(string Name, string? Id, string? IgGs, string? IgGd,
-                                     Func<TemplateData, IReadOnlyList<TemplateParameter>> Parameters)
+                                     Func<TemplateData, IReadOnlyList<TemplateParameter>> Parameters, string? Scale = null)
 {
     public bool IsGate => IgGs is not null;
+
+    /// <summary>
+    /// The parameter the current is proportional to (Ipk, Beta, Idss), made linear in temperature by default when the data
+    /// spans temperatures: a drain current falls with the channel's temperature, and a law that cannot say so is fitted
+    /// through hot DC points and cold pulsed points as one surface. Null where no single parameter scales the current.
+    /// </summary>
+    public string? Scale { get; init; } = Scale;
 }
 
 public static class CurrentTemplates
@@ -32,19 +39,19 @@ public static class CurrentTemplates
     [
         new(Angelov,
             "Ipk*(1+tanh(P1*(vgs-Vpk)+P2*(vgs-Vpk)^2+P3*(vgs-Vpk)^3))*(1+Lambda*vds)*tanh(Alpha*vds)",
-            null, null, AngelovStart),
+            null, null, AngelovStart, Scale: "Ipk"),
         new(CurticeQuadratic,
             "if(vgs>Vto,Beta*(vgs-Vto)^2,0)*(1+Lambda*vds)*tanh(Alpha*vds)",
-            null, null, d => QuadraticStart(d, statz: false)),
+            null, null, d => QuadraticStart(d, statz: false), Scale: "Beta"),
         new(CurticeCubic,
             "(A0+A1*vgs*(1+Beta*(Vds0-vds))+A2*(vgs*(1+Beta*(Vds0-vds)))^2+A3*(vgs*(1+Beta*(Vds0-vds)))^3)*tanh(Gamma*vds)",
             null, null, CubicStart),
         new(Statz,
             "if(vgs>Vto,Beta*(vgs-Vto)^2/(1+B*(vgs-Vto)),0)*if(vds>0,if(vds<3/Alpha,1-(1-Alpha*vds/3)^3,1),0)*(1+Lambda*vds)",
-            null, null, d => QuadraticStart(d, statz: true)),
+            null, null, d => QuadraticStart(d, statz: true), Scale: "Beta"),
         new(Materka,
             "if(1-vgs/(Vp0+Gamma*vds)>0,Idss*(1-vgs/(Vp0+Gamma*vds))^2*tanh(Alpha*vds/(vgs-Vp0-Gamma*vds)),0)",
-            null, null, MaterkaStart),
+            null, null, MaterkaStart, Scale: "Idss"),
         new(Diode, null,
             "Is*(exp(vgs/(N*Vt))-1)",
             "Is*(exp((vgs-vds)/(N*Vt))-1)",

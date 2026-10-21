@@ -53,23 +53,37 @@
                                       ToolTip.Tip="The line integral's path: A, B, or their mean"/>
                         </Grid>
                     </StackPanel>
+                    <!-- An equation is a template's law or the user's own (Custom). A template shows the law it fits, and the
+                         expression boxes are Custom's alone (owner, review 3: an empty box under a chosen template read as
+                         something left to fill in). The fitted parameters are one selectable block, so they copy together. -->
                     <StackPanel Spacing="3" IsVisible="{Binding IsEquation}">
                         <Grid ColumnDefinitions="*,140">
                             <TextBlock Classes="lbl" Text="Template"/>
                             <ComboBox Grid.Column="1" ItemsSource="{Binding Templates}" SelectedItem="{Binding Template}" HorizontalAlignment="Stretch"
-                                      ToolTip.Tip="Blank for your own expression"/>
+                                      ToolTip.Tip="A built-in law, or Custom for your own expression"/>
+                        </Grid>
+                        <SelectableTextBlock Text="{Binding TemplateExpression}" IsVisible="{Binding !IsCustom}" TextWrapping="Wrap"
+                                             FontFamily="monospace" FontSize="11" Foreground="{DynamicResource SystemBaseMediumColor}"/>
+                        <Grid ColumnDefinitions="*,140" IsVisible="{Binding ShowsTemperature}">
+                            <TextBlock Classes="lbl" Text="Linear in T"/>
+                            <ctl:InlineEditText Grid.Column="1" Text="{Binding Temperature, Mode=TwoWay}" Watermark="{Binding TemperatureWatermark}"
+                                                ToolTip.Tip="Template parameters made linear in temperature, p + p_T·(T − Tnom). Blank is the template's default; none for none."/>
                         </Grid>
                         <TextBox Text="{Binding Expression}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" FontFamily="monospace" FontSize="11"
-                                 Watermark="expression in vgs, vds and parameters"/>
+                                 IsVisible="{Binding IsCustom}"
+                                 Watermark="{Binding ExpressionWatermark}"
+                                 ToolTip.Tip="Your own law. Every name that is not an input (vgs, vds, and T when the data spans temperatures) is a parameter the fit finds."/>
                         <TextBox Text="{Binding ExpressionGd}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" FontFamily="monospace" FontSize="11"
-                                 IsVisible="{Binding IsGate}" Watermark="IgGd"/>
-                        <ItemsControl ItemsSource="{Binding Fitted}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="x:String">
-                                    <TextBlock FontSize="11" FontFamily="monospace" Text="{Binding}"/>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                                 Watermark="IgGd = your expression in vgs, vds and parameters">
+                            <TextBox.IsVisible>
+                                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                    <Binding Path="IsCustom"/>
+                                    <Binding Path="IsGate"/>
+                                </MultiBinding>
+                            </TextBox.IsVisible>
+                        </TextBox>
+                        <SelectableTextBlock Text="{Binding FittedText}" IsVisible="{Binding HasFitted}" FontSize="11" FontFamily="monospace"
+                                             TextWrapping="Wrap"/>
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -89,7 +103,7 @@
                             <Ellipse Grid.Column="2" Width="7" Height="7" IsVisible="{Binding IsStale}"
                                      Fill="{DynamicResource CrfWarningBrush}" ToolTip.Tip="Stale"/>
                             <mi:MaterialIcon Grid.Column="2" Kind="Check" Width="14" Height="14" IsVisible="{Binding IsDone}"
-                                             Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}" ToolTip.Tip="Done"/>
+                                             Foreground="{DynamicResource CrfSuccessBrush}" ToolTip.Tip="Done"/>
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
@@ -147,7 +161,7 @@
                                     <ctl:InlineEditText Grid.Column="1" Text="{Binding PeripheryWidth, Mode=TwoWay}"
                                                         HorizontalContentAlignment="Right" ToolTip.Tip="Unit gate width, e.g. 125 um"/>
                                 </Grid>
-                                <TextBlock Classes="warn" Text="{Binding PeripheryWarning}"
+                                <SelectableTextBlock Classes="warn" Text="{Binding PeripheryWarning}"
                                            IsVisible="{Binding PeripheryWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                             </StackPanel>
                         </Border>
@@ -155,14 +169,14 @@
                         <ItemsControl ItemsSource="{Binding PassiveBlocks}" IsVisible="{Binding IsPassive}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="x:String">
-                                    <TextBlock Classes="lbl" FontSize="11" Text="{Binding}"/>
+                                    <SelectableTextBlock Classes="lbl" FontSize="11" Text="{Binding}"/>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                         <ItemsControl ItemsSource="{Binding AnalysisLines}" IsVisible="{Binding IsPassive}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="x:String">
-                                    <TextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding}"/>
+                                    <SelectableTextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding}"/>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
@@ -215,7 +229,7 @@
                         </Grid>
                         <Grid ColumnDefinitions="70,*">
                             <TextBlock Classes="lbl" Text="Bias points"/>
-                            <TextBlock Grid.Column="1" Text="{Binding FitPointsText}" HorizontalAlignment="Right"
+                            <SelectableTextBlock Grid.Column="1" Text="{Binding FitPointsText}" HorizontalAlignment="Right"
                                        ToolTip.Tip="Lasso on the bias plane to add or remove"/>
                         </Grid>
                         <Border Classes="card">
@@ -294,7 +308,7 @@
                     <StackPanel IsVisible="{Binding IsThermalStep}" Spacing="4">
                         <TextBlock Classes="panelhdr" Text="Thermal"/>
                         <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding OneTemperature}">
-                            <TextBlock Text="{Binding T0Text}"/>
+                            <SelectableTextBlock Text="{Binding T0Text}"/>
                             <TextBlock Classes="lbl" Text="one temperature"/>
                         </StackPanel>
                         <StackPanel Spacing="3" IsVisible="{Binding !OneTemperature}">
@@ -313,7 +327,7 @@
                                 <ctl:InlineEditText Grid.Column="1" Text="{Binding Ladder, Mode=TwoWay}" HorizontalContentAlignment="Right"
                                                     ToolTip.Tip="fraction:τ pairs, e.g. 0.6:1 µs, 0.4:100 µs"/>
                             </Grid>
-                            <TextBlock FontSize="11" Text="{Binding ThermalResidual}"/>
+                            <SelectableTextBlock FontSize="11" Text="{Binding ThermalResidual}"/>
                         </StackPanel>
                     </StackPanel>
 
@@ -321,14 +335,14 @@
                     <StackPanel IsVisible="{Binding IsTrapsStep}" Spacing="4">
                         <TextBlock Classes="panelhdr" Text="Traps"/>
                         <ComboBox ItemsSource="{Binding TrapModelNames}" SelectedItem="{Binding TrapModel}" HorizontalAlignment="Stretch"/>
-                        <TextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding TrapRunNote}"
+                        <SelectableTextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding TrapRunNote}"
                                    IsVisible="{Binding TrapRunNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <Grid ColumnDefinitions="60,*" IsVisible="{Binding HasTrapModel}">
                             <TextBlock Classes="lbl" Text="Coupling"/>
                             <ComboBox Grid.Column="1" ItemsSource="{Binding TrapCouplings}" SelectedItem="{Binding TrapCoupling}" HorizontalAlignment="Stretch"
                                       ToolTip.Tip="Trained: Id takes the trap states as inputs, from pulsed I–V. Shift: the states shift the gate voltage of the trap-free Id."/>
                         </Grid>
-                        <TextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding TrapCouplingNote}"
+                        <SelectableTextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding TrapCouplingNote}"
                                    IsVisible="{Binding TrapCouplingNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <ItemsControl ItemsSource="{Binding TrapStates}">
                             <ItemsControl.ItemTemplate>
@@ -373,7 +387,7 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <TextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding TrapCheck}"/>
+                        <SelectableTextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding TrapCheck}"/>
                     </StackPanel>
 
                     <!-- ── Check (R-mc15-6) ────────────────────────────────── -->
@@ -388,7 +402,7 @@
                         <ItemsControl ItemsSource="{Binding CheckLines}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="x:String">
-                                    <TextBlock TextWrapping="Wrap" Text="{Binding}" Margin="0,1"/>
+                                    <SelectableTextBlock TextWrapping="Wrap" Text="{Binding}" Margin="0,1"/>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
@@ -423,7 +437,7 @@
                                             </Grid>
                                             <TextBlock Classes="lbl" FontSize="11" Text="{Binding Kind}"/>
                                             <TextBlock Classes="lbl" FontSize="11" Text="{Binding Tolerance}"/>
-                                            <TextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding Result}"/>
+                                            <SelectableTextBlock FontSize="11" TextWrapping="Wrap" Text="{Binding Result}"/>
                                         </StackPanel>
                                     </Border>
                                 </DataTemplate>
@@ -451,7 +465,7 @@
                     <StackPanel IsVisible="{Binding IsExportStep}" Spacing="4">
                         <TextBlock Classes="panelhdr" Text="Export"/>
                         <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !CanExport}">
-                            <TextBlock Classes="warn" FontSize="11" Text="{Binding ExportBlocked}"/>
+                            <SelectableTextBlock Classes="warn" FontSize="11" Text="{Binding ExportBlocked}"/>
                             <Button Grid.Column="1" Content="Run stale" Command="{Binding RunStaleCommand}"/>
                         </Grid>
                         <StackPanel Spacing="4" IsVisible="{Binding IsActive}">
@@ -468,7 +482,7 @@
                                         <ctl:InlineEditText Grid.Column="1" Text="{Binding PeripheryWidth, Mode=TwoWay}"
                                                             HorizontalContentAlignment="Right" ToolTip.Tip="Unit gate width, e.g. 125 um"/>
                                     </Grid>
-                                    <TextBlock Classes="warn" Text="{Binding PeripheryWarning}"
+                                    <SelectableTextBlock Classes="warn" Text="{Binding PeripheryWarning}"
                                                IsVisible="{Binding PeripheryWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                                 </StackPanel>
                             </Border>

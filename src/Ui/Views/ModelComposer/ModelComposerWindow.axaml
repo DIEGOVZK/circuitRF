@@ -58,11 +58,11 @@
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Margin"     Value="0,0,0,4"/>
         </Style>
-        <Style Selector="TextBlock.lbl">
+        <Style Selector=":is(TextBlock).lbl">
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="Foreground" Value="{DynamicResource SystemBaseMediumColor}"/>
         </Style>
-        <Style Selector="TextBlock.warn">
+        <Style Selector=":is(TextBlock).warn">
             <Setter Property="Foreground" Value="{DynamicResource CrfWarningBrush}"/>
             <Setter Property="TextWrapping" Value="Wrap"/>
         </Style>
@@ -246,17 +246,21 @@
         </Border>
 
         <!-- ── Status strip: one line, one progress bar, one Cancel ──────────────── -->
+        <!-- One height, running or not (owner, review 3): the Cancel button is taller than the line, so the strip grew by a
+             few pixels for the length of every run and the whole window shifted with it. The row is held at the button's
+             height, which the button is sized to. -->
         <Border DockPanel.Dock="Bottom"
                 BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
-                BorderThickness="0,1,0,0" Padding="8,3">
-            <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Name="StatusLine" Text="{Binding StatusText}" VerticalAlignment="Center" TextWrapping="NoWrap"
-                           TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding StatusText}"/>
+                BorderThickness="0,1,0,0" Padding="8,2">
+            <Grid ColumnDefinitions="*,Auto" Height="22">
+                <SelectableTextBlock Name="StatusLine" Text="{Binding StatusText}" VerticalAlignment="Center" TextWrapping="NoWrap"
+                                     TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding StatusText}"/>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsRunning}">
                     <TextBlock Classes="lbl" Text="{Binding TaskStage}" MaxWidth="260" TextTrimming="CharacterEllipsis"/>
                     <ProgressBar Width="160" Minimum="0" Maximum="1" Value="{Binding Progress}"
                                  IsIndeterminate="{Binding !ProgressKnown}" VerticalAlignment="Center"/>
-                    <Button Classes="tool" Command="{Binding CancelCommand}" ToolTip.Tip="Cancel">
+                    <Button Classes="tool" Command="{Binding CancelCommand}" ToolTip.Tip="Cancel"
+                            Height="22" Padding="4,0" VerticalAlignment="Center">
                         <mi:MaterialIcon Kind="Close" Width="14" Height="14"/>
                     </Button>
                 </StackPanel>

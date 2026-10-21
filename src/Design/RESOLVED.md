@@ -21220,3 +21220,27 @@ read; it imports with connectivity matching both its drawing and its declared ne
   come from two separate runs and must be the same bytes (`ModelReportDialogTests`).
 - **Every generated HB and loadpull testbench now writes `FFTOverSample`, `Tol` and `MaxIter`** at the analysis's own
   defaults, so the report's stated solver settings and what the testbench reproduces are one fact.
+
+## Equation templates on data at several temperatures: the current scale is linear in T by default (review 3, 2026-10-20)
+
+- **An Angelov fit of the synthetic GaN example missed its own points by 3.9 % of range (DC)** — a large miss on a
+  simple device. The data spans 25–125 °C ambients and the DC points sit self-heated, but the template had no `T` term:
+  `TemperatureCoefficients` defaulted to none, so one law was fitted through hot DC and cooler pulsed points alike, and
+  its peak-gm bias wandered out of the data (Vpk 1.85 V against a 1.4 V maximum). With `Ipk` linear in `T` the error is
+  1.77 % and the fitted slope −0.38 %/K against the truth's −0.4 %/K; the rest is the Angelov shape against a
+  square-law device.
+- `CurrentTemplate.Scale` names each drain template's current scale (Angelov `Ipk`, Curtice/Statz `Beta`, Materka
+  `Idss`; none for the cubic and the diode). `CurrentConstituentSettings.TemperatureCoefficients` is now nullable:
+  **absent = that default when `T` is an input, `[]` = none**, a list = as named. The fit reports the default when it
+  applies it. Gate: `CurrentFitEquationTests.ATemplate_OnDataAtTwoTemperatures_FitsItsCurrentScaleLinearInT`.
+- **The window drew every DC model line unheated — the larger part of "the traces don't match the points".** The step
+  plots gather one I–V set at a time (`ModelStepPlots`), and `CurrentFit.Gather` decided whether `T` is an input from
+  the sets it was given: one set, one ambient, so no `T`, no self-heating, and each DC point at the ambient instead of
+  its junction temperature. On the synthetic GaN example the top curve's model read 182 mA at Vds 20 V against 135.5 mA
+  measured (a 2.7 W point, Tj 85.5 °C); with the fit's temperatures it reads 140.6 mA (Angelov) and 137.8 mA (the
+  shipped ANN, whose overlay was wrong the same way). `Gather` takes the fit's `temperatures`, and the Current, Thermal
+  (heated against isothermal) and Traps plots pass them. The validation and report paths that gather one set read that
+  set's own ambient, which is right for them. Gate: `CurrentFitEquationTests.OneSetGathered_WithTheFitsTemperatures_KeepsTAsAnInput`.
+- **harmonicaRF's composed DC-IV family took Rth at the netlist's ambient**, not at the device's own `Temp` — the
+  elaborator builds the thermal network at the device's. `DcivFamily` now passes `ComposedCoreModel.RequestedC`. (It
+  still reads the model's Rth, not an instance `Rth` override.)

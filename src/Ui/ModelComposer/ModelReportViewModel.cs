@@ -13,6 +13,7 @@ using System.Numerics;
 using System.Threading.Tasks;
 using CircuitRF.Design.Modeling;
 using CircuitRF.Harmonica;
+using CircuitRF.Render.DataDisplay;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -26,7 +27,132 @@ public sealed partial class ModelReportViewModel : ObservableObject
     {
         Owner = owner;
         Load(ModelValidationReport.Options(owner.Document));
+        var c = owner.ReportChoicesNow();
+        FrequencyChoices = [.. c.FrequenciesGHz.Select(N)];
+        VgsChoices = [.. c.Vgs.Select(N)];
+        VdsChoices = [.. c.Vds.Select(N)];
+        FrequencyPlaceholder = $"{N(c.DefaultFrequencyGHz)} — the S data's median";
+        VdsPlaceholder = $"{N(c.DefaultVds)} — half the largest measured";
+
+        SBiasItems = Picks(c.SBiases.Select(b => $"{N(b.Vgs)}, {N(b.Vds)}"), SBiases, ';', () => SBiases = Join(SBiasItems!, "; "),
+                           t => t.Split(',', StringSplitOptions.TrimEntries) is [var g, var d] ? $"Vgs {g} V, Vds {d} V" : t);
+        CvVdsItems = Picks(c.CvVds.Select(N), FixedVds, ',', () => FixedVds = Join(CvVdsItems!, ", "), t => $"Vds {t} V");
+        CvVgsItems = Picks(c.CvVgs.Select(N), FixedVgs, ',', () => FixedVgs = Join(CvVgsItems!, ", "), t => $"Vgs {t} V");
+
+        // The S biases as the bias plane they are: drain voltage across, gate voltage down from the highest, a box where a
+        // bias was measured — unless the plan is so irregular that the matrix would be mostly empty boxes, when the biases
+        // are typed. A chosen bias the data does not have stays as a chip below the matrix.
+        var vdsAxis = c.SBiases.Select(b => b.Vds).Distinct().Order().ToList();
+        var vgsAxis = c.SBiases.Select(b => b.Vgs).Distinct().OrderDescending().ToList();
+        if (vdsAxis.Count * vgsAxis.Count <= MaxMatrixCells)
+        {
+            var byText = SBiasItems.ToDictionary(i => i.Text);
+            SBiasColumns = [.. vdsAxis.Select(N)];
+            SBiasRows = [.. vgsAxis.Select(g => new BiasRow(N(g),
+                [.. vdsAxis.Select(d => byText.GetValueOrDefault($"{N(g)}, {N(d)}") ?? PickItem.Absent)]))];
+        }
+        SBiasOthers = [.. SBiasItems.Skip(c.SBiases.Count)];
     }
+
+    // ── choices (owner, review 3) ────────────────────────────────────────────
+    //
+    // The frequency and the PA bias are editable lists of the measured values — a typed value still reads — and an empty
+    // one shows the value the report will take in its place.
+
+    /// <summary>The S data's frequencies, GHz.</summary>
+    public IReadOnlyList<string> FrequencyChoices { get; }
+    /// <summary>The I–V data's gate and drain voltages, for the PA bias.</summary>
+    public IReadOnlyList<string> VgsChoices { get; }
+    public IReadOnlyList<string> VdsChoices { get; }
+
+    /// <summary>What an empty frequency or drain voltage means, as the value the report will take.</summary>
+    public string FrequencyPlaceholder { get; }
+    public string VdsPlaceholder { get; }
+    public const string VgsPlaceholder = "Class B: Id at 2 % of the largest";
+
+    /// <summary>The S data's biases, "vgs, vds", then any chosen earlier that the data does not have.</summary>
+    public IReadOnlyList<PickItem> SBiasItems { get; }
+    /// <summary>The S data's drain and gate voltages, for the C–V families.</summary>
+    public IReadOnlyList<PickItem> CvVdsItems { get; }
+    public IReadOnlyList<PickItem> CvVgsItems { get; }
+
+    /// <summary>The S-bias matrix: its drain-voltage columns, and a row per gate voltage, highest first. Empty when the plan
+    /// would need more than <see cref="MaxMatrixCells"/> boxes; the dialog then shows the typed field.</summary>
+    public IReadOnlyList<string> SBiasColumns { get; } = [];
+    public IReadOnlyList<BiasRow> SBiasRows { get; } = [];
+    /// <summary>Chosen S biases the data does not have — kept, and shown so they can be cleared.</summary>
+    public IReadOnlyList<PickItem> SBiasOthers { get; }
+
+    /// <summary>The most boxes the matrix builds (50 × 50). It scrolls inside a capped area; beyond this, a plan is
+    /// irregular enough that most boxes would be empty, and the biases are typed instead.</summary>
+    public const int MaxMatrixCells = 2500;
+    /// <summary>The most voltages offered as chips; beyond it the list is typed.</summary>
+    public const int MaxChips = 24;
+
+    public bool SBiasAsMatrix => SBiasRows.Count > 0;
+    public bool SBiasAsText => SBiasRows.Count == 0 && SBiasItems.Count > SBiasOthers.Count;
+    public bool HasSBiasOthers => SBiasOthers.Count > 0;
+    public bool CvVdsAsChips => CvVdsItems.Count is > 0 and <= MaxChips;
+    public bool CvVdsAsText => CvVdsItems.Count > MaxChips;
+    public bool CvVgsAsChips => CvVgsItems.Count is > 0 and <= MaxChips;
+    public bool CvVgsAsText => CvVgsItems.Count > MaxChips;
+
+    public const string SBiasesDefault = "lowest, middle and highest current", SpreadDefault = "five spread over the data";
+
+    /// <summary>What each choice means now, under it: how many are chosen, or the default nothing chosen falls back to.</summary>
+    public string SBiasesSummary => Count(SBiases, ';') is var n and > 0 ? $"{n} chosen" : $"None chosen: {SBiasesDefault}";
+    public string FixedVdsSummary => Count(FixedVds, ',') is var n and > 0 ? $"{n} chosen" : $"None chosen: {SpreadDefault}";
+    public string FixedVgsSummary => Count(FixedVgs, ',') is var n and > 0 ? $"{n} chosen" : $"None chosen: {SpreadDefault}";
+
+    private static int Count(string text, char separator) => text.Split(separator, StringSplitOptions.RemoveEmptyEntries).Length;
+
+    /// <summary>Whether each choice has anything to clear: its Clear shows only then.</summary>
+    public bool AnySBiases => SBiases.Trim().Length > 0;
+    public bool AnyFixedVds => FixedVds.Trim().Length > 0;
+    public bool AnyFixedVgs => FixedVgs.Trim().Length > 0;
+
+    partial void OnSBiasesChanged(string value) { OnPropertyChanged(nameof(SBiasesSummary)); OnPropertyChanged(nameof(AnySBiases)); }
+    partial void OnFixedVdsChanged(string value) { OnPropertyChanged(nameof(FixedVdsSummary)); OnPropertyChanged(nameof(AnyFixedVds)); }
+    partial void OnFixedVgsChanged(string value) { OnPropertyChanged(nameof(FixedVgsSummary)); OnPropertyChanged(nameof(AnyFixedVgs)); }
+
+    /// <summary>Clears one choice — its boxes or chips, and the text they write.</summary>
+    [RelayCommand]
+    private void ClearPicks(string which)
+    {
+        var items = which switch { "s" => SBiasItems, "vds" => CvVdsItems, _ => CvVgsItems };
+        foreach (var i in items) i.IsChecked = false;
+        switch (which)
+        {
+            case "s": SBiases = ""; break;
+            case "vds": FixedVds = ""; break;
+            default: FixedVgs = ""; break;
+        }
+    }
+
+    /// <summary>
+    /// A checklist of <paramref name="offered"/>, each checked when <paramref name="stored"/> names it. A stored value the
+    /// data does not offer is kept as a checked item of its own, so opening the dialog never drops an option silently.
+    /// </summary>
+    private static List<PickItem> Picks(IEnumerable<string> offered, string stored, char separator, Action changed, Func<string, string> tip)
+    {
+        var chosen = stored.Split(separator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        var items = offered.Select(o => new PickItem(o, chosen.Any(c => Same(c, o)), changed) { Tip = tip(o) }).ToList();
+        foreach (string c in chosen.Where(c => !items.Any(i => Same(c, i.Text))))
+            items.Add(new PickItem(c, true, changed) { Tip = $"{tip(c)} — chosen earlier; not in the data" });
+        return items;
+    }
+
+    /// <summary>Two spellings of one value or pair: compared number by number.</summary>
+    private static bool Same(string a, string b)
+    {
+        static double[] Parts(string t) => [.. t.Split(',', StringSplitOptions.TrimEntries)
+            .Select(x => double.TryParse(x, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) ? v : double.NaN)];
+        double[] x = Parts(a), y = Parts(b);
+        return x.Length == y.Length && x.Zip(y).All(p => Math.Abs(p.First - p.Second) <= 1e-6 * Math.Max(1, Math.Abs(p.First)));
+    }
+
+    private static string Join(IEnumerable<PickItem> items, string separator) =>
+        string.Join(separator, items.Where(i => i.IsChecked).Select(i => i.Text));
 
     [ObservableProperty] private bool _dc, _thermal, _charge, _capacitanceSlices, _sParams, _paModes;
     [ObservableProperty] private bool _classB, _classJ, _classJStar, _classF, _classFInverse;
@@ -136,4 +262,23 @@ public sealed partial class ModelReportViewModel : ObservableObject
 
     [RelayCommand(CanExecute = nameof(HasReport))]
     private Task ExportPdf() => Owner.ExportReportPdfAsync();
+}
+
+/// <summary>One row of the S-bias matrix: its gate voltage and a box per drain voltage.</summary>
+public sealed record BiasRow(string Vgs, IReadOnlyList<PickItem> Cells);
+
+/// <summary>One choosable value — a matrix box or a chip — as the option's text spells it, and whether it is chosen.</summary>
+public sealed partial class PickItem(string text, bool on, Action changed) : ObservableObject
+{
+    /// <summary>A matrix box where nothing was measured: drawn as a dot, never chosen.</summary>
+    public static PickItem Absent { get; } = new("", false, () => { }) { IsPresent = false };
+
+    public string Text { get; } = text;
+    /// <summary>The value as a reader names it — a box's bias point, "Vgs −0.4 V, Vds 10 V".</summary>
+    public string Tip { get; init; } = text;
+    public bool IsPresent { get; private init; } = true;
+
+    [ObservableProperty] private bool _isChecked = on;
+
+    partial void OnIsCheckedChanged(bool value) => changed();
 }

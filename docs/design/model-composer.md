@@ -887,7 +887,8 @@ model is `Single` at `T0`, no constituent reads `T`, self-heating is unavailable
 in `T` too, sites every `TemperatureStep`, 25 °C by default; such a table re-grids through a network, the RBF being
 two-dimensional), and an equation may read `T`. A template's `TemperatureCoefficients` names parameters made linear
 in temperature, `p → (p + p_T·(T − Tnom))`, `p_T` free from 0 within the parameter's own range over the data's span,
-`Tnom` the lowest temperature, locked. The domain's `Box` holds `T`'s training interval;
+`Tnom` the lowest temperature, locked. Absent, it is the template's current scale (`CurrentTemplate.Scale`: Angelov
+`Ipk`, Curtice and Statz `Beta`, Materka `Idss`; none for the cubic and the diode); an empty list is none. The domain's `Box` holds `T`'s training interval;
 `ThermalFit.ModelTemperature` gives the `Range` covering it and every ambient.
 
 What `T` is for each point:

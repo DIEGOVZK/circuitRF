@@ -4,6 +4,7 @@
 // and Export PDF draws that document through ModelReportDisplayPreset, so both PDFs are the same bytes.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -33,6 +34,29 @@ public sealed partial class ModelComposerViewModel
         if (!IsActive) return;
         var dialog = new ModelReportViewModel(this);
         if (ShowReportDialog is { } show) await show(dialog);
+    }
+
+    /// <summary>
+    /// What the report dialog offers (owner, review 3): the S data's frequencies, the I–V data's gate and drain voltages for
+    /// the PA bias, and the S data's biases and their gate and drain voltages for the S comparisons and the C–V families —
+    /// the measured values, so a choice is one the data can check. Excluded points are left out.
+    /// </summary>
+    internal ReportChoices ReportChoicesNow()
+    {
+        IEnumerable<NormalisedData> Of(Func<CmcDataSet, bool> kind) =>
+            Document.DataSets.Where(s => kind(s) && Loaded.Data.ContainsKey(s.Name)).Select(s => Loaded.Data[s.Name]);
+        var sData = Of(s => s.Kind is DataSetKind.SParams).ToList();
+        var ivPoints = Of(s => s.Kind is DataSetKind.DcIv or DataSetKind.PulsedIv or DataSetKind.SimulatedTables)
+                       .SelectMany(d => d.Points).Where(p => !p.Excluded).ToList();
+        var sPoints = sData.SelectMany(d => d.Points).Where(p => !p.Excluded).ToList();
+        static List<double> Distinct(IEnumerable<double> v) => [.. v.Where(double.IsFinite).Select(x => Math.Round(x, 6)).Distinct().Order()];
+        return new ReportChoices(
+            Distinct(sData.SelectMany(d => d.FrequenciesHz ?? []).Select(f => f / 1e9)),
+            Distinct(ivPoints.Select(p => p.Vgs)), Distinct(ivPoints.Select(p => p.Vds)),
+            [.. sPoints.Where(p => double.IsFinite(p.Vgs) && double.IsFinite(p.Vds))
+                       .Select(p => (Math.Round(p.Vgs, 6), Math.Round(p.Vds, 6))).Distinct().OrderBy(b => b.Item2).ThenBy(b => b.Item1)],
+            Distinct(sPoints.Select(p => p.Vds)), Distinct(sPoints.Select(p => p.Vgs)),
+            ModelValidationReport.DefaultFrequencyHz(Document, Loaded.Data) / 1e9, ModelValidationReport.DefaultVds(Loaded.Data));
     }
 
     /// <summary>Writes <paramref name="options"/> to <c>Steps.Report</c>; false when the document refuses them.</summary>
@@ -88,3 +112,9 @@ public sealed partial class ModelComposerViewModel
         }
     }
 }
+
+/// <summary>The measured values the report dialog offers — frequencies in GHz, the PA bias's voltages, the S biases, and the
+/// C–V families' fixed drain and gate voltages — and the frequency and drain voltage the report takes when none is chosen.</summary>
+public sealed record ReportChoices(IReadOnlyList<double> FrequenciesGHz, IReadOnlyList<double> Vgs, IReadOnlyList<double> Vds,
+                                   IReadOnlyList<(double Vgs, double Vds)> SBiases, IReadOnlyList<double> CvVds, IReadOnlyList<double> CvVgs,
+                                   double DefaultFrequencyGHz, double DefaultVds);

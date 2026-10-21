@@ -119,18 +119,32 @@ public sealed partial class ModelComposerViewModel
         var r = CurrentFit.Record(Document);
         if (CurrentPickers.Count == 0)
         {
-            CurrentPickers.Add(new MethodPickerRow("Id", CurrentMethods, [.. CurrentTemplates.Names(false)], false, CommitCurrent));
-            CurrentPickers.Add(new MethodPickerRow("Ig", CurrentMethods, [.. CurrentTemplates.Names(true)], false, CommitCurrent));
+            CurrentPickers.Add(new MethodPickerRow("Id", CurrentMethods, [.. CurrentTemplates.Names(false)], false, CommitCurrent, CurrentTemplateInfo));
+            CurrentPickers.Add(new MethodPickerRow("Ig", CurrentMethods, [.. CurrentTemplates.Names(true)], false, CommitCurrent, CurrentTemplateInfo));
         }
         CurrentPickers[0].Load(s.Id.Method.ToString(), Layers(s.Id.Hidden), s.Id.Activation.ToString(), s.Id.MaxIterations.ToString(CultureInfo.InvariantCulture),
-                               Num(s.Id.GridStep), Num(s.Id.Smoothing), "", s.Id.Template ?? "", s.Id.Expression ?? "", "", Fitted(r?.Id));
+                               Num(s.Id.GridStep), Num(s.Id.Smoothing), "", s.Id.Template ?? "", s.Id.Expression ?? "", "", Fitted(r?.Id),
+                               TemperatureText(s.Id.TemperatureCoefficients));
         CurrentPickers[1].Load(s.Ig.Method.ToString(), Layers(s.Ig.Hidden), s.Ig.Activation.ToString(), s.Ig.MaxIterations.ToString(CultureInfo.InvariantCulture),
-                               Num(s.Ig.GridStep), Num(s.Ig.Smoothing), "", s.Ig.Template ?? "", s.Ig.IgGs ?? "", s.Ig.IgGd ?? "", Fitted(r?.Ig));
+                               Num(s.Ig.GridStep), Num(s.Ig.Smoothing), "", s.Ig.Template ?? "", s.Ig.IgGs ?? "", s.Ig.IgGd ?? "", Fitted(r?.Ig),
+                               TemperatureText(s.Ig.TemperatureCoefficients));
         CurrentSeed = s.Seed.ToString(CultureInfo.InvariantCulture);
         CurrentRestarts = s.Restarts.ToString(CultureInfo.InvariantCulture);
         CurrentHeldOut = Num(100 * s.HeldOutFraction);
         Dispersion = s.Dispersion is not null;
     }
+
+    private static TemplateInfo? CurrentTemplateInfo(string name) => CurrentTemplates.Find(name) is { } t
+        ? new(t.IsGate ? $"IgGs = {t.IgGs}{Environment.NewLine}IgGd = {t.IgGd}" : $"Id = {t.Id}", t.Scale)
+        : null;
+
+    private static TemplateInfo? ChargeTemplateInfo(string name, bool gate) =>
+        ChargeTemplates.All.FirstOrDefault(t => t.Name == name) is { } t ? new(gate ? $"Qg = {t.Qg}" : $"Qd = {t.Qd}", null) : null;
+
+    /// <summary>A constituent's temperature coefficients as the picker spells them: empty for the template's default, "none"
+    /// for none.</summary>
+    private static string TemperatureText(IReadOnlyList<string>? names) =>
+        names is null ? "" : names.Count == 0 ? "none" : string.Join(", ", names);
 
     private void CommitCurrent(MethodPickerRow row, string field, string text)
     {
@@ -149,7 +163,13 @@ public sealed partial class ModelComposerViewModel
         switch (field)
         {
             case nameof(MethodPickerRow.Method):
-                return Enum.TryParse<CurrentMethod>(text, out var m) ? c with { Method = m } : null;
+                if (!Enum.TryParse<CurrentMethod>(text, out var m)) return null;
+                // An equation with neither a template nor an expression of its own starts on the first template (owner,
+                // review 3): an empty one cannot be fitted and says nothing about what goes there.
+                bool blank = c.Template is null && (row.IsGate ? c.IgGs is null && c.IgGd is null : c.Expression is null);
+                return m == CurrentMethod.Equation && blank
+                    ? c with { Method = m, Template = CurrentTemplates.Names(row.IsGate).First() }
+                    : c with { Method = m };
             case nameof(MethodPickerRow.Hidden):
                 if (ParseLayers(text) is { } h) return c with { Hidden = h };
                 Error($"{row.Name}: hidden layers are 1 to 4 counts, e.g. 8, 8.");
@@ -168,6 +188,14 @@ public sealed partial class ModelComposerViewModel
                 return row.IsGate ? c with { IgGs = text.Length == 0 ? null : text } : c with { Expression = text.Length == 0 ? null : text };
             case nameof(MethodPickerRow.ExpressionGd):
                 return c with { IgGd = text.Length == 0 ? null : text };
+            case nameof(MethodPickerRow.Temperature):
+                string t = text.Trim();
+                return c with
+                {
+                    TemperatureCoefficients = t.Length == 0 ? null
+                        : t.Equals("none", StringComparison.OrdinalIgnoreCase) ? []
+                        : [.. t.Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)],
+                };
             default:
                 return null;
         }
@@ -213,8 +241,8 @@ public sealed partial class ModelComposerViewModel
         var r = ChargeFit.Record(Document);
         if (ChargePickers.Count == 0)
         {
-            ChargePickers.Add(new MethodPickerRow("Qg", ChargeMethods, [.. ChargeTemplates.Names], true, CommitCharge));
-            ChargePickers.Add(new MethodPickerRow("Qd", ChargeMethods, [.. ChargeTemplates.Names], true, CommitCharge));
+            ChargePickers.Add(new MethodPickerRow("Qg", ChargeMethods, [.. ChargeTemplates.Names], true, CommitCharge, n => ChargeTemplateInfo(n, true)));
+            ChargePickers.Add(new MethodPickerRow("Qd", ChargeMethods, [.. ChargeTemplates.Names], true, CommitCharge, n => ChargeTemplateInfo(n, false)));
         }
         foreach (var (row, c, rec) in new[] { (ChargePickers[0], s.Qg, r?.Qg), (ChargePickers[1], s.Qd, r?.Qd) })
             row.Load(c.Method.ToString(), Layers(c.Hidden), c.Activation.ToString(), c.MaxIterations.ToString(CultureInfo.InvariantCulture),
@@ -290,7 +318,11 @@ public sealed partial class ModelComposerViewModel
         var c = row.Name == "Qg" ? s.Qg : s.Qd;
         ChargeConstituentSettings? next = field switch
         {
-            nameof(MethodPickerRow.Method) => Enum.TryParse<ChargeMethod>(text, out var m) ? c with { Method = m } : null,
+            nameof(MethodPickerRow.Method) => Enum.TryParse<ChargeMethod>(text, out var m)
+                ? m == ChargeMethod.Equation && c.Template is null && c.Expression is null
+                    ? c with { Method = m, Template = ChargeTemplates.Names.First() }
+                    : c with { Method = m }
+                : null,
             nameof(MethodPickerRow.Hidden) => ParseLayers(text) is { } h ? c with { Hidden = h } : null,
             nameof(MethodPickerRow.Activation) => Enum.TryParse<AnnActivation>(text, out var a) ? c with { Activation = a } : null,
             nameof(MethodPickerRow.Iterations) => int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int it) && it > 0 ? c with { MaxIterations = it } : null,

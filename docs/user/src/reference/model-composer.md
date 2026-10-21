@@ -304,7 +304,8 @@ it is not an error. Checks (b) and (c) also run on any nonlinear device in a net
 ## Temperature {#temperature}
 
 **Data at two or more temperatures** makes `T` an input of every constituent. The model then follows the run's ambient
-`temp`, clamped to the data's range with one warning, and self-heating is available.
+`temp`, clamped to the data's range with one warning, and self-heating is available. An equation template's current
+scale (Ipk, Beta or Idss) is then linear in `T` unless you say otherwise; see [the method picker](#method).
 
 **Data at one temperature** makes a model valid at that temperature, `T0`, with no temperature dependence. Self-heating
 is unavailable. A run at another `temp` prints one warning naming both temperatures and uses the model as it is.
@@ -494,6 +495,9 @@ points the plots and the cursor's lists at it.
 | S | The four S-parameters in dB at the cursor's bias |
 | Smith | S11 and S22 at the cursor's bias |
 
+**Moving the cursor.** On the bias plane, with the lasso lamp off, click a point: it turns green, the toolbar's Vgs and
+Vds move to its bias, and the other tabs follow. A point of another data set selects that set.
+
 **Excluding points.** On the bias plane, light the lasso lamp under the plot tabs, choose a reason, then click a point
 or drag a lasso around several. Points already excluded are included again. Each click or lasso is one undo step.
 
@@ -538,7 +542,12 @@ The Current and Charge steps pick a method for each constituent with the same co
 |---|---|
 | ANN | Hidden layers (1 to 4, neurons each, default `8, 8`), activation, iterations. A charge needs S at 4 biases or more |
 | Table | Grid step and smoothing; a charge table also takes its line-integral path — A, B or their mean. A charge needs S at 4 biases or more |
-| Equation | A template, or your own expression in `vgs`, `vds` and named parameters; after a fit, each parameter's value. A charge needs at least as many capacitances as free parameters, two per bias, so `Linear` fits from one |
+| Equation | A template, or **Custom** for your own expression in `vgs`, `vds` and named parameters; after a fit, each parameter's value, which can be selected and copied. A charge needs at least as many capacitances as free parameters, two per bias, so `Linear` fits from one |
+
+Choosing Equation starts on the first template. A template shows the law it fits; the expression boxes are Custom's.
+**Linear in T** names the current template's parameters made linear in temperature, `p + p_T·(T − Tnom)`. Left blank it
+is the template's current scale (Ipk for Angelov, Beta for Curtice and Statz, Idss for Materka) when the data spans
+temperatures, so that hot DC points and cooler pulsed points are not fitted by one law; `none` turns it off.
 
 With fewer S biases than a method needs, its entry in the picker gives the reason when you hover over it, and a fit
 with it is refused rather than run with another method.
@@ -648,6 +657,13 @@ it in the file manager.
 sections, the S biases, the fixed voltages of the C–V families, the PA classes, the frequency, bias, R_opt and the
 source's fundamental and 2f0 terminations, the load disc (radius, rings, spokes), the drive ladder and the compression.
 Each opens on the value stored in the document or its default; **Apply** stores them.
+
+The choices are the data's own values. The S biases are boxes laid out as the bias plane, Vds across and Vgs down;
+hover over one for its bias, tick the ones to compare. A very irregular plan, which would need more than 2,500 boxes,
+is typed instead. The C–V voltages are buttons, one per measured voltage, typed past 24. Under each is how many are
+chosen, or what none chosen means: the lowest, middle and highest current for S, five voltages spread over the data
+for C–V. The frequency and the PA bias list the measured values and accept any other; left empty, each shows the value
+the report will use, such as the S data's median frequency.
 
 **Generate** writes the report into `<name>-report/` beside the `.cmc`, and its Data Display document,
 `<name>-report.cdd`, beside that folder: one tab per section — the bias points of every data set, I–V families, the ΔQ
@@ -763,8 +779,13 @@ with each DC curve at its own trap state and self-heated temperature.
 ## Plots {#plots}
 
 Every plot is a Data Display plot. Measured traces are symbols and model traces lines. The plots are drawn from the
-document, so a double-click opens nothing and the menu's Plot Properties… and Axes Labels… are greyed; a double-click on
-a curve still adds a marker, and Copy and Export… are always there. The Data step's tabs are glyphs: Output and
+document, so the menu's Plot Properties… and Axes Labels… are greyed; Copy and Export… are always there.
+
+**Markers.** Double-click a curve, a point or a Smith locus to add a marker. Its info box opens in a band between the
+plot's title and its axes, beside the boxes already there. Drag a marker to move it along its trace — on the bias plane
+to the point nearest the pointer — and the arrow keys step it. A bias-plane marker reads its data set and bias. Markers
+stay through every redraw and reappear when you return to their tab. Select a box and press Delete, or use its menu, to
+remove one. The Data step's tabs are glyphs: Output and
 Transfer a small plot marked `Vds` and `Vgs`, S one marked `S`, the bias plane a grid of points, and Smith the Smith
 glyph. The button at the right of the tab strip, **Open in Data Display**, sends the plot's data to a new display: the
 step's plot data, or on the Data, Pads and Network steps the curves the tab shows.

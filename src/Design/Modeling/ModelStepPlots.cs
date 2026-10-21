@@ -166,7 +166,8 @@ public static class ModelStepPlots
         if (CurrentFit.Load(cmcPath, doc) is not { } current) return null;
         var settings = CurrentFit.Settings(doc);
         var heating = ThermalFit.Heating(doc);
-        var program = Program(current, dc: true, CurrentFit.Temperatures(CurrentFit.ChosenIv(doc, settings), data));
+        var temps = CurrentFit.Temperatures(CurrentFit.ChosenIv(doc, settings), data);
+        var program = Program(current, dc: true, temps);
         var ds = new DataSet();
         var notes = new List<string>();
         var sets = new List<string>();
@@ -177,8 +178,9 @@ public static class ModelStepPlots
             {
                 // A DC set reads every trap state at its DC value, which DcSeeds gives; a pulsed set its own states.
                 bool pulsed = set.Kind is DataSetKind.PulsedIv;
+                // The fit's temperatures, not this one set's: see Gather's own note.
                 var ip = CurrentFit.Gather(doc, data, intrinsic, settings with { DataSets = [set.Name] }, [], heating,
-                                           withTraps: pulsed && TrapFit.Modelled(doc));
+                                           withTraps: pulsed && TrapFit.Modelled(doc), temperatures: temps);
                 AddIv(ds, set.Name, ip, data[set.Name], program);
                 AddDerivatives(ds, set.Name);
                 if (Map(ds, set.Name, "Error", ip.Domain.Polygon) is { } map) ds.Add($"{set.Name}.ErrorMap", map);
@@ -362,7 +364,8 @@ public static class ModelStepPlots
     {
         if (ThermalFit.Network(ThermalFit.Record(doc)) is not { } thermal || CurrentFit.Load(cmcPath, doc) is not { } current) return null;
         var settings = CurrentFit.Settings(doc);
-        var program = Program(current, dc: true, CurrentFit.Temperatures(CurrentFit.ChosenIv(doc, settings), data));
+        var temps = CurrentFit.Temperatures(CurrentFit.ChosenIv(doc, settings), data);
+        var program = Program(current, dc: true, temps);
         if (!program.HasT) return null;
         var ds = new DataSet();
         var notes = new List<string>();
@@ -379,8 +382,8 @@ public static class ModelStepPlots
             try
             {
                 var s = settings with { DataSets = [set.Name] };
-                var hot = CurrentFit.Gather(doc, data, intrinsic, s, [], heating, withTraps: false);
-                var iso = CurrentFit.Gather(doc, data, intrinsic, s, [], ThermalHeating.None, withTraps: false);
+                var hot = CurrentFit.Gather(doc, data, intrinsic, s, [], heating, withTraps: false, temperatures: temps);
+                var iso = CurrentFit.Gather(doc, data, intrinsic, s, [], ThermalHeating.None, withTraps: false, temperatures: temps);
                 AddIv(ds, set.Name, hot, data[set.Name], program);
                 var axis = ds[$"{set.Name}.Vgs"].Axes[0];
                 ds.Add($"{set.Name}.Id.iso", new DataCube([axis], [.. iso.X.Select(x => Evaluate(program, x[0], x[1], iso.HasT ? x[2] : iso.TemperatureC, null).Id)]));
@@ -400,7 +403,8 @@ public static class ModelStepPlots
         if (TrapFit.Settings(doc).Shifted) return ShiftedTraps(doc, intrinsic, record, current, rc);
         var settings = CurrentFit.Settings(doc);
         var heating = ThermalFit.Heating(doc);
-        var program = Program(current, dc: true, CurrentFit.Temperatures(CurrentFit.ChosenIv(doc, settings), data));
+        var temps = CurrentFit.Temperatures(CurrentFit.ChosenIv(doc, settings), data);
+        var program = Program(current, dc: true, temps);
         var ds = new DataSet();
         var notes = new List<string>();
         var sets = new List<string>();
@@ -410,7 +414,8 @@ public static class ModelStepPlots
             try
             {
                 bool pulsed = set.Kind == DataSetKind.PulsedIv;
-                var ip = CurrentFit.Gather(doc, data, intrinsic, settings with { DataSets = [set.Name] }, [], heating, withTraps: pulsed);
+                var ip = CurrentFit.Gather(doc, data, intrinsic, settings with { DataSets = [set.Name] }, [], heating, withTraps: pulsed,
+                                           temperatures: temps);
                 AddIv(ds, set.Name, ip, data[set.Name], program);
                 if (pulsed) AddBeyond(ds, set, ip, data[set.Name], intrinsic, settings);
                 sets.Add(set.Name);

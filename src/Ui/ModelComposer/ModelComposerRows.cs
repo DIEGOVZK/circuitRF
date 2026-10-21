@@ -125,18 +125,23 @@ public sealed record ProposalRow(int Rank, string Topology, string Title, string
 /// </summary>
 public sealed partial class MethodPickerRow : ObservableObject
 {
+    /// <summary>The template list's last item: the user's own expression, which the document spells as no template.</summary>
+    public const string Custom = "Custom";
+
     private readonly Action<MethodPickerRow, string, string> _commit;
+    private readonly Func<string, TemplateInfo?> _templateInfo;
     private bool _loading;
 
     public MethodPickerRow(string name, IReadOnlyList<string> methods, IReadOnlyList<string> templates, bool charge,
-                           Action<MethodPickerRow, string, string> commit)
+                           Action<MethodPickerRow, string, string> commit, Func<string, TemplateInfo?>? template = null)
     {
         Name = name;
         Methods = methods;
         Choices = [.. methods.Select(m => new MethodChoice(m))];
-        Templates = ["", .. templates];
+        Templates = [.. templates, Custom];
         IsCharge = charge;
         _commit = commit;
+        _templateInfo = template ?? (_ => null);
     }
 
     public string Name { get; }
@@ -159,27 +164,47 @@ public sealed partial class MethodPickerRow : ObservableObject
     [ObservableProperty] private string _gridStep = "";
     [ObservableProperty] private string _smoothing = "";
     [ObservableProperty] private string _path = "";
-    [ObservableProperty] private string _template = "";
+    /// <summary>The template's name, or <see cref="Custom"/> for the user's own expression.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCustom), nameof(TemplateExpression), nameof(ShowsTemperature), nameof(TemperatureWatermark))]
+    private string _template = Custom;
     [ObservableProperty] private string _expression = "";
     [ObservableProperty] private string _expressionGd = "";
+    /// <summary>The template parameters made linear in T, comma-separated; empty is the template's default, "none" is none.</summary>
+    [ObservableProperty] private string _temperature = "";
     /// <summary>The last fit's equation parameters, one "name = value" line each; empty before a fit.</summary>
-    [ObservableProperty] private IReadOnlyList<string> _fitted = [];
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FittedText), nameof(HasFitted))]
+    private IReadOnlyList<string> _fitted = [];
 
     public bool IsAnn => Method == "ANN";
     public bool IsTable => Method == "Table";
     public bool IsEquation => Method == "Equation";
     /// <summary>A charge table is the line integral of the capacitances, along path A, B or their mean.</summary>
     public bool ShowsPath => IsCharge && IsTable;
+    /// <summary>The user's own expression: its text boxes show, the template's law does not.</summary>
+    public bool IsCustom => Template == Custom;
+    /// <summary>The chosen template's law, as the fit reads it — what the expression boxes hold for a custom one.</summary>
+    public string TemplateExpression => IsCustom ? "" : _templateInfo(Template)?.Expression ?? "";
+    /// <summary>A current template's temperature coefficients; charge templates have none.</summary>
+    public bool ShowsTemperature => !IsCharge && !IsCustom;
+    public string TemperatureWatermark => _templateInfo(Template)?.Scale is { } scale ? $"{scale} when the data spans temperatures" : "none";
+    /// <summary>What the first expression box is for: Id, Qg or Qd — or the gate's IgGs branch, IgGd having a box of its own.</summary>
+    public string ExpressionWatermark => $"{(IsGate ? "IgGs" : Name)} = your expression in vgs, vds and parameters";
+    /// <summary>The fitted parameters as one selectable block, so they copy together.</summary>
+    public string FittedText => string.Join(Environment.NewLine, Fitted);
+    public bool HasFitted => Fitted.Count > 0;
 
     /// <summary>Sets every field from the document without committing anything back.</summary>
     public void Load(string method, string hidden, string activation, string iterations, string grid, string smoothing, string path,
-                     string template, string expression, string expressionGd, IReadOnlyList<string> fitted)
+                     string template, string expression, string expressionGd, IReadOnlyList<string> fitted, string temperature = "")
     {
         _loading = true;
         try
         {
             Method = method; Hidden = hidden; Activation = activation; Iterations = iterations; GridStep = grid; Smoothing = smoothing;
-            Path = path; Template = template; Expression = expression; ExpressionGd = expressionGd; Fitted = fitted;
+            Path = path; Template = template.Length == 0 ? Custom : template; Expression = expression; ExpressionGd = expressionGd;
+            Fitted = fitted; Temperature = temperature;
         }
         finally { _loading = false; }
     }
@@ -208,7 +233,8 @@ public sealed partial class MethodPickerRow : ObservableObject
     partial void OnGridStepChanged(string value) => Commit(nameof(GridStep), value);
     partial void OnSmoothingChanged(string value) => Commit(nameof(Smoothing), value);
     partial void OnPathChanged(string value) => Commit(nameof(Path), value);
-    partial void OnTemplateChanged(string value) => Commit(nameof(Template), value);
+    partial void OnTemplateChanged(string value) => Commit(nameof(Template), value == Custom ? "" : value);
+    partial void OnTemperatureChanged(string value) => Commit(nameof(Temperature), value);
     partial void OnExpressionChanged(string value) => Commit(nameof(Expression), value);
     partial void OnExpressionGdChanged(string value) => Commit(nameof(ExpressionGd), value);
 
@@ -217,6 +243,9 @@ public sealed partial class MethodPickerRow : ObservableObject
         if (!_loading && text is not null) _commit(this, field, text);
     }
 }
+
+/// <summary>What a picker shows of a template: its law (both branches for the gate) and the parameter its current scales by.</summary>
+public sealed record TemplateInfo(string Expression, string? Scale);
 
 /// <summary>One method in a picker: its name and, when the data cannot support it, the refusal a fit would give.</summary>
 public sealed partial class MethodChoice(string name) : ObservableObject

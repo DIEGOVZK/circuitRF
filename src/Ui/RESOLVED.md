@@ -40106,3 +40106,35 @@ whole line was red and read as a failed open.
 **Traps stale only after a reload.** `Loaded.Stale` comes from the last open; a trap-model edit opens nothing. The window
 reads `StaleSteps` = the open's stale steps plus `TrapFit.CurrentsDisagree(Document)`, live. (`CmcStamps.` is barred from
 the window's folders by `ModelComposerNoLogicTests`, hence the check lives on `TrapFit`.)
+
+## Model Composer review 3 — markers, bias-point clicks, the status strip, the report dialog and pages (2026-10-20)
+
+- **Markers on a scatter were resolved by X alone.** `Trace.FindNearestTraceData`, `SnapToCubeMarker` and
+  `CubeMarkerIndex` take the nearest X on a Rect plot — right for a curve, wrong for the bias plane, whose X is Vds: a
+  double-click landed on the first point of the nearest column whatever its Vgs (often beyond the 20 px snap, so on an
+  intrinsic point nothing happened), and a drag ran down the columns in data order. `Trace.IsPointCloud` (set by the
+  owner, never inferred, not persisted) resolves in two dimensions, in canvas pixels when a `TransformSet` is passed;
+  `Trace.MarkersResolve2D` is the one predicate for "PositionStatic is the point itself" (Smith/polar or a cloud).
+- **The window drew no info boxes**: the plot host built them and nothing rendered `MarkerInfoBoxes` — railRF's
+  2026-09-19 defect again. `PlotsPanelView` now has the overlay layer, keeps both containers on the shown plot's
+  rectangle, forwards `MarkerMoved`/`MarkerAdded`, and Delete removes selected markers. **And every rebuild cleared
+  the traces**, so a marker died at the next cursor move: markers are stashed by step, tab and trace name and moved
+  across as objects. Both plots are cleared on a rebuild so the hidden one's boxes cannot linger.
+- New boxes open in a band between the title and the axes: `Plot.TopBandPx` (Rect only, not persisted) moves the axes
+  down and keeps the title centred above the band.
+- Unarmed, the lasso overlay picks a bias point for the cursor, except over a marker (`PlotControl.HasMarkerAt`), so a
+  marker on a point stays draggable. Pickable points include both the extrinsic and intrinsic circle of a bias.
+- **The status strip grew while running**: the Cancel button is taller than the line. The row is a fixed 22 px.
+- **Style selectors `TextBlock.x` do not match a `SelectableTextBlock`**; use `:is(TextBlock).x` when outputs are made
+  selectable.
+- **Report PDF**: the display's fixed two-column layout was scaled to fit what the text left, so tall stacks drew
+  small. `ModelReportPages.Arrange` re-flows a tab into the column count that draws it largest, each plot taking its
+  cell's shape within 0.95–1.9 (Smith square), tables sized to their rows and centred, and gives the plots their own
+  page when the room under the text would draw them below 75 % of a full page.
+- **Report dialog choices.** The frequency and PA bias are editable combos of the measured values, their placeholders
+  the value the report will take — read from `ModelValidationReport.DefaultFrequencyHz`/`DefaultVds`, the functions the
+  report itself calls, so the two cannot disagree. The S biases are a checkbox matrix of the bias plane (tooltip = the
+  bias), capped in size and scrolling; past `MaxMatrixCells` (2,500 — an irregular plan, mostly empty boxes) they are
+  typed. C–V voltages are chips, typed past 24. Every control writes the same text the fields always held, so
+  `Options()` parses exactly as before; a stored value the data lacks is kept as a ticked chip, never dropped on open.
+

@@ -714,6 +714,26 @@ namespace CircuitRF.Render.DataDisplay
         /// </remarks>
         public string? QuantityName { get; set; }
 
+        /// <summary>
+        /// A cloud of points rather than a curve: samples not ordered along X — a bias plane's (Vds, Vgs) — so a marker
+        /// is the NEAREST POINT in two dimensions, in canvas pixels wherever a pointer is involved, rather than the sample
+        /// of nearest X. On such a trace the X-only rule a curve uses lands on the first point of the nearest column,
+        /// whatever its Y, and a drag runs down the columns in data order. Set by the trace's owner, never inferred, and
+        /// not persisted: nothing in a <c>.cdd</c> is a cloud.
+        /// </summary>
+        public bool IsPointCloud { get; set; }
+
+        /// <summary>A point cloud's per-sample labels, its marker box's first line under the name; null for none.</summary>
+        public IReadOnlyList<string>? PointLabels { get; set; }
+
+        /// <summary>The name a marker's value row reads under where the quantity is not it — a point cloud's Y; null for
+        /// the quantity.</summary>
+        public string? MarkerValueName { get; set; }
+
+        /// <summary>Whether a single-curve cube marker is resolved in two dimensions — on a Smith or polar locus, or a point
+        /// cloud — with its <c>PositionStatic</c> the point itself rather than (X, curve index).</summary>
+        public bool MarkersResolve2D => (IsComplexPlanePlot || IsPointCloud) && !IsFamily;
+
         /// <summary>Full element-wise expression string (e.g. <c>mag(V[:, 0, 0]) + mag(V[:, 0, 1])</c>).
         /// When non-null, the owner resolves via <c>TraceExpression</c> instead of the single-slice path.
         /// Supersedes CubeName/Slice/Transform for value production.</summary>
@@ -1798,6 +1818,9 @@ namespace CircuitRF.Render.DataDisplay
             XSourcePath     = src.XSourcePath;
             XSourceAlias    = src.XSourceAlias;
             ExpressionError = src.ExpressionError;
+            IsPointCloud    = src.IsPointCloud;
+            PointLabels     = src.PointLabels;
+            MarkerValueName = src.MarkerValueName;
             _cubeXValues       = src._cubeXValues;
             _cubeComplexValues = src._cubeComplexValues;
             _cubeRealValues    = src._cubeRealValues;
@@ -2819,8 +2842,11 @@ namespace CircuitRF.Render.DataDisplay
         /// differences are 300 and 600 MHz and choose 100 MHz. The 2-D complex-plane metric is
         /// untouched: Smith and Polar never carry a log axis.
         /// </param>
+        /// <param name="tf">The plot's transforms, so a point cloud's nearest point is the one nearest ON SCREEN: its X
+        /// and Y are different quantities, and a distance in their own units is not one anybody sees. Without it the
+        /// distance is taken in world units.</param>
         public (int FreqIndex, double Distance, Vector2 NearestPoint)?
-            FindNearestTraceData(Vector2 queryPt, bool logX = false)
+            FindNearestTraceData(Vector2 queryPt, bool logX = false, TransformSet? tf = null)
         {
             // The X metric, once, so the three loops below cannot disagree about it. A point a log
             // axis cannot place is not a candidate — it is not on the picture to be clicked near.
@@ -2884,7 +2910,11 @@ namespace CircuitRF.Render.DataDisplay
                 double best    = double.PositiveInfinity;
                 int    bestIdx = -1;
 
-                if (YAxisIsComplexValue)
+                if (IsPointCloud && !IsFamily)
+                {
+                    bestIdx = NearestPoint2D(Points, queryPt, tf, out best);
+                }
+                else if (YAxisIsComplexValue)
                 {
                     for (int i = 0; i < Points.Count; i++)
                     {
@@ -3074,7 +3104,7 @@ namespace CircuitRF.Render.DataDisplay
         {
             var pts = CubeMarkerPoints(m);
             int idx = 0; float bestD = float.PositiveInfinity;
-            if (IsComplexPlanePlot && !IsFamily)
+            if (MarkersResolve2D)
             {
                 var target = new Vector2(m.PositionStatic.X, m.PositionStatic.Y);
                 for (int i = 0; i < pts.Count; i++)
@@ -3137,7 +3167,7 @@ namespace CircuitRF.Render.DataDisplay
         /// PositionStatic.X, and the bound family-curve index (0 when not a family).
         /// For a family, the nearest sample is searched across ALL curves so the marker binds to
         /// whichever curve the cursor is closest to. Returns null when no geometry is available.</summary>
-        public (Vector2 Pos, float CubeX, int CurveIndex)? SnapToCubeMarker(Vector2 worldPt)
+        public (Vector2 Pos, float CubeX, int CurveIndex)? SnapToCubeMarker(Vector2 worldPt, TransformSet? tf = null)
         {
             if (!IsCubeXMarker) return null;
 
@@ -3161,7 +3191,11 @@ namespace CircuitRF.Render.DataDisplay
 
             if (Points.Count == 0) return null;
             int best = 0; float bd = float.PositiveInfinity;
-            if (IsComplexPlanePlot)
+            if (IsPointCloud)
+            {
+                best = Math.Max(0, NearestPoint2D(Points, worldPt, tf, out _));
+            }
+            else if (IsComplexPlanePlot)
             {
                 for (int i = 0; i < Points.Count; i++)
                 {
@@ -3192,7 +3226,9 @@ namespace CircuitRF.Render.DataDisplay
             var lines = new List<(string, bool)> { (m.MarkerString, true) };
 
             var pts = CubeMarkerPoints(m);
-            string desc = ReadoutDescription(showFilePrefix);
+            string desc = MarkerValueName ?? ReadoutDescription(showFilePrefix);
+            if (IsPointCloud && PointLabels is { } labels && CubeMarkerIndex(m) is var at && at >= 0 && at < labels.Count)
+                lines.Add((labels[at], false));
 
             // NaN only when there is genuinely no data. A Table real-valued cube builds NO Points
             // (BuildCubePath skips the Rect/Smith geometry), yet still has _cubeXValues — so an empty
@@ -4115,6 +4151,15 @@ namespace CircuitRF.Render.DataDisplay
                 var pts = CubeMarkerPoints(m);                          // the marker's bound curve's samples
                 if (pts.Count < 2) return false;
 
+                // A point cloud has no X order to step in; it steps through its samples in the order they were given.
+                if (MarkersResolve2D && IsPointCloud)
+                {
+                    int next = CubeMarkerIndex(m) + direction;
+                    if (next < 0 || next >= pts.Count) return false;
+                    m.PositionStatic = pts[next];
+                    return true;
+                }
+
                 // Rank the samples by ascending display-x. Points[i].X is the marker-space x for both
                 // cube-X and stem traces (SnapToStem/SnapToCubeMarker both store Points[i].X), so a
                 // mixIndex spectrum — whose values are folded freqs in lattice order — steps by frequency.
@@ -4168,6 +4213,28 @@ namespace CircuitRF.Render.DataDisplay
         {
             float dx = a.X - b.X, dy = a.Y - b.Y;
             return Math.Sqrt(dx * dx + dy * dy);
+        }
+
+        /// <summary>The index of the point nearest <paramref name="query"/> — in canvas pixels when <paramref name="tf"/> is
+        /// given, else in world units — and that distance; −1 when no point is finite.</summary>
+        private int NearestPoint2D(IReadOnlyList<Vector2> pts, Vector2 query, TransformSet? tf, out double distance)
+        {
+            int best = -1;
+            distance = double.PositiveInfinity;
+            var q = tf is { } t ? t.ToCanvas(query.X, query.Y, UseSecondaryAxis) : default;
+            for (int i = 0; i < pts.Count; i++)
+            {
+                if (!float.IsFinite(pts[i].X) || !float.IsFinite(pts[i].Y)) continue;
+                double d;
+                if (tf is { } t2)
+                {
+                    var c = t2.ToCanvas(pts[i].X, pts[i].Y, UseSecondaryAxis);
+                    d = Math.Sqrt((c.X - q.X) * (c.X - q.X) + (c.Y - q.Y) * (c.Y - q.Y));
+                }
+                else d = Dist(query, pts[i]);
+                if (d < distance) { distance = d; best = i; }
+            }
+            return best;
         }
     }
 }

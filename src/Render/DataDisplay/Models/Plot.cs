@@ -1002,6 +1002,13 @@ namespace CircuitRF.Render.DataDisplay
 
         // ---- Viewport layout --------------------------------------------
 
+        /// <summary>
+        /// Canvas pixels reserved between a rectangular plot's title and its axes — room for something its owner places
+        /// there, such as the Model Composer's marker info boxes, so it covers no data. The title stays centred in the
+        /// margin above the band. Zero (the default) reserves nothing; never persisted.
+        /// </summary>
+        public double TopBandPx { get; set; }
+
         public void SetAxesViewport()
         {
             switch (PlotType)

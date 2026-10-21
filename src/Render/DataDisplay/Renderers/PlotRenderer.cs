@@ -197,6 +197,19 @@ namespace CircuitRF.Render.DataDisplay
 
         private static PlotRect ComputeViewport(Plot plot, (double W, double H) canvasSize)
         {
+            var v = ComputeViewportCore(plot, canvasSize);
+            // A band reserved above a rectangular plot's axes (Plot.TopBandPx): the axes move down by it and the title
+            // stays in the margin above it. Capped so the band can never take the plot box.
+            if (plot.PlotType == PlotType.Rect && plot.TopBandPx > 0 && canvasSize.H > 0)
+            {
+                double band = Math.Min(plot.TopBandPx / canvasSize.H, v.Height * 0.4);
+                return new PlotRect(v.X, v.Y + band, v.Width, v.Height - band);
+            }
+            return v;
+        }
+
+        private static PlotRect ComputeViewportCore(Plot plot, (double W, double H) canvasSize)
+        {
             if (plot.PlotType.IsComplex() && canvasSize.W > 0 && canvasSize.H > 0)
             {
                 double effectiveH = Math.Min(canvasSize.W, canvasSize.H);

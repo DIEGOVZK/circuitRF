@@ -35,6 +35,9 @@
         <!-- System.Warning brush — initialized from ColorTheme.BuiltIn in App.axaml.cs;
              updated on ThemeService.ThemeChanged so tree warning nodes follow the active theme. -->
         <SolidColorBrush x:Key="CrfWarningBrush" Color="#CE4A24"/>
+        <!-- A step or check that is done and good: the Model Validation Report's Green, so a lit check on the step rail
+             and a Green row on the scorecard are one colour. -->
+        <SolidColorBrush x:Key="CrfSuccessBrush" Color="#2E9E44"/>
 
         <!-- Palette tile definition border: semitransparent neutral gray so it reads against
              the panel in both light and dark without fighting the armed accent color.

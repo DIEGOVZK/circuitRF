@@ -1,127 +1,305 @@
 <!-- The Model Validation Report dialog (brief-modelcomposer-15 R-mc15-7a): every option of the report, each opening on the
      value stored in the .cmc or its default; Apply writes them back, Generate runs the report off the UI thread with the
-     window's progress and Cancel, Export PDF draws every tab of its Data Display document. -->
+     window's progress and Cancel, Export PDF draws every tab of its Data Display document.
+
+     Laid out as railRF's Compare dialog is (owner, review 3: the options sat on a hard-cornered grey block touching the
+     window's edges): one card per group of options, rounded and padded, on the window's own background, with the buttons
+     and the run's progress in a footer below a gap. -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mc="using:CircuitRF.Ui.ModelComposer"
         x:Class="CircuitRF.Ui.Views.ModelComposer.ModelReportDialog"
         x:DataType="mc:ModelReportViewModel"
         Title="Model Validation Report"
-        Width="560" Height="640" MinWidth="480" MinHeight="520"
-        WindowStartupLocation="CenterOwner">
+        Width="600" Height="780" MinWidth="520" MinHeight="540"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource SystemChromeLowColor}">
     <Window.Styles>
         <Style Selector="Button">
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
         </Style>
-        <Style Selector="TextBlock.lbl">
+        <Style Selector="Button.foot">
+            <Setter Property="MinWidth" Value="84"/>
+            <Setter Property="Padding" Value="14,4"/>
+        </Style>
+        <Style Selector="Border.card">
+            <Setter Property="Background"      Value="{DynamicResource SystemChromeMediumLowColor}"/>
+            <Setter Property="BorderBrush"     Value="{DynamicResource CrfTileBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius"    Value="6"/>
+            <Setter Property="Padding"         Value="12,10"/>
+        </Style>
+        <Style Selector=":is(TextBlock).lbl">
             <Setter Property="VerticalAlignment" Value="Center"/>
             <Setter Property="Foreground" Value="{DynamicResource SystemBaseMediumColor}"/>
         </Style>
-        <Style Selector="TextBlock.hdr">
+        <Style Selector=":is(TextBlock).hdr">
             <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Margin" Value="0,6,0,2"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
         </Style>
-        <Style Selector="TextBlock.warn">
+        <Style Selector=":is(TextBlock).warn">
             <Setter Property="Foreground" Value="{DynamicResource CrfWarningBrush}"/>
         </Style>
         <Style Selector="TextBox">
             <Setter Property="HorizontalContentAlignment" Value="Right"/>
         </Style>
+        <Style Selector="CheckBox">
+            <Setter Property="Margin" Value="0,0,14,0"/>
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+        </Style>
+        <Style Selector=":is(TextBlock).sub">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector=":is(TextBlock).note">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemBaseMediumColor}"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <Style Selector=":is(TextBlock).axis">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource SystemBaseMediumColor}"/>
+            <Setter Property="TextAlignment" Value="Right"/>
+            <Setter Property="Padding" Value="0,0,8,0"/>
+        </Style>
+        <Style Selector="CheckBox.cell">
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="ToggleButton.chip">
+            <Setter Property="MinWidth" Value="44"/>
+            <Setter Property="Padding" Value="8,2"/>
+            <Setter Property="Margin" Value="0,0,6,6"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="Button.clear">
+            <Setter Property="Padding" Value="8,1"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+        <!-- A row of the options: the label, then its one to three fields. -->
+        <Style Selector="Grid.row">
+            <Setter Property="MinHeight" Value="32"/>
+        </Style>
     </Window.Styles>
 
-    <DockPanel Margin="12" Background="{DynamicResource SystemChromeMediumLowColor}">
-        <StackPanel DockPanel.Dock="Bottom" Spacing="6" Margin="0,10,0,0">
-            <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding Owner.IsRunning}">
-                <TextBlock Classes="lbl" Text="{Binding Owner.TaskStage}" MaxWidth="260" TextTrimming="CharacterEllipsis"/>
-                <ProgressBar Width="160" Minimum="0" Maximum="1" Value="{Binding Owner.Progress}"
-                             IsIndeterminate="{Binding !Owner.ProgressKnown}" VerticalAlignment="Center"/>
-                <Button Content="Cancel" Command="{Binding Owner.CancelCommand}"/>
-            </StackPanel>
-            <TextBlock Classes="warn" Text="{Binding Problem}" TextWrapping="Wrap"
-                       IsVisible="{Binding Problem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-            <TextBlock Text="{Binding Owner.StatusText}" TextWrapping="Wrap" FontSize="11"/>
-            <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
-                <Button Content="Apply" Command="{Binding ApplyOptionsCommand}"/>
-                <Button Content="Generate" Command="{Binding GenerateCommand}"/>
-                <Button Content="Export PDF…" Command="{Binding ExportPdfCommand}"/>
-                <Button Name="CloseButton" Content="Close"/>
-            </StackPanel>
-        </StackPanel>
+    <Grid RowDefinitions="*,Auto" Margin="16,14,16,14">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" Padding="0,0,6,0">
+            <StackPanel Spacing="10">
+                <Border Classes="card">
+                    <StackPanel>
+                        <TextBlock Classes="hdr" Text="Sections"/>
+                        <WrapPanel>
+                            <CheckBox Content="DC I–V" IsChecked="{Binding Dc}"/>
+                            <CheckBox Content="Thermal" IsChecked="{Binding Thermal}"/>
+                            <CheckBox Content="Charge" IsChecked="{Binding Charge}"/>
+                            <CheckBox Content="C–V" IsChecked="{Binding CapacitanceSlices}"/>
+                            <CheckBox Content="S" IsChecked="{Binding SParams}"/>
+                            <CheckBox Content="PA classes" IsChecked="{Binding PaModes}"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
 
-        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-            <StackPanel Spacing="3">
-                <TextBlock Classes="hdr" Text="Sections"/>
-                <WrapPanel>
-                    <CheckBox Content="DC I–V" IsChecked="{Binding Dc}" Margin="0,0,12,0"/>
-                    <CheckBox Content="Thermal" IsChecked="{Binding Thermal}" Margin="0,0,12,0"/>
-                    <CheckBox Content="Charge" IsChecked="{Binding Charge}" Margin="0,0,12,0"/>
-                    <CheckBox Content="C–V" IsChecked="{Binding CapacitanceSlices}" Margin="0,0,12,0"/>
-                    <CheckBox Content="S" IsChecked="{Binding SParams}" Margin="0,0,12,0"/>
-                    <CheckBox Content="PA classes" IsChecked="{Binding PaModes}"/>
-                </WrapPanel>
+                <!-- Choices of the measured values, not typing (owner, review 3). The S biases are a matrix of boxes laid out
+                     as the bias plane — drain voltage across, gate voltage down from the highest — capped in size and
+                     scrolling inside it; each box's tooltip names its bias. A plan irregular enough to need more than
+                     MaxMatrixCells boxes is typed instead. The C–V voltages are chips, typed past MaxChips. Under each, what
+                     the choice now means, including what nothing chosen falls back to. -->
+                <Border Classes="card">
+                    <StackPanel Spacing="4">
+                        <TextBlock Classes="hdr" Text="S and C–V"/>
 
-                <TextBlock Classes="hdr" Text="S and C–V"/>
-                <Grid ColumnDefinitions="160,*">
-                    <TextBlock Classes="lbl" Text="S biases (vgs, vds; …)"/>
-                    <TextBox Grid.Column="1" Text="{Binding SBiases}" Watermark="lowest, middle and highest current"/>
-                </Grid>
-                <Grid ColumnDefinitions="160,*">
-                    <TextBlock Classes="lbl" Text="C–V at Vds (V)"/>
-                    <TextBox Grid.Column="1" Text="{Binding FixedVds}" Watermark="five spread over the data"/>
-                </Grid>
-                <Grid ColumnDefinitions="160,*">
-                    <TextBlock Classes="lbl" Text="C–V at Vgs (V)"/>
-                    <TextBox Grid.Column="1" Text="{Binding FixedVgs}" Watermark="five spread over the data"/>
-                </Grid>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Classes="sub" Text="S compared at these biases"/>
+                            <Button Grid.Column="1" Classes="clear" Content="Clear" Command="{Binding ClearPicksCommand}" CommandParameter="s"
+                                    IsVisible="{Binding AnySBiases}"/>
+                        </Grid>
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MaxHeight="280"
+                                      IsVisible="{Binding SBiasAsMatrix}">
+                            <StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Classes="axis" Width="70" Text="Vgs \ Vds (V)" TextAlignment="Left"/>
+                                    <ItemsControl ItemsSource="{Binding SBiasColumns}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="x:String">
+                                                <TextBlock Classes="axis" Width="38" TextAlignment="Center" Padding="0" Text="{Binding}"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                                <ItemsControl ItemsSource="{Binding SBiasRows}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="mc:BiasRow">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Classes="axis" Width="70" Text="{Binding Vgs}" VerticalAlignment="Center"/>
+                                                <ItemsControl ItemsSource="{Binding Cells}">
+                                                    <ItemsControl.ItemsPanel>
+                                                        <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+                                                    </ItemsControl.ItemsPanel>
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate x:DataType="mc:PickItem">
+                                                            <Panel Width="38" Height="26">
+                                                                <CheckBox Classes="cell" IsChecked="{Binding IsChecked}" IsVisible="{Binding IsPresent}"
+                                                                          ToolTip.Tip="{Binding Tip}"/>
+                                                                <Ellipse Width="3" Height="3" IsVisible="{Binding !IsPresent}"
+                                                                         Fill="{DynamicResource SystemBaseLowColor}"
+                                                                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Panel>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+                        <TextBox Text="{Binding SBiases}" IsVisible="{Binding SBiasAsText}" Watermark="vgs, vds; vgs, vds; …"/>
+                        <ItemsControl ItemsSource="{Binding SBiasOthers}" IsVisible="{Binding HasSBiasOthers}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="mc:PickItem">
+                                    <ToggleButton Classes="chip" Content="{Binding Text}" IsChecked="{Binding IsChecked}" ToolTip.Tip="{Binding Tip}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Classes="note" Text="{Binding SBiasesSummary}"/>
 
-                <TextBlock Classes="hdr" Text="PA classes"/>
-                <WrapPanel>
-                    <CheckBox Content="B" IsChecked="{Binding ClassB}" Margin="0,0,12,0"/>
-                    <CheckBox Content="J" IsChecked="{Binding ClassJ}" Margin="0,0,12,0"/>
-                    <CheckBox Content="J*" IsChecked="{Binding ClassJStar}" Margin="0,0,12,0"/>
-                    <CheckBox Content="F" IsChecked="{Binding ClassF}" Margin="0,0,12,0"/>
-                    <CheckBox Content="F⁻¹" IsChecked="{Binding ClassFInverse}"/>
-                </WrapPanel>
-                <Grid ColumnDefinitions="160,*">
-                    <TextBlock Classes="lbl" Text="Frequency (GHz)"/>
-                    <TextBox Grid.Column="1" Text="{Binding FrequencyGHz}" Watermark="the data's"/>
-                </Grid>
-                <Grid ColumnDefinitions="160,*,*">
-                    <TextBlock Classes="lbl" Text="Bias Vgs, Vds (V)"/>
-                    <TextBox Grid.Column="1" Text="{Binding Vgs}" Watermark="Class B"/>
-                    <TextBox Grid.Column="2" Text="{Binding Vds}" Margin="4,0,0,0" Watermark="the data's"/>
-                </Grid>
-                <Grid ColumnDefinitions="160,*">
-                    <TextBlock Classes="lbl" Text="R_opt (Ω)"/>
-                    <TextBox Grid.Column="1" Text="{Binding Ropt}" Watermark="from the knee"/>
-                </Grid>
-                <Grid ColumnDefinitions="160,*">
-                    <TextBlock Classes="lbl" Text="Source Z (re, im Ω)"/>
-                    <TextBox Grid.Column="1" Text="{Binding SourceZ}" Watermark="conjugate match"/>
-                </Grid>
-                <Grid ColumnDefinitions="160,*">
-                    <TextBlock Classes="lbl" Text="Source 2f0 (re, im Ω)"/>
-                    <TextBox Grid.Column="1" Text="{Binding Source2f0}" Watermark="short"/>
-                </Grid>
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0">
+                            <TextBlock Classes="sub" Text="C–V curves at Vds (V)"/>
+                            <Button Grid.Column="1" Classes="clear" Content="Clear" Command="{Binding ClearPicksCommand}" CommandParameter="vds"
+                                    IsVisible="{Binding AnyFixedVds}"/>
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding CvVdsItems}" IsVisible="{Binding CvVdsAsChips}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="mc:PickItem">
+                                    <ToggleButton Classes="chip" Content="{Binding Text}" IsChecked="{Binding IsChecked}" ToolTip.Tip="{Binding Tip}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBox Text="{Binding FixedVds}" IsVisible="{Binding CvVdsAsText}" Watermark="vds, vds, …"/>
+                        <TextBlock Classes="note" Text="{Binding FixedVdsSummary}"/>
 
-                <TextBlock Classes="hdr" Text="Load disc and drive"/>
-                <Grid ColumnDefinitions="160,*,*,*">
-                    <TextBlock Classes="lbl" Text="Radius, rings, spokes"/>
-                    <TextBox Grid.Column="1" Text="{Binding GammaRadius}"/>
-                    <TextBox Grid.Column="2" Text="{Binding Rings}" Margin="4,0,0,0"/>
-                    <TextBox Grid.Column="3" Text="{Binding Spokes}" Margin="4,0,0,0"/>
-                </Grid>
-                <Grid ColumnDefinitions="160,*,*,*">
-                    <TextBlock Classes="lbl" Text="Drive start, step, max (dBm)"/>
-                    <TextBox Grid.Column="1" Text="{Binding PinStart}"/>
-                    <TextBox Grid.Column="2" Text="{Binding PinStep}" Margin="4,0,0,0"/>
-                    <TextBox Grid.Column="3" Text="{Binding PinMax}" Margin="4,0,0,0"/>
-                </Grid>
-                <Grid ColumnDefinitions="160,*">
-                    <TextBlock Classes="lbl" Text="Compression (dB)"/>
-                    <TextBox Grid.Column="1" Text="{Binding Compression}"/>
-                </Grid>
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0">
+                            <TextBlock Classes="sub" Text="C–V curves at Vgs (V)"/>
+                            <Button Grid.Column="1" Classes="clear" Content="Clear" Command="{Binding ClearPicksCommand}" CommandParameter="vgs"
+                                    IsVisible="{Binding AnyFixedVgs}"/>
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding CvVgsItems}" IsVisible="{Binding CvVgsAsChips}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="mc:PickItem">
+                                    <ToggleButton Classes="chip" Content="{Binding Text}" IsChecked="{Binding IsChecked}" ToolTip.Tip="{Binding Tip}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBox Text="{Binding FixedVgs}" IsVisible="{Binding CvVgsAsText}" Watermark="vgs, vgs, …"/>
+                        <TextBlock Classes="note" Text="{Binding FixedVgsSummary}"/>
+                    </StackPanel>
+                </Border>
+
+                <Border Classes="card">
+                    <StackPanel Spacing="4">
+                        <TextBlock Classes="hdr" Text="PA classes"/>
+                        <WrapPanel Margin="0,0,0,4">
+                            <CheckBox Content="B" IsChecked="{Binding ClassB}"/>
+                            <CheckBox Content="J" IsChecked="{Binding ClassJ}"/>
+                            <CheckBox Content="J*" IsChecked="{Binding ClassJStar}"/>
+                            <CheckBox Content="F" IsChecked="{Binding ClassF}"/>
+                            <CheckBox Content="F⁻¹" IsChecked="{Binding ClassFInverse}"/>
+                        </WrapPanel>
+                        <!-- Pick a measured value or type any other; empty is the value the placeholder states. -->
+                        <Grid Classes="row" ColumnDefinitions="170,*">
+                            <TextBlock Classes="lbl" Text="Frequency (GHz)"/>
+                            <ComboBox Grid.Column="1" IsEditable="True" Text="{Binding FrequencyGHz}" ItemsSource="{Binding FrequencyChoices}"
+                                      PlaceholderText="{Binding FrequencyPlaceholder}" MaxDropDownHeight="260"
+                                      ToolTip.Tip="A frequency the S data was measured at, or type any other"/>
+                        </Grid>
+                        <Grid Classes="row" ColumnDefinitions="170,*">
+                            <TextBlock Classes="lbl" Text="Bias Vgs (V)"/>
+                            <ComboBox Grid.Column="1" IsEditable="True" Text="{Binding Vgs}" ItemsSource="{Binding VgsChoices}"
+                                      PlaceholderText="{x:Static mc:ModelReportViewModel.VgsPlaceholder}" MaxDropDownHeight="260"
+                                      ToolTip.Tip="A measured gate voltage, or type any other"/>
+                        </Grid>
+                        <Grid Classes="row" ColumnDefinitions="170,*">
+                            <TextBlock Classes="lbl" Text="Bias Vds (V)"/>
+                            <ComboBox Grid.Column="1" IsEditable="True" Text="{Binding Vds}" ItemsSource="{Binding VdsChoices}"
+                                      PlaceholderText="{Binding VdsPlaceholder}" MaxDropDownHeight="260"
+                                      ToolTip.Tip="A measured drain voltage, or type any other"/>
+                        </Grid>
+                        <Grid Classes="row" ColumnDefinitions="170,*">
+                            <TextBlock Classes="lbl" Text="R_opt (Ω)"/>
+                            <TextBox Grid.Column="1" Text="{Binding Ropt}" Watermark="from the knee"/>
+                        </Grid>
+                        <Grid Classes="row" ColumnDefinitions="170,*">
+                            <TextBlock Classes="lbl" Text="Source Z (re, im Ω)"/>
+                            <TextBox Grid.Column="1" Text="{Binding SourceZ}" Watermark="conjugate match"/>
+                        </Grid>
+                        <Grid Classes="row" ColumnDefinitions="170,*">
+                            <TextBlock Classes="lbl" Text="Source 2f0 (re, im Ω)"/>
+                            <TextBox Grid.Column="1" Text="{Binding Source2f0}" Watermark="short"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <Border Classes="card">
+                    <StackPanel Spacing="4">
+                        <TextBlock Classes="hdr" Text="Load disc and drive"/>
+                        <Grid Classes="row" ColumnDefinitions="170,*,6,*,6,*">
+                            <TextBlock Classes="lbl" Text="Radius, rings, spokes"/>
+                            <TextBox Grid.Column="1" Text="{Binding GammaRadius}"/>
+                            <TextBox Grid.Column="3" Text="{Binding Rings}"/>
+                            <TextBox Grid.Column="5" Text="{Binding Spokes}"/>
+                        </Grid>
+                        <Grid Classes="row" ColumnDefinitions="170,*,6,*,6,*">
+                            <TextBlock Classes="lbl" Text="Drive start, step, max (dBm)"/>
+                            <TextBox Grid.Column="1" Text="{Binding PinStart}"/>
+                            <TextBox Grid.Column="3" Text="{Binding PinStep}"/>
+                            <TextBox Grid.Column="5" Text="{Binding PinMax}"/>
+                        </Grid>
+                        <Grid Classes="row" ColumnDefinitions="170,*">
+                            <TextBlock Classes="lbl" Text="Compression (dB)"/>
+                            <TextBox Grid.Column="1" Text="{Binding Compression}"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
-    </DockPanel>
+
+        <!-- The footer: what went wrong, what the last run said, its progress while it runs, and the buttons. -->
+        <StackPanel Grid.Row="1" Spacing="8" Margin="0,14,0,0">
+            <SelectableTextBlock Classes="warn" Text="{Binding Problem}" TextWrapping="Wrap"
+                                 IsVisible="{Binding Problem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            <SelectableTextBlock Text="{Binding Owner.StatusText}" TextWrapping="Wrap" FontSize="11"
+                                 Foreground="{DynamicResource SystemBaseMediumColor}"/>
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding Owner.IsRunning}">
+                    <ProgressBar Width="140" Minimum="0" Maximum="1" Value="{Binding Owner.Progress}"
+                                 IsIndeterminate="{Binding !Owner.ProgressKnown}" VerticalAlignment="Center"/>
+                    <TextBlock Classes="lbl" Text="{Binding Owner.TaskStage}" MaxWidth="160" TextTrimming="CharacterEllipsis"/>
+                    <Button Content="Cancel" Command="{Binding Owner.CancelCommand}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <Button Classes="foot" Content="Apply" Command="{Binding ApplyOptionsCommand}"
+                            ToolTip.Tip="Keep these options in the document"/>
+                    <Button Classes="foot" Content="Generate" Command="{Binding GenerateCommand}" IsDefault="True"/>
+                    <Button Classes="foot" Content="Export PDF…" Command="{Binding ExportPdfCommand}"/>
+                    <Button Classes="foot" Name="CloseButton" Content="Close" IsCancel="True"/>
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+    </Grid>
 </Window>

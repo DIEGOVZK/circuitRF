@@ -666,10 +666,9 @@ public static class ModelValidationReport
     /// <summary>The PA conditions: the stated ones, and the defaults the options describe where none is stated.</summary>
     private static PaBiasPoint PaBias(ModelValidation.Context ctx, ComposedCoreProgram program, ReportOptions o)
     {
-        var sSets = ctx.Doc.DataSets.Where(s => s.Kind == DataSetKind.SParams && ctx.Data.ContainsKey(s.Name)).Select(s => ctx.Data[s.Name]).ToList();
         var points = ctx.Data.Values.SelectMany(d => d.Points).Where(p => !p.Excluded).ToList();
-        double f0 = o.FrequencyHz ?? (sSets.Count > 0 ? Median(sSets.SelectMany(d => d.FrequenciesHz ?? [])) : 2e9);
-        double vds = o.Vds ?? (points.Count > 0 ? 0.5 * points.Max(p => p.Vds) : 10);
+        double f0 = o.FrequencyHz ?? DefaultFrequencyHz(ctx.Doc, ctx.Data);
+        double vds = o.Vds ?? DefaultVds(ctx.Data);
         double t = ctx.Model.Temperature.Mode == TemperatureMode.Single ? ctx.Model.Temperature.T0 : 25;
         double gLo = points.Count > 0 ? points.Min(p => p.Vgs) : -5, gHi = points.Count > 0 ? points.Max(p => p.Vgs) : 0;
         // Imax from the data, not the model at (the highest vgs, the highest vds): the I–V data never reaches that corner —
@@ -682,6 +681,22 @@ public static class ModelValidationReport
         double ropt = o.RoptOhms ?? (imax > 0 ? 2 * 0.9 * vds / imax : 50);   // vknee = vds/10
         var zs = o.SourceZ ?? InputMatch(ctx, f0, vgs, vds, ropt, t);
         return new PaBiasPoint(f0, vgs, vds, ropt, zs, t, OutputCapacitance(ctx, program, vgs, vds, t).C22);
+    }
+
+    /// <summary>The PA classes' frequency when none is stated: the S data's median frequency, else 2 GHz. Public so the
+    /// report dialog shows the value the report will use.</summary>
+    public static double DefaultFrequencyHz(CmcDocument doc, IReadOnlyDictionary<string, NormalisedData> data)
+    {
+        var f = doc.DataSets.Where(s => s.Kind == DataSetKind.SParams && data.ContainsKey(s.Name))
+                   .SelectMany(s => data[s.Name].FrequenciesHz ?? []).ToList();
+        return f.Count > 0 ? Median(f) : 2e9;
+    }
+
+    /// <summary>The PA classes' drain voltage when none is stated: half the largest measured, else 10 V.</summary>
+    public static double DefaultVds(IReadOnlyDictionary<string, NormalisedData> data)
+    {
+        var points = data.Values.SelectMany(d => d.Points).Where(p => !p.Excluded).ToList();
+        return points.Count > 0 ? 0.5 * points.Max(p => p.Vds) : 10;
     }
 
     private static double Id(ComposedCoreProgram program, double vgs, double vds, double t)

@@ -1,7 +1,9 @@
 using System;
 using System.ComponentModel;
 using System.Linq;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Styling;
 using Avalonia.VisualTree;
@@ -14,8 +16,9 @@ namespace CircuitRF.Ui.Views.ModelComposer;
 
 /// <summary>
 /// The plots panel. The code-behind does what only a view can: it gives each <c>PlotControl</c> its container (railRF's
-/// <c>BindImpedancePlot</c> — without it a double-click adds no marker), hands the bias plane its lasso through the
-/// overlay seam, follows the light/dark variant, and lights the selected tab.
+/// <c>BindImpedancePlot</c> — without it a double-click adds no marker), keeps the containers on the plots so the markers'
+/// info boxes stand beside their markers, hands the bias plane its lasso through the overlay seam, removes the selected
+/// markers on Delete, follows the light/dark variant, and lights the selected tab.
 /// </summary>
 public partial class PlotsPanelView : UserControl
 {
@@ -27,6 +30,8 @@ public partial class PlotsPanelView : UserControl
         DataContextChanged += (_, _) => Bind(DataContext as ModelComposerViewModel);
         ActualThemeVariantChanged += (_, _) => SyncTheme();
         TabStrip.LayoutUpdated += (_, _) => SyncTabs();
+        LayoutUpdated += (_, _) => SyncContainers();
+        KeyDown += OnKeyDown;
     }
 
     private void Bind(ModelComposerViewModel? vm)
@@ -38,10 +43,12 @@ public partial class PlotsPanelView : UserControl
         Host(RectPlotControl, vm.RectContainer);
         Host(SmithPlotControl, vm.SmithContainer);
         RectPlotControl.Overlay = vm.RectContainer.Overlay;
+        vm.BiasPlaneLasso.MarkerAt = (x, y) => RectPlotControl.HasMarkerAt(new Avalonia.Point(x, y));
         SyncTheme();
+        SyncContainers();
     }
 
-    private static void Host(PlotControl plot, PlotContainerViewModel container)
+    private void Host(PlotControl plot, PlotContainerViewModel container)
     {
         plot.NextMarkerIndexProvider = container.GetNextMarkerIndex;
         plot.FindMarkerInfoBoxVmProvider = container.FindMarkerInfoBoxVm;
@@ -54,7 +61,46 @@ public partial class PlotsPanelView : UserControl
             e.Handled = true;
         };
         plot.PlotChanged += container.OnPlotChanged;
+        plot.MarkerMoved += (_, _) => container.OnMarkerMoved();
+        plot.MarkerAdded += container.OnMarkerAdded;
+        plot.MarkerAdded += (marker, _) => _vm?.PlaceNewInfoBox(container, marker);
         container.PlotNeedsRedraw += (_, _) => plot.InvalidateVisual();
+    }
+
+    /// <summary>
+    /// Keeps each container's rectangle on the plot showing, in the info-box layer's coordinates — the Match Designer's
+    /// <c>SyncPlotContainers</c>. Without it a container keeps the seed rectangle its plot host gave it, and a new marker's
+    /// box is placed at the panel's top left rather than beside its marker. Both containers take the shown plot's rectangle:
+    /// the two plots share one cell. A rectangle that has not moved is not re-published.
+    /// </summary>
+    private void SyncContainers()
+    {
+        if (_vm is null) return;
+        var plot = _vm.IsSmithTab ? SmithPlotControl : RectPlotControl;
+        if (plot.Bounds.Width < 1 || plot.Bounds.Height < 1) return;
+        if (plot.TranslatePoint(default, MarkerInfoBoxLayer) is not { } origin) return;
+        foreach (var container in new[] { _vm.RectContainer, _vm.SmithContainer })
+        {
+            if (Math.Abs(container.Left - origin.X) < 0.5 && Math.Abs(container.Top - origin.Y) < 0.5
+                && Math.Abs(container.Width - plot.Bounds.Width) < 0.5 && Math.Abs(container.Height - plot.Bounds.Height) < 0.5)
+                continue;
+            container.Left = origin.X;
+            container.Top = origin.Y;
+            container.Width = plot.Bounds.Width;
+            container.Height = plot.Bounds.Height;
+            container.NotifyViewProperties();
+        }
+    }
+
+    /// <summary>Delete removes the selected markers — never from a text field, where the key is the field's.</summary>
+    private void OnKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Handled || e.Key != Key.Delete || _vm is null) return;
+        if (TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox) return;
+        var selected = _vm.PlotHost.MarkerInfoBoxes.Where(b => b.IsSelected).ToList();
+        if (selected.Count == 0) return;
+        foreach (var box in selected) box.Container.RemoveMarkerWithUndo(box.Marker, box.Trace);
+        e.Handled = true;
     }
 
     private void OnVmChanged(object? sender, PropertyChangedEventArgs e)
