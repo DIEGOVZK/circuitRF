@@ -75,7 +75,7 @@ public partial class CreateSchematicFromArtworkDialog : Window
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = $"{_vm?.Title} — Export parts table",
-            SuggestedFileName = "parts.csv",
+            SuggestedFileName = "parts",
             DefaultExtension = "csv",
             FileTypeChoices = [new FilePickerFileType("CSV") { Patterns = ["*.csv"] }],
         });

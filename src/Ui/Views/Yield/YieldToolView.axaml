@@ -148,15 +148,15 @@
 
             <!-- Mode and toolbar. -->
             <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="4,0,4,2">
-                <RadioButton Classes="mode" GroupName="YieldMode" Content="Monte Carlo" IsChecked="{Binding IsMonteCarlo}"
+                <RadioButton Classes="mode" Content="Monte Carlo" IsChecked="{Binding IsMonteCarlo}"
                              ToolTip.Tip="The spread of every measurement — no pass/fail"/>
-                <RadioButton Classes="mode" GroupName="YieldMode" Content="Yield" IsChecked="{Binding IsYield}"
+                <RadioButton Classes="mode" Content="Yield" IsChecked="{Binding IsYield}"
                              ToolTip.Tip="The fraction of trials meeting every yield spec, with its interval"/>
-                <RadioButton Classes="mode" GroupName="YieldMode" Content="Corners" IsChecked="{Binding IsCorners}"
+                <RadioButton Classes="mode" Content="Corners" IsChecked="{Binding IsCorners}"
                              ToolTip.Tip="Every enabled corner, once each — or a Monte Carlo at each"/>
-                <RadioButton Classes="mode" GroupName="YieldMode" Content="Centering" IsChecked="{Binding IsCentering}"
+                <RadioButton Classes="mode" Content="Centering" IsChecked="{Binding IsCentering}"
                              ToolTip.Tip="Move the designable nominals to maximize yield, then verify on fresh trials"/>
-                <RadioButton Classes="mode" GroupName="YieldMode" Content="DOE" IsChecked="{Binding IsDoe}"
+                <RadioButton Classes="mode" Content="DOE" IsChecked="{Binding IsDoe}"
                              ToolTip.Tip="Design of experiments — which factors matter, how they interact, and a response model"/>
 
                 <Border Classes="divider"/>

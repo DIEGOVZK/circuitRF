@@ -13,6 +13,7 @@ namespace CircuitRF.Ui.Tests.ModelComposer;
 /// raw files — and its exit codes are D16's: 3 for a planted non-conservative device, 130 for a cancelled run that wrote
 /// nothing.
 /// </summary>
+[Collection(CircuitRF.Ui.Tests.Lvs.LvsCliConsoleCollection.Name)]
 public sealed class ModelCliVerbTests(ITestOutputHelper output) : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("crf-mc13-").FullName;

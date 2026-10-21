@@ -85,7 +85,7 @@ name, and is set in Properties per mesh. A tetrahedral mesh (`.node`/`.ele`) is 
 voxel the region of the tetrahedron holding its centre, and kept as a `.nii.gz` beside the 3D view: from then on it is a
 voxel body.
 
-## Headless {#headless}
+## From the command line {#headless}
 
 <pre><code class="cmd"><span class="prompt">$ </span>circuitrf import voxels head.nii.gz --into model/3d/model.c3d --labels head.csv --report
 <span class="prompt">$ </span>circuitrf import voxels head.raw --into model/3d/model.c3d --dims 256,256,180 --type uint8 --voxel 1mm --material 0=air

@@ -187,9 +187,9 @@
                                         <CheckBox Content="Run on release" FontSize="12" IsChecked="{Binding RunOnRelease}"
                                                   ToolTip.Tip="Simulate only when a slider is let go"/>
                                         <Separator Margin="0,2"/>
-                                        <RadioButton GroupName="TuneScope" Content="All enabled analyses" FontSize="12"
+                                        <RadioButton Content="All enabled analyses" FontSize="12"
                                                      IsChecked="{Binding ScopeSettings.UseAll}"/>
-                                        <RadioButton GroupName="TuneScope" Content="Only these:" FontSize="12"
+                                        <RadioButton Content="Only these:" FontSize="12"
                                                      IsChecked="{Binding !ScopeSettings.UseAll}"/>
                                         <ItemsControl ItemsSource="{Binding ScopeSettings.Analyses}" Margin="18,0,0,0"
                                                       IsEnabled="{Binding !ScopeSettings.UseAll}">

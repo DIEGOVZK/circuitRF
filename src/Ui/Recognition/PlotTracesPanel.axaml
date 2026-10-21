@@ -111,10 +111,10 @@
                         </StackPanel>
                     </StackPanel>
                     <StackPanel Grid.Column="2" Classes="Toolbar" Orientation="Horizontal" Spacing="2">
-                        <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="tracesView"
+                        <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}"
                                      Content="Simple" FontSize="12" IsChecked="{Binding Simple}"
                                      ToolTip.Tip="One row per curve colour: the pieces of one curve are assigned together."/>
-                        <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="tracesView"
+                        <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}"
                                      Content="Detailed" FontSize="12" IsChecked="{Binding Detailed}"
                                      ToolTip.Tip="One row per piece the reading returned, each assigned on its own."/>
                     </StackPanel>

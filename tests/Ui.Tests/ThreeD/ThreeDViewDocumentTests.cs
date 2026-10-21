@@ -456,6 +456,17 @@ public sealed class ThreeDViewDocumentTests : IDisposable
 			}
 		},
 		{
+			"$type": "CylinderSheet",
+			"Name": "rung",
+			"Material": "Gold",
+			"Axis": "Z",
+			"Base": [500, 500, 0],
+			"Radius": 300,
+			"Length": 254,
+			"StartDeg": -10,
+			"SweepDeg": 20
+		},
+		{
 			"$type": "Sphere",
 			"Name": "bump",
 			"Material": "Gold",

@@ -69,31 +69,29 @@ public class TechEditPaneTests
     // ── The width ─────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// The four columns the owner named, read back out of the view that declares them. This is the
-    /// half of the width that is arithmetic: if the layer table's columns are ever re-cut, the
-    /// constant the pane opens at has to be re-measured, and this is what says so.
+    /// The columns the owner named, read back out of the view that declares them — Name and Color, since
+    /// Vis and Sel moved to the layout editor's Layers list. This is the half of the width that is
+    /// arithmetic: if the layer table's columns are ever re-cut, the constant the pane opens at has to
+    /// be re-measured, and this is what says so.
     /// </summary>
     [Fact]
     public void TheColumnFloorMatchesTheLayerTablesOwnColumnWidths()
     {
         var axaml = RepoFile("src", "Ui", "Views", "Layout", "TechEditorView.axaml");
 
-        // Name, Vis, Sel, Color — the first four of the column list the header row and every data row
-        // both declare. The list appears several times, identically, and any one of them will do.
-        var m = Regex.Match(axaml,
+        // Name and Color — the first two of the column list the header row and every data row both
+        // declare, read from the header row itself so another table's list cannot answer instead.
+        var header = axaml[axaml.IndexOf("x:Name=\"LayerHeaderColumns\"", StringComparison.Ordinal)..];
+        var m = Regex.Match(header,
             @"<ColumnDefinition Width=""\*"" MinWidth=""(?<name>\d+)""/>\s*" +
-            @"<ColumnDefinition Width=""(?<vis>\d+)""/>\s*" +
-            @"<ColumnDefinition Width=""(?<sel>\d+)""/>\s*" +
             @"<ColumnDefinition Width=""(?<color>\d+)""/>");
         Assert.True(m.Success, "the layer table's column list changed — re-measure the Edit… pane width");
 
         double columns = double.Parse(m.Groups["name"].Value)
-                       + double.Parse(m.Groups["vis"].Value)
-                       + double.Parse(m.Groups["sel"].Value)
                        + double.Parse(m.Groups["color"].Value);
 
-        // Plus the three 4-unit gaps between them and the grid's own 4-unit margin each side.
-        Assert.Equal(WorkspaceViewModel.TechEditPaneColumnFloor, columns + 3 * 4 + 2 * 4);
+        // Plus the 4-unit gap between them and the grid's own 4-unit margin each side.
+        Assert.Equal(WorkspaceViewModel.TechEditPaneColumnFloor, columns + 1 * 4 + 2 * 4);
     }
 
     /// <summary>And the width the pane actually opens at clears that floor — with room left over for a
@@ -102,7 +100,7 @@ public class TechEditPaneTests
     public void ThePaneIsWideEnoughForThoseColumns()
     {
         Assert.True(WorkspaceViewModel.TechEditPaneWidth >= WorkspaceViewModel.TechEditPaneColumnFloor,
-            $"{WorkspaceViewModel.TechEditPaneWidth} is narrower than the four columns it must show " +
+            $"{WorkspaceViewModel.TechEditPaneWidth} is narrower than the columns it must show " +
             $"({WorkspaceViewModel.TechEditPaneColumnFloor}).");
     }
 

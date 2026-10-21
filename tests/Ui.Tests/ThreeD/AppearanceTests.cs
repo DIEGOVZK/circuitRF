@@ -222,7 +222,7 @@ public sealed class AppearanceTests : IDisposable
         var twin = small.Objects.Single(o => o.Name == "twin");
         Assert.Equal(twin.AppearanceSlot, small.Objects.Single(o => o.Name == "pair").AppearanceSlot);
         Assert.NotEqual(twin.AppearanceSlot, small.Objects.Single(o => o.Name == "base").AppearanceSlot);
-        Assert.All(small.ShadeVertices.Skip(twin.FirstVertex).Take(twin.VertexCount), v => Assert.Equal((uint)twin.AppearanceSlot, v.Slot));
+        Assert.All(small.ShadeVertices.Skip(twin.FirstVertex).Take(twin.VertexCount), v => Assert.Equal((uint)twin.AppearanceSlot, v.Slot & Scene3DShadeVertex.SlotMask));
         Assert.Equal(0, small.AppearanceFallbacks);
 
         // 257 distinct: the role default (the first solid's) and 256 roughnesses that are not it.

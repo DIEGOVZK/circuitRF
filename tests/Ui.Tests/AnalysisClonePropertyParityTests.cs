@@ -32,6 +32,18 @@ public sealed class AnalysisClonePropertyParityTests
     {
         [typeof(DcAnalysis)] = new DcAnalysis("DC1") { Enabled = false },
 
+        [typeof(FieldsAnalysis)] = new FieldsAnalysis("FLD1")
+        {
+            Enabled     = false,
+            Block       = "X1.EM1",
+            FreqExpr    = "128",
+            FreqUnit    = "MHz",
+            DriveExpr   = "1,2",
+            WeightsExpr = "1,polar(1,-90)",
+            Norm        = FieldsAnalysis.NormAvailable,
+            AverageExpr = "no",
+        },
+
         [typeof(SParameterAnalysis)] = new SParameterAnalysis(
             "SP1", new[] { new FrequencySpec("1", "2", 11, SweepKind.Log, "GHz", "GHz") })
         { Enabled = false },

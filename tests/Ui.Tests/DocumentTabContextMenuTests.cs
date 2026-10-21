@@ -434,10 +434,10 @@ public class DocumentTabContextMenuTests
         // (harmonicaRF also runs standalone, with no workspace, so it cannot live on the workspace).
         string view = Read("src", "Ui", "Views", "Harmonica", "HarmonicaView.axaml.cs");
         Assert.Contains("HarmonicaDocumentSave.RunAsync", view, StringComparison.Ordinal);
-        Assert.DoesNotContain("ToCharmJson()", view, StringComparison.Ordinal);
+        Assert.DoesNotContain(".ToCharmJson(", view, StringComparison.Ordinal);
 
         string shared = Read("src", "Ui", "Harmonica", "HarmonicaDocumentSave.cs");
-        Assert.Contains("ToCharmJson()", shared, StringComparison.Ordinal);
+        Assert.Contains(".ToCharmJson(", shared, StringComparison.Ordinal);
     }
 
     [Fact]

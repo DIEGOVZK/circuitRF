@@ -35,7 +35,7 @@
 
             <TextBlock Classes="label" Text="Read as" Margin="0,0,6,0"/>
             <StackPanel Classes="Toolbar" Orientation="Horizontal" Spacing="2">
-                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="kind"
+                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}"
                              IsChecked="{Binding IsAutoKind}">
                     <ToolTip.Tip>
                         <MultiBinding StringFormat="{}{0} — {1}">
@@ -49,17 +49,17 @@
                                  VerticalAlignment="Center"/>
                     </StackPanel>
                 </RadioButton>
-                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="kind"
+                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}"
                              IsChecked="{Binding IsSchematicKind}"
                              ToolTip.Tip="Schematic — read the picture as a schematic drawing, whatever it looks like.">
                     <mi:MaterialIcon Kind="ResistorNodes" Width="16" Height="16"/>
                 </RadioButton>
-                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="kind"
+                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}"
                              IsChecked="{Binding IsLayoutKind}"
                              ToolTip.Tip="Layout — read the picture as a layout: coloured copper, pads and holes.">
                     <ctrl:ImageMakeGlyphControl Kind="Layout" Width="16" Height="16"/>
                 </RadioButton>
-                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="kind"
+                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}"
                              IsChecked="{Binding IsPlotKind}"
                              ToolTip.Tip="Plot — read the picture as a plot: a rectangular plot against frequency, a Smith chart or a polar chart, digitised trace by trace.">
                     <mi:MaterialIcon Kind="ChartLine" Width="16" Height="16"/>
@@ -69,24 +69,24 @@
 
             <TextBlock Classes="label" Text="Make" Margin="0,0,6,0"/>
             <StackPanel Classes="Toolbar" Orientation="Horizontal" Spacing="2" IsVisible="{Binding IsDrawingPicture}">
-                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="make"
+                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}"
                              IsChecked="{Binding IsMakeSchematic}"
                              ToolTip.Tip="Schematic — a new cell with the schematic recognised from the picture.">
                     <mi:MaterialIcon Kind="ResistorNodes" Width="16" Height="16"/>
                 </RadioButton>
-                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="make"
+                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}"
                              IsChecked="{Binding IsMakeLayout}" IsEnabled="{Binding MakeLayoutEnabled}"
                              ToolTip.Tip="{Binding MakeLayoutTip, StringFormat='Layout — {0}'}" ToolTip.ShowOnDisabled="True">
                     <ctrl:ImageMakeGlyphControl Kind="Layout" Width="16" Height="16"/>
                 </RadioButton>
             </StackPanel>
             <StackPanel Classes="Toolbar" Orientation="Horizontal" Spacing="2" IsVisible="{Binding IsPlotPicture}">
-                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="makeplot"
+                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}"
                              IsChecked="{Binding IsMakeTouchstone}"
                              ToolTip.Tip="Touchstone — a Touchstone file of every entry the traces describe, each missing phase and entry filled by the rule the matrix grid shows.">
                     <ctrl:ImageMakeGlyphControl Kind="Touchstone" Width="16" Height="16"/>
                 </RadioButton>
-                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="makeplot"
+                <RadioButton Classes="tool" Theme="{StaticResource {x:Type ToggleButton}}"
                              IsChecked="{Binding IsMakeCsv}"
                              ToolTip.Tip="CSV — the raw digitised traces, in each plot's own units, never resampled. Any plot digitises, S-parameters or not.">
                     <mi:MaterialIcon Kind="FileDelimitedOutline" Width="16" Height="16"/>

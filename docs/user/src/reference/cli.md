@@ -1866,6 +1866,11 @@ the model's outlines and its legend beside it.
 - **The plot's drive is applied**, and its legend states it, as in the window. There is no flag for it:
   set it on the plot. See [what drive a field is shown at](em-3d.html#field-drive).
 - A `--section` that is not the plot's own plane is a refusal naming both.
+- **A SAR plot can be drawn as a maximum-intensity projection**: `--mip x|y|z` takes, along each line through the
+  volume parallel to that axis, the highest SAR on it, and draws the result on a plane through the middle of the
+  tissue — where tissue is hottest, which no single section says. A plot whose own *Maximum-intensity projection*
+  box is ticked is drawn that way without the flag. It is refused for any other quantity and together with
+  `--section`, and it is never written to the file. See [SAR](sar.html).
 - **A surfaces or faces plot is drawn as the 3D view shows it, from a direction you give**, because the
   window's camera is not saved with the plot: `--iso` (the 3D view's *Standard Views ▸ Isometric*),
   `--view-dir top` (or `bottom`, `front`, `back`, `left`, `right`), or `--view-dir x,y,z` — the direction from

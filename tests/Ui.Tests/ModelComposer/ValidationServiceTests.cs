@@ -14,6 +14,7 @@ namespace CircuitRF.Ui.Tests.ModelComposer;
 /// model with a perturbed Lg fails the S item, and the generated testbenches run unchanged through <c>circuitrf hb</c> and
 /// <c>circuitrf lp</c>.
 /// </summary>
+[Collection(CircuitRF.Ui.Tests.Lvs.LvsCliConsoleCollection.Name)]
 public sealed class ValidationServiceTests(ITestOutputHelper output)
 {
     [Fact]

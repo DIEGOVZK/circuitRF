@@ -37,6 +37,7 @@ public sealed class BandpassReviewRun
     }
 }
 
+[Collection(CircuitRF.Ui.Tests.Lvs.LvsCliConsoleCollection.Name)]
 public sealed class ReviewCliDisplayFixesTests(BandpassReviewRun bandpass) : IClassFixture<BandpassReviewRun>
 {
     // ── fixtures ─────────────────────────────────────────────────────────────────

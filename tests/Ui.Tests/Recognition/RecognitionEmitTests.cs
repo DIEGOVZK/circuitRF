@@ -15,6 +15,7 @@ using Xunit.Abstractions;
 
 namespace CircuitRF.Ui.Tests.Recognition;
 
+[Collection(CircuitRF.Ui.Tests.Lvs.LvsCliConsoleCollection.Name)]
 public sealed class RecognitionEmitTests(ITestOutputHelper output) : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "crf-as6-emit-" + Guid.NewGuid().ToString("N")[..12]);

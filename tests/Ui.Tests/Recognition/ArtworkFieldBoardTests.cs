@@ -13,6 +13,7 @@ using Xunit;
 
 namespace CircuitRF.Ui.Tests.Recognition;
 
+[Collection(CircuitRF.Ui.Tests.Lvs.LvsCliConsoleCollection.Name)]
 public sealed class ArtworkFieldBoardTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "crf-as9-field-" + Guid.NewGuid().ToString("N")[..12]);

@@ -372,7 +372,8 @@ public class RenderLayerBelowFirewallTests(ITestOutputHelper output)
     private static List<LayoutShape> LayoutShapes() =>
     [
         new RectShape { Layer = FixtureLayer, X1 = 0, Y1 = 0, X2 = 100_000, Y2 = 50_000 },
-        new LabelShape { Layer = FixtureLayer, X = 10_000, Y = 20_000, Text = "PAD 1", Height = 12_000 },
+        // Sans, because a Stroke label (the default) is drawn as pen strokes and carries no font at all.
+        new LabelShape { Layer = FixtureLayer, X = 10_000, Y = 20_000, Text = "PAD 1", Height = 12_000, Font = LabelFont.Sans },
     ];
 
     private static string Svg(string kind) => kind switch

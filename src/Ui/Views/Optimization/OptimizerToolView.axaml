@@ -161,16 +161,22 @@
                                     </Grid>
                                     <Separator Margin="0,2"/>
                                     <TextBlock Text="Cost" Classes="section"/>
-                                    <RadioButton GroupName="OptCost" Content="Least squares" FontSize="12"
-                                                 IsChecked="{Binding IsLeastSquares}" IsEnabled="{Binding !CostLocked}"/>
-                                    <RadioButton GroupName="OptCost" Content="Minimax (worst violation)" FontSize="12"
-                                                 IsChecked="{Binding IsMinimax}" IsEnabled="{Binding !CostLocked}"/>
+                                    <!-- Each pair in its own panel: unnamed radio buttons group with their siblings, and a
+                                         GroupName would be shared by every Optimizer pane in the window. -->
+                                    <StackPanel Spacing="4">
+                                        <RadioButton Content="Least squares" FontSize="12"
+                                                     IsChecked="{Binding IsLeastSquares}" IsEnabled="{Binding !CostLocked}"/>
+                                        <RadioButton Content="Minimax (worst violation)" FontSize="12"
+                                                     IsChecked="{Binding IsMinimax}" IsEnabled="{Binding !CostLocked}"/>
+                                    </StackPanel>
                                     <Separator Margin="0,2"/>
                                     <TextBlock Text="Each evaluation runs" Classes="section"/>
-                                    <RadioButton GroupName="OptScope" Content="The goals' analyses only" FontSize="12"
-                                                 IsChecked="{Binding GoalAnalysesOnly}"/>
-                                    <RadioButton GroupName="OptScope" Content="Every enabled analysis" FontSize="12"
-                                                 IsChecked="{Binding AllAnalyses}"/>
+                                    <StackPanel Spacing="4">
+                                        <RadioButton Content="The goals' analyses only" FontSize="12"
+                                                     IsChecked="{Binding GoalAnalysesOnly}"/>
+                                        <RadioButton Content="Every enabled analysis" FontSize="12"
+                                                     IsChecked="{Binding AllAnalyses}"/>
+                                    </StackPanel>
                                     <Separator Margin="0,2"/>
                                     <!-- brief-yield-7: meet every goal at each of these corners at once. -->
                                     <TextBlock Text="Corners" Classes="section"/>

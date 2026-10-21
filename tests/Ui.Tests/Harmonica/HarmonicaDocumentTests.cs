@@ -82,7 +82,8 @@ public sealed class HarmonicaDocumentTests(ITestOutputHelper output)
         //
         // "Digitise Plot…" joined with IM-14 (2026-10-11). "Examples" LEFT on 2026-10-15 for
         // File ▸ New ▸ Examples (field feedback round 1), where FileMenuRestructureTests holds it.
-        Assert.Equal(["harmonicaRF", "Match Designer", "railRF", "Smith Chart", "Digitise Plot…"],
+        // "Model Composer…" joined with MC-14 (2026-10-19), before Digitise Plot on both surfaces.
+        Assert.Equal(["harmonicaRF", "Match Designer", "railRF", "Smith Chart", "Model Composer…", "Digitise Plot…"],
                      nativeEntries);
         Assert.Contains(native[0].Descendants(),
             e => ((string?)e.Attribute("Command"))?.Contains("NewHarmonicaCommand") == true);
@@ -105,7 +106,7 @@ public sealed class HarmonicaDocumentTests(ITestOutputHelper output)
             .Where(e => e.Name.LocalName == "MenuItem")
             .Select(e => (string?)e.Attribute("Header"))
             .ToList();
-        Assert.Equal(["_harmonicaRF", "_Match Designer", "_railRF", "_Smith Chart", "_Digitise Plot…"],
+        Assert.Equal(["_harmonicaRF", "_Match Designer", "_railRF", "_Smith Chart", "Model _Composer…", "_Digitise Plot…"],
                      inWindowEntries);
         Assert.Contains(inWindow[0].Descendants(),
             e => ((string?)e.Attribute("Command"))?.Contains("NewHarmonicaCommand") == true);

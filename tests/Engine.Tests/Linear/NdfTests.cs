@@ -921,6 +921,10 @@ public sealed class NdfTests(ITestOutputHelper output)
         ["StriplineBroadsideCoupledModel"]  = Activity.Passive,
         ["MicrostripBroadsideCoupledModel"] = Activity.Passive,
         ["MicrostripLineModel"]   = Activity.Passive,
+        // CPWG and SLIN stamp through TLIN's uniform-line stamp with their own per-frequency Z0 and
+        // loss, passive for exactly MLIN's reason.
+        ["CoplanarLineModel"]     = Activity.Passive,
+        ["StriplineModel"]        = Activity.Passive,
         ["MicrostripBendModel"]   = Activity.Passive,
         // MCURVE is an MLIN over an effective length and stamps through one, so it is passive for
         // exactly MLIN's reason — "the microstrips" row of stability-wsprobe.md §11.3.
@@ -947,6 +951,8 @@ public sealed class NdfTests(ITestOutputHelper output)
         ["TermModel"]             = Activity.Passive,
         ["WBondModel"]            = Activity.Passive,
         ["MatchModel"]            = Activity.Passive,
+        // The ideal N:1 transformer: the power into one winding comes out of the other.
+        ["IdealTransformerModel"] = Activity.Passive,
 
         // Sources: off in this assembly already; the two that carry an impedance stamp it.
         ["VdcModel"]              = Activity.Passive,
@@ -978,6 +984,7 @@ public sealed class NdfTests(ITestOutputHelper output)
         ["VcvsModel"]             = Activity.ActiveExact,   // E → 0 (the branch stays: a short)
         ["AmplifierModel"]        = Activity.ActiveExact,   // forward gain → 0, isolation kept
         ["MixerModel"]            = Activity.ActiveExact,   // conversion → 0
+        ["OpAmpModel"]            = Activity.ActiveExact,   // A → 0 (the output stays, 0 V behind Rout)
         ["CurticeQuadraticFetModel"] = Activity.ActiveExact,
         ["CurticeCubicFetModel"]     = Activity.ActiveExact,
         ["StatzFetModel"]            = Activity.ActiveExact,
@@ -989,6 +996,9 @@ public sealed class NdfTests(ITestOutputHelper output)
         ["VdmosModel"]            = Activity.ActiveExact,
         ["IgbtModel"]             = Activity.ActiveExact,
         ["JfetModel"]             = Activity.ActiveExact,
+        // The composed FET's core: gm, the drain's dependence on the dispersion and trap states, the
+        // trap nodes' on the terminal voltages, and the thermal coupling both ways → 0.
+        ["ComposedCoreModel"]     = Activity.ActiveExact,
 
         // User-scaled — the activity is in equations or a binary this repository did not write.
         ["SddModel"]              = Activity.ActiveUserScaled,

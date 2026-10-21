@@ -21244,3 +21244,14 @@ read; it imports with connectivity matching both its drawing and its declared ne
 - **harmonicaRF's composed DC-IV family took Rth at the netlist's ambient**, not at the device's own `Temp` — the
   elaborator builds the thermal network at the device's. `DcivFamily` now passes `ComposedCoreModel.RequestedC`. (It
   still reads the model's Rth, not an instance `Rth` override.)
+
+## A geometry worker left in a test project's output shadowed the current one (2026-10-20)
+
+- `GeometryKernelLocator` takes `<base>/geometry-kernel/` first and consults the source tree's
+  `tools/geometry-worker/build/<rid>/` **only when that folder is absent** (R-em3d63-1). `tests/Ui.Tests`' output held a
+  `geometry-kernel/` folder from an earlier build, but no target writes there: `EnsureGeometryWorker` copies to
+  `src/Ui`'s own `OutDir` only. So after VERSION moved to 1.0.14 the staged worker and `src/Ui`'s copy were rebuilt
+  and the tests kept starting a 1.0.13 worker, which `GeometryKernelWorkerTests.TheWorker_AnswersWithTheRecipesProtocolAndOcct`
+  caught as a version mismatch. Deleting the leftover folder lets the tests fall through to the staged worker. A
+  `geometry-kernel/` folder under any test project's `bin/` is never refreshed by a build; remove it rather than
+  copying a new one in.

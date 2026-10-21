@@ -15,6 +15,7 @@ using static CircuitRF.Ui.Tests.Recognition.RecognitionBoards;
 
 namespace CircuitRF.Ui.Tests.Recognition;
 
+[Collection(CircuitRF.Ui.Tests.Lvs.LvsCliConsoleCollection.Name)]
 public sealed class SchematicTechRefTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "crf-as6-tech-" + Guid.NewGuid().ToString("N")[..12]);

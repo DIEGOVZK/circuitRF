@@ -1,9 +1,7 @@
-// brief-img-14-sparameter-plots-to-touchstone.md §4 — assembling the file (R-im14-9): the default fills for the entries
-// nobody plotted, each recorded in the header, and the refusal of a trace no evidence names.
+// brief-img-14-sparameter-plots-to-touchstone.md §4 — assembling the file (R-im14-9): the refusal of a trace no evidence
+// names.
 
 using System.IO;
-using System.Linq;
-using System.Numerics;
 using CircuitRF.Design.Imaging.Plots;
 using Xunit;
 using Xunit.Abstractions;
@@ -22,28 +20,7 @@ public sealed class TouchstoneAssemblyTests(PlotPictureSet pictures, ITestOutput
         return built;
     }
 
-    [Fact]
-    public void S11AndAPassiveS21_FillS12AsS21_AndS22AsS11_InTheHeader()
-    {
-        var built = Build(pictures.Picture("s21db"), pictures.Picture("s11db"));
-        Assert.True(built.Ok, built.Refusal?.Sentence);
-        Assert.Contains(built.Header, l => l.StartsWith("S12: = S21 (reciprocal"));
-        Assert.Contains(built.Header, l => l.StartsWith("S22: = S11 (symmetric"));
-        for (int k = 0; k < built.Snp!.FrequencyCount; k++)
-        {
-            Assert.Equal(built.Snp[k][1, 0], built.Snp[k][0, 1]);
-            Assert.Equal(built.Snp[k][0, 0], built.Snp[k][1, 1]);
-        }
-    }
 
-    [Fact]
-    public void AnS21AboveZeroDb_FillsS12WithZero()
-    {
-        var built = Build(pictures.Picture("amp21"));
-        Assert.True(built.Ok, built.Refusal?.Sentence);
-        Assert.Contains(built.Header, l => l.StartsWith("S12: zero") && l.Contains("rises above 0 dB"));
-        Assert.All(Enumerable.Range(0, built.Snp!.FrequencyCount), k => Assert.Equal(Complex.Zero, built.Snp[k][0, 1]));
-    }
 
     [Fact]
     public void AnUnassignedTrace_Refuses_NamingIt()

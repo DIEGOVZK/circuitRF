@@ -40,6 +40,7 @@ using Xunit.Abstractions;
 
 namespace CircuitRF.Ui.Tests.RailRf;
 
+[Collection(CircuitRF.Ui.Tests.Lvs.LvsCliConsoleCollection.Name)]
 public sealed class RailCliVerbTests(ITestOutputHelper output) : IDisposable
 {
     private readonly string _root = Path.Combine(

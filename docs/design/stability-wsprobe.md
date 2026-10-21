@@ -1209,7 +1209,7 @@ branch at all.
 
 | Model(s) | Activity | Passivation |
 |---|---|---|
-| `C`, `L`, `SRLC`, `PRLC`, `SRL`, `SRC`, `SLC`, `PRL`, `PRC`, `PLC`, `Bead`, `Mutual`, `TLIN`, `CLIN`, `MCLIN`, `BCLIN`, `MBCLIN`, the microstrips, `VIA`, `VIAGND`, the MMIC passives (`MIMCAP`, `TFR`, `SPIRAL`, `AIRBRIDGE`), `Short`, `IProbe`, `WSProbe`, `Port`, `Term`, `wBond`, `Match` | Passive | as-is — the ordinary stamp already IS the passive stamp |
+| `C`, `L`, `SRLC`, `PRLC`, `SRL`, `SRC`, `SLC`, `PRL`, `PRC`, `PLC`, `Bead`, `Mutual`, `Transformer`, `TLIN`, `CLIN`, `MCLIN`, `BCLIN`, `MBCLIN`, the microstrips, `CPWG`, `SLIN`, `VIA`, `VIAGND`, the MMIC passives (`MIMCAP`, `TFR`, `SPIRAL`, `AIRBRIDGE`), `Short`, `IProbe`, `WSProbe`, `Port`, `Term`, `wBond`, `Match` | Passive | as-is — the ordinary stamp already IS the passive stamp |
 | `Vdc`, `V_1Tone`/`V_nTone`, `I_1Tone`/`I_nTone`, `P1Tone`, `PnTone`, `Tuner` | Passive | sources are off in this assembly already; `P1Tone` and `Tuner` stamp their impedances |
 | `Atten`, `Switch`, `Circulator`, `Coupler`, `Balun`, `Filter`, `Duplexer` | Passive | as-is. **The circulator is non-reciprocal and passive** — Platzker zeroes dependent sources, not non-reciprocity, and a `σ_max` of 1 can no more hold a right-half-plane pole than a length of line can |
 | `Diode`, `NonlinearC`, `SemiC` | Passive | a two-terminal nonlinearity linearises to a positive conductance or capacitance at any bias |
@@ -1218,8 +1218,10 @@ branch at all.
 | `VCCS` | ActiveExact | `G → 0` — no stamp, and it allocates no branch, so the numbering is unchanged |
 | `VCVS` | ActiveExact | `E → 0`; **the branch and its constraint row stay** (a zero-gain controlled voltage source is a short) |
 | `Amp` (system) | ActiveExact | forward gain → 0. What is left is what the other three entries already say — matched terminations and the reverse isolation, kept. With compression on it is nonlinear and the same term is `∂I_out/∂V_in` |
+| `OpAmp` | ActiveExact | open-loop gain `A → 0`; the output branch and its row stay, as 0 V behind `Rout` (a zero-gain controlled voltage source is a short, as for `VCVS`) |
 | `Mixer` (system) | ActiveExact | **every off-diagonal** of its linearised block → 0: the two conversion terms and the LO-to-RF leak alike. The brief names the conversion gain; the leak is a dependent source by the same argument, and passivating MORE is the safe direction |
 | `FET_*`, `PFET_*` | ActiveExact | `gm = ∂I_d/∂V_gs → 0`. `gds`, the gate diode's conductance and both gate capacitances stay at bias; this family's `dc` is already symmetric, so there is no transcapacitance to remove |
+| `ComposedFET` | ActiveExact | `gm → 0`, and every other controlled conductance its core names: the drain's dependence on the dispersion and trap states, each trap node's on `V_gs`/`V_ds`, and the thermal coupling both ways (so the thermal node is decoupled). Its capacitances stay at bias |
 | `JFET_*` | ActiveExact | `∂I_ds/∂V_gs → 0`; `gds` and both gate junctions stay |
 | `BJT_*` | ActiveExact | the transport current source `I_ct → 0` in both directions, **and** the base-resistance modulation `∂I_rb/∂V_be`, `∂I_rb/∂V_bc` where `Rb` is modelled — a dependent source by the same argument even though §8 names only `I_ct`. Every junction conductance and charge is kept; the Early effect's `∂Q_be/∂V_bc` is removed as a transcapacitance |
 | `MOS*` | ActiveExact | `∂I_ds/∂V_gs → 0` and `∂I_ds/∂V_bs → 0`; `∂I_ds/∂V_ds` and both bulk junctions stay. Meyer's gate charge is genuinely non-reciprocal here and its antisymmetric part goes |

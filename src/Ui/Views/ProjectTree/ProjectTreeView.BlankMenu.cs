@@ -45,6 +45,8 @@ public partial class ProjectTreeView
     internal static readonly (string Header, string Command, string? Tip)[] ImportItems =
     [
         ("_Data…", nameof(WorkspaceViewModel.ImportDataCommand), null),
+        ("Sc_hematic…", nameof(WorkspaceViewModel.ImportSchematicCommand),
+            "Read a schematic design file and write it as a new cell with its own schematic: two-pin resistors, capacitors and inductors become native components, every other part a cell holding the design's own symbol, and the connectivity is checked against the source. Requires an open workspace."),
         // File ▸ Import nests this under Image ▸; the menu below does the same.
         ("As _Touchstone…", nameof(WorkspaceViewModel.ImportImageAsTouchstoneCommand), null),
         ("_GDSII…", nameof(WorkspaceViewModel.ImportGdsiiLibraryCommand), null),
@@ -58,6 +60,9 @@ public partial class ProjectTreeView
         // File ▸ Import binds this tip, because it says whether the geometry worker can read a STEP file
         // on this machine; the menu here is rebuilt on every open, so it reads the same property then.
         ("_STEP…", nameof(WorkspaceViewModel.ImportStepCommand), "{Binding " + nameof(WorkspaceViewModel.ThreeDImportStepTip) + "}"),
+        // brief-sar-11: anatomy into the active 3D view, both under the one tip File ▸ Import binds.
+        ("_Voxel Model…", nameof(WorkspaceViewModel.ImportVoxelModelCommand), "{Binding " + nameof(WorkspaceViewModel.ThreeDImportAnatomyTip) + "}"),
+        ("Surface _Meshes…", nameof(WorkspaceViewModel.ImportSurfaceMeshesCommand), "{Binding " + nameof(WorkspaceViewModel.ThreeDImportAnatomyTip) + "}"),
         ("_Component…", nameof(WorkspaceViewModel.ImportComponentCommand),
             "Import a component — its symbol, its land pattern(s) and the pin-to-pad map between them — as one cell. Point at a file or a folder; the folder is scanned for files that can be imported, and the formats read are .kicad_sym, .kicad_mod, .lib and .lbr."),
         ("_PDK…", nameof(WorkspaceViewModel.ImportPdkCommand), null),

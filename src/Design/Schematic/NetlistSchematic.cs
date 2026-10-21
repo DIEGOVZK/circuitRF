@@ -479,7 +479,7 @@ public static class NetlistSchematic
             if (len > 0) wanted.Add((k, dx / len, dy / len));
         }
 
-        (SymbolRotation Rot, bool Mirror) best = (SymbolRotation.R0, false);
+        (SymbolRotation Rotation, bool Mirror) best = (SymbolRotation.R0, false);
         double bestScore = double.MinValue;
         foreach (bool mirror in new[] { false, true })
             foreach (var rot in new[] { SymbolRotation.R0, SymbolRotation.R90, SymbolRotation.R180, SymbolRotation.R270 })
@@ -496,7 +496,7 @@ public static class NetlistSchematic
                 }
                 if (score > bestScore + 1e-9) { bestScore = score; best = (rot, mirror); }
             }
-        it.Comp.Rotation = best.Rot;
+        it.Comp.Rotation = best.Rotation;
         it.Comp.MirrorX = best.Mirror;
     }
 

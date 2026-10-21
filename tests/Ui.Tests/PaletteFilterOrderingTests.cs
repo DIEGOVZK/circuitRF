@@ -163,11 +163,14 @@ public class PaletteFilterOrderingTests
         // (plain SDD + SDD1/SDD2/SDD3), and SPICE (owner request 2026-09-01 — a referenced .model
         // or .subckt is normally a transistor or diode, so it must be reachable from here).
         //
+        // The composed FET (brief-modelcomposer-1) joined beside VerilogA, for VerilogA's reason.
+        //
         // The ferrite bead is deliberately NOT here: it is a linear impedance and belongs with the
         // lumped elements, which is where a user looking for one goes.
-        Assert.Equal(30, nonlinear.Count);
+        Assert.Equal(31, nonlinear.Count);
         Assert.Contains(nonlinear, i => i.Kind == SymbolKind.NonlinearC);
         Assert.Contains(nonlinear, i => i.Kind == SymbolKind.VerilogA);
+        Assert.Contains(nonlinear, i => i.Kind == SymbolKind.ComposedFET);
         Assert.Contains(nonlinear, i => i.Kind == SymbolKind.Diode);
         Assert.Contains(nonlinear, i => i.Kind == SymbolKind.FetCurtice);
         Assert.Contains(nonlinear, i => i.Kind == SymbolKind.FetCurticeCubic);

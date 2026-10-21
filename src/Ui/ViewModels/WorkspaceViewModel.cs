@@ -7661,18 +7661,20 @@ public partial class WorkspaceViewModel : ViewModelBase, ITreeActions, IHierarch
     /// enough for the layer table's <b>Name, Vis, Sel and Color</b> columns and no wider, so layers can
     /// be toggled with the artwork still on screen beside them.
     ///
-    /// <para>Those four columns are declared in <c>TechEditorView.axaml</c> as
-    /// <c>* (MinWidth 110), 30, 30, 48</c> with a 4-unit <c>ColumnSpacing</c> and a 4-unit margin each
-    /// side: 230 units at the Name column's floor, and the rest of this number is what makes Name
-    /// readable rather than merely present, and keeps the header row's Undo/Redo/Save from being
-    /// pushed off the right edge. <see cref="TechEditPaneColumnFloor"/> is the part that is arithmetic
-    /// and is pinned to the XAML by a test; this is the judgement on top of it.</para>
+    /// <para>Vis and Sel left the technology for the layout editor's own Layers list on 2026-10-15
+    /// (brief-layout-layers-panel.md), so the columns this width must show are now <b>Name and
+    /// Color</b>, declared in <c>TechEditorView.axaml</c> as <c>* (MinWidth 110), 48</c> with a 4-unit
+    /// <c>ColumnSpacing</c> and a 4-unit margin each side: 170 units at the Name column's floor. The
+    /// width itself is unchanged — the rest of this number is what makes Name readable rather than
+    /// merely present, and keeps the header row's Undo/Redo/Save from being pushed off the right edge.
+    /// <see cref="TechEditPaneColumnFloor"/> is the part that is arithmetic and is pinned to the XAML
+    /// by a test; this is the judgement on top of it.</para>
     /// </summary>
     public const double TechEditPaneWidth = 340;
 
-    /// <summary>The four columns' own width — see <see cref="TechEditPaneWidth"/>, which must not go
-    /// below it or the command stops delivering what it promises.</summary>
-    public const double TechEditPaneColumnFloor = 110 + 4 + 30 + 4 + 30 + 4 + 48 + 8;
+    /// <summary>The Name and Color columns' own width — see <see cref="TechEditPaneWidth"/>, which must
+    /// not go below it or the command stops delivering what it promises.</summary>
+    public const double TechEditPaneColumnFloor = 110 + 4 + 48 + 8;
 
     /// <summary>
     /// Technology ▾ ▸ Edit… — opens the <c>.ctech</c> in its OWN document pane, immediately right of

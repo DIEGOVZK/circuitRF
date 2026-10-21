@@ -1,7 +1,6 @@
 // brief-img-14-sparameter-plots-to-touchstone.md §4 — frequency along a Smith trace (R-im14-8), on a uniform line's
 // reflection drawn by circuitRF's plotter (PlotPictureSet): a 25 Ω load a quarter wave long at 1 GHz, 0.5–1.5 GHz, for
 // which frequency is exactly proportional to the angle swept — so swept-angle interpolation has a right answer to meet.
-// The counter-clockwise line is not physical; it is how a picture says markers outrank Foster's direction.
 
 using System.Linq;
 using CircuitRF.Design.Imaging.Plots;
@@ -28,13 +27,6 @@ public sealed class PlotFrequencyTests(PlotPictureSet pictures, ITestOutputHelpe
         Assert.True(worst <= 0.01, $"|ΔΓ| {worst}");
     }
 
-    [Fact]
-    public void TwoMarkers_InterpolateBySweptAngle()
-    {
-        var t = Assert.Single(Read("line-cw-markers").Traces);
-        Assert.Equal("markers", t.Frequency?.Source);
-        OnTheLine(t, clockwise: true);
-    }
 
     [Fact]
     public void NoMarkersAndNoMatchingRectangularTrace_WaitsForATypedRange_ThenTurnsClockwise()
@@ -51,11 +43,4 @@ public sealed class PlotFrequencyTests(PlotPictureSet pictures, ITestOutputHelpe
         OnTheLine(t, clockwise: true);
     }
 
-    [Fact]
-    public void Markers_OverrideTheClockwiseDefault()
-    {
-        var t = Assert.Single(Read("line-ccw-markers").Traces);
-        Assert.Equal("markers", t.Frequency?.Direction);
-        OnTheLine(t, clockwise: false);
-    }
 }

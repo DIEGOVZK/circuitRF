@@ -1874,7 +1874,8 @@ public class WBondRound5Tests
 
         // The layout view no longer claims them at all — neither on canvas focus nor on its own TopLevel.
         var view = Read("src", "Ui", "Views", "Layout", "LayoutEditorView.axaml.cs");
-        Assert.DoesNotContain("Key.P", view, StringComparison.Ordinal);
+        // A word boundary, because the Layers list's own Key.PageUp/Key.PageDown are not this key.
+        Assert.DoesNotMatch(@"\bKey\.P\b", view);
         Assert.DoesNotContain("OnTopLevelKeyDown", view, StringComparison.Ordinal);
 
         // …and the toggle no longer fights for focus, so it is left where the user wants it.
