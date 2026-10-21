@@ -88,6 +88,27 @@ public sealed class ExampleWorkspacesTests(ITestOutputHelper output) : IDisposab
     }
 
     /// <summary>
+    /// A macOS .app keeps the examples in <c>Contents/Resources</c> (the bundle scripts move them
+    /// there, because codesign refuses a dotted directory under <c>Contents/MacOS</c> and the Model
+    /// Composer example ships <c>.cmc-cache/</c> folders), so the root resolves from the executable
+    /// in <c>Contents/MacOS</c>. A tree beside the executable, as Windows and Linux ship it, still wins.
+    /// </summary>
+    [Fact]
+    public void AMacBundleFindsTheExamplesInContentsResources()
+    {
+        string contents = Path.Combine(_tmp, "circuitRF.app", "Contents");
+        string macOs = Directory.CreateDirectory(Path.Combine(contents, "MacOS")).FullName;
+        string resources = Directory.CreateDirectory(Path.Combine(contents, "Resources", ExampleWorkspaces.RootFolderName)).FullName;
+        File.WriteAllText(Path.Combine(resources, ExampleWorkspaces.IndexFileName), """{ "examples": [] }""");
+
+        Assert.Equal(Path.GetFullPath(resources), ExampleWorkspaces.ResolveRoot(macOs));
+
+        string beside = Directory.CreateDirectory(Path.Combine(macOs, ExampleWorkspaces.RootFolderName)).FullName;
+        File.WriteAllText(Path.Combine(beside, ExampleWorkspaces.IndexFileName), """{ "examples": [] }""");
+        Assert.Equal(Path.GetFullPath(beside), ExampleWorkspaces.ResolveRoot(macOs));
+    }
+
+    /// <summary>
     /// The item group carries the examples to PUBLISH as well as to build, and excludes results.
     ///
     /// <para>A source scan rather than a publish run: publishing every runtime identifier costs

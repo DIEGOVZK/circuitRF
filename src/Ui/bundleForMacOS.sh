@@ -93,6 +93,20 @@ for _crf_other in circuitRF harmonicaRF wBond; do
     fi
 done
 
+# -- The example workspaces go in Contents/Resources, not Contents/MacOS ---------------------
+#
+# They are documents, not code, and they hold dotted DIRECTORIES by design: the Model Composer
+# example keeps its fits in <name>.cmc-cache/, and without them it opens asking for every fit to be
+# run again. Under Contents/MacOS codesign reads such a directory as a nested bundle and rejects the
+# app (see the refusal below); under Contents/Resources the same tree signs. ExampleWorkspaces.
+# ResolveRoot looks in ../Resources/examples after the folder beside the executable, so moving it
+# here is the whole change. Windows and Linux keep it beside the executable.
+if [ -d "${MAC_OS_DIR}/examples" ]; then
+    echo "📚 Moving the example workspaces to Contents/Resources..."
+    rm -rf "${RESOURCES_DIR}/examples"
+    mv "${MAC_OS_DIR}/examples" "${RESOURCES_DIR}/examples"
+fi
+
 # -- Nothing under Contents/MacOS may have a DOT in a DIRECTORY name --------------------------
 #
 # codesign reads every directory under Contents/MacOS as code, and a dot in a directory's name

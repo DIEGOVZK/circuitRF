@@ -1012,6 +1012,29 @@ public class PackagingScriptTests
     }
 
     /// <summary>
+    /// <b>Every macOS bundle script moves the example workspaces to <c>Contents/Resources</c> before
+    /// the dotted-directory refusal.</b> The Model Composer example ships its fits in
+    /// <c>&lt;name&gt;.cmc-cache/</c> on purpose, so the refusal above would stop every macOS build
+    /// with the examples still under <c>Contents/MacOS</c>. <c>ExampleWorkspaces.ResolveRoot</c>
+    /// finds them in <c>../Resources/examples</c>.
+    /// </summary>
+    [Theory]
+    [InlineData("src/Ui/bundleForMacOS.sh")]
+    [InlineData("src/Ui/bundleForHarmonicaMacOS.sh")]
+    [InlineData("src/Ui/bundleForWBondMacOS.sh")]
+    public void MacBundleScripts_MoveTheExamplesToContentsResources_BeforeTheDottedDirectoryCheck(string relativePath)
+    {
+        var lines = File.ReadAllLines(RepoFile(relativePath.Split('/')))
+                        .Where(l => !l.TrimStart().StartsWith("#", StringComparison.Ordinal))
+                        .ToList();
+
+        int move = lines.FindIndex(l => l.Contains("mv \"${MAC_OS_DIR}/examples\" \"${RESOURCES_DIR}/examples\"", StringComparison.Ordinal));
+        int check = lines.FindIndex(l => l.Contains("-type d -name '*.*'", StringComparison.Ordinal));
+        Assert.True(move >= 0, $"{relativePath} no longer moves examples/ out of Contents/MacOS into Contents/Resources.");
+        Assert.True(move < check, $"{relativePath} moves examples/ after the dotted-directory check, which then refuses the .cmc-cache folders.");
+    }
+
+    /// <summary>
     /// <b>Every macOS bundle script drops the OTHER two applications' hosts out of
     /// <c>Contents/MacOS</c>.</b>
     ///

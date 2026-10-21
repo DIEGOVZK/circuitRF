@@ -175,7 +175,7 @@
                                 </ItemsControl>
                             </StackPanel>
                         </ScrollViewer>
-                        <TextBox Text="{Binding SBiases}" IsVisible="{Binding SBiasAsText}" Watermark="vgs, vds; vgs, vds; …"/>
+                        <TextBox Text="{Binding SBiases}" IsVisible="{Binding SBiasAsText}" PlaceholderText="vgs, vds; vgs, vds; …"/>
                         <ItemsControl ItemsSource="{Binding SBiasOthers}" IsVisible="{Binding HasSBiasOthers}">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
@@ -211,7 +211,7 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <TextBox Text="{Binding FixedVds}" IsVisible="{Binding CvVdsAsText}" Watermark="vds, vds, …"/>
+                        <TextBox Text="{Binding FixedVds}" IsVisible="{Binding CvVdsAsText}" PlaceholderText="vds, vds, …"/>
                         <TextBlock Classes="note" Text="{Binding FixedVdsSummary}"/>
 
                         <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0">
@@ -237,7 +237,7 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
-                        <TextBox Text="{Binding FixedVgs}" IsVisible="{Binding CvVgsAsText}" Watermark="vgs, vgs, …"/>
+                        <TextBox Text="{Binding FixedVgs}" IsVisible="{Binding CvVgsAsText}" PlaceholderText="vgs, vgs, …"/>
                         <TextBlock Classes="note" Text="{Binding FixedVgsSummary}"/>
                     </StackPanel>
                 </Border>
@@ -273,15 +273,15 @@
                         </Grid>
                         <Grid Classes="row" ColumnDefinitions="170,*">
                             <TextBlock Classes="lbl" Text="R_opt (Ω)"/>
-                            <TextBox Grid.Column="1" Text="{Binding Ropt}" Watermark="from the knee"/>
+                            <TextBox Grid.Column="1" Text="{Binding Ropt}" PlaceholderText="from the knee"/>
                         </Grid>
                         <Grid Classes="row" ColumnDefinitions="170,*">
                             <TextBlock Classes="lbl" Text="Source Z (re, im Ω)"/>
-                            <TextBox Grid.Column="1" Text="{Binding SourceZ}" Watermark="conjugate match"/>
+                            <TextBox Grid.Column="1" Text="{Binding SourceZ}" PlaceholderText="conjugate match"/>
                         </Grid>
                         <Grid Classes="row" ColumnDefinitions="170,*">
                             <TextBlock Classes="lbl" Text="Source 2f0 (re, im Ω)"/>
-                            <TextBox Grid.Column="1" Text="{Binding Source2f0}" Watermark="short"/>
+                            <TextBox Grid.Column="1" Text="{Binding Source2f0}" PlaceholderText="short"/>
                         </Grid>
                     </StackPanel>
                 </Border>

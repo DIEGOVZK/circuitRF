@@ -71,10 +71,10 @@
                         </Grid>
                         <TextBox Text="{Binding Expression}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" FontFamily="monospace" FontSize="11"
                                  IsVisible="{Binding IsCustom}"
-                                 Watermark="{Binding ExpressionWatermark}"
+                                 PlaceholderText="{Binding ExpressionWatermark}"
                                  ToolTip.Tip="Your own law. Every name that is not an input (vgs, vds, and T when the data spans temperatures) is a parameter the fit finds."/>
                         <TextBox Text="{Binding ExpressionGd}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="44" FontFamily="monospace" FontSize="11"
-                                 Watermark="IgGd = your expression in vgs, vds and parameters">
+                                 PlaceholderText="IgGd = your expression in vgs, vds and parameters">
                             <TextBox.IsVisible>
                                 <MultiBinding Converter="{x:Static BoolConverters.And}">
                                     <Binding Path="IsCustom"/>

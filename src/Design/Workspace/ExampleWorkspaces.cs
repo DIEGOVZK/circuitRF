@@ -48,6 +48,9 @@ public static class ExampleWorkspaces
     /// <summary>The index file inside it.</summary>
     public const string IndexFileName = "examples.json";
 
+    /// <summary>Where a macOS .app keeps the examples, beside <c>Contents/MacOS</c> (see <see cref="ResolveRoot"/>).</summary>
+    public const string MacBundleResourcesFolder = "Resources";
+
     private static readonly JsonSerializerOptions _json = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -108,6 +111,12 @@ public static class ExampleWorkspaces
     /// The same two-step <c>DocLauncher</c> uses for the bundled documentation, and for the same
     /// reason: a build-file change that works in one and fails in the other is how
     /// <c>tools/pcell-python</c> shipped broken once.</para>
+    ///
+    /// <para>On macOS the bundle scripts move the tree to <c>Contents/Resources/examples</c>, one
+    /// level over from the executable in <c>Contents/MacOS</c>: codesign reads a dotted DIRECTORY
+    /// under <c>Contents/MacOS</c> as a nested bundle and rejects the whole app, and the Model
+    /// Composer example ships its fits in <c>&lt;name&gt;.cmc-cache/</c>. Windows and Linux keep
+    /// the tree beside the executable.</para>
     /// </summary>
     public static string? ResolveRoot(string? searchFrom = null)
     {
@@ -115,6 +124,9 @@ public static class ExampleWorkspaces
 
         string bundled = Path.Combine(baseDir, RootFolderName);
         if (File.Exists(Path.Combine(bundled, IndexFileName))) return Path.GetFullPath(bundled);
+
+        string macResources = Path.Combine(baseDir, "..", MacBundleResourcesFolder, RootFolderName);
+        if (File.Exists(Path.Combine(macResources, IndexFileName))) return Path.GetFullPath(macResources);
 
         for (var dir = new DirectoryInfo(baseDir); dir is not null; dir = dir.Parent)
         {
