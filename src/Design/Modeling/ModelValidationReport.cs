@@ -445,6 +445,18 @@ public static class ModelValidationReport
     // ── Thermal ───────────────────────────────────────────────────────────────
 
     /// <summary>
+    /// The data's Rth over some of the thermal section's points: the least-squares slope, through the origin, of the rise
+    /// against the dissipated power, °C/W — from the points above a tenth of the largest power of all, so the unresolvable
+    /// rises near zero do not set it. Null with fewer than two such points.
+    /// </summary>
+    internal static double? DataRth(IReadOnlyList<double> p, IReadOnlyList<double> rise, IReadOnlyList<int> points)
+    {
+        double pMax = p.Count > 0 ? p.Max() : 0;
+        var idx = points.Where(k => p[k] > 0.1 * pMax).ToList();
+        return idx.Count < 2 ? null : idx.Sum(k => p[k] * rise[k]) / idx.Sum(k => p[k] * p[k]);
+    }
+
+    /// <summary>
     /// [R11] §2.8's equivalent-temperature check: at each self-heated DC point, the temperature at which the isothermal
     /// model carries the measured channel current; its rise over the ambient against the dissipated power is a line whose
     /// slope is the data's Rth at that ambient. Each ambient's slope is set against the model's <c>RthAt</c>.
@@ -480,9 +492,7 @@ public static class ModelValidationReport
         ds.Add("Tambient", new DataCube([axis], [.. allT]));
         foreach (var group in allT.Select((t, k) => (t, k)).GroupBy(x => Math.Round(x.t, 2)))
         {
-            var idx = group.Select(x => x.k).Where(k => allP[k] > 0.1 * allP.Max()).ToList();
-            if (idx.Count < 2) continue;
-            double rth = idx.Sum(k => allP[k] * allRise[k]) / idx.Sum(k => allP[k] * allP[k]);
+            if (DataRth(allP, allRise, [.. group.Select(x => x.k)]) is not { } rth) continue;
             double model = thermal.RthAt(group.Key);
             lines.Add($"Rth at {G(group.Key)} °C: data {G(rth)} °C/W, model {G(model)} °C/W ({G(100 * (model - rth) / rth)} %)");
             double dev = Math.Abs(model - rth) / rth;

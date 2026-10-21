@@ -335,13 +335,28 @@ public sealed partial class ModelComposerViewModel
         var ds = sp.Data;
         if (SelectedPlotTab == TjTab)
         {
-            plot.CustomTitle = "Tj − Ta against dissipated power";
-            double[] p = R(ds, "P"), data = R(ds, "Rise.data"), model = R(ds, "Rise.model");
+            plot.CustomTitle = "Tj − Ta against dissipated power · the slope is Rth";
+            double[] p = R(ds, "P"), data = R(ds, "Rise.data"), model = R(ds, "Rise.model"), ta = R(ds, "Tambient");
             if (p.Length == 0) return;
-            var order = Enumerable.Range(0, p.Length).OrderBy(k => p[k]).ToArray();
-            plot.Traces.Add(Xy("data", [.. order.Select(k => p[k])], [.. order.Select(k => data[k])], "P", "W", 0, line: false, marker: MarkerType.Circle));
-            plot.Traces.Add(Xy("Rth", [.. order.Select(k => p[k])], [.. order.Select(k => model[k])], "P", "W", 1, line: true, marker: null));
-            Labels(plot, "P (W)", "Tj − Ta (K)");
+            // One pair of traces per ambient: an Rth linear in the ambient is a different line at each, and one trace through
+            // all of them would zig-zag; an ambient's data and model share a colour. Each trace is named by its slope, which is
+            // what a marker on it reads back.
+            var groups = Enumerable.Range(0, p.Length).GroupBy(k => ta.Length == p.Length ? Math.Round(ta[k], 2) : double.NaN)
+                                   .OrderBy(g => g.Key).ToList();
+            int c = 0;
+            foreach (var g in groups)
+            {
+                var order = g.OrderBy(k => p[k]).ToArray();
+                string at = groups.Count > 1 ? $" at {ModelValueFormat.G(g.Key)} °C" : "";
+                double? dataRth = ModelValidationReport.DataRth(p, data, order);
+                double modelRth = order.Sum(k => p[k] * model[k]) / order.Sum(k => p[k] * p[k]);
+                string dataName = dataRth is { } r ? $"data{at} · slope {ModelValueFormat.G(r)} °C/W" : $"data{at}";
+                string modelName = double.IsFinite(modelRth) ? $"model{at} · Rth {ModelValueFormat.G(modelRth)} °C/W" : $"model{at}";
+                plot.Traces.Add(Xy(dataName, [.. order.Select(k => p[k])], [.. order.Select(k => data[k])], "P", "W", groups.Count > 1 ? c : 0, line: false, marker: MarkerType.Circle));
+                plot.Traces.Add(Xy(modelName, [.. order.Select(k => p[k])], [.. order.Select(k => model[k])], "P", "W", groups.Count > 1 ? c : 1, line: true, marker: null));
+                c++;
+            }
+            Labels(plot, "P (W)", "Tj − Ta (°C)");
             return;
         }
         if (CursorSet(sp.Sets) is not { } set) return;

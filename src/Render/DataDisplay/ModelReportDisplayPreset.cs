@@ -228,7 +228,7 @@ public static class ModelReportDisplayPreset
         var point = new[] { new AxisSlice("point", AxisRole.KeepAsX, 0) };
         return
         [
-            Rect("Junction rise against dissipated power", "P (W)", "Tj − Ta (K)",
+            Rect("Junction rise against dissipated power", "P (W)", "Tj − Ta (°C)",
                 Trace(src, $"{g}.Rise.data", point, x: $"{g}.P", colour: 0, marker: MarkerType.Circle),
                 Trace(src, $"{g}.Rise.model", point, x: $"{g}.P", colour: 1, marker: MarkerType.Cross)),
         ];
