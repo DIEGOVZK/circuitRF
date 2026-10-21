@@ -347,6 +347,9 @@ public sealed partial class ParameterRowViewModel : ObservableObject
 
     public bool IsChoiceParam => ChoiceOptions.Count > 0;
 
+    /// <summary>The entry that stands for the empty value, or null (<see cref="SetRuntimeChoices"/>).</summary>
+    private string? _blankChoiceLabel;
+
     /// <summary>
     /// True when this row's choices came from the REGISTRY — a built-in component's enum-named
     /// parameter (<c>Response</c>, <c>Form</c>, <c>Direction</c>, <c>OffState</c>, <c>IP3Ref</c>) —
@@ -369,9 +372,13 @@ public sealed partial class ParameterRowViewModel : ObservableObject
     /// a ComboBox whose selection is absent from its items renders blank, which reads as the value
     /// having been lost.</para>
     /// </summary>
-    internal void SetRuntimeChoices(IReadOnlyList<string> choices)
+    /// <para><paramref name="blankLabel"/>, when given, is offered FIRST and stands for the empty value — a row whose
+    /// blank means something (a composed FET's Symbol: the model's own) would otherwise show an empty entry. Picking
+    /// it writes the empty string.</para>
+    internal void SetRuntimeChoices(IReadOnlyList<string> choices, string? blankLabel = null)
     {
         IsRegistryChoiceParam = false;
+        _blankChoiceLabel = choices.Count == 0 ? null : blankLabel;
         if (choices.Count == 0)
         {
             if (ChoiceOptions.Count == 0) return;
@@ -380,7 +387,9 @@ public sealed partial class ParameterRowViewModel : ObservableObject
             return;
         }
 
-        var display = new List<string>(choices);
+        var display = new List<string>();
+        if (_blankChoiceLabel is { } label) display.Add(label);
+        display.AddRange(choices.Where(c => c.Length > 0));
         string current = StagedExpression.Trim();
         if (current.Length > 0 && !display.Contains(current, StringComparer.Ordinal))
             display.Add(current);
@@ -456,6 +465,7 @@ public sealed partial class ParameterRowViewModel : ObservableObject
         set
         {
             if (_isRefreshing) return;
+            if (_blankChoiceLabel is not null && value == _blankChoiceLabel) value = "";
             if (value == StagedExpression) return;
             StagedExpression = value;
             CommitExpression();
@@ -864,7 +874,7 @@ public sealed partial class ParameterRowViewModel : ObservableObject
 
         string expr = StagedExpression.Trim();
         if (expr == _param.Expression) return;
-        if (expr.Length == 0 && !IsLayerChoiceParam) return;
+        if (expr.Length == 0 && !IsLayerChoiceParam && _blankChoiceLabel is null) return;
         if (TryRetuneLineFrequency(expr, _param.Unit)) return;
         _schematicVm.Execute(new EditParameterCommand(_schematicVm.EditModel, _param, expr, _param.Unit));
     }

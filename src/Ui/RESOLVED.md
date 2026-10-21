@@ -40138,3 +40138,13 @@ the window's folders by `ModelComposerNoLogicTests`, hence the check lives on `T
   typed. C–V voltages are chips, typed past 24. Every control writes the same text the fields always held, so
   `Options()` parses exactly as before; a stored value the data lacks is kept as a ticked chip, never dropped on open.
 
+
+## ComposedFET: palette ghost showed the thermal pin, the dropped part had three (2026-10-20)
+
+`BuildPlacementGhost` drew a palette kind from `BuiltInSymbols` — the four-pin `ComposedFET` glyph — while a placed
+instance draws through `ComposedFetSymbolProvider`, which gives the standard glyph its T pin only when `File` names a
+self-heating model. A dropped instance has no `File`, so it landed with three. The ghost now resolves through the
+provider for this kind. **Any kind whose placed symbol depends on a parameter needs the same treatment** — the
+palette glyph is the family picture, not what lands. The Inspector's `Symbol` row became a picker over
+`ModelSymbols.Candidates` (the Export step's list) via `SetRuntimeChoices(…, blankLabel)`, whose blank entry commits
+an empty value — `CommitExpression` otherwise refuses an empty expression.

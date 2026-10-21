@@ -43,6 +43,44 @@ public sealed class ComposedFetSymbolTests
         Assert.Equal((200.0, 0.0), heated.Symbol!.Pins.Single(p => p.PortIndex == 3) is var t ? (t.LocalX, t.LocalY) : default);
     }
 
+    /// <summary>Owner report: the palette ghost showed the thermal pin and the dropped part had three. A dropped composed FET
+    /// has no File yet, so the ghost draws what the placed instance resolves to.</summary>
+    [Fact]
+    public void ThePlacementGhost_HasThePinsThePlacedInstanceHas()
+    {
+        var model = new SchematicEditModel();
+        var vm = new ViewModels.SchematicViewModel(model);
+        vm.BeginPlacement(SymbolKind.ComposedFET);
+        vm.OnPointerMoved(0, 0, leftDown: false);
+        var ghostPins = vm.Overlay.Ghost!.ResolvedPins!.Select(p => p.PortIndex).Order();
+
+        vm.OnPointerPressed(0, 0, Avalonia.Input.KeyModifiers.None);
+        var placed = ComposedFetSymbolProvider.Resolve(model.Components.Single().ExternalSymbolRef!, null).Symbol!;
+        Assert.Equal(placed.Pins.Select(p => p.PortIndex).Order(), ghostPins);
+        Assert.Equal(3, placed.Pins.Count);
+    }
+
+    /// <summary>The Inspector's Symbol row is a picker: blank (the standard FET, or the model's own) first, then the
+    /// library FET symbols; picking the first entry writes blank back.</summary>
+    [Fact]
+    public void TheSymbolRow_IsAPicker_WhoseFirstEntryIsBlank()
+    {
+        var m = Placed(wireThermalPin: false);
+        var comp = m.Components.Single();
+        comp.Parameters.Add(new EditableParameter { Name = "Symbol", Expression = "FetAngelov" });
+        var editor = new ViewModels.ParameterEditorViewModel();
+        editor.SetTargetDirect(new ViewModels.SchematicViewModel(m), comp, showClose: false);
+
+        var row = editor.Rows.Single(r => r.Name == "Symbol");
+        Assert.True(row.IsChoiceParam);
+        Assert.Equal("FET (standard, with T pin)", row.ChoiceOptions[0]);
+        Assert.Contains("FetCurtice", row.ChoiceOptions);
+        Assert.Equal("FetAngelov", row.SelectedChoice);
+
+        row.SelectedChoice = row.ChoiceOptions[0];
+        Assert.Equal("", comp.Parameters.Single(p => p.Name == "Symbol").Expression);
+    }
+
     /// <summary>A model that self-heats, so the standard glyph has the thermal pin.</summary>
     private static readonly string HotModel = ComposedTestModels.WriteTemp(
         ComposedTestModels.Model(Core.Devices.Composed.ModelTemperature.Range(0, 200)) with { Thermal = Core.Devices.Composed.ModelThermal.Single(25, 1e-9) });

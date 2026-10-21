@@ -43,8 +43,6 @@ reference/symbol-editor.html       | Drawing and editing a symbol.
 reference/sdd.html                 | The Symbolically-Defined Device: writing a nonlinear model as equations.
 reference/nonlinear-capacitor.html | C(V) as a Taylor series, and the C–V Editor that fits one.
 reference/veriloga.html            | Running a compact model you supply, from Verilog-A source or a compiled artefact.
-reference/model-composer.html      | A nonlinear FET model, or a passive one, built from measured or simulated data.
-reference/cmodel.html              | The .cmodel file, field by field, and scripts that write one without the Model Composer.
 reference/match.html               | Direct synthesis of a bandpass matching network that absorbs both terminations.
 
 == Simulate
@@ -92,6 +90,8 @@ reference/phone-sar.html       | A device against a phantom at its bands, and ps
 == Tools
 reference/smith-chart.html | Narrowband matching by hand: one curve per component, a handle on every joint, and the load moving as you drag.
 reference/harmonicarf.html | Interactive harmonic load-pull on one device, at the speed of a mouse drag.
+reference/model-composer.html | A nonlinear FET model, or a passive one, built from measured or simulated data.
+reference/cmodel.html      | The .cmodel file, field by field, and scripts that write one without the Model Composer.
 reference/wbond.html       | Bondwire arrays: geometry, the 3D kernel, and S-parameters out.
 reference/railrf.html      | Power integrity on the board you drew: DC drop, Z(f) against a target, and which decaps earn their place.
 

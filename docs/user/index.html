@@ -51,7 +51,7 @@ ground up, with worked examples.</p>
 <a class="card" href="reference/index.html">
 <h3>Reference Guide →</h3>
 <p>The complete technical reference. Every analysis, every component, the layout and EM engines, the
-file formats and the two bundled tools.</p>
+file formats and the bundled tools.</p>
 </a>
 <a class="card" href="app-notes/index.html">
 <h3>Application Notes →</h3>
@@ -75,7 +75,9 @@ datasets, so they drop straight into Python or MATLAB.</p>
 <a href="reference/mom-engine.html">method-of-moments EM solver</a> for layout, a 3D
 <a href="reference/wbond.html">bondwire kernel</a>, and
 <a href="reference/harmonicarf.html">harmonicaRF</a> — an interactive harmonic load-pull bench for a single
-device.</p>
+device — and the <a href="reference/model-composer.html">Model Composer</a>, which builds a nonlinear FET model
+(or a passive one) from measured or simulated data and places it in a schematic as a
+<a href="reference/components.html#composedfet">ComposedFET</a>.</p>
 <h2 id="everything-in-this-documentation">Everything in this documentation</h2>
 <p>Every page below is in one reading order. Start anywhere and follow <strong>Next</strong> at the foot of each
 page to reach the end without coming back here.</p>
@@ -110,8 +112,6 @@ page to reach the end without coming back here.</p>
 <li><a href="reference/sdd.html">The SDD (Symbolically-Defined Device)</a> <span>The Symbolically-Defined Device: writing a nonlinear model as equations.</span></li>
 <li><a href="reference/nonlinear-capacitor.html">The Nonlinear Capacitor &amp; the C–V Editor</a> <span>C(V) as a Taylor series, and the C–V Editor that fits one.</span></li>
 <li><a href="reference/veriloga.html">Compiled Verilog-A Models</a> <span>Running a compact model you supply, from Verilog-A source or a compiled artefact.</span></li>
-<li><a href="reference/model-composer.html">Model Composer</a> <span>A nonlinear FET model, or a passive one, built from measured or simulated data.</span></li>
-<li><a href="reference/cmodel.html">Writing a .cmodel</a> <span>The .cmodel file, field by field, and scripts that write one without the Model Composer.</span></li>
 <li><a href="reference/match.html">The Match Component</a> <span>Direct synthesis of a bandpass matching network that absorbs both terminations.</span></li>
 </ul>
 <h3>Simulate</h3>
@@ -163,6 +163,8 @@ page to reach the end without coming back here.</p>
 <ul>
 <li><a href="reference/smith-chart.html">Smith Chart</a> <span>Narrowband matching by hand: one curve per component, a handle on every joint, and the load moving as you drag.</span></li>
 <li><a href="reference/harmonicarf.html">harmonicaRF</a> <span>Interactive harmonic load-pull on one device, at the speed of a mouse drag.</span></li>
+<li><a href="reference/model-composer.html">Model Composer</a> <span>A nonlinear FET model, or a passive one, built from measured or simulated data.</span></li>
+<li><a href="reference/cmodel.html">Writing a .cmodel</a> <span>The .cmodel file, field by field, and scripts that write one without the Model Composer.</span></li>
 <li><a href="reference/wbond.html">wBond</a> <span>Bondwire arrays: geometry, the 3D kernel, and S-parameters out.</span></li>
 <li><a href="reference/railrf.html">railRF</a> <span>Power integrity on the board you drew: DC drop, Z(f) against a target, and which decaps earn their place.</span></li>
 </ul>

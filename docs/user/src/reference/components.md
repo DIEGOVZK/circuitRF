@@ -1930,31 +1930,65 @@ ComposedFET:X1  g d s  File="gan_8x125.cmodel"  N=8  Temp=85
 
 A model extracted at one temperature is used as it is at any other, with one warning naming both.
 
-A self-heating model has a thermal node, `X1.t`, whose voltage is the device's temperature rise in °C;
-its currents and charges follow its temperature (`Temp`, or `temp` when blank) plus that rise. Pin 4 is that node. On the standard symbol it is the
-lead on the right marked **T**, starting at a small open circle; it appears only when the model self-heats.
-Unwired, its end shows an open box instead of the red unconnected marker: the pin is there, and leaving it
-open is a valid choice.
+#### The thermal pin, T {#composedfet-thermal-pin}
+
+**T is neither an input nor an output.** It is a thermal *node*, wired exactly like an electrical one, but it
+carries temperature and heat instead of voltage and current:
+
+| On the T node | Means |
+|---|---|
+| its voltage, `V(X1.t)` | the device's temperature rise above `Temp` (or `temp` when that is blank), in °C |
+| the current into it | heat, in W: the device puts its own dissipated power in |
+| what sits between it and ground | the path that heat takes away |
+
+The model's own thermal network (`Rth` in parallel with `Cth`, or its ladder) is already inside the device, from
+`t` to ground. Currents and charges are evaluated at `Temp` plus the rise. So you **read** T to see how hot the
+channel runs, and you **load** T to change how the heat leaves.
+
+**When the T pin is there.** Only a model that self-heats has a thermal node, so only its symbol has the pin. A
+freshly dropped ComposedFET has no `File` yet and shows three pins. **To get the fourth pin, set `File` to a
+self-heating `.cmodel`** (one exported with self-heating on in the Model Composer's Thermal step). The standard
+symbol then gains the lead on the right marked **T**, starting at a small open circle. Choosing a model that does not
+self-heat takes the pin away again. A library symbol, such as `FetCurtice`, has only three pins whatever the model is.
+
+**Left unwired**, T is no connection, and the device keeps its own thermal network. Its end shows an open box
+rather than the red unconnected marker, because leaving it open is a valid choice. That is also the usual one:
+you can plot `V(X1.t)` without wiring anything.
+
+**Wired**, whatever you attach sits in parallel with the model's own network. A heatsink or mounting that adds its
+own path to ambient is a resistor (°C/W) from T to ground:
 
 ```
 ComposedFET:X1  g d s t  File="gan_8x125.cmodel"
 R:RSINK  t 0  R=20
 ```
 
-The model's own thermal resistance already runs from `t` to ground, so what you attach there sits in
-parallel with it. Left unwired, pin 4 is no connection and the device keeps its own thermal network.
+Here 20 °C/W in parallel with the model's own `Rth` lowers the device's total thermal resistance. Pin 4 is written to
+the netlist only when something is wired to it. Binding four nets to a model that does not self-heat is refused at
+Run.
 
-`Rth` (°C/W) and `Cth` (J/°C) set this device's thermal resistance and capacitance at its finger count,
-in place of the model's own scaled to `N`; blank keeps the model's. A model with a ladder of thermal
-poles scales every pole by the same factor. A model that does not self-heat refuses them.
+To change the device's own thermal network instead of adding to it, use `Rth` (°C/W) and `Cth` (J/°C). They set
+this device's thermal resistance and capacitance at its finger count, replacing the model's own values scaled to
+`N`; blank keeps the model's. A model with a ladder of thermal poles scales every pole by the same factor. A model
+that does not self-heat refuses them. The `SelfHeating` switch set to `false` keeps the device at its `Temp` with no
+rise, and T, if wired, then sees none.
 
 ```
 ComposedFET:X1  g d s  File="gan_8x125.cmodel"  N=8  Rth=40  Cth=2.5e-6
 ```
 
-The glyph is the model's own symbol, which the `Symbol` row changes per instance; pins 1, 2 and 3 are
-`g`, `d` and `s`, and a pin 4 is `t`. A symbol that cannot be found draws as the standard FET, with one
-warning.
+#### The symbol
+
+The `Symbol` row in the Inspector is a drop-down list of the symbols this model can be drawn with:
+
+- the first entry, which is blank in the file. It means the model's own symbol, or the standard FET symbol when the
+  model names none, and it reads **FET (standard, with T pin)** for a self-heating model.
+- the library FET symbols, whose pins are gate, drain and source, such as `FetCurtice` and `FetAngelov`.
+- every `.csym` in the workspace whose pins fit: pins 1, 2 and 3 are `g`, `d` and `s`, and a pin 4 (the thermal node
+  `t`) only for a model that self-heats.
+
+The list follows `File`, so a `.csym` path is written relative to the `.cmodel`. A symbol that cannot be found draws
+as the standard FET, with one warning.
 
 Ten switches turn one part of the model off on one instance — the intrinsic charge, its nonlinearity (all of it,
 or one capacitance at a time), gate lag, drain lag, self-heating and dispersion — without refitting anything:

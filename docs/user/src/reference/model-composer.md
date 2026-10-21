@@ -803,7 +803,8 @@ in `report.json` for a program to read.
 the `.cmodel`'s path. The symbol shows as one picture; click it for the menu of every symbol the model can take, which
 are those with gate, drain and source pins (and a fourth for the thermal node of a self-heating model). **Export** writes
 the model; **Copy instance** puts an instance of it on the clipboard, ready to paste into a schematic. The plots show
-the model's Output and Transfer curves against its data.
+the model's Output and Transfer curves against its data. A placed instance's thermal pin T, and how to get it, is in
+[The thermal pin, T](components.html#composedfet-thermal-pin).
 
 A step whose result predates the data or the network blocks Export with one line naming it; **Run stale** re-runs the
 stale steps in order.

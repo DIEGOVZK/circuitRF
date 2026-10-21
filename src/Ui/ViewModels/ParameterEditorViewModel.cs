@@ -13,6 +13,7 @@ using CircuitRF.Core.Devices.Composed;
 using CircuitRF.Core.Devices.External;
 using CircuitRF.Core.Design;
 using CircuitRF.Core.Devices.Microstrip;
+using CircuitRF.Design.Modeling;
 using CircuitRF.Core.Expressions;
 using CircuitRF.Ui.Commands;
 using CircuitRF.Ui.Commands.Schematic;
@@ -1028,6 +1029,7 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
         RefreshVerilogAPanel();
         SyncVerilogAFromModelFile();
         SyncComposedFetSymbol();
+        RefreshComposedFetSymbolChoices();
     }
 
     /// <summary>
@@ -1318,6 +1320,42 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
         _syncingComposedFet = true;
         try { _schematicVm.Execute(new SetParametersCommand(_schematicVm.EditModel, _target, updated)); }
         finally { _syncingComposedFet = false; }
+    }
+
+    /// <summary>The symbols the last-listed model could take, keyed by what decides them; listing walks the workspace's
+    /// <c>.csym</c> files, so it is not repeated on every parameter edit.</summary>
+    private (string Key, IReadOnlyList<string> Values)? _composedFetSymbolChoices;
+
+    /// <summary>
+    /// Makes a composed FET's <c>Symbol</c> row a picker over the symbols its model can take — the standard FET, the
+    /// library FET symbols, and each workspace <c>.csym</c> whose pins fit (<see cref="ModelSymbols.Candidates"/>, the
+    /// list the Model Composer's Export step offers). Blank, the model's own symbol, is the first entry.
+    /// </summary>
+    private void RefreshComposedFetSymbolChoices()
+    {
+        if (_target is null || _target.Symbol != SymbolKind.ComposedFET) return;
+        var row = Rows.FirstOrDefault(r => r.Name.Equals(ComposedFetSymbolProvider.SymbolParameter, StringComparison.Ordinal));
+        if (row is null) return;
+
+        string? dir     = _schematicVm?.EditModel.SchematicDirectory;
+        string  file    = ParamValue(_target, ComposedFetSymbolProvider.FileParameter);
+        string? path    = ComposedFetSymbolProvider.ResolvePath(file, dir);
+        string? baseDir = path is not null ? System.IO.Path.GetDirectoryName(path) : dir;
+        string? ws      = WBondSymbolProvider.WorkspaceRootOf(dir);
+        bool    thermal = ComposedFetSymbolProvider.ModelSelfHeats(file, dir);
+
+        string key = $"{ws}|{baseDir}|{thermal}";
+        if (_composedFetSymbolChoices is not { } cached || cached.Key != key)
+        {
+            IReadOnlyList<string> values = baseDir is null
+                ? [.. ModelSymbols.LibraryNames]
+                : [.. ModelSymbols.Candidates(ws, baseDir, thermal).Select(c => c.Value).Where(v => v.Length > 0)];
+            _composedFetSymbolChoices = cached = (key, values);
+        }
+
+        string modelSymbol = (ComposedFetSymbolProvider.ModelSymbol(file, dir) ?? "").Trim();
+        string standard    = thermal ? "FET (standard, with T pin)" : "FET (standard)";
+        row.SetRuntimeChoices(cached.Values, modelSymbol.Length == 0 ? standard : $"{modelSymbol} (model default)");
     }
 
     /// <summary>True for a VerilogA component — the only one whose parameters come from a file.</summary>
@@ -1934,6 +1972,7 @@ public sealed partial class ParameterEditorViewModel : ObservableObject
         UpdateCanRemoveTopGroup();
         SyncVerilogAFromModelFile();
         SyncComposedFetSymbol();
+        RefreshComposedFetSymbolChoices();
     }
 
     private void UpdateFromSelection()

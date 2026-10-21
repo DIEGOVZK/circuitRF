@@ -4005,24 +4005,68 @@ own temperature instead — the baseplate or heatsink it is mounted on — while
 <pre><code>ComposedFET:X1  g d s  File=&quot;gan_8x125.cmodel&quot;  N=8  Temp=85
 </code></pre>
 <p>A model extracted at one temperature is used as it is at any other, with one warning naming both.</p>
-<p>A self-heating model has a thermal node, <code>X1.t</code>, whose voltage is the device's temperature rise in °C;
-its currents and charges follow its temperature (<code>Temp</code>, or <code>temp</code> when blank) plus that rise. Pin 4 is that node. On the standard symbol it is the
-lead on the right marked <strong>T</strong>, starting at a small open circle; it appears only when the model self-heats.
-Unwired, its end shows an open box instead of the red unconnected marker: the pin is there, and leaving it
-open is a valid choice.</p>
+<h4 id="composedfet-thermal-pin">The thermal pin, T</h4>
+<p><strong>T is neither an input nor an output.</strong> It is a thermal <em>node</em>, wired exactly like an electrical one, but it
+carries temperature and heat instead of voltage and current:</p>
+<table>
+<thead>
+<tr>
+<th>On the T node</th>
+<th>Means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>its voltage, <code>V(X1.t)</code></td>
+<td>the device's temperature rise above <code>Temp</code> (or <code>temp</code> when that is blank), in °C</td>
+</tr>
+<tr>
+<td>the current into it</td>
+<td>heat, in W: the device puts its own dissipated power in</td>
+</tr>
+<tr>
+<td>what sits between it and ground</td>
+<td>the path that heat takes away</td>
+</tr>
+</tbody>
+</table>
+<p>The model's own thermal network (<code>Rth</code> in parallel with <code>Cth</code>, or its ladder) is already inside the device, from
+<code>t</code> to ground. Currents and charges are evaluated at <code>Temp</code> plus the rise. So you <strong>read</strong> T to see how hot the
+channel runs, and you <strong>load</strong> T to change how the heat leaves.</p>
+<p><strong>When the T pin is there.</strong> Only a model that self-heats has a thermal node, so only its symbol has the pin. A
+freshly dropped ComposedFET has no <code>File</code> yet and shows three pins. <strong>To get the fourth pin, set <code>File</code> to a
+self-heating <code>.cmodel</code></strong> (one exported with self-heating on in the Model Composer's Thermal step). The standard
+symbol then gains the lead on the right marked <strong>T</strong>, starting at a small open circle. Choosing a model that does not
+self-heat takes the pin away again. A library symbol, such as <code>FetCurtice</code>, has only three pins whatever the model is.</p>
+<p><strong>Left unwired</strong>, T is no connection, and the device keeps its own thermal network. Its end shows an open box
+rather than the red unconnected marker, because leaving it open is a valid choice. That is also the usual one:
+you can plot <code>V(X1.t)</code> without wiring anything.</p>
+<p><strong>Wired</strong>, whatever you attach sits in parallel with the model's own network. A heatsink or mounting that adds its
+own path to ambient is a resistor (°C/W) from T to ground:</p>
 <pre><code>ComposedFET:X1  g d s t  File=&quot;gan_8x125.cmodel&quot;
 R:RSINK  t 0  R=20
 </code></pre>
-<p>The model's own thermal resistance already runs from <code>t</code> to ground, so what you attach there sits in
-parallel with it. Left unwired, pin 4 is no connection and the device keeps its own thermal network.</p>
-<p><code>Rth</code> (°C/W) and <code>Cth</code> (J/°C) set this device's thermal resistance and capacitance at its finger count,
-in place of the model's own scaled to <code>N</code>; blank keeps the model's. A model with a ladder of thermal
-poles scales every pole by the same factor. A model that does not self-heat refuses them.</p>
+<p>Here 20 °C/W in parallel with the model's own <code>Rth</code> lowers the device's total thermal resistance. Pin 4 is written to
+the netlist only when something is wired to it. Binding four nets to a model that does not self-heat is refused at
+Run.</p>
+<p>To change the device's own thermal network instead of adding to it, use <code>Rth</code> (°C/W) and <code>Cth</code> (J/°C). They set
+this device's thermal resistance and capacitance at its finger count, replacing the model's own values scaled to
+<code>N</code>; blank keeps the model's. A model with a ladder of thermal poles scales every pole by the same factor. A model
+that does not self-heat refuses them. The <code>SelfHeating</code> switch set to <code>false</code> keeps the device at its <code>Temp</code> with no
+rise, and T, if wired, then sees none.</p>
 <pre><code>ComposedFET:X1  g d s  File=&quot;gan_8x125.cmodel&quot;  N=8  Rth=40  Cth=2.5e-6
 </code></pre>
-<p>The glyph is the model's own symbol, which the <code>Symbol</code> row changes per instance; pins 1, 2 and 3 are
-<code>g</code>, <code>d</code> and <code>s</code>, and a pin 4 is <code>t</code>. A symbol that cannot be found draws as the standard FET, with one
-warning.</p>
+<h4 id="the-symbol">The symbol</h4>
+<p>The <code>Symbol</code> row in the Inspector is a drop-down list of the symbols this model can be drawn with:</p>
+<ul>
+<li>the first entry, which is blank in the file. It means the model's own symbol, or the standard FET symbol when the
+model names none, and it reads <strong>FET (standard, with T pin)</strong> for a self-heating model.</li>
+<li>the library FET symbols, whose pins are gate, drain and source, such as <code>FetCurtice</code> and <code>FetAngelov</code>.</li>
+<li>every <code>.csym</code> in the workspace whose pins fit: pins 1, 2 and 3 are <code>g</code>, <code>d</code> and <code>s</code>, and a pin 4 (the thermal node
+<code>t</code>) only for a model that self-heats.</li>
+</ul>
+<p>The list follows <code>File</code>, so a <code>.csym</code> path is written relative to the <code>.cmodel</code>. A symbol that cannot be found draws
+as the standard FET, with one warning.</p>
 <p>Ten switches turn one part of the model off on one instance — the intrinsic charge, its nonlinearity (all of it,
 or one capacitance at a time), gate lag, drain lag, self-heating and dispersion — without refitting anything:
 <a href="model-composer.html#switches">Switching parts of the model off</a>.</p>

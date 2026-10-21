@@ -3855,6 +3855,15 @@ public sealed partial class SchematicViewModel : ObservableObject
             }
             catch { /* unresolvable — fall back to the placeholder glyph */ }
         }
+        else if (_placementSymbol == SymbolKind.ComposedFET)
+        {
+            // A dropped composed FET has no File yet, and its glyph carries the thermal pin only once a self-heating
+            // model is chosen — so the ghost asks the same resolver the placed instance draws through, rather than
+            // showing the palette's four-pin glyph and landing with three.
+            var glyph = ComposedFetSymbolProvider.Resolve(ComposedFetSymbolProvider.RefFor(null, null), null).Symbol!;
+            prims = glyph.Primitives;
+            pins  = glyph.Pins;
+        }
 
         return new PlacementGhost(x, y, _placementSymbol, _placementRot, _placementMirrorX,
                                   _placementPortCount, prims, pins);

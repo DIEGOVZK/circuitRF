@@ -19,7 +19,7 @@ ground up, with worked examples.</p>
 <a class="card" href="reference/index.html">
 <h3>Reference Guide →</h3>
 <p>The complete technical reference. Every analysis, every component, the layout and EM engines, the
-file formats and the two bundled tools.</p>
+file formats and the bundled tools.</p>
 </a>
 <a class="card" href="app-notes/index.html">
 <h3>Application Notes →</h3>
@@ -42,7 +42,9 @@ Alongside the circuit engines it carries a planar
 [method-of-moments EM solver](reference/mom-engine.html) for layout, a 3D
 [bondwire kernel](reference/wbond.html), and
 [harmonicaRF](reference/harmonicarf.html) — an interactive harmonic load-pull bench for a single
-device.
+device — and the [Model Composer](reference/model-composer.html), which builds a nonlinear FET model
+(or a passive one) from measured or simulated data and places it in a schematic as a
+[ComposedFET](reference/components.html#composedfet).
 
 ## Everything in this documentation
 
