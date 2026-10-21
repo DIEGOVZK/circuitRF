@@ -12,7 +12,6 @@
         xmlns:mc="using:CircuitRF.Ui.ModelComposer"
         xmlns:v="using:CircuitRF.Ui.Views.ModelComposer"
         xmlns:mi="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
-        xmlns:ctl="using:CircuitRF.Ui.Controls"
         x:Class="CircuitRF.Ui.Views.ModelComposer.ModelComposerWindow"
         x:DataType="mc:ModelComposerViewModel"
         Title="{Binding Title}"
@@ -123,17 +122,6 @@
             <Setter Property="Margin" Value="2,3"/>
             <Setter Property="Background" Value="{DynamicResource SystemControlForegroundBaseLowBrush}"/>
         </Style>
-        <Style Selector="ctl|InlineEditText.sweep">
-            <Setter Property="Width" Value="48"/>
-            <Setter Property="HorizontalContentAlignment" Value="Right"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-        </Style>
-        <Style Selector="ComboBox.cursor">
-            <Setter Property="MinWidth" Value="76"/>
-            <Setter Property="Padding" Value="6,1"/>
-            <Setter Property="MinHeight" Value="24"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-        </Style>
     </Window.Styles>
 
     <DockPanel Background="{DynamicResource SystemChromeLowColor}">
@@ -143,106 +131,68 @@
                 BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="4,2">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-                <StackPanel Name="Toolbar" Orientation="Horizontal" Spacing="2">
-                    <Button Name="OpenButton" Classes="tool" ToolTip.Tip="Open (⌘O)">
-                        <mi:MaterialIcon Kind="FolderOpenOutline" Width="16" Height="16"/>
-                    </Button>
-                    <Button Classes="tool" Command="{Binding SaveCommand}" ToolTip.Tip="Save (⌘S)">
-                        <mi:MaterialIcon Kind="ContentSaveOutline" Width="16" Height="16"/>
-                    </Button>
-                    <Button Classes="tool" Command="{Binding SaveAsCommand}" ToolTip.Tip="Save As (⇧⌘S)">
-                        <mi:MaterialIcon Kind="ContentSaveEditOutline" Width="16" Height="16"/>
-                    </Button>
-                    <Border Classes="rule"/>
-                    <Button Classes="tool" Command="{Binding UndoCommand}" ToolTip.Tip="Undo (⌘Z)">
-                        <mi:MaterialIcon Kind="Undo" Width="16" Height="16"/>
-                    </Button>
-                    <Button Classes="tool" Command="{Binding RedoCommand}" ToolTip.Tip="Redo (⇧⌘Z)">
-                        <mi:MaterialIcon Kind="Redo" Width="16" Height="16"/>
-                    </Button>
-                    <Border Classes="rule"/>
-                    <!-- The four panel lamps, in the window's left-to-right order. Lit means on screen; the last lit
-                         one is disabled by its command, so at least one panel always shows. -->
-                    <Button Name="StepsLamp" Classes="tool" Classes.ToolActive="{Binding ShowSteps}"
-                            Command="{Binding ToggleStepsCommand}" ToolTip.Tip="Steps">
-                        <mi:MaterialIcon Kind="PageLayoutSidebarLeft" Width="16" Height="16"/>
-                    </Button>
-                    <Button Name="PlotsLamp" Classes="tool" Classes.ToolActive="{Binding ShowPlots}"
-                            Command="{Binding TogglePlotsCommand}" ToolTip.Tip="Plots">
-                        <mi:MaterialIcon Kind="ChartLine" Width="16" Height="16"/>
-                    </Button>
-                    <Button Name="NetworkLamp" Classes="tool" Classes.ToolActive="{Binding ShowNetwork}"
-                            Command="{Binding ToggleNetworkCommand}" ToolTip.Tip="Network">
-                        <mi:MaterialIcon Kind="PageLayoutHeader" Width="16" Height="16"/>
-                    </Button>
-                    <Button Name="ValuesLamp" Classes="tool" Classes.ToolActive="{Binding ShowValues}"
-                            Command="{Binding ToggleValuesCommand}" ToolTip.Tip="Values">
-                        <mi:MaterialIcon Kind="TableLarge" Width="16" Height="16"/>
-                    </Button>
-                    <Border Classes="rule"/>
-                    <!-- The bias cursor. Measured values only, so it snaps; the arrow keys step a focused list. Each list shows
-                         only on the tabs that read it (owner, review 2): on most tabs none does. -->
-                    <StackPanel Orientation="Horizontal" IsVisible="{Binding ShowVgsCursor}">
-                        <TextBlock Classes="lbl" Text="Vgs" Margin="4,0,2,0"/>
-                        <ComboBox Classes="cursor" ItemsSource="{Binding VgsChoices}" SelectedItem="{Binding SelectedVgs}" ToolTip.Tip="Gate bias"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" IsVisible="{Binding ShowVdsCursor}">
-                        <TextBlock Classes="lbl" Text="Vds" Margin="6,0,2,0"/>
-                        <ComboBox Classes="cursor" ItemsSource="{Binding VdsChoices}" SelectedItem="{Binding SelectedVds}" ToolTip.Tip="Drain bias"/>
-                    </StackPanel>
-                    <!-- The model sweep, where the plot evaluates the model: intrinsic vgs and vds, start, stop and step. -->
-                    <StackPanel Orientation="Horizontal" Spacing="3" IsVisible="{Binding ShowSweep}">
-                        <TextBlock Classes="lbl" Text="vgs" Margin="4,0,0,0"/>
-                        <ctl:InlineEditText Classes="sweep" Text="{Binding SweepVgsStart, Mode=TwoWay}" ToolTip.Tip="vgs start (V)"/>
-                        <TextBlock Classes="lbl" Text="to"/>
-                        <ctl:InlineEditText Classes="sweep" Text="{Binding SweepVgsStop, Mode=TwoWay}" ToolTip.Tip="vgs stop (V)"/>
-                        <TextBlock Classes="lbl" Text="step"/>
-                        <ctl:InlineEditText Classes="sweep" Text="{Binding SweepVgsStep, Mode=TwoWay}"
-                                            ToolTip.Tip="vgs step (V): the spacing of a family, or a swept voltage's resolution (101 points at least)"/>
-                        <TextBlock Classes="lbl" Text="vds" Margin="10,0,0,0"/>
-                        <ctl:InlineEditText Classes="sweep" Text="{Binding SweepVdsStart, Mode=TwoWay}" ToolTip.Tip="vds start (V)"/>
-                        <TextBlock Classes="lbl" Text="to"/>
-                        <ctl:InlineEditText Classes="sweep" Text="{Binding SweepVdsStop, Mode=TwoWay}" ToolTip.Tip="vds stop (V)"/>
-                        <TextBlock Classes="lbl" Text="step"/>
-                        <ctl:InlineEditText Classes="sweep" Text="{Binding SweepVdsStep, Mode=TwoWay}"
-                                            ToolTip.Tip="vds step (V): the spacing of a family, or a swept voltage's resolution (101 points at least)"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" IsVisible="{Binding ShowTCursor}">
-                        <TextBlock Classes="lbl" Text="T" Margin="6,0,2,0"/>
-                        <ComboBox Classes="cursor" ItemsSource="{Binding TChoices}" SelectedItem="{Binding SelectedT}" ToolTip.Tip="Ambient temperature"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" IsVisible="{Binding ShowQCursor}">
-                        <TextBlock Classes="lbl" Text="Q" Margin="6,0,2,0"/>
-                        <ComboBox Classes="cursor" ItemsSource="{Binding QChoices}" SelectedItem="{Binding SelectedQ}" ToolTip.Tip="Quiescent point"/>
-                    </StackPanel>
-                </StackPanel>
-
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
-                    <Button Classes="tool" Command="{Binding CheckChargeCommand}" IsVisible="{Binding IsActive}"
-                            ToolTip.Tip="Check Charge Conservation">
-                        <mi:MaterialIcon Kind="CheckDecagramOutline" Width="16" Height="16"/>
-                    </Button>
-                    <Button Classes="tool" Command="{Binding OpenReportCommand}" IsVisible="{Binding IsActive}"
-                            ToolTip.Tip="Model Validation Report…">
-                        <mi:MaterialIcon Kind="FileChartOutline" Width="16" Height="16"/>
-                    </Button>
-                    <Border Classes="rule" IsVisible="{Binding IsActive}"/>
-                    <Button Name="RunButton" Classes="tool" Command="{Binding RunCommand}" ToolTip.Tip="{Binding RunTip}">
-                        <mi:MaterialIcon Kind="Play" Width="16" Height="16"/>
-                    </Button>
-                    <Button Name="RunMenuButton" Classes="tool" Padding="2,3" ToolTip.Tip="The step's runs">
-                        <mi:MaterialIcon Kind="MenuDown" Width="16" Height="16"/>
-                    </Button>
-                    <Button Classes="tool" Command="{Binding CancelCommand}" IsEnabled="{Binding IsRunning}" ToolTip.Tip="Cancel">
-                        <mi:MaterialIcon Kind="Stop" Width="16" Height="16"/>
-                    </Button>
-                    <Border Classes="rule"/>
-                    <Button Name="HelpButton" Classes="tool" ToolTip.Tip="Help">
-                        <mi:MaterialIcon Kind="HelpCircleOutline" Width="16" Height="16"/>
-                    </Button>
-                </StackPanel>
-            </Grid>
+            <StackPanel Name="Toolbar" Orientation="Horizontal" Spacing="2">
+                <Button Name="OpenButton" Classes="tool" ToolTip.Tip="Open (⌘O)">
+                    <mi:MaterialIcon Kind="FolderOpenOutline" Width="16" Height="16"/>
+                </Button>
+                <Button Classes="tool" Command="{Binding SaveCommand}" ToolTip.Tip="Save (⌘S)">
+                    <mi:MaterialIcon Kind="ContentSaveOutline" Width="16" Height="16"/>
+                </Button>
+                <Button Classes="tool" Command="{Binding SaveAsCommand}" ToolTip.Tip="Save As (⇧⌘S)">
+                    <mi:MaterialIcon Kind="ContentSaveEditOutline" Width="16" Height="16"/>
+                </Button>
+                <Border Classes="rule"/>
+                <Button Classes="tool" Command="{Binding UndoCommand}" ToolTip.Tip="Undo (⌘Z)">
+                    <mi:MaterialIcon Kind="Undo" Width="16" Height="16"/>
+                </Button>
+                <Button Classes="tool" Command="{Binding RedoCommand}" ToolTip.Tip="Redo (⇧⌘Z)">
+                    <mi:MaterialIcon Kind="Redo" Width="16" Height="16"/>
+                </Button>
+                <Border Classes="rule"/>
+                <!-- The four panel lamps, in the window's left-to-right order. Lit means on screen; the last lit
+                     one is disabled by its command, so at least one panel always shows. -->
+                <Button Name="StepsLamp" Classes="tool" Classes.ToolActive="{Binding ShowSteps}"
+                        Command="{Binding ToggleStepsCommand}" ToolTip.Tip="Steps">
+                    <mi:MaterialIcon Kind="PageLayoutSidebarLeft" Width="16" Height="16"/>
+                </Button>
+                <Button Name="PlotsLamp" Classes="tool" Classes.ToolActive="{Binding ShowPlots}"
+                        Command="{Binding TogglePlotsCommand}" ToolTip.Tip="Plots">
+                    <mi:MaterialIcon Kind="ChartLine" Width="16" Height="16"/>
+                </Button>
+                <Button Name="NetworkLamp" Classes="tool" Classes.ToolActive="{Binding ShowNetwork}"
+                        Command="{Binding ToggleNetworkCommand}" ToolTip.Tip="Network">
+                    <mi:MaterialIcon Kind="PageLayoutHeader" Width="16" Height="16"/>
+                </Button>
+                <Button Name="ValuesLamp" Classes="tool" Classes.ToolActive="{Binding ShowValues}"
+                        Command="{Binding ToggleValuesCommand}" ToolTip.Tip="Values">
+                    <mi:MaterialIcon Kind="TableLarge" Width="16" Height="16"/>
+                </Button>
+                <!-- The step's tools follow the window's, one strip from the left rather than across the window from them
+                     (owner, review 4). -->
+                <Border Classes="rule"/>
+                <Button Classes="tool" Command="{Binding CheckChargeCommand}" IsVisible="{Binding IsActive}"
+                        ToolTip.Tip="Check Charge Conservation">
+                    <mi:MaterialIcon Kind="CheckDecagramOutline" Width="16" Height="16"/>
+                </Button>
+                <Button Classes="tool" Command="{Binding OpenReportCommand}" IsVisible="{Binding IsActive}"
+                        ToolTip.Tip="Model Validation Report…">
+                    <mi:MaterialIcon Kind="FileChartOutline" Width="16" Height="16"/>
+                </Button>
+                <Border Classes="rule" IsVisible="{Binding IsActive}"/>
+                <Button Name="RunButton" Classes="tool" Command="{Binding RunCommand}" ToolTip.Tip="{Binding RunTip}">
+                    <mi:MaterialIcon Kind="Play" Width="16" Height="16"/>
+                </Button>
+                <Button Name="RunMenuButton" Classes="tool" Padding="2,3" ToolTip.Tip="The step's runs">
+                    <mi:MaterialIcon Kind="MenuDown" Width="16" Height="16"/>
+                </Button>
+                <Button Classes="tool" Command="{Binding CancelCommand}" ToolTip.Tip="{Binding CancelText}">
+                    <mi:MaterialIcon Kind="Stop" Width="16" Height="16"/>
+                </Button>
+                <Border Classes="rule"/>
+                <Button Name="HelpButton" Classes="tool" ToolTip.Tip="Help">
+                    <mi:MaterialIcon Kind="HelpCircleOutline" Width="16" Height="16"/>
+                </Button>
+            </StackPanel>
         </Border>
 
         <!-- ── Status strip: one line, one progress bar, one Cancel ──────────────── -->
@@ -259,7 +209,7 @@
                     <TextBlock Classes="lbl" Text="{Binding TaskStage}" MaxWidth="260" TextTrimming="CharacterEllipsis"/>
                     <ProgressBar Width="160" Minimum="0" Maximum="1" Value="{Binding Progress}"
                                  IsIndeterminate="{Binding !ProgressKnown}" VerticalAlignment="Center"/>
-                    <Button Classes="tool" Command="{Binding CancelCommand}" ToolTip.Tip="Cancel"
+                    <Button Classes="tool" Command="{Binding CancelCommand}" ToolTip.Tip="{Binding CancelText}"
                             Height="22" Padding="4,0" VerticalAlignment="Center">
                         <mi:MaterialIcon Kind="Close" Width="14" Height="14"/>
                     </Button>

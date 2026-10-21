@@ -8,6 +8,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mc="using:CircuitRF.Ui.ModelComposer"
+        xmlns:mi="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         x:Class="CircuitRF.Ui.Views.ModelComposer.ModelReportDialog"
         x:DataType="mc:ModelReportViewModel"
         Title="Model Validation Report"
@@ -17,6 +18,7 @@
     <Window.Styles>
         <Style Selector="Button">
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="ToolTip.ShowOnDisabled" Value="True"/>
         </Style>
         <Style Selector="Button.foot">
             <Setter Property="MinWidth" Value="84"/>
@@ -76,9 +78,14 @@
             <Setter Property="Margin" Value="0,0,6,6"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
         </Style>
-        <Style Selector="Button.clear">
-            <Setter Property="Padding" Value="8,1"/>
-            <Setter Property="FontSize" Value="11"/>
+        <!-- Each choice's Select All and Clear: the editors' toolbar buttons, always shown and greyed when there is nothing
+             to do, so choosing or clearing moves nothing in the dialog (owner, review 4). -->
+        <Style Selector="Button.tool">
+            <Setter Property="Padding" Value="5,3"/>
+        </Style>
+        <Style Selector="Button.tool mi|MaterialIcon">
+            <Setter Property="Width" Value="14"/>
+            <Setter Property="Height" Value="14"/>
         </Style>
         <!-- A row of the options: the label, then its one to three fields. -->
         <Style Selector="Grid.row">
@@ -114,8 +121,16 @@
 
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Classes="sub" Text="S compared at these biases"/>
-                            <Button Grid.Column="1" Classes="clear" Content="Clear" Command="{Binding ClearPicksCommand}" CommandParameter="s"
-                                    IsVisible="{Binding AnySBiases}"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+                                <Button Classes="tool" Command="{Binding SelectAllPicksCommand}" CommandParameter="s"
+                                        IsEnabled="{Binding SBiasesLeft}" ToolTip.Tip="Select all">
+                                    <mi:MaterialIcon Kind="CheckboxMultipleMarkedOutline"/>
+                                </Button>
+                                <Button Classes="tool" Command="{Binding ClearPicksCommand}" CommandParameter="s"
+                                        IsEnabled="{Binding AnySBiases}" ToolTip.Tip="Clear all">
+                                    <mi:MaterialIcon Kind="CheckboxMultipleBlankOutline"/>
+                                </Button>
+                            </StackPanel>
                         </Grid>
                         <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" MaxHeight="280"
                                       IsVisible="{Binding SBiasAsMatrix}">
@@ -175,8 +190,16 @@
 
                         <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0">
                             <TextBlock Classes="sub" Text="C–V curves at Vds (V)"/>
-                            <Button Grid.Column="1" Classes="clear" Content="Clear" Command="{Binding ClearPicksCommand}" CommandParameter="vds"
-                                    IsVisible="{Binding AnyFixedVds}"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+                                <Button Classes="tool" Command="{Binding SelectAllPicksCommand}" CommandParameter="vds"
+                                        IsEnabled="{Binding FixedVdsLeft}" ToolTip.Tip="Select all">
+                                    <mi:MaterialIcon Kind="CheckboxMultipleMarkedOutline"/>
+                                </Button>
+                                <Button Classes="tool" Command="{Binding ClearPicksCommand}" CommandParameter="vds"
+                                        IsEnabled="{Binding AnyFixedVds}" ToolTip.Tip="Clear all">
+                                    <mi:MaterialIcon Kind="CheckboxMultipleBlankOutline"/>
+                                </Button>
+                            </StackPanel>
                         </Grid>
                         <ItemsControl ItemsSource="{Binding CvVdsItems}" IsVisible="{Binding CvVdsAsChips}">
                             <ItemsControl.ItemsPanel>
@@ -193,8 +216,16 @@
 
                         <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0">
                             <TextBlock Classes="sub" Text="C–V curves at Vgs (V)"/>
-                            <Button Grid.Column="1" Classes="clear" Content="Clear" Command="{Binding ClearPicksCommand}" CommandParameter="vgs"
-                                    IsVisible="{Binding AnyFixedVgs}"/>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2">
+                                <Button Classes="tool" Command="{Binding SelectAllPicksCommand}" CommandParameter="vgs"
+                                        IsEnabled="{Binding FixedVgsLeft}" ToolTip.Tip="Select all">
+                                    <mi:MaterialIcon Kind="CheckboxMultipleMarkedOutline"/>
+                                </Button>
+                                <Button Classes="tool" Command="{Binding ClearPicksCommand}" CommandParameter="vgs"
+                                        IsEnabled="{Binding AnyFixedVgs}" ToolTip.Tip="Clear all">
+                                    <mi:MaterialIcon Kind="CheckboxMultipleBlankOutline"/>
+                                </Button>
+                            </StackPanel>
                         </Grid>
                         <ItemsControl ItemsSource="{Binding CvVgsItems}" IsVisible="{Binding CvVgsAsChips}">
                             <ItemsControl.ItemsPanel>
@@ -279,27 +310,37 @@
             </StackPanel>
         </ScrollViewer>
 
-        <!-- The footer: what went wrong, what the last run said, its progress while it runs, and the buttons. -->
-        <StackPanel Grid.Row="1" Spacing="8" Margin="0,14,0,0">
-            <SelectableTextBlock Classes="warn" Text="{Binding Problem}" TextWrapping="Wrap"
-                                 IsVisible="{Binding Problem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
-            <SelectableTextBlock Text="{Binding Owner.StatusText}" TextWrapping="Wrap" FontSize="11"
-                                 Foreground="{DynamicResource SystemBaseMediumColor}"/>
-            <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" IsVisible="{Binding Owner.IsRunning}">
-                    <ProgressBar Width="140" Minimum="0" Maximum="1" Value="{Binding Owner.Progress}"
+        <!-- The footer: what went wrong or what the last run said, the run's progress, and the buttons — three rows of
+             fixed height, so starting a run or reporting a problem moves nothing (owner, review 4: the progress, its stage
+             and Cancel shared the buttons' row, which is narrower than both, and were drawn over them). A message
+             longer than two lines is trimmed, and reads whole on its tooltip. -->
+        <StackPanel Grid.Row="1" Spacing="6" Margin="0,14,0,0">
+            <Panel Height="32">
+                <SelectableTextBlock Text="{Binding Owner.StatusText}" TextWrapping="Wrap" FontSize="11" MaxLines="2"
+                                     TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Owner.StatusText}"
+                                     Foreground="{DynamicResource SystemBaseMediumColor}"
+                                     IsVisible="{Binding Problem, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
+                <SelectableTextBlock Classes="warn" Text="{Binding Problem}" TextWrapping="Wrap" FontSize="11" MaxLines="2"
+                                     TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Problem}"
+                                     IsVisible="{Binding Problem, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+            </Panel>
+            <Panel Height="32">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" IsVisible="{Binding Owner.IsRunning}">
+                    <ProgressBar Width="180" Minimum="0" Maximum="1" Value="{Binding Owner.Progress}"
                                  IsIndeterminate="{Binding !Owner.ProgressKnown}" VerticalAlignment="Center"/>
-                    <TextBlock Classes="lbl" Text="{Binding Owner.TaskStage}" MaxWidth="160" TextTrimming="CharacterEllipsis"/>
-                    <Button Content="Cancel" Command="{Binding Owner.CancelCommand}"/>
-                </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                    <Button Classes="foot" Content="Apply" Command="{Binding ApplyOptionsCommand}"
-                            ToolTip.Tip="Keep these options in the document"/>
-                    <Button Classes="foot" Content="Generate" Command="{Binding GenerateCommand}" IsDefault="True"/>
-                    <Button Classes="foot" Content="Export PDF…" Command="{Binding ExportPdfCommand}"/>
-                    <Button Classes="foot" Name="CloseButton" Content="Close" IsCancel="True"/>
-                </StackPanel>
-            </Grid>
+                    <TextBlock Grid.Column="1" Classes="lbl" Text="{Binding Owner.TaskStage}" TextTrimming="CharacterEllipsis"/>
+                    <!-- Wide enough for "Stopping…", so the label changing moves nothing. -->
+                    <Button Grid.Column="2" Content="{Binding Owner.CancelText}" Command="{Binding Owner.CancelCommand}"
+                            MinWidth="92" VerticalAlignment="Center"/>
+                </Grid>
+            </Panel>
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button Classes="foot" Content="Apply" Command="{Binding ApplyOptionsCommand}"
+                        ToolTip.Tip="Keep these options in the document"/>
+                <Button Classes="foot" Content="Generate" Command="{Binding GenerateCommand}" IsDefault="True"/>
+                <Button Classes="foot" Content="Export PDF…" Command="{Binding ExportPdfCommand}"/>
+                <Button Classes="foot" Name="CloseButton" Content="Close" IsCancel="True"/>
+            </StackPanel>
         </StackPanel>
     </Grid>
 </Window>

@@ -769,10 +769,9 @@ public static class ModelValidationReport
         var loads = ComposedClassLoads.ExtrinsicLoads(cls, b.Ropt, b.FrequencyHz, b.C22, drain, notes);
         Complex g1 = (loads[0] - 50) / (loads[0] + 50);
         var grid = Disc(g1, o.GammaRadius, o.Rings, o.Spokes);
-        int steps = (int)Math.Floor((o.PinMax - o.PinStart) / o.PinStep + 1e-9) + 1;
-        double[] pin = [.. Enumerable.Range(0, steps).Select(k => o.PinStart + k * o.PinStep)];
         var lp = ModelValidation.LoadSweep(ctx, label, b.AmbientC, b.FrequencyHz, b.Vgs, b.Vds, b.SourceZ,
-                                           [o.Source2f0 ?? ValidationBench.Short], loads[1..], grid, pin, o.Compression, out string cnl);
+                                           [o.Source2f0 ?? ValidationBench.Short], loads[1..], grid, o.PinStart, o.PinStep, o.PinMax,
+                                           o.Compression, out string cnl);
         var files = new Dictionary<string, string>(StringComparer.Ordinal) { [$"{stem}.cnl"] = cnl };
 
         // The region of convergence: the loads whose drive-up converged to the target compression or the drive cap.
@@ -830,11 +829,11 @@ public static class ModelValidationReport
             (loads.Length < h ? $", above {loads.Length}f0 short" : ""),
             $"Source: {ModelValidation.Terminations(b.SourceZ, [o.Source2f0 ?? ValidationBench.Short], h)}",
             $"Loadpull disc: {grid.Count} loads — the class load and {o.Rings} ring(s) × {o.Spokes} spoke(s) out to |Γ| {G(o.GammaRadius)} about it",
-            $"Drive: available power {G(o.PinStart)} … {G(o.PinMax)} dBm in {G(o.PinStep)} dB steps, each load stopped one step past {G(o.Compression)} dB " +
-            "compression from its running gain maximum",
+            $"Drive: available power from {G(o.PinStart)} dBm in {G(o.PinStep)} dB steps, each load driven up by the loadpull engine to " +
+            $"{G(o.Compression)} dB compression of Gt, or to {G(o.PinMax)} dBm",
             ModelValidation.Ambient(ctx, [b.AmbientC]),
-            $"Solver: {ValidationBench.HbText(h)}; one fixed drive ladder per load, no continuation or cold retries, so the region of " +
-            "convergence is the solver's own",
+            $"Solver: {ValidationBench.HbText(h)}; the loadpull engine's drive-up at each load, with its continuation and cold retries — " +
+            "the region of convergence is the loads it brings to compression or the drive cap",
         };
         bool presetFailed = converged[0] != 1;
         var mxp = surface.MaxPower(0, c, SurfacePlane.Gamma);

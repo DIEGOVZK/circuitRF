@@ -61,4 +61,27 @@ public sealed class BiasPlaneLassoTests
         Click(vm, p.X, p.Y);
         Assert.Equal(0, vm.Document.DataSets.Sum(s => s.Exclusions.Count));
     }
+
+    [Fact]
+    public async Task ALassoWithValidChosen_MarksEveryPointValid_EvenAMixOfExcludedAndValid()
+    {
+        var vm = await ComposerFixture.Open(ModelComposerCurrentStepTests.Document());
+        vm.SelectedStep = vm.Steps.First(s => s.Name == "Data");
+        vm.SelectedPlotTab = ModelComposerViewModel.BiasPlaneTab;
+        vm.ExcludeArmed = true;
+        var shown = vm.RectPlot.Traces.First(t => t.CubeName is "intrinsic" or "extrinsic");
+        var (a, b) = (shown.Points[shown.Points.Count / 2], shown.Points[shown.Points.Count / 3]);
+        Click(vm, a.X, a.Y);
+        if (vm.CurrentTask is { } t1) await t1;
+        Click(vm, b.X, b.Y);
+        if (vm.CurrentTask is { } t2) await t2;
+        var both = vm.Document.DataSets.SelectMany(s => s.Exclusions.Select(x => (s.Name, x.Point))).ToList();
+        Assert.Equal(2, both.Count);
+        Click(vm, b.X, b.Y);
+        if (vm.CurrentTask is { } t3) await t3;
+
+        vm.ExclusionReason = ModelComposerViewModel.ValidReason;
+        Assert.True(vm.ToggleExclusion(both));
+        Assert.Equal(0, vm.Document.DataSets.Sum(s => s.Exclusions.Count));
+    }
 }

@@ -780,8 +780,15 @@ namespace CircuitRF.Render.DataDisplay
             }
 
             float boxW = maxW + padding * 2f;
-            float boxH = (ts + padding) * lines.Count + padding;
-            return (boxW, boxH);
+            return (boxW, InfoBoxHeight(lines.Count, ts));
+        }
+
+        /// <summary>The height <see cref="MeasureInfoBox"/> gives a box of <paramref name="lines"/> rows at
+        /// <paramref name="textSize"/> — for an owner reserving room for boxes before any exists.</summary>
+        public static float InfoBoxHeight(int lines, float textSize = 12f)
+        {
+            float padding = textSize * 0.3f;
+            return (textSize + padding) * lines + padding;
         }
 
         /// <summary>

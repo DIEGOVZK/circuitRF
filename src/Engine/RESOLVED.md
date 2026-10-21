@@ -3143,3 +3143,15 @@ failed warm and walked the drive ramp (35 to 42 steps, 1,350 to 1,820 iterations
 fixed: a `Linear*` instance's evaluation costs ~6 ms per iteration against ~1 ms. That is `BranchLinearisation`
 integrating along the line from the bias point at every sample. Measurements were not in the timed path (the gate runs
 without them).
+
+## Loadpull: a first rung the tickle cannot reach (Model Composer review 4)
+
+The loadpull engine's continuation re-walked a failed rung from the previous REAL rung only, so the first rung after the
+tickle had nothing to continue from and the load stopped there. On the Model Composer example's GaN at 2 GHz, behind the
+report's conjugately matched Class B source (16.6 + j179 Ω, Gt ≈ 19 dB), every load stopped on its first rung at −10 dBm
+(‖F‖ stalled at 5.9e-3 after 100 iterations) while the same loads walked cleanly to compression from −30 dBm: the 40 dB
+jump from the −50 dBm tickle is not one Newton solve on that stage. The failed first rung now continues from the tickle
+through `DriveLadder.ContinueThroughJump`. Never for a vacuous-tolerance refusal (`SinglePointResult.ToleranceVacuous`):
+smaller steps "converge" against the same meaningless tolerance and were reported as compression
+(`VacuousToleranceAndCompressionCredibilityTests` caught it). Continuity is still never judged against the tickle.
+Gate: `ComposedFetLoadpullTests.AFirstRungTheTickleCannotReach_IsContinuedFromIt_AndDrivesToCompression`.

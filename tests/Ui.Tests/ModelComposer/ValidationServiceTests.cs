@@ -93,13 +93,13 @@ public sealed class ValidationServiceTests(ITestOutputHelper output)
         string cmc = ExportFixture.Document();
         string dir = Path.GetDirectoryName(cmc)!;
         string R(double v) => v.ToString("R", CultureInfo.InvariantCulture);
-        System.Numerics.Complex[] loads = [new(40, 10), new(70, -15), new(25, 5)];
+        System.Numerics.Complex[] loads = [new(40, 10), new(70, -15), new(25, 5), new(55, 25), new(30, -10), new(50, 0), new(35, 20)];
         string gam = Path.Combine(dir, "truth.gam");
         File.WriteAllLines(gam, ["# impedance Z0=50 re_im", .. loads.Select(z => $"{R(z.Real)} {R(z.Imaginary)}")]);
 
         // The "measurement": the truth load-pulled through the testbench validation generates for the model.
         var truth = CircuitEvaluation.Evaluate(
-            PreparedCircuit.FromText(ValidationBench.Loadpull("lp", ExportFixture.Truth(), 25, 2e9, -0.6, 6, 50, [], [], gam, -15, 5, -5, 5), dir, dir),
+            PreparedCircuit.FromText(ValidationBench.Loadpull("lp", ExportFixture.Truth(), 25, 2e9, -0.6, 6, 50, [], [], gam, -15, 1, 30, 5, 3), dir, dir),
             new CircuitEvaluationRequest { Measurements = false });
         Assert.True(truth.Status == RunStatus.Success, truth.StatusMessage);
         RfCore.Loadpull.SplWriter.WriteSpl(truth.Results.First(r => r.Data.Contains("StopCode")).Data, Path.Combine(dir, "truth.spl"));
@@ -123,9 +123,13 @@ public sealed class ValidationServiceTests(ITestOutputHelper output)
         output.WriteLine(item.Line);
         Assert.Equal(ValidationKind.Loadpull, item.Kind);
         Assert.True(item.Passed, item.Line);
-        Assert.Contains("over 12 point(s)", item.Line);   // three loads × the tickle and three drives
-        var (meas, model) = (item.Data["Pout.meas"].RealValues, item.Data["Pout.model"].RealValues);
-        Assert.All(meas.Zip(model), m => Assert.True(Math.Abs(m.First - m.Second) < 1e-3, $"{m.First} vs {m.Second} dBm"));
+        // Compared at compression (review 4), load by load, and at each side's MXP and MXE: the model is the truth.
+        Assert.Contains("at P-3dB", item.Line);
+        Assert.Contains("over 7 load(s)", item.Line);
+        Assert.Contains("MXP ZL VSWR", item.Line);
+        var (meas, model) = (item.Data["Pout_dBm@compression.meas"].RealValues, item.Data["Pout_dBm@compression.model"].RealValues);
+        Assert.All(meas.Zip(model), m => Assert.True(Math.Abs(m.First - m.Second) < 0.05, $"{m.First} vs {m.Second} dBm"));
+        Assert.All(item.Metrics.Where(m => m.Name.Contains("VSWR")), m => Assert.True(m.Value < 1.05, $"{m.Name} {m.Value}"));
 
         string bench = ModelValidation.WriteTestbenches(cmc, result).Single();
         JsonRun.Reset();

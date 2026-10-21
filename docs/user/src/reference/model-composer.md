@@ -17,6 +17,7 @@ keywords: model extraction, device modeling, FET model, GaN HEMT, extrinsic netw
 <li><a href="#planes">Reference planes</a></li>
 <li><a href="#six-pin">The six-pin network</a></li>
 <li><a href="#defaults">Methods and their defaults</a></li>
+<li><a href="#ann-training">How an ANN is trained</a></li>
 <li><a href="#conservation">Charge conservation</a></li>
 <li><a href="#temperature">Temperature</a></li>
 <li><a href="#trap-data">Traps, and what pulsed data allows</a></li>
@@ -42,6 +43,7 @@ keywords: model extraction, device modeling, FET model, GaN HEMT, extrinsic netw
 <li><a href="#passive">Passive documents: Data and Topology</a></li>
 <li><a href="#undo">Undo</a></li>
 <li><a href="#headless">Headless</a></li>
+<li><a href="#references">References</a></li>
 </ol>
 </nav>
 
@@ -282,6 +284,63 @@ edge. A current also gains a conductance on its own branch, which grows with dis
 than the voltages the circuit will reach: a gate swinging past the last measured `Vgs` meets that conductance, and its
 current is not the device's.
 
+## How an ANN is trained {#ann-training}
+
+An ANN constituent is a small network, two hidden layers of 8 `tanh` neurons by default, trained by circuitRF's own
+trainer. It trains on two kinds of target, alone or together:
+
+| Target | Trains |
+|---|---|
+| Values: the function itself at each bias | `Id` and `Ig`, from the I–V data |
+| Derivatives: the function's slope along `vgs` and `vds` | `Qg` and `Qd`, from the capacitances; with self-heating, `Id` as well, from the RF `Gm` and `Gds` |
+
+### The adjoint method for the charges {#adjoint}
+
+S-parameters do not measure a charge. They measure its derivatives: at each bias the intrinsic admittance gives the
+four capacitances `C11 = ∂Qg/∂vgs`, `C12 = ∂Qg/∂vds`, `C21 = ∂Qd/∂vgs` and `C22 = ∂Qd/∂vds`, averaged over the band
+where they are flat. An ANN charge is trained on those derivatives alone [P1 §6.3], [X03]:
+
+1. At each bias the network gives its value and its derivatives with respect to its inputs. The derivatives come from
+   a second network carried forward with the first, so they are exact, never differenced.
+2. The loss is the weighted squared difference between those derivatives and the measured capacitances. For `Qg` it is
+   `(∂Qg/∂vgs − C11)² + (∂Qg/∂vds − C12)²`, summed over the biases.
+3. The loss's gradient with respect to every weight is back-propagated through both networks at once: the exact
+   adjoint sensitivity of [X03]. An L-BFGS optimiser [NW06] minimises it.
+4. Derivatives fix a charge only up to a constant, so an **anchor** holds each charge at zero at one bias: `(0, 0)` by
+   default, or the bias you state, moved to the nearest data point when it lies outside the data.
+
+The result is one function per terminal, so the model conserves charge whatever the data. When the measured
+capacitances are not the derivatives of one function (their curl, which Check (a) reads, is not zero), the fit is the
+least-squares compromise between them [P1 §6.3.6], and Check (b) reads near zero on the model. A table charge takes
+the other route and integrates the capacitances along a path, so its result depends on the path [P1 §6.3]; the
+adjoint-trained ANN has no path.
+
+A bias whose capacitances are not flat across the band weighs less: when the worse of `C11`'s and `C22`'s flatness
+exceeds `FlatnessLimit` (0.1), the point weighs `(limit/flatness)²`. With S at two temperatures or more, an ANN charge
+takes `T` as a third input, and the anchor holds both charges at zero at every temperature, so heating moves no charge
+at the anchor bias [X10]. **Drift charge in Qg** splits the gate charge into depletion charges, fitted the same way to
+the capacitances near `vds = 0`, and a drift charge that follows `Id` [I11].
+
+### The currents {#ann-currents}
+
+`Id` and `Ig` train on the measured values, `Id` weighted relative to the current with a floor (`IdFloor`). With
+self-heating, `Id` also trains on derivatives: the I–V values at each point's junction temperature, and each S point's
+RF `Gm` and `Gds` as `∂Id/∂vgs` and `∂Id/∂vds` at the same point [X03], [X10]. One function then gives both the
+DC and the RF output conductance [P1 §6.6]. With the current step's `Symmetry` set to `Exchange` in the `.cmc`, the
+currents are defined for `vds ≥ 0` only, and at negative `vds` they are their own image with drain and source
+exchanged [P1 §6.5], [X07]. It is off by default, because a field-plated power device is asymmetric by design.
+
+### Common to every ANN {#ann-common}
+
+- Each input is scaled onto [−1, 1] over the training points, and the output onto the same range, so one network size
+  suits a 10 mA device and a 10 A one.
+- **Restarts** (3 by default) start from different seeded weights, and the start with the lowest held-out error is
+  kept. The same data, settings and seed give the same model, to the bit, on every machine.
+- **Held out** (10 % by default) are spread across the bias plane rather than taken from one corner, and the status
+  strip's held-out error is the model's error on them.
+- **Iterations** cap the optimiser. It stops sooner when the loss stops falling.
+- A network with more weights than a tenth of its targets says so in one line: it can fit the noise.
+
 ## Charge conservation {#conservation}
 
 The charges are charge functions, so a model is charge-conserving by construction. Its capacitances are derivatives
@@ -427,9 +486,9 @@ imported, it reloads that data, and **Import…** is on the ▾ and beside the d
 
 | Part | What it holds |
 |---|---|
-| Toolbar | Open, Save, Save As · Undo, Redo · the four panel lamps · the bias cursor (Vgs, Vds, T, Q) or the model sweep, whichever the plot reads · Check Charge Conservation, Model Validation Report · Run ▾, Cancel · Help |
+| Toolbar | Open, Save, Save As · Undo, Redo · the four panel lamps · Check Charge Conservation, Model Validation Report · Run ▾, Cancel · Help |
 | **Steps** (left) | The step rail, and under it the selected step's settings |
-| **Plots** (centre) | A tab strip and a Data Display plot |
+| **Plots** (centre) | A tab strip; under it the bias cursor (Vgs, Vds, T, Q) or the model sweep, whichever the plot reads; and a Data Display plot |
 | **Network** (right, top) | The extrinsic network, drawn by the schematic canvas |
 | **Values** (right, bottom) | The network's values: value, lock, min, max, tie, scaling rule, ± error. Widening the panel widens the name column only; narrower than its columns, the table scrolls sideways |
 | Status strip | One line — a result, a warning or a refusal — and, while something runs, its stage, a progress bar and Cancel |
@@ -444,14 +503,15 @@ it needs. A ✓ marks a step whose result the document holds; a dot instead mark
 network or the trap model last changed. Check and Validate keep no result in the document, so they are marked once run.
 
 **The bias cursor.** Vgs, Vds, the ambient temperature and the quiescent point. Each list holds only measured values, so
-the cursor always sits on a measured bias; with a list focused, the arrow keys step it. Every frequency plot is drawn
+the cursor always sits on a measured bias; with a list focused, the arrow keys step it. The lists sit under the plot
+tabs, beside the plot they set. Every frequency plot is drawn
 at the measured point nearest the cursor. A list shows only on the plot tabs that read it: Vgs and Vds on the frequency
 plots, the bias plane and the Gm, Gds and pulsed slices; T and Q where a step's plot picks a data set by them, which is
 when the data-set list's selection is not one of that step's sets.
 
 **The model sweep.** On the tabs that evaluate a fitted model rather than show data at a measured bias — the Current
-step's Model tabs and the Charge step's C–V tabs — the toolbar holds start, stop and step for `vgs` and for `vds`
-instead. Both are intrinsic, the plane the model is fitted on. One voltage is the x axis and the other steps the
+step's Model tabs and the Charge step's C–V tabs — the row under the plot tabs holds start, stop and step for `vgs`
+and for `vds` instead, in volts. A value takes effect on Return or on leaving its box; Escape puts back the one it had. Both are intrinsic, the plane the model is fitted on. One voltage is the x axis and the other steps the
 curves; the x-axis voltage is drawn at its step or at 101 points, whichever is finer. The sweep starts from the step's
 data span and keeps what you type for the rest of the session; it is not saved in the document.
 
@@ -495,11 +555,13 @@ points the plots and the cursor's lists at it.
 | S | The four S-parameters in dB at the cursor's bias |
 | Smith | S11 and S22 at the cursor's bias |
 
-**Moving the cursor.** On the bias plane, with the lasso lamp off, click a point: it turns green, the toolbar's Vgs and
-Vds move to its bias, and the other tabs follow. A point of another data set selects that set.
+**Moving the cursor.** On the bias plane, with the lasso lamp off, click a point: it turns green, the Vgs and Vds lists
+move to its bias, and the other tabs follow. A plot you have zoomed or panned keeps its window while the cursor moves;
+choosing another tab frames that tab's data. A point of another data set selects that set.
 
 **Excluding points.** On the bias plane, light the lasso lamp under the plot tabs, choose a reason, then click a point
-or drag a lasso around several. Points already excluded are included again. Each click or lasso is one undo step.
+or drag a lasso around several. Points already excluded are included again. Choose **Valid** instead to make every
+point the click or lasso takes valid again, excluded or not. Each click or lasso is one undo step.
 
 **Base periphery.** N0 (fingers) and W0 (unit gate width, with its unit, e.g. `125 um`) of the measured device. Export
 needs them; until they are set the Data step shows the one warning that says so.
@@ -616,7 +678,7 @@ RMS residual of both relations.
 Choosing a model, or **None**, changes what the currents must be trained with, so the step is marked stale until it
 runs and Export waits for it. **None** with currents trained with traps: Run re-trains `Id` and `Ig` without them, on the
 DC data — the pulsed sets are left out, and the report says so. **None** with trap-free currents: there is nothing to
-run. **Shift** with currents trained with traps: Run re-trains them trap-free first, then fits the strengths.
+run, and the step is never stale, since nothing reads an earlier trap fit. **Shift** with currents trained with traps: Run re-trains them trap-free first, then fits the strengths.
 
 | Plot tab | Shows |
 |---|---|
@@ -641,7 +703,14 @@ purpose.
 ## The Validate step {#validate}
 
 One row per data set with its tolerance and, after a run, its result line. **Run all**, or ▶ on one row. The
-tolerances are edited below the rows. **Show testbench** writes each item's generated `.cnl` beside the `.cmc` and shows
+tolerances are edited below the rows.
+
+A loadpull file is compared **at compression**, not drive by drive: at each load the measurement drives to the
+**Compression** setting (3 dB of Gt by default), the model is driven to the same compression at that load, and Pout,
+Gt, PAE, drain efficiency and AM/PM are compared there, with Zin as the VSWR between measured and model. Each side's own
+MXP and MXE are compared too, by their Pout or efficiency and by their load, as a VSWR. Only what the file carries is
+compared, and only at loads the measurement drives that far; a file that reaches the compression at no load says so and
+is not graded. `circuitrf model validate --compression 2` changes it for one run. **Show testbench** writes each item's generated `.cnl` beside the `.cmc` and shows
 it in the file manager.
 
 | Plot tab | Shows |
@@ -649,7 +718,7 @@ it in the file manager.
 | S, Smith | S at the measurement plane at the cursor's bias, measured (symbols) against model (lines) |
 | I–V | The I–V family |
 | Power, IM | Pout, gain, PAE and Id, or IM3 and IM5, against input power |
-| Loadpull | Measured and modelled Pout contours |
+| Loadpull | Measured and modelled Pout contours at the compression the comparison is made at |
 
 ## The Model Validation Report {#report}
 
@@ -660,7 +729,8 @@ Each opens on the value stored in the document or its default; **Apply** stores 
 
 The choices are the data's own values. The S biases are boxes laid out as the bias plane, Vds across and Vgs down;
 hover over one for its bias, tick the ones to compare. A very irregular plan, which would need more than 2,500 boxes,
-is typed instead. The C–V voltages are buttons, one per measured voltage, typed past 24. Under each is how many are
+is typed instead. The C–V voltages are buttons, one per measured voltage, typed past 24. Beside each heading,
+**Select all** and **Clear all** tick or clear every value at once. Under each is how many are
 chosen, or what none chosen means: the lowest, middle and highest current for S, five voltages spread over the data
 for C–V. The frequency and the PA bias list the measured values and accept any other; left empty, each shows the value
 the report will use, such as the S data's median frequency.
@@ -808,3 +878,40 @@ Every edit — a value, a lock, a bound, a tie, an exclusion, a step setting, a 
 Every run of this window is a [`model`](cli.html#model) verb noun — `model import`, `model deembed`, `model fit`,
 `model check-charge`, `model validate`, `model export`, `model report` — calling the same function, so a document built in
 the window runs the same way from a script or an agent.
+
+## References {#references}
+
+The primary reference, followed wherever a method choice is open:
+
+- **[P1]** J. C. Pedro, D. E. Root, J. Xu, L. C. Nunes, *Nonlinear Circuit Simulation and Modeling: Fundamentals for
+  Microwave Design*, Cambridge University Press, 2018. Ch. 5: parasitic stripping and the intrinsic linear model.
+  Ch. 6: constitutive relations, tables, ANNs, extrapolation and linearisation (§6.2); charge modeling (§6.3);
+  dispersion (§6.4); symmetry (§6.5); self-heating and trapping (§6.6); waveform-based identification (§6.7).
+
+The papers behind its methods:
+
+| | Reference | Used for |
+|---|---|---|
+| **[X03]** | J. Xu, M. C. E. Yagoub, R. Ding, Q. J. Zhang, "Exact adjoint sensitivity analysis for neural-based microwave modeling and design," *IEEE Trans. Microwave Theory Tech.*, Jan. 2003 | The adjoint training of the charges, and value-and-derivative training of `Id` |
+| **[X06]** | J. Xu, D. Gunyan, M. Iwamoto, A. Cognata, D. E. Root, "Measurement-based non-quasi-static large-signal FET model using artificial neural networks," *IEEE MTT-S Int. Microwave Symp.*, 2006 | ANNs over tables where low-level distortion matters; the DC/RF dispersion time constant |
+| **[X07]** | J. Xu, D. Gunyan, M. Iwamoto, J. Horn, A. Cognata, D. E. Root, "Drain-source symmetric artificial neural network-based FET model with robust extrapolation beyond training data," *IEEE MTT-S Int. Microwave Symp.*, 2007 | The drain–source symmetry option; guided extrapolation |
+| **[X10]** | J. Xu, J. Horn, M. Iwamoto, D. E. Root, "Large-signal FET model with multiple time scale dynamics from nonlinear vector network analyzer data," *IEEE MTT-S Int. Microwave Symp.*, 2010 | Self-heating and trap states as model inputs; temperature in the charges |
+| **[X14]** | J. Xu, R. Jones, S. A. Harris, T. Nielsen, D. E. Root, the GaN dynamic FET model from active source-injection measurements, *IEEE MTT-S Int. Microwave Symp.*, 2014, with its ARFTG (June 2014) validation companion | Training on DC, S-parameters and waveforms together; DC I–V as a training target |
+| **[I11]** | M. Iwamoto, J. Xu, J. Horn, D. E. Root, "III-V FET high frequency model with drift and depletion charges," *IEEE MTT-S Int. Microwave Symp.*, 2011 | **Drift charge in Qg** |
+| **[G19]** | J. Gomes, L. Nunes, C. Gonçalves, J. Pedro, "An accurate characterization of capture time constants in GaN HEMTs," *IEEE Trans. Microwave Theory Tech.*, Jul. 2019 | Trap capture times; the double-pulse pre-pulse |
+| **[N22]** | L. C. Nunes, J. L. Gomes, F. M. Barradas, J. C. Pedro, "A simple thermally activated trapping model for AlGaN/GaN HEMTs," *European Microwave Integrated Circuits Conf.*, 2022 | Thermally activated emission in `CaptureEmission` |
+| **[P21]** | J. C. Pedro, "Characterization and modeling of AlGaN/GaN HEMT trapping transients," MOS-AK workshop, 2021 | The trapped charge as a back gate: the threshold-shift coupling |
+| **[GSF19]** | G. P. Gibiino, A. Santarelli, F. Filicori, "Charge-conservative GaN HEMT nonlinear modeling from non-isodynamic multi-bias S-parameter measurements," *Int. J. Microwave Wireless Technol.* 11, 2019 | Why a capacitance model fails in harmonic balance; charges from multi-bias S |
+| **[L26]** | H. Luo, Z. Wang, Y. Guo, "A physics-informed neural network-based scalable model for GaN HEMTs," *IEEE Trans. Microwave Theory Tech.* 74(5), May 2026 | Affine periphery scaling of the extrinsic elements |
+
+Also used:
+
+- **[R11]** M. Rudolph, C. Fager, D. E. Root (eds.), *Nonlinear Transistor Model Parameter Extraction Techniques*,
+  Cambridge University Press, 2011: the measurement-based thermal model (§2.8), HEMT extrinsic extraction (§3.4),
+  uncertainty of small-signal extraction (ch. 4) and dispersive effects (ch. 7).
+- **[A07]** P. H. Aaen, J. A. Plá, J. Wood, *Modeling and Characterization of RF and Microwave Power FETs*, Cambridge
+  University Press, 2007.
+- **[T20]** J. Tarazi, *Nonlinear Modelling of GaAs and GaN High Electron Mobility Transistors*, PhD thesis, Macquarie
+  University, 2020: unit-width scaling, the thermal network, and separating thermal and trap state in small-signal data.
+- **[NW06]** J. Nocedal, S. J. Wright, *Numerical Optimization*, 2nd ed., Springer, 2006: the L-BFGS optimiser and its
+  line search (Algs. 7.4 and 3.5).

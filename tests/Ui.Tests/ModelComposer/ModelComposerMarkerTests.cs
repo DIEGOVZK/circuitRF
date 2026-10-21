@@ -8,7 +8,8 @@ namespace CircuitRF.Ui.Tests.ModelComposer;
 
 /// <summary>
 /// Model Composer review 3: a click on a bias point with the lasso disarmed moves the cursor to it; a marker on a plot outlives
-/// the rebuild every cursor move causes; and choosing Equation starts on the first template.
+/// the rebuild every cursor move causes; and choosing Equation starts on the first template. Review 4: making a marker
+/// moves no axes, and a pick keeps a window the user zoomed.
 /// </summary>
 public sealed class ModelComposerMarkerTests
 {
@@ -62,6 +63,43 @@ public sealed class ModelComposerMarkerTests
         Assert.DoesNotContain(vm.RectPlot.Traces, t => t.Markers.Count > 0);
         vm.SelectedPlotTab = ModelComposerViewModel.BiasPlaneTab;
         Assert.Same(marker, Assert.Single(vm.RectPlot.Traces.First(t => t.CubeName == "extrinsic").Markers));
+    }
+
+    [Fact]
+    public async Task MakingAndRemovingAMarker_LeavesTheAxesWhereTheyWere()
+    {
+        var vm = await ComposerFixture.Open(ModelComposerCurrentStepTests.Document());
+        vm.SelectedStep = vm.Steps.First(s => s.Name == "Data");
+        vm.SelectedPlotTab = ModelComposerViewModel.OutputTab;
+        var before = PlotRenderer.BuildTransforms(vm.RectPlot, (W, H)).Viewport;
+        Assert.True(vm.RectPlot.TopBandPx > 0);
+
+        var trace = vm.RectPlot.Traces.First(t => t.Points.Count > 3);
+        var marker = new Marker(trace, 0, false, false, 1) { PositionStatic = trace.Points[3] };
+        trace.Markers.Add(marker);
+        vm.RectContainer.OnMarkerAdded(marker, trace);
+        vm.PlaceNewInfoBox(vm.RectContainer, marker);
+        Assert.Equal(before, PlotRenderer.BuildTransforms(vm.RectPlot, (W, H)).Viewport);
+
+        vm.RectContainer.RemoveMarkerWithUndo(marker, trace);
+        Assert.Equal(before, PlotRenderer.BuildTransforms(vm.RectPlot, (W, H)).Viewport);
+    }
+
+    [Fact]
+    public async Task AZoomedBiasPlane_KeepsItsWindowAcrossAPick_AndANewTabFramesItsOwn()
+    {
+        var vm = await ComposerFixture.Open(ModelComposerCurrentStepTests.Document());
+        vm.SelectedStep = vm.Steps.First(s => s.Name == "Data");
+        vm.SelectedPlotTab = ModelComposerViewModel.BiasPlaneTab;
+        var framed = vm.RectPlot.Axes.Window;
+        var zoomed = framed with { Width = framed.Width / 2, Height = framed.Height / 2 };
+        vm.RectPlot.Axes.Window = zoomed;
+
+        vm.SelectedVds = vm.VdsChoices.First(c => c != vm.SelectedVds);
+        Assert.Equal(zoomed, vm.RectPlot.Axes.Window);
+
+        vm.SelectedPlotTab = ModelComposerViewModel.OutputTab;
+        Assert.NotEqual(zoomed, vm.RectPlot.Axes.Window);
     }
 
     [Fact]

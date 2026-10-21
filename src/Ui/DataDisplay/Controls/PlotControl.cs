@@ -954,11 +954,17 @@ namespace CircuitRF.Ui.DataDisplay.Controls
             if (_addAsGoalMenuItem is null) return;
             _addAsGoalMenuItem.Items.Clear();
             var traces = _plot?.Traces.Where(t => !t.IsAnnotation).ToList() ?? [];
-            bool any = traces.Count > 0 && _plot!.PlotType != PlotType.Surface3D;
+            var items = _plot is null || _plot.PlotType == PlotType.Surface3D
+                ? [] : traces.Select(t => AddAsGoalItem(t, t.Description)).ToList();
+            foreach (var item in items) _addAsGoalMenuItem.Items.Add(item);
+            // Lit only when some curve can be added: a lit row whose every curve is greyed — the whole menu, where there is
+            // no schematic to add a goal to, such as the Model Composer's plots — offers an action that does nothing.
+            bool any = items.Any(i => i.IsEnabled);
             _addAsGoalMenuItem.IsEnabled = any;
             _addAsGoalMenuItem.Opacity   = any ? 1.0 : 0.4;
-            if (!any) return;
-            foreach (var t in traces) _addAsGoalMenuItem.Items.Add(AddAsGoalItem(t, t.Description));
+            var reasons = items.Select(i => ToolTip.GetTip(i) as string).Distinct().ToList();
+            ToolTip.SetTip(_addAsGoalMenuItem, any ? null : reasons.Count == 1 ? reasons[0] : null);
+            ToolTip.SetShowOnDisabled(_addAsGoalMenuItem, true);
         }
 
         /// <summary>

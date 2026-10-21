@@ -501,17 +501,18 @@ public sealed partial class ModelComposerViewModel
             case LoadpullTab:
             {
                 if (items.FirstOrDefault(i => i.Kind == ValidationKind.Loadpull) is not { } item) return;
-                plot.CustomTitle = $"{item.Set} · Pout, measured against model";
+                // At the compression the comparison is made at (owner, review 4), each side on its own drive-up.
+                double comp = item.Data.Contains("Compression") ? item.Data["Compression"].RealValues[0] : 3;
+                plot.CustomTitle = $"{item.Set} · Pout at P-{ModelValueFormat.G(comp)}dB, measured against model";
                 int c = 0;
                 foreach (bool model in (bool[])[false, true])
                 {
                     if (ModelStepPlots.LoadpullLayout(item.Data, model) is not { } lp) continue;
                     var t = CubeTrace(model ? "Pout model" : "Pout", Style(c++, model ? LineType.Dashed : LineType.Solid, 1.0, null));
-                    double pavl = lp["PavlDbm"].RealValues.Where(double.IsFinite).DefaultIfEmpty(0).Max();
                     t.ContourData = new ContourData
                     {
-                        MetricName = "Pout_dBm", ContourConstraintKind = ConstraintKind.ConstantMetric, ConstraintMetricName = "PavlDbm",
-                        ConstraintValue = pavl, ShowIsoLines = true, DrawLabels = true, LevelMode = ContourLevelMode.Count,
+                        MetricName = "Pout_dBm", ContourConstraintKind = ConstraintKind.Compression, ConstraintValue = comp,
+                        ShowIsoLines = true, DrawLabels = true, LevelMode = ContourLevelMode.Count,
                     };
                     try { ContourResolve.Rebuild(t, new LoadpullSurface(lp), PlotType.Smith); }
                     catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or KeyNotFoundException) { continue; }

@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Styling;
@@ -18,7 +19,7 @@ namespace CircuitRF.Ui.Views.ModelComposer;
 /// The plots panel. The code-behind does what only a view can: it gives each <c>PlotControl</c> its container (railRF's
 /// <c>BindImpedancePlot</c> — without it a double-click adds no marker), keeps the containers on the plots so the markers'
 /// info boxes stand beside their markers, hands the bias plane its lasso through the overlay seam, removes the selected
-/// markers on Delete, follows the light/dark variant, and lights the selected tab.
+/// markers on Delete, commits a model-sweep box on Return, follows the light/dark variant, and lights the selected tab.
 /// </summary>
 public partial class PlotsPanelView : UserControl
 {
@@ -32,6 +33,7 @@ public partial class PlotsPanelView : UserControl
         TabStrip.LayoutUpdated += (_, _) => SyncTabs();
         LayoutUpdated += (_, _) => SyncContainers();
         KeyDown += OnKeyDown;
+        AddHandler(KeyDownEvent, OnSweepKey, RoutingStrategies.Tunnel);
     }
 
     private void Bind(ModelComposerViewModel? vm)
@@ -90,6 +92,17 @@ public partial class PlotsPanelView : UserControl
             container.Height = plot.Bounds.Height;
             container.NotifyViewProperties();
         }
+    }
+
+    /// <summary>A sweep box commits on Return as on leaving it, and Escape puts back the value it had.</summary>
+    private static void OnSweepKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Source is not TextBox box || !box.Classes.Contains("sweep")) return;
+        var binding = BindingOperations.GetBindingExpressionBase(box, TextBox.TextProperty);
+        if (e.Key == Key.Enter) binding?.UpdateSource();
+        else if (e.Key == Key.Escape) binding?.UpdateTarget();
+        else return;
+        e.Handled = true;
     }
 
     /// <summary>Delete removes the selected markers — never from a text field, where the key is the field's.</summary>

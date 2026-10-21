@@ -92,7 +92,13 @@ public static class CmcStamps
                 if (node is JsonObject o && o[DataKey] is JsonValue v && v.TryGetValue<string>(out var d) && d != Data()
                     && !stale.Contains(name))
                     stale.Add(name);
-        if (TrapFit.CurrentsDisagree(doc) && !stale.Contains(TrapFit.StepName)) stale.Add(TrapFit.StepName);
+        if (TrapFit.CurrentsDisagree(doc))
+        {
+            if (!stale.Contains(TrapFit.StepName)) stale.Add(TrapFit.StepName);
+        }
+        // With no trap model, and currents trained without one, the Traps step's old result is read by nothing: a network
+        // or data that moved under it stales nothing, and there would be nothing to run to clear it (owner, review 4).
+        else if (!TrapFit.Modelled(doc)) stale.Remove(TrapFit.StepName);
         return stale;
     }
 

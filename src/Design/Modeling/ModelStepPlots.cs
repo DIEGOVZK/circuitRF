@@ -531,17 +531,19 @@ public static class ModelStepPlots
     public static DataSet? LoadpullLayout(DataSet item, bool model)
     {
         string side = model ? "model" : "meas";
-        if (!item.Contains("GammaLoad") || !item.Contains("PavlDbm") || !item.Contains($"Pout.{side}")) return null;
+        if (!item.Contains("GammaLoad") || !item.Contains($"PavlDbm.{side}") || !item.Contains($"Pout.{side}")) return null;
         var gamma = item["GammaLoad"];
-        var pavl = item["PavlDbm"];
+        var pavl = item[$"PavlDbm.{side}"];
         var pout = item[$"Pout.{side}"];
         var ds = new DataSet();
         ds.Add("GammaLoad", gamma);
         ds.Add("ZLoad", new DataCube([.. gamma.Axes], [.. gamma.ComplexValues.Select(g => 50 * (1 + g) / (1 - g))]));
         ds.Add("PavlDbm", pavl);
         ds.Add("Pout_dBm", pout);
-        ds.Add("Gt_dB", new DataCube([.. pout.Axes], [.. pout.RealValues.Select((p, k) => p - pavl.RealValues[k])]));
+        ds.Add("Gt_dB", item.Contains($"Gt.{side}") ? item[$"Gt.{side}"]
+            : new DataCube([.. pout.Axes], [.. pout.RealValues.Select((p, k) => p - pavl.RealValues[k])]));
         if (item.Contains($"PAE.{side}")) ds.Add("PAE", item[$"PAE.{side}"]);
+        if (item.Contains($"Efficiency.{side}")) ds.Add("Efficiency", item[$"Efficiency.{side}"]);
         return ds;
     }
 

@@ -142,6 +142,14 @@ public static class CurrentFit
         return ReadArrays(cmcPath, CacheFolder, record.Arrays) is { } arrays ? new CurrentFitResult(Settings(doc), record, arrays) : null;
     }
 
+    /// <summary>Whether the record's arrays are in the cache: a record whose arrays are gone is a fit that has to be run again,
+    /// and the rail must not tick it. A file check only — reading it is <see cref="Load"/>'s.</summary>
+    public static bool HasArrays(string cmcPath, CmcDocument doc) =>
+        Record(doc) is { } record && ArraysPresent(cmcPath, CacheFolder, record.Arrays);
+
+    internal static bool ArraysPresent(string cmcPath, string folder, string key) =>
+        key.Length == 0 || File.Exists(Path.Combine(CmcCache.FolderFor(cmcPath), folder, key + ".npy"));
+
     /// <summary>A step's arrays from <c>&lt;name&gt;.cmc-cache/&lt;folder&gt;/&lt;key&gt;.npy</c>; empty for an empty key, null when the
     /// file is missing or unreadable (derived data: run the step again).</summary>
     internal static Dictionary<string, DataCube>? ReadArrays(string cmcPath, string folder, string key)

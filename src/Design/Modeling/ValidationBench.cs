@@ -109,12 +109,13 @@ internal static class ValidationBench
     /// <summary>
     /// A loadpull over the loads in <paramref name="gamPath"/>: the source and load tuners on the device's terminals, each
     /// with its harmonic terminations and bias tee, the drive from <paramref name="pinStart"/> to <paramref name="pinMax"/>
-    /// dBm. The compression target is out of reach, so every load is driven up the whole ladder as the data was.
+    /// dBm in <paramref name="pinStep"/> dB steps, each load driven up by the loadpull engine until its gain has fallen
+    /// <paramref name="compression"/> dB (Gt), or to <paramref name="pinMax"/>.
     /// <c>circuitrf lp</c> runs it as written.
     /// </summary>
     internal static string Loadpull(string set, string device, double ambientC, double f0, double vgs, double vds, Complex sourceZ,
                                     IReadOnlyList<Complex> sourceHarmonics, IReadOnlyList<Complex> loadHarmonics, string gamPath,
-                                    double pinStart, double pinStep, double pinMax, int maxHarm)
+                                    double pinStart, double pinStep, double pinMax, int maxHarm, double compression)
     {
         var sb = new StringBuilder(Header("loadpull", set));
         sb.Append($"temp = {R(ambientC)}\nf0 = {R(f0)}\nVgs = {R(vgs)}\nVds = {R(vds)}\n\n");
@@ -122,7 +123,7 @@ internal static class ValidationBench
         sb.Append(device);
         sb.Append($"Tuner:LOAD d 0 {Harmonics(50, loadHarmonics, maxHarm)} BiasTee=on Vbias=Vds\n\n");
         sb.Append($"analysis LP1 type=loadpull Tone=f0 MaxHarm={maxHarm} LoadTuner=LOAD SourceTuner=SRC Sweep=Load TuneHarm=1 ");
-        sb.Append($"Grid=\"{gamPath.Replace('\\', '/')}\" Compression=1000 GainType=Gt ");
+        sb.Append($"Grid=\"{gamPath.Replace('\\', '/')}\" Compression={R(compression)} GainType=Gt ");
         sb.Append($"PinStart={R(pinStart)} PinStep={R(pinStep)} PinMax={R(pinMax)} {HbKeys}\n");
         return sb.ToString();
     }

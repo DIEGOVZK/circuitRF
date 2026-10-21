@@ -150,8 +150,9 @@ internal static class ModelReportPages
                   "biases, temperatures and frequencies the model is backed by data and how it was built, and each later page states the " +
                   "conditions a result can be reproduced under.", flow.Small, Muted);
         flow.Space(8);
+        // The overall grade alone: a legend of the three grades under it read as three more grades (owner, review 4), and
+        // each scorecard row says what its own grade means.
         flow.GradeLine("Overall grade", card.Overall, bold: true);
-        foreach (var g in Enum.GetValues<Grade>()) flow.GradeLine(g.ToString(), g, legend: ReportCard.Legend(g));
         flow.Space(6);
 
         flow.Heading("Scorecard");
@@ -287,14 +288,14 @@ internal static class ModelReportPages
             Y += 1.5f;
         }
 
-        /// <summary>A grade swatch and its name, with what it means beside it.</summary>
-        public void GradeLine(string label, Grade g, bool bold = false, string? legend = null)
+        /// <summary>A grade swatch with its label beside it.</summary>
+        public void GradeLine(string label, Grade g, bool bold = false)
         {
             var s = bold ? BodyBold : Small;
             Need(s.Line + 3);
             float y = Y;
             Swatch(Left, y, 54, s.Line, g);
-            Text(legend ?? label, Left + 62, y + s.Size, s, Ink);
+            Text(label, Left + 62, y + s.Size, s, Ink);
             Y += s.Line + 3;
         }
 
@@ -324,7 +325,9 @@ internal static class ModelReportPages
             using var white = new SKPaint { Color = SKColors.White, IsAntialias = true };
             string t = g.ToString().ToUpperInvariant();
             float tw = RendererText.MeasureTextWithFallback(t, SmallBold.Primary, SmallBold.Fallback);
-            RendererText.DrawLeftTextWithFallback(c, t, x + (w - tw) / 2, y + h - 0.32f * h, SmallBold.Primary, SmallBold.Fallback, white);
+            // The name is capitals, so it is centred by its cap height: the baseline half a cap below the middle.
+            float cap = SmallBold.Primary.Metrics.CapHeight is > 0 and var ch ? ch : -0.7f * SmallBold.Primary.Metrics.Ascent;
+            RendererText.DrawLeftTextWithFallback(c, t, x + (w - tw) / 2, y + (h + cap) / 2, SmallBold.Primary, SmallBold.Fallback, white);
         });
 
         private void Text(string text, float x, float y, Style s, SKColor colour) => Draw(c =>

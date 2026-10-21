@@ -7,7 +7,8 @@ namespace CircuitRF.Ui.Tests.ModelComposer;
 
 /// <summary>
 /// brief-modelcomposer-14 R-mc14-3 (overview D13): a fit runs off the UI thread and its progress is coalesced — a counter of
-/// UI-thread work items, never a timing; Cancel leaves the previous network values; a second Run while one runs is refused.
+/// UI-thread work items, never a timing; Cancel leaves the previous network values, and says Stopping… until the run stops;
+/// a second Run while one runs is refused.
 /// </summary>
 public sealed class ModelComposerBackgroundTaskTests
 {
@@ -53,6 +54,29 @@ public sealed class ModelComposerBackgroundTaskTests
         Assert.Contains("cancelled", vm.StatusText);
         Assert.Equal(before, Value(vm, "rg"));
         Assert.Equal(bytes, File.ReadAllBytes(cmc));
+    }
+
+    /// <summary>Review 4: from Cancel until the run stops, Cancel is disabled and says Stopping…; then it is Cancel again.</summary>
+    [Fact]
+    public async Task Cancel_SaysStopping_UntilTheRunStops()
+    {
+        var vm = await ComposerFixture.Open(ComposerFixture.ActiveWithS("rg", "Lg"));
+        var gate = new TaskCompletionSource();
+        vm.RunOffThread = async (work, token) => { await gate.Task; token.ThrowIfCancellationRequested(); return work(); };
+        var run = vm.FitAsync("network");
+        Assert.True(vm.CancelCommand.CanExecute(null));
+        Assert.Equal("Cancel", vm.CancelText);
+
+        vm.CancelCommand.Execute(null);
+        Assert.True(vm.IsRunning);
+        Assert.False(vm.CancelCommand.CanExecute(null));
+        Assert.Equal("Stopping…", vm.CancelText);
+
+        gate.SetResult();
+        Assert.False(await run);
+        Assert.False(vm.IsStopping);
+        Assert.Equal("Cancel", vm.CancelText);
+        Assert.False(vm.CancelCommand.CanExecute(null));
     }
 
     [Fact]

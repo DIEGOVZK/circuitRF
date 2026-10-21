@@ -89,7 +89,7 @@ internal static class Model
         ("--ropt",           "ohms",                      ["report"]),
         ("--disc",           "radius,rings,spokes",       ["report"]),
         ("--pin",            "start,step,max",            ["report"]),
-        ("--compression",    "dB",                        ["report"]),
+        ("--compression",    "dB",                        ["validate", "report"]),
         ("-q",               "",                          ["new", "import", "deembed", "fit", "check-charge", "explain", "export", "validate", "report"]),
     ];
 
@@ -360,6 +360,12 @@ internal static class Model
             }
             settings = ValidationSettings.Parse(json, "--tolerance/--against");
         }
+        if (a["--compression"] is { } comp)
+        {
+            if (!Number("--compression", comp, out double v, out int r)) return r;
+            if (!(v > 0)) return JsonRun.Fail(CliDiagnostics.ModelFlagValue("--compression", comp, "a compression in dB above 0"));
+            settings = settings with { Compression = v };
+        }
         var result = ModelValidation.RunFile(cmc, model, settings, rc);
         var items = result.Items.Select(i => new ModelItemJson("validation", i.Set, i.Line, i.Passed))
                           .Concat(result.Notes.Select(n => new ModelItemJson("note", "", n))).ToList();
@@ -527,6 +533,7 @@ internal static class Model
     {
         ["SMedian"] = t.SMedian, ["S95"] = t.S95, ["IvRelative"] = t.IvRelative,
         ["PowerDb"] = t.PowerDb, ["EfficiencyPoints"] = t.EfficiencyPoints,
+        ["AmPmDegrees"] = t.AmPmDegrees, ["ImpedanceVswr"] = t.ImpedanceVswr,
     };
 
     private static string Pct(double v) => (100 * v).ToString("G3", CultureInfo.InvariantCulture) + " %";

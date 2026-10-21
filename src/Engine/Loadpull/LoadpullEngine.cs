@@ -604,6 +604,9 @@ public sealed class LoadpullEngine
         // solver's own sentence says far more than the word "non-convergence" (a vacuous tolerance,
         // for one, is a setup fault and not a hard solve — see HbNewton.IsToleranceVacuous).
         string? lastFailReason = null;
+        // Whether that failure was the vacuous-tolerance refusal: a setup fault, which the continuation from the tickle must
+        // not walk around — smaller drive steps would "converge" against the same meaningless tolerance.
+        bool lastFailVacuous = false;
 
         // One solve at an EXPLICIT warm start, packaged as the step this ladder records. Returns null
         // for non-convergence, which is what DriveLadder's continuation reads as "abandon this depth".
@@ -638,6 +641,7 @@ public sealed class LoadpullEngine
             };
 
             if (!sr.Converged && sr.FailReason is not null) lastFailReason = sr.FailReason;
+            lastFailVacuous = sr.ToleranceVacuous;
 
             return sr.Converged ? step : null;
         }
@@ -646,6 +650,11 @@ public sealed class LoadpullEngine
         // excluded: it sits tens of dB below PinStart, so it is not a ladder step and the jump from it
         // says nothing about a branch.
         PinStepResult? prevRung = null;
+        // The converged tickle, which the FIRST rung continues from when it fails: the jump from the tickle to PinStart is
+        // tens of dB, and on a high-gain stage behind a sharply matched source that is a leap one Newton solve does not
+        // make — the Model Composer example's GaN at 2 GHz failed its first rung at every load from −10 dBm and walked
+        // cleanly to compression from −30. Only a failed solve continues from it; continuity is never judged against it.
+        PinStepResult? tickleRung = null;
 
         foreach (var (pavlDbm, isTickle) in BuildPinSequence(p))
         {
@@ -656,13 +665,14 @@ public sealed class LoadpullEngine
             // onto a DIFFERENT root (a rung whose Pout moved further than its own Pin step did — see
             // DriveLadder for the measurement). Both are answered by re-walking that one step as a
             // continuation from the previous rung instead of taking it in a single leap.
-            if (!isTickle && prevRung is not null &&
+            var from = prevRung ?? (step is null && !lastFailVacuous ? tickleRung : null);
+            if (!isTickle && from is not null &&
                 (step is null || DriveLadder.IsDiscontinuous(
-                     prevRung.PavlDbm, DriveLadder.PoutDbm(prevRung.PoutW),
-                     pavlDbm,          DriveLadder.PoutDbm(step.PoutW), p.ContinuityMarginDb)))
+                     from.PavlDbm, DriveLadder.PoutDbm(from.PoutW),
+                     pavlDbm,      DriveLadder.PoutDbm(step.PoutW), p.ContinuityMarginDb)))
             {
                 var refined = DriveLadder.ContinueThroughJump(
-                    prevRung.PavlDbm, DriveLadder.PoutDbm(prevRung.PoutW), prevRung.V, pavlDbm,
+                    from.PavlDbm, DriveLadder.PoutDbm(from.PoutW), from.V, pavlDbm,
                     (pin, warm) => SolveAt(pin, isTickle: false, warm),
                     st => DriveLadder.PoutDbm(st.PoutW),
                     st => st.V,
@@ -698,6 +708,7 @@ public sealed class LoadpullEngine
             pinSteps.Add(step);
             innerSeed = step.V;
             if (!isTickle) prevRung = step;
+            else tickleRung = step;
 
             double gain    = p.UseGt ? step.GtDb : step.GpDb;
             string gainTag = p.UseGt ? "Gt" : "Gp";

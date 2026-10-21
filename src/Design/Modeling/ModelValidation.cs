@@ -46,21 +46,28 @@ public sealed record ValidationTolerances
     public double PowerDb { get; init; } = 0.5;
     /// <summary>RMS ΔPAE (or ΔDE), percentage points.</summary>
     public double EfficiencyPoints { get; init; } = 3;
+    /// <summary>RMS ΔAM/PM at compression, degrees.</summary>
+    public double AmPmDegrees { get; init; } = 5;
+    /// <summary>The mismatch between measured and model impedances — Zin at compression, the MXP and MXE loads — as a VSWR.</summary>
+    public double ImpedanceVswr { get; init; } = 1.5;
 
     public static ValidationTolerances Default { get; } = new();
 }
 
-/// <summary>The validation's settings: tolerances, the data sets (empty: every one), the harmonic count.</summary>
+/// <summary>The validation's settings: tolerances, the data sets (empty: every one), the harmonic count, and the gain
+/// compression a loadpull is compared at.</summary>
 public sealed record ValidationSettings
 {
     public ValidationTolerances Tolerances { get; init; } = ValidationTolerances.Default;
     public IReadOnlyList<string> DataSets { get; init; } = [];
     public int MaxHarmonic { get; init; } = 5;
+    /// <summary>The Gt compression, dB, at which a loadpull's model and measurement are compared, load by load.</summary>
+    public double Compression { get; init; } = 3;
 
     public static ValidationSettings Default { get; } = new();
 
-    private static readonly string[] Keys = ["Tolerances", "DataSets", "MaxHarmonic"];
-    private static readonly string[] ToleranceKeys = ["SMedian", "S95", "IvRelative", "PowerDb", "EfficiencyPoints"];
+    private static readonly string[] Keys = ["Tolerances", "DataSets", "MaxHarmonic", "Compression"];
+    private static readonly string[] ToleranceKeys = ["SMedian", "S95", "IvRelative", "PowerDb", "EfficiencyPoints", "AmPmDegrees", "ImpedanceVswr"];
 
     public static ValidationSettings Parse(JsonNode node, string f)
     {
@@ -80,15 +87,20 @@ public sealed record ValidationSettings
             {
                 SMedian = P("SMedian", t.SMedian), S95 = P("S95", t.S95), IvRelative = P("IvRelative", t.IvRelative),
                 PowerDb = P("PowerDb", t.PowerDb), EfficiencyPoints = P("EfficiencyPoints", t.EfficiencyPoints),
+                AmPmDegrees = P("AmPmDegrees", t.AmPmDegrees), ImpedanceVswr = P("ImpedanceVswr", t.ImpedanceVswr) is var w && w > 1 ? w
+                    : throw new CmcFormatException($"{f}.Tolerances.ImpedanceVswr", $"{w} is not a VSWR above 1."),
             };
         }
         int harm = (int)(CmcExtrinsic.Num(o, "MaxHarmonic", $"{f}.MaxHarmonic") ?? 5);
         if (harm < 1) throw new CmcFormatException($"{f}.MaxHarmonic", $"{harm} is not a harmonic count.");
+        double compression = CmcExtrinsic.Num(o, "Compression", $"{f}.Compression") ?? 3;
+        if (!(compression > 0)) throw new CmcFormatException($"{f}.Compression", $"{compression} is not a compression in dB.");
         return new ValidationSettings
         {
             Tolerances = t,
             DataSets = o["DataSets"] is { } d ? CurrentFitSettings.Names(d, $"{f}.DataSets") : [],
             MaxHarmonic = harm,
+            Compression = compression,
         };
     }
 
@@ -101,9 +113,11 @@ public sealed record ValidationSettings
             {
                 ["SMedian"] = t.SMedian, ["S95"] = t.S95, ["IvRelative"] = t.IvRelative,
                 ["PowerDb"] = t.PowerDb, ["EfficiencyPoints"] = t.EfficiencyPoints,
+                ["AmPmDegrees"] = t.AmPmDegrees, ["ImpedanceVswr"] = t.ImpedanceVswr,
             };
         if (DataSets.Count > 0) o["DataSets"] = new JsonArray([.. DataSets.Select(n => (JsonNode)n)]);
         if (MaxHarmonic != 5) o["MaxHarmonic"] = MaxHarmonic;
+        if (Compression != 3) o["Compression"] = Compression;
         return o;
     }
 }
@@ -684,76 +698,107 @@ public static class ModelValidation
         var zl = meas.Contains("ZLoad") ? meas["ZLoad"].ComplexValues : [.. gamma.Select(g => 50 * (1 + g) / (1 - g))];
         var finite = pavl.Where(double.IsFinite).ToArray();
         if (finite.Length == 0) throw new ModelingException(set.Name, "no drive level is stated.");
-        // The model's ladder steps by the smallest gap between the measured drives, so a regular measured grid (a tickle
-        // below it included) is hit exactly and only an irregular one is interpolated; at most 200 rungs.
+        // The model's ladder steps by the smallest gap between the measured drives, at most 200 rungs, and runs 10 dB past
+        // the highest measured drive so a model that compresses later than the device still reaches compression.
         double[] levels = [.. finite.Select(v => Math.Round(v, 6)).Distinct().Order()];
-        double lo = levels[0], hi = levels[^1];
+        double lo = levels[0], hi = levels[^1] + 10;
         double gap = levels.Length > 1 ? levels.Zip(levels.Skip(1), (a, b) => b - a).Min() : 1;
         double step = Math.Max(Math.Max(gap, 0.1), (hi - lo) / 199);
+        double comp = ctx.Settings.Compression;
 
-        // The model load-pulled over the file's own loads, through the loadpull engine `circuitrf lp` runs: the grid is a
-        // .gam beside the generated testbench, which names it by its full path so the testbench runs unchanged anywhere.
+        // The model load-pulled over the file's own loads, through the loadpull engine `circuitrf lp` runs, each load driven
+        // up to the compression the comparison is made at: the grid is a .gam beside the generated testbench, which names it
+        // by its full path so the testbench runs unchanged anywhere.
         string gam = Path.Combine(ctx.Work, $"{Safe(set.Name)}.gam");
         File.WriteAllLines(gam, ["# impedance Z0=50 re_im", .. zl.Select(z => $"{ValidationBench.R(z.Real)} {ValidationBench.R(z.Imaginary)}")]);
         string cnl = ValidationBench.Loadpull(set.Name, ctx.Device(false, "g", "d"), set.Conditions.AmbientC ?? 25, f0, vgs, vds,
-                                              zSource, c.SourceHarmonics, c.LoadHarmonics, gam, lo, step, hi, ctx.Settings.MaxHarmonic);
+                                              zSource, c.SourceHarmonics, c.LoadHarmonics, gam, lo, step, hi, ctx.Settings.MaxHarmonic, comp);
         ctx.Rc?.BeginStage($"Validating loadpull {set.Name}", 1);
         var model = Evaluate(ctx, cnl, "loadpull", "StopCode");
         ctx.Rc?.TickStage();
 
-        // Each measured (load, drive) against the model at the same load, interpolated to the same drive.
-        var mPout = Watts(meas); var mPae = meas.Contains("PAE") ? meas["PAE"].RealValues : null;
-        var sPavl = model["PavlDbm"].RealValues; var sPout = Watts(model); var sPae = model.Contains("PAE") ? model["PAE"].RealValues : null;
-        var sConv = model["Converged"].RealValues; var sTickle = model.Contains("IsTickle") ? model["IsTickle"].RealValues : null;
-        int sPin = sPavl.Length / nGrid;
-        var dPout = new List<(double, double)>(); var dPae = new List<(double, double)>();
-        var outModel = Enumerable.Repeat(double.NaN, nGrid * nPin).ToArray();
-        var paeModel = Enumerable.Repeat(double.NaN, nGrid * nPin).ToArray();
-        for (int g = 0; g < nGrid; g++)
+        // At compression, not drive by drive (owner, review 4): each load where BOTH reached P-comp dB on their own
+        // drive-up, every figure the measurement carries — a file without efficiency or AM/PM simply compares fewer.
+        var measLp = Canonical(meas);
+        var measAt = AtCompression(measLp, nGrid, comp);
+        var modelAt = AtCompression(model, nGrid, comp);
+        int reached = Enumerable.Range(0, nGrid).Count(g => double.IsFinite(measAt["Pout_dBm"][g]));
+        if (reached == 0)
+            throw new ModelingException(set.Name, $"the measurement reaches {G(comp)} dB compression at no load, so nothing is compared at " +
+                                                  "compression; lower the Validate step's Compression to one the data reaches.");
+
+        var metrics = new List<ValidationMetric>();
+        var parts = new List<string>();
+        bool pass = true;
+        int compared = 0;
+        void Rms(string key, string label, double tol, string unit)
         {
-            var ladder = Enumerable.Range(g * sPin, sPin)
-                .Where(j => sConv[j] == 1 && (sTickle is null || sTickle[j] != 1) && double.IsFinite(sPavl[j]) && sPout[j] > 0)
-                .OrderBy(j => sPavl[j]).ToArray();
-            if (ladder.Length == 0) continue;
-            double[] x = [.. ladder.Select(j => sPavl[j])];
-            double[] yPout = [.. ladder.Select(j => Dbm(sPout[j]))];
-            double[]? yPae = sPae is null ? null : [.. ladder.Select(j => sPae[j])];
-            for (int k = 0; k < nPin; k++)
-            {
-                int i = g * nPin + k;
-                double p = pavl[i];
-                if (!double.IsFinite(p) || !(mPout[i] > 0)) continue;
-                outModel[i] = Interpolate(x, yPout, p);
-                if (!double.IsFinite(outModel[i])) continue;
-                dPout.Add((Dbm(mPout[i]), outModel[i]));
-                if (yPae is not null)
-                {
-                    paeModel[i] = Interpolate(x, yPae, p);
-                    if (mPae is not null && double.IsFinite(mPae[i]) && double.IsFinite(paeModel[i])) dPae.Add((mPae[i], paeModel[i]));
-                }
-            }
+            var d = Enumerable.Range(0, nGrid).Where(g => double.IsFinite(measAt[key][g]) && double.IsFinite(modelAt[key][g]))
+                              .Select(g => measAt[key][g] - modelAt[key][g]).ToList();
+            if (d.Count == 0) return;
+            if (key == "Pout_dBm") compared = d.Count;
+            double e = Math.Sqrt(d.Average(x => x * x));
+            pass &= e <= tol;
+            parts.Add($"{label} RMS {G(e)} {unit}");
+            metrics.Add(new($"{label} RMS error at P-{G(comp)}dB", e, tol, unit));
         }
-        if (dPout.Count == 0) throw new ModelingException(set.Name, "no measured point has a converged model point at its drive.");
-        double ePout = Math.Sqrt(dPout.Average(x => (x.Item1 - x.Item2) * (x.Item1 - x.Item2)));
-        double? ePae = dPae.Count > 0 ? Math.Sqrt(dPae.Average(x => (x.Item1 - x.Item2) * (x.Item1 - x.Item2))) : null;
-        bool pass = ePout <= ctx.Tol.PowerDb && (ePae is null || ePae <= ctx.Tol.EfficiencyPoints);
+        Rms("Pout_dBm", "Pout", ctx.Tol.PowerDb, "dB");
+        Rms("Gt_dB", "Gt", ctx.Tol.PowerDb, "dB");
+        Rms("PAE", "PAE", ctx.Tol.EfficiencyPoints, "pp");
+        Rms("Efficiency", "DE", ctx.Tol.EfficiencyPoints, "pp");
+        Rms("AMPM_deg", "AM/PM", ctx.Tol.AmPmDegrees, "°");
+        var zin = Enumerable.Range(0, nGrid)
+            .Where(g => double.IsFinite(measAt["Zin_real"][g]) && double.IsFinite(modelAt["Zin_real"][g]))
+            .Select(g => Mismatch(new Complex(measAt["Zin_real"][g], measAt["Zin_imag"][g]), new Complex(modelAt["Zin_real"][g], modelAt["Zin_imag"][g])))
+            .Where(double.IsFinite).ToList();
+        if (zin.Count > 0)
+        {
+            double v = Vswr(Math.Sqrt(zin.Average(x => x * x)));
+            pass &= v <= ctx.Tol.ImpedanceVswr;
+            parts.Add($"Zin VSWR {G(v)}");
+            metrics.Add(new($"Zin mismatch at P-{G(comp)}dB, VSWR", v, ctx.Tol.ImpedanceVswr, ""));
+        }
+
+        // The optimum loads, each side's own at compression, wherever the measurement has one.
+        var measSurf = new LoadpullSurface(measLp);
+        var modelSurf = new LoadpullSurface(model);
+        var cc = ConstraintSpec.AtCompression(comp);
+        void Optimum(string name, string metric, string label, double tol, string unit, bool max)
+        {
+            var m = (max ? measSurf.MaxPower(0, cc, SurfacePlane.Gamma) : measSurf.MaxEfficiency(0, cc, SurfacePlane.Gamma))?.Interpolated;
+            var s = (max ? modelSurf.MaxPower(0, cc, SurfacePlane.Gamma) : modelSurf.MaxEfficiency(0, cc, SurfacePlane.Gamma))?.Interpolated;
+            if (m is not { } gm || s is not { } gs) return;
+            double vm = measSurf.MetricAtCoord(0, metric, gm, cc, SurfacePlane.Gamma), vs = modelSurf.MetricAtCoord(0, metric, gs, cc, SurfacePlane.Gamma);
+            double vswr = Vswr(Mismatch(50 * (1 + gm) / (1 - gm), 50 * (1 + gs) / (1 - gs)));
+            pass &= vswr <= ctx.Tol.ImpedanceVswr;
+            metrics.Add(new($"{name} load mismatch, VSWR", vswr, ctx.Tol.ImpedanceVswr, ""));
+            string what = $"{name} ZL VSWR {G(vswr)}";
+            if (double.IsFinite(vm) && double.IsFinite(vs))
+            {
+                double d = Math.Abs(vm - vs);
+                pass &= d <= tol;
+                metrics.Add(new($"{name} {label} error", d, tol, unit));
+                what += $", Δ{label} {G(d)} {unit}";
+            }
+            parts.Add(what);
+        }
+        Optimum("MXP", "Pout_dBm", "Pout", ctx.Tol.PowerDb, "dB", max: true);
+        Optimum("MXE", "Efficiency", "DE", ctx.Tol.EfficiencyPoints, "pp", max: false);
 
         var gridAx = new Axis("gridPoint", [.. Enumerable.Range(0, nGrid).Select(i => (double)i)]);
-        var pinAx = new Axis("pinStep", [.. Enumerable.Range(0, nPin).Select(i => (double)i)]);
         var ds = new DataSet();
         ds.Add("GammaLoad", new DataCube([gridAx], gamma));
-        ds.Add("PavlDbm", new DataCube([gridAx, pinAx], pavl));
-        ds.Add("Pout.meas", new DataCube([gridAx, pinAx], [.. mPout.Select(Dbm)]));
-        ds.Add("Pout.model", new DataCube([gridAx, pinAx], outModel));
-        if (mPae is not null) ds.Add("PAE.meas", new DataCube([gridAx, pinAx], mPae));
-        if (sPae is not null) ds.Add("PAE.model", new DataCube([gridAx, pinAx], paeModel));
-        string line = $"Loadpull {set.Name}: Pout RMS {G(ePout)} dB" + (ePae is { } e ? $" · PAE RMS {G(e)} pp" : "") +
-                      $" over {dPout.Count} point(s) {Mark(pass)}";
-        int measured = Enumerable.Range(0, nGrid * nPin).Count(i => double.IsFinite(pavl[i]) && mPout[i] > 0);
+        ds.Add("Compression", DataCube.Scalar(comp));
+        // Each side's loadpull for the plot, on its own drive levels.
+        foreach (var (side, lp) in new[] { ("meas", measLp), ("model", model) })
+            foreach (var (from, to) in new[] { ("PavlDbm", "PavlDbm"), ("Pout_dBm", "Pout"), ("Gt_dB", "Gt"), ("PAE", "PAE"), ("Efficiency", "Efficiency") })
+                if (lp.Contains(from)) ds.Add($"{to}.{side}", lp[from]);
+        foreach (var (side, at) in new[] { ("meas", measAt), ("model", modelAt) })
+            foreach (var (key, v) in at) ds.Add($"{key}@compression.{side}", new DataCube([gridAx], v));
+
+        string line = $"Loadpull {set.Name} at P-{G(comp)}dB: {string.Join(" · ", parts)} over {compared} load(s) {Mark(pass)}";
         double ambientC = set.Conditions.AmbientC ?? 25;
         var gammaAbs = gamma.Select(Complex.Abs).ToArray();
-        var metrics = new List<ValidationMetric> { new("Pout RMS error", ePout, ctx.Tol.PowerDb, "dB") };
-        if (ePae is { } ep) metrics.Add(new("PAE RMS error", ep, ctx.Tol.EfficiencyPoints, "pp"));
         return new ValidationItem(set.Name, ValidationKind.Loadpull, pass, line, ds, cnl)
         {
             Conditions =
@@ -762,14 +807,83 @@ public static class ModelValidation
                 $"Source: {Terminations(zSource, c.SourceHarmonics, ctx.Settings.MaxHarmonic)}",
                 $"Load: the file's {nGrid} load(s), |Γ| {G(gammaAbs.Min())} – {G(gammaAbs.Max())} (50 Ω); " +
                 Terminations(null, c.LoadHarmonics, ctx.Settings.MaxHarmonic),
-                $"Drive: available power {G(lo)} – {G(hi)} dBm in {G(step)} dB steps (the model interpolated to each measured drive)",
+                $"Compared at {G(comp)} dB compression of Gt, at each of the {reached} load(s) the measurement reaches it at; " +
+                "impedances as the VSWR between measured and model",
+                $"Drive: the model from {G(lo)} dBm in {G(step)} dB steps to compression, or to {G(hi)} dBm",
                 Ambient(ctx, [ambientC]),
                 $"Solver: the loadpull engine (circuitrf lp); {ValidationBench.HbText(ctx.Settings.MaxHarmonic)}",
             ],
             Metrics = metrics,
-            Failed = measured - dPout.Count, Count = measured,
+            Failed = reached - compared, Count = reached,
         };
     }
+
+    /// <summary>A loadpull's DataSet with the names compression is read from: Pout_dBm from the watts, and Gt_dB from Pout
+    /// and the available drive where the file carries no gain.</summary>
+    private static DataSet Canonical(DataSet lp)
+    {
+        var ds = new DataSet();
+        foreach (var (name, cube) in lp.Cubes) ds.Add(name, cube);
+        if (!ds.Contains("Pout_dBm"))
+        {
+            var w = Watts(lp);
+            ds.Add("Pout_dBm", new DataCube([.. lp["PavlDbm"].Axes], [.. w.Select(Dbm)]));
+        }
+        if (!ds.Contains("Gt_dB"))
+        {
+            var p = ds["Pout_dBm"].RealValues; var a = ds["PavlDbm"].RealValues;
+            ds.Add("Gt_dB", new DataCube([.. lp["PavlDbm"].Axes], [.. p.Select((v, k) => v - a[k])]));
+        }
+        return ds;
+    }
+
+    /// <summary>
+    /// Each load's figures at <paramref name="compression"/> dB below its running Gt maximum along its own drive-up — the
+    /// gain rule the loadpull engine stops on — interpolated between the two drives either side; NaN for a load that never
+    /// compresses that far, or a figure the DataSet does not carry. Tickle points and points that did not converge are
+    /// left out.
+    /// </summary>
+    internal static Dictionary<string, double[]> AtCompression(DataSet lp, int nGrid, double compression)
+    {
+        string[] keys = ["Pout_dBm", "Gt_dB", "PAE", "Efficiency", "AMPM_deg", "Zin_real", "Zin_imag"];
+        var at = keys.ToDictionary(k => k, _ => Enumerable.Repeat(double.NaN, nGrid).ToArray(), StringComparer.Ordinal);
+        var pavl = lp["PavlDbm"].RealValues;
+        var gt = lp["Gt_dB"].RealValues;
+        var conv = lp.Contains("Converged") ? lp["Converged"].RealValues : null;
+        var tickle = lp.Contains("IsTickle") ? lp["IsTickle"].RealValues : null;
+        int nP = pavl.Length / nGrid;
+        for (int g = 0; g < nGrid; g++)
+        {
+            var row = Enumerable.Range(g * nP, nP)
+                .Where(j => double.IsFinite(pavl[j]) && double.IsFinite(gt[j]) && (conv is null || conv[j] == 1) && (tickle is null || tickle[j] != 1))
+                .OrderBy(j => pavl[j]).ToArray();
+            double gmax = double.NegativeInfinity, before = double.NaN;
+            for (int k = 0; k < row.Length; k++)
+            {
+                gmax = Math.Max(gmax, gt[row[k]]);
+                double depth = gmax - gt[row[k]];
+                if (depth >= compression && k > 0)
+                {
+                    double t = (compression - before) / (depth - before);
+                    foreach (string key in keys)
+                        if (lp.Contains(key))
+                        {
+                            var v = lp[key].RealValues;
+                            at[key][g] = v[row[k - 1]] + t * (v[row[k]] - v[row[k - 1]]);
+                        }
+                    break;
+                }
+                before = depth;
+            }
+        }
+        return at;
+    }
+
+    /// <summary>How far apart two impedances are, independent of any reference: |Z1 − Z2| / |Z1 + Z2*|, the reflection
+    /// one sees looking into the other.</summary>
+    internal static double Mismatch(Complex z1, Complex z2) => Complex.Abs(z1 - z2) / Complex.Abs(z1 + Complex.Conjugate(z2));
+
+    internal static double Vswr(double gamma) => gamma >= 1 ? double.PositiveInfinity : (1 + gamma) / (1 - gamma);
 
     /// <summary>
     /// A loadpull file's DataSet at one frequency: a multi-frequency file (every cube on a leading <c>freq</c> axis) sliced
@@ -816,78 +930,69 @@ public static class ModelValidation
     /// <summary>
     /// A loadpull of the model over <paramref name="gammas"/> (50 Ω), as the loadpull DataSet RfCore's surface and the Data
     /// Display read, under the canonical names a measured file and an enriched run carry (<c>gridPoint × pinStep</c>:
-    /// Pout_W, Pout_dBm, Gt_dB, Gp_dB, Efficiency and PAE in %, Pdc_W, PavlDbm, the bias, Converged; GammaLoad, ZLoad,
-    /// StopCode).
+    /// Pout_W, Pout_dBm, Gt_dB, Gp_dB, Efficiency and PAE in %, Pdc_W, PavlDbm, IsTickle, the bias, Converged; GammaLoad,
+    /// ZLoad, StopCode).
     ///
-    /// <para><b>A fixed ladder, not the loadpull engine's drive-up</b> — the report's region of convergence is the share of
-    /// loads where HB converged on one and the same drive ladder, and the engine's continuation and cold retries would
-    /// rescue loads that ladder does not reach. Each load is one HB power sweep through the HB run service — the
-    /// power-sweep testbench with that load — measured by probes at the device's terminals. The drive is the whole ladder
-    /// (an HB sweep cannot stop early); with <paramref name="compression"/> a point is cut, as the engine's drive-up stops,
-    /// one step past the gain falling that far below its running maximum. Validation against a loadpull FILE runs the
-    /// engine itself (<c>circuitrf lp</c>).</para>
+    /// <para><b>The loadpull engine's drive-up, one load at a time and the loads in parallel</b> (owner, review 4). Each load
+    /// is driven from <paramref name="pinStart"/> by the engine `circuitrf lp` runs, and stops where its gain has fallen
+    /// <paramref name="compression"/> dB or at <paramref name="pinMax"/>. A fixed ladder solved every rung to the cap and
+    /// kept only those up to compression: where the gain is high the rest was deep overdrive that failed to converge at
+    /// every rung, and a class at 2 GHz ran for many minutes. One engine run per load rather than one over the disc,
+    /// because the engine solves its loads in turn; the region of convergence is now the loads the engine's continuation
+    /// and cold retries bring to compression or the cap. <paramref name="testbench"/> is the whole disc as one loadpull,
+    /// which <c>circuitrf lp</c> runs as written.</para>
     /// </summary>
     internal static DataSet LoadSweep(Context ctx, string set, double ambientC, double f0, double vgs, double vds, Complex sourceZ,
                                       IReadOnlyList<Complex> sourceHarmonics, IReadOnlyList<Complex> loadHarmonics,
-                                      IReadOnlyList<Complex> gammas, double[] pin, double? compression, out string testbench)
+                                      IReadOnlyList<Complex> gammas, double pinStart, double pinStep, double pinMax,
+                                      double compression, out string testbench)
     {
-        int nG = gammas.Count, nP = pin.Length;
+        int nG = gammas.Count;
         var zl = gammas.Select(g => 50 * (1 + g) / (1 - g)).ToArray();
-        LargeSignalConditions At(int g) => new()
+        string device = ctx.Device(false, "g", "d");
+        string Gam(string name, IEnumerable<Complex> z)
         {
-            Measurement = LargeSignalMeasurement.PowerSweep, FrequencyHz = f0, Vgs = vgs, Vds = vds, SourceZ = sourceZ, LoadZ = zl[g],
-            SourceHarmonics = sourceHarmonics, LoadHarmonics = loadHarmonics,
-        };
-        string device = ctx.Device(false, "gx", "dx");
-        testbench = ValidationBench.PowerSweep(set, device, ambientC, At(0), pin, ctx.Settings.MaxHarmonic);
-        string[] names = ["Converged", "Pout_W", "Pout_dBm", "Gt_dB", "Gp_dB", "Efficiency", "PAE", "Pdc_W", "BiasILoad", "BiasISrc"];
-        var cubes = names.ToDictionary(n => n, n => n == "Converged" ? new double[nG * nP] : Enumerable.Repeat(double.NaN, nG * nP).ToArray(),
-                                       StringComparer.Ordinal);
-        var stop = new double[nG];
+            string path = Path.Combine(ctx.Work, $"{Safe(name)}.gam");
+            File.WriteAllLines(path, ["# impedance Z0=50 re_im", .. z.Select(x => $"{ValidationBench.R(x.Real)} {ValidationBench.R(x.Imaginary)}")]);
+            return path;
+        }
+        string Bench(string gam) => ValidationBench.Loadpull(set, device, ambientC, f0, vgs, vds, sourceZ, sourceHarmonics, loadHarmonics,
+                                                             gam, pinStart, pinStep, pinMax, ctx.Settings.MaxHarmonic, compression);
+        testbench = Bench(Gam(set, zl));
+
+        var runs = new DataSet?[nG];
         ctx.Rc?.BeginStage($"Load-pulling {set}", nG);
         System.Threading.Tasks.Parallel.For(0, nG, Parallel(ctx), g =>
         {
-            DataSet hb;
-            try { hb = RunHb(ctx with { Rc = null }, ValidationBench.PowerSweep(set, device, ambientC, At(g), pin, ctx.Settings.MaxHarmonic)); }
-            catch (ModelingException) { stop[g] = 3; ctx.Rc?.TickStage(); return; }
-            var (pout, pinDel, id, ig, pdc) = Powers(hb, 1);
-            var conv = hb["Converged"].RealValues;
-            double g0 = double.NaN;
-            stop[g] = 0;
-            for (int k = 0; k < nP; k++)
-            {
-                int i = g * nP + k;
-                if (conv[k] != 1 || !(pout[k] > 0) || !(pdc[k] > 0)) { stop[g] = double.IsNaN(g0) ? 3 : 2; break; }
-                double gt = Dbm(pout[k]) - pin[k];
-                cubes["Converged"][i] = 1;
-                cubes["Pout_W"][i] = pout[k];
-                cubes["Pout_dBm"][i] = Dbm(pout[k]);
-                cubes["Gt_dB"][i] = gt;
-                cubes["Gp_dB"][i] = Dbm(pout[k]) - Dbm(pinDel[k]);
-                cubes["Efficiency"][i] = 100 * pout[k] / pdc[k];
-                cubes["PAE"][i] = 100 * (pout[k] - pinDel[k]) / pdc[k];
-                cubes["Pdc_W"][i] = pdc[k];
-                cubes["BiasILoad"][i] = id[k];
-                cubes["BiasISrc"][i] = ig[k];
-                // Compression from the running gain maximum — harmonicaRF's rule (PinSearch), which a device whose gain
-                // expands before it compresses needs: measured from the first step it would fall too late.
-                g0 = double.IsNaN(g0) ? gt : Math.Max(g0, gt);
-                if (compression is { } c && g0 - gt >= c) { stop[g] = 1; break; }
-            }
+            try { runs[g] = Evaluate(ctx, Bench(Gam($"{set} {g}", [zl[g]])), "loadpull", "StopCode"); }
+            catch (OperationCanceledException) { return; }
+            catch (ModelingException) { }
             ctx.Rc?.TickStage();
         });
         ctx.Rc?.ThrowIfCancellationRequested();
 
+        // Each load's ladder is as long as its own drive-up; the shorter ones are padded, not converged.
+        int nP = Math.Max(1, runs.Max(r => r is not null && r.Contains("PavlDbm") ? r["PavlDbm"].Axes[^1].Length : 0));
+        string[] names = ["Converged", "IsTickle", "PavlDbm", "Pout_W", "Pout_dBm", "Gt_dB", "Gp_dB", "Efficiency", "PAE", "Pdc_W",
+                          "BiasVLoad", "BiasILoad", "BiasVSrc", "BiasISrc"];
         var gridAxis = new Axis("gridPoint", [.. Enumerable.Range(0, nG).Select(i => (double)i)]);
-        var pinAxis = new Axis("pinStep", pin, "dBm");
+        var pinAxis = new Axis("pinStep", [.. Enumerable.Range(0, nP).Select(i => (double)i)]);
         var ds = new DataSet();
-        foreach (string n in names) ds.Add(n, new DataCube([gridAxis, pinAxis], cubes[n]));
-        ds.Add("PavlDbm", new DataCube([gridAxis, pinAxis], [.. Enumerable.Range(0, nG * nP).Select(i => pin[i % nP])]));
-        ds.Add("BiasVLoad", new DataCube([gridAxis, pinAxis], [.. Enumerable.Repeat(vds, nG * nP)]));
-        ds.Add("BiasVSrc", new DataCube([gridAxis, pinAxis], [.. Enumerable.Repeat(vgs, nG * nP)]));
+        foreach (string n in names)
+        {
+            bool flag = n is "Converged" or "IsTickle";
+            var v = Enumerable.Repeat(flag ? 0.0 : double.NaN, nG * nP).ToArray();
+            for (int g = 0; g < nG; g++)
+                if (runs[g] is { } r && r.Contains(n))
+                {
+                    var row = r[n].RealValues;
+                    Array.Copy(row, 0, v, g * nP, Math.Min(row.Length, nP));
+                }
+            ds.Add(n, new DataCube([gridAxis, pinAxis], v));
+        }
         ds.Add("ZLoad", new DataCube([gridAxis], zl));
         ds.Add("GammaLoad", new DataCube([gridAxis], [.. gammas]));
-        ds.Add("StopCode", new DataCube([gridAxis], stop));
+        ds.Add("StopCode", new DataCube([gridAxis], [.. runs.Select(r => r is not null && r.Contains("StopCode") ? r["StopCode"].RealValues[0] : 3)]));
         // The frequency, on the carrier a loadpull file's reader writes: without it a surface's summary reads 0 GHz.
         ds.Add("__Freq", new DataCube([new Axis("freq", [f0], "Hz")], [f0]));
         return ds;

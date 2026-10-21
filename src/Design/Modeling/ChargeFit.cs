@@ -214,6 +214,10 @@ public static class ChargeFit
         return result;
     }
 
+    /// <summary>Whether the record's arrays are in the cache (<see cref="CurrentFit.HasArrays"/>).</summary>
+    public static bool HasArrays(string cmcPath, CmcDocument doc) =>
+        Record(doc) is { } record && CurrentFit.ArraysPresent(cmcPath, CacheFolder, record.Arrays);
+
     /// <summary>The recorded step and its arrays from the cache; null when there is no record, or its arrays are not in the
     /// cache (derived data: run the step again).</summary>
     public static ChargeFitResult? Load(string cmcPath, CmcDocument doc) =>

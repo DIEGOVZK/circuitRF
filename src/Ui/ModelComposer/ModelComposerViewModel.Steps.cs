@@ -674,7 +674,8 @@ public sealed partial class ModelComposerViewModel
         {
             DataSetKind.SParams or DataSetKind.PulsedSParams => $"|ΔS| median {Num(t.SMedian)}, 95 % {Num(t.S95)}",
             DataSetKind.DcIv or DataSetKind.PulsedIv => $"Id {Num(100 * t.IvRelative)} % of range",
-            DataSetKind.LargeSignal => $"{Num(t.PowerDb)} dB, {Num(t.EfficiencyPoints)} pts",
+            DataSetKind.LargeSignal => $"{Num(t.PowerDb)} dB, {Num(t.EfficiencyPoints)} pts, {Num(t.AmPmDegrees)}°, VSWR {Num(t.ImpedanceVswr)}" +
+                                       $" · loadpull at P-{Num(settings.Compression)}dB",
             _ => "",
         };
         var rows = Document.DataSets.Where(s => s.Kind is not DataSetKind.SimulatedTables and not DataSetKind.PassiveSParams).ToList();
@@ -698,6 +699,9 @@ public sealed partial class ModelComposerViewModel
                          ("SMedian", "", "Median |ΔS| over every point and frequency"), ("S95", "", "95th percentile of |ΔS|"),
                          ("IvRelative", "%", "RMS drain-current error, % of its range"), ("PowerDb", "dB", "Pout and gain error"),
                          ("EfficiencyPoints", "pts", "PAE and efficiency error, percentage points"),
+                         ("AmPmDegrees", "°", "AM/PM error at compression, degrees"),
+                         ("ImpedanceVswr", "", "Zin, and the MXP and MXE loads: the mismatch between measured and model, as a VSWR"),
+                         ("Compression", "dB", "The Gt compression a loadpull is compared at, load by load"),
                      })
                 Tolerances.Add(new ParameterRow(key, unit, tip, CommitTolerance));
         Tolerances[0].Load(Num(t.SMedian));
@@ -705,13 +709,25 @@ public sealed partial class ModelComposerViewModel
         Tolerances[2].Load(Num(100 * t.IvRelative));
         Tolerances[3].Load(Num(t.PowerDb));
         Tolerances[4].Load(Num(t.EfficiencyPoints));
+        Tolerances[5].Load(Num(t.AmPmDegrees));
+        Tolerances[6].Load(Num(t.ImpedanceVswr));
+        Tolerances[7].Load(Num(settings.Compression));
     }
 
     private void CommitTolerance(ParameterRow row, string text)
     {
         if (_loadingSteps) return;
-        if (!TryNum(text, out double v) || v <= 0) { Error($"Validate: '{text}' is not a tolerance."); return; }
+        if (!TryNum(text, out double v) || v <= 0 || row.Name == "ImpedanceVswr" && v <= 1)
+        {
+            Error($"Validate: '{text}' is not {(row.Name == "Compression" ? "a compression in dB" : row.Name == "ImpedanceVswr" ? "a VSWR above 1" : "a tolerance")}.");
+            return;
+        }
         var s = ModelValidation.Settings(Document);
+        if (row.Name == "Compression")
+        {
+            EditPart($"Validate: Compression {text}", ModelValidation.Settings, ModelValidation.WithSettings, s with { Compression = v });
+            return;
+        }
         var t = s.Tolerances;
         t = row.Name switch
         {
@@ -719,6 +735,8 @@ public sealed partial class ModelComposerViewModel
             "S95" => t with { S95 = v },
             "IvRelative" => t with { IvRelative = v / 100 },
             "PowerDb" => t with { PowerDb = v },
+            "AmPmDegrees" => t with { AmPmDegrees = v },
+            "ImpedanceVswr" => t with { ImpedanceVswr = v },
             _ => t with { EfficiencyPoints = v },
         };
         EditPart($"Validate: {row.Name} {text}", ModelValidation.Settings, ModelValidation.WithSettings, s with { Tolerances = t });

@@ -47,8 +47,9 @@ public sealed partial class ModelComposerViewModel
             p.Axes.FontSizeLabel = TitleFontSizeLabel(p.Axes);
         }
         PlotHost.SelectOnly((PlotContainerViewModel?)null);
-        // A removed marker gives its band back; the plot host says so on its content channel, as railRF's capture reads it.
-        PlotHost.ContentChanged += (_, _) => UpdateMarkerBand();
+        // The band the info boxes sit in is reserved whether or not a marker exists (owner, review 4): sized to the boxes,
+        // it moved the axes down when the first marker was made and back up when the last one went.
+        RectPlot.TopBandPx = BandHeight();
         BiasPlaneLasso = new BiasPlaneLasso(() => _biasPlanePoints, OnLasso, OnPickBiasPoint, () => _biasPlanePickable);
         RebuildPlotTabs();
     }
@@ -168,6 +169,11 @@ public sealed partial class ModelComposerViewModel
     /// <summary>The step and tab the traces now on the plots were built for.</summary>
     private string _plottedKey = "";
 
+    /// <summary>The axes window the last rebuild left; a window that differs from it is one the user zoomed or panned.</summary>
+    private (PlotRect Primary, PlotRect Secondary) _framed;
+
+    private bool WindowIsOurs(Plot plot) => _framed == (plot.Axes.Window, plot.Axes.WindowSecondary);
+
     private static string MarkerKey(string tabKey, Trace t) => $"{tabKey}|{t.CubeName ?? t.QuantityName}";
 
     /// <summary>Puts the markers on <paramref name="plot"/>'s traces away under the tab they were built for.</summary>
@@ -217,21 +223,15 @@ public sealed partial class ModelComposerViewModel
         }
         marker.InfoBoxPos = new PlotPoint(left, top);
         container.OnPlotChanged(this, EventArgs.Empty);
-        UpdateMarkerBand();
         container.RequestPlotRedraw();
     }
 
-    /// <summary>The rectangular plot's band (<see cref="Plot.TopBandPx"/>): one row of info boxes while it has any, none
-    /// otherwise — so the axes take the whole panel until a marker is made.</summary>
-    private void UpdateMarkerBand()
-    {
-        if (RectContainer is null) return;
-        var boxes = PlotHost.MarkerInfoBoxes.Where(b => b.Container == RectContainer).ToList();
-        double band = boxes.Count == 0 ? 0 : boxes.Max(b => b.BoxHeight) + 2 * BandGap;
-        if (Math.Abs(RectPlot.TopBandPx - band) < 0.5) return;
-        RectPlot.TopBandPx = band;
-        RectContainer.RequestPlotRedraw();
-    }
+    /// <summary>The rows of the box the band is sized for: a family curve's — name, curve, x and y.</summary>
+    private const int BandBoxLines = 4;
+
+    /// <summary>The rectangular plot's band (<see cref="Plot.TopBandPx"/>): one row of family-curve info boxes, the same
+    /// height with or without a marker so the axes never move. A taller box (a multi-marker) overhangs the axes.</summary>
+    private double BandHeight() => MarkerRenderer.InfoBoxHeight(BandBoxLines) * PlotHost.ZoomLevel + 2 * BandGap;
 
     /// <summary>Redraws the selected tab from the loaded data at the cursor.</summary>
     private void RebuildPlots()
@@ -243,42 +243,61 @@ public sealed partial class ModelComposerViewModel
         // on screen over the plot that replaced it.
         StashMarkers(RectPlot);
         StashMarkers(SmithPlot);
-        RectPlot.Traces.Clear();
-        SmithPlot.Traces.Clear();
-        plot.CustomTitleOn = true;
-        plot.CustomXLabelOn = false;
-        plot.CustomYLabelOn = false;
-        _biasPlanePoints = [];
-        _biasPlanePickable = [];
+        string key = $"{StepName}|{SelectedPlotTab}";
+        bool sameTab = key == _plottedKey;
+        _plottedKey = key;
+        // One batch over the whole refill: every Clear and Add would otherwise autoscale the plot by itself, and the
+        // window is decided once, below.
+        var rectBatch = RectPlot.BeginTraceBatch();
+        var smithBatch = SmithPlot.BeginTraceBatch();
         try
         {
-            if (!ModelStepPlot(plot))
-            switch (SelectedPlotTab)
+            RectPlot.Traces.Clear();
+            SmithPlot.Traces.Clear();
+            plot.CustomTitleOn = true;
+            plot.CustomXLabelOn = false;
+            plot.CustomYLabelOn = false;
+            _biasPlanePoints = [];
+            _biasPlanePickable = [];
+            try
             {
-                case OutputTab: IvFamily(plot, byVgs: true); break;
-                case TransferTab: IvFamily(plot, byVgs: false); break;
-                case BiasPlaneTab: BiasPlane(plot); break;
-                case STab: SPlot(plot); break;
-                case SmithTab: SPlot(plot); break;
-                case CapacitanceTab: Intrinsic(plot, ["Cgs", "Cgd", "Cds"], 1e15, "fF"); break;
-                case ConductanceTab: Intrinsic(plot, ["Gm", "Gds"], 1e3, "mS"); break;
-                case FlatnessTab: Flatness(plot); break;
+                if (!ModelStepPlot(plot))
+                switch (SelectedPlotTab)
+                {
+                    case OutputTab: IvFamily(plot, byVgs: true); break;
+                    case TransferTab: IvFamily(plot, byVgs: false); break;
+                    case BiasPlaneTab: BiasPlane(plot); break;
+                    case STab: SPlot(plot); break;
+                    case SmithTab: SPlot(plot); break;
+                    case CapacitanceTab: Intrinsic(plot, ["Cgs", "Cgd", "Cds"], 1e15, "fF"); break;
+                    case ConductanceTab: Intrinsic(plot, ["Gm", "Gds"], 1e3, "mS"); break;
+                    case FlatnessTab: Flatness(plot); break;
+                }
             }
+            catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IndexOutOfRangeException or KeyNotFoundException)
+            {
+                plot.Traces.Clear();
+            }
+            if (!plot.CustomTitleOn || plot.CustomTitle.Length == 0) plot.CustomTitle = SelectedPlotTab;
+            RestoreMarkers(plot, _plottedKey);
         }
-        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or IndexOutOfRangeException or KeyNotFoundException)
+        finally
         {
-            plot.Traces.Clear();
+            rectBatch.Dispose();
+            smithBatch.Dispose();
         }
-        if (!plot.CustomTitleOn || plot.CustomTitle.Length == 0) plot.CustomTitle = SelectedPlotTab;
-        _plottedKey = $"{StepName}|{SelectedPlotTab}";
-        RestoreMarkers(plot, _plottedKey);
         plot.SetAxesViewport();
-        plot.Autoscale(force: true);
+        // A new tab frames its new content. A rebuild on the same tab — a cursor move, a pick, an edit, a fit — keeps a
+        // window the user zoomed or panned, and otherwise honours the plot's own autoscale settings (owner, review 4: a
+        // pick on a zoomed bias plane threw the zoom away, with Autoscale off too).
+        bool keep = sameTab && !WindowIsOurs(plot);
+        if (!sameTab) plot.Autoscale(force: true);
+        else if (!keep) plot.Autoscale();
+        if (!keep) _framed = (plot.Axes.Window, plot.Axes.WindowSecondary);
         var container = IsSmithTab ? SmithContainer : RectContainer;
         var hidden = IsSmithTab ? RectContainer : SmithContainer;
         hidden.OnPlotChanged(this, EventArgs.Empty);
         container.OnPlotChanged(this, EventArgs.Empty);
-        UpdateMarkerBand();
         container.RequestPlotRedraw();
         OnPropertyChanged(nameof(RectPlot));
         OnPropertyChanged(nameof(SmithPlot));

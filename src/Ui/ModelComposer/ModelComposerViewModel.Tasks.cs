@@ -59,8 +59,30 @@ public sealed partial class ModelComposerViewModel
     private bool _refreshPending;
     private readonly List<CmcEdit> _editsDuringRun = [];
 
-    [RelayCommand]
-    private void Cancel() => CancelRunningTask();
+    /// <summary>True from Cancel until the run stops: the run ends at its next check, which can be a while — a report stops
+    /// between PA classes — so Cancel is disabled and says so meanwhile (owner, review 4: it seemed to do nothing).</summary>
+    [ObservableProperty] private bool _isStopping;
+
+    /// <summary>What the Cancel buttons say.</summary>
+    public string CancelText => IsStopping ? "Stopping…" : "Cancel";
+
+    partial void OnIsRunningChanged(bool value) => CancelCommand.NotifyCanExecuteChanged();
+
+    partial void OnIsStoppingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CancelText));
+        CancelCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanCancel))]
+    private void Cancel()
+    {
+        if (!CanCancel()) return;
+        IsStopping = true;
+        CancelRunningTask();
+    }
+
+    private bool CanCancel() => IsRunning && !IsStopping;
 
     private void CancelRunningTask()
     {
@@ -127,6 +149,7 @@ public sealed partial class ModelComposerViewModel
         {
             if (ReferenceEquals(_cts, cts)) _cts = null;
             cts.Dispose();
+            IsStopping = false;
             IsRunning = false;
             IsFileRunning = false;
             _isRefresh = false;

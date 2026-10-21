@@ -78,8 +78,12 @@ public sealed partial class ModelComposerViewModel
 
     // ── exclusion (R-mc14-6) ─────────────────────────────────────────────────
 
-    /// <summary>The short list a reason is chosen from.</summary>
-    public IReadOnlyList<string> ExclusionReasons { get; } = ["Outlier", "Oscillation", "Compliance", "Drift", "Breakdown", "Other"];
+    /// <summary>What a click or lasso marks a point valid with, rather than excluding it (owner, review 4: putting a run of
+    /// excluded points back was one click per point).</summary>
+    public const string ValidReason = "Valid";
+
+    /// <summary>The short list a reason is chosen from, and <see cref="ValidReason"/> first.</summary>
+    public IReadOnlyList<string> ExclusionReasons { get; } = [ValidReason, "Outlier", "Oscillation", "Compliance", "Drift", "Breakdown", "Other"];
 
     [ObservableProperty] private string _exclusionReason = "Outlier";
 
@@ -89,8 +93,8 @@ public sealed partial class ModelComposerViewModel
     partial void OnExcludeArmedChanged(bool value) => BiasPlaneLasso.Armed = value;
 
     /// <summary>
-    /// Excludes <paramref name="points"/> with the chosen reason — or, when every one of them is already excluded, includes
-    /// them again. One undo step either way.
+    /// Excludes <paramref name="points"/> with the chosen reason — or, when every one of them is already excluded or the
+    /// reason is <see cref="ValidReason"/>, includes them again. One undo step either way.
     /// </summary>
     public bool ToggleExclusion(IReadOnlyList<(string Set, string Point)> points)
     {
@@ -98,7 +102,8 @@ public sealed partial class ModelComposerViewModel
         var bySet = points.GroupBy(p => p.Set).ToList();
         bool allExcluded = bySet.All(g => Document.DataSets.FirstOrDefault(s => s.Name == g.Key) is { } set
                                           && g.All(p => set.Exclusions.Any(x => x.Point == p.Point)));
-        string label = allExcluded ? $"Include {points.Count} point(s)" : $"Exclude {points.Count} point(s): {ExclusionReason}";
+        bool include = allExcluded || ExclusionReason == ValidReason;
+        string label = include ? $"Include {points.Count} point(s)" : $"Exclude {points.Count} point(s): {ExclusionReason}";
         string reason = ExclusionReason;
         return EditPart(label, d => d.DataSets, (d, sets) => d with { DataSets = sets },
             [.. Document.DataSets.Select(s =>
@@ -107,7 +112,7 @@ public sealed partial class ModelComposerViewModel
                 if (mine is null) return s;
                 var ids = mine.Select(p => p.Point).ToHashSet(StringComparer.Ordinal);
                 var kept = s.Exclusions.Where(x => !ids.Contains(x.Point)).ToList();
-                if (!allExcluded) kept.AddRange(ids.Order(StringComparer.Ordinal).Select(id => new PointExclusion(id, reason)));
+                if (!include) kept.AddRange(ids.Order(StringComparer.Ordinal).Select(id => new PointExclusion(id, reason)));
                 return s with { Exclusions = kept };
             })]);
     }

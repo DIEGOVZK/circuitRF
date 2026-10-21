@@ -275,8 +275,9 @@ public sealed partial class ModelComposerViewModel : ObservableObject, IDisposab
     }
 
     /// <summary>
-    /// Whether <paramref name="step"/> holds its result: data imported, pads stated, a fit recorded, the model or cell
-    /// exported — the document's own record, so a <c>.cmc</c> opened with its work done says so on the rail. Check and
+    /// Whether <paramref name="step"/> holds its result: data imported, pads stated, a fit recorded (a current or charge fit
+    /// with its arrays in the cache), the model or cell exported — so a <c>.cmc</c> opened with its work done says so on the
+    /// rail. Check and
     /// Validate keep no record in the document; they are done once run in this window.
     /// </summary>
     private bool IsDone(string step)
@@ -288,8 +289,10 @@ public sealed partial class ModelComposerViewModel : ObservableObject, IDisposab
                 "Data" => Document.DataSets.Count > 0,
                 "Pads" => Document.Pads is not null,
                 "Network" => CmcExtrinsic.Network(Document).Result is not null,
-                "Current" => CurrentFit.Record(Document) is not null,
-                "Charge" => ChargeFit.Record(Document) is not null,
+                // A fit is done when its arrays are in the cache too, not only its record in the document: a copy that lost
+                // the cache otherwise showed every step ticked and refused the report and the export (owner, review 4).
+                "Current" => DocumentPath is { } cp && CurrentFit.HasArrays(cp, Document),
+                "Charge" => DocumentPath is { } qp && ChargeFit.HasArrays(qp, Document),
                 "Thermal" => ThermalFit.Record(Document) is not null,
                 "Traps" => TrapFit.Record(Document) is not null
                            || !TrapFit.Settings(Document).Modelled && CurrentFit.Record(Document) is { Traps: null },

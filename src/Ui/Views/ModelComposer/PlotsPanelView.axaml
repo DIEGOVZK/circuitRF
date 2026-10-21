@@ -12,6 +12,27 @@
              xmlns:mi="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              x:Class="CircuitRF.Ui.Views.ModelComposer.PlotsPanelView"
              x:DataType="mc:ModelComposerViewModel">
+    <UserControl.Styles>
+        <Style Selector="StackPanel.field">
+            <Setter Property="Orientation" Value="Horizontal"/>
+            <Setter Property="Spacing" Value="4"/>
+            <Setter Property="Margin" Value="0,4,14,0"/>
+        </Style>
+        <Style Selector="ComboBox.cursor">
+            <Setter Property="MinWidth" Value="80"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="MinHeight" Value="26"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style Selector="TextBox.sweep">
+            <Setter Property="Width" Value="52"/>
+            <Setter Property="MinHeight" Value="26"/>
+            <Setter Property="Padding" Value="6,3"/>
+            <Setter Property="HorizontalContentAlignment" Value="Right"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Styles>
     <Border Classes="pane">
         <Grid RowDefinitions="Auto,Auto,*">
             <Grid ColumnDefinitions="*,Auto,Auto">
@@ -35,25 +56,73 @@
             </Button>
             </Grid>
 
-            <!-- The bias plane's lamps sit under the tab strip, where a reader looking for them finds them first. -->
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="2" Margin="0,4,0,0" HorizontalAlignment="Left"
-                        IsVisible="{Binding IsBiasPlaneTab}">
-                <Button Classes="tool" Classes.ToolActive="{Binding ShowExtrinsic}" Command="{Binding ToggleExtrinsicCommand}"
-                        ToolTip.Tip="Extrinsic bias">
-                    <mi:MaterialIcon Kind="CircleOutline" Width="14" Height="14"/>
-                </Button>
-                <Button Classes="tool" Classes.ToolActive="{Binding ShowIntrinsic}" Command="{Binding ToggleIntrinsicCommand}"
-                        ToolTip.Tip="Intrinsic bias">
-                    <mi:MaterialIcon Kind="Circle" Width="14" Height="14"/>
-                </Button>
-                <Border Classes="rule"/>
-                <Button Classes="tool" Classes.ToolActive="{Binding ExcludeArmed}" Command="{Binding ToggleExcludeCommand}"
-                        ToolTip.Tip="Click or lasso points to exclude or include them">
-                    <mi:MaterialIcon Kind="Lasso" Width="14" Height="14"/>
-                </Button>
-                <ComboBox ItemsSource="{Binding ExclusionReasons}" SelectedItem="{Binding ExclusionReason}"
-                          IsVisible="{Binding ExcludeArmed}" MinWidth="110" ToolTip.Tip="Reason"/>
-            </StackPanel>
+            <!-- Under the tab strip, the tab's own settings, where a reader looking at the plot finds them (owner, review 4:
+                 in the window's toolbar they were far from the plot they set, and the sweep's values read as plain text).
+                 The bias plane's lamps; the measured bias point the plot is cut at; the model sweep the plot evaluates the
+                 model over. Each list shows only on the tabs that read it (owner, review 2). Nothing in it moves (owner,
+                 review 4): the lasso's reason list is always there, enabled while the lasso is armed; T and Q, which can
+                 come and go with the data-set selection, are last; and the row keeps one field's height when it is
+                 empty, so the plot under it sits at the same place on every tab. The bias lists hold measured
+                 values only, so they snap; the arrow keys step a focused one. A sweep box commits on Return or on leaving
+                 it, and Escape puts it back. -->
+            <WrapPanel Grid.Row="1" Orientation="Horizontal" MinHeight="30">
+                <StackPanel Classes="field" Spacing="2" IsVisible="{Binding IsBiasPlaneTab}">
+                    <Button Classes="tool" Classes.ToolActive="{Binding ShowExtrinsic}" Command="{Binding ToggleExtrinsicCommand}"
+                            ToolTip.Tip="Extrinsic bias">
+                        <mi:MaterialIcon Kind="CircleOutline" Width="14" Height="14"/>
+                    </Button>
+                    <Button Classes="tool" Classes.ToolActive="{Binding ShowIntrinsic}" Command="{Binding ToggleIntrinsicCommand}"
+                            ToolTip.Tip="Intrinsic bias">
+                        <mi:MaterialIcon Kind="Circle" Width="14" Height="14"/>
+                    </Button>
+                    <Border Classes="rule"/>
+                    <Button Classes="tool" Classes.ToolActive="{Binding ExcludeArmed}" Command="{Binding ToggleExcludeCommand}"
+                            ToolTip.Tip="Click or lasso points to exclude them, or to mark them valid again">
+                        <mi:MaterialIcon Kind="Lasso" Width="14" Height="14"/>
+                    </Button>
+                    <!-- Always shown, enabled while the lasso is armed: appearing with it moved everything after it
+                         (owner, review 4). -->
+                    <ComboBox Classes="cursor" ItemsSource="{Binding ExclusionReasons}" SelectedItem="{Binding ExclusionReason}"
+                              IsEnabled="{Binding ExcludeArmed}" MinWidth="110" ToolTip.ShowOnDisabled="True"
+                              ToolTip.Tip="What a click or lasso marks the points: a reason to exclude them, or Valid"/>
+                </StackPanel>
+                <StackPanel Classes="field" IsVisible="{Binding ShowVgsCursor}">
+                    <TextBlock Classes="lbl" Text="Vgs"/>
+                    <ComboBox Classes="cursor" ItemsSource="{Binding VgsChoices}" SelectedItem="{Binding SelectedVgs}" ToolTip.Tip="Gate bias"/>
+                </StackPanel>
+                <StackPanel Classes="field" IsVisible="{Binding ShowVdsCursor}">
+                    <TextBlock Classes="lbl" Text="Vds"/>
+                    <ComboBox Classes="cursor" ItemsSource="{Binding VdsChoices}" SelectedItem="{Binding SelectedVds}" ToolTip.Tip="Drain bias"/>
+                </StackPanel>
+                <StackPanel Classes="field" IsVisible="{Binding ShowSweep}">
+                    <TextBlock Classes="lbl" Text="vgs"/>
+                    <TextBox Classes="sweep" Text="{Binding SweepVgsStart, UpdateSourceTrigger=LostFocus}" ToolTip.Tip="vgs start (V)"/>
+                    <TextBlock Classes="lbl" Text="to"/>
+                    <TextBox Classes="sweep" Text="{Binding SweepVgsStop, UpdateSourceTrigger=LostFocus}" ToolTip.Tip="vgs stop (V)"/>
+                    <TextBlock Classes="lbl" Text="step"/>
+                    <TextBox Classes="sweep" Text="{Binding SweepVgsStep, UpdateSourceTrigger=LostFocus}"
+                             ToolTip.Tip="vgs step (V): the spacing of a family, or a swept voltage's resolution (101 points at least)"/>
+                    <TextBlock Classes="lbl" Text="V"/>
+                </StackPanel>
+                <StackPanel Classes="field" IsVisible="{Binding ShowSweep}">
+                    <TextBlock Classes="lbl" Text="vds"/>
+                    <TextBox Classes="sweep" Text="{Binding SweepVdsStart, UpdateSourceTrigger=LostFocus}" ToolTip.Tip="vds start (V)"/>
+                    <TextBlock Classes="lbl" Text="to"/>
+                    <TextBox Classes="sweep" Text="{Binding SweepVdsStop, UpdateSourceTrigger=LostFocus}" ToolTip.Tip="vds stop (V)"/>
+                    <TextBlock Classes="lbl" Text="step"/>
+                    <TextBox Classes="sweep" Text="{Binding SweepVdsStep, UpdateSourceTrigger=LostFocus}"
+                             ToolTip.Tip="vds step (V): the spacing of a family, or a swept voltage's resolution (101 points at least)"/>
+                    <TextBlock Classes="lbl" Text="V"/>
+                </StackPanel>
+                <StackPanel Classes="field" IsVisible="{Binding ShowTCursor}">
+                    <TextBlock Classes="lbl" Text="T"/>
+                    <ComboBox Classes="cursor" ItemsSource="{Binding TChoices}" SelectedItem="{Binding SelectedT}" ToolTip.Tip="Ambient temperature"/>
+                </StackPanel>
+                <StackPanel Classes="field" IsVisible="{Binding ShowQCursor}">
+                    <TextBlock Classes="lbl" Text="Q"/>
+                    <ComboBox Classes="cursor" ItemsSource="{Binding QChoices}" SelectedItem="{Binding SelectedQ}" ToolTip.Tip="Quiescent point"/>
+                </StackPanel>
+            </WrapPanel>
 
             <Panel Grid.Row="2" Margin="0,4,0,0">
                 <ddc:PlotControl Name="RectPlotControl" Plot="{Binding RectPlot}" Library="{Binding PlotHost.Library}"

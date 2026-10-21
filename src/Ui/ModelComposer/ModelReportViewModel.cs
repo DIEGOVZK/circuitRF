@@ -106,21 +106,45 @@ public sealed partial class ModelReportViewModel : ObservableObject
 
     private static int Count(string text, char separator) => text.Split(separator, StringSplitOptions.RemoveEmptyEntries).Length;
 
-    /// <summary>Whether each choice has anything to clear: its Clear shows only then.</summary>
+    /// <summary>Whether each choice has anything to clear, and anything left to choose: its two buttons are enabled by them,
+    /// and never hidden, so clearing a choice moves nothing in the dialog (owner, review 4).</summary>
     public bool AnySBiases => SBiases.Trim().Length > 0;
     public bool AnyFixedVds => FixedVds.Trim().Length > 0;
     public bool AnyFixedVgs => FixedVgs.Trim().Length > 0;
+    public bool SBiasesLeft => Left(SBiasItems);
+    public bool FixedVdsLeft => Left(CvVdsItems);
+    public bool FixedVgsLeft => Left(CvVgsItems);
 
-    partial void OnSBiasesChanged(string value) { OnPropertyChanged(nameof(SBiasesSummary)); OnPropertyChanged(nameof(AnySBiases)); }
-    partial void OnFixedVdsChanged(string value) { OnPropertyChanged(nameof(FixedVdsSummary)); OnPropertyChanged(nameof(AnyFixedVds)); }
-    partial void OnFixedVgsChanged(string value) { OnPropertyChanged(nameof(FixedVgsSummary)); OnPropertyChanged(nameof(AnyFixedVgs)); }
+    // Null while the constructor loads the text, before the lists are built from it.
+    private static bool Left(IReadOnlyList<PickItem>? items) => items?.Any(i => !i.IsChecked) ?? false;
+
+    partial void OnSBiasesChanged(string value)
+    {
+        OnPropertyChanged(nameof(SBiasesSummary)); OnPropertyChanged(nameof(AnySBiases)); OnPropertyChanged(nameof(SBiasesLeft));
+    }
+    partial void OnFixedVdsChanged(string value)
+    {
+        OnPropertyChanged(nameof(FixedVdsSummary)); OnPropertyChanged(nameof(AnyFixedVds)); OnPropertyChanged(nameof(FixedVdsLeft));
+    }
+    partial void OnFixedVgsChanged(string value)
+    {
+        OnPropertyChanged(nameof(FixedVgsSummary)); OnPropertyChanged(nameof(AnyFixedVgs)); OnPropertyChanged(nameof(FixedVgsLeft));
+    }
+
+    private IReadOnlyList<PickItem> PicksOf(string which) => which switch { "s" => SBiasItems, "vds" => CvVdsItems, _ => CvVgsItems };
+
+    /// <summary>Chooses every value one choice offers — its boxes or chips, and the text they write.</summary>
+    [RelayCommand]
+    private void SelectAllPicks(string which)
+    {
+        foreach (var i in PicksOf(which)) i.IsChecked = true;
+    }
 
     /// <summary>Clears one choice — its boxes or chips, and the text they write.</summary>
     [RelayCommand]
     private void ClearPicks(string which)
     {
-        var items = which switch { "s" => SBiasItems, "vds" => CvVdsItems, _ => CvVgsItems };
-        foreach (var i in items) i.IsChecked = false;
+        foreach (var i in PicksOf(which)) i.IsChecked = false;
         switch (which)
         {
             case "s": SBiases = ""; break;

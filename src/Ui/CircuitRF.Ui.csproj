@@ -367,7 +367,13 @@
       for that reason, and because the antenna's own run is 52 MB. `*.npy` is excluded too: a
       Monte Carlo, yield, corner or DOE run writes its result BESIDE its schematic
       (`<cell>.yield.npy`, `<cell>.corners.npy`, `<cell>.doe.npy`), not under `results/`, and the
-      Yield example's bandpass alone is 4.6 MB. No example ships an `.npy`.
+      Yield example's bandpass alone is 4.6 MB.
+
+      THE ONE EXCEPTION IS THE MODEL COMPOSER EXAMPLE, the second item below, and it is the exception
+      its own `.gitignore` makes: `simulated-tables/*.npy` is that document's DATA, and a `.cmc-cache/`
+      holds the document's FITS — a `.cmc` records each fit and keeps the fitted arrays there. Without
+      them the shipped example opened with every step ticked and refused the report and the export,
+      asking for the Current step to be run again (owner, review 4). ModelComposerExampleShippedTests holds it.
 
       NOR IS ANY MACHINE-LOCAL STATE. `examples/` is a tree the owner OPENS, so running circuitRF
       leaves things in it that belong to that machine and not to the release: `.generated-cells/`
@@ -389,6 +395,14 @@
     <None Include="../../examples/**/*.*"
           Exclude="../../examples/**/results/**/*.*;../../examples/**/*.npy;../../examples/**/.DS_Store;../../examples/**/.generated-cells/**/*.*;../../examples/**/.cwsuser;../../examples/**/.crf-*;../../examples/**/*.crf-tmp-*">
       <Link>examples/%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="../../examples/Model Composer/simulated-tables/*.npy">
+      <Link>examples/Model Composer/simulated-tables/%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="../../examples/Model Composer/**/*.cmc-cache/**/*.npy">
+      <Link>examples/Model Composer/%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

@@ -15,6 +15,32 @@ namespace CircuitRF.Ui.Tests.ModelComposer;
 /// </summary>
 public sealed class ComposedFetLoadpullTests(ITestOutputHelper output)
 {
+    /// <summary>
+    /// Review 4: the shipped example's GaN at 2 GHz, behind the conjugately matched source the report's Class B uses. The
+    /// engine's first rung, 40 dB above its tickle, is a leap the Newton does not make, and every load stopped there; the
+    /// rung now continues from the tickle and the class load drives up to compression.
+    /// </summary>
+    [Fact]
+    public void AFirstRungTheTickleCannotReach_IsContinuedFromIt_AndDrivesToCompression()
+    {
+        string model = Path.Combine(ModelCliFixture.RepoRoot(), "examples", "Model Composer", "synthetic-gan", "gan_4x125.cmodel");
+        string dir = Directory.CreateTempSubdirectory("crf-lp-tickle-").FullName;
+        File.WriteAllLines(Path.Combine(dir, "lp.gam"), ["# impedance Z0=50 re_im", "95.652 26.074"]);
+        string cnl = "Vgs = -0.99481\nVds = 10\n" + ValidationBench.Device(model, 4, intrinsic: false, "g", "d") +
+                     "Tuner:SRC g 0 Z[1]=16.605+j*179.27 Zdefault=1e-6 BiasTee=on Vbias=Vgs\n" +
+                     "Tuner:LOAD d 0 Z[1]=50 Z[2]=1e-6-j*1.5675 Z[3]=1e-6-j*2.3465 Z[4]=1e-6-j*3.1201 Z[5]=1e-6-j*3.8871 Zdefault=1e-6 " +
+                     "BiasTee=on Vbias=Vds\n" +
+                     "analysis LP1 type=loadpull Tone=2e9 MaxHarm=5 LoadTuner=LOAD SourceTuner=SRC Sweep=Load TuneHarm=1 " +
+                     "Grid=\"lp.gam\" Compression=3 GainType=Gt PinStart=-10 PinStep=1 PinMax=40 Tol=1e-6 MaxIter=100\n";
+        var lp = CircuitEvaluation.Evaluate(PreparedCircuit.FromText(cnl, dir, dir), new CircuitEvaluationRequest { Measurements = false });
+        Assert.True(lp.Status == RunStatus.Success, lp.StatusMessage);
+        var ds = lp.Results.First(r => r.Data.Contains("StopCode")).Data;
+        Assert.Equal(1.0, ds["StopCode"].RealValues[0]);   // Compression
+        double pout = ds["Pout_dBm"].RealValues.Where(double.IsFinite).Max();
+        output.WriteLine($"Pout at compression {pout:F2} dBm");
+        Assert.InRange(pout, 22, 24);
+    }
+
     [Fact]
     public void Loadpull_OfAComposedFet_MatchesAnHbPowerSweepAtEachLoad()
     {

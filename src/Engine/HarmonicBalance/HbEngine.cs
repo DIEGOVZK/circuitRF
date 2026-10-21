@@ -1719,10 +1719,15 @@ public sealed class HbEngine
         int        Iterations,
         string?    FailReason, // non-null only on non-convergence or errors
         IReadOnlyList<HbConvergenceTrace.IterRecord> IterTrace,
-        HbLinearBackSolver? BackSolver = null);  // lazy linear back-solver (linear-interior node
+        HbLinearBackSolver? BackSolver = null)   // lazy linear back-solver (linear-interior node
                                                  // voltages + every linear branch current); null on
                                                  // a singular DC extraction. Used by the loadpull
                                                  // engine to recover source-tuner branch currents.
+    {
+        /// <summary>The solve was refused because its tolerance is not smaller than its own RF excitation
+        /// (<see cref="HbNewton.IsToleranceVacuous"/>) — a setup fault, which no smaller drive step cures.</summary>
+        public bool ToleranceVacuous { get; init; }
+    }
 
     /// <summary>
     /// Runs a single HB Newton solve at the current netlist operating point (no sweep loop).
@@ -1834,7 +1839,10 @@ public sealed class HbEngine
             bSrcThisPoint[k] = extractor.BuildSourceRhs(k == 0 ? 0.0 : k * omega0);
         var backSolver = new HbLinearBackSolver(extractor, f0, K, [sr.INl], [bSrcThisPoint], _netlist);
 
-        return new SinglePointResult(V, sr.INl, sr.Converged, sr.Iterations, failReason, sr.IterTrace, backSolver);
+        return new SinglePointResult(V, sr.INl, sr.Converged, sr.Iterations, failReason, sr.IterTrace, backSolver)
+        {
+            ToleranceVacuous = !sr.Converged && double.IsFinite(sr.VacuousToleranceScale),
+        };
     }
 
     // ── Initial guess ────────────────────────────────────────────────────────

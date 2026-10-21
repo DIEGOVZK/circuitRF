@@ -1165,16 +1165,30 @@ power into the load, read through the model's network — which is part of the m
 composed FET like any other device.
 
 Validation against a loadpull file generates an `lp` testbench over the file's own loads (the grid written as a `.gam`
-beside it) and runs it through the loadpull engine; the model's drive ladder steps by the smallest gap between the
-measured drives, so a regular measured grid is hit exactly and only an irregular one is interpolated. A multi-frequency
-file is compared at the stated `FrequencyHz`.
+beside it) and runs it through the loadpull engine, each load driven up to `ValidationSettings.Compression` (3 dB of Gt by
+default; the model's ladder steps by the smallest gap between the measured drives and runs 10 dB past the highest).
+Model and measurement are compared **at compression**, never drive by drive: `AtCompression` reads each load's figures
+where its own Gt has fallen that far below its running maximum, interpolated between the two drives either side, and
+every figure the file carries is compared — Pout, Gt, PAE and drain efficiency (RMS), AM/PM, and Zin as the VSWR between
+measured and model (`Mismatch`, |Z1 − Z2| / |Z1 + Z2*|, needs no reference). Each side's MXP and MXE at compression are
+compared by their Pout or efficiency and by their load, as a VSWR. Only loads the MEASUREMENT reaches compression at count;
+a file that reaches it nowhere is a note, not a failure. Tolerances: `PowerDb`, `EfficiencyPoints`, `AmPmDegrees` (5°)
+and `ImpedanceVswr` (1.5). A multi-frequency file is compared at the stated `FrequencyHz`.
 
-The report's PA modes run `ModelValidation.LoadSweep` instead: one HB power sweep per load on one fixed drive ladder, so
-its region of convergence is measured the same way at every load (the engine's continuation and cold retries would rescue
-loads that ladder does not reach). It writes the loadpull DataSet under the canonical names a measured file carries
-(`Pout_dBm`, `Gt_dB`, `Efficiency`, `PAE` in %, …), so RfCore's `LoadpullSurface` (the Data Display's performance
-summary) reads it unchanged. Compression is measured from the running gain maximum, harmonicaRF's rule, and a point is
-cut one step past it as the engine's drive-up stops.
+The report's PA modes run `ModelValidation.LoadSweep`: the same engine, one run per load and the loads in parallel (the
+engine solves its loads in turn), each driven up to the report's compression or its PinMax. A fixed ladder solved every
+rung to PinMax and kept only those up to compression; at 2 GHz, where this GaN's gain is ~19 dB, the rest was deep
+overdrive that failed at every rung and a class ran for many minutes. The region of convergence is therefore the loads the
+engine's continuation and cold retries bring to compression or the cap. It writes the loadpull DataSet under the canonical
+names a measured file carries (`Pout_dBm`, `Gt_dB`, `Efficiency`, `PAE` in %, …), so RfCore's `LoadpullSurface` (the Data
+Display's performance summary) reads it unchanged.
+
+**The engine's first rung continues from the tickle when it fails.** The tickle sits tens of dB below PinStart; on a
+high-gain stage behind a sharply matched source (this GaN at 2 GHz, source 16.6 + j179 Ω) that jump is not one Newton
+solve, and every load stopped on its first rung from −10 dBm while the same loads walked cleanly to compression from
+−30. `DriveLadder.ContinueThroughJump` now bisects from the tickle, as it already did from a previous rung; never for a
+vacuous-tolerance refusal (`SinglePointResult.ToleranceVacuous`), which smaller steps would only hide, and continuity is
+still never judged against the tickle.
 
 ### 14.6 The Model Validation Report (R-mc11-6)
 
